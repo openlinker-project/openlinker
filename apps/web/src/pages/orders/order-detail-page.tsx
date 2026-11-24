@@ -11,16 +11,24 @@
  * @module apps/web/src/pages/orders
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
-import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useIsPackerSession, useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { StockAtRiskCallout } from '../../features/orders/components/stock-at-risk-callout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { Tabs, TabsContent } from '../../shared/ui/tabs';
+import { OrderDetailTabList, type OrderDetailTabEntry } from '../../features/orders/components/order-detail-tab-list';
+import {
+  DEFAULT_ORDER_DETAIL_TAB,
+  resolveOrderDetailTab,
+  tabForAnchor,
+  type OrderDetailTabId,
+} from '../../features/orders/lib/order-detail-tabs';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
@@ -183,6 +191,8 @@ export function OrderDetailPage(): ReactElement {
   // does not persist (per-participant outcomes, voided labels, why a correction
   // could not be drafted) and is gone after a reload, by design. Tagged with its
   // order so a navigation never shows it on another.
+  // A packer works on the pack bench; the order routes refuse them anyway (#4286).
+  const isPacker = useIsPackerSession();
   const demoMode = useDemoMode();
   const canAddGift = useWriteAccess('gifts:write', demoMode).canWrite;
   const [giftDialogOpen, setGiftDialogOpen] = useState(false);
@@ -237,10 +247,45 @@ export function OrderDetailPage(): ReactElement {
   // render with it) — the app has no other hash-scroll, and the panels mount
   // asynchronously, so a native browser jump on first paint would miss.
   const hasOrder = query.data !== undefined;
+  // The selected tab is URL state (`?tab=`); a legacy anchor or a
+  // `retryShipmentId` link picks the tab that holds its target (#4286).
+  const activeTab: OrderDetailTabId = resolveOrderDetailTab({
+    tabParam: searchParams.get('tab'),
+    hash: location.hash,
+    hasRetryShipmentId: retryShipmentId !== undefined,
+  });
+  const handleTabChange = useCallback(
+    (value: string): void => {
+      const next = new URLSearchParams(searchParams);
+      if (value === DEFAULT_ORDER_DETAIL_TAB) next.delete('tab');
+      else next.set('tab', value);
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+  // Scroll to an anchor, opening the tab that holds it first: panels stay
+  // mounted but a hidden one cannot be scrolled to.
+  const goToAnchor = useCallback(
+    (targetId: string): void => {
+      const tab = tabForAnchor(targetId);
+      if (tab && tab !== activeTab) handleTabChange(tab);
+      requestAnimationFrame(() => {
+        document.getElementById(targetId)?.scrollIntoView({ block: 'start' });
+      });
+    },
+    [activeTab, handleTabChange],
+  );
   useEffect(() => {
     if (!hasOrder) return;
     const targetId = location.hash.replace(/^#/, '');
     if (!targetId) return;
+    const anchorTab = tabForAnchor(targetId);
+    // A `?tab=` already in the URL wins at resolve time, so an in-page anchor
+    // link (e.g. "view raw") must switch the tab itself before it can scroll.
+    if (anchorTab && anchorTab !== activeTab) {
+      handleTabChange(anchorTab);
+      return;
+    }
     const raf = requestAnimationFrame(() => {
       const target = document.getElementById(targetId);
       if (!target) return;
@@ -253,7 +298,7 @@ export function OrderDetailPage(): ReactElement {
       target.scrollIntoView({ behavior, block: 'start' });
     });
     return () => { cancelAnimationFrame(raf); };
-  }, [hasOrder, location.hash]);
+  }, [hasOrder, location.hash, activeTab, handleTabChange]);
 
   const pendingDestinationId =
     retry.isPending && retry.variables ? retry.variables.destinationConnectionId : null;
@@ -282,6 +327,10 @@ export function OrderDetailPage(): ReactElement {
     },
     [retry, internalOrderId, showToast, copy]
   );
+
+  if (isPacker) {
+    return <Navigate to="/bench" replace />;
+  }
 
   if (query.isLoading) {
     return (
@@ -407,7 +456,7 @@ export function OrderDetailPage(): ReactElement {
   };
   const scrollToRemedy = (target: OrderEditRemedyTarget): void => {
     const id = target === 'packing' ? 'packing' : target === 'shipment' ? 'shipment' : 'invoicing';
-    document.getElementById(id)?.scrollIntoView({ block: 'start' });
+    goToAnchor(id);
   };
 
   const connections = connectionsQuery.data ?? [];
@@ -564,6 +613,21 @@ export function OrderDetailPage(): ReactElement {
     },
   ];
 
+  const tabEntries: OrderDetailTabEntry[] = [
+    { id: 'overview', label: copy.tabs.overview },
+    { id: 'shipping', label: copy.tabs.shipping, count: shipmentsQuery.data?.items.length },
+    {
+      id: 'packing',
+      label: copy.tabs.packing,
+      count: (fulfilmentTasksQuery.data?.total ?? 0) + (order.activeHold ? 1 : 0),
+    },
+    { id: 'documents', label: copy.tabs.documents, count: order.salesDocument?.document ? 1 : 0 },
+    { id: 'returns', label: copy.tabs.returns },
+    { id: 'notes', label: copy.tabs.notes },
+    { id: 'history', label: copy.tabs.history },
+    { id: 'technical', label: copy.tabs.technical, count: failedDestinations.length + snapshot.parseWarnings.length },
+  ];
+
   return (
     <PageLayout
       // Close the loop back to wherever the operator came from (#1905): a
@@ -650,7 +714,7 @@ export function OrderDetailPage(): ReactElement {
           amending={order.lifecyclePhase === 'amending'}
           onResult={handleOrderCancelResult}
           onGoToShipment={() => {
-            document.getElementById('shipment')?.scrollIntoView({ block: 'start' });
+            goToAnchor('shipment');
           }}
         />
         </>
@@ -805,6 +869,10 @@ export function OrderDetailPage(): ReactElement {
         onAddGift={canAddGift ? () => setGiftDialogOpen(true) : undefined}
       />
 
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <OrderDetailTabList ariaLabel={copy.tabs.ariaLabel} tabs={tabEntries} />
+
+      <TabsContent value="overview" forceMount className="order-detail__tab">
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">{copy.pricingTitle}</h3>
@@ -820,14 +888,53 @@ export function OrderDetailPage(): ReactElement {
         </section>
       ) : null}
 
-      {/* Detail grid: left = summary + sync status, right = delivery + shipment + customer */}
-      <div className="order-detail__primary-grid order-detail__primary-grid--split">
-        <div className="order-detail__stack">
           <section className="detail-section">
             <h3 className="detail-section__title">{summary.title}</h3>
             <KeyValueList items={summaryItems} />
           </section>
 
+          {/* #3963 - did a payment that arrived after the shops got the order reach them? */}
+          <OrderPaymentPanel
+            internalOrderId={order.internalOrderId}
+            entries={order.paymentWriteback ?? []}
+            sourceName={cancelSourceName}
+            amountLabel={cancelTotalLabel}
+          />
+
+          <OrderDeliveryPanel
+            shippingAddress={snapshot.shippingAddress}
+            shipping={snapshot.shipping}
+            pickupPoint={snapshot.pickupPoint}
+            sourcePlatformType={sourcePlatformType}
+            carrier={carrier}
+            methodFallback={methodFallback}
+            deliveryOutcome={deliveryOutcome}
+            deliveryOwner={deliveryOwner}
+            deliveryResolution={order.deliveryResolution}
+            deliveryRider={order.deliveryRider}
+            sourceConnectionId={order.sourceConnectionId}
+            sourceDeliveryMethodId={order.sourceDeliveryMethodId}
+            sourceDeliveryMethodName={order.sourceDeliveryMethodName}
+            edits={order.edits}
+            channelName={cancelSourceName}
+          />
+
+          <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
+
+      </TabsContent>
+
+      <TabsContent value="shipping" forceMount className="order-detail__tab">
+          {/* Anchor wrappers (#1713) for the orders-list deep-link CTAs
+              (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level
+              divs so the target exists even while a panel is capability-gated
+              (renders null) or still loading. */}
+          <div id="shipment" tabIndex={-1}>
+            <OrderShipmentPanel order={order} autoOpenForShipmentId={retryShipmentId} />
+          </div>
+
+      </TabsContent>
+
+      <TabsContent value="packing" forceMount className="order-detail__tab">
           {/* Packing is a fact about EVERY order, so this sits in the always
               rendered left stack rather than inside the capability-gated
               shipment panel — an order with no shipping-capable connection
@@ -864,103 +971,6 @@ export function OrderDetailPage(): ReactElement {
             holdHistory={order.holdHistory}
           />
 
-          {/* #3531/#3533 — beside Hold and Packing: notes are a fact about
-              every order, independent of which integration it came through. */}
-          <OrderNotesPanel
-            key={order.internalOrderId}
-            internalOrderId={internalOrderId}
-            channelNames={orderChannelNames}
-          />
-
-          {/* #3963 - did a payment that arrived after the shops got the order reach them? */}
-          <OrderPaymentPanel
-            internalOrderId={order.internalOrderId}
-            entries={order.paymentWriteback ?? []}
-            sourceName={cancelSourceName}
-            amountLabel={cancelTotalLabel}
-          />
-
-          <section className="detail-section">
-            <h3 className="detail-section__title">
-              {order.syncStatus.length > 0
-                ? interpolate(copy.syncStatus.titleWithCount, {
-                    count: format.number(order.syncStatus.length),
-                  })
-                : copy.syncStatus.title}
-            </h3>
-            {order.syncStatus.length > 0 ? (
-              <ul className="order-sync-list">
-                {order.syncStatus.map((status) => (
-                  <li key={status.destinationConnectionId} className="order-sync-row">
-                    <ConnectionEntityLabel connectionId={status.destinationConnectionId} showId={false} />
-                    <StatusBadge tone={SYNC_STATUS_TONES[status.status]} compact>
-                      {syncStatusLabel(status.status)}
-                    </StatusBadge>
-                    <span className="order-sync-row__ext">
-                      {status.externalOrderId ? (
-                        <span className="mono-text">#{status.externalOrderId}</span>
-                      ) : (
-                        <span className="text-muted">{copy.syncStatus.noDestinationOrderId}</span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-muted">{copy.syncStatus.noDestinations}</p>
-            )}
-            <p className="order-sync-list__note text-muted">
-              {copy.syncStatus.note}
-            </p>
-          </section>
-        </div>
-
-        <div className="order-detail__stack">
-          <OrderDeliveryPanel
-            shippingAddress={snapshot.shippingAddress}
-            shipping={snapshot.shipping}
-            pickupPoint={snapshot.pickupPoint}
-            sourcePlatformType={sourcePlatformType}
-            carrier={carrier}
-            methodFallback={methodFallback}
-            deliveryOutcome={deliveryOutcome}
-            deliveryOwner={deliveryOwner}
-            deliveryResolution={order.deliveryResolution}
-            deliveryRider={order.deliveryRider}
-            sourceConnectionId={order.sourceConnectionId}
-            sourceDeliveryMethodId={order.sourceDeliveryMethodId}
-            sourceDeliveryMethodName={order.sourceDeliveryMethodName}
-            edits={order.edits}
-            channelName={cancelSourceName}
-          />
-          {/* Anchor wrappers (#1713) for the orders-list deep-link CTAs
-              (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level
-              divs so the target exists even while a panel is capability-gated
-              (renders null) or still loading. */}
-          <div id="shipment" tabIndex={-1}>
-            <OrderShipmentPanel order={order} autoOpenForShipmentId={retryShipmentId} />
-          </div>
-          {/* #2160: one unified "Sales document" slot replaces the two
-              independent OrderInvoicePanel / OrderReceiptPanel siblings.
-              `id="invoicing"` is kept (not renamed to e.g. "sales-document")
-              because it is the actual deep-link target the orders-list page's
-              "Issue invoice" CTA already points at
-              (`/orders/{id}#invoicing`, orders-list-page.tsx). */}
-          <div id="invoicing" tabIndex={-1}>
-            <SalesDocumentPanel order={order} />
-            {/* Beside the panel, not inside it: the panel renders from the
-                LIVE invoice query while this reads the snapshot projection the
-                orders row also reads, so the two surfaces state the fact from
-                one source and cannot drift. It renders nothing unless a
-                document really went out with unmatched lines. */}
-            <UnlinkedCatalogueLinesBadge invoice={snapshot.invoice} />
-            <WarehouseReleaseBadge invoice={snapshot.invoice} />
-          </div>
-          <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
-          <OrderBuyerEmailsPanel internalOrderId={order.internalOrderId} />
-        </div>
-      </div>
-
       {/* #2411 — work-grain holds. Full width and BELOW the grid: a routed
           order can carry several fulfilment tasks, each with its own lines and
           holds, which is more than a rail column can hold without wrapping into
@@ -989,6 +999,31 @@ export function OrderDetailPage(): ReactElement {
         hideWhenEmpty={omsRouting !== 'on'}
       />
 
+      </TabsContent>
+
+      <TabsContent value="documents" forceMount className="order-detail__tab">
+          {/* #2160: one unified "Sales document" slot replaces the two
+              independent OrderInvoicePanel / OrderReceiptPanel siblings.
+              `id="invoicing"` is kept (not renamed to e.g. "sales-document")
+              because it is the actual deep-link target the orders-list page's
+              "Issue invoice" CTA already points at
+              (`/orders/{id}#invoicing`, orders-list-page.tsx). */}
+          <div id="invoicing" tabIndex={-1}>
+            <SalesDocumentPanel order={order} />
+            {/* Beside the panel, not inside it: the panel renders from the
+                LIVE invoice query while this reads the snapshot projection the
+                orders row also reads, so the two surfaces state the fact from
+                one source and cannot drift. It renders nothing unless a
+                document really went out with unmatched lines. */}
+            <UnlinkedCatalogueLinesBadge invoice={snapshot.invoice} />
+            <WarehouseReleaseBadge invoice={snapshot.invoice} />
+          </div>
+
+          <OrderBuyerEmailsPanel internalOrderId={order.internalOrderId} />
+
+      </TabsContent>
+
+      <TabsContent value="returns" forceMount className="order-detail__tab">
       {/* #2640 — returns spec § 5.4's third surface. Rendered UNCONDITIONALLY
           and keyed per order: an absent panel would read as "this order cannot
           have returns", which is a fourth wrong answer beside the three the
@@ -998,19 +1033,20 @@ export function OrderDetailPage(): ReactElement {
         internalOrderId={internalOrderId}
       />
 
-      {snapshot.parseWarnings.length > 0 ? (
-        <p className="order-detail__parse-warning-row">
-          <a
-            href={`#${RAW_SNAPSHOT_ANCHOR_ID}`}
-            className="order-detail__parse-warning"
-            title={copy.parseWarnings.title}
-          >
-            <span aria-hidden="true">⚠</span>{' '}
-            {plural(snapshot.parseWarnings.length, copy.parseWarnings.label)}
-          </a>
-        </p>
-      ) : null}
+      </TabsContent>
 
+      <TabsContent value="notes" forceMount className="order-detail__tab">
+          {/* #3531/#3533 — beside Hold and Packing: notes are a fact about
+              every order, independent of which integration it came through. */}
+          <OrderNotesPanel
+            key={order.internalOrderId}
+            internalOrderId={internalOrderId}
+            channelNames={orderChannelNames}
+          />
+
+      </TabsContent>
+
+      <TabsContent value="history" forceMount className="order-detail__tab">
       <section className="detail-section">
         <h3 className="detail-section__title">{copy.activityTitle}</h3>
         <OrderActivityTimeline
@@ -1049,9 +1085,63 @@ export function OrderDetailPage(): ReactElement {
         />
       </section>
 
+      </TabsContent>
+
+      <TabsContent value="technical" forceMount className="order-detail__tab">
+          <section className="detail-section">
+            <h3 className="detail-section__title">
+              {order.syncStatus.length > 0
+                ? interpolate(copy.syncStatus.titleWithCount, {
+                    count: format.number(order.syncStatus.length),
+                  })
+                : copy.syncStatus.title}
+            </h3>
+            {order.syncStatus.length > 0 ? (
+              <ul className="order-sync-list">
+                {order.syncStatus.map((status) => (
+                  <li key={status.destinationConnectionId} className="order-sync-row">
+                    <ConnectionEntityLabel connectionId={status.destinationConnectionId} showId={false} />
+                    <StatusBadge tone={SYNC_STATUS_TONES[status.status]} compact>
+                      {syncStatusLabel(status.status)}
+                    </StatusBadge>
+                    <span className="order-sync-row__ext">
+                      {status.externalOrderId ? (
+                        <span className="mono-text">#{status.externalOrderId}</span>
+                      ) : (
+                        <span className="text-muted">{copy.syncStatus.noDestinationOrderId}</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted">{copy.syncStatus.noDestinations}</p>
+            )}
+            <p className="order-sync-list__note text-muted">
+              {copy.syncStatus.note}
+            </p>
+          </section>
+
+      {snapshot.parseWarnings.length > 0 ? (
+        <p className="order-detail__parse-warning-row">
+          <a
+            href={`#${RAW_SNAPSHOT_ANCHOR_ID}`}
+            className="order-detail__parse-warning"
+            title={copy.parseWarnings.title}
+          >
+            <span aria-hidden="true">⚠</span>{' '}
+            {plural(snapshot.parseWarnings.length, copy.parseWarnings.label)}
+          </a>
+        </p>
+      ) : null}
+
       <section className="detail-section" id={RAW_SNAPSHOT_ANCHOR_ID}>
         <RawPayloadPanel title={copy.rawSnapshotTitle} payload={order.orderSnapshot} />
       </section>
+
+      </TabsContent>
+
+      </Tabs>
     </PageLayout>
   );
 }

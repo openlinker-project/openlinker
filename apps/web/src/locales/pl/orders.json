@@ -1715,6 +1715,17 @@
       "title": "Status synchronizacji",
       "titleWithCount": "Status synchronizacji ({count})"
     },
+    "tabs": {
+      "ariaLabel": "Sekcje zamówienia",
+      "overview": "Przegląd",
+      "shipping": "Wysyłka",
+      "packing": "Pakowanie",
+      "documents": "Dokumenty sprzedaży",
+      "returns": "Zwroty",
+      "notes": "Notatki",
+      "history": "Historia",
+      "technical": "Dane techniczne"
+    },
     "title": "Szczegóły zamówienia",
     "viewFailedOrders": "Pokaż nieudane zamówienia",
     "viewRaw": "pokaż surowe dane"

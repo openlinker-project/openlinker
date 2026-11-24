@@ -1625,6 +1625,17 @@
       "title": "Sync status",
       "titleWithCount": "Sync status ({count})"
     },
+    "tabs": {
+      "ariaLabel": "Order sections",
+      "overview": "Overview",
+      "shipping": "Shipping",
+      "packing": "Packing",
+      "documents": "Sales documents",
+      "returns": "Returns",
+      "notes": "Notes",
+      "history": "History",
+      "technical": "Technical"
+    },
     "title": "Order detail",
     "viewFailedOrders": "View failed orders",
     "viewRaw": "view raw"
