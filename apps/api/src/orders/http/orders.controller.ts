@@ -105,7 +105,8 @@ import {
   RefundLockUnavailableException,
   TestFixturesDisabledException,
   classifyBuyerNoteForList,
-  buildBuyerNotePreview} from '@openlinker/core/orders';
+  buildBuyerNotePreview,
+} from '@openlinker/core/orders';
 import type {
   OrderRecord,
   OrderRecordFilters,
@@ -124,10 +125,7 @@ import {
   isPaymentWritebackProblem,
   type IPaymentWritebackService,
 } from '@openlinker/core/orders';
-import {
-  INVOICE_SERVICE_TOKEN,
-  IInvoiceService,
-} from '@openlinker/core/invoicing';
+import { INVOICE_SERVICE_TOKEN, IInvoiceService } from '@openlinker/core/invoicing';
 import { Logger } from '@openlinker/shared/logging';
 import type { KnownApiErrorCode } from '@openlinker/shared/errors';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
@@ -202,9 +200,11 @@ import type {
 } from '../application/types/order-cancellation.types';
 import { OrderChangeResponseDto } from './dto/order-change-response.dto';
 import { readDiscountCorrectionLines } from '../application/services/order-edits-view';
-import { CancelOrderRequestDto, ConfirmOrderChangeRequestDto } from './dto/cancel-order-request.dto';
-import type {
-  CancelCorrectionProposalLineDto} from './dto/cancel-order-response.dto';
+import {
+  CancelOrderRequestDto,
+  ConfirmOrderChangeRequestDto,
+} from './dto/cancel-order-request.dto';
+import type { CancelCorrectionProposalLineDto } from './dto/cancel-order-response.dto';
 import {
   CancelOrderResponseDto,
   ConfirmOrderChangeResponseDto,
@@ -254,9 +254,7 @@ import { RetryOrderRoutingResponseDto } from './dto/retry-order-routing-response
 import { PlaceOrderHoldRequestDto } from './dto/place-order-hold-request.dto';
 import { MarkPreRolloutEraResponseDto } from './dto/mark-pre-rollout-era-response.dto';
 import { ReleaseOrderHoldRequestDto } from './dto/release-order-hold-request.dto';
-import type {
-  OrderHoldDto,
-  ProvisioningResumeDto} from './dto/order-hold-response.dto';
+import type { OrderHoldDto, ProvisioningResumeDto } from './dto/order-hold-response.dto';
 import {
   PlaceOrderHoldResponseDto,
   ReleaseOrderHoldResponseDto,
@@ -328,6 +326,7 @@ export function toOrderRecordFilters(
     activeHoldReason: query.hold,
     packed: query.packed,
     hasBuyerNote: query.hasBuyerNote,
+    hidden: query.hidden,
     search: query.search,
     tagId: query.tag,
     untagged: query.untagged,
@@ -359,10 +358,10 @@ function assertCancelledPhaseAgree(
     'ORDER_FILTERS_CONTRADICTORY',
     phaseIsCancelled
       ? '?phase=cancelled contradicts ?cancelled=false: the cancelled phase IS the cancelled ' +
-        'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
+          'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
       : `?phase=${phase} contradicts ?cancelled=true: only ?phase=cancelled can match a ` +
-        'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
-        '?cancelled=false.',
+          'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
+          '?cancelled=false.',
     { phase, cancelled }
   );
 }
@@ -427,9 +426,8 @@ export async function enrichCrossContextFilters(
   if (query.giftNotAdded !== undefined && promotionLog !== undefined) {
     enriched.giftNotAdded = query.giftNotAdded;
     try {
-      enriched.giftNotAddedOrderIds = await promotionLog.findOrderIdsNeedingAttention(
-        GIFT_NOT_ADDED_ID_LIMIT
-      );
+      enriched.giftNotAddedOrderIds =
+        await promotionLog.findOrderIdsNeedingAttention(GIFT_NOT_ADDED_ID_LIMIT);
     } catch (error) {
       logger.error(
         'Failed to resolve gift-not-added order ids for the ?giftNotAdded= filter',
@@ -737,7 +735,7 @@ export class OrdersController {
       'that cannot stop early - #2843 measured that count at 142 ms of a 149 ms request against ' +
       'a million orders (#2944). Takes no limit/offset: the answer depends on the filters alone, ' +
       'which is what makes it cacheable per filter combination. `sort` and `dir` are accepted ' +
-      'and ignored - a count cannot be ordered, but they travel inside this list\'s filter ' +
+      "and ignored - a count cannot be ordered, but they travel inside this list's filter " +
       'object, so refusing them would 400 every client that reuses one query builder.',
   })
   @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
@@ -801,9 +799,8 @@ export class OrdersController {
     let giftNotAddedOrderIds: string[] = [];
     let giftNotAddedKnown = true;
     try {
-      giftNotAddedOrderIds = await this.promotionLog.findOrderIdsNeedingAttention(
-        GIFT_NOT_ADDED_ID_LIMIT
-      );
+      giftNotAddedOrderIds =
+        await this.promotionLog.findOrderIdsNeedingAttention(GIFT_NOT_ADDED_ID_LIMIT);
     } catch (error) {
       giftNotAddedKnown = false;
       this.logger.error(
@@ -846,9 +843,7 @@ export class OrdersController {
     type: OrderSlaSummaryResponseDto,
   })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async slaSummary(
-    @Query() query: OrderSlaSummaryQueryDto
-  ): Promise<OrderSlaSummaryResponseDto> {
+  async slaSummary(@Query() query: OrderSlaSummaryQueryDto): Promise<OrderSlaSummaryResponseDto> {
     const { sourceConnectionId, customerId, createdFrom, createdTo, cancelled } = query;
     return this.orderRecordRepository.countBySla({
       sourceConnectionId,
@@ -923,7 +918,9 @@ export class OrdersController {
     dto.buyerNote = order.buyerNoteState;
     dto.buyerNoteReadAt = order.buyerNoteReadAt ? order.buyerNoteReadAt.toISOString() : null;
     dto.buyerNoteReadByUserId = order.buyerNoteReadByUserId;
-    dto.buyerNoteChangedAt = order.buyerNoteChangedAt ? order.buyerNoteChangedAt.toISOString() : null;
+    dto.buyerNoteChangedAt = order.buyerNoteChangedAt
+      ? order.buyerNoteChangedAt.toISOString()
+      : null;
     // B-10: the acknowledgements are a supplementary read from another context;
     // a failure there must not turn the whole order detail into a 500. `null`
     // means "could not load", distinct from `[]` (loaded, none acknowledged).
@@ -948,11 +945,12 @@ export class OrdersController {
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
     // this detail read joins the single record for one order.
-    const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(
-      order.internalOrderId
-    );
+    const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(order.internalOrderId);
     if (invoiceRecord) {
-      dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoiceRecord) };
+      dto.orderSnapshot = {
+        ...dto.orderSnapshot,
+        invoice: this.toInvoiceProjection(invoiceRecord),
+      };
     }
     // Delivery-routing-resolution + rider projection (#1791/#1792): a
     // single-order counterpart to the list read's batched resolution below.
@@ -1040,9 +1038,13 @@ export class OrdersController {
       'issues, registers, routes and configures nothing. The same shape is carried on every row of ' +
       'GET /orders, so the detail panel needs this endpoint only when it is opened directly - with ' +
       'one exception: `matchedRule` is resolved HERE only and is always `null` on the list, so a ' +
-      'client must read this endpoint before concluding no rule decided an order\'s kind.',
+      "client must read this endpoint before concluding no rule decided an order's kind.",
   })
-  @ApiResponse({ status: 200, description: 'Sales-document projection', type: SalesDocumentViewResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Sales-document projection',
+    type: SalesDocumentViewResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getOrderSalesDocument(
@@ -1070,14 +1072,18 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Ask the SOURCE marketplace what it says about this order',
     description:
-      "What the marketplace itself reports, as opposed to what OpenLinker recorded (#3365). " +
+      'What the marketplace itself reports, as opposed to what OpenLinker recorded (#3365). ' +
       'OpenLinker relays a dispatch mark and, where it has one, a waybill INTO the marketplace ' +
       'through a relay that reads nothing back (ADR-027), so this is the only way to confirm the ' +
       'write landed. Read-only: it resolves the source adapter and issues one GET, writes nothing, ' +
       'and never changes the order. An unreachable source, a source with no readback, and an order ' +
       'carrying no external id are three DIFFERENT states on the response, never a 5xx.',
   })
-  @ApiResponse({ status: 200, description: "The source's answer", type: SourceFulfillmentResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: "The source's answer",
+    type: SourceFulfillmentResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getSourceFulfillment(
@@ -1142,7 +1148,11 @@ export class OrdersController {
     type: RetryOrderDestinationResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Order or destination row not found' })
-  @ApiResponse({ status: 409, description: 'Destination is not in a retryable state, or the order is handled by OMS routing (ORDER_HANDLED_BY_ROUTING)' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Destination is not in a retryable state, or the order is handled by OMS routing (ORDER_HANDLED_BY_ROUTING)',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async retryDestination(
     @Param('internalOrderId') internalOrderId: string,
@@ -1170,11 +1180,16 @@ export class OrdersController {
         });
       }
       if (error instanceof OrderDestinationNotRetryableException) {
-        throw codedHttpError(HttpStatus.CONFLICT, 'ORDER_DESTINATION_NOT_RETRYABLE', error.message, {
-          orderId: error.internalOrderId,
-          connectionId: error.destinationConnectionId,
-          status: error.currentStatus,
-        });
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'ORDER_DESTINATION_NOT_RETRYABLE',
+          error.message,
+          {
+            orderId: error.internalOrderId,
+            connectionId: error.destinationConnectionId,
+            status: error.currentStatus,
+          }
+        );
       }
       if (error instanceof OrderDestinationHandledByRoutingException) {
         throw codedHttpError(HttpStatus.CONFLICT, 'ORDER_HANDLED_BY_ROUTING', error.message, {
@@ -1184,10 +1199,15 @@ export class OrdersController {
       }
       if (error instanceof MissingSourceExternalIdException) {
         throw new InternalServerErrorException(
-          codedErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, 'ORDER_SOURCE_ID_MISSING', error.message, {
-            orderId: error.internalOrderId,
-            connectionId: error.sourceConnectionId,
-          })
+          codedErrorBody(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'ORDER_SOURCE_ID_MISSING',
+            error.message,
+            {
+              orderId: error.internalOrderId,
+              connectionId: error.sourceConnectionId,
+            }
+          )
         );
       }
       throw error;
@@ -1259,9 +1279,16 @@ export class OrdersController {
       'Idempotent and fill-once - a repeat call returns the EXISTING marker rather than re-stamping, so the first reader is never overwritten. ' +
       'It is a display fact: it gates nothing and does not change the note. This is the order-level marker; the per-parcel acknowledgement at the pack bench is separate.',
   })
-  @ApiResponse({ status: 200, description: 'Order with the read marker set', type: OrderRecordResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Order with the read marker set',
+    type: OrderRecordResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
-  @ApiResponse({ status: 409, description: 'NO_BUYER_NOTE - the order carries no buyer note to read' })
+  @ApiResponse({
+    status: 409,
+    description: 'NO_BUYER_NOTE - the order carries no buyer note to read',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async markBuyerNoteRead(
     @Param('internalOrderId') internalOrderId: string,
@@ -1720,7 +1747,7 @@ export class OrdersController {
   @Post(':internalOrderId/cancel')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Cancel an order at the operator\'s request',
+    summary: "Cancel an order at the operator's request",
     description:
       'An ADR-044 proposal: OpenLinker asks the SOURCE sales channel to cancel, and cancels locally only ' +
       'when the channel accepts (or has no cancel verb to refuse with). Outstanding shipping labels are ' +
@@ -1789,9 +1816,13 @@ export class OrdersController {
       'from the change id, and a provider failure leaves the proposal open so it can be retried - and the ' +
       'refund intent a discount on a paid order opens (`order.discount_refund`): confirming means the seller ' +
       'refunded the buyer on the channel and records the refund (OpenLinker executes none), refused above ' +
-      'the order\'s refund ceiling unless the body sets `acknowledgeAboveCeiling`.',
+      "the order's refund ceiling unless the body sets `acknowledgeAboveCeiling`.",
   })
-  @ApiResponse({ status: 200, description: 'Change confirmed', type: ConfirmOrderChangeResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Change confirmed',
+    type: ConfirmOrderChangeResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Order not found, or no such change on this order' })
   @ApiResponse({
@@ -1866,7 +1897,11 @@ export class OrdersController {
       'called against real order data — it silently excludes the order from Net Sales figures via ' +
       'the pre-rollout tax-rate-era rule.',
   })
-  @ApiResponse({ status: 200, description: 'Stamp applied (or already present)', type: MarkPreRolloutEraResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Stamp applied (or already present)',
+    type: MarkPreRolloutEraResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions, or TEST_FIXTURES_DISABLED' })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async markPreRolloutEra(
@@ -1937,9 +1972,7 @@ export class OrdersController {
     };
   }
 
-  private toProvisioningResumeDto(
-    result: OrderProvisioningResumeResult
-  ): ProvisioningResumeDto {
+  private toProvisioningResumeDto(result: OrderProvisioningResumeResult): ProvisioningResumeDto {
     return {
       status: result.status,
       jobId: result.status === 'enqueued' ? result.jobId : null,
@@ -2198,7 +2231,9 @@ export class OrdersController {
         quantity: component.quantity,
         perUnit: component.perUnit,
         ...(component.giftSlot === true && { giftSlot: true }),
-        ...(component.giftDocumentForm !== undefined && { giftDocumentForm: component.giftDocumentForm }),
+        ...(component.giftDocumentForm !== undefined && {
+          giftDocumentForm: component.giftDocumentForm,
+        }),
       })),
     }));
   }
@@ -2232,15 +2267,17 @@ export class OrdersController {
       // coerced the jsonb through core's guard, so an unrecognised value is
       // absent here rather than unrenderable downstream.
       // #3963 - on the shared toDto: the list marker and the detail panel read it.
-      paymentWriteback: Object.entries(order.paymentWriteback).map(([destinationConnectionId, entry]) => ({
-        destinationConnectionId,
-        state: entry.state,
-        at: entry.at,
-        attempts: entry.attempts,
-        reason: entry.reason ?? null,
-        detail: entry.detail ?? null,
-        problem: isPaymentWritebackProblem(entry),
-      })),
+      paymentWriteback: Object.entries(order.paymentWriteback).map(
+        ([destinationConnectionId, entry]) => ({
+          destinationConnectionId,
+          state: entry.state,
+          at: entry.at,
+          attempts: entry.attempts,
+          reason: entry.reason ?? null,
+          detail: entry.detail ?? null,
+          problem: isPaymentWritebackProblem(entry),
+        })
+      ),
       omsAttention: order.omsAttention.map((entry) => ({
         producer: entry.producer,
         reason: entry.reason,
@@ -2252,6 +2289,10 @@ export class OrdersController {
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,
       cancelledAt: order.cancelledAt ? order.cancelledAt.toISOString() : null,
+      hiddenAt: order.hiddenAt ? order.hiddenAt.toISOString() : null,
+      personalDataErasedAt: order.personalDataErasedAt
+        ? order.personalDataErasedAt.toISOString()
+        : null,
       // Operator packed fact (#2287). Projected on the SHARED toDto, so it
       // reaches the list and the detail response from one place.
       packedAt: order.packedAt ? order.packedAt.toISOString() : null,
@@ -2336,7 +2377,8 @@ export class OrdersController {
    * action. No regime/provider vocabulary crosses here.
    */
   private toInvoiceProjection(record: InvoiceRecord): OrderInvoiceProjectionDto {
-    const confirmationDocumentAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
+    const confirmationDocumentAvailable =
+      record.status === 'issued' && record.regulatoryStatus === 'accepted';
     return {
       invoiceId: record.id,
       documentType: record.documentType,
@@ -2469,10 +2511,16 @@ export class OrdersController {
   }
 }
 
-function toSourceChangeResult(result: SourceAmendmentReconcileResult): SourceChangeResultResponseDto {
+function toSourceChangeResult(
+  result: SourceAmendmentReconcileResult
+): SourceChangeResultResponseDto {
   return {
     outcome: result.outcome,
     cause: result.cause,
-    lines: result.lines.map((line) => ({ orderLineId: line.orderLineId, from: line.from, to: line.to })),
+    lines: result.lines.map((line) => ({
+      orderLineId: line.orderLineId,
+      from: line.from,
+      to: line.to,
+    })),
   };
 }

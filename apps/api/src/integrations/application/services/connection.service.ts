@@ -58,6 +58,7 @@ import {
   isBuyerEmailTemplate,
   isSingleEmailAddress,
   readBuyerEmailsConfig,
+  findBuyerDataRetentionConfigIssue,
 } from '@openlinker/core/identifier-mapping';
 import type {
   AdapterMetadata,
@@ -605,6 +606,19 @@ export class ConnectionService implements IConnectionService {
 
     this.validatePricingRuleConfig(config.pricingRule);
     this.validatePriceSyncModeConfig(config.priceSyncMode);
+  }
+
+  /**
+   * Core-owned shape check for `config.buyerDataRetention` (#4289): the
+   * per-connection override of the global buyer data retention defaults. The
+   * rules live in `findBuyerDataRetentionConfigIssue` beside the reader, so the
+   * write path and the sweep agree on what a usable value is. Absent or `null`
+   * stays absent - it means "inherit the global defaults".
+   */
+  private validateBuyerDataRetentionConfig(config: Record<string, unknown>): void {
+    const issue = findBuyerDataRetentionConfigIssue(config);
+    if (issue === null) return;
+    throw connectionConfigInvalid(issue.field, issue.rule, issue.message, issue.bounds);
   }
 
   /**
@@ -1273,6 +1287,7 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        this.validateBuyerDataRetentionConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validatePaymentWritebackConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
@@ -1582,6 +1597,7 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        this.validateBuyerDataRetentionConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validatePaymentWritebackConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);

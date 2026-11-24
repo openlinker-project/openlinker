@@ -26,7 +26,10 @@ import {
   OperationalSettings,
 } from '../../../domain/entities/operational-settings.entity';
 import type { OperationalSettingsRepositoryPort } from '../../../domain/ports/operational-settings-repository.port';
-import type { OperationalSettingsInput } from '../../../domain/types/operational-settings.types';
+import {
+  isBuyerDataEraseMode,
+  type OperationalSettingsInput,
+} from '../../../domain/types/operational-settings.types';
 import { OperationalSettingsOrmEntity } from '../entities/operational-settings.orm-entity';
 
 @Injectable()
@@ -83,6 +86,19 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
       payload.deletionAuditCadence = input.deletionAuditCadence;
     }
 
+    if (input.buyerDataRetentionEnabled !== undefined) {
+      payload.buyerDataRetentionEnabled = input.buyerDataRetentionEnabled;
+    }
+    if (input.buyerDataHideAfterDays !== undefined) {
+      payload.buyerDataHideAfterDays = input.buyerDataHideAfterDays;
+    }
+    if (input.buyerDataEraseAfterDays !== undefined) {
+      payload.buyerDataEraseAfterDays = input.buyerDataEraseAfterDays;
+    }
+    if (input.buyerDataEraseMode !== undefined) {
+      payload.buyerDataEraseMode = input.buyerDataEraseMode;
+    }
+
     await this.ormRepository.upsert(payload, { conflictPaths: ['id'] });
 
     const saved = await this.ormRepository.findOneOrFail({
@@ -110,7 +126,12 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
       entity.stockStaleSyncThresholdHours,
       entity.deletionAuditCadence,
       entity.updatedAt,
-      entity.updatedBy
+      entity.updatedBy,
+      entity.buyerDataRetentionEnabled,
+      entity.buyerDataHideAfterDays,
+      entity.buyerDataEraseAfterDays,
+      // Coerced, never cast: a mode this build does not know reads as "not set".
+      isBuyerDataEraseMode(entity.buyerDataEraseMode) ? entity.buyerDataEraseMode : null
     );
   }
 }

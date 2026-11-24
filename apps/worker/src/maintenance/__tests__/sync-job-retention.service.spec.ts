@@ -45,6 +45,10 @@ function makeSettingsView(
     inventoryMovementRetentionDays: numberField(365),
     stockStaleSyncThresholdHours: numberField(6),
     deletionAuditCadence: { value: '0 * * * *', source: 'default', workerMayDiffer: true },
+    buyerDataRetentionEnabled: { value: false, source: 'default', workerMayDiffer: false },
+    buyerDataHideAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
+    buyerDataEraseAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
+    buyerDataEraseMode: { value: 'personal-data', source: 'default', workerMayDiffer: false },
     catalogueSweepCadence: { value: '*/20 * * * *', source: 'default', workerMayDiffer: true },
     inventorySweepCadence: { value: '*/15 * * * *', source: 'default', workerMayDiffer: true },
     deletionAuditAlwaysEnabled: true,
@@ -110,7 +114,10 @@ describe('SyncJobRetentionService', () => {
 
       await expect(service.runOnce()).resolves.toBeNull();
 
-      expect(syncLock.release).toHaveBeenCalledWith('maintenance:sync-job-retention:sweep', 'token-1');
+      expect(syncLock.release).toHaveBeenCalledWith(
+        'maintenance:sync-job-retention:sweep',
+        'token-1'
+      );
     });
 
     it('prunes succeeded and dead jobs against their OWN resolved cutoff', async () => {

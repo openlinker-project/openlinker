@@ -23,16 +23,7 @@
  *
  * @module apps/api/src/operational-settings/http
  */
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Inject,
-  Put,
-  Res,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Put, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import {
@@ -101,6 +92,10 @@ export class OperationalSettingsController {
           syncJobDeadRetentionDays: dto.syncJobDeadRetentionDays,
           inventoryMovementRetentionDays: dto.inventoryMovementRetentionDays,
           stockStaleSyncThresholdHours: dto.stockStaleSyncThresholdHours,
+          buyerDataRetentionEnabled: dto.buyerDataRetentionEnabled,
+          buyerDataHideAfterDays: dto.buyerDataHideAfterDays,
+          buyerDataEraseAfterDays: dto.buyerDataEraseAfterDays,
+          buyerDataEraseMode: dto.buyerDataEraseMode,
           acknowledgeAboveRecommended: dto.acknowledgeAboveRecommended,
         },
         user?.id ?? null

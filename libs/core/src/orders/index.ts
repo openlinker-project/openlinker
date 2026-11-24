@@ -748,6 +748,20 @@ export type {
   OrderSearchTextRewrite,
   OrderSearchTextReindexRunResult,
 } from './domain/types/order-search-text-reindex.types';
+// Buyer data retention (#4289).
+export type { IBuyerDataRetentionService } from './application/services/buyer-data-retention.service.interface';
+export type {
+  BuyerDataRetentionCounts,
+  BuyerDataRetentionPreview,
+  BuyerDataRetentionPreviewInput,
+  BuyerDataRetentionRunResult,
+  BuyerDataRetentionSample,
+} from './domain/types/buyer-data-retention.types';
+export {
+  BUYER_PLACEHOLDER_PREFIX,
+  buildBuyerPlaceholder,
+  eraseBuyerPersonalDataFromSnapshot,
+} from './domain/buyer-data-retention';
 export * from './orders.tokens';
 export type {
   OrderLabelVoiderPort,

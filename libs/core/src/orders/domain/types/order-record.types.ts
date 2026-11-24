@@ -542,6 +542,13 @@ export interface OrderRecordFilters {
    */
   hasBuyerNote?: boolean;
   /**
+   * Buyer data retention (#4289). Absent or `false` -> only orders that are NOT
+   * hidden (the default list); `true` -> only hidden ones. A hidden order is
+   * out of lists and search but is never deleted, and a direct read by id still
+   * returns it.
+   */
+  hidden?: boolean;
+  /**
    * Free-text search (#3527). Matches order number, buyer name, buyer email
    * and any line SKU via the denormalized, diacritic-folded `searchText`
    * column (GIN trigram index). `undefined` means "don't filter"; a query

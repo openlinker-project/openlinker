@@ -35,6 +35,7 @@ import { BuyerEmailsController } from './http/buyer-emails.controller';
 import { OrderTagsController } from './http/order-tags.controller';
 import { OrderTagAssignmentsController } from './http/order-tag-assignments.controller';
 import { OrderExportsController } from './http/order-exports.controller';
+import { BuyerDataRetentionController } from './http/buyer-data-retention.controller';
 import { SourceFulfillmentStatusService } from './application/services/source-fulfillment-status.service';
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interfaces/source-fulfillment-status.service.interface';
 import { OrderCancellationService } from './application/services/order-cancellation.service';
@@ -115,6 +116,7 @@ import { FulfillmentApiModule } from '../fulfillment/fulfillment-api.module';
   controllers: [
     OrderColumnPresetsController,
     OrderExportsController,
+    BuyerDataRetentionController,
     OrderEditsController,
     // #3545 - static `orders/bulk` prefix; must precede `OrdersController` (see above).
     OrderBulkActionsController,

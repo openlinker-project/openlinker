@@ -130,6 +130,12 @@ const KNOWN_CONFIG_KNOBS = new Map([
     { helper: 'readBuyerEmailsConfig', key: 'config.buyerEmails' },
   ],
   [
+    // #4289: per-connection override of the install-wide buyer data retention
+    // defaults (hide old orders, erase buyer personal data).
+    'libs/core/src/identifier-mapping/domain/types/buyer-data-retention-config.types.ts',
+    { helper: 'readBuyerDataRetentionConfig', key: 'config.buyerDataRetention' },
+  ],
+  [
     'libs/core/src/sales-documents/domain/types/sales-document-kind.types.ts',
     {
       helper: 'readSalesDocumentRouting',
@@ -450,7 +456,15 @@ const NON_KNOBS = new Map([
 // #3941 narrows the gift-line knob rather than adding one: the key stays, but it
 // is now an optional per-connection OVERRIDE of the OpenLinker-wide default held
 // in the `sales_document_settings` singleton (absent = inherit).
-const KNOB_THRESHOLD = 17;
+//
+// #4289 raises it to 18 for `config.buyerDataRetention` - when a connection's
+// old orders are hidden and its buyers' personal data is erased. It is an
+// optional per-connection OVERRIDE of the OpenLinker-wide default held in the
+// `operational_settings` singleton (absent = inherit), the same shape #3941
+// gave the gift-line form, and per connection by nature: marketplaces carry
+// their own retention obligations. Registered rather than excused; the #1032
+// question still stands and the next knob asks again.
+const KNOB_THRESHOLD = 18;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
