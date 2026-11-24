@@ -63,6 +63,7 @@ import type {
   OrderWritebackResult,
 } from '@openlinker/core/orders';
 import { describeNetPricedOrderRefusal, minorUnitExponentFor } from '@openlinker/core/sales-documents';
+import { splitTotalByUnits } from '../mappers/subiekt-line.mapper';
 import { distributeOrderDiscount } from '@openlinker/core/orders';
 import type { OrderFulfillmentUpdater, OrderStatusWriteback } from '@openlinker/core/orders';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -253,13 +254,22 @@ export class SubiektOrderProcessorAdapter
         );
       }
     }
-    const lastPaid = new Map<string, number>();
-    physical.forEach((line, index) => {
-      if (line.parentLineId !== undefined && line.giftSlot !== true) {
-        lastPaid.set(line.parentLineId, index);
-      }
-    });
-    const allocated = new Map<string, number>();
+    // Per parent, the paid components that carry no core-computed share are
+    // divided by unit count through the one shared helper.
+    const fallbackByIndex = new Map<number, number>();
+    for (const parentId of paidUnitsByParent.keys()) {
+      const indexes: number[] = [];
+      physical.forEach((line, index) => {
+        if (line.parentLineId === parentId && line.giftSlot !== true) indexes.push(index);
+      });
+      if (indexes.every((i) => physical[i].shareGross !== undefined)) continue;
+      const shares = splitTotalByUnits(
+        parentTotals.get(parentId) ?? 0,
+        indexes.map((i) => physical[i].quantity),
+        order.totals.currency,
+      );
+      indexes.forEach((i, n) => fallbackByIndex.set(i, shares[n]));
+    }
     return physical.map((item, index) => {
       if (item.parentLineId === undefined) {
         return { item, gross: (item.unitPriceGross ?? item.price) * item.quantity };
@@ -267,22 +277,10 @@ export class SubiektOrderProcessorAdapter
       if (item.giftSlot === true) {
         return { item, gross: 0 };
       }
-      // The share core split out of the paid set total; the unit-count division
-      // below only serves a request from a core that does not send one.
       if (item.shareGross !== undefined) {
         return { item, gross: item.shareGross };
       }
-      const total = parentTotals.get(item.parentLineId) ?? 0;
-      const units = paidUnitsByParent.get(item.parentLineId) ?? 0;
-      const soFar = allocated.get(item.parentLineId) ?? 0;
-      const gross =
-        lastPaid.get(item.parentLineId) === index
-          ? round(total - soFar)
-          : units > 0
-            ? round((total * item.quantity) / units)
-            : 0;
-      allocated.set(item.parentLineId, soFar + gross);
-      return { item, gross };
+      return { item, gross: fallbackByIndex.get(index) ?? 0 };
     });
   }
 

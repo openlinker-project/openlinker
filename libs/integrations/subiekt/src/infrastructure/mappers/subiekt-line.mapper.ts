@@ -143,6 +143,31 @@ export function toBridgeKorektaLine(line: CorrectionLine): BridgeKorektaLine {
 }
 
 /**
+ * Last-resort division of a paid total over parts by unit count, for a request
+ * from a core that did not send its own shares. The single implementation both
+ * Subiekt adapters fall back to; the remainder lands on the last part so the
+ * parts add up to exactly the total.
+ */
+export function splitTotalByUnits(
+  total: number,
+  quantities: readonly number[],
+  currency?: string | null,
+): number[] {
+  const factor = 10 ** minorUnitExponentFor(currency);
+  const round = (value: number): number => Math.round(value * factor) / factor;
+  const units = quantities.reduce((sum, q) => sum + q, 0);
+  if (units <= 0) {
+    return quantities.map(() => 0);
+  }
+  let allocated = 0;
+  return quantities.map((q, i) => {
+    const share = i === quantities.length - 1 ? round(total - allocated) : round((total * q) / units);
+    allocated += share;
+    return share;
+  });
+}
+
+/**
  * Sell the physical components of a bundle line instead of the bundle (#3607).
  *
  * Subiekt's document moves stock, and a set's own towar has none, so a line
@@ -166,21 +191,17 @@ export function expandStockComponents(
     }
     const total = round(line.unitPriceGross * line.quantity);
     const paid = components.filter((c) => c.giftSlot !== true);
-    const paidUnits = paid.reduce((sum, c) => sum + c.quantity, 0);
-    const coreShares = components.every((c) => c.giftSlot === true || typeof c.totalGross === 'number');
-    let allocated = 0;
-    const lastPaid = paid[paid.length - 1];
+    const coreShares = paid.every((c) => typeof c.totalGross === 'number');
+    const fallback = coreShares
+      ? []
+      : splitTotalByUnits(total, paid.map((c) => c.quantity), currency);
+    let paidIndex = 0;
     for (const component of components) {
       const isGift = component.giftSlot === true;
       let share = 0;
-      if (!isGift && coreShares) {
-        share = component.totalGross ?? 0;
-      } else if (!isGift && paidUnits > 0) {
-        share =
-          component === lastPaid
-            ? round(total - allocated)
-            : round((total * component.quantity) / paidUnits);
-        allocated += share;
+      if (!isGift) {
+        share = coreShares ? (component.totalGross ?? 0) : fallback[paidIndex];
+        paidIndex += 1;
       }
       // A component line must not carry the set's own expansion on to the document.
       const rest: InvoiceLine = { ...line, stockComponents: undefined };
