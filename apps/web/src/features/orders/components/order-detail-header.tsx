@@ -37,6 +37,12 @@ interface OrderDetailHeaderProps {
    * between the id/route line and the contents summary.
    */
   tags?: ReactNode;
+  /** Page actions (edit, cancel, ...), shown in the header card (#4286). */
+  actions?: ReactNode;
+  /** Strip along the bottom of the card, e.g. the Next step card (#4286). */
+  footer?: ReactNode;
+  /** Colour of the card's top bar: the tone of the next step, or `ok` when there is none. */
+  accent?: 'error' | 'warning' | 'info' | 'ok';
 }
 
 const HEALTH_TONE: Record<OrderHealthLevel, StatusBadgeTone> = {
@@ -59,7 +65,14 @@ export function isChannelStatusStale(phase: string | null | undefined, channelSt
   return phase === 'cancelled' && channelStatus.toLowerCase() !== 'cancelled';
 }
 
-export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderProps): ReactElement {
+export function OrderDetailHeader({
+  order,
+  snapshot,
+  tags,
+  actions,
+  footer,
+  accent = 'ok',
+}: OrderDetailHeaderProps): ReactElement {
   const copy = useMessages('orders').orderDetailHeader;
   const paymentLabels: Record<PaymentStatus, string> = copy.payment;
   const format = useFormat();
@@ -76,7 +89,9 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
   const productName = firstItem?.name ?? firstItem?.sku ?? firstItem?.productId ?? null;
 
   return (
-    <header className="order-header">
+    <header className="order-header order-header--card" data-accent={accent}>
+      <div className="order-header__body">
+      <div className="order-header__main">
       <div className="order-header__top">
         <h1 className="order-header__title">{title}</h1>
         <StatusBadge tone={HEALTH_TONE[healthLevel]} withDot pulse={healthLevel === 'pending'}>
@@ -199,6 +214,20 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
           ) : null}
         </div>
       ) : null}
+      </div>
+      <div className="order-header__aside">
+        {snapshot.totals ? (
+          <strong className="order-header__total mono-text tabular">
+            {format.money(snapshot.totals.total, snapshot.totals.currency)}
+          </strong>
+        ) : null}
+        {snapshot.paymentStatus ? (
+          <span className="order-header__paid text-muted">{paymentLabels[snapshot.paymentStatus]}</span>
+        ) : null}
+        {actions ? <div className="order-header__actions">{actions}</div> : null}
+      </div>
+      </div>
+      {footer ? <div className="order-header__footer">{footer}</div> : null}
     </header>
   );
 }

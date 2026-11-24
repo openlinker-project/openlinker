@@ -40318,3 +40318,25 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-next-step__eyebrow { font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 .order-next-step__title { font-size: 1rem; font-weight: 600; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .order-next-step .button { min-height: 44px; width: 100%; } }
+
+/* Order detail redesign (#4286): header card, cards in every tab */
+.order-header--card { background: var(--bg-shell); border: 1px solid var(--border-default); border-top: 4px solid var(--status-success); border-radius: var(--radius-xl); padding: 0; overflow: hidden; }
+.order-header--card[data-accent='error'] { border-top-color: var(--status-error); }
+.order-header--card[data-accent='warning'] { border-top-color: var(--status-warning); }
+.order-header--card[data-accent='info'] { border-top-color: var(--status-info); }
+.order-header__body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px 24px; padding: 20px 24px; align-items: start; }
+.order-header__main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.order-header__aside { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
+.order-header__total { font-size: 1.75rem; line-height: 1.1; }
+.order-header__paid { font-size: 0.8125rem; }
+.order-header__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.order-header__footer { border-top: 1px solid var(--border-subtle); }
+.order-header__footer .order-next-step { border: 0; border-left: 4px solid transparent; border-radius: 0; }
+@media (max-width: 760px) {
+  .order-header__body { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+  .order-header__aside { align-items: flex-start; }
+  .order-header__actions { justify-content: flex-start; }
+  .order-header__actions .button { min-height: 44px; }
+}
+.order-detail__tab > *:not(:empty):not(.order-detail__parse-warning-row) { background: var(--bg-shell); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 20px 24px; min-width: 0; }
+.order-detail__tab > * .detail-section { border: 0; padding: 0; background: transparent; }

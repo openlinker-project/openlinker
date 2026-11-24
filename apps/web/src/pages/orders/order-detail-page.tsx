@@ -655,6 +655,87 @@ export function OrderDetailPage(): ReactElement {
     technical: copy.tabs.technical,
   };
 
+  const headerActions = (
+    <>
+    <GiftsGuide variant="detail" />
+    <OrderConfirmRefundAction
+      internalOrderId={order.internalOrderId}
+      currency={snapshot.totals?.currency ?? null}
+      sourceConnectionId={order.sourceConnectionId}
+      orderTotal={
+        snapshot.totals
+          ? snapshot.totals.total.toFixed(minorUnitExponentFor(snapshot.totals.currency))
+          : null
+      }
+      visible={snapshot.status === 'cancelled' || hasConfirmedCancel}
+    />
+    <OrderEditAction
+      // Remount per order so an open dialog never carries over to a cached next order.
+      key={`edit:${order.internalOrderId}`}
+      internalOrderId={order.internalOrderId}
+      orderNumber={snapshot.orderNumber ?? null}
+      sourceName={cancelSourceName}
+      snapshot={snapshot}
+      edits={order.edits}
+      packed={order.packedAt !== null && order.packedAt !== undefined}
+      shipped={order.fulfillmentState === 'dispatched'}
+      acceptedWork={hasAcceptedFulfilmentWork(fulfilmentTasksQuery.data?.works ?? [])}
+      terminal={isOrderCancelTerminal({
+        snapshotStatus: snapshot.status,
+        lifecyclePhase: order.lifecyclePhase,
+        fulfillmentState: order.fulfillmentState,
+      })}
+      amending={order.lifecyclePhase === 'amending'}
+      onSaved={handleOrderEdited}
+      onGoTo={scrollToRemedy}
+    />
+    <OrderAddGiftAction
+      key={`gift:${order.internalOrderId}`}
+      internalOrderId={order.internalOrderId}
+      orderLabel={snapshot.orderNumber ?? order.internalOrderId}
+      currency={snapshot.totals?.currency}
+      terminal={isOrderCancelTerminal({
+        snapshotStatus: snapshot.status,
+        lifecyclePhase: order.lifecyclePhase,
+        fulfillmentState: order.fulfillmentState,
+      })}
+      parcelClosed={
+        (order.packedAt !== null && order.packedAt !== undefined) ||
+        order.fulfillmentState === 'dispatched' ||
+        (shipmentsQuery.data?.items ?? []).some(
+          (shipment) => shipment.status === 'generated' || shipment.status === 'dispatched',
+        )
+      }
+      hasSalesDocument={order.salesDocument?.document != null}
+      documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
+      notReady={order.recordStatus !== 'ready'}
+      open={giftDialogOpen}
+      onOpenChange={setGiftDialogOpen}
+    />
+    <OrderCancelAction
+      // Remount per order so an open dialog never carries over to a cached next order.
+      key={order.internalOrderId}
+      internalOrderId={order.internalOrderId}
+      orderNumber={snapshot.orderNumber ?? null}
+      sourceName={cancelSourceName}
+      unitCount={cancelUnitCount}
+      totalLabel={cancelTotalLabel}
+      invoiced={snapshot.invoice?.status === 'issued'}
+      acceptedWork={hasAcceptedFulfilmentWork(fulfilmentTasksQuery.data?.works ?? [])}
+      terminal={isOrderCancelTerminal({
+        snapshotStatus: snapshot.status,
+        lifecyclePhase: order.lifecyclePhase,
+        fulfillmentState: order.fulfillmentState,
+      })}
+      amending={order.lifecyclePhase === 'amending'}
+      onResult={handleOrderCancelResult}
+      onGoToShipment={() => {
+        goToAnchor('shipment');
+      }}
+    />
+    </>
+  );
+
   return (
     <PageLayout
       // Close the loop back to wherever the operator came from (#1905): a
@@ -666,105 +747,21 @@ export function OrderDetailPage(): ReactElement {
       }
       eyebrow={copy.eyebrow}
       title={copy.title}
-      actions={
-        <>
-        <GiftsGuide variant="detail" />
-        <OrderConfirmRefundAction
-          internalOrderId={order.internalOrderId}
-          currency={snapshot.totals?.currency ?? null}
-          sourceConnectionId={order.sourceConnectionId}
-          orderTotal={
-            snapshot.totals
-              ? snapshot.totals.total.toFixed(minorUnitExponentFor(snapshot.totals.currency))
-              : null
-          }
-          visible={snapshot.status === 'cancelled' || hasConfirmedCancel}
-        />
-        <OrderEditAction
-          // Remount per order so an open dialog never carries over to a cached next order.
-          key={`edit:${order.internalOrderId}`}
-          internalOrderId={order.internalOrderId}
-          orderNumber={snapshot.orderNumber ?? null}
-          sourceName={cancelSourceName}
-          snapshot={snapshot}
-          edits={order.edits}
-          packed={order.packedAt !== null && order.packedAt !== undefined}
-          shipped={order.fulfillmentState === 'dispatched'}
-          acceptedWork={hasAcceptedFulfilmentWork(fulfilmentTasksQuery.data?.works ?? [])}
-          terminal={isOrderCancelTerminal({
-            snapshotStatus: snapshot.status,
-            lifecyclePhase: order.lifecyclePhase,
-            fulfillmentState: order.fulfillmentState,
-          })}
-          amending={order.lifecyclePhase === 'amending'}
-          onSaved={handleOrderEdited}
-          onGoTo={scrollToRemedy}
-        />
-        <OrderAddGiftAction
-          key={`gift:${order.internalOrderId}`}
-          internalOrderId={order.internalOrderId}
-          orderLabel={snapshot.orderNumber ?? order.internalOrderId}
-          currency={snapshot.totals?.currency}
-          terminal={isOrderCancelTerminal({
-            snapshotStatus: snapshot.status,
-            lifecyclePhase: order.lifecyclePhase,
-            fulfillmentState: order.fulfillmentState,
-          })}
-          parcelClosed={
-            (order.packedAt !== null && order.packedAt !== undefined) ||
-            order.fulfillmentState === 'dispatched' ||
-            (shipmentsQuery.data?.items ?? []).some(
-              (shipment) => shipment.status === 'generated' || shipment.status === 'dispatched',
-            )
-          }
-          hasSalesDocument={order.salesDocument?.document != null}
-          documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
-          notReady={order.recordStatus !== 'ready'}
-          open={giftDialogOpen}
-          onOpenChange={setGiftDialogOpen}
-        />
-        <OrderCancelAction
-          // Remount per order so an open dialog never carries over to a cached next order.
-          key={order.internalOrderId}
-          internalOrderId={order.internalOrderId}
-          orderNumber={snapshot.orderNumber ?? null}
-          sourceName={cancelSourceName}
-          unitCount={cancelUnitCount}
-          totalLabel={cancelTotalLabel}
-          invoiced={snapshot.invoice?.status === 'issued'}
-          acceptedWork={hasAcceptedFulfilmentWork(fulfilmentTasksQuery.data?.works ?? [])}
-          terminal={isOrderCancelTerminal({
-            snapshotStatus: snapshot.status,
-            lifecyclePhase: order.lifecyclePhase,
-            fulfillmentState: order.fulfillmentState,
-          })}
-          amending={order.lifecyclePhase === 'amending'}
-          onResult={handleOrderCancelResult}
-          onGoToShipment={() => {
-            goToAnchor('shipment');
-          }}
-        />
-        </>
-      }
     >
       <OrderDetailHeader
         order={order}
         snapshot={snapshot}
         tags={<OrderTagsHeaderRow internalOrderId={internalOrderId} />}
+        actions={headerActions}
+        accent={nextStep ? nextStep.tone : 'ok'}
+        footer={
+          nextStep ? (
+            <OrderNextStepCard step={nextStep} tabLabels={tabLabels} onOpenTab={handleTabChange} />
+          ) : null
+        }
       />
 
       <PinnedOrderNoteBanner internalOrderId={internalOrderId} />
-
-      <OrderHealthSummary
-        syncStatus={order.syncStatus}
-        fulfillment={fulfillment}
-        totals={snapshot.totals}
-        itemCount={snapshot.items.length}
-        failedDestinationId={failedDestinations[0]?.destinationConnectionId ?? null}
-        fulfillmentPending={connectionsQuery.isLoading || shipmentsQuery.isLoading}
-        destinationRoutingBlockReason={order.destinationRoutingBlockReason}
-        handledInOpenLinker={order.handledInOpenLinker}
-      />
 
       <OrderCancelResultNotice
         key={order.internalOrderId}
@@ -896,14 +893,21 @@ export function OrderDetailPage(): ReactElement {
         onAddGift={canAddGift ? () => setGiftDialogOpen(true) : undefined}
       />
 
-      {nextStep ? (
-        <OrderNextStepCard step={nextStep} tabLabels={tabLabels} onOpenTab={handleTabChange} />
-      ) : null}
-
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <OrderDetailTabList ariaLabel={copy.tabs.ariaLabel} tabs={tabEntries} />
 
       <TabsContent value="overview" forceMount className="order-detail__tab">
+        <OrderHealthSummary
+          syncStatus={order.syncStatus}
+          fulfillment={fulfillment}
+          totals={snapshot.totals}
+          itemCount={snapshot.items.length}
+          failedDestinationId={failedDestinations[0]?.destinationConnectionId ?? null}
+          fulfillmentPending={connectionsQuery.isLoading || shipmentsQuery.isLoading}
+          destinationRoutingBlockReason={order.destinationRoutingBlockReason}
+          handledInOpenLinker={order.handledInOpenLinker}
+        />
+
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">{copy.pricingTitle}</h3>
