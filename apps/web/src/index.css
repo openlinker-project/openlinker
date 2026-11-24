@@ -43069,9 +43069,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .tour-card__rail .pseg { margin-block: 3px; }
 }
 
-/* The fold button is for phones only: it drops the text and the choices and leaves the steps and the buttons. */
+/* The fold button is for phones and small tablets: it drops the text and the choices and leaves the steps and the buttons. */
 .tour-card__fold { display: none; }
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   .tour-card__fold {
     display: inline-grid;
     place-items: center;
@@ -43102,7 +43102,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 
 .release-panel .msg--clickable { cursor: pointer; }
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   /* Fold and close are thumb targets; the glyph stays small, the hit area does not. */
   .tour-card .tour-card__fold,
   .tour-card .tour-card__close { width: 44px; height: 44px; margin-block: -6px; }
@@ -43111,7 +43111,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 
 /* The grab handle is for phones: swipe it down to fold the card, up to open it, tap to toggle. */
 .tour-card__handle { display: none; }
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   .tour-card__handle {
     display: grid;
     place-items: center;
