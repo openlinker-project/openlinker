@@ -65,6 +65,11 @@
   "d": "0"
  },
  {
+  "n": "desktop-admin: What's new cards do not spill out of their box",
+  "pass": true,
+  "d": ""
+ },
+ {
   "n": "desktop-admin: /settings no horizontal overflow",
   "pass": true,
   "d": "0"
@@ -138,6 +143,11 @@
   "n": "desktop-viewer: /whats-new no horizontal overflow",
   "pass": true,
   "d": "0"
+ },
+ {
+  "n": "desktop-viewer: What's new cards do not spill out of their box",
+  "pass": true,
+  "d": ""
  },
  {
   "n": "desktop-viewer: /settings no horizontal overflow",
@@ -220,6 +230,11 @@
   "d": "0"
  },
  {
+  "n": "mobile-admin: What's new cards do not spill out of their box",
+  "pass": true,
+  "d": ""
+ },
+ {
   "n": "mobile-admin: /settings no horizontal overflow",
   "pass": true,
   "d": "0"
@@ -290,7 +305,7 @@
   "d": "chip=Guide writes=0"
  },
  {
-  "n": "mobile-viewer: walked 7 stops",
+  "n": "mobile-viewer: walked 6 stops",
   "pass": true,
   "d": ""
  },
@@ -298,6 +313,11 @@
   "n": "mobile-viewer: /whats-new no horizontal overflow",
   "pass": true,
   "d": "0"
+ },
+ {
+  "n": "mobile-viewer: What's new cards do not spill out of their box",
+  "pass": true,
+  "d": ""
  },
  {
   "n": "mobile-viewer: /settings no horizontal overflow",
