@@ -2597,7 +2597,9 @@ export class OrderIngestionService implements IOrderIngestionService {
    */
   private async readAcceptsUnmatchedItems(connectionId: string): Promise<boolean> {
     try {
-      const { connection } = await this.integrationsService.getAdapter(connectionId);
+      // Config only: `getAdapter` would throw for a disabled connection and
+      // silently fall back to awaiting_mapping.
+      const connection = await this.connections.get(connectionId);
       return readCatalogueMode(connection.config) === 'none';
     } catch (error) {
       this.logger.warn(

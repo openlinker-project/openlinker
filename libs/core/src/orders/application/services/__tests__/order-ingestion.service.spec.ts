@@ -90,7 +90,7 @@ describe('OrderIngestionService', () => {
   let orderChanges: jest.Mocked<
     Pick<IOrderChangeService, 'findOpenByOrder' | 'confirm' | 'claimApplied' | 'findLatestByTarget'>
   >;
-  let connections: jest.Mocked<Pick<ConnectionPort, 'list'>>;
+  let connections: jest.Mocked<Pick<ConnectionPort, 'list' | 'get'>>;
   let cancellationEffects: { applyEffects: jest.Mock };
   let sourceAmendmentEffects: { reconcile: jest.Mock; accept: jest.Mock };
   let paymentWriteback: { planAfterSync: jest.Mock };
@@ -234,7 +234,7 @@ describe('OrderIngestionService', () => {
     routingCommit = {
       route: jest.fn(),
     } as unknown as jest.Mocked<IRoutingCommitService>;
-    connections = { list: jest.fn().mockResolvedValue([]) };
+    connections = { list: jest.fn().mockResolvedValue([]), get: jest.fn() };
 
     orderChanges = {
       findOpenByOrder: jest.fn().mockResolvedValue([]),
@@ -2408,10 +2408,7 @@ describe('OrderIngestionService', () => {
         kind: 'missing_mapping' as const,
       });
       const sourceWith = (config: Record<string, unknown>): void => {
-        integrationsService.getAdapter.mockResolvedValue({
-          connection: { id: connectionId, config },
-          metadata: {},
-        } as unknown as Awaited<ReturnType<IIntegrationsService['getAdapter']>>);
+        connections.get.mockResolvedValue({ id: connectionId, config } as never);
       };
 
       it('accepts every unmapped line as an unmatched one, so the order is persisted ready', async () => {
@@ -2505,7 +2502,7 @@ describe('OrderIngestionService', () => {
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
-        expect(integrationsService.getAdapter).toHaveBeenCalledTimes(1);
+        expect(connections.get).toHaveBeenCalledTimes(1);
       });
 
       it('does not read the connection at all when every line resolves (no cost on a default install)', async () => {
@@ -2516,7 +2513,7 @@ describe('OrderIngestionService', () => {
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
-        expect(integrationsService.getAdapter).not.toHaveBeenCalled();
+        expect(connections.get).not.toHaveBeenCalled();
       });
 
       it('still holds a source-deleted line: a variant removed at its master is not a catalogue gap', async () => {
@@ -2567,7 +2564,7 @@ describe('OrderIngestionService', () => {
       });
 
       it('fails safe to awaiting_mapping when the connection cannot be read', async () => {
-        integrationsService.getAdapter.mockRejectedValue(new Error('connection gone'));
+        connections.get.mockRejectedValue(new Error('connection gone'));
         orderItemRefResolver.tryResolve
           .mockResolvedValueOnce(missing('offer-a'))
           .mockResolvedValueOnce(missing('offer-b'));
