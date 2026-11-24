@@ -335,9 +335,14 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   const config = (connection.data?.config ?? {}) as Record<string, unknown>;
   const pressed = spec ? readChoice(spec, config) : null;
 
+  // Only a change of the saved config clears the "Saved" note: right after our own save the config is still the old one.
+  const lastPressed = useRef(pressed);
   useEffect(() => {
-    if (savedChoice && pressed && pressed !== savedChoice) setSavedChoice(null);
-  }, [pressed, savedChoice]);
+    if (lastPressed.current !== pressed) {
+      lastPressed.current = pressed;
+      setSavedChoice((current) => (current && pressed && pressed !== current ? null : current));
+    }
+  }, [pressed]);
 
   const choose = useMutation({
     mutationKey: ['release-center', 'tour-choice'],
