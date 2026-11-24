@@ -11488,6 +11488,11 @@ a.kpi-card:focus-visible {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+  /* The raw JSON switch is a different kind of control from the sections above
+     it, so it gets its own divider and breathing room (#4289). */
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
 }
 
 /*
