@@ -312,9 +312,13 @@ export function AllegroSetupForm(): ReactElement {
 
         {stepIndex === 2 ? (
           <>
-            <Alert tone="info" title={copy.catalogueInfo.title}>
-              {interpolate(copy.catalogueInfo.body, { platform })}
-            </Alert>
+            {/* The explanation of barcode linking only applies while a catalogue is
+                used; under "None" the fieldset's own notice says what changes. */}
+            {catalogueMode === 'linked' ? (
+              <Alert tone="info" title={copy.catalogueInfo.title}>
+                {interpolate(copy.catalogueInfo.body, { platform })}
+              </Alert>
+            ) : null}
             <CatalogueModeFieldset
               value={catalogueMode}
               disabled={false}

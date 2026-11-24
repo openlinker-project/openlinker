@@ -219,6 +219,19 @@ describe('AllegroSetupForm', () => {
       expect(startOAuth.mock.calls[0][0]).not.toHaveProperty('catalogueMode');
     });
 
+    it('hides the barcode-linking explanation while None is selected', async () => {
+      const { container } = renderWithProviders(<AllegroSetupForm />, {
+        apiClient: defaultApiClient(),
+      });
+      fillCredentialsStep(container);
+      await advanceOneStep(container, 'Environment');
+      await advanceOneStep(container, 'Product catalogue');
+
+      expect(within(container).queryByText('Link the product catalogue')).toBeNull();
+      fireEvent.click(within(container).getByRole('radio', { name: /^Linked:/ }));
+      expect(await within(container).findByText('Link the product catalogue')).toBeInTheDocument();
+    });
+
     it('shows the choice on the review step', async () => {
       const { container } = renderWithProviders(<AllegroSetupForm />, {
         apiClient: defaultApiClient(),
