@@ -3,9 +3,8 @@
  *
  * One pinned row at the top of the list (same look as every other message) that answers "what is left, and can I just go
  * through it": a count, what part of it is required, and one action that starts
- * the guide over every open step and unseen showcase at once. With nothing left
- * the same row offers the walk again from the start, so the control never
- * vanishes and the operator is never sent card by card.
+ * the guide over every open step and unseen showcase at once. It shows only until the operator has started;
+ * after that each card offers Continue / Go through again, so the row would only nag.
  *
  * @module features/release-center
  */
@@ -30,6 +29,12 @@ export function ReleaseWalkAll({ onNavigate }: { onNavigate: () => void }): Reac
     ? view.summary.requiredLeft + view.summary.optionalLeft + unseen
     : view.instances.filter((i) => stepViewable(i.step.id)).length + view.showcases.length;
   const finished = canWriteSteps && left === 0;
+
+  // Only an invitation: once anything was started (a step closed, a guide viewed) or all is done, the cards carry
+  // their own "Continue" / "Go through again", so a standing row at the top would only nag.
+  const stepsLeft = view.summary.requiredLeft + view.summary.optionalLeft;
+  const started = unseen < view.showcases.length || (canWriteSteps && stepsLeft < view.instances.length);
+  if (finished || started) return null;
 
   const start = (): void => {
     requestReleaseTour(
