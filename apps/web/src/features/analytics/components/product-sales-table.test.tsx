@@ -419,6 +419,36 @@ describe('ProductSalesTable', () => {
     expect(screen.getByRole('radio', { name: 'By units' })).toBeChecked();
   });
 
+  it('names an unmatched marketplace offer for what it is and never shows its synthetic id (#4280)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(
+          result(
+            [
+              row({
+                productId: 'unmatched:conn-a:OFFER-7',
+                name: null,
+                sku: 'OFFER-7',
+                unmatchedOfferId: 'OFFER-7',
+              }),
+            ],
+            { unmatchedOfferCount: 1 }
+          )
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
+
+    expect((await screen.findAllByText('Unmatched offer')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('OFFER-7').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/unmatched:conn-a/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/1 line on this page comes from a marketplace offer/)
+    ).toBeInTheDocument();
+  });
+
   it('renders an empty value for a product with no SKU', async () => {
     const apiClient = createMockApiClient({
       analytics: {
