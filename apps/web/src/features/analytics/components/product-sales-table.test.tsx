@@ -449,6 +449,59 @@ describe('ProductSalesTable', () => {
     ).toBeInTheDocument();
   });
 
+  it('does not ask for variants, or show the synthetic id, when an unmatched offer is expanded on a phone (#4280 review)', async () => {
+    // The card breakpoint is a media query; trip it so DataTable renders cards.
+    const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: true,
+          media: query,
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false,
+        }) as MediaQueryList,
+    );
+    try {
+      const getTopProductVariantSales = vi.fn();
+      const apiClient = createMockApiClient({
+        analytics: {
+          getTopProducts: vi.fn().mockResolvedValue(
+            result(
+              [
+                row({
+                  productId: 'unmatched:conn-a:OFFER-7',
+                  name: null,
+                  sku: 'OFFER-7',
+                  unmatchedOfferId: 'OFFER-7',
+                }),
+              ],
+              { unmatchedOfferCount: 1 }
+            )
+          ),
+          getTopProductVariantSales,
+        },
+        connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+      });
+
+      renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, {
+        apiClient,
+      });
+
+      await userEvent.click(await screen.findByRole('button', { name: /view full details/i }));
+
+      expect(
+        await screen.findByText(/no catalogue product, so there are no variants/i)
+      ).toBeInTheDocument();
+      expect(getTopProductVariantSales).not.toHaveBeenCalled();
+      expect(screen.queryByText(/unmatched:conn-a/)).not.toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('renders an empty value for a product with no SKU', async () => {
     const apiClient = createMockApiClient({
       analytics: {

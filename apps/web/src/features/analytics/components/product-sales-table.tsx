@@ -324,7 +324,9 @@ function ChannelCell({
   // `missingFromConnectionIds` is an unreliable `[]` on EVERY row, not
   // evidence of being listed everywhere, so trusting it would render "Not
   // listed" as a false claim (#2172 review, IMPORTANT 1).
-  if (!coverageGapAvailable || !isMissingFrom(row, connectionId)) {
+  // An unmatched marketplace offer (#4280) is not a catalogue product, so there
+  // is nothing to publish to another channel: it never offers "Not listed".
+  if (row.unmatchedOfferId || !coverageGapAvailable || !isMissingFrom(row, connectionId)) {
     return <>{intFormat.format(0)}</>;
   }
 
@@ -650,17 +652,22 @@ export function ProductSalesTable({
               {plural(row.units, copy.cardUnits)}
             </>
           ),
-          detail: (row) => (
-            <VariantChannelMatrix
-              productId={row.productId}
-              productName={row.name ?? row.productId}
-              filters={filters}
-              channelColumns={channelColumns}
-              connectionsById={connectionsById}
-              notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
-              demoMode={demoMode}
-            />
-          ),
+          // Same rule as the desktop detail above: an unmatched offer has no
+          // variants to ask for, and its synthetic id must never be shown.
+          detail: (row) =>
+            row.unmatchedOfferId ? (
+              <p className="data-table__footnote">{copy.unmatchedDetail}</p>
+            ) : (
+              <VariantChannelMatrix
+                productId={row.productId}
+                productName={productRowLabel(row, copy.unmatchedName)}
+                filters={filters}
+                channelColumns={channelColumns}
+                connectionsById={connectionsById}
+                notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
+                demoMode={demoMode}
+              />
+            ),
           collapsibleDetail: true,
         }}
         emptyState={<EmptyValue label={copy.empty} />}

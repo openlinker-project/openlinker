@@ -22,13 +22,14 @@ import {
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import type { AllegroSetupFormValues } from './allegro-setup.schema';
 import { useMessages } from '../../../shared/i18n';
+import type { CatalogueMode } from '../../connections';
 
 interface AllegroSetupSummaryProps {
   values: AllegroSetupFormValues;
   stepIndex: number;
   selectedCatalogName: string | null;
   /** `none` reads as "no catalog" rather than as a link nobody has picked yet (#4281). */
-  catalogueMode?: 'linked' | 'none';
+  catalogueMode?: CatalogueMode;
   suggestions?: readonly DeliveryLineSuggestion[];
   /** False when re-authenticating: that flow never touches delivery settings. */
   showDelivery?: boolean;

@@ -7,6 +7,7 @@ import {
   type DeliveryWizardValue,
 } from '../../delivery-on-documents';
 import type { Messages, ResolvedCopy } from '../../../shared/i18n';
+import { CatalogueModeValues } from '../../connections';
 
 export type AllegroSetupSchemaCopy = ResolvedCopy<Messages['allegro-core']>['allegroSetupSchema'];
 
@@ -38,7 +39,7 @@ export function createAllegroSetupSchema(copy: AllegroSetupSchemaCopy) {
   // Whether this connection expects its order lines to resolve to catalogue
   // products (#4281). Structured state set through `setValue`, like the answer
   // to the "Sales documents" step below.
-  catalogueMode: z.enum(['linked', 'none']).optional(),
+  catalogueMode: z.enum(CatalogueModeValues).optional(),
   // The answer to the "Sales documents" step. Structured state rather than a
   // registered input, so it is set through `setValue` (#3911).
   deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),

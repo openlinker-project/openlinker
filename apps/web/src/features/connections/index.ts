@@ -116,6 +116,7 @@ export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaul
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
 // #4281 - the setup wizards of marketplace plugins ask the same catalogue question as the edit page.
 export { CatalogueModeFieldset } from './components/catalogue-mode-fieldset';
+export { CatalogueModeValues } from './lib/catalogue-mode';
 export type { CatalogueMode } from './lib/catalogue-mode';
 export type { CapabilityTogglesSectionProps } from './components/CapabilityTogglesSection';
 export {

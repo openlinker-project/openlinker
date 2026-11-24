@@ -7,6 +7,7 @@ import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 import { writeTriggerModelForKind } from '../lib/resolve-trigger-model-for-kind';
+import { CatalogueModeValues, type CatalogueMode } from '../lib/catalogue-mode';
 import { schemaMessage } from '../lib/schema-message';
 import {
   NOTIFY_ON_LABEL_PURCHASE_CONFIG_KEY,
@@ -315,7 +316,7 @@ export const editConnectionSchema = z
       .optional(),
     // #4281: `config.catalogueMode` (#4280). Defaults to `linked`, which is what a
     // missing key means, so the form never reports a spurious change.
-    catalogueMode: z.enum(['linked', 'none']).optional(),
+    catalogueMode: z.enum(CatalogueModeValues).optional(),
     // PrestaShop-only structured field surfacing `config.defaultCarrierId`
     // (#517). Stored as a string on the form so the same `<Select>`
     // primitive can serve both this field and the per-method mapping
@@ -497,7 +498,7 @@ export type StructuredConfigPatch = {
   callbackBaseUrl?: string;
   masterCatalogConnectionId?: string;
   /** `config.catalogueMode` (#4281). `linked` is written as an explicit `null`. */
-  catalogueMode?: 'linked' | 'none';
+  catalogueMode?: CatalogueMode;
   /**
    * PrestaShop fallback carrier id (#517). Empty string clears the key;
    * a non-empty value is coerced to a positive integer. Values that fail

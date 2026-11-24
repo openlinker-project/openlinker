@@ -26,6 +26,7 @@ import {
   type DeliveryLineSuggestion,
   type DeliveryWizardValue,
 } from '../../delivery-on-documents';
+import { CatalogueModeValues } from '../lib/catalogue-mode';
 import { schemaMessage } from '../lib/schema-message';
 
 const msg = schemaMessage('erliSetupSchema');
@@ -40,7 +41,7 @@ export const erliSetupSchema = z.object({
   environment: z.enum(ErliEnvironmentValues),
   // Whether this connection expects its order lines to resolve to catalogue
   // products (#4281); set through `setValue`.
-  catalogueMode: z.enum(['linked', 'none']).optional(),
+  catalogueMode: z.enum(CatalogueModeValues).optional(),
   // The answer to the "Sales documents" step; set through `setValue` (#3911).
   deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),
 });
