@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -21,6 +22,7 @@ import {
   type ReactElement,
 } from 'react';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { animate } from 'motion/react';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
 import { interpolate, useMessages } from '../../../shared/i18n';
@@ -72,6 +74,25 @@ function useOptionalToast(): ReturnType<typeof useToast> | null {
   }
 }
 
+/** Glides the card's `translate` from an offset back to rest; the CSS entrance animation owns `transform`. */
+function settleCard(card: HTMLElement, from: number): void {
+  if (from === 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    card.style.translate = '';
+    return;
+  }
+  void animate(from, 0, {
+    type: 'spring',
+    bounce: 0.12,
+    visualDuration: 0.32,
+    onUpdate: (value) => {
+      card.style.translate = `0 ${value}px`;
+    },
+    onComplete: () => {
+      card.style.translate = '';
+    },
+  });
+}
+
 export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }: TourCardProps): ReactElement | null {
   const copy = useMessages('release-center');
   const tour = copy.tour;
@@ -118,7 +139,17 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
   // On a phone the card can fold down to the steps alone, so what it points at stays in view.
   const [collapsed, setCollapsed] = useState(false);
   // A swipe on the handle folds (down) or unfolds (up) the card; a plain tap on it toggles too.
-  const dragStart = useRef<{ y: number; moved: boolean } | null>(null);
+  const dragStart = useRef<{ y: number; moved: boolean; height: number; offset: number } | null>(null);
+  // Height and drag offset from before the fold, so the card can glide from where the finger left it.
+  const flip = useRef<{ height: number; offset: number } | null>(null);
+  useLayoutEffect(() => {
+    const pending = flip.current;
+    const card = cardRef.current;
+    flip.current = null;
+    if (!pending || !card) return;
+    // The card is docked to the bottom, so its top edge moved by the height change: start from where it was.
+    settleCard(card, pending.offset - (pending.height - card.offsetHeight));
+  }, [collapsed]);
   // On the page a step's link leads to, the tour points there instead of at the step's own element.
   const onFollowPage = Boolean(
     stop?.follow &&
@@ -501,25 +532,40 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
           className="tour-card__handle"
           role="presentation"
           onPointerDown={(event) => {
-            dragStart.current = { y: event.clientY, moved: false };
+            const card = cardRef.current;
+            if (!card) return;
+            dragStart.current = { y: event.clientY, moved: false, height: card.offsetHeight, offset: 0 };
             event.currentTarget.setPointerCapture(event.pointerId);
           }}
           onPointerMove={(event) => {
             const start = dragStart.current;
-            if (!start) return;
+            const card = cardRef.current;
+            if (!start || !card) return;
             const dy = event.clientY - start.y;
-            if (Math.abs(dy) > 28 && !start.moved) {
-              start.moved = true;
-              setCollapsed(dy > 0);
-            }
+            if (Math.abs(dy) > 6) start.moved = true;
+            // The card follows the finger inside the range it can fold or unfold through, with a little give past it.
+            const range = Math.max(80, start.height * 0.45);
+            const raw = collapsed ? Math.min(0, Math.max(dy, -range * 1.1)) : Math.max(0, Math.min(dy, range * 1.1));
+            start.offset = raw;
+            card.style.translate = `0 ${raw}px`;
           }}
           onPointerUp={() => {
             const start = dragStart.current;
             dragStart.current = null;
-            if (start && !start.moved) setCollapsed((value) => !value);
+            const card = cardRef.current;
+            if (!start || !card) return;
+            const crossed = collapsed ? start.offset < -40 : start.offset > 40;
+            if (crossed || !start.moved) {
+              flip.current = { height: start.height, offset: start.offset };
+              setCollapsed((value) => !value);
+            } else {
+              settleCard(card, start.offset);
+            }
           }}
           onPointerCancel={() => {
+            const start = dragStart.current;
             dragStart.current = null;
+            if (start && cardRef.current) settleCard(cardRef.current, start.offset);
           }}
         >
           <span className="tour-card__grip" aria-hidden="true" />
