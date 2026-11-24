@@ -43118,3 +43118,36 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   }
   .tour-card__grip { width: 36px; height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text-muted) 55%, transparent); }
 }
+
+/* Order peek on a phone: the header, the actions and the fact grid are laid out for a narrow column
+   instead of squeezed from the desktop drawer. */
+.peek-panel .peek-panel__copy { min-height: 28px; height: 28px; padding: 0 6px; box-shadow: none; }
+.peek-panel .peek-panel__copy:focus:not(:focus-visible) { box-shadow: none; }
+.peek-panel .sales-doc-trigger { min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; }
+@media (hover: none) {
+  /* The integration label would sit on top of the environment tag in these narrow cells. */
+  .peek-panel .connection-chip__reveal { display: none; }
+}
+@media (max-width: 480px) {
+  .peek-panel .side-panel__title-row--with-close { flex-wrap: wrap; row-gap: var(--space-2); }
+  .peek-panel .side-panel__title-main { order: 1; min-width: 0; }
+  .peek-panel .side-panel__close { order: 2; }
+  .peek-panel .side-panel__aside {
+    order: 3;
+    flex: 1 0 100%;
+    display: flex;
+    justify-items: normal;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .peek-panel .peek-panel__total { font-size: 1.125rem; }
+  .peek-panel .side-panel__body { padding: var(--space-3) var(--space-4); }
+  .peek-panel__body { gap: var(--space-3); }
+  .peek-panel__actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  .peek-panel__actions > :first-child { grid-column: 1 / -1; justify-content: center; }
+  .peek-panel__actions > .button { justify-content: center; min-height: 44px; }
+  .peek-panel__state-row { grid-template-columns: 4.25rem minmax(0, 1fr); gap: var(--space-2); }
+  .peek-glance { gap: var(--space-3) var(--space-4); }
+  .peek-glance dd { overflow-wrap: anywhere; }
+}
