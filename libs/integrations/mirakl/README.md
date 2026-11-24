@@ -106,7 +106,8 @@ products whose EAN already has one:
   VL11 values (`CategoryParametersReader`), and the tree's identity
   (`empik` / `empik:staging`), so the destination taxonomy projection,
   category mappings and attribute rules work.
-- **Card match** (`EanCategoryMatcher`): P31 by EAN, up to 100 per request.
+- **Card match** (`EanCategoryMatcher` in the wizard, `CategoryBarcodeMatcher`
+  when the offer is built): P31 by EAN, up to 100 per request.
 - **Create** (`OfferCreator`): OF24 once per offer with the full field set
   (EAN, state 11, price, quantity, lead time, logistic class, `gpsr-*` fields
   from `Product.gpsr`). The import is recorded, so the offer reads

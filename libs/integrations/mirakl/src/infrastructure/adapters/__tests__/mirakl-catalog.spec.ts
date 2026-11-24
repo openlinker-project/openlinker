@@ -183,6 +183,44 @@ describe('MiraklCatalog.fetchCategoryParameters duplicates', () => {
   });
 });
 
+describe('MiraklCatalog.matchCategoryByBarcode', () => {
+  function cardsFor(products: readonly Record<string, string>[]): jest.Mock {
+    return jest.fn(() => Promise.resolve({ status: 200, data: { products } }));
+  }
+
+  it('should answer the category of the one card the EAN points to', async () => {
+    const get = cardsFor([
+      { product_id: '9788324040629', product_sku: '1113225289', category_code: '8-870-1' },
+    ]);
+
+    await expect(catalog(get).matchCategoryByBarcode(' 9788324040629 ')).resolves.toBe('8-870-1');
+    expect(get).toHaveBeenCalledWith('/api/products', {
+      queryParams: { product_references: 'EAN|9788324040629' },
+    });
+  });
+
+  it('should answer null for no card, several cards or a blank barcode', async () => {
+    await expect(catalog(cardsFor([])).matchCategoryByBarcode('5900000000000')).resolves.toBeNull();
+    await expect(
+      catalog(
+        cardsFor([
+          { product_id: '5900000000000', product_sku: 'A', category_code: '1' },
+          { product_id: '5900000000000', product_sku: 'B', category_code: '2' },
+        ])
+      ).matchCategoryByBarcode('5900000000000')
+    ).resolves.toBeNull();
+    const get = cardsFor([]);
+    await expect(catalog(get).matchCategoryByBarcode('  ')).resolves.toBeNull();
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('should answer null, never throw, when the lookup fails', async () => {
+    const get = jest.fn(() => Promise.reject(new MiraklApiException('boom', 500)));
+
+    await expect(catalog(get).matchCategoryByBarcode('5900000000000')).resolves.toBeNull();
+  });
+});
+
 describe('MiraklCatalog.resolveCategoriesForBatchByEan', () => {
   it('should match one card, flag several, and answer no-ean and no-match', async () => {
     const get = jest.fn().mockResolvedValue({

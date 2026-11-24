@@ -16,10 +16,10 @@
  *   no picker can show. Such an attribute is offered as free text. An Empik
  *   offer always points to an existing card and sends no card attributes, so
  *   nothing is lost today; creating cards (P41) will need a searchable picker.
- * - **Card match** (`EanCategoryMatcher`): P31 by EAN, up to 100 EANs per
- *   request. One card is a match with its category; several are a
- *   `multi-match`; a failed request answers `no-match` for its EANs and never
- *   fails the batch.
+ * - **Card match** (`EanCategoryMatcher` for the wizard, `CategoryBarcodeMatcher`
+ *   for the offer build): P31 by EAN, up to 100 EANs per request. One card is
+ *   a match with its category; several are a `multi-match`; a failed request
+ *   answers `no-match` for its EANs and never fails the batch.
  *
  * Results feed the destination taxonomy projection, so the pickers, category
  * mappings and attribute rules work for the operator like for Allegro.
@@ -131,6 +131,16 @@ export class MiraklCatalog {
       }
     }
     return result;
+  }
+
+  /** One EAN's card category, or `null` for no card, several cards or a failed read. */
+  async matchCategoryByBarcode(barcode: string): Promise<string | null> {
+    const ean = barcode.trim();
+    if (!ean) {
+      return null;
+    }
+    const match = toMatch((await this.findCards([ean])).get(ean) ?? []);
+    return match.kind === 'matched' ? match.allegroCategoryId : null;
   }
 
   /** Cards for these EANs, keyed by EAN; a failed read answers none. */

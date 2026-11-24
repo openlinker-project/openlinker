@@ -34,6 +34,7 @@ import {
   CONSERVATIVE_DESCRIPTION_FORMAT,
   OfferNotFoundOnMarketplaceException,
   type BatchCategoryByEanInput,
+  type CategoryBarcodeMatcher,
   type CategoryBrowser,
   type CategoryParameter,
   type CategoryParametersReader,
@@ -107,6 +108,7 @@ export class MiraklOfferManagerAdapter
     CategoryBrowser,
     CategoryParametersReader,
     EanCategoryMatcher,
+    CategoryBarcodeMatcher,
     TaxonomyIdentityProvider
 {
   private readonly connectionId: string;
@@ -151,6 +153,17 @@ export class MiraklOfferManagerAdapter
     input: BatchCategoryByEanInput
   ): Promise<Map<string, EanMatchResult>> {
     return this.catalog.resolveCategoriesForBatchByEan(input);
+  }
+
+  /**
+   * The category of the card this EAN points to, for the offer build. The
+   * wizard matches cards in batches (`EanCategoryMatcher`) but submits a
+   * card-linked row without a category, and the build resolves it again one
+   * EAN at a time through this method; without it every Empik offer on a
+   * card needed a category picked by hand.
+   */
+  matchCategoryByBarcode(barcode: string): Promise<string | null> {
+    return this.catalog.matchCategoryByBarcode(barcode);
   }
 
   createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
