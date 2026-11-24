@@ -236,16 +236,21 @@ export class ShoperOrderSourceAdapter
    * The newest order is NOT filtered for our own: the feed advances over them too.
    */
   async headCursor(): Promise<string | null> {
-    const head = await fetchShoperPage<ShoperOrderRow>(this.client, '/orders', {
-      page: 1,
-      limit: 1,
-      query: { order: 'order_id DESC' },
-    });
+    let head: Awaited<ReturnType<typeof fetchShoperPage<ShoperOrderRow>>>;
+    try {
+      head = await fetchShoperPage<ShoperOrderRow>(this.client, '/orders', {
+        page: 1,
+        limit: 1,
+        query: { order: 'order_id DESC' },
+      });
+    } catch (error) {
+      throw this.asStartRefusal(error, 'read the newest order');
+    }
     const row = head.items[0];
     if (row === undefined) {
       return null;
     }
-    const latestStatusDate = await this.readLatestStatusDate();
+    const latestStatusDate = await this.readLatestStatusDateForStart();
     const statusWatermark = laterWallClock(isWallClock(row.status_date) ? row.status_date : null, latestStatusDate);
     return formatShoperFeedCursor({
       lastOrderId: String(row.order_id),
@@ -298,7 +303,7 @@ export class ShoperOrderSourceAdapter
       }
       return formatShoperFeedCursor({
         lastOrderId: '0',
-        statusWatermark: await this.readLatestStatusDate(),
+        statusWatermark: await this.readLatestStatusDateForStart(),
         statusPassStart: null,
         statusNextPage: null,
       });
@@ -311,7 +316,7 @@ export class ShoperOrderSourceAdapter
           'start from "only new orders" or "all" instead',
       );
     }
-    const latestStatusDate = await this.readLatestStatusDate();
+    const latestStatusDate = await this.readLatestStatusDateForStart();
     return formatShoperFeedCursor({
       // N-1: the feed reads `order_id > cursor`, so the first order of the day is included.
       lastOrderId: String(Math.max(Number(row.order_id) - 1, 0)),
@@ -411,6 +416,15 @@ export class ShoperOrderSourceAdapter
     // A short page is the end: Shoper returns fewer rows than asked only when none are left.
     const done = page.items.length < limit || edge === null;
     return { items, nextCursor: done ? null : `id:${edge}`, done };
+  }
+
+  /** Same read, for the start paths only: a 400/422 there is a typed refusal. */
+  private async readLatestStatusDateForStart(): Promise<string | null> {
+    try {
+      return await this.readLatestStatusDate();
+    } catch (error) {
+      throw this.asStartRefusal(error, 'read the latest status change');
+    }
   }
 
   private async readLatestStatusDate(): Promise<string | null> {

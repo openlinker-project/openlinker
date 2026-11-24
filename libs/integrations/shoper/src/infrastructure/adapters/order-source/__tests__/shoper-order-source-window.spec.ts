@@ -45,6 +45,24 @@ function shop(get: jest.Mock, rows: { byId?: readonly ShoperOrderRow[]; byStatus
 
 describe('ShoperOrderSourceAdapter order sync start (#4265)', () => {
   describe('headCursor', () => {
+    it('should turn a refused head read into a deterministic start error', async () => {
+      const { adapter, get } = setup();
+      get.mockRejectedValue(new ShoperApiError(400, 'invalid_request', 'Unable to sort by this field.'));
+
+      await expect(adapter.headCursor()).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+    });
+
+    it('should turn a refused status-date read into a deterministic start error', async () => {
+      const { adapter, get } = setup();
+      get.mockImplementation((_path: string, query: Record<string, string | number>) =>
+        query.order === 'status_date DESC'
+          ? Promise.reject(new ShoperApiError(422, 'validation_error', 'bad sort'))
+          : Promise.resolve(envelope([{ order_id: 9, date: '2026-09-30 10:00:00' } as unknown as ShoperOrderRow])),
+      );
+
+      await expect(adapter.headCursor()).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+    });
+
     it('should return null when the shop has no orders', async () => {
       const { adapter, get } = setup();
       shop(get, {});
