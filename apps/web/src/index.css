@@ -20159,58 +20159,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   letter-spacing: var(--tracking-tight);
   color: var(--text-primary);
 }
-.order-header__sub {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  font-size: 0.8125rem;
-  color: var(--text-muted);
-}
-.order-header__received {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* Route: source → destination, role-labelled */
-.order-route {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-.order-route__node {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-.order-route__dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--text-disabled);
-}
-.order-route__dot--accent {
-  background: var(--accent-primary);
-}
-.order-route__arrow {
-  color: var(--text-disabled);
-}
-.order-route__role {
-  font-size: 0.625rem;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--text-muted);
-  font-weight: 600;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 0 5px;
-  line-height: 1.5;
-  background: var(--bg-surface-muted);
-}
 
 /* One-line order-contents summary */
 .order-header__summary-line {
@@ -40402,7 +40350,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .order-header__actions > .button, .order-header__actions .order-header-menu__toggle { min-height: 44px; }
   .order-header__actions > .button { flex: 1 1 auto; }
   .order-header-menu__panel { right: auto; left: 0; max-width: calc(100vw - 32px); }
-  .order-header__issues, .order-header__sub .copyable-id, .order-header__facts .status-badge { min-height: 44px; display: inline-flex; align-items: center; }
+  .order-header__issues, .order-header__facts .status-badge { min-height: 44px; display: inline-flex; align-items: center; }
   .order-progress { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 14px; }
   .order-progress__step:nth-child(4)::before { display: none; }
   .order-header__footer .order-next-step { padding: 14px 16px; }
