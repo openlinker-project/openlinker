@@ -8,9 +8,47 @@
       "intro": "Allegro Delivery (\"Wysyłam z Allegro\") labels are issued via Allegro's shipment-management API and tracked automatically:",
       "labelCreation": "<strong>Label creation</strong> is synchronous from OpenLinker's side - operators generate a label from the order detail panel; OpenLinker waits for Allegro's command to complete before responding.",
       "pickupPoints": "<strong>Buyer-selected pickup points</strong> (Allegro One Box, Paczkomat, kurier) are pre-filled on the label form from the order snapshot.",
-      "summary": "<strong>No configuration needed</strong> - how shipment tracking works",
+      "summary": "<strong>Sender address required</strong> - how label creation and tracking work",
       "title": "Allegro Delivery",
       "trackingNumber": "<strong>Tracking number</strong> resolves <em>asynchronously</em>. Allegro generates the waybill on a delay; OpenLinker polls every 15 minutes and backfills the row when it arrives (no manual refresh needed)."
+    },
+    "sender": {
+      "buildingNumber": {
+        "label": "Building number"
+      },
+      "city": {
+        "label": "City",
+        "placeholder": "Warszawa"
+      },
+      "company": {
+        "label": "Company (optional)"
+      },
+      "countryCode": {
+        "description": "ISO 3166-1 alpha-2 (e.g. PL).",
+        "label": "Country"
+      },
+      "description": "Allegro Delivery requires a ship-from contact on every label. Without it, label creation is refused before Allegro is called.",
+      "email": {
+        "label": "Sender email",
+        "placeholder": "warehouse@acme.pl"
+      },
+      "name": {
+        "label": "Sender name (optional)",
+        "placeholder": "ACME Store"
+      },
+      "phone": {
+        "label": "Sender phone",
+        "placeholder": "+48123123123"
+      },
+      "postCode": {
+        "description": "PL format NN-NNN (e.g. 00-001).",
+        "label": "Postcode"
+      },
+      "street": {
+        "label": "Street",
+        "placeholder": "ul. Magazynowa"
+      },
+      "title": "Sender address"
     }
   },
   "allegroSetupRoute": {

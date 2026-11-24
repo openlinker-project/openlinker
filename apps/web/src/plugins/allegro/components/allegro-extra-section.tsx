@@ -19,6 +19,7 @@ import { AllegroSellerDefaultsSection } from '../../../features/connections';
 import { renderRich } from '../../../shared/i18n';
 import type { ExtraConfigSectionProps } from '../../../shared/plugins';
 import { useAllegroMessages } from '../messages';
+import { AllegroSenderAddressFields } from './allegro-sender-address-fields';
 
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
 
@@ -33,6 +34,7 @@ export function AllegroExtraSection({
   form,
   configIsParseable,
   syncSellerDefaultsToJson,
+  syncInpostSenderAddressToJson,
 }: ExtraConfigSectionProps): ReactElement {
   const copy = useAllegroMessages().allegroExtraSection.delivery;
   // AC-8 capability gate (#839) — only render the Allegro Delivery
@@ -49,6 +51,14 @@ export function AllegroExtraSection({
         onChange={syncSellerDefaultsToJson}
         disabled={!configIsParseable}
       />
+
+      {showAllegroDelivery ? (
+        <AllegroSenderAddressFields
+          form={form}
+          configIsParseable={configIsParseable}
+          onChange={syncInpostSenderAddressToJson}
+        />
+      ) : null}
 
       {showAllegroDelivery ? (
         <section aria-labelledby="allegro-delivery-info-heading">

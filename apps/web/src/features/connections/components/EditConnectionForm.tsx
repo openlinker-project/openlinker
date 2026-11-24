@@ -315,6 +315,7 @@ function readInpostSenderAddress(
       ? (raw.address as Record<string, unknown>)
       : {};
   return {
+    company: typeof raw.company === 'string' ? raw.company : '',
     name: typeof raw.name === 'string' ? raw.name : '',
     email: typeof raw.email === 'string' ? raw.email : '',
     phone: typeof raw.phone === 'string' ? raw.phone : '',
@@ -1014,6 +1015,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           form={form}
           configIsParseable={configIsParseable}
           syncSellerDefaultsToJson={syncSellerDefaultsToJson}
+          syncInpostSenderAddressToJson={syncInpostSenderAddressToJson}
         />
       ) : null}
 
