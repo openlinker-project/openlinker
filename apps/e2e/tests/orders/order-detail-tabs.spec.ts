@@ -49,6 +49,16 @@ test.describe('orders: detail tabs (#4286)', () => {
     );
   });
 
+  test('shows exactly one tab panel at a time', async ({ page }) => {
+    // Radix keeps a force-mounted panel visible, so hiding the inactive ones is
+    // our own CSS rule: without it every tab renders the same long page.
+    for (const tab of ['overview', 'shipping', 'packing', 'documents', 'technical']) {
+      await page.goto(`/orders/${orderId}?tab=${tab}`);
+      await expect(page.getByRole('tablist')).toBeVisible();
+      await expect(page.locator('[role="tabpanel"]:visible')).toHaveCount(1);
+    }
+  });
+
   test('keeps the selected tab in ?tab= across a reload', async ({ page }) => {
     await page.goto(`/orders/${orderId}`);
     await page.getByRole('tab', { name: /^Notes/ }).click();

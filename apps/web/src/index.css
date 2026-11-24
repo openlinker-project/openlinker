@@ -40304,8 +40304,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* Order detail tabs (#4286): panels stay mounted (forceMount) and are hidden,
    so a note draft and invoice polling survive a tab change. Radix sets the
    `hidden` attribute; make sure no display rule overrides it. */
-.order-detail__tab[hidden] { display: none; }
-.order-detail__tab { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.order-detail__tab[hidden],
+.order-detail__tab[data-state='inactive'] { display: none; }
+.order-detail__tab[data-state='active'] { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .order-detail__tab-list { overflow-x: auto; scrollbar-width: thin; }
 .order-detail__tab-list .tabs__trigger { white-space: nowrap; min-height: 44px; }
 
