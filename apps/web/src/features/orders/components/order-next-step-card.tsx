@@ -26,6 +26,8 @@ export function useOrderStepTitle(): (step: OrderNextStep) => string {
         return copy.documentBlocked;
       case 'ship-by-overdue':
         return copy.shipByOverdue;
+      case 'shipment-failed':
+        return copy.shipmentFailed;
       case 'ready-to-ship':
         return copy.readyToShip;
     }

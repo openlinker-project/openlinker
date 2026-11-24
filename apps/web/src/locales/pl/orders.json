@@ -1686,12 +1686,14 @@
       "open": "Otwórz: {tab}",
       "readyToShip": "Gotowe do wysyłki",
       "shipByOverdue": "Minął termin wysyłki",
+      "shipmentFailed": "Przesyłka się nie udała",
       "short": {
         "document-blocked": "Dokument wymaga uwagi",
         "failed-destinations": "Miejsce docelowe nie przyjęło",
         "on-hold": "Wstrzymane",
         "ready-to-ship": "Gotowe do wysyłki",
-        "ship-by-overdue": "Minął termin wysyłki"
+        "ship-by-overdue": "Minął termin wysyłki",
+        "shipment-failed": "Przesyłka nieudana"
       },
       "showAll": "Pokaż wszystkie"
     },

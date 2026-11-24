@@ -8,6 +8,10 @@ const quiet: OrderNextStepInput = {
   documentBlocked: false,
   shipByOverdue: false,
   fulfillment: 'delivered',
+  recordReady: true,
+  awaitingPayment: false,
+  shipmentsLoaded: true,
+  canGenerateLabel: true,
 };
 
 describe('deriveOrderNextStep', () => {
@@ -34,5 +38,20 @@ describe('deriveOrderNextStep', () => {
   it('should list every problem in priority order', () => {
     const issues = deriveOrderIssues({ ...quiet, failedDestinationCount: 1, activeHoldLabel: 'Fraud check', shipByOverdue: true, fulfillment: 'not-shipped' });
     expect(issues.map((i) => i.kind)).toEqual(['failed-destinations', 'on-hold', 'ship-by-overdue', 'ready-to-ship']);
+  });
+  it('should not say ready to ship for an order that cannot ship yet', () => {
+    const base = { ...quiet, fulfillment: 'not-shipped' as const };
+    expect(deriveOrderNextStep(base)).toMatchObject({ kind: 'ready-to-ship' });
+    expect(deriveOrderNextStep({ ...base, recordReady: false })).toBeNull();
+    expect(deriveOrderNextStep({ ...base, awaitingPayment: true })).toBeNull();
+    expect(deriveOrderNextStep({ ...base, shipmentsLoaded: false })).toBeNull();
+    expect(deriveOrderNextStep({ ...base, canGenerateLabel: false })).toBeNull();
+  });
+  it('should name a failed shipment as such and not as ready to ship', () => {
+    expect(deriveOrderNextStep({ ...quiet, fulfillment: 'failed' })).toMatchObject({
+      kind: 'shipment-failed',
+      tone: 'warning',
+      tab: 'shipping',
+    });
   });
 });

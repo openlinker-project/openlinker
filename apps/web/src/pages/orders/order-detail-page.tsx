@@ -24,6 +24,7 @@ import { Button } from '../../shared/ui/button';
 import { Tabs, TabsContent } from '../../shared/ui/tabs';
 import { OrderNextStepCard } from '../../features/orders/components/order-next-step-card';
 import { deriveOrderIssues } from '../../features/orders/lib/order-next-step';
+import { hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { OrderShipToBox } from '../../features/orders/components/order-ship-to-box';
 import { ProductPeekById } from '../products/product-peek-by-id';
 import { OrderProgressLine } from '../../features/orders/components/order-progress-line';
@@ -211,6 +212,9 @@ export function OrderDetailPage(): ReactElement {
   const canAddGift = useWriteAccess('gifts:write', demoMode).canWrite;
   const [giftDialogOpen, setGiftDialogOpen] = useState(false);
   const [issuesOpen, setIssuesOpen] = useState(false);
+  // The retryShipmentId link picks the Shipping tab once; after any tab change the operator's choice wins.
+  const [retryTabConsumed, setRetryTabConsumed] = useState(false);
+  const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
   const [productPeekId, setProductPeekId] = useState<string | null>(null);
   const [cancelOutcome, setCancelOutcome] = useState<{
     internalOrderId: string;
@@ -268,7 +272,7 @@ export function OrderDetailPage(): ReactElement {
   const resolvedTab: OrderDetailTabId = resolveOrderDetailTab({
     tabParam: searchParams.get('tab'),
     hash: location.hash,
-    hasRetryShipmentId: retryShipmentId !== undefined,
+    hasRetryShipmentId: retryShipmentId !== undefined && !retryTabConsumed,
   });
   const activeTab: OrderDetailTabId =
     resolvedTab === 'packing' && !showPackingTab ? DEFAULT_ORDER_DETAIL_TAB : resolvedTab;
@@ -279,6 +283,7 @@ export function OrderDetailPage(): ReactElement {
   };
   const handleTabChange = useCallback(
     (value: string): void => {
+      setRetryTabConsumed(true);
       const next = new URLSearchParams(searchParams);
       if (value === DEFAULT_ORDER_DETAIL_TAB) next.delete('tab');
       else next.set('tab', value);
@@ -292,12 +297,19 @@ export function OrderDetailPage(): ReactElement {
     (targetId: string): void => {
       const tab = tabForTarget(targetId);
       if (tab && tab !== activeTab) handleTabChange(tab);
-      requestAnimationFrame(() => {
-        document.getElementById(targetId)?.scrollIntoView({ block: 'start' });
-      });
+      setPendingAnchor(targetId);
     },
     [activeTab, handleTabChange],
   );
+  // Scroll after the target tab has rendered, not on a fixed frame delay.
+  useEffect(() => {
+    if (!pendingAnchor) return;
+    const id = requestAnimationFrame(() => {
+      document.getElementById(pendingAnchor)?.scrollIntoView({ block: 'start' });
+      setPendingAnchor(null);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [pendingAnchor, activeTab]);
   useEffect(() => {
     if (!hasOrder) return;
     const targetId = location.hash.replace(/^#/, '');
@@ -637,8 +649,12 @@ export function OrderDetailPage(): ReactElement {
   ];
 
 
+  // Cancelled in OpenLinker or at the source: the channel snapshot can lag behind an OpenLinker cancel.
+  const isCancelledOrder =
+    snapshot.status === 'cancelled' ||
+    order.lifecyclePhase === 'cancelled';
   const issues = deriveOrderIssues({
-    cancelled: snapshot.status === 'cancelled',
+    cancelled: isCancelledOrder,
     failedDestinationCount: failedDestinations.length,
     activeHoldLabel: order.activeHold ? holdReasonLabel(order.activeHold.reason) : null,
     // A manual-trigger block is the configured workflow, not a problem, and an
@@ -649,6 +665,10 @@ export function OrderDetailPage(): ReactElement {
       order.salesDocument?.document == null,
     shipByOverdue: shipByView?.level === 'overdue',
     fulfillment,
+    recordReady: order.recordStatus === 'ready',
+    awaitingPayment: snapshot.paymentStatus === 'awaiting',
+    shipmentsLoaded: !shipmentsQuery.isLoading && !shipmentsQuery.isError,
+    canGenerateLabel: hasLiveOlCarrierRoute(order.deliveryResolution),
   });
   const nextStep = issues[0] ?? null;
   const issueTabs = new Set(
@@ -755,7 +775,10 @@ export function OrderDetailPage(): ReactElement {
   const tabEntries = allTabEntries.filter((tab) => tab.id !== 'packing' || showPackingTab);
 
   const canGenerateLabel =
-    fulfillment === 'not-shipped' && snapshot.status !== 'cancelled' && hasShippingCapability;
+    fulfillment === 'not-shipped' &&
+    !isCancelledOrder &&
+    hasShippingCapability &&
+    hasLiveOlCarrierRoute(order.deliveryResolution);
   const headerActions = (
     <>
     <OrderConfirmRefundAction
@@ -1137,7 +1160,7 @@ export function OrderDetailPage(): ReactElement {
               <OrderShipmentPanel
                 order={order}
                 autoOpenForShipmentId={retryShipmentId}
-                defaultFormOpen={snapshot.status !== 'cancelled'}
+                defaultFormOpen={!isCancelledOrder}
               />
             </div>
           </div>

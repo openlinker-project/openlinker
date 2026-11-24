@@ -16,6 +16,7 @@ export type OrderNextStepKind =
   | 'on-hold'
   | 'document-blocked'
   | 'ship-by-overdue'
+  | 'shipment-failed'
   | 'ready-to-ship';
 
 export type OrderNextStepTone = 'error' | 'warning' | 'info';
@@ -38,6 +39,14 @@ export interface OrderNextStepInput {
   shipByOverdue: boolean;
   /** Fulfilment state from the shipments read; `unavailable` and `dispatched` etc. never prompt. */
   fulfillment: 'not-shipped' | 'dispatched' | 'delivered' | 'failed' | 'unavailable';
+  /** The order record is `ready` (not waiting for a product mapping, not deleted at the source). */
+  recordReady: boolean;
+  /** The source reports the order as not yet paid. */
+  awaitingPayment: boolean;
+  /** The shipments read finished, so `fulfillment` is a fact and not a default. */
+  shipmentsLoaded: boolean;
+  /** OpenLinker has a live own-carrier route, so a label can be generated here. */
+  canGenerateLabel: boolean;
 }
 
 /**
@@ -65,8 +74,15 @@ export function deriveOrderIssues(input: OrderNextStepInput): OrderNextStep[] {
     issues.push({ kind: 'ship-by-overdue', tone: 'error', tab: 'shipping' });
   }
   if (input.fulfillment === 'failed') {
-    issues.push({ kind: 'ready-to-ship', tone: 'warning', tab: 'shipping' });
-  } else if (input.fulfillment === 'not-shipped') {
+    issues.push({ kind: 'shipment-failed', tone: 'warning', tab: 'shipping' });
+  } else if (
+    input.fulfillment === 'not-shipped' &&
+    input.recordReady &&
+    !input.awaitingPayment &&
+    input.shipmentsLoaded &&
+    input.canGenerateLabel
+  ) {
+    // Only said when there is something the operator can actually do: a label to generate.
     issues.push({ kind: 'ready-to-ship', tone: 'info', tab: 'shipping' });
   }
   return issues;

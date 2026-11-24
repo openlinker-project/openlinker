@@ -139,7 +139,8 @@ export function OrderShipmentPanel({
   const copy = ordersCopy.orderShipmentPanel;
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(order.internalOrderId);
-  const [formOpen, setFormOpen] = useState(defaultFormOpen);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [autoDismissed, setAutoDismissed] = useState(false);
   const canWrite = usePermission('shipments:write');
 
   // #928 — source-reported payment status drives the dispatch gate on the
@@ -160,6 +161,26 @@ export function OrderShipmentPanel({
   // CTAs are suppressed and the operator is pointed at delivery routing instead
   // (the Delivery panel's rider, or a "fulfilled by the shop" note here).
   const olCarrierRoute = hasLiveOlCarrierRoute(order.deliveryResolution);
+
+  // The Shipping tab opens the label form straight away, but only where the plain
+  // "No shipment yet" empty state would otherwise show: a live own-carrier route, nothing
+  // shipped or dispatched outside OpenLinker, and permission to write. Shop-fulfilled,
+  // takeover and dispatched-elsewhere orders keep their own notices (#4286).
+  const earlyActiveShipment = pickActiveShipment(shipmentsQuery.data?.items ?? null);
+  const autoOpenAllowed =
+    defaultFormOpen &&
+    olCarrierRoute &&
+    canWrite &&
+    shipmentsQuery.isSuccess &&
+    !earlyActiveShipment &&
+    order.fulfillmentState !== 'dispatched' &&
+    order.fulfillmentState !== 'delivered';
+  const formOpen = manualOpen || (autoOpenAllowed && !autoDismissed);
+  const setFormOpen = (open: boolean): void => {
+    setManualOpen(open);
+    // Closing the form must hold even when it opened by default.
+    if (!open) setAutoDismissed(true);
+  };
 
   // Resolve the deep-link target by id (not `pickActiveShipment`'s "most
   // relevant row" precedence) — the operator's retry always targets the
