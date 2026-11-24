@@ -949,7 +949,14 @@ export function recomputeVariantBlockers(
     requiredProductParamIds: submitCategoryId
       ? requiredByCategory.get(submitCategoryId)
       : undefined,
-    imageCount: imageCountForVariant(row, variant),
+    // A bundle created in OpenLinker has no photos of its own: the offer builder
+    // lists it with its components' pictures, so those count unless the operator
+    // set the images explicitly (an emptied override stays a missing photo).
+    imageCount:
+      bundlePreview && !Array.isArray(variant.override.overrides?.imageUrls)
+        ? imageCountForVariant(row, variant) ||
+          bundlePreview.components.filter((component) => component.imageUrl).length
+        : imageCountForVariant(row, variant),
     effectiveTitle: titleForVariant(row, variant),
     platformValidate,
     destinationResolvesCategoryAtSubmit,
