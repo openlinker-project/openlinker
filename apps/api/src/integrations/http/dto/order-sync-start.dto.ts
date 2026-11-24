@@ -6,7 +6,7 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsIn, IsNotEmpty, IsOptional, IsString, ValidateIf } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   OrderSyncStartModeValues,
@@ -15,6 +15,7 @@ import {
   OrderSyncStartOrder,
 } from '@openlinker/core/sync';
 import type { OrderSyncStart } from '@openlinker/core/sync';
+import { ORDER_IMPORT_DATE_PATTERN } from './order-import.dto';
 
 /**
  * Where a new connection's order feed starts (#4228). `from` is required when
@@ -40,6 +41,8 @@ export class OrderSyncStartDto {
   @ValidateIf((o: OrderSyncStartDto) => o.mode === 'from')
   @IsString()
   @IsNotEmpty()
+  @MaxLength(40)
+  @Matches(ORDER_IMPORT_DATE_PATTERN, { message: 'from must be an ISO date or date-time' })
   from?: string;
 
   @ApiPropertyOptional({

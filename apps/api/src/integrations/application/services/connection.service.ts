@@ -1358,6 +1358,23 @@ export class ConnectionService implements IConnectionService {
         { reason: 'to-before-from' }
       );
     }
+    // The same bounds as the start date at create: an unbounded range would let
+    // one request walk a source's whole history from a typo.
+    for (const [field, value] of [
+      ['from', from],
+      ['to', to],
+    ] as const) {
+      if (value === undefined) continue;
+      const problem = describeInvalidOrderSyncStartDate(value, new Date());
+      if (problem !== null) {
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'ORDER_IMPORT_RANGE_INVALID',
+          `${field}: ${problem}`,
+          { reason: problem.includes('future') ? 'in-future' : 'too-old', field }
+        );
+      }
+    }
     const runId = `manual:${connectionId}:${generateOrdersImportNonce()}`;
     const first = buildOrdersImportRequest(connectionId, {
       schemaVersion: 1,
@@ -1537,7 +1554,7 @@ export class ConnectionService implements IConnectionService {
       }
       this.assertNoWriteBackAuthorityConflict(enabledCapabilities);
       this.assertNotMasterAndPublisher(enabledCapabilities, null);
-      // #4228 — before credentials are persisted, like the config checks below.
+      // #4228 - before credentials are persisted, like the config checks below.
       if (orderSyncStart !== undefined) {
         this.assertOrderSyncStart(
           orderSyncStart,
