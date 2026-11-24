@@ -41342,11 +41342,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
     transform var(--duration-fast) var(--ease-out);
 }
 .tour-choice { box-shadow: none; height: auto; }
-.tour-choice:hover,
-.tour-choice:active {
-  border-color: var(--border-strong);
-  background: var(--bg-surface-muted);
-  color: var(--text-primary);
+.tour-choice:active { border-color: var(--border-strong); background: var(--bg-surface-muted); color: var(--text-primary); }
+@media (hover: hover) {
+  .tour-choice:hover { border-color: var(--border-strong); background: var(--bg-surface-muted); color: var(--text-primary); }
 }
 .tour-choice:active { transform: translateY(1px); }
 .tour-choice:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
@@ -42612,12 +42610,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 /* Consecutive rows form one list: cancel the panel's card gap between them. */
 .release-panel .msg + .msg { margin-top: -10px; }
-.release-panel .msg:hover,
 .release-panel .msg:focus-within { background: var(--bg-surface-hover); }
+@media (hover: hover) { .release-panel .msg:hover { background: var(--bg-surface-hover); } }
 .release-panel .msg[data-unread='true'] { background: color-mix(in srgb, var(--accent-primary) 6%, transparent); }
-.release-panel .msg[data-unread='true']:hover,
 .release-panel .msg[data-unread='true']:focus-within {
   background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover));
+}
+@media (hover: hover) {
+  .release-panel .msg[data-unread='true']:hover { background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover)); }
 }
 .release-panel .msg[data-archived='true'] .msg__main { opacity: 0.75; }
 .release-panel .msg__icon {
@@ -42669,7 +42669,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   background: var(--bg-surface);
   transition: background-color 120ms var(--ease-out);
 }
-:is(.release-panel, .whats-new__setup) .release-card:hover { background: var(--bg-surface-hover); }
+@media (hover: hover) { :is(.release-panel, .whats-new__setup) .release-card:hover { background: var(--bg-surface-hover); } }
 :is(.release-panel, .whats-new__setup) .release-card[data-unread='true'] {
   border-color: var(--border-subtle);
   box-shadow: none;
@@ -42685,8 +42685,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   border-radius: 50%;
   background: var(--accent-primary);
 }
-:is(.release-panel, .whats-new__setup) .release-card[data-unread='true']:hover {
-  background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover));
+@media (hover: hover) {
+  :is(.release-panel, .whats-new__setup) .release-card[data-unread='true']:hover {
+    background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface-hover));
+  }
 }
 :is(.release-panel, .whats-new__setup) .release-card + .release-card,
 :is(.release-panel, .whats-new__setup) .release-card + .msg,
@@ -43011,7 +43013,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--bg-surface) 55%, transparent) 3px 5px);
 }
 .pseg[data-state='done'] { background-color: var(--pseg-fill); }
-.pseg[data-state='current'] { background-color: var(--pseg-fill); transform: scaleY(1.7); z-index: 1; }
+.pseg[data-state='current'] { background-color: var(--pseg-fill); transform: scaleY(1.5); z-index: 1; }
 /* Finished is a full colour; what is still to do stays a quiet grey, so the two never read alike. */
 .pseg[data-state='done'][data-kind='optional'],
 .pseg[data-state='current'][data-kind='optional'] { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgb(255 255 255 / 0.34) 3px 5px); }
@@ -43023,12 +43025,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--bg-surface) 60%, transparent) 3px 5px);
 }
 .pseg--button { cursor: pointer; }
-.pseg--button::before { content: ''; position: absolute; inset: -8px -2px; }
-.pseg--button:hover { transform: scaleY(1.7); }
+/* The touch-target rule makes every button 44px tall; a segment is 8px and takes its hit area from the pseudo-element. */
+.pseg.pseg--button { min-height: 0; min-width: 0; height: 8px; }
+.pseg--button::before { content: ''; position: absolute; inset: -14px -2px; }
+@media (hover: hover) { .pseg--button:hover { transform: scaleY(1.7); } }
 .pseg--button:active { transform: scaleY(1.2); }
 .pseg--button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 .pseg--button[aria-disabled='true'] { cursor: default; }
-.pseg--button[aria-disabled='true']:hover { transform: none; }
+.pseg--button[aria-disabled='true']:hover, .pseg--button[aria-disabled='true']:active { transform: none; }
 /* Round only the two outer ends of a strip; joins stay flush. */
 .pseg-strip > .pseg:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
 .pseg-strip > .pseg:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
@@ -43051,3 +43055,12 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 
 .release-step__body { min-width: 0; }
 .release-step__chips .connection-chip { max-width: 100%; }
+
+/* Phone: a tour card that takes half the screen hides what it points at, so it is tighter. */
+@media (max-width: 480px) {
+  .tour-card { gap: 8px; padding-block: 10px 12px; }
+  .tour-card__title { font-size: 1rem; }
+  .tour-card__body, .tour-card__hint, .tour-card__live { font-size: 0.8125rem; line-height: 1.4; }
+  .tour-card .tour-choice { min-height: 40px; padding-block: 6px; }
+  .tour-card__rail .pseg { margin-block: 3px; }
+}
