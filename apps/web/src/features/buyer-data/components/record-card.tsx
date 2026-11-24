@@ -1,29 +1,33 @@
 /**
  * Record Card (#4289)
  *
- * One made-up order that LIVES with the rules: it shows what the order looks
- * like at the age the operator is pointing at, whether that age comes from a
- * handle on the strip (while it is grabbed or hovered) or from the card's own
- * age slider. Before the hide cut it is an ordinary order; past it the order is
- * marked hidden; past the erase cut the personal fields are replaced by their
- * placeholder while the rows that must stay (items, amount, invoice, number)
- * are marked as kept for the books.
+ * One made-up order shown as a BEFORE / AFTER: the left column is the order as
+ * it is today, the right one is the same order after the rules, at the age the
+ * operator is pointing at (a handle on the strip, or the card's own slider).
+ * Erased fields are struck through on the left and replaced by a placeholder on
+ * the right; the rows that must stay (items, amount, invoice, number) carry a
+ * lock. A mini timeline places the order's age against the two cut-offs.
  *
- * Every value is synthetic: the card never touches a real order.
+ * The values are synthetic: the card never touches a real order. When the trial
+ * run returned real (masked) samples, only the order reference and the age in
+ * the header come from them.
  *
  * @module apps/web/src/features/buyer-data/components
  */
-import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { useShortPeriod } from '../hooks/use-short-period';
+import type { BuyerDataPlan } from '../hooks/use-buyer-data-plan';
 import type { BuyerDataEraseMode } from '../api/buyer-data.types';
+import { daysToPeriod } from '../lib/buyer-data-config';
 import { DAYS_PER_MONTH, AXIS_MONTHS, type RetentionCuts } from '../lib/retention-scale';
 
-type Sample = 'fresh' | 'old' | 'protected';
+type Sample = 'fresh' | 'old';
 
-const SAMPLE_AGE_DAYS: Record<Exclude<Sample, 'protected'>, number> = { fresh: 0, old: 900 };
+const FALLBACK_AGE_DAYS: Record<Sample, number> = { fresh: 0, old: 900 };
 const MAX_SCRUB_MONTHS = AXIS_MONTHS;
+const DAY_MS = 86_400_000;
 
 export interface RecordCardProps extends RetentionCuts {
   mode: BuyerDataEraseMode;
@@ -31,6 +35,8 @@ export interface RecordCardProps extends RetentionCuts {
   handleAgeDays: number | null;
   /** Where the slider starts: the middle of the oldest month that still has orders. */
   defaultAgeDays: number;
+  /** The trial run: real masked samples and the protection counts, when there is one. */
+  plan?: BuyerDataPlan | null;
 }
 
 function LockIcon(): ReactElement {
@@ -44,15 +50,40 @@ function LockIcon(): ReactElement {
   );
 }
 
-function ShieldIcon(): ReactElement {
+function iconFor(state: string): string {
+  return state.endsWith('erased') ? 'erased' : state;
+}
+
+function StateIcon({ state }: { state: string }): ReactElement {
+  const path =
+    state === 'visible'
+      ? 'M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Zm6.5 1.75a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Z'
+      : state === 'hidden'
+        ? 'M2 2.5 13.5 14M1.5 8S4 3.5 8 3.5c1 0 1.9.3 2.7.8M14.5 8s-1 1.8-2.7 3.1'
+        : 'M3.5 5h9M6 5V3.5h4V5m-5.5 0 .6 8h5.8l.6-8';
+  const stroked = state !== 'visible';
   return (
     <svg viewBox="0 0 16 16" className="record-card__icon" aria-hidden="true">
       <path
-        d="M8 1.5 13 3.5V8c0 3-2 5-5 6.5C5 13 3 11 3 8V3.5L8 1.5Zm-.7 9 3.6-3.6-1-1-2.6 2.6-1.2-1.2-1 1 2.2 2.2Z"
-        fill="currentColor"
+        d={path}
+        fill={stroked ? 'none' : 'currentColor'}
+        stroke={stroked ? 'currentColor' : undefined}
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fillRule="evenodd"
       />
     </svg>
   );
+}
+
+/** Where an age sits on the scrubber, 0..1 (capped: the scrubber ends at ten years). */
+function scrubPct(days: number): number {
+  return Math.min(1, days / (MAX_SCRUB_MONTHS * DAYS_PER_MONTH));
+}
+
+function pct(days: number, span: number): number {
+  return Math.min(100, Math.max(0, (days / span) * 100));
 }
 
 export function RecordCard({
@@ -61,41 +92,50 @@ export function RecordCard({
   mode,
   handleAgeDays,
   defaultAgeDays,
+  plan = null,
 }: RecordCardProps): ReactElement {
   const copy = useMessages('buyer-data').record;
   const shortPeriod = useShortPeriod();
   const [sample, setSample] = useState<Sample>('old');
   const [scrubDays, setScrubDays] = useState(defaultAgeDays);
-  const [holding, setHolding] = useState(false);
+  const [anchored, setAnchored] = useState(false);
   const touched = useRef(false);
+
+  const real = useMemo(() => {
+    const now = Date.now();
+    const dated = (plan?.data?.samples ?? [])
+      .map((item) => ({
+        ref: item.orderRef,
+        ageDays: Math.max(0, Math.floor((now - Date.parse(item.placedAt)) / DAY_MS)),
+      }))
+      .filter((item) => Number.isFinite(item.ageDays))
+      .sort((a, b) => a.ageDays - b.ageDays);
+    return { fresh: dated[0], old: dated[dated.length - 1] };
+  }, [plan?.data?.samples]);
 
   // The default arrives with the histogram; follow it until the operator picks an age.
   useEffect(() => {
-    if (!touched.current) setScrubDays(defaultAgeDays);
+    if (touched.current) return;
+    setScrubDays(defaultAgeDays);
   }, [defaultAgeDays]);
 
-  const isProtected = sample === 'protected';
-  const age = holding ? 0 : handleAgeDays ?? scrubDays;
-  const erased = !isProtected && eraseAfterDays > 0 && age >= eraseAfterDays;
-  const hidden =
-    !isProtected &&
-    ((hideAfterDays > 0 && age >= hideAfterDays) || (mode === 'whole-order' && erased));
+  const driven = handleAgeDays !== null;
+  const age = handleAgeDays ?? scrubDays;
+  const erased = eraseAfterDays > 0 && age >= eraseAfterDays;
+  const hidden = (hideAfterDays > 0 && age >= hideAfterDays) || (mode === 'whole-order' && erased);
 
-  const state = isProtected
-    ? 'protected'
-    : erased
-      ? hidden
-        ? 'hidden-erased'
-        : 'visible-erased'
-      : hidden
-        ? 'hidden'
-        : 'visible';
-  const ribbon: Record<typeof state, string> = {
+  const state = erased
+    ? hidden
+      ? 'hidden-erased'
+      : 'visible-erased'
+    : hidden
+      ? 'hidden'
+      : 'visible';
+  const pill: Record<typeof state, string> = {
     visible: copy.ribbonVisible,
     hidden: copy.ribbonHidden,
     'visible-erased': copy.ribbonVisibleErased,
     'hidden-erased': copy.ribbonHiddenErased,
-    protected: copy.ribbonProtected,
   };
 
   const personal: { id: string; label: string; value: string; redacted: string }[] = [
@@ -116,6 +156,38 @@ export function RecordCard({
   const scrubMonths = Math.min(MAX_SCRUB_MONTHS, Math.round(scrubDays / DAYS_PER_MONTH));
   const ageLabel = age <= 0 ? copy.today : shortPeriod(Math.max(age, 1));
 
+  // The timeline spans the two cuts with some room past the later one.
+  const span = Math.max(hideAfterDays, eraseAfterDays, age, 365) * 1.15;
+  const hidePct = hideAfterDays > 0 ? pct(hideAfterDays, span) : null;
+  const erasePct = eraseAfterDays > 0 ? pct(eraseAfterDays, span) : null;
+  const dotPct = pct(age, span);
+
+  const source = real[sample];
+  const showSource = anchored && !driven && source !== undefined && scrubDays === source.ageDays;
+
+  function pick(next: Sample): void {
+    setSample(next);
+    touched.current = true;
+    const found = real[next];
+    setScrubDays(found?.ageDays ?? FALLBACK_AGE_DAYS[next]);
+    setAnchored(found !== undefined);
+  }
+
+  const hideText = hideAfterDays > 0 ? shortPeriod(hideAfterDays) : null;
+  const eraseText = eraseAfterDays > 0 ? shortPeriod(eraseAfterDays) : null;
+
+  // The pill cross-fades: the previous label stays one beat, fading out under the new one.
+  const [seenState, setSeenState] = useState<typeof state>(state);
+  const [leaving, setLeaving] = useState<{ id: number; state: typeof state; label: string } | null>(
+    null
+  );
+  if (seenState !== state) {
+    setSeenState(state);
+    setLeaving({ id: (leaving?.id ?? 0) + 1, state: seenState, label: pill[seenState] });
+  }
+
+  const afterVisibility = hidden ? copy.valueHidden : copy.valueVisible;
+
   return (
     <section
       className={`record-card record-card--${state}`}
@@ -131,68 +203,167 @@ export function RecordCard({
       <SegmentedControl<Sample>
         aria-label={copy.sampleLabel}
         value={sample}
-        onChange={(next) => {
-          setSample(next);
-          if (next !== 'protected') {
-            touched.current = true;
-            setScrubDays(SAMPLE_AGE_DAYS[next]);
-          }
-        }}
+        onChange={pick}
         options={[
           { value: 'fresh', label: copy.sampleFresh },
           { value: 'old', label: copy.sampleOld },
-          { value: 'protected', label: copy.sampleProtected },
         ]}
       />
 
-      <p key={state} className="record-card__ribbon" data-testid="record-ribbon" role="status">
-        {isProtected ? <ShieldIcon /> : null}
-        {ribbon[state]}
-      </p>
+      {showSource && source !== undefined ? (
+        <p className="record-card__source" data-testid="record-source">
+          {interpolate(copy.basedOn, {
+            ref: source.ref,
+            age: source.ageDays <= 0 ? copy.today : shortPeriod(source.ageDays),
+          })}
+        </p>
+      ) : null}
 
-      <dl className="record-card__fields">
-        {personal.map((field, index) => {
-          const gone = erased;
-          return (
-            <div key={field.id} className="record-card__row">
-              <dt>{field.label}</dt>
-              <dd
+      <div className="record-card__timeline" data-testid="record-timeline">
+        <div className="record-card__track" aria-hidden="true">
+          {hidePct !== null ? (
+            <span
+              className="record-card__zone record-card__zone--hide"
+              style={{ left: `${hidePct}%`, right: erasePct !== null ? `${100 - erasePct}%` : 0 }}
+            />
+          ) : null}
+          {erasePct !== null ? (
+            <span
+              className="record-card__zone record-card__zone--erase"
+              style={{ left: `${erasePct}%`, right: 0 }}
+            />
+          ) : null}
+          <span className="record-card__dot" style={{ left: `${dotPct}%` }} />
+        </div>
+        <ul className="record-card__legend">
+          <li className="record-card__legend-item">
+            <i className="record-card__swatch record-card__swatch--now" aria-hidden="true" />
+            {copy.today}
+          </li>
+          {hideText !== null ? (
+            <li className="record-card__legend-item">
+              <i className="record-card__swatch record-card__swatch--hide" aria-hidden="true" />
+              {interpolate(copy.markHide, { age: hideText })}
+            </li>
+          ) : null}
+          {eraseText !== null ? (
+            <li className="record-card__legend-item">
+              <i className="record-card__swatch record-card__swatch--erase" aria-hidden="true" />
+              {interpolate(copy.markErase, { age: eraseText })}
+            </li>
+          ) : null}
+        </ul>
+      </div>
+
+      <div className="record-card__pillbox">
+        {leaving !== null ? (
+          <span
+            key={leaving.id}
+            className={`record-card__pill record-card__pill--${leaving.state} record-card__pill--out`}
+            aria-hidden="true"
+          >
+            <StateIcon state={iconFor(leaving.state)} />
+            {leaving.label}
+          </span>
+        ) : null}
+        <p
+          key={state}
+          className={`record-card__pill record-card__pill--${state}`}
+          data-testid="record-ribbon"
+          role="status"
+        >
+          <StateIcon state={iconFor(state)} />
+          {pill[state]}
+        </p>
+      </div>
+
+      <div className="record-card__rows" role="list" aria-label={copy.tableLabel}>
+        <div className={`record-card__row${hidden ? ' is-changed' : ''}`} role="listitem">
+          <span className="record-card__label">{copy.visibility}</span>
+          <span className="record-card__values">
+            <span data-testid="record-field-visibility" className="record-card__new">
+              {afterVisibility}
+            </span>
+            {hidden ? (
+              <span className="record-card__old" title={copy.valueVisible}>
+                {copy.valueVisible}
+              </span>
+            ) : null}
+          </span>
+        </div>
+
+        {personal.map((field, index) => (
+          <div
+            key={field.id}
+            className={`record-card__row${erased ? ' is-changed' : ''}`}
+            role="listitem"
+            style={{ '--i': index } as CSSProperties}
+          >
+            <span className="record-card__label">{field.label}</span>
+            <span className="record-card__values">
+              <span
+                key={erased ? 'erased' : 'kept'}
                 data-testid={`record-field-${field.id}`}
-                className={
-                  gone ? 'record-card__value record-card__value--redacted' : 'record-card__value'
-                }
-                style={{ '--i': index } as CSSProperties}
+                className={`record-card__new${erased ? ' record-card__new--redacted' : ''}`}
               >
-                {gone ? field.redacted : field.value}
-              </dd>
-            </div>
-          );
-        })}
-        {staying.map((field) => (
-          <div key={field.id} className="record-card__row record-card__row--stays">
-            <dt>{field.label}</dt>
-            <dd data-testid={`record-field-${field.id}`} className="record-card__value">
-              {field.value}
+                {erased ? field.redacted : field.value}
+              </span>
               {erased ? (
-                <span className="record-card__stays">
+                <span
+                  data-testid={`record-now-${field.id}`}
+                  className="record-card__old"
+                  title={field.value}
+                >
+                  {field.value}
+                </span>
+              ) : null}
+            </span>
+          </div>
+        ))}
+
+        {staying.map((field) => (
+          <div key={field.id} className="record-card__row" role="listitem">
+            <span className="record-card__label">{field.label}</span>
+            <span className="record-card__values record-card__values--kept">
+              <span data-testid={`record-field-${field.id}`} className="record-card__new">
+                {field.value}
+              </span>
+              {erased ? (
+                <span className="record-card__stays" title={copy.staysWhy}>
                   <LockIcon />
                   {copy.stays}
                 </span>
               ) : null}
-            </dd>
+            </span>
           </div>
         ))}
-      </dl>
+      </div>
 
-      {isProtected ? (
-        <p className="record-card__protected-note">{copy.protectedNote}</p>
-      ) : (
-        <div className="record-card__age">
-          <label htmlFor="record-card-age">
-            {handleAgeDays !== null && !holding
-              ? interpolate(copy.ageFromHandle, { age: ageLabel })
-              : interpolate(copy.ageLabel, { age: ageLabel })}
-          </label>
+      <footer className="record-card__age">
+        <div className="record-card__age-head">
+          <label htmlFor="record-card-age">{driven ? copy.ageFromHandle : copy.ageTitle}</label>
+          <output htmlFor="record-card-age" className="record-card__age-value">
+            {ageLabel}
+            {daysToPeriod(Math.round(age)).unit === 'days'
+              ? ''
+              : ` · ${interpolate(copy.daysShort, { n: Math.round(age) })}`}
+          </output>
+        </div>
+        <div className="record-card__scrub">
+          {hidePct !== null ? (
+            <i
+              className="record-card__cut record-card__cut--hide"
+              style={{ '--x': scrubPct(hideAfterDays) } as CSSProperties}
+              aria-hidden="true"
+            />
+          ) : null}
+          {erasePct !== null ? (
+            <i
+              className="record-card__cut record-card__cut--erase"
+              style={{ '--x': scrubPct(eraseAfterDays) } as CSSProperties}
+              aria-hidden="true"
+            />
+          ) : null}
           <input
             id="record-card-age"
             type="range"
@@ -204,31 +375,12 @@ export function RecordCard({
             data-testid="record-age"
             onChange={(event) => {
               touched.current = true;
+              setAnchored(false);
               setScrubDays(Number(event.target.value) * DAYS_PER_MONTH);
             }}
           />
-          <button
-            type="button"
-            className="button button--secondary button--sm record-card__hold"
-            data-testid="record-hold"
-            onPointerDown={() => setHolding(true)}
-            onPointerUp={() => setHolding(false)}
-            onPointerLeave={() => setHolding(false)}
-            onBlur={() => setHolding(false)}
-            onKeyDown={(event) => {
-              if (event.key === ' ') {
-                event.preventDefault();
-                setHolding(true);
-              }
-            }}
-            onKeyUp={(event) => {
-              if (event.key === ' ') setHolding(false);
-            }}
-          >
-            {copy.hold}
-          </button>
         </div>
-      )}
+      </footer>
     </section>
   );
 }

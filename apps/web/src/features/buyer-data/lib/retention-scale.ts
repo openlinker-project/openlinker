@@ -143,3 +143,24 @@ export function estimateZoneCounts(
   }
   return counts;
 }
+
+/**
+ * The age the example order opens on: the nearest month that still has orders
+ * past the erase cut (so the example shows the whole effect), else past the hide
+ * cut, else the oldest order, else today. It is the middle of that month.
+ */
+export function suggestExampleAge(
+  buckets: readonly { ageMonths: number; visible: number }[],
+  cuts: RetentionCuts
+): number {
+  const middle = (months: number): number =>
+    Math.min(BUYER_DATA_MAX_DAYS, months * DAYS_PER_MONTH + 15);
+  const live = buckets
+    .filter((bucket) => bucket.visible > 0)
+    .sort((a, b) => a.ageMonths - b.ageMonths);
+  const beyond = (cut: number): number | undefined =>
+    cut > 0 ? live.find((bucket) => middle(bucket.ageMonths) >= cut)?.ageMonths : undefined;
+  const month =
+    beyond(cuts.eraseAfterDays) ?? beyond(cuts.hideAfterDays) ?? live[live.length - 1]?.ageMonths;
+  return month === undefined ? 0 : middle(month);
+}

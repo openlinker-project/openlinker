@@ -2,7 +2,6 @@
  * RecordCard tests (#4289)
  */
 import { cleanup, fireEvent, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderWithProviders } from '../../../test/test-utils';
 import { RecordCard, type RecordCardProps } from './record-card';
@@ -23,32 +22,37 @@ function card(props: Partial<RecordCardProps> = {}): void {
 afterEach(cleanup);
 
 describe('RecordCard (#4289)', () => {
-  it('should look like an ordinary order before the hide cut', () => {
+  it('should show today and after-the-rules columns and look ordinary before the hide cut', () => {
     card({ defaultAgeDays: 30 });
     expect(screen.getByTestId('record-card')).toHaveAttribute('data-state', 'visible');
     expect(screen.getByTestId('record-ribbon')).toHaveTextContent('On the list');
-    expect(screen.getByTestId('record-field-email')).toHaveTextContent('john.smith@example.com');
+    expect(screen.getByTestId('record-timeline')).toHaveTextContent('Hidden after 3 mo.');
+    expect(screen.getByTestId('record-timeline')).toHaveTextContent('Erased after 1 yr');
+    expect(screen.queryByTestId('record-now-email')).not.toBeInTheDocument();
+    expect(screen.getByTestId('record-field-email')).toHaveTextContent('magdalena.wrona@');
   });
 
   it('should mark the order hidden past the hide cut and keep the data', () => {
     card({ defaultAgeDays: 120 });
     expect(screen.getByTestId('record-card')).toHaveAttribute('data-state', 'hidden');
     expect(screen.getByTestId('record-ribbon')).toHaveTextContent('can be restored');
-    expect(screen.getByTestId('record-field-email')).toHaveTextContent('john.smith@example.com');
+    expect(screen.getByTestId('record-field-visibility')).toHaveTextContent('hidden');
+    expect(screen.getByTestId('record-field-email')).toHaveTextContent('magdalena.wrona@');
   });
 
-  it('should redact the personal fields past the erase cut and lock the rows that stay', () => {
+  it('should strike the personal fields today and redact them after the erase cut', () => {
     card({ defaultAgeDays: 400 });
     expect(screen.getByTestId('record-card')).toHaveAttribute('data-state', 'hidden-erased');
     expect(screen.getByTestId('record-field-buyer')).toHaveTextContent('BUYER-000123');
     for (const id of ['email', 'phone', 'address', 'note', 'taxId']) {
       expect(screen.getByTestId(`record-field-${id}`)).toHaveTextContent('█████');
+      expect(screen.getByTestId(`record-now-${id}`)).toHaveClass('record-card__old');
     }
     expect(screen.getByTestId('record-field-amount')).toHaveTextContent('249.00 PLN');
-    expect(screen.getByTestId('record-field-invoice')).toHaveTextContent(
-      'stays: needed for the books'
-    );
-    expect(screen.getByTestId('record-field-orderRef')).toHaveTextContent('OL-91240');
+    expect(
+      screen.getByTestId('record-field-invoice').closest('[role="listitem"]')
+    ).toHaveTextContent('stays');
+    expect(screen.getByTestId('record-field-orderRef')).toHaveTextContent('6c1f0e3a');
   });
 
   it('should keep the order on the list in personal-data mode with hiding off', () => {
@@ -71,23 +75,5 @@ describe('RecordCard (#4289)', () => {
     card({ defaultAgeDays: 0 });
     fireEvent.change(screen.getByTestId('record-age'), { target: { value: '5' } });
     expect(screen.getByTestId('record-card')).toHaveAttribute('data-state', 'hidden');
-  });
-
-  it('should snap back to today while the hold button is pressed', () => {
-    card({ defaultAgeDays: 400 });
-    const hold = screen.getByTestId('record-hold');
-    fireEvent.pointerDown(hold);
-    expect(screen.getByTestId('record-card')).toHaveAttribute('data-state', 'visible');
-    fireEvent.pointerUp(hold);
-    expect(screen.getByTestId('record-card')).toHaveAttribute('data-state', 'hidden-erased');
-  });
-
-  it('should show the protected example untouched by the handles', async () => {
-    card({ defaultAgeDays: 0, handleAgeDays: 900 });
-    await userEvent.click(screen.getByRole('radio', { name: 'Protected' }));
-    expect(screen.getByTestId('record-card')).toHaveAttribute('data-state', 'protected');
-    expect(screen.getByTestId('record-ribbon')).toHaveTextContent('Skipped: open return');
-    expect(screen.getByTestId('record-field-email')).toHaveTextContent('john.smith@example.com');
-    expect(screen.queryByTestId('record-age')).not.toBeInTheDocument();
   });
 });

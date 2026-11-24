@@ -23,12 +23,12 @@ import { useBuyerDataAgeHistogram } from '../hooks/use-buyer-data-age-histogram'
 import { useBuyerDataFollowersHistogram } from '../hooks/use-buyer-data-followers';
 import type { BuyerDataPlan } from '../hooks/use-buyer-data-plan';
 import { validateBuyerDataRules } from '../lib/buyer-data-config';
-import { estimateZoneCounts, type RetentionCuts } from '../lib/retention-scale';
+import { estimateZoneCounts, suggestExampleAge, type RetentionCuts } from '../lib/retention-scale';
 import { AgeStrip, type StripCounts } from './age-strip';
 import { PeriodInput } from './period-input';
 import { PlanPanel } from './plan-panel';
 import { RecordCard } from './record-card';
-import { TickingNumber } from './ticking-number';
+import { OdometerNumber } from './odometer-number';
 
 export interface RetentionStudioProps {
   rules: BuyerDataRules;
@@ -144,13 +144,12 @@ export function RetentionStudio({
     return null;
   }, [plan, histogram, rules]);
 
-  const defaultAge = useMemo(() => {
-    if (!full) return 730;
-    const oldest = [...(histogram?.buckets ?? [])]
-      .filter((bucket) => bucket.visible > 0)
-      .sort((a, b) => b.ageMonths - a.ageMonths)[0];
-    return oldest === undefined ? 0 : Math.min(3650, oldest.ageMonths * 30 + 15);
-  }, [full, histogram]);
+  // The example opens on an age that shows the rules doing something: the nearest month
+  // with orders past the erase cut, else past the hide cut, else the oldest order.
+  const defaultAge = useMemo(
+    () => (full ? suggestExampleAge(histogram?.buckets ?? [], rules) : 730),
+    [full, histogram, rules]
+  );
 
   function setCuts(cuts: RetentionCuts): void {
     onChange({ ...rules, ...cuts });
@@ -214,15 +213,17 @@ export function RetentionStudio({
       mode={rules.mode}
       handleAgeDays={activeAge}
       defaultAgeDays={defaultAge}
+      plan={plan}
     />
   );
-  const planPanel =
-    plan !== null ? (
-      <PlanPanel plan={plan} mode={rules.mode} invalid={issues.length > 0} note={planNote} />
-    ) : null;
+  const planProps = { plan, mode: rules.mode, invalid: issues.length > 0, note: planNote };
+  const planPanel = plan !== null ? <PlanPanel {...planProps} plan={plan} /> : null;
+  // In the rail the figures stay pinned and the explanation scrolls with the example.
+  const planGlance = plan !== null ? <PlanPanel {...planProps} plan={plan} part="glance" /> : null;
+  const planDetail = plan !== null ? <PlanPanel {...planProps} plan={plan} part="detail" /> : null;
 
   const summaryNumber = (n: number | undefined): ReactNode =>
-    n === undefined ? '–' : <TickingNumber value={n} format={format.number} />;
+    n === undefined ? '–' : <OdometerNumber value={n} format={format.number} />;
 
   return (
     <div
@@ -252,19 +253,24 @@ export function RetentionStudio({
           <>
             {periodInputs}
             {modeControl}
-            {recordCard}
           </>
         )}
+        {full ? null : recordCard}
         {footer}
       </div>
 
       {full ? (
         <aside className="retention-studio__side" data-testid="retention-rail">
-          {railHead !== undefined ? (
-            <div className="retention-studio__rail-head">{railHead}</div>
-          ) : null}
-          {planPanel !== null ? (
-            <div className="retention-studio__rail-plan">{planPanel}</div>
+          <div className="retention-studio__rail-top">
+            {railHead !== undefined ? (
+              <div className="retention-studio__rail-head">{railHead}</div>
+            ) : null}
+            {planGlance !== null ? (
+              <div className="retention-studio__rail-plan">{planGlance}</div>
+            ) : null}
+          </div>
+          {planDetail !== null ? (
+            <div className="retention-studio__rail-detail">{planDetail}</div>
           ) : null}
           <div className="retention-studio__rail-card">{recordCard}</div>
         </aside>

@@ -18,6 +18,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
   type ReactElement,
@@ -27,7 +28,8 @@ import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import { BUYER_DATA_MIN_DAYS } from '../lib/buyer-data-config';
 import { useShortPeriod } from '../hooks/use-short-period';
-import { TickingNumber } from './ticking-number';
+import { waveDelayMs, barRiseDelayMs } from '../lib/motion';
+import { OdometerNumber } from './odometer-number';
 import type { BuyerDataAgeHistogram } from '../api/buyer-data.types';
 import {
   AXIS_MONTHS,
@@ -297,6 +299,15 @@ export function AgeStrip({
     600
   );
 
+  // The bar column a moved cut-off sits over: bars re-tint in a wave spreading from there.
+  const [seenCuts, setSeenCuts] = useState({ hide: hideAfterDays, erase: eraseAfterDays });
+  const [waveOrigin, setWaveOrigin] = useState<number | null>(null);
+  if (seenCuts.hide !== hideAfterDays || seenCuts.erase !== eraseAfterDays) {
+    const movedDays = seenCuts.hide !== hideAfterDays ? hideAfterDays : eraseAfterDays;
+    setSeenCuts({ hide: hideAfterDays, erase: eraseAfterDays });
+    setWaveOrigin(movedDays > 0 ? Math.round(movedDays / DAYS_PER_MONTH) : null);
+  }
+
   const bands = useMemo(() => {
     const edges = [0, ...RETENTION_DETENTS];
     return edges.map((from, index) => {
@@ -328,7 +339,7 @@ export function AgeStrip({
       <>
         <strong className={counts.calculating ? 'age-strip__stat--busy' : undefined}>
           {counts.estimated || counts.calculating ? '≈ ' : ''}
-          <TickingNumber value={n} format={format.number} />
+          <OdometerNumber value={n} format={format.number} />
         </strong>
         {already !== undefined && already > 0 ? (
           <small className="age-strip__already">
@@ -399,22 +410,29 @@ export function AgeStrip({
                     style={{ left: `${(erasePct / AXIS_PCT) * 100}%`, right: 0 }}
                   />
                 ) : null}
-                <div className="age-strip__bars">
+                <div className="age-strip__bars" key={histogram?.oldestPlacedAt ?? 'none'}>
                   {columns.map((n, month) => {
                     const zone = zoneForAge(monthToAgeDays(month), cuts);
                     return (
                       <span
                         key={month}
                         className="age-strip__col"
+                        style={{ '--i': barRiseDelayMs(month) } as CSSProperties}
                         title={interpolate(copy.barTitle, {
                           age: shortPeriod(Math.max(month, 1) * DAYS_PER_MONTH),
                           n: format.number(n),
                         })}
                       >
                         <span
-                          className={`age-strip__bar age-strip__bar--${zone}`}
+                          key={zone}
+                          className={`age-strip__bar age-strip__bar--${zone}${waveOrigin !== null ? ' age-strip__bar--wave' : ''}`}
                           data-zone={zone}
-                          style={{ height: `${n === 0 ? 0 : Math.max(4, (n / max) * 100)}%` }}
+                          style={
+                            {
+                              height: `${n === 0 ? 0 : Math.max(4, (n / max) * 100)}%`,
+                              '--d': waveDelayMs(month, waveOrigin),
+                            } as CSSProperties
+                          }
                         />
                       </span>
                     );

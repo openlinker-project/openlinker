@@ -12,6 +12,17 @@ describe('Switch (#4289)', () => {
     expect(sw).toHaveAttribute('aria-checked', 'true');
   });
 
+  it('should keep the label outside the accent track so only the track is coloured', () => {
+    render(<Switch checked label="Turn on" onCheckedChange={vi.fn()} />);
+    const sw = screen.getByRole('switch');
+    const track = sw.querySelector('.ol-switch__track');
+    expect(sw).toHaveClass('ol-switch--on');
+    expect(track).not.toBeNull();
+    expect(track).not.toHaveTextContent('Turn on');
+    expect(screen.getByText('Turn on')).toHaveClass('ol-switch__label');
+    expect(track?.contains(screen.getByText('Turn on'))).toBe(false);
+  });
+
   it('should flip on click and on Space', async () => {
     const onChange = vi.fn();
     render(<Switch checked={false} label="Rules" onCheckedChange={onChange} />);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  suggestExampleAge,
   AXIS_PCT,
   daysToPct,
   estimateZoneCounts,
@@ -80,5 +81,16 @@ describe('retention scale (#4289)', () => {
       hidden: 7,
       erased: 3,
     });
+  });
+});
+
+describe('suggestExampleAge (#4289)', () => {
+  const buckets = [3, 8, 20].map((ageMonths) => ({ ageMonths, visible: 5 }));
+
+  it('should prefer an order past the erase cut, then past the hide cut, then the oldest', () => {
+    expect(suggestExampleAge(buckets, { hideAfterDays: 90, eraseAfterDays: 365 })).toBe(615);
+    expect(suggestExampleAge(buckets, { hideAfterDays: 90, eraseAfterDays: 0 })).toBe(105);
+    expect(suggestExampleAge(buckets, { hideAfterDays: 0, eraseAfterDays: 0 })).toBe(615);
+    expect(suggestExampleAge([], { hideAfterDays: 90, eraseAfterDays: 365 })).toBe(0);
   });
 });

@@ -15,7 +15,7 @@ import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Infotip } from '../../../shared/ui/infotip';
 import type { BuyerDataEraseMode } from '../api/buyer-data.types';
 import type { BuyerDataPlan } from '../hooks/use-buyer-data-plan';
-import { TickingNumber } from './ticking-number';
+import { OdometerNumber } from './odometer-number';
 
 export interface PlanPanelProps {
   plan: BuyerDataPlan;
@@ -24,9 +24,17 @@ export interface PlanPanelProps {
   invalid: boolean;
   /** Whose orders these numbers are about, when that is not obvious. */
   note?: string;
+  /** The rail pins the `glance` (title, figures, bar) and scrolls the `detail`; the sheet shows `all`. */
+  part?: 'all' | 'glance' | 'detail';
 }
 
-export function PlanPanel({ plan, mode, invalid, note }: PlanPanelProps): ReactElement {
+export function PlanPanel({
+  plan,
+  mode,
+  invalid,
+  note,
+  part = 'all',
+}: PlanPanelProps): ReactElement {
   const copy = useMessages('buyer-data').plan;
   const format = useFormat();
   const data = plan.data;
@@ -54,11 +62,11 @@ export function PlanPanel({ plan, mode, invalid, note }: PlanPanelProps): ReactE
     data === undefined ? (
       <span className="plan-panel__skeleton" aria-label={copy.calculating} />
     ) : (
-      <TickingNumber value={n} format={format.number} />
+      <OdometerNumber value={n} format={format.number} delta />
     );
 
-  return (
-    <aside className="plan-panel" aria-labelledby="plan-panel-title" data-testid="plan-panel">
+  const glance = (
+    <>
       <header className="plan-panel__head">
         <h4 id="plan-panel-title">{copy.title}</h4>
         <span className="plan-panel__status" role="status" data-testid="plan-status">
@@ -119,9 +127,19 @@ export function PlanPanel({ plan, mode, invalid, note }: PlanPanelProps): ReactE
             style={{ width: `${(erased / whole) * 100}%` }}
           />
         </div>
+      </div>
+    </>
+  );
 
+  const detail = (
+    <>
+      <div className="plan-panel__body">
         {data !== undefined ? (
-          <p className="plan-panel__sentence" data-testid="plan-sentence">
+          <p
+            key={`${stays}-${hidden}-${erased}-${mode}`}
+            className="plan-panel__sentence"
+            data-testid="plan-sentence"
+          >
             {interpolate(mode === 'whole-order' ? copy.sentenceWhole : copy.sentence, {
               total: format.number(data.totalOrders),
               stays: format.number(stays),
@@ -142,6 +160,7 @@ export function PlanPanel({ plan, mode, invalid, note }: PlanPanelProps): ReactE
               </svg>
               {interpolate(copy.skipped, { n: format.number(data.skippedProtected) })}
             </strong>
+            <p className="plan-panel__skipped-why">{copy.skippedWhy}</p>
             {reasons.length > 0 ? (
               <ul>
                 {reasons.map((reason) => (
@@ -173,6 +192,25 @@ export function PlanPanel({ plan, mode, invalid, note }: PlanPanelProps): ReactE
           <li>{copy.untouchedBackups}</li>
         </ul>
       </div>
+    </>
+  );
+
+  if (part === 'detail') {
+    return (
+      <div className="plan-panel plan-panel--detail" data-testid="plan-detail">
+        {detail}
+      </div>
+    );
+  }
+
+  return (
+    <aside
+      className={`plan-panel${plan.calculating ? ' plan-panel--busy' : ''}`}
+      aria-labelledby="plan-panel-title"
+      data-testid="plan-panel"
+    >
+      {glance}
+      {part === 'all' ? detail : null}
     </aside>
   );
 }
