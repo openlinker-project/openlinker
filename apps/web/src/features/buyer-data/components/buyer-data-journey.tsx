@@ -36,9 +36,9 @@ export function BuyerDataJourney({ rules }: { rules: BuyerDataRules }): ReactEle
   };
 
   return (
-    <div data-testid="buyer-data-journey">
+    <div className="buyer-data-journey" data-testid="buyer-data-journey">
       <p className="rate-limit-section__help">{copy.hint}</p>
-      <div className="kpi-grid" role="list" aria-label={copy.label}>
+      <div className="buyer-data-journey__grid" role="list" aria-label={copy.label}>
         {stages.map(({ stage, when }) => {
           const erased = stage === 'erased';
           const state =
