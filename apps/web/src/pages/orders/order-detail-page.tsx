@@ -189,6 +189,13 @@ export function OrderDetailPage(): ReactElement {
   // server answers `ORDER_WORK_ACCEPTED_NEEDS_ACK` instead. The buyer-note block
   // (B-15) reads the same query to decide whether the bench line applies.
   const fulfilmentTasksQuery = useOrderFulfillmentTasksQuery(internalOrderId);
+  // The Packing tab is for orders OpenLinker packs or holds: routing on, fulfilment tasks, a hold (now or before) or an order already packed.
+  const showPackingTab =
+    omsRouting === 'on' ||
+    (fulfilmentTasksQuery.data?.total ?? 0) > 0 ||
+    Boolean(query.data?.activeHold) ||
+    (query.data?.holdHistory?.length ?? 0) > 0 ||
+    Boolean(query.data?.packedAt);
   // #3541 - the cancel request and its credit proposal come from the server, so
   // the notice, "Review correction" and the timeline survive a reload and show
   // for a second admin. Refunds the operator confirmed decide what is still owed.
@@ -258,11 +265,18 @@ export function OrderDetailPage(): ReactElement {
   const hasOrder = query.data !== undefined;
   // The selected tab is URL state (`?tab=`); a legacy anchor or a
   // `retryShipmentId` link picks the tab that holds its target (#4286).
-  const activeTab: OrderDetailTabId = resolveOrderDetailTab({
+  const resolvedTab: OrderDetailTabId = resolveOrderDetailTab({
     tabParam: searchParams.get('tab'),
     hash: location.hash,
     hasRetryShipmentId: retryShipmentId !== undefined,
   });
+  const activeTab: OrderDetailTabId =
+    resolvedTab === 'packing' && !showPackingTab ? DEFAULT_ORDER_DETAIL_TAB : resolvedTab;
+  // An anchor in a tab that is not shown lives on Overview instead.
+  const tabForTarget = (anchorId: string): OrderDetailTabId | null => {
+    const tab = tabForAnchor(anchorId);
+    return tab === 'packing' && !showPackingTab ? DEFAULT_ORDER_DETAIL_TAB : tab;
+  };
   const handleTabChange = useCallback(
     (value: string): void => {
       const next = new URLSearchParams(searchParams);
@@ -276,7 +290,7 @@ export function OrderDetailPage(): ReactElement {
   // mounted but a hidden one cannot be scrolled to.
   const goToAnchor = useCallback(
     (targetId: string): void => {
-      const tab = tabForAnchor(targetId);
+      const tab = tabForTarget(targetId);
       if (tab && tab !== activeTab) handleTabChange(tab);
       requestAnimationFrame(() => {
         document.getElementById(targetId)?.scrollIntoView({ block: 'start' });
@@ -288,7 +302,7 @@ export function OrderDetailPage(): ReactElement {
     if (!hasOrder) return;
     const targetId = location.hash.replace(/^#/, '');
     if (!targetId) return;
-    const anchorTab = tabForAnchor(targetId);
+    const anchorTab = tabForTarget(targetId);
     // A `?tab=` already in the URL wins at resolve time, so an in-page anchor
     // link (e.g. "view raw") must switch the tab itself before it can scroll.
     if (anchorTab && anchorTab !== activeTab) {
@@ -637,7 +651,11 @@ export function OrderDetailPage(): ReactElement {
     fulfillment,
   });
   const nextStep = issues[0] ?? null;
-  const issueTabs = new Set(issues.filter((i) => i.tone !== 'info').map((i) => i.tab));
+  const issueTabs = new Set(
+    issues
+      .filter((i) => i.tone !== 'info')
+      .map((i) => (i.tab === 'packing' && !showPackingTab ? DEFAULT_ORDER_DETAIL_TAB : i.tab)),
+  );
   const tabLabels: Record<OrderDetailTabId, string> = {
     overview: copy.tabs.overview,
     shipping: copy.tabs.shipping,
@@ -649,7 +667,77 @@ export function OrderDetailPage(): ReactElement {
     technical: copy.tabs.technical,
   };
 
-  const tabEntries: OrderDetailTabEntry[] = [
+  // Packing and hold are a tab only where OpenLinker takes part in packing; elsewhere they stay on Overview (#4286).
+  const packingPanels = (
+    <>
+          {/* Packing is a fact about EVERY order, so this sits in the always
+              rendered left stack rather than inside the capability-gated
+              shipment panel — an order with no shipping-capable connection
+              still gets packed. */}
+          {/* #2118 - hidden for an order routed to a destination the operator
+              declared as packing and shipping by itself. Display-only: the
+              packed endpoint still accepts a write, so that system can still
+              report the order as packed. */}
+          {/* #3544 - the anchor an edit refusal's "Mark as not packed" remedy scrolls to. */}
+          <div id="packing" tabIndex={-1}>
+            {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+              <OrderPackedControl
+                internalOrderId={internalOrderId}
+                packedAt={order.packedAt}
+                packedByUserId={order.packedByUserId}
+              />
+            )}
+          </div>
+
+          {/* #2342 — the list DISPLAYS a hold, the detail page ACTS on it
+              (#2081 rule 3). Beside the packed control for the same reason it
+              sits in the always-rendered stack: a hold is a fact about every
+              order, whatever capabilities its connections declare. */}
+          <OrderHoldPanel
+            // Remount per order. `resumeFailure` is session-local state inside
+            // the panel and was cleared only by a release; navigating to a
+            // CACHED next order re-renders without remounting (the page
+            // early-returns a skeleton on `isLoading` only), so the "did not
+            // start moving again" alert leaked onto an order that was never
+            // held — a false claim about someone else's order.
+            key={order.internalOrderId}
+            internalOrderId={internalOrderId}
+            activeHold={order.activeHold}
+            holdHistory={order.holdHistory}
+          />
+
+      {/* #2411 — work-grain holds. Full width and BELOW the grid: a routed
+          order can carry several fulfilment tasks, each with its own lines and
+          holds, which is more than a rail column can hold without wrapping into
+          nonsense on a tablet. Keyed per order so the panel's dialog state
+          cannot leak onto a cached next order (the OrderHoldPanel precedent).
+          With routing on, an order with no fulfilment tasks SAYS so — what a
+          reader needs when an order was not routed. With routing off (or its
+          state not known) the section appears only for an order that has tasks
+          from when routing was on (#3505); it is never hidden outright, since
+          those tasks still carry actions. */}
+      {/* The key is namespaced: `OrderReturnsPanel` below is keyed on the same
+          order id, and two siblings sharing a key let React duplicate this
+          panel's DOM once it can render nothing (`hideWhenEmpty`). */}
+      {/* #3557 - the routing decision (stuck / resolved / healthy). Read only.
+          Not even queried unless routing is on. Namespaced key, as above. */}
+      <RoutingDecisionPanel
+        key={`routing-decision:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        orderBlockReason={order.fulfillmentBlockReason}
+        enabled={omsRouting === 'on'}
+      />
+
+      <OrderFulfillmentTasksPanel
+        key={`fulfilment-tasks:${order.internalOrderId}`}
+        internalOrderId={internalOrderId}
+        hideWhenEmpty={omsRouting !== 'on'}
+      />
+
+    </>
+  );
+
+  const allTabEntries: OrderDetailTabEntry[] = [
     { id: 'overview', label: copy.tabs.overview, flag: issueTabs.has('overview') },
     { id: 'shipping', label: copy.tabs.shipping, count: shipmentsQuery.data?.items.length, flag: issueTabs.has('shipping') },
     {
@@ -664,6 +752,7 @@ export function OrderDetailPage(): ReactElement {
     { id: 'history', label: copy.tabs.history },
     { id: 'technical', label: copy.tabs.technical, count: failedDestinations.length + snapshot.parseWarnings.length, flag: issueTabs.has('technical') },
   ];
+  const tabEntries = allTabEntries.filter((tab) => tab.id !== 'packing' || showPackingTab);
 
   const canGenerateLabel =
     fulfillment === 'not-shipped' && snapshot.status !== 'cancelled' && hasShippingCapability;
@@ -1007,6 +1096,7 @@ export function OrderDetailPage(): ReactElement {
             sourceName={cancelSourceName}
             amountLabel={cancelTotalLabel}
           />
+          {showPackingTab ? null : packingPanels}
           </div>
           <div className="order-detail__overview-side">
           <OrderDeliveryPanel
@@ -1054,72 +1144,11 @@ export function OrderDetailPage(): ReactElement {
 
       </TabsContent>
 
-      <TabsContent value="packing" forceMount className="order-detail__tab order-detail__split">
-          {/* Packing is a fact about EVERY order, so this sits in the always
-              rendered left stack rather than inside the capability-gated
-              shipment panel — an order with no shipping-capable connection
-              still gets packed. */}
-          {/* #2118 - hidden for an order routed to a destination the operator
-              declared as packing and shipping by itself. Display-only: the
-              packed endpoint still accepts a write, so that system can still
-              report the order as packed. */}
-          {/* #3544 - the anchor an edit refusal's "Mark as not packed" remedy scrolls to. */}
-          <div id="packing" tabIndex={-1}>
-            {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
-              <OrderPackedControl
-                internalOrderId={internalOrderId}
-                packedAt={order.packedAt}
-                packedByUserId={order.packedByUserId}
-              />
-            )}
-          </div>
-
-          {/* #2342 — the list DISPLAYS a hold, the detail page ACTS on it
-              (#2081 rule 3). Beside the packed control for the same reason it
-              sits in the always-rendered stack: a hold is a fact about every
-              order, whatever capabilities its connections declare. */}
-          <OrderHoldPanel
-            // Remount per order. `resumeFailure` is session-local state inside
-            // the panel and was cleared only by a release; navigating to a
-            // CACHED next order re-renders without remounting (the page
-            // early-returns a skeleton on `isLoading` only), so the "did not
-            // start moving again" alert leaked onto an order that was never
-            // held — a false claim about someone else's order.
-            key={order.internalOrderId}
-            internalOrderId={internalOrderId}
-            activeHold={order.activeHold}
-            holdHistory={order.holdHistory}
-          />
-
-      {/* #2411 — work-grain holds. Full width and BELOW the grid: a routed
-          order can carry several fulfilment tasks, each with its own lines and
-          holds, which is more than a rail column can hold without wrapping into
-          nonsense on a tablet. Keyed per order so the panel's dialog state
-          cannot leak onto a cached next order (the OrderHoldPanel precedent).
-          With routing on, an order with no fulfilment tasks SAYS so — what a
-          reader needs when an order was not routed. With routing off (or its
-          state not known) the section appears only for an order that has tasks
-          from when routing was on (#3505); it is never hidden outright, since
-          those tasks still carry actions. */}
-      {/* The key is namespaced: `OrderReturnsPanel` below is keyed on the same
-          order id, and two siblings sharing a key let React duplicate this
-          panel's DOM once it can render nothing (`hideWhenEmpty`). */}
-      {/* #3557 - the routing decision (stuck / resolved / healthy). Read only.
-          Not even queried unless routing is on. Namespaced key, as above. */}
-      <RoutingDecisionPanel
-        key={`routing-decision:${order.internalOrderId}`}
-        internalOrderId={order.internalOrderId}
-        orderBlockReason={order.fulfillmentBlockReason}
-        enabled={omsRouting === 'on'}
-      />
-
-      <OrderFulfillmentTasksPanel
-        key={`fulfilment-tasks:${order.internalOrderId}`}
-        internalOrderId={internalOrderId}
-        hideWhenEmpty={omsRouting !== 'on'}
-      />
-
-      </TabsContent>
+      {showPackingTab ? (
+        <TabsContent value="packing" forceMount className="order-detail__tab order-detail__split">
+          {packingPanels}
+        </TabsContent>
+      ) : null}
 
       <TabsContent value="documents" forceMount className="order-detail__tab order-detail__split">
           {/* #2160: one unified "Sales document" slot replaces the two

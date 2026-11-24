@@ -13,10 +13,10 @@
  */
 import { test, expect } from '../../src/fixtures/test';
 
+// Packing is a tab only where OpenLinker takes part in packing (routing on, tasks, a hold or a packed order), so it is not required here.
 const TAB_LABELS = [
   'Overview',
   'Shipping',
-  'Packing',
   'Sales documents',
   'Returns',
   'Notes',
@@ -69,7 +69,6 @@ test.describe('orders: detail tabs (#4286)', () => {
 
   for (const [anchor, tab] of [
     ['shipment', 'Shipping'],
-    ['packing', 'Packing'],
     ['invoicing', 'Sales documents'],
     ['order-raw-snapshot', 'Technical'],
   ] as const) {
@@ -81,6 +80,13 @@ test.describe('orders: detail tabs (#4286)', () => {
       );
     });
   }
+
+  test('opens the packing section for the legacy #packing anchor, on its own tab or on Overview', async ({ page }) => {
+    await page.goto(`/orders/${orderId}#packing`);
+    await expect(page.locator('#packing')).toBeAttached();
+    const active = page.locator('[role="tab"][data-state="active"]');
+    await expect(active).toHaveText(/Packing|Overview/);
+  });
 
   test('does not scroll sideways at a phone width, on any tab', async ({ page }) => {
     await page.setViewportSize({ width: 400, height: 900 });

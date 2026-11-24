@@ -891,6 +891,26 @@ describe('OrderDetailPage — buyer tax id in the Summary block (#3180)', () => 
       expect(await screen.findByRole('heading', { name: 'Fulfilment tasks' })).toBeInTheDocument();
       expect(await screen.findByText(/No fulfilment tasks/)).toBeInTheDocument();
     });
+
+    it('should show the Packing tab when fulfilment routing is on (#4286)', async () => {
+      const listByOrder = vi.fn().mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 });
+      renderWithRouting('resolved', listByOrder);
+      await screen.findByText('ol_order_abc123');
+      expect(await screen.findByRole('tab', { name: /Packing/ })).toBeInTheDocument();
+    });
+
+    it('should hide the Packing tab and keep packing and hold on Overview when OpenLinker takes no part in packing (#4286)', async () => {
+      const listByOrder = vi.fn().mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 });
+      renderWithRouting('default', listByOrder);
+      await screen.findByText('ol_order_abc123');
+      await waitFor(() => {
+        expect(listByOrder).toHaveBeenCalled();
+      });
+      expect(screen.queryByRole('tab', { name: /Packing/ })).toBeNull();
+      // The packing control and the hold panel are still on the page, inside Overview.
+      const overview = document.getElementById('panel-overview') ?? document.body;
+      expect(overview.querySelector('#packing')).not.toBeNull();
+    });
   });
 });
 
@@ -910,14 +930,13 @@ describe('OrderDetailPage - tabs (#4286)', () => {
     );
   }
 
-  it('should open the Overview tab by default and list every section as a tab', async () => {
+  it('should open the Overview tab by default and list every section as a tab, without Packing when OpenLinker takes no part in packing', async () => {
     renderAt('/orders/ol_order_abc123');
     await screen.findByText('ol_order_abc123');
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab');
     expect(tabs.map((t) => t.textContent?.replace(/\d+$/, ''))).toEqual([
       'Overview',
       'Shipping',
-      'Packing',
       'Sales documents',
       'Returns',
       'Notes',
