@@ -40424,3 +40424,19 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .order-detail__tab-list { -webkit-mask-image: linear-gradient(to right, #000 85%, transparent); mask-image: linear-gradient(to right, #000 85%, transparent); }
 }
 @media (max-width: 960px) { .order-detail__overview-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── Order detail: geometry taken from the approved mockup (#4286) ───────
+   Measured on docs/plans/mockups/order-detail-v3.html at 1440 px: content column
+   1124 px, header radius 18, title 28/600, tabs 44 px tall with 10/14 padding and
+   a 2 px gap, panel top padding 22 and gap 28, cards radius 12 with 20/24/22 padding. */
+.page-layout:has(.order-header--card) { max-width: 1124px; margin-inline: auto; }
+.order-header--card { border-radius: 18px; }
+.order-header__title { font-size: 1.75rem; font-weight: 600; line-height: 1.1; }
+.order-detail__tab-list { gap: 2px; }
+.order-detail__tab-list .tabs__trigger { padding: 10px 14px; font-size: 0.90625rem; font-weight: 500; min-height: 44px; }
+.order-detail__tab[data-state='active'] { gap: 28px; padding-top: 22px; }
+.order-detail__tab > *:not(:empty):not(.order-detail__parse-warning-row),
+.order-detail__overview-main > *:not(:empty), .order-detail__overview-side > *:not(:empty) { border-radius: 12px; padding: 20px 24px 22px; }
+.order-detail__overview-main, .order-detail__overview-side { gap: 28px; }
+.order-detail__overview-grid { gap: 28px; }
+@media (max-width: 760px) { .order-header__title { font-size: 1.375rem; } }
