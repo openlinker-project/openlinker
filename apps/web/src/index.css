@@ -40957,7 +40957,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   }
   /* The incoming panel enters from the side its tab lies on (--guided-dir is set from tab order). */
   .tabs--guided > .tabs__content[data-state='active'] {
-    animation: guided-panel-in 420ms var(--ease-out) 30ms both;
+    animation: guided-panel-in 420ms var(--ease-out) both;
   }
   /* Its first four children follow one after another, 40 ms apart. */
   .tabs--guided > .tabs__content[data-state='active'] > :nth-child(-n + 4) {
@@ -41042,12 +41042,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   from { transform: scale(0); opacity: 0.9; }
   to { transform: scale(1); opacity: 0; }
 }
+/* Starts part-visible: the outgoing panel unmounts at once, so a panel that began at
+   opacity 0 left the page blank for a beat between the two. */
 @keyframes guided-panel-in {
-  from { opacity: 0; transform: translateX(calc(var(--guided-dir, 0) * 24px)); }
+  from { opacity: 0.35; transform: translateX(calc(var(--guided-dir, 0) * 24px)); }
   to { opacity: 1; transform: none; }
 }
 @keyframes guided-child-in {
-  from { opacity: 0; transform: translateY(var(--space-2)); }
+  from { opacity: 0.2; transform: translateY(var(--space-2)); }
   to { opacity: 1; transform: none; }
 }
 @keyframes guided-dialog-in {
