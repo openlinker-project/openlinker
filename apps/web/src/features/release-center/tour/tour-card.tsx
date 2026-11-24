@@ -591,7 +591,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
           </p>
         </div>
         {!showcase && canConfig && spec ? (
-          <div className="tour-card__choices" role="group" aria-label={stepCopy.tourTitle} inert={searching}>
+          <div className="tour-card__choices" role="group" aria-label={stepCopy.tourTitle} inert={searching || undefined}>
             {spec.choices.map((choice) => (
               <button
                 key={choice.id}
@@ -637,7 +637,7 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
             {tour.requiredReason}
           </p>
         ) : null}
-        <div className="tour-card__footer" inert={searching}>
+        <div className="tour-card__footer" inert={searching || undefined}>
           {showcase ? (
             <Button tone="ghost" className="button--sm" onClick={() => setConfirmSkip(true)}>
               {tour.skipShowcase}

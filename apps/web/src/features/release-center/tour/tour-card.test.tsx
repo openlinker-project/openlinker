@@ -74,11 +74,11 @@ describe('TourCard', () => {
     expect(screen.getByText(/^Step 1 of 2$/)).toBeInTheDocument();
   });
 
-  it('should not block a viewer and should show the administrator chip', async () => {
+  it('should not block a viewer and should show the view-mode chip', async () => {
     setup({ ...admin, role: 'viewer', permissions: ['fulfillment:read'] });
     fireEvent.click(screen.getByText('start'));
     await screen.findByRole('region', { name: 'Guided tour' });
-    expect(screen.getByText('Needs an administrator')).toBeInTheDocument();
+    expect(screen.getByText('For your information')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText(/^Step 2 of 2$/)).toBeInTheDocument();
   });
