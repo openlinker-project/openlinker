@@ -120,9 +120,12 @@ public static class OrdersEndpoints
             if (since is { Length: > 0 } && !TryParseCursor(since, out _, out _))
                 return Fail("bad_request", $"'since' is not a parseable cursor: '{since}'.", 400);
 
+            if (!BridgeKeys.TryValidateFeedLimit(limit, out var pageSize, out var limitError))
+                return Fail("bad_request", limitError!, 400);
+
             try
             {
-                var page = await ListOrderFeed(since, limit ?? 50);
+                var page = await ListOrderFeed(since, pageSize);
                 return Ok(page);
             }
             catch (Exception ex)

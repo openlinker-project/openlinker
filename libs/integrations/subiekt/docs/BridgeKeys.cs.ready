@@ -54,6 +54,21 @@ public static class BridgeKeys
             && int.TryParse(cursor[(bar + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out lastId);
     }
 
+    public const int FeedLimitDefault = 50;
+    public const int FeedLimitMax = 1000;
+
+    /// <summary>Validate the feed page size. Absent means the default. A value
+    /// below 1 reached SQL as `TOP (-1)` and answered a raw 500, and an unbounded
+    /// one let a caller ask for the whole table in a single response.</summary>
+    public static bool TryValidateFeedLimit(int? requested, out int limit, out string? error)
+    {
+        limit = requested ?? FeedLimitDefault;
+        error = null;
+        if (limit >= 1 && limit <= FeedLimitMax) return true;
+        error = $"'limit' must be between 1 and {FeedLimitMax}.";
+        return false;
+    }
+
     /// <summary>Render the pair. Round-trips through TryParseCursor.</summary>
     public static string FormatCursor(DateTime watermark, int lastId) =>
         watermark.ToString("o", CultureInfo.InvariantCulture) + "|" + lastId.ToString(CultureInfo.InvariantCulture);
