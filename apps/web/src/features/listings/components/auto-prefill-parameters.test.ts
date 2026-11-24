@@ -115,6 +115,38 @@ describe('autoPrefillParameters', () => {
     expect(out.p1).toBe('p1_sony');
   });
 
+  it('fills a custom-values brand with the entry text, not its id (#4038)', () => {
+    const out = autoPrefillParameters(
+      [
+        param({
+          id: 'p1',
+          name: 'Marka',
+          type: 'dictionary',
+          restrictions: { customValuesEnabled: true },
+          dictionary: [{ id: 'p1_sony', value: 'Sony' }],
+        }),
+      ],
+      { brand: 'sony' }
+    );
+    expect(out.p1).toBe('Sony');
+  });
+
+  it('defaults a custom-values Stan to the entry text, not its id (#4038)', () => {
+    const out = autoPrefillParameters(
+      [
+        param({
+          id: 'p1',
+          name: 'Stan',
+          type: 'dictionary',
+          restrictions: { customValuesEnabled: true },
+          dictionary: [{ id: 'p1_new', value: 'Nowy' }],
+        }),
+      ],
+      {}
+    );
+    expect(out.p1).toBe('Nowy');
+  });
+
   it('leaves brand blank when no dictionary entry matches', () => {
     const out = autoPrefillParameters(
       [
@@ -299,6 +331,23 @@ function catalogProduct(overrides: Partial<CatalogProduct> = {}): CatalogProduct
 }
 
 describe('prefillFromCatalogProduct', () => {
+  it('writes a custom-values single-choice as the entry text (#4038)', () => {
+    const params = [
+      param({
+        id: 'p1',
+        name: 'Marka',
+        type: 'dictionary',
+        restrictions: { customValuesEnabled: true },
+        dictionary: [{ id: 'b_acme', value: 'ACME' }],
+      }),
+    ];
+    const cp = catalogProduct({
+      parameters: [{ parameterId: 'p1', name: 'Marka', valueIds: ['b_acme'] }],
+    });
+
+    expect(prefillFromCatalogProduct(params, cp, {}).values.p1).toBe('ACME');
+  });
+
   it('writes dictionary single-choice from valueIds[0]', () => {
     const params = [
       param({
