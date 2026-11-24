@@ -34,6 +34,7 @@ import {
 } from './order-position-field';
 import { useAdaptersQuery } from '../../adapters';
 import { OrderRangeFields } from './order-range-fields';
+import { prefersMotion } from '../../../shared/ui/prefers-motion';
 import {
   ORDER_RANGE_DEFAULT_VALUE,
   toOrderImportPayload,
@@ -180,6 +181,7 @@ export function TriggerSyncDialog({
   submitDisabled = false,
   initialJobType,
   initialOrderScope = 'new',
+  guidedEntrance = false,
 }: TriggerSyncDialogProps): ReactElement {
   const copy = useMessages('sync-jobs').triggerSyncDialog;
   const adapters = useAdaptersQuery();
@@ -252,6 +254,14 @@ export function TriggerSyncDialog({
     setOrderScope('range');
     setScopeHighlight(true);
   }, [open, canImportRange, initialOrderScope]);
+
+  // The highlight is a one-off cue: its CSS fades by itself, and the flag is dropped after so the
+  // field is plain afterwards. Without motion the static outline stays a little shorter.
+  useEffect(() => {
+    if (!scopeHighlight) return undefined;
+    const timer = window.setTimeout(() => setScopeHighlight(false), prefersMotion() ? 2200 : 1500);
+    return () => window.clearTimeout(timer);
+  }, [scopeHighlight]);
 
   const handleJobTypeChange = (jobType: string): void => {
     const job = triggerableJobs.find((j) => j.jobType === jobType);
@@ -334,7 +344,9 @@ export function TriggerSyncDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="trigger-sync-dialog">
+      <DialogContent
+        className={guidedEntrance ? 'trigger-sync-dialog trigger-sync-dialog--guided' : 'trigger-sync-dialog'}
+      >
         <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
           {renderRich(

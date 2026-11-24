@@ -50,4 +50,6 @@ export interface TriggerSyncDialogProps {
   initialJobType?: string;
   /** Order sync scope to preselect when the dialog opens; honoured only where a period read exists. */
   initialOrderScope?: 'new' | 'range';
+  /** The dialog opens after a guided jump from another tab, so it gets its own entrance. */
+  guidedEntrance?: boolean;
 }
