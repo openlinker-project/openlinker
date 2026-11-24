@@ -4,6 +4,7 @@
  * @module libs/core/src/orders/application/services
  */
 import type {
+  BuyerDataAgeHistogram,
   BuyerDataRetentionPreview,
   BuyerDataRetentionPreviewInput,
   BuyerDataRetentionRunResult,
@@ -16,6 +17,9 @@ export interface IBuyerDataRetentionService {
    * data in its answer.
    */
   preview(input: BuyerDataRetentionPreviewInput): Promise<BuyerDataRetentionPreview>;
+
+  /** Age distribution of the order book (dense 30-day buckets), optionally for one connection. */
+  getAgeHistogram(connectionId?: string, now?: Date): Promise<BuyerDataAgeHistogram>;
 
   /**
    * One bounded sweep over every connection: resolve each connection's

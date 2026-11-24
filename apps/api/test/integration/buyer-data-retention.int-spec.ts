@@ -96,6 +96,87 @@ describe('Buyer data retention (integration)', () => {
     });
     expect(preview.total).toBe(0);
     expect(preview.skippedProtected).toBe(1);
+    expect(preview.skippedByReason).toEqual({ openReturn: 0, hold: 1, invoicePending: 0 });
+  });
+
+  it('should count an order with a hold and an open return once, under the return', async () => {
+    const order = await seed('ol_order_ret_5');
+    await harness
+      .getDataSource()
+      .query(
+        `INSERT INTO order_holds ("internalOrderId", reason, "placedByService", "placedAt") VALUES ($1, 'manual', 'test', now())`,
+        [order.internalOrderId]
+      );
+    await harness
+      .getDataSource()
+      .query(
+        `INSERT INTO returns (id, "sourceConnectionId", "internalOrderId", origin, "createdAt", "updatedAt") VALUES ($1, $2, $3, 'source_ingested', now(), now())`,
+        ['ol_return_x1', CONNECTION_ID, order.internalOrderId]
+      );
+    const preview = await service.preview({
+      hideAfterDays: 180,
+      eraseAfterDays: 365,
+      mode: 'personal-data',
+    });
+    expect(preview.skippedProtected).toBe(1);
+    expect(preview.skippedByReason).toEqual({ openReturn: 1, hold: 0, invoicePending: 0 });
+  });
+
+  describe('age histogram', () => {
+    const OTHER_CONNECTION = '22222222-2222-4222-8222-222222222222';
+    const daysAgo = (d: number): Date => new Date(Date.now() - d * 86_400_000);
+    const seedAt = (id: string, days: number, connectionId = CONNECTION_ID) =>
+      createTestOrderRecord(harness.getDataSource(), {
+        internalOrderId: id,
+        sourceConnectionId: connectionId,
+        orderSnapshot: PII_SNAPSHOT,
+        recordStatus: 'ready',
+        placedAt: daysAgo(days),
+      });
+
+    it('should return dense buckets with the visible, hidden and erased split', async () => {
+      await seedAt('ol_order_h_1', 5);
+      await seedAt('ol_order_h_2', 100);
+      const hidden = await seedAt('ol_order_h_3', 100);
+      const erased = await seedAt('ol_order_h_4', 100);
+      await harness
+        .getDataSource()
+        .query(`UPDATE order_records SET "hiddenAt" = now() WHERE "internalOrderId" = $1`, [
+          hidden.internalOrderId,
+        ]);
+      await harness
+        .getDataSource()
+        .query(
+          `UPDATE order_records SET "hiddenAt" = now(), "personalDataErasedAt" = now() WHERE "internalOrderId" = $1`,
+          [erased.internalOrderId]
+        );
+      const result = await service.getAgeHistogram();
+      expect(result.bucketUnit).toBe('month');
+      expect(result.totalOrders).toBe(4);
+      expect(result.buckets.map((b) => b.ageMonths)).toEqual([0, 1, 2, 3]);
+      expect(result.buckets[0]).toEqual({ ageMonths: 0, visible: 1, hidden: 0, erased: 0 });
+      expect(result.buckets[1]).toEqual({ ageMonths: 1, visible: 0, hidden: 0, erased: 0 });
+      expect(result.buckets[3]).toEqual({ ageMonths: 3, visible: 1, hidden: 1, erased: 1 });
+      expect(result.oldestPlacedAt).not.toBeNull();
+    });
+
+    it('should cap everything 120 months and older into one bucket', async () => {
+      await seedAt('ol_order_h_5', 3700);
+      await seedAt('ol_order_h_6', 5000);
+      const result = await service.getAgeHistogram();
+      expect(result.buckets).toHaveLength(121);
+      expect(result.buckets[120]).toEqual({ ageMonths: 120, visible: 2, hidden: 0, erased: 0 });
+    });
+
+    it('should scope to one connection when given', async () => {
+      await seedAt('ol_order_h_7', 5);
+      await seedAt('ol_order_h_8', 65, OTHER_CONNECTION);
+      const scoped = await service.getAgeHistogram(OTHER_CONNECTION);
+      expect(scoped.totalOrders).toBe(1);
+      expect(scoped.buckets.map((b) => b.ageMonths)).toEqual([0, 1, 2]);
+      const all = await service.getAgeHistogram();
+      expect(all.totalOrders).toBe(2);
+    });
   });
 
   it('should keep personal data erased when the same order is ingested again', async () => {

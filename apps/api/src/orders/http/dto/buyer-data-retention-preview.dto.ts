@@ -15,7 +15,11 @@ import {
   BUYER_DATA_PERIOD_MAX_DAYS,
   type BuyerDataEraseMode,
 } from '@openlinker/core/operational-settings';
-import type { BuyerDataRetentionPreview, BuyerDataRetentionSample } from '@openlinker/core/orders';
+import type {
+  BuyerDataAgeHistogram,
+  BuyerDataRetentionPreview,
+  BuyerDataRetentionSample,
+} from '@openlinker/core/orders';
 
 export class BuyerDataRetentionPreviewRequestDto {
   @ApiPropertyOptional({
@@ -50,6 +54,16 @@ export class BuyerDataRetentionSampleDto {
   @ApiProperty({ description: 'A masked placeholder, never the buyer.' }) maskedBuyer!: string;
 }
 
+export class BuyerDataSkippedByReasonDto {
+  @ApiProperty({ description: 'Skipped because of an open return.' }) openReturn!: number;
+  @ApiProperty({ description: 'Skipped because of an open hold (and no open return).' })
+  hold!: number;
+  @ApiProperty({
+    description: 'Skipped because an invoice is being issued (and no return or hold).',
+  })
+  invoicePending!: number;
+}
+
 export class BuyerDataRetentionPreviewResponseDto {
   @ApiProperty({ description: 'Orders that would be hidden.' }) toHide!: number;
   @ApiProperty({ description: 'Orders whose personal data would be erased.' }) toErase!: number;
@@ -64,6 +78,13 @@ export class BuyerDataRetentionPreviewResponseDto {
   })
   skippedProtected!: number;
 
+  @ApiProperty({
+    type: BuyerDataSkippedByReasonDto,
+    description:
+      'skippedProtected split by reason. Each order is counted once, under the first matching reason (open return, hold, invoice pending), so the three sum to skippedProtected.',
+  })
+  skippedByReason!: BuyerDataSkippedByReasonDto;
+
   @ApiProperty({ type: [BuyerDataRetentionSampleDto], description: 'At most 5 masked examples.' })
   samples!: BuyerDataRetentionSample[];
 
@@ -74,7 +95,43 @@ export class BuyerDataRetentionPreviewResponseDto {
     dto.total = preview.total;
     dto.totalOrders = preview.totalOrders;
     dto.skippedProtected = preview.skippedProtected;
+    dto.skippedByReason = { ...preview.skippedByReason };
     dto.samples = preview.samples.map((sample) => ({ ...sample }));
+    return dto;
+  }
+}
+
+export class BuyerDataAgeHistogramQueryDto {
+  @ApiPropertyOptional({ description: 'Only this connection. Absent = every connection.' })
+  @IsOptional()
+  @IsUUID()
+  connectionId?: string;
+}
+
+export class BuyerDataAgeBucketDto {
+  @ApiProperty({ description: 'Age in 30-day months; 120 holds everything 120 and older.' })
+  ageMonths!: number;
+  @ApiProperty({ description: 'Orders not hidden.' }) visible!: number;
+  @ApiProperty({ description: 'Hidden orders whose personal data is still present.' })
+  hidden!: number;
+  @ApiProperty({ description: 'Orders whose personal data was erased.' }) erased!: number;
+}
+
+export class BuyerDataAgeHistogramResponseDto {
+  @ApiProperty({ enum: ['month'] }) bucketUnit!: 'month';
+  @ApiProperty({ type: [BuyerDataAgeBucketDto], description: 'Dense: every month 0..max present.' })
+  buckets!: BuyerDataAgeBucketDto[];
+  @ApiProperty({ description: 'Every order in scope, hidden and erased included.' })
+  totalOrders!: number;
+  @ApiProperty({ type: String, nullable: true, description: 'ISO instant of the oldest order.' })
+  oldestPlacedAt!: string | null;
+
+  static fromHistogram(histogram: BuyerDataAgeHistogram): BuyerDataAgeHistogramResponseDto {
+    const dto = new BuyerDataAgeHistogramResponseDto();
+    dto.bucketUnit = histogram.bucketUnit;
+    dto.buckets = histogram.buckets.map((bucket) => ({ ...bucket }));
+    dto.totalOrders = histogram.totalOrders;
+    dto.oldestPlacedAt = histogram.oldestPlacedAt;
     return dto;
   }
 }

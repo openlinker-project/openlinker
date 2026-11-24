@@ -42,11 +42,13 @@ import {
 import { eraseBuyerPersonalDataFromSnapshot } from '../../domain/buyer-data-retention';
 import { deriveOrderSearchText } from '../../domain/order-search-text';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
-import type {
-  BuyerDataRetentionPreview,
-  BuyerDataRetentionPreviewInput,
-  BuyerDataRetentionRunResult,
-  BuyerDataRetentionScope,
+import {
+  densifyAgeBuckets,
+  type BuyerDataAgeHistogram,
+  type BuyerDataRetentionPreview,
+  type BuyerDataRetentionPreviewInput,
+  type BuyerDataRetentionRunResult,
+  type BuyerDataRetentionScope,
 } from '../../domain/types/buyer-data-retention.types';
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 import type { IBuyerDataRetentionService } from './buyer-data-retention.service.interface';
@@ -97,6 +99,19 @@ export class BuyerDataRetentionService implements IBuyerDataRetentionService {
       this.orders.findBuyerDataRetentionSamples(scope, BUYER_DATA_PREVIEW_SAMPLE_COUNT),
     ]);
     return { ...counts, totalOrders, samples };
+  }
+
+  async getAgeHistogram(
+    connectionId?: string,
+    now: Date = new Date()
+  ): Promise<BuyerDataAgeHistogram> {
+    const result = await this.orders.getBuyerDataAgeHistogram(now, connectionId);
+    return {
+      bucketUnit: 'month',
+      buckets: densifyAgeBuckets(result.rows),
+      totalOrders: result.totalOrders,
+      oldestPlacedAt: result.oldestPlacedAt?.toISOString() ?? null,
+    };
   }
 
   async runOnce(now: Date = new Date()): Promise<BuyerDataRetentionRunResult> {

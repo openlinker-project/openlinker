@@ -8,6 +8,7 @@
  * @module libs/core/src/orders/domain/ports
  */
 import type {
+  BuyerDataAgeHistogramRows,
   BuyerDataRetentionCounts,
   BuyerDataRetentionSample,
   BuyerDataRetentionScope,
@@ -889,6 +890,13 @@ export interface OrderRecordRepositoryPort {
    * cover orders past the shortest period, so "what stays" needs this.
    */
   countVisibleOrdersForBuyerData(connectionId?: string): Promise<number>;
+
+  /**
+   * Buyer data retention (#4289): the order book grouped by age in 30-day
+   * months (capped at 120), split visible / hidden / erased. Sparse - months
+   * with no orders are absent; the service fills them in.
+   */
+  getBuyerDataAgeHistogram(now: Date, connectionId?: string): Promise<BuyerDataAgeHistogramRows>;
 
   /**
    * Up to `limit` example orders the scope would touch, newest first. Carries

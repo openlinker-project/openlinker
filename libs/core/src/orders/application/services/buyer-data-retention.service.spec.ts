@@ -24,9 +24,16 @@ describe('BuyerDataRetentionService', () => {
     orders = {
       countBuyerDataRetentionCandidates: jest
         .fn()
-        .mockResolvedValue({ toHide: 2, toErase: 1, total: 2, skippedProtected: 3 }),
+        .mockResolvedValue({
+          toHide: 2,
+          toErase: 1,
+          total: 2,
+          skippedProtected: 3,
+          skippedByReason: { openReturn: 1, hold: 1, invoicePending: 1 },
+        }),
       countVisibleOrdersForBuyerData: jest.fn().mockResolvedValue(10),
       findBuyerDataRetentionSamples: jest.fn().mockResolvedValue([]),
+      getBuyerDataAgeHistogram: jest.fn(),
       hideOrdersForBuyerDataRetention: jest.fn().mockResolvedValue(0),
       findErasableOrdersForBuyerDataRetention: jest.fn().mockResolvedValue([]),
       erasePersonalDataForRetention: jest.fn().mockResolvedValue({ erased: 0, customerIds: [] }),
@@ -60,11 +67,45 @@ describe('BuyerDataRetentionService', () => {
       toHide: 2,
       toErase: 1,
       skippedProtected: 3,
+      skippedByReason: { openReturn: 1, hold: 1, invoicePending: 1 },
       totalOrders: 10,
     });
     expect(orders.countBuyerDataRetentionCandidates.mock.calls[0][0].eraseHides).toBe(true);
     expect(orders.hideOrdersForBuyerDataRetention).not.toHaveBeenCalled();
     expect(orders.erasePersonalDataForRetention).not.toHaveBeenCalled();
+  });
+
+  it('should densify the age histogram and serialise the oldest instant', async () => {
+    orders.getBuyerDataAgeHistogram.mockResolvedValue({
+      rows: [
+        { ageMonths: 1, visible: 2, hidden: 0, erased: 0 },
+        { ageMonths: 4, visible: 0, hidden: 1, erased: 3 },
+      ],
+      totalOrders: 6,
+      oldestPlacedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    const result = await service.getAgeHistogram('c1', new Date('2026-11-24T00:00:00Z'));
+    expect(result.bucketUnit).toBe('month');
+    expect(result.buckets.map((b) => b.ageMonths)).toEqual([0, 1, 2, 3, 4]);
+    expect(result.buckets[2]).toEqual({ ageMonths: 2, visible: 0, hidden: 0, erased: 0 });
+    expect(result.totalOrders).toBe(6);
+    expect(result.oldestPlacedAt).toBe('2026-01-01T00:00:00.000Z');
+    expect(orders.getBuyerDataAgeHistogram.mock.calls[0][1]).toBe('c1');
+  });
+
+  it('should return an empty histogram for an empty order book', async () => {
+    orders.getBuyerDataAgeHistogram.mockResolvedValue({
+      rows: [],
+      totalOrders: 0,
+      oldestPlacedAt: null,
+    });
+    const result = await service.getAgeHistogram();
+    expect(result).toEqual({
+      bucketUnit: 'month',
+      buckets: [],
+      totalOrders: 0,
+      oldestPlacedAt: null,
+    });
   });
 
   it('should skip a connection whose own override turns retention off', async () => {

@@ -751,6 +751,9 @@ export type {
 // Buyer data retention (#4289).
 export type { IBuyerDataRetentionService } from './application/services/buyer-data-retention.service.interface';
 export type {
+  BuyerDataAgeBucket,
+  BuyerDataAgeHistogram,
+  BuyerDataSkippedByReason,
   BuyerDataRetentionCounts,
   BuyerDataRetentionPreview,
   BuyerDataRetentionPreviewInput,

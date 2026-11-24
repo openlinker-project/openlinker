@@ -90,6 +90,7 @@ import {
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { FxRestatementRemainingSummary } from '../../../domain/types/order-fx-restatement.types';
 import type {
+  BuyerDataAgeHistogramRows,
   BuyerDataRetentionCounts,
   BuyerDataRetentionSample,
   BuyerDataRetentionScope,
@@ -178,14 +179,20 @@ const BUYER_DATA_AGE_SQL = 'COALESCE(rec."placedAt", rec."createdAt")';
  * not touch an issued document, and a document-protected rule would exempt
  * nearly every order of an install that issues invoices.
  */
+const BUYER_DATA_HOLD_SQL = `EXISTS (SELECT 1 FROM "order_holds" oh
+          WHERE oh."internalOrderId" = rec."internalOrderId" AND oh."releasedAt" IS NULL)`;
+const BUYER_DATA_OPEN_RETURN_SQL = `EXISTS (SELECT 1 FROM "returns" ret
+             WHERE ret."internalOrderId" = rec."internalOrderId" AND ret."closedAt" IS NULL)`;
+const BUYER_DATA_INVOICE_PENDING_SQL = `EXISTS (SELECT 1 FROM "invoice_records" ir
+             WHERE ir."orderId" = rec."internalOrderId" AND ir."status" IN ('pending', 'issuing'))`;
 const BUYER_DATA_PROTECTED_SQL = `(
-  EXISTS (SELECT 1 FROM "order_holds" oh
-          WHERE oh."internalOrderId" = rec."internalOrderId" AND oh."releasedAt" IS NULL)
-  OR EXISTS (SELECT 1 FROM "returns" ret
-             WHERE ret."internalOrderId" = rec."internalOrderId" AND ret."closedAt" IS NULL)
-  OR EXISTS (SELECT 1 FROM "invoice_records" ir
-             WHERE ir."orderId" = rec."internalOrderId" AND ir."status" IN ('pending', 'issuing'))
+  ${BUYER_DATA_HOLD_SQL}
+  OR ${BUYER_DATA_OPEN_RETURN_SQL}
+  OR ${BUYER_DATA_INVOICE_PENDING_SQL}
 )`;
+
+/** Orders at or past this many 30-day months share the last histogram bucket. */
+const BUYER_DATA_HISTOGRAM_CAP_MONTHS = 120;
 
 /**
  * Empty defaults for the columns whose "unwritten" value is not `null`, keyed
@@ -3538,17 +3545,92 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
          COUNT(*) FILTER (WHERE (${e.hide} OR ${e.eraseHides}) AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS to_hide,
          COUNT(*) FILTER (WHERE ${e.erase} AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS to_erase,
          COUNT(*) FILTER (WHERE ${e.any} AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS total,
-         COUNT(*) FILTER (WHERE ${BUYER_DATA_PROTECTED_SQL}) AS skipped
+         COUNT(*) FILTER (WHERE ${BUYER_DATA_PROTECTED_SQL}) AS skipped,
+         COUNT(*) FILTER (WHERE ${BUYER_DATA_OPEN_RETURN_SQL}) AS skipped_open_return,
+         COUNT(*) FILTER (WHERE NOT ${BUYER_DATA_OPEN_RETURN_SQL} AND ${BUYER_DATA_HOLD_SQL}) AS skipped_hold,
+         COUNT(*) FILTER (WHERE NOT ${BUYER_DATA_OPEN_RETURN_SQL} AND NOT ${BUYER_DATA_HOLD_SQL}
+                          AND ${BUYER_DATA_INVOICE_PENDING_SQL}) AS skipped_invoice_pending
        FROM "order_records" rec
        WHERE ${e.where}`,
       e.params
-    )) as { to_hide: string; to_erase: string; total: string; skipped: string }[];
+    )) as {
+      to_hide: string;
+      to_erase: string;
+      total: string;
+      skipped: string;
+      skipped_open_return: string;
+      skipped_hold: string;
+      skipped_invoice_pending: string;
+    }[];
     const row = rows[0];
     return {
       toHide: Number(row?.to_hide ?? 0),
       toErase: Number(row?.to_erase ?? 0),
       total: Number(row?.total ?? 0),
       skippedProtected: Number(row?.skipped ?? 0),
+      skippedByReason: {
+        openReturn: Number(row?.skipped_open_return ?? 0),
+        hold: Number(row?.skipped_hold ?? 0),
+        invoicePending: Number(row?.skipped_invoice_pending ?? 0),
+      },
+    };
+  }
+
+  /**
+   * Age histogram of the order book in 30-day buckets (#4289), sparse: the
+   * service densifies it. Ages are computed against the caller's `now` so a
+   * test is deterministic. One grouped scan; if it ever hurts on a very large
+   * book, an index on (sourceConnectionId, COALESCE("placedAt","createdAt"))
+   * would help - none is added here.
+   */
+  async getBuyerDataAgeHistogram(
+    now: Date,
+    connectionId?: string
+  ): Promise<BuyerDataAgeHistogramRows> {
+    const params: unknown[] = [now];
+    let scopeSql = '';
+    if (connectionId !== undefined) {
+      params.push(connectionId);
+      scopeSql = `WHERE rec."sourceConnectionId" = $2::uuid`;
+    }
+    const rows = (await this.repository.query(
+      `SELECT
+         LEAST(${String(BUYER_DATA_HISTOGRAM_CAP_MONTHS)},
+               GREATEST(0, FLOOR(EXTRACT(EPOCH FROM ($1::timestamptz - ${BUYER_DATA_AGE_SQL})) / 86400 / 30)))::int AS age_months,
+         COUNT(*) FILTER (WHERE rec."hiddenAt" IS NULL) AS visible,
+         COUNT(*) FILTER (WHERE rec."hiddenAt" IS NOT NULL AND rec."personalDataErasedAt" IS NULL) AS hidden,
+         COUNT(*) FILTER (WHERE rec."personalDataErasedAt" IS NOT NULL) AS erased,
+         COUNT(*) AS total,
+         MIN(${BUYER_DATA_AGE_SQL}) AS oldest
+       FROM "order_records" rec
+       ${scopeSql}
+       GROUP BY 1
+       ORDER BY 1`,
+      params
+    )) as {
+      age_months: number;
+      visible: string;
+      hidden: string;
+      erased: string;
+      total: string;
+      oldest: Date | string;
+    }[];
+    let totalOrders = 0;
+    let oldestPlacedAt: Date | null = null;
+    for (const row of rows) {
+      totalOrders += Number(row.total);
+      const oldest = new Date(row.oldest);
+      if (oldestPlacedAt === null || oldest < oldestPlacedAt) oldestPlacedAt = oldest;
+    }
+    return {
+      rows: rows.map((row) => ({
+        ageMonths: Number(row.age_months),
+        visible: Number(row.visible),
+        hidden: Number(row.hidden),
+        erased: Number(row.erased),
+      })),
+      totalOrders,
+      oldestPlacedAt,
     };
   }
 

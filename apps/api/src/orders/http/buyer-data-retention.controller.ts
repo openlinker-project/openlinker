@@ -10,7 +10,7 @@
  *
  * @module apps/api/src/orders/http
  */
-import { Body, Controller, HttpCode, HttpStatus, Inject, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   BUYER_DATA_RETENTION_SERVICE_TOKEN,
@@ -23,6 +23,8 @@ import {
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { codedHttpError } from '../../common/errors/coded-http.exception';
 import {
+  BuyerDataAgeHistogramQueryDto,
+  BuyerDataAgeHistogramResponseDto,
   BuyerDataRetentionPreviewRequestDto,
   BuyerDataRetentionPreviewResponseDto,
 } from './dto/buyer-data-retention-preview.dto';
@@ -75,6 +77,21 @@ export class BuyerDataRetentionController {
         eraseAfterDays: dto.eraseAfterDays,
         mode: dto.mode,
       })
+    );
+  }
+
+  @Roles('admin')
+  @Get('age-histogram')
+  @ApiOperation({
+    summary: 'Age distribution of the order book in 30-day buckets, split visible, hidden, erased',
+  })
+  @ApiResponse({ status: 200, type: BuyerDataAgeHistogramResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async ageHistogram(
+    @Query() query: BuyerDataAgeHistogramQueryDto
+  ): Promise<BuyerDataAgeHistogramResponseDto> {
+    return BuyerDataAgeHistogramResponseDto.fromHistogram(
+      await this.retention.getAgeHistogram(query.connectionId)
     );
   }
 }

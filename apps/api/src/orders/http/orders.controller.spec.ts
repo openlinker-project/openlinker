@@ -224,6 +224,7 @@ describe('OrdersController', () => {
       recordPaymentWriteback: jest.fn().mockResolvedValue(undefined),
       markPaymentWritebackHandled: jest.fn().mockResolvedValue(0),
       countOrdersMatchingSearchSince: jest.fn(),
+      getBuyerDataAgeHistogram: jest.fn(),
     };
 
     const mockOrderRecordService = {
@@ -292,13 +293,11 @@ describe('OrdersController', () => {
 
     const mockRoutingRetry = { retryRouting: jest.fn(), rerouteHeldOrdersForVariant: jest.fn() };
     const mockProvisioningResume = {
-      resume: jest
-        .fn()
-        .mockResolvedValue({
-          status: 'enqueued',
-          jobId: 'job-1',
-          jobType: 'marketplace.order.sync',
-        }),
+      resume: jest.fn().mockResolvedValue({
+        status: 'enqueued',
+        jobId: 'job-1',
+        jobType: 'marketplace.order.sync',
+      }),
     } as unknown as jest.Mocked<IOrderProvisioningResumeService>;
     const mockSalesDocumentView: jest.Mocked<ISalesDocumentViewService> = {
       getForOrders: jest.fn().mockResolvedValue(new Map()),

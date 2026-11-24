@@ -32,6 +32,48 @@ export interface BuyerDataRetentionCounts {
   readonly total: number;
   /** Orders the rule would reach but skips: open hold, open return or a document being issued. */
   readonly skippedProtected: number;
+  /** Each protected order counted once, under the first reason: open return, hold, pending invoice. */
+  readonly skippedByReason: BuyerDataSkippedByReason;
+}
+
+export interface BuyerDataSkippedByReason {
+  readonly openReturn: number;
+  readonly hold: number;
+  readonly invoicePending: number;
+}
+
+/** One age bucket (30-day months; the last bucket holds everything 120+). */
+export interface BuyerDataAgeBucket {
+  readonly ageMonths: number;
+  readonly visible: number;
+  readonly hidden: number;
+  readonly erased: number;
+}
+
+/** What the repository returns: sparse buckets, the service densifies. */
+export interface BuyerDataAgeHistogramRows {
+  readonly rows: readonly BuyerDataAgeBucket[];
+  readonly totalOrders: number;
+  readonly oldestPlacedAt: Date | null;
+}
+
+export interface BuyerDataAgeHistogram {
+  readonly bucketUnit: 'month';
+  readonly buckets: readonly BuyerDataAgeBucket[];
+  readonly totalOrders: number;
+  readonly oldestPlacedAt: string | null;
+}
+
+/** Fill every month 0..max so a chart has no gaps. Pure. */
+export function densifyAgeBuckets(rows: readonly BuyerDataAgeBucket[]): BuyerDataAgeBucket[] {
+  if (rows.length === 0) return [];
+  const byMonth = new Map(rows.map((row) => [row.ageMonths, row]));
+  const max = Math.max(...rows.map((row) => row.ageMonths));
+  const dense: BuyerDataAgeBucket[] = [];
+  for (let month = 0; month <= max; month += 1) {
+    dense.push(byMonth.get(month) ?? { ageMonths: month, visible: 0, hidden: 0, erased: 0 });
+  }
+  return dense;
 }
 
 /** One example row of a trial run. Carries no personal data. */
