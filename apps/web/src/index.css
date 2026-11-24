@@ -43130,8 +43130,8 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 @media (max-width: 480px) {
   .peek-panel .side-panel__title-row--with-close { flex-wrap: wrap; row-gap: var(--space-2); }
-  .peek-panel .side-panel__title-main { order: 1; min-width: 0; }
-  .peek-panel .side-panel__close { order: 2; }
+  .peek-panel .side-panel__title-row--with-close .side-panel__title-main { order: 1; flex: 1 1 0; min-width: 0; }
+  .peek-panel .side-panel__close { order: 2; flex: none; align-self: flex-start; }
   .peek-panel .side-panel__aside {
     order: 3;
     flex: 1 0 100%;
