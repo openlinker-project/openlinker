@@ -158,6 +158,17 @@ export function TourCard({ state, dispatch, onClose, onDismiss, onModalChange }:
     // Reaching a stop is the only trigger; the mutation object changes every render.
   }, [state.index, state.active]);
 
+  // A guide stop whose target takes no room on this screen (a control that hides itself on a phone) is passed.
+  useEffect(() => {
+    if (!showcase || state.target !== 'missing') return undefined;
+    const timer = window.setTimeout(() => {
+      if (state.index === state.steps.length - 1) onClose();
+      else dispatch({ type: 'next' });
+    }, 250);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a change of the target state or the step decides
+  }, [state.target, state.index]);
+
   // A node the router already removed is as good as missing; measuring it parks the ring at the origin.
   const element = target.state === 'found' && target.element.isConnected ? target.element : null;
 

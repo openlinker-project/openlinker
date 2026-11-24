@@ -18,6 +18,14 @@ export function findTourTarget(target: string): HTMLElement | null {
   return document.querySelector<HTMLElement>(`[data-tour="${target.replace(/"/g, '')}"]`);
 }
 
+/** An element that is in the DOM but takes no room (a control that hides itself on this screen) cannot be pointed at. */
+function hasRoom(element: HTMLElement): boolean {
+  // jsdom has no layout, so every box is empty there; the check is for real browsers.
+  if (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom')) return true;
+  const box = element.getBoundingClientRect();
+  return box.width > 0 && box.height > 0;
+}
+
 export type TargetResult = { state: 'waiting' | 'missing' } | { state: 'found'; element: HTMLElement };
 
 export function useTourTarget(
@@ -43,6 +51,9 @@ export function useTourTarget(
       extensions = 0;
       const tick = (): void => {
         if (current || missing) return;
+        // Layout may have settled since the last DOM change: look once more before giving up.
+        check();
+        if (current) return;
         if (queryClient.isFetching() > 0 && extensions < MAX_EXTENSIONS) {
           extensions += 1;
           timer = setTimeout(tick, BASE_TIMEOUT_MS);
@@ -59,7 +70,8 @@ export function useTourTarget(
     // node is detached, look again instead of keeping a ring on nothing.
     const check = (): void => {
       if (current?.isConnected) return;
-      const element = findTourTarget(target);
+      const found = findTourTarget(target);
+      const element = found && hasRoom(found) ? found : null;
       if (!element) {
         if (current) {
           current = null;
