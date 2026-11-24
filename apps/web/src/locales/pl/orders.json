@@ -1727,6 +1727,10 @@
     "retryQueuedTitle": "Ponowienie w kolejce",
     "retrying": "Ponawianie…",
     "routedNote": "To zamówienie obsługuje routing OMS, więc nie jest kopiowane do miejsc docelowych i nie można go tu ponowić.",
+    "shipTo": {
+      "pickupPoint": "Punkt odbioru",
+      "title": "Dostawa do"
+    },
     "summary": {
       "buyerTaxId": "NIP kupującego",
       "orderNumber": "Nr zamówienia",

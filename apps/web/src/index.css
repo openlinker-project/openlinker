@@ -40484,3 +40484,14 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .order-header__identity { margin-top: -2px; }
   .order-header__top .status-badge { padding: 6px 14px; }
 }
+/* Shipping tab: method row, ship-to box and pickup tile per the mockup (#4286) */
+.order-ship-to { display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px; }
+.order-ship-to__method { display: flex; align-items: center; gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle); font-size: 1rem; }
+.order-ship-to__icon { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-surface); color: var(--text-secondary); }
+.order-ship-to__box { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; padding: 18px 16px; background: var(--bg-canvas); border: 1px solid var(--border-subtle); border-radius: 12px; }
+.order-ship-to__address { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.order-ship-to__label { font-size: 0.8125rem; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+.order-ship-to__name { font-weight: 600; }
+.order-ship-to__point { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; border: 2px solid var(--text-primary); border-radius: 12px; background: var(--bg-surface); }
+.order-ship-to__point strong { font-size: 1.25rem; }
+.order-ship-to__point small { color: var(--text-muted); font-size: 0.75rem; }

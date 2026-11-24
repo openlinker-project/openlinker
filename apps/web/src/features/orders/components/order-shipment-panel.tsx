@@ -125,18 +125,21 @@ interface OrderShipmentPanelProps {
    * `/shipments` list's `?retryShipmentId=` query param via `OrderDetailPage`.
    */
   autoOpenForShipmentId?: string;
+  /** Open the label form straight away when there is nothing shipped yet (the Shipping tab, #4286). */
+  defaultFormOpen?: boolean;
 }
 
 export function OrderShipmentPanel({
   order,
   autoOpenForShipmentId,
+  defaultFormOpen = false,
 }: OrderShipmentPanelProps): ReactElement | null {
   const ordersCopy = useMessages('orders');
   const routeOrigin = ordersCopy.shippingRouteOrigin;
   const copy = ordersCopy.orderShipmentPanel;
   const connectionsQuery = useConnectionsQuery();
   const shipmentsQuery = useOrderShipmentsQuery(order.internalOrderId);
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(defaultFormOpen);
   const canWrite = usePermission('shipments:write');
 
   // #928 — source-reported payment status drives the dispatch gate on the

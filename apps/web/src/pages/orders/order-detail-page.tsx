@@ -24,6 +24,7 @@ import { Button } from '../../shared/ui/button';
 import { Tabs, TabsContent } from '../../shared/ui/tabs';
 import { OrderNextStepCard } from '../../features/orders/components/order-next-step-card';
 import { deriveOrderIssues } from '../../features/orders/lib/order-next-step';
+import { OrderShipToBox } from '../../features/orders/components/order-ship-to-box';
 import { OrderProgressLine } from '../../features/orders/components/order-progress-line';
 import { OrderHeaderMenu } from '../../features/orders/components/order-header-menu';
 import { holdReasonLabel } from '../../features/orders/lib/order-hold.types';
@@ -1029,7 +1030,16 @@ export function OrderDetailPage(): ReactElement {
               divs so the target exists even while a panel is capability-gated
               (renders null) or still loading. */}
           <div id="shipment" tabIndex={-1}>
-            <OrderShipmentPanel order={order} autoOpenForShipmentId={retryShipmentId} />
+            <OrderShipToBox
+              methodName={snapshot.shipping?.methodName ?? methodFallback ?? null}
+              address={snapshot.shippingAddress}
+              pickupPoint={snapshot.pickupPoint}
+            />
+            <OrderShipmentPanel
+              order={order}
+              autoOpenForShipmentId={retryShipmentId}
+              defaultFormOpen={snapshot.status !== 'cancelled'}
+            />
           </div>
 
       </TabsContent>

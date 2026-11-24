@@ -15,6 +15,25 @@
  * @module support
  */
 
+/** A synthetic shipping connection, so the shipment panel offers a label the way the mockup does. */
+export const SHIPPING_CONNECTION_ID = '00000000-0000-4000-8000-0000000000a1';
+
+export function shippingConnection(): Record<string, unknown> {
+  return {
+    id: SHIPPING_CONNECTION_ID,
+    name: 'InPost',
+    platformType: 'inpost',
+    status: 'active',
+    config: {},
+    credentialsBacked: true,
+    credentialsStored: true,
+    enabledCapabilities: ['ShippingProviderManager'],
+    supportedCapabilities: ['ShippingProviderManager'],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
 export type OrderDetailSituation = 'ready' | 'held' | 'cancelled';
 
 /** The instant the page is rendered at, so "1 day ago" and the ship-by state are stable. */
@@ -156,7 +175,13 @@ export function buildOrderRecord(
     buyerNoteChangedAt: null,
     buyerNoteAcknowledgements: [],
     edits: null,
-    deliveryResolution: { source: 'default', processorKind: 'shop_fulfilled', processorConnectionId: null, processorAvailable: false, parcelProfile: null },
+    deliveryResolution: {
+      source: 'rule',
+      processorKind: 'ol_managed_carrier',
+      processorConnectionId: SHIPPING_CONNECTION_ID,
+      processorAvailable: true,
+      parcelProfile: null,
+    },
     deliveryRider: { rider: 'none' },
     reservationShortfalls: [],
     holdHistory: [],

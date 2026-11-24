@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import {
   FIXED_NOW,
   buildOrderRecord,
+  shippingConnection,
   situationData,
   type OrderDetailSituation,
 } from '../../src/support/order-detail-fixtures';
@@ -56,9 +57,9 @@ const TABS = [
  * today's state, they are not a claim that the page matches the mockup.
  */
 const BUDGET: Record<OrderDetailSituation, Record<string, number>> = {
-  ready: { header: 0.42, overview: 0.31, shipping: 0.68, packing: 0.53, documents: 0.15, returns: 0.49, notes: 0.17, history: 0.61, technical: 0.4 },
-  held: { header: 0.15, overview: 0.55, shipping: 0.68, packing: 0.35, documents: 0.19, returns: 0.49, notes: 0.23, history: 0.61, technical: 0.29 },
-  cancelled: { header: 0.51, overview: 0.48, shipping: 0.66, packing: 0.55, documents: 0.5, returns: 0.48, notes: 0.22, history: 0.54, technical: 0.43 },
+  ready: { header: 0.42, overview: 0.31, shipping: 0.61, packing: 0.53, documents: 0.15, returns: 0.49, notes: 0.17, history: 0.61, technical: 0.4 },
+  held: { header: 0.15, overview: 0.55, shipping: 0.53, packing: 0.35, documents: 0.19, returns: 0.49, notes: 0.23, history: 0.61, technical: 0.29 },
+  cancelled: { header: 0.51, overview: 0.48, shipping: 0.26, packing: 0.55, documents: 0.5, returns: 0.48, notes: 0.22, history: 0.54, technical: 0.43 },
 };
 const DEFAULT_PANEL_BUDGET = 1;
 
@@ -127,6 +128,18 @@ test.describe('orders: detail page against the mockup (#4286)', () => {
           return route.continue();
         }
         return route.fulfill({ json: record });
+      });
+
+      // The stack's own connections plus one shipping connection, so the label form can render.
+      await page.route('**/connections', async (route) => {
+        const type = route.request().resourceType();
+        if (route.request().method() !== 'GET' || (type !== 'fetch' && type !== 'xhr')) {
+          return route.continue();
+        }
+        const response = await route.fetch();
+        const body = (await response.json()) as unknown;
+        const list = Array.isArray(body) ? body : ((body as { items?: unknown[] }).items ?? []);
+        return route.fulfill({ response, json: [...list, shippingConnection()] });
       });
 
       const mockupPage = await page.context().newPage();
