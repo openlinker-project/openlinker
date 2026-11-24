@@ -86,6 +86,7 @@ import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk
 import { OrderOpenReturnBadge } from '../../features/orders/components/order-open-return-badge';
 import { OrderRefundStateBadge } from '../../features/orders/components/order-refund-state-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
+import { OrderHiddenBadge } from '../../features/orders/components/order-hidden-badge';
 import { OrderBuyerNoteHint } from '../../features/orders/components/order-buyer-note-hint';
 import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
 import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
@@ -208,6 +209,8 @@ function renderStatusBadges(order: OrderRecord): ReactElement {
       <StatusBadge tone={h.tone} withDot compact>
         {h.label}
       </StatusBadge>
+      {/* #4289 - only visible on the Hidden view; beside health, never inside it. */}
+      <OrderHiddenBadge hiddenAt={order.hiddenAt} personalDataErasedAt={order.personalDataErasedAt} />
       {/* #2310 — the phase says what stage it is at (ADR-059). */}
       <OrderPhaseOrWaitingBadge order={order} compact />
       {/* #2350 — a stock shortfall is an exception, so a Status badge. */}

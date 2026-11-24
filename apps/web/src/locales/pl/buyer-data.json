@@ -154,7 +154,7 @@
     "eraseDescription": "Liczymy od dnia złożenia zamówienia.",
     "eraseLabel": "Kiedy usunąć dane osobowe?",
     "eraseNever": "Nigdy, dane zostają bez limitu",
-    "hideDescription": "Zamówienie znika z listy, ale jego dane zostają w OpenLinkerze.",
+    "hideDescription": "Zamówienie znika z listy, ale jego dane zostają w OpenLinkerze. Znajdziesz je w filtrze „Ukryte zamówienia”.",
     "hideLabel": "Kiedy ukryć zamówienie?",
     "hideNever": "Nigdy, zamówienia zostają na liście",
     "irreversibleBody": "Usuniętych danych osobowych nie da się przywrócić. Nie wrócą też po ponownej synchronizacji zamówienia. Wystawionych faktur i paragonów nie zmieniamy.",

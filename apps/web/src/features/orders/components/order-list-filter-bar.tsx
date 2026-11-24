@@ -497,6 +497,14 @@ export function OrderListFilterBar({
             filtersApi.toggle('hasBuyerNote');
           }}
         />
+        <FilterCheck
+          data-testid="orders-filter-hidden"
+          label={COPY.checks.hidden}
+          checked={state.hidden}
+          onChange={() => {
+            filtersApi.toggle('hidden');
+          }}
+        />
       </FilterChecks>
     </>
   );

@@ -58,7 +58,7 @@ test('general settings: off by default, locked until a trial run, then saved', a
     await settings.masterSwitch.check();
     await settings.save.click();
     await page.getByRole('dialog').getByRole('button', { name: 'Turn on' }).click();
-    await expect(page.getByText('Buyer data rules saved.')).toBeVisible();
+    await expect(page.getByText('Buyer data rules saved.', { exact: true })).toBeVisible();
     await page.reload();
     await expect(settings.rules.hideSelect).toHaveValue('90');
     await expect(settings.masterSwitch).toBeChecked();
@@ -120,7 +120,7 @@ test('connection edit: own rules need a trial run, then are saved into the confi
   await test.step('it inherits the general rules and shows no questions', async () => {
     await section.goto(connectionId);
     await expect(section.inheritOption).toBeChecked();
-    await expect(page.getByText('Inherited from the general settings')).toBeVisible();
+    await expect(page.getByText('Same as the general settings:')).toBeVisible();
   });
 
   await test.step('taking own rules starts them switched off', async () => {
@@ -163,5 +163,5 @@ test('cleanup: switch the general rules off again', async ({ page, pages }) => {
   await settings.goto();
   await settings.masterSwitch.uncheck();
   await settings.save.click();
-  await expect(page.getByText('Buyer data rules saved.')).toBeVisible();
+  await expect(page.getByText('Buyer data rules saved.', { exact: true })).toBeVisible();
 });

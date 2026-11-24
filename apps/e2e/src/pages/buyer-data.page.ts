@@ -74,7 +74,8 @@ export class BuyerDataSettingsPage {
   }
 
   get offNote(): Locator {
-    return this.page.getByTestId('buyer-data-off-note');
+    // No test id on the note: the page renders it as plain text.
+    return this.page.getByText('Nothing changes until you turn the rules on');
   }
 
   get connectionsTable(): Locator {

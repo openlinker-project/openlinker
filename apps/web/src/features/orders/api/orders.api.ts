@@ -325,6 +325,10 @@ function buildQuery(
   if (filters?.hasBuyerNote !== undefined) {
     params.set('hasBuyerNote', String(filters.hasBuyerNote));
   }
+  // #4289: boolean, same `!== undefined` guard: `false` is the explicit default.
+  if (filters?.hidden !== undefined) {
+    params.set('hidden', String(filters.hidden));
+  }
   // #3940: boolean, same `!== undefined` guard as its neighbours.
   if (filters?.giftNotAdded !== undefined) {
     params.set('giftNotAdded', String(filters.giftNotAdded));

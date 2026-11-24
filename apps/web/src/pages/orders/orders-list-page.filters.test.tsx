@@ -195,6 +195,49 @@ describe('OrdersListPage filter bar', () => {
     expect((await screen.findAllByTestId('order-buyer-note-hint')).length).toBeGreaterThan(0);
   });
 
+  it('should send hidden=true and not by default when "Hidden orders" is checked in the panel', async () => {
+    const user = userEvent.setup();
+    const { list } = setup();
+    await screen.findByText('ALG-1');
+    expect(lastFilters(list).hidden).toBeUndefined();
+    await user.click(screen.getByTestId('orders-filter-toggle'));
+
+    await user.click(screen.getByLabelText('Hidden orders'));
+
+    await waitFor(() => {
+      expect(lastFilters(list).hidden).toBe(true);
+    });
+  });
+
+  it('should read hidden from the URL so the filter survives a reload', async () => {
+    const { list } = setup('/orders?hidden=true');
+    await screen.findByText('ALG-1');
+
+    expect(lastFilters(list).hidden).toBe(true);
+  });
+
+  it('should show the Hidden badge, with the erased tooltip, on hidden orders', async () => {
+    const list = vi.fn().mockResolvedValue(
+      paginated([
+        { ...order, hiddenAt: '2026-11-01T00:00:00.000Z', personalDataErasedAt: '2026-11-02T00:00:00.000Z' },
+        { ...order, internalOrderId: 'ol_order_2', orderSnapshot: { ...order.orderSnapshot, orderNumber: 'ALG-2' } },
+      ]),
+    );
+    renderWithProviders(<OrdersListPage />, {
+      apiClient: createMockApiClient({
+        orders: { list },
+        connections: { list: vi.fn().mockResolvedValue([connection]) },
+      }),
+      route: '/orders?hidden=true',
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    await screen.findByText('ALG-1');
+
+    const badges = await screen.findAllByTestId('order-hidden-badge');
+    expect(badges.length).toBeGreaterThan(0);
+    expect(badges.every((b) => b.getAttribute('title')?.includes('erased') === true)).toBe(true);
+  });
+
   it('should send packed=false when "Not packed yet" is chosen in the panel', async () => {
     const user = userEvent.setup();
     const { list } = setup();

@@ -132,7 +132,7 @@
     "eraseDescription": "Counted from the day the order was placed.",
     "eraseLabel": "When should personal data be erased?",
     "eraseNever": "Never, data stays without a time limit",
-    "hideDescription": "The order leaves the list but its data stays in OpenLinker.",
+    "hideDescription": "The order leaves the list but its data stays in OpenLinker. Find it under the “Hidden orders” filter.",
     "hideLabel": "When should an order be hidden?",
     "hideNever": "Never, orders stay on the list",
     "irreversibleBody": "Erased personal data cannot be restored. Syncing the order again does not bring it back. Invoices and receipts already issued are not changed.",
