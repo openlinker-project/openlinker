@@ -23,16 +23,18 @@ export interface OrderDetailTabEntry {
 export function OrderDetailTabList({
   tabs,
   ariaLabel,
+  attentionLabel,
 }: {
   tabs: readonly OrderDetailTabEntry[];
   ariaLabel: string;
+  attentionLabel: string;
 }): ReactElement {
   return (
     <TabsList aria-label={ariaLabel} className="order-detail__tab-list">
       {tabs.map((tab) => (
         <TabsTrigger key={tab.id} value={tab.id} id={`order-tab-${tab.id}`}>
           {tab.label}
-          {tab.flag ? <span className="order-detail__tab-dot" role="img" aria-label="Needs attention" /> : null}
+          {tab.flag ? <span className="order-detail__tab-dot" role="img" aria-label={attentionLabel} /> : null}
           {tab.count !== undefined && tab.count > 0 ? (
             <span className="tabs__count">{tab.count}</span>
           ) : null}

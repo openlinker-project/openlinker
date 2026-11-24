@@ -944,7 +944,11 @@ export function OrderDetailPage(): ReactElement {
       />
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <OrderDetailTabList ariaLabel={copy.tabs.ariaLabel} tabs={tabEntries} />
+        <OrderDetailTabList
+          ariaLabel={copy.tabs.ariaLabel}
+          attentionLabel={copy.tabs.needsAttention}
+          tabs={tabEntries}
+        />
 
       <TabsContent value="overview" forceMount className="order-detail__tab">
         <OrderProgressLine

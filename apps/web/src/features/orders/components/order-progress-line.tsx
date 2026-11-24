@@ -34,9 +34,11 @@ export function OrderProgressLine({ input }: { input: OrderProgressInput }): Rea
     input.dispatched || input.delivered,
     input.delivered,
   ];
-  const firstTodo = done.findIndex((d) => !d);
+  // The current step is the one after the last step that is done, so an order that skips a step
+  // (cash on delivery is paid at the door) does not park the marker on a step later ones have passed.
+  const current = done.lastIndexOf(true) + 1;
   const stateOf = (i: number): StepState =>
-    done[i] ? 'done' : i === firstTodo ? 'current' : 'todo';
+    done[i] ? 'done' : i === current ? 'current' : 'todo';
   const steps: Array<{ key: string; label: string; detail: ReactElement | string | null }> = [
     {
       key: 'placed',

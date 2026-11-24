@@ -1555,7 +1555,6 @@
       "other": "{n} items"
     },
     "moreItems": "+{count} more",
-    "noDestination": "no destination",
     "paidOn": "Paid on {channel}",
     "payment": {
       "awaiting": "Awaiting payment",
@@ -1563,10 +1562,7 @@
       "paid": "Paid",
       "refunded": "Refunded"
     },
-    "placed": "Placed",
     "received": "Received",
-    "routeDestination": "destination",
-    "routeSource": "source",
     "shipBy": "Ship by",
     "title": "Order {number}",
     "units": {
@@ -1671,6 +1667,7 @@
       "ariaLabel": "Order sections",
       "documents": "Sales documents",
       "history": "History",
+      "needsAttention": "Needs attention",
       "notes": "Notes",
       "overview": "Overview",
       "packing": "Packing",

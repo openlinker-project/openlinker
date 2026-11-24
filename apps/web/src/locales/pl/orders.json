@@ -1639,7 +1639,6 @@
       "other": "{n} pozycji"
     },
     "moreItems": "+{count} więcej",
-    "noDestination": "brak kanału docelowego",
     "paidOn": "Opłacone w {channel}",
     "payment": {
       "awaiting": "Czeka na płatność",
@@ -1647,10 +1646,7 @@
       "paid": "Opłacone",
       "refunded": "Zwrócono pieniądze"
     },
-    "placed": "Złożone",
     "received": "Otrzymane",
-    "routeDestination": "kanał docelowy",
-    "routeSource": "źródło",
     "shipBy": "Wyślij do",
     "title": "Zamówienie {number}",
     "units": {
@@ -1763,6 +1759,7 @@
       "ariaLabel": "Sekcje zamówienia",
       "documents": "Dokumenty sprzedaży",
       "history": "Historia",
+      "needsAttention": "Wymaga uwagi",
       "notes": "Notatki",
       "overview": "Przegląd",
       "packing": "Pakowanie",

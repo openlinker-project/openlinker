@@ -118,7 +118,7 @@ test.describe('orders: detail page against the mockup (#4286)', () => {
       test.skip(!sourceConnectionId, 'stack has no connection to attribute the order to');
 
       const data = situationData(situation);
-      const record = buildOrderRecord(situation, sourceConnectionId as string);
+      const record = buildOrderRecord(situation, sourceConnectionId);
 
       await page.clock.setFixedTime(new Date(FIXED_NOW[situation]));
       // Only the API read: the SPA route of the same name is a document request.
@@ -138,7 +138,9 @@ test.describe('orders: detail page against the mockup (#4286)', () => {
         }
         const response = await route.fetch();
         const body = (await response.json()) as unknown;
-        const list = Array.isArray(body) ? body : ((body as { items?: unknown[] }).items ?? []);
+        const list: unknown[] = Array.isArray(body)
+          ? (body as unknown[])
+          : ((body as { items?: unknown[] }).items ?? []);
         return route.fulfill({ response, json: [...list, shippingConnection()] });
       });
 

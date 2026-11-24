@@ -18,6 +18,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import type { OrderRecord } from '../api/orders.types';
+import { minorUnitExponentFor } from '../../invoicing';
 import { paymentMethodChipLabel } from '../lib/payment-method';
 import { OrderRefundStateBadge } from './order-refund-state-badge';
 import type { ParsedOrderSnapshot, PaymentStatus } from '../api/order-snapshot.schema';
@@ -256,7 +257,10 @@ export function OrderDetailHeader({
         {snapshot.totals ? (
           <strong className="order-header__total tabular">
             <span className="order-header__currency">{snapshot.totals.currency}</span>{" "}
-            {snapshot.totals.total.toFixed(2)}
+            {format.number(snapshot.totals.total, {
+              minimumFractionDigits: minorUnitExponentFor(snapshot.totals.currency),
+              maximumFractionDigits: minorUnitExponentFor(snapshot.totals.currency),
+            })}
           </strong>
         ) : null}
         {snapshot.paymentStatus ? (
