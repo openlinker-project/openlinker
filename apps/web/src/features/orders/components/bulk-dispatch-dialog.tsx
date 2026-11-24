@@ -41,7 +41,6 @@ import {
   type Shipment,
 } from '../../shipments';
 
-import { useRoutingRulesForConnections } from '../../mappings';
 import type { OrderRecord } from '../api/orders.types';
 import {
   buildDispatchItem,
@@ -51,8 +50,13 @@ import {
   dispatchIneligibilityLabel,
   type DispatchEligibility,
 } from '../lib/dispatch-input';
-import { mergeParcelWithRoutedPrefill, parcelPrefillForMethod } from '../lib/routed-parcel-profile';
+import {
+  mergeParcelWithRoutedPrefill,
+  parcelPrefillFromFields,
+  type RoutedParcelPrefill,
+} from '../lib/routed-parcel-profile';
 import { createParcelSchema, type ParcelSubmission } from './bulk-dispatch-dialog.schema';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 type BulkDispatchCopy = ResolvedCopy<Messages['orders']>['bulkDispatchDialog'];
 
@@ -144,25 +148,16 @@ export function BulkDispatchDialog({
 
   // Per-order default parcel from the routing rule its delivery method matches
   // (#3652). Precedence per row: explicit row override > the dialog-wide default
-  // box (field by field, where filled) > the routed profile.
-  const sourceIds = useMemo(
-    () => Array.from(new Set(eligible.map((e) => e.order.sourceConnectionId))),
-    [eligible],
-  );
-  const rulesBySource = useRoutingRulesForConnections(sourceIds, { enabled: open });
+  // box (field by field, where filled) > the routed profile. Read from each
+  // order's `deliveryResolution` (#3958): the routing-rules endpoint is
+  // admin-only, so an operator lost the prefill without any sign of it.
   const routedByOrder = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof parcelPrefillForMethod>>();
+    const map = new Map<string, RoutedParcelPrefill | null>();
     for (const e of eligible) {
-      map.set(
-        e.order.internalOrderId,
-        parcelPrefillForMethod(
-          rulesBySource.get(e.order.sourceConnectionId),
-          e.snapshot.shipping?.methodId,
-        ),
-      );
+      map.set(e.order.internalOrderId, parcelPrefillFromFields(e.order.deliveryResolution?.parcelProfile));
     }
     return map;
-  }, [eligible, rulesBySource]);
+  }, [eligible]);
 
   const rowParcel = (orderId: string): ParcelFields =>
     overrides[orderId] ?? mergeParcelWithRoutedPrefill(profile, routedByOrder.get(orderId) ?? null);
@@ -234,7 +229,7 @@ export function BulkDispatchDialog({
       if (outcome.status === 'fulfilled') {
         merged.push(...outcome.value.results);
       } else {
-        const error = outcome.reason instanceof Error ? outcome.reason.message : copy.dispatchFailed;
+        const error = describeApiError(outcome.reason, 'orders');
         for (const g of groupItems) {
           merged.push({ kind: 'failed', orderId: g.item.orderId, error });
         }

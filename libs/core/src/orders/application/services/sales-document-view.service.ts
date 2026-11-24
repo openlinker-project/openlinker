@@ -305,6 +305,7 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
         blockReason: record.salesDocumentBlockReason,
         unresolvedReason: record.salesDocumentUnresolvedReason,
         blockDetail: record.salesDocumentBlockDetail,
+        blockParams: record.salesDocumentBlockParams,
         // Only records on a DIFFERENT connection: an older attempt on the
         // winner's own connection is that document's history, not a second
         // document, and `SalesDocumentOtherRecord` describes the latter.

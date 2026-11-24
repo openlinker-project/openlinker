@@ -23,6 +23,7 @@ import type { ConnectionBacklogStatus, ConnectionSyncStatus } from '../api/conne
 import { LoadingState, ErrorState } from '../../../shared/ui/feedback-state';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /**
  * Sync status panel (#2615), on the connection detail page's health tab.
@@ -165,7 +166,7 @@ export function ConnectionSyncStatusPanel({
       {statusQuery.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={statusQuery.error.message}
+          message={describeApiError(statusQuery.error, 'connections')}
           action={
             <button
               type="button"

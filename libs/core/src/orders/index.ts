@@ -32,6 +32,23 @@ export {
 // asked on the create-skip path only, best-effort.
 export type { OrderContactRefresher } from './domain/ports/capabilities/order-contact-refresher.capability';
 export { isOrderContactRefresher } from './domain/ports/capabilities/order-contact-refresher.capability';
+// Delivery-point edit of an order the destination already holds (#4195): asked
+// on the create-skip path when the source changed the locker or shipping method.
+export type { OrderDeliveryUpdater } from './domain/ports/capabilities/order-delivery-updater.capability';
+export { isOrderDeliveryUpdater } from './domain/ports/capabilities/order-delivery-updater.capability';
+export type {
+  OrderDeliveryRefusalReason,
+  OrderDeliveryUpdateOutcome,
+  OrderDeliveryUpdateReport,
+  OrderDeliveryUpdateResult,
+} from './domain/types/order-delivery-update.types';
+export {
+  OrderDeliveryRefusalReasonValues,
+  OrderDeliveryUpdateOutcomeValues,
+  computeDeliveryFingerprint,
+  isOrderDeliveryRefusalReason,
+  isOrderDeliveryUpdateOutcome,
+} from './domain/types/order-delivery-update.types';
 // Read-back counterpart to OrderFulfillmentUpdater (#834): branch-1
 // shipment-status projection from the OMP's view.
 export type { FulfillmentStatusReader } from './domain/ports/capabilities/fulfillment-status-reader.capability';
@@ -161,7 +178,11 @@ export {
   isDestinationRoutingBlockReason,
   buildDestinationRoutingDetail,
 } from './domain/types/destination-routing-block.types';
-export { PaymentStatusValues, PAYMENT_STATUS } from './domain/types/payment-status.types';
+export {
+  PaymentStatusValues,
+  PAYMENT_STATUS,
+  isRoutingAwaitingPayment,
+} from './domain/types/payment-status.types';
 export type { PaymentStatus } from './domain/types/payment-status.types';
 export {
   PaymentMethodValues,
@@ -215,6 +236,12 @@ export {
   IncomingOrderItemRef,
   IncomingOrderTotals,
   IncomingOrderAddress,
+  LineGift,
+  GiftSource,
+  GiftSourceValues,
+  GiftDocumentForm,
+  GiftDocumentFormValues,
+  isGiftDocumentForm,
 } from './domain/types/incoming-order.types';
 export {
   OrderFeedEventTypeValues,
@@ -357,6 +384,11 @@ export type {
   EvaluateRefundCeilingInput,
 } from './domain/types/refund-ceiling.types';
 
+// Refund-derived order state (#4130) - derived on read, never stored, so the
+// poll that rewrites `paymentStatus` cannot overwrite it.
+export { deriveOrderRefundState, OrderRefundStateValues } from './domain/types/refund-state.types';
+export type { OrderRefundState, OrderRefundStateView } from './domain/types/refund-state.types';
+
 // Refund EXECUTION (#2371, ADR-056) — the command/result a `RefundExecutor`
 // speaks. Declared here rather than in `returns` because the vocabulary is
 // orders' own and a refund is not inherently about a return.
@@ -419,6 +451,48 @@ export {
   type OrderDocumentEmailLocale,
   type OrderDocumentEmailRefusal,
 } from './domain/types/order-document-email.types';
+// Batch issuing (#3583).
+export type {
+  ISalesDocumentBatchService,
+  ExecuteSalesDocumentBatchRunInput,
+  ExecuteSalesDocumentBatchRunResult,
+  SalesDocumentBatchRunDetail,
+  SalesDocumentBatchRunItemView,
+  RequeueUntargetedBatchedResult,
+  SalesDocumentBatchOverview,
+  SalesDocumentBatchKindOverview,
+  RequestSalesDocumentBatchRunResult,
+} from './application/interfaces/sales-document-batch.service.interface';
+export { batchedDocumentKinds, documentKindsIssuedBy } from './domain/batched-document-kinds';
+export {
+  SalesDocumentBatchRun,
+  SalesDocumentBatchRunItem,
+} from './domain/entities/sales-document-batch-run.entity';
+export {
+  SalesDocumentBatchRunTriggerValues,
+  SalesDocumentBatchRunStatusValues,
+  SalesDocumentBatchRunFailureReasonValues,
+  SalesDocumentBatchRunRefusalValues,
+  SalesDocumentBatchRunItemResultValues,
+  SalesDocumentBatchItemOutcomeValues,
+  deriveBatchItemOutcome,
+  isBatchQueueB2b,
+  buildScheduledBatchRunKey,
+  buildManualBatchRunKey,
+} from './domain/types/sales-document-batch-run.types';
+export type {
+  SalesDocumentBatchRunTrigger,
+  SalesDocumentBatchRunStatus,
+  SalesDocumentBatchRunFailureReason,
+  SalesDocumentBatchRunRefusal,
+  SalesDocumentBatchRunItemResult,
+  SalesDocumentBatchItemOutcome,
+  SalesDocumentBatchQueueEntry,
+  SalesDocumentBatchQueueFilter,
+  CreateSalesDocumentBatchRunInput,
+  FinishSalesDocumentBatchRunInput,
+  AppendSalesDocumentBatchRunItemInput,
+} from './domain/types/sales-document-batch-run.types';
 export type {
   SalesDocumentListAmount,
   SalesDocumentListCursor,
@@ -441,11 +515,18 @@ export {
   OrderDestinationRetryInput,
   OrderDestinationRetryResult,
 } from './application/interfaces/order-destination-retry.service.interface';
+export { MULTIPACK_WITHOUT_BUNDLE_REASON_CODE } from './application/services/multipack-hold';
+export type {
+  OrderBundleComponent,
+  OrderBundleLine,
+  RawMultipackLine,
+} from './domain/types/order-bundle-line.types';
 // Release -> provisioning resume (#2341). Closes the gap #2339 stated: releasing
 // a hold un-blocks the next run but nothing enqueued it, and a cursor-based
 // source journal never re-delivers the original event.
 export type {
   IOrderProvisioningResumeService,
+  MultipackReleaseResult,
   OrderProvisioningResumeResult,
   ProvisioningResumeSkipReason,
 } from './application/interfaces/order-provisioning-resume.service.interface';
@@ -496,6 +577,26 @@ export { FULFILLMENT_DISPATCH_RELAY_ORIGIN } from './application/services/fulfil
 export type { IOrderRefundService } from './application/interfaces/order-refund.service.interface';
 export { OrderRefundService } from './application/services/order-refund.service';
 export type {
+  IOrderRefundObservationService,
+  RefundObservationResult,
+} from './application/interfaces/order-refund-observation.service.interface';
+export {
+  OrderRefundObservationService,
+  buildObservedRefundIdempotencyKey,
+} from './application/services/order-refund-observation.service';
+export type {
+  IOrderRefundRelayService,
+  RefundRelayResult,
+} from './application/interfaces/order-refund-relay.service.interface';
+export { OrderRefundRelayService } from './application/services/order-refund-relay.service';
+export type { SourceRefundObservation } from './domain/types/source-refund-observation.types';
+export type { RefundSourceReader } from './domain/ports/capabilities/refund-source-reader.capability';
+export { isRefundSourceReader } from './domain/ports/capabilities/refund-source-reader.capability';
+export {
+  isRefundObservationEnabled,
+  REFUND_OBSERVATION_ENV_VAR,
+} from './domain/types/refund-observation-flag.types';
+export type {
   ITaxRateBackfillService,
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
@@ -519,9 +620,43 @@ export type {
   MarginTrendPoint,
   MarginVariantView,
 } from './domain/types/order-margin-analytics.types';
+export type {
+  IOrderBundleDocumentService,
+  GiftSlotCostLine,
+} from './application/services/order-bundle-document.service.interface';
+export type { IGiftReportService } from './application/services/gift-report.service.interface';
+export {
+  summarizeGiftReport,
+  bucketGiftCosts,
+  GiftReportSourceFilterValues,
+} from './domain/types/gift-report.types';
+export type {
+  BundleComponentDemandRow,
+  BundleReport,
+  BundleReportComponent,
+  BundleReportRow,
+  GiftCostBasis,
+  GiftCostGranularity,
+  GiftCostPoint,
+  GiftCostSeries,
+  GiftReportEntry,
+  GiftReportFilters,
+  GiftReportGroup,
+  GiftReportSourceFilter,
+  GiftReportSummary,
+  GiftReportTotals,
+} from './domain/types/gift-report.types';
+export type {
+  IOrderGiftService,
+  ApplyGiftRulesInput,
+  ApplyGiftRulesResult,
+  GiftPreviewInput,
+  GiftPreviewResult,
+} from './application/services/order-gift.service.interface';
 export type { IOrderLineCostService } from './application/services/order-line-cost.service.interface';
 export type {
   OrderLineCostView,
+  OrderGiftSlotCostView,
   OrderLineCostsResult,
 } from './domain/types/order-line-cost.types';
 export type { ICostCoverageService } from './application/services/cost-coverage.service.interface';
@@ -634,6 +769,7 @@ export { NoBuyerNoteException } from './domain/exceptions/no-buyer-note.exceptio
 export { MissingOrderItemMappingError } from './domain/exceptions/missing-order-item-mapping.error';
 export { OrderDestinationNotFoundException } from './domain/exceptions/order-destination-not-found.exception';
 export { OrderDestinationNotRetryableException } from './domain/exceptions/order-destination-not-retryable.exception';
+export { OrderDestinationHandledByRoutingException } from './domain/exceptions/order-destination-handled-by-routing.exception';
 export { MissingSourceExternalIdException } from './domain/exceptions/missing-source-external-id.exception';
 export { OrderCreateContendedException } from './domain/exceptions/order-create-contended.exception';
 export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapshot-unavailable.error';
@@ -692,11 +828,14 @@ export {
   addressEditTargetRef,
   lineQuantityEditTargetRef,
   deliveryMethodEditTargetRef,
+  giftEditTargetRef,
   discountEditTargetRef,
   discountRefundTargetRef,
   discountCorrectionTargetRef,
 } from './domain/types/order-change.types';
 // #3542 — the operator-edit overlay and its pure merge.
+export { freezeGiftUnitCost } from './application/services/gift-unit-cost';
+export type { FrozenGiftCost } from './application/services/gift-unit-cost';
 export {
   readOrderEdits,
   applyOrderEditsToSnapshot,
@@ -707,11 +846,16 @@ export {
   resolveTotalUnitPrice,
   readLineEditTreatments,
   findUnmatchedLineEdits,
+  olGiftLineKey,
+  addedLineToOrderItem,
+  OL_GIFT_LINE_KEY_PREFIX,
+  OPERATOR_GIFT_LINE_KEY_PREFIX,
 } from './domain/types/order-edits.types';
 export type {
   OrderEdits,
   OrderAddressEdit,
   OrderLineEdit,
+  OrderAddedLineEdit,
   OrderDeliveryMethodEdit,
   OrderEditedTotals,
   ApplyOrderEditInput,

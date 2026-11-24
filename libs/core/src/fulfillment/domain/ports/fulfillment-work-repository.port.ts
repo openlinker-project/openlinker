@@ -838,6 +838,18 @@ export interface FulfillmentWorkRepositoryPort {
 
   recordLineProgress(input: RecordFulfillmentLineProgressInput): Promise<boolean>;
 
+  /**
+   * Add ONE line to an existing, still-open work (#3940: a gift added by hand to
+   * a routed order). A narrow conditional INSERT, never a save of the work:
+   * it lands only while the work is non-terminal and its parcel is not closed,
+   * and `(workId, orderLineId)` is the line's identity, so a retry adds nothing.
+   * The parent row is read `FOR SHARE` inside the same statement, so a parcel
+   * close that commits while the insert runs is waited for and `parcelClosedAt`
+   * is re-checked against it: a line never lands on a parcel closed concurrently.
+   * `false` means not applied (work closed, terminal, missing, or line present).
+   */
+  addLine(workId: string, line: CreateFulfillmentWorkLineInput): Promise<boolean>;
+
   /** Raises `FulfillmentHoldLimitExceededError` past `FULFILLMENT_HOLD_ACTIVE_LIMIT`. */
   placeHold(input: PlaceFulfillmentHoldInput): Promise<FulfillmentHold>;
 

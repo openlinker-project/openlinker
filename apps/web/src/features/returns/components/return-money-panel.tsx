@@ -34,9 +34,10 @@ import { Button } from '../../../shared/ui/button';
 import { KeyValueList } from '../../../shared/ui/key-value-list';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { RefundConfirmationForm, describeRefundReason } from '../../orders';
+import { RefundConfirmationForm, describeRefundReason, useRefundSentToShopify } from '../../orders';
 import { describeRefundError, readRefundCeilingExceeded } from '../lib/refund-error';
 import type { RefundCeilingExceededDetails } from '../lib/refund-error';
+import { BundleRefundHint } from './bundle-refund-hint';
 import { useConfirmReturnRefundMutation } from '../hooks/use-return-custody-mutations';
 import type { ReturnDetail } from '../api/returns.types';
 
@@ -51,6 +52,7 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
   const ceilingCopy = returnsCopy.money.refundCeiling;
   const { showToast } = useToast();
   const confirmRefund = useConfirmReturnRefundMutation(detail.id);
+  const sentToShopify = useRefundSentToShopify(detail.sourceConnectionId);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ceiling, setCeiling] = useState<RefundCeilingExceededDetails | null>(null);
@@ -93,6 +95,14 @@ export function ReturnMoneyPanel({ detail, writeAccess }: ReturnMoneyPanelProps)
           {open ? (
             <RefundConfirmationForm
               currency={detail.orderCurrency}
+              sentToShopify={sentToShopify}
+              renderAmountSuggestion={(apply) => (
+                <BundleRefundHint
+                  currency={detail.orderCurrency}
+                  onUse={apply}
+                  returnId={detail.id}
+                />
+              )}
               error={error}
               onCancel={() => {
                 setOpen(false);

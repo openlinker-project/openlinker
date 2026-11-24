@@ -185,7 +185,9 @@ export function createMockApiClient(
 ): ApiClient {
   const core: CoreApiClient = {
     request: overrides.request ?? vi.fn(),
-    requestBlob: overrides.requestBlob ?? vi.fn(),
+    // Rejects by default: a surface asking for a proxied picture falls back to
+    // its placeholder, as it would when the API has no image.
+    requestBlob: overrides.requestBlob ?? vi.fn().mockRejectedValue(new Error('No image in this test')),
     requestFile: overrides.requestFile ?? vi.fn(),
     requestStream: overrides.requestStream ?? vi.fn(),
     adapters: {
@@ -572,6 +574,7 @@ export function createMockApiClient(
       // #3568. An install with no movements; the count is only requested for a full page.
       listMovements: vi.fn().mockResolvedValue({ items: [], limit: 20, offset: 0 }),
       countMovements: vi.fn().mockResolvedValue({ total: 0 }),
+      listMovementPushes: vi.fn().mockResolvedValue({ items: [] }),
       listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
       bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
       // #3569 - the honest default is a stock view that names no variants, so a
@@ -767,6 +770,20 @@ export function createMockApiClient(
         .fn()
         .mockRejectedValue(new ApiError('Adapter does not support live offer reading', 422, null)),
       updateOfferFields: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
+      // #3962 - a live product with nothing held: the product page's sales
+      // channels section renders nothing and the products banner stays away.
+      getProductSaleStatus: vi.fn().mockResolvedValue({
+        productId: '',
+        deletedAtSource: false,
+        deletedAt: null,
+        staleVariantIds: [],
+        staleSkus: [],
+        ordersSinceDeletion: null,
+        checkedAt: null,
+        rows: [],
+      }),
+      getSaleHoldAttentionCount: vi.fn().mockResolvedValue({ productsStillOnSale: 0 }),
+      releaseSaleHolds: vi.fn().mockResolvedValue({ released: [], failed: [] }),
       // ADR-046: the frontend holds no default format, so a component that
       // mounts a description editor renders a disabled placeholder until this
       // read resolves. Defaulting it permissively here keeps every existing
@@ -914,6 +931,34 @@ export function createMockApiClient(
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.posthogSettings,
     } as ApiClient['posthogSettings'],
+    gifts: {
+      addGiftToOrder: vi.fn(),
+      ...overrides.gifts,
+    } as ApiClient['gifts'],
+    promotions: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn(),
+      create: vi.fn(),
+      replace: vi.fn(),
+      remove: vi.fn().mockResolvedValue(undefined),
+      reorder: vi.fn().mockResolvedValue([]),
+      resume: vi.fn(),
+      evaluate: vi.fn(),
+      history: vi.fn().mockResolvedValue({ items: [] }),
+      ...overrides.promotions,
+    } as ApiClient['promotions'],
+    bundles: {
+      findMany: vi.fn().mockResolvedValue([]),
+      get: vi.fn(),
+      history: vi.fn().mockResolvedValue([]),
+      usedIn: vi.fn().mockResolvedValue([]),
+      usedInMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      syncFromMaster: vi.fn(),
+      confirmMultipack: vi.fn(),
+      ...overrides.bundles,
+    } as ApiClient['bundles'],
     products: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],
@@ -1148,6 +1193,20 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
       ...overrides.salesDocumentList,
     } as ApiClient['salesDocumentList'],
+    // #3584 — batch issuing. Default: nothing scheduled, nothing queued, no runs.
+    salesDocumentBatch: {
+      getOverview: vi.fn().mockResolvedValue({
+        connectionId: '',
+        schedules: [],
+        queueCounts: {},
+        runningRun: null,
+      }),
+      getQueue: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      listRuns: vi.fn().mockResolvedValue({ runs: [], total: 0 }),
+      getRun: vi.fn().mockResolvedValue(null),
+      startRun: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
+      ...overrides.salesDocumentBatch,
+    } as ApiClient['salesDocumentBatch'],
     salesDocumentRules: {
       listRules: vi.fn().mockResolvedValue([]),
       createRule: vi.fn().mockResolvedValue(null),
@@ -1186,6 +1245,20 @@ export function createMockApiClient(
       getCountryFacts: vi.fn().mockResolvedValue({ windowDays: 30, countries: [] }),
       ...overrides.deliveryOnDocuments,
     } as ApiClient['deliveryOnDocuments'],
+    giftDocuments: {
+      getSettings: vi.fn().mockResolvedValue({
+        giftDocumentForm: 'technical-cent',
+        giftDocumentFormSource: 'default',
+        updatedAt: null,
+      }),
+      saveSettings: vi.fn().mockResolvedValue({
+        giftDocumentForm: 'technical-cent',
+        giftDocumentFormSource: 'setting',
+        updatedAt: null,
+      }),
+      getProviders: vi.fn().mockResolvedValue({ providers: [] }),
+      ...overrides.giftDocuments,
+    } as ApiClient['giftDocuments'],
     // #3056. The default is a connection with no sourcing rules — the honest
     // empty ruleset, so a test that renders the table without opting in gets
     // the "no rules yet" branch rather than rows it never declared.
@@ -1207,7 +1280,27 @@ export function createMockApiClient(
     // ingestion IS configured — so a test that renders the list without opting
     // in gets the neutral "no returns yet" branch rather than the
     // configuration claim, which no test should assert by accident.
+    giftReport: {
+      getGiftReport: vi.fn().mockResolvedValue({ groups: [], totals: [] }),
+      getGiftBundleReport: vi.fn().mockResolvedValue({ bundles: [], demand: [] }),
+      ...overrides.giftReport,
+    } as ApiClient['giftReport'],
+    returnGifts: {
+      getReturnGifts: vi.fn().mockResolvedValue({ gifts: [], currency: null, refundDeductionGross: 0 }),
+      decideReturnGift: vi.fn(),
+      ...overrides.returnGifts,
+    } as ApiClient['returnGifts'],
     returns: {
+      // A plain (non-bundle) line: the preview answers, and nothing blocks the restock.
+      getBundleReturnPreview: vi.fn().mockResolvedValue({
+        isBundle: false,
+        paidPerUnitGross: null,
+        components: [],
+        splitRefusal: null,
+        splitRefusalVariantIds: [],
+        returnedShareGross: null,
+        allegroRefundHintGross: null,
+      }),
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,
@@ -1231,6 +1324,16 @@ export function createMockApiClient(
         total: 0,
         limit: 20,
         offset: 0,
+      }),
+      summary: vi.fn().mockResolvedValue({
+        total: 0,
+        byStatus: { draft: 0, generated: 0, dispatched: 0, 'in-transit': 0, delivered: 0, failed: 0, cancelled: 0 },
+        byProcessor: { omp: 0, carrier: 0 },
+        byMethod: { paczkomat: 0, pickup: 0, kurier: 0, omp: 0 },
+        byConnection: {},
+        waybillRelayStuck: 0,
+        toSend: 0,
+        failedCauseGroups: [],
       }),
       generateLabel: vi.fn().mockResolvedValue({ kind: 'omp_fulfilled' }),
       cancel: vi.fn().mockResolvedValue({

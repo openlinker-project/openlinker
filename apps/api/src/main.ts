@@ -8,17 +8,22 @@
  * @module apps/api/src
  */
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import type { Server } from 'node:http';
 import * as express from 'express';
 import { installNestLogger } from '@openlinker/shared/logging/nest';
 import { buildGlobalExceptionFilters } from './common/filters/global-filters';
+import { createValidationPipe } from './common/validation/coded-validation.pipe';
 import { AppModule } from './app.module';
 import { APP_INFO_SERVICE_TOKEN } from './app-info/app-info.module';
 import type { IAppInfoService } from './app-info/app-info.service.interface';
 import { API_VERSION } from './app-info/app-info.types';
+
+/** Longer than a browser keeps an idle connection open for reuse (~60 s). */
+const HTTP_KEEP_ALIVE_TIMEOUT_MS = 65_000;
 
 async function bootstrap(): Promise<void> {
   // Route shared `Logger` calls through @nestjs/common before any other work,
@@ -41,7 +46,7 @@ async function bootstrap(): Promise<void> {
         // Capture raw body bytes before JSON parsing
         req.rawBody = buf;
       },
-    }),
+    })
   );
 
   // 2) Everything else: normal JSON parser (no raw capture needed)
@@ -71,14 +76,9 @@ async function bootstrap(): Promise<void> {
     exposedHeaders: ['Content-Disposition'],
   });
 
-  // Global validation pipe
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  // Global validation pipe: a 400 names each failed field with a code (#3861).
+  // Shared with the integration harness - see `createValidationPipe`.
+  app.useGlobalPipes(createValidationPipe());
 
   // Map capability + connection-lifecycle domain errors to accurate HTTP
   // statuses instead of the default 500 (#1087). The roster is shared with the
@@ -118,6 +118,15 @@ async function bootstrap(): Promise<void> {
   const host = process.env.HOST || '0.0.0.0'; // Bind to all interfaces (accessible from Docker)
   await app.listen(port, host);
 
+  // Node closes an idle keep-alive socket after 5 s, shorter than a browser
+  // keeps one for reuse. A request sent on a socket the server has just closed
+  // fails with no response at all, which Firefox reports as "CORS request did
+  // not succeed" - seen when switching pages after a pause. Outlast the
+  // browser's own idle window instead; `headersTimeout` must stay above it.
+  const server = app.getHttpServer() as Server;
+  server.keepAliveTimeout = HTTP_KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = HTTP_KEEP_ALIVE_TIMEOUT_MS + 1_000;
+
   // eslint-disable-next-line no-console -- bootstrap log: emits before LoggerPort backend is installed
   console.log(`Application is running on: http://localhost:${port}`);
   // eslint-disable-next-line no-console -- bootstrap log: emits before LoggerPort backend is installed
@@ -129,4 +138,3 @@ bootstrap().catch((error) => {
   console.error('Error starting application:', error);
   process.exit(1);
 });
-

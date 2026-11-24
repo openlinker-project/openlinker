@@ -35,6 +35,7 @@ export { SyncJob as SyncJobEntity } from './domain/entities/sync-job.entity';
 export type {
   ConnectionCursor,
   ConnectionCursorFilters,
+  ConnectionCursorPrefixSummary,
   ConnectionCursorPagination,
   PaginatedConnectionCursors,
 } from './domain/types/connection-cursor.types';
@@ -87,7 +88,16 @@ export {
 } from './domain/domain-services/connection-backlog.domain-service';
 export type { IConnectionSyncStatusService } from './application/services/connection-sync-status.service.interface';
 export type { SyncJobLane } from './domain/types/sync-job-lane.types';
-export { SyncJobLaneValues, resolveJobScope } from './domain/types/sync-job-lane.types';
+export {
+  SyncJobLaneValues,
+  resolveJobScope,
+  isHookScope,
+  hookScopeClass,
+  HOOK_INVENTORY_SCOPE_SUFFIX,
+  HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE,
+  HOOK_SCOPE_SUFFIX,
+  HOOK_SYNC_JOB_TYPES,
+} from './domain/types/sync-job-lane.types';
 export {
   MarketplaceOrdersPollPayloadV1,
   MarketplaceOrderSyncPayloadV1,
@@ -156,6 +166,10 @@ export type { FulfillmentWorkDispatchPayloadV1 } from './domain/types/fulfillmen
 export type { FulfillmentWorkAutoDispatchPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRoutePayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkTimeoutSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type {
+  SalesDocumentBatchRunPayloadV1,
+  SalesDocumentBatchTickPayloadV1,
+} from './domain/types/sales-document-batch-job-payloads.types';
 export type { FulfillmentWorkRelaySweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRerouteSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentRoutingReapSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
@@ -182,6 +196,7 @@ export { ContendedWriteError } from './domain/exceptions/contended-write.error';
 
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
+export type { IRetryClassifierRegistry } from './infrastructure/adapters/retry-classifier-registry.service.interface';
 export { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
 export { AuthFailureClassifierRegistryService } from './infrastructure/adapters/auth-failure-classifier-registry.service';
 export { SchedulerTaskRegistryService } from './infrastructure/adapters/scheduler-task-registry.service';
@@ -198,7 +213,37 @@ export {
   masterSweepCursorKey,
   masterSweepCompletedAtCursorKey,
   masterSweepRemainingCountCursorKey,
+  masterSweepLockKey,
 } from './domain/types/master-sweep-cursor.types';
+
+// Cursor overview + guarded rewind (#4023)
+export type {
+  CursorFamily,
+  CursorRewindTarget,
+  CursorCatalogueEntry,
+} from './domain/types/cursor-key-catalogue.types';
+export {
+  CursorFamilyValues,
+  CursorRewindTargetValues,
+  OFFER_QUANTITY_WRITE_MARK_PREFIX,
+  resolveCursorCatalogueEntry,
+  catalogueWriterJobTypes,
+} from './domain/types/cursor-key-catalogue.types';
+export type {
+  CursorLastRun,
+  CursorOverview,
+  CursorOverviewConnection,
+  CursorOverviewItem,
+  CursorWriteMarksSummary,
+  CursorRewindInput,
+  CursorRewindResult,
+} from './domain/types/cursor-overview.types';
+export type { CursorRewindRefusal } from './domain/exceptions/cursor-rewind-refused.error';
+export {
+  CursorRewindRefusedError,
+  CursorRewindRefusalValues,
+} from './domain/exceptions/cursor-rewind-refused.error';
+export type { ICursorOverviewService } from './application/services/cursor-overview.service.interface';
 
 // Application Services (interfaces)
 export type { ISyncJobRetryService } from './application/services/sync-job-retry.service.interface';

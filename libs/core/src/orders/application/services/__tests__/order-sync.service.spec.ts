@@ -25,11 +25,13 @@ import type { IOrderRecordService } from '../../interfaces/order-record.service.
 import type { IOrderHoldService } from '../../interfaces/order-hold.service.interface';
 import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderHold } from '../../../domain/entities/order-hold.entity';
+import type { IRetryClassifierRegistry } from '@openlinker/core/sync';
 import { ORDER_CREATE_LOCK_TTL_MS } from '../order-create-lock';
 import {
   DuplicateIdentifierMappingError,
   MappingAlreadyExistsError,
 } from '@openlinker/core/identifier-mapping';
+import { computeDeliveryFingerprint } from '../../../domain/types/order-delivery-update.types';
 
 describe('OrderSyncService', () => {
   let service: OrderSyncService;
@@ -41,6 +43,7 @@ describe('OrderSyncService', () => {
   let orderHoldService: jest.Mocked<IOrderHoldService>;
   let postSaleInventoryRefresh: jest.Mocked<PostSaleInventoryRefreshService>;
   let masterAbsorbedReservations: jest.Mocked<IMasterAbsorbedReservationService>;
+  let retryClassifierRegistry: jest.Mocked<IRetryClassifierRegistry>;
 
   const makeAdapter = (orderRef: OrderRef = { orderId: 'dest_order' }) =>
     ({
@@ -140,6 +143,7 @@ describe('OrderSyncService', () => {
       getCategoryMappings: jest.fn(),
       upsertCategoryMapping: jest.fn(),
       deleteCategoryMapping: jest.fn(),
+      reassignCategoryMappings: jest.fn(),
       resolveDestinationCategory: jest.fn(),
       getAttributeMappings: jest.fn(),
       getAttributeMappingsByProvenance: jest.fn(),
@@ -173,6 +177,7 @@ describe('OrderSyncService', () => {
       // #2397 tests assert on: three failures that named the warn count and
       // said nothing about the real cause.
       markDestinationRoutingBlock: jest.fn().mockResolvedValue(undefined),
+      updateSyncStatus: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
     orderHoldService = {
@@ -200,6 +205,11 @@ describe('OrderSyncService', () => {
       }),
     };
 
+    retryClassifierRegistry = {
+      isNonRetryable: jest.fn().mockReturnValue(false),
+      resolveRetryDeferral: jest.fn().mockReturnValue(null),
+    };
+
     service = new OrderSyncService(
       integrationsService,
       mappingConfigService,
@@ -208,7 +218,8 @@ describe('OrderSyncService', () => {
       orderRecordService,
       orderHoldService,
       postSaleInventoryRefresh,
-      masterAbsorbedReservations
+      masterAbsorbedReservations,
+      retryClassifierRegistry
     );
   });
 
@@ -279,6 +290,30 @@ describe('OrderSyncService', () => {
       expect('taxRate' in command.items[0]).toBe(false);
     });
 
+    it('carries gift and packQuantity onto the destination command, absent when unset (#3929)', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      const order = createOrder();
+      order.items[0].gift = { source: 'ol-rule' };
+      order.items[0].packQuantity = 2;
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1', sourceEventId: 'e-1' });
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect(command.items[0].gift).toEqual({ source: 'ol-rule' });
+      expect(command.items[0].packQuantity).toBe(2);
+
+      const plainAdapter = makeAdapter({ orderId: 'dest_order_790', orderNumber: 'DEST-002' });
+      registerDestinations([{ connectionId: 'dest-b', adapter: plainAdapter }]);
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'e-2',
+      });
+      const [plain] = plainAdapter.createOrder.mock.calls[0];
+      expect('gift' in plain.items[0]).toBe(false);
+      expect('packQuantity' in plain.items[0]).toBe(false);
+    });
+
     it('leaves the gross keys absent when the source reported none', async () => {
       const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
       registerDestinations([{ connectionId: 'dest-a', adapter }]);
@@ -346,6 +381,8 @@ describe('OrderSyncService', () => {
         unitPriceGross: { projected: true },
         taxRate: { projected: true },
         taxRateCountry: { projected: true },
+        gift: { projected: true },
+        packQuantity: { projected: true },
         imageUrl: {
           withheld:
             'reserved for future enrichment - no adapter sets it on ingestion and no destination reads it',
@@ -382,6 +419,8 @@ describe('OrderSyncService', () => {
           taxSource: 'shop',
           taxRateReadAt: '2026-10-01T00:00:00.000Z',
           taxRateChannel: '8',
+          gift: { source: 'channel' },
+          packQuantity: 3,
         };
         const order = createOrder();
         order.items = [fullItem];
@@ -428,6 +467,7 @@ describe('OrderSyncService', () => {
           status: 'success',
           orderRef: { orderId: 'dest_order_789', orderNumber: 'DEST-001' },
           created: true,
+          deliveryFingerprint: expect.any(String),
         },
       ]);
     });
@@ -460,6 +500,7 @@ describe('OrderSyncService', () => {
           status: 'success',
           orderRef: { orderId: 'PS-EXISTING-1' },
           created: false,
+          deliveryFingerprint: expect.any(String),
         },
       ]);
     });
@@ -537,12 +578,134 @@ describe('OrderSyncService', () => {
         status: 'success',
         orderRef: { orderId: 'ok-1' },
         created: true,
+        deliveryFingerprint: expect.any(String),
       });
       expect(badResult).toEqual({
         destinationConnectionId: 'dest-bad',
         status: 'failed',
         error: { message: 'destination down' },
       });
+    });
+
+    it('should rethrow when a destination failure is classified deferrable, after siblings finish (#3984)', async () => {
+      const ok = makeAdapter({ orderId: 'ok-1' });
+      const throttled = new Error('Too many attempts');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([
+        { connectionId: 'dest-ok', adapter: ok },
+        { connectionId: 'dest-bad', adapter: failing },
+      ]);
+      retryClassifierRegistry.resolveRetryDeferral.mockImplementation((cause) =>
+        cause === throttled ? { delaySeconds: 60, reason: 'throttled' } : null
+      );
+
+      await expect(
+        service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          deferralBudget: { spentMs: 0, maxMs: 86_400_000 },
+        })
+      ).rejects.toBe(throttled);
+      expect(ok.createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should settle a deferrable failure as failed when the caller passes no budget (#3984)', async () => {
+      const throttled = new Error('Too many attempts');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([{ connectionId: 'dest-bad', adapter: failing }]);
+      retryClassifierRegistry.resolveRetryDeferral.mockReturnValue({
+        delaySeconds: 60,
+        reason: 'throttled',
+      });
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0].status).toBe('failed');
+    });
+
+    it('should settle as failed instead of rethrowing once the deferral budget is spent (#3984)', async () => {
+      const throttled = new Error('Too many attempts');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([{ connectionId: 'dest-bad', adapter: failing }]);
+      retryClassifierRegistry.resolveRetryDeferral.mockReturnValue({
+        delaySeconds: 60,
+        reason: 'throttled',
+      });
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        // 86_400_000 - 59_000 + 60_000 overruns by one second.
+        deferralBudget: { spentMs: 86_341_000, maxMs: 86_400_000 },
+      });
+
+      expect(results[0]).toMatchObject({ destinationConnectionId: 'dest-bad', status: 'failed' });
+    });
+
+    it('should persist the permanent failure before rethrowing for a transient sibling (#3984)', async () => {
+      const throttled = new Error('Too many attempts');
+      const permanent = new Error('validation failed');
+      const transientAdapter = {
+        createOrder: jest.fn().mockRejectedValue(throttled),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      const permanentAdapter = {
+        createOrder: jest.fn().mockRejectedValue(permanent),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([
+        { connectionId: 'dest-transient', adapter: transientAdapter },
+        { connectionId: 'dest-permanent', adapter: permanentAdapter },
+      ]);
+      retryClassifierRegistry.resolveRetryDeferral.mockImplementation((cause) =>
+        cause === throttled ? { delaySeconds: 60, reason: 'throttled' } : null
+      );
+
+      await expect(
+        service.syncOrder({
+          order: createOrder(),
+          sourceConnectionId: 'source-1',
+          deferralBudget: { spentMs: 0, maxMs: 86_400_000 },
+        })
+      ).rejects.toBe(throttled);
+
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledTimes(1);
+      expect(orderRecordService.updateSyncStatus).toHaveBeenCalledWith(
+        'ol_order_123',
+        'dest-permanent',
+        {
+          destinationConnectionId: 'dest-permanent',
+          status: 'failed',
+          error: 'validation failed',
+        }
+      );
+    });
+
+    it('should keep a non-retryable failure as failed even if also deferrable (#3984)', async () => {
+      const boom = new Error('validation');
+      const failing = {
+        createOrder: jest.fn().mockRejectedValue(boom),
+      } as unknown as jest.Mocked<OrderProcessorManagerPort>;
+      registerDestinations([{ connectionId: 'dest-bad', adapter: failing }]);
+      retryClassifierRegistry.isNonRetryable.mockReturnValue(true);
+      retryClassifierRegistry.resolveRetryDeferral.mockReturnValue({
+        delaySeconds: 60,
+        reason: 'x',
+      });
+
+      const results = await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0].status).toBe('failed');
     });
 
     it('should exclude the source connection from destinations', async () => {
@@ -828,7 +991,7 @@ describe('OrderSyncService', () => {
       // that a two-file edit with no reason recorded in either.
       expect(syncLock.acquire).toHaveBeenCalledWith(
         'order:create:dest-a:ol_order_123',
-        ORDER_CREATE_LOCK_TTL_MS,
+        ORDER_CREATE_LOCK_TTL_MS
       );
       expect(adapter.createOrder).toHaveBeenCalledTimes(1);
       expect(syncLock.release).toHaveBeenCalledWith(
@@ -862,6 +1025,7 @@ describe('OrderSyncService', () => {
           status: 'success',
           orderRef: { orderId: 'PS-EXISTING-42' },
           created: false,
+          deliveryFingerprint: expect.any(String),
         },
       ]);
     });
@@ -889,7 +1053,13 @@ describe('OrderSyncService', () => {
       });
 
       expect(results).toEqual([
-        { destinationConnectionId: 'dest-a', status: 'success', orderRef: { orderId: 'dest-1' }, created: true },
+        {
+          destinationConnectionId: 'dest-a',
+          status: 'success',
+          orderRef: { orderId: 'dest-1' },
+          created: true,
+          deliveryFingerprint: expect.any(String),
+        },
       ]);
     });
 
@@ -1897,6 +2067,187 @@ describe('OrderSyncService', () => {
       expect(adapter.refreshOrderContact).toHaveBeenCalledTimes(1);
       expect(results).toHaveLength(1);
       expect(results[0]).toMatchObject({ status: 'success', orderRef: { orderId: 'SHOP-42' } });
+    });
+  });
+
+  describe('delivery point change on an order the destination already holds (#4195)', () => {
+    type DeliveryAdapter = jest.Mocked<OrderProcessorManagerPort> & {
+      updateOrderDelivery: jest.Mock;
+    };
+    const makeDeliveryAdapter = (
+      update: jest.Mock = jest.fn().mockResolvedValue({ outcome: 'updated' })
+    ): DeliveryAdapter =>
+      ({
+        createOrder: jest.fn().mockResolvedValue({ orderId: 'should-not-be-used' }),
+        updateOrderDelivery: update,
+      }) as unknown as DeliveryAdapter;
+
+    const mapExisting = (): void => {
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: 'SHOP-42', connectionId: 'dest-a', platformType: 'shopify', entityType: 'Order' },
+      ]);
+    };
+    const orderWithLocker = (id: string) =>
+      ({ ...createOrder(), pickupPoint: { id } }) as ReturnType<typeof createOrder>;
+    const storedFor = (order: ReturnType<typeof createOrder>, extra: object = {}) =>
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        isCancelled: false,
+        syncStatus: [
+          {
+            destinationConnectionId: 'dest-a',
+            status: 'synced',
+            deliveryFingerprint: computeDeliveryFingerprint({
+              shipping: order.shipping,
+              pickupPoint: order.pickupPoint,
+            }),
+            ...extra,
+          },
+        ],
+      } as never);
+
+    it('should relay a changed pickup point once and report the new fingerprint', async () => {
+      const adapter = makeDeliveryAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.updateOrderDelivery).toHaveBeenCalledTimes(1);
+      expect(adapter.updateOrderDelivery).toHaveBeenCalledWith({
+        externalOrderId: 'SHOP-42',
+        order: expect.objectContaining({ pickupPoint: { id: 'KRK01M' } }),
+      });
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryFingerprint: computeDeliveryFingerprint({ pickupPoint: { id: 'KRK01M' }, shipping: createOrder().shipping }),
+        deliveryUpdate: { outcome: 'updated' },
+      });
+    });
+
+    it('should carry a caveat the destination reports on an update into the report', async () => {
+      const adapter = makeDeliveryAdapter(
+        jest.fn().mockResolvedValue({ outcome: 'updated', detail: 'lost the VAT line' })
+      );
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        deliveryUpdate: { outcome: 'updated', detail: 'lost the VAT line' },
+      });
+    });
+
+    it('should not relay the same delivery point twice', async () => {
+      const adapter = makeDeliveryAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('KRK01M'));
+
+      await service.syncOrder({ order: orderWithLocker('KRK01M'), sourceConnectionId: 'source-1' });
+
+      expect(adapter.updateOrderDelivery).not.toHaveBeenCalled();
+    });
+
+    it('should record a baseline and relay nothing when no fingerprint was ever stored', async () => {
+      const adapter = makeDeliveryAdapter();
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        isCancelled: false,
+        syncStatus: [{ destinationConnectionId: 'dest-a', status: 'synced' }],
+      } as never);
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.updateOrderDelivery).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({ deliveryFingerprint: expect.any(String) });
+    });
+
+    it('should store the fingerprint of a freshly created order without relaying', async () => {
+      const adapter = makeDeliveryAdapter();
+      (adapter.createOrder as jest.Mock).mockResolvedValue({ orderId: 'SHOP-NEW' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(adapter.updateOrderDelivery).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({ created: true, deliveryFingerprint: expect.any(String) });
+    });
+
+    it('should report a destination without the capability as unsupported and not fail it', async () => {
+      const adapter = makeAdapter({ orderId: 'should-not-be-used' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryUpdate: { outcome: 'unsupported' },
+      });
+    });
+
+    it('should record a refusal with its reason and the new fingerprint so it is not retried', async () => {
+      const adapter = makeDeliveryAdapter(
+        jest.fn().mockResolvedValue({ outcome: 'refused', reason: 'fulfilled', detail: 'already fulfilled' })
+      );
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      storedFor(orderWithLocker('WAW14A'));
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', detail: 'already fulfilled' },
+      });
+      expect((results[0] as { deliveryFingerprint: string }).deliveryFingerprint).toBe(
+        computeDeliveryFingerprint({ pickupPoint: { id: 'KRK01M' }, shipping: createOrder().shipping })
+      );
+    });
+
+    it('should keep the old fingerprint when the update throws so the next run retries', async () => {
+      const adapter = makeDeliveryAdapter(jest.fn().mockRejectedValue(new Error('shop down')));
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      mapExisting();
+      const previous = orderWithLocker('WAW14A');
+      storedFor(previous);
+
+      const results = await service.syncOrder({
+        order: orderWithLocker('KRK01M'),
+        sourceConnectionId: 'source-1',
+      });
+
+      expect(results[0]).toMatchObject({
+        status: 'success',
+        deliveryUpdate: { outcome: 'failed', detail: 'shop down' },
+        deliveryFingerprint: computeDeliveryFingerprint({
+          shipping: previous.shipping,
+          pickupPoint: previous.pickupPoint,
+        }),
+      });
     });
   });
 });

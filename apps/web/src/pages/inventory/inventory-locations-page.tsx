@@ -51,6 +51,7 @@ import {
   type InventoryLocationKind,
   type LocationDialogTarget,
 } from '../../features/inventory';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 25;
 
@@ -208,7 +209,7 @@ export function InventoryLocationsPage(): ReactElement {
       showToast({
         tone: 'error',
         title: copy.toasts.bootstrapFailed,
-        description: error instanceof Error ? error.message : copy.toasts.tryAgain,
+        description: describeApiError(error, 'inventory'),
       });
     }
   }
@@ -443,8 +444,16 @@ export function InventoryLocationsPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={query.error.message}
-          action={<Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>}
+          message={describeApiError(query.error, 'inventory')}
+          action={
+            <Button
+              onClick={() => {
+                void query.refetch();
+              }}
+            >
+              {copy.retry}
+            </Button>
+          }
         />
       ) : (query.data?.items ?? []).length === 0 ? (
         <EmptyState

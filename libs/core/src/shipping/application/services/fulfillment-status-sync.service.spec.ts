@@ -102,6 +102,8 @@ describe('FulfillmentStatusSyncService', () => {
     shipments = {
       create: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
+      listConnectionIds: jest.fn(),
       findById: jest.fn(),
       findByOrderId: jest.fn().mockResolvedValue([]),
       findActiveByOrderId: jest.fn(),
@@ -159,6 +161,9 @@ describe('FulfillmentStatusSyncService', () => {
       notifyOrderReceived: jest.fn(),
       notifyDocumentIssued: jest.fn(),
       notifyShippedIfPending: jest.fn(),
+      freezeLineExpansion: jest.fn(),
+      countOpenOrdersByBundleVersion: jest.fn(),
+      countOrdersForSkusSince: jest.fn(),
     };
 
     routing = {

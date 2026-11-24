@@ -100,6 +100,7 @@ describe('InventoryQueryService', () => {
       markStaleExceptVariants: jest.fn(),
       markLocationlessStaleForSource: jest.fn(),
       markLocatedStaleForSource: jest.fn(),
+      markUnreportedLocationsStaleForSource: jest.fn(),
       findDuplicatePositions: jest.fn(),
       backfillLegacyProvenance: jest.fn(),
       countMissingProvenance: jest.fn(),

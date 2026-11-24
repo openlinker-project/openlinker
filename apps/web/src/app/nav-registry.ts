@@ -114,6 +114,9 @@ export const BASE_NAV_GROUPS: readonly BaseNavGroup[] = [
       // No `countKey`: the #2334 returns contract exposes no counts endpoint
       // the nav could read, and a badge is worse absent than wrong.
       { to: '/returns', page: 'returns' },
+      // Role-gated: `GET /promotions` is `@Roles('admin', 'operator', 'viewer')`, so a
+      // `packer` would 403 on the first request the page makes.
+      { to: '/promotions', page: 'promotions', requiresRole: ['admin', 'operator', 'viewer'] },
       // No `countKey`: `GET /automations/summary` reports rule counts per
       // trigger, not an attention count — a badge showing how many rules exist
       // would read as how many need looking at.

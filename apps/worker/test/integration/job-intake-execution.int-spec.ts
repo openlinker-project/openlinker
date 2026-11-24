@@ -325,7 +325,7 @@ describe('Job Intake → Execution Integration', () => {
         jobTypes: ['master.product.syncByExternalId'],
         limit: 10,
         workerId: 'lane-worker',
-        excludedScopes: [connectionA.id],
+        excludedScopes: [`${connectionA.id}:hook-sync`], // hook-sync jobs are class-qualified (#3986)
       });
 
       const lockedIds = lockedJobs.map((j) => j.id);

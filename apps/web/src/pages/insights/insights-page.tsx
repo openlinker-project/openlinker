@@ -9,6 +9,7 @@
  */
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
 import { useDevStackHealthQuery } from '../../features/health/hooks/use-dev-stack-health-query';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
@@ -344,7 +345,7 @@ export function InsightsPage(): ReactElement {
         showToast({
           tone: 'error',
           title: copy.toast.retryFailed,
-          description: error instanceof Error ? error.message : copy.toast.unknownError,
+          description: describeApiError(error, 'analytics'),
         });
       } finally {
         setPendingGroupKey((current) => (current === key ? null : current));
@@ -624,7 +625,7 @@ export function InsightsPage(): ReactElement {
         ) : deadGroupsQuery.error ? (
           <ErrorState
             title={copy.incidents.errorTitle}
-            message={deadGroupsQuery.error.message}
+            message={describeApiError(deadGroupsQuery.error, 'analytics')}
             action={<Button onClick={() => void deadGroupsQuery.refetch()}>{copy.retry}</Button>}
           />
         ) : (
@@ -680,7 +681,7 @@ export function InsightsPage(): ReactElement {
           {connectionsQuery.error && (
             <ErrorState
               title={copy.connections.errorTitle}
-              message={connectionsQuery.error.message}
+              message={describeApiError(connectionsQuery.error, 'analytics')}
               action={<Button onClick={() => void connectionsQuery.refetch()}>{copy.retry}</Button>}
             />
           )}
@@ -718,7 +719,7 @@ export function InsightsPage(): ReactElement {
           {healthQuery.error && (
             <ErrorState
               title={copy.infrastructure.errorTitle}
-              message={healthQuery.error.message}
+              message={describeApiError(healthQuery.error, 'analytics')}
               action={<Button onClick={() => void healthQuery.refetch()}>{copy.retry}</Button>}
             />
           )}
@@ -754,7 +755,7 @@ export function InsightsPage(): ReactElement {
         {recentJobsQuery.error && (
           <ErrorState
             title={copy.activity.errorTitle}
-            message={recentJobsQuery.error.message}
+            message={describeApiError(recentJobsQuery.error, 'analytics')}
             action={<Button onClick={() => void recentJobsQuery.refetch()}>{copy.retry}</Button>}
           />
         )}

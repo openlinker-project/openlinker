@@ -26,6 +26,7 @@ import {
   FiscalArtefactList,
 } from '../../features/fiscalization';
 import { useMessages } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 export function FiscalReceiptDetailPage(): ReactElement {
   const copy = useMessages('sales-documents').fiscalReceiptDetailPage;
@@ -48,7 +49,7 @@ export function FiscalReceiptDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <ErrorState
           title={copy.loadError}
-          message={query.error.message}
+          message={describeApiError(query.error, 'sales-documents')}
           action={<Button onClick={() => void query.refetch()}>{copy.retry}</Button>}
         />
       </PageLayout>

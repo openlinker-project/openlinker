@@ -1,0 +1,23 @@
+=== legacy-oo-processing-settings | Legacy Open Orders screen: Order Processing settings
+ 
+ Legacy Open Orders screen: Order Processing settings 
+ Order Book Settings - Order Processing 
+ Overview 
+This screen shows the settings that apply to order processing in Linnworks.net.
+ Info! You are currently looking at documentation for the previous version of the Open Orders screen. Keep in mind that some functions may differ from the newer, improved version. Check out the updated documentation here for details on the new Open Orders screen. 
+ Order Processing 
+ Auto Print Label 
+ With this option enabled, the appropriate shipping label based on the Linnworks Postal service assigned the selected order will be automatically printed when the Process Order screen is opened. Be aware this this function will not print a shipping label if the Order has the shipping service "Default" assigned.
+ Auto Print Invoice 
+ With this option enabled, the appropriate conditional invoice or the default invoice will be printed automatically when the the Process Order screen is opened.
+ Space Bar to Process Order 
+ With this option enabled, pressing Space Bar  on the Process Order Screen  will process the order. This is not recommended to have enabled as accidentally pressing the Space Bar will process the order immediately.
+ Process Order by Scanning Barcode 
+ With this option enabled, it is possible to scan a barcode to process an order on the Process Order screen instead of clicking the Process button.
+Enter a barcode in the box provided
+Ensure the barcode is unique eg " PROCESS ORDER NOW "
+Print a copy of the barcode and tape it to your Despatch station
+Now the Despatcher can scan the Order Barcode to find the order and when the Process Order is open scan the special barcode to process the order
+ Order Process Batch Size 
+ It is possible, normally due to network instability, for order processing to fail when large numbers of orders are processed at once, due to timeouts. When processing large amounts of orders, they are batched in order to reduce the risk that timeouts will occur. If timeouts occur, lower the number of orders in the batch using the dropdown menu.
+ 

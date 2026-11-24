@@ -45,6 +45,7 @@ import {
   effectiveVariantEan,
   imageCountForVariant,
   isValidGtin,
+  isCardInOtherCategoryThanChosen,
   operatorPickedCategory,
   productCategoryIdOf,
   siblingStockBlockers,
@@ -64,6 +65,7 @@ import type {
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 
 // Re-exported so call sites (and the availability queries below) keep one
 // import path for the retry policy the stream loop owns.
@@ -75,7 +77,7 @@ export interface BulkResolveVariantOutcome {
   blockers: readonly BulkRowBlocker[];
   resolvedCategoryId: string | null;
   resolvedProductCardId: string | null;
-  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | 'first_component' | null;
   overriddenCard: EanMatchCardRef | null;
   mappingAgrees: boolean;
   masterPrice: number | null;
@@ -328,6 +330,22 @@ export function BulkResolveStep({
             categoryResult.kind === 'matched' &&
             categoryResult.overriddenCard !== undefined &&
             !operatorPickedCategory(row, variant),
+          cardCategoryMismatch: isCardInOtherCategoryThanChosen(
+            {
+              ...variant,
+              resolvedCategoryId:
+                categoryResult.kind === 'matched' ? categoryResult.allegroCategoryId : null,
+              resolvedProductCardId:
+                categoryResult.kind === 'matched' && categoryResult.productCardId !== ''
+                  ? categoryResult.productCardId
+                  : null,
+              resolutionMethod:
+                categoryResult.kind === 'matched' ? (categoryResult.method ?? 'auto_detect') : null,
+            },
+            variant.override.overrides?.categoryId ??
+              productCategoryIdOf(row) ??
+              (categoryResult.kind === 'matched' ? categoryResult.allegroCategoryId : null),
+          ),
         });
         if (isMulti) blockers = siblingStockBlockers(blockers, masterStock);
         // A supplied-but-invalid barcode is a hard GS1 gate (plan §10.1 / B5) and
@@ -458,7 +476,7 @@ export function BulkResolveStep({
   if (hasError) {
     const message =
       stream.errorMessage ??
-      (availabilityError instanceof Error ? availabilityError.message : copy.resolutionFailed);
+      describeApiError(availabilityError, 'listings');
     const resolvedSoFar = Object.keys(stream.results).length;
     return (
       // No `role="alert"` on the wrapper: `Alert` carries it, and nesting the

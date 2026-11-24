@@ -35,6 +35,7 @@ const LIMITS = resolveValueLimits(
     absoluteReason: 'A sanity backstop.',
   },
   { min: 1, default: 500 },
+  'catalogueSweepBudget',
 );
 
 describe('diffSyncPacing', () => {
@@ -142,7 +143,7 @@ describe('diffSyncPacing', () => {
     expect(diff.changes[0].timing).toBeUndefined();
   });
 
-  it('should say which ceiling a change crossed, in the API\'s own words', () => {
+  it('should say which ceiling a change crossed, in the setting\'s own copy', () => {
     const diff = diffSyncPacing(SAVED, { ...SAVED, catalogueSweepBudget: 5000 }, {
       ...CONTEXT,
       limits: { catalogueSweepBudget: LIMITS },
@@ -150,7 +151,7 @@ describe('diffSyncPacing', () => {
 
     expect(diff.changes[0].aboveRecommended).toEqual({
       recommendedMax: 2000,
-      reason: 'Past this the queue deepens.',
+      reason: expect.stringMatching(/^At 2000 products/) as unknown as string,
     });
   });
 

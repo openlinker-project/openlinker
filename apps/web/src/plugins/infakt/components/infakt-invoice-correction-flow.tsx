@@ -34,6 +34,7 @@ import {
   useWarningAcknowledgement,
 } from '../../../features/invoicing';
 import { useInfaktMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface LineRow {
   originalLineNumber: string;
@@ -168,7 +169,7 @@ export function InfaktInvoiceCorrectionFlow({
             showToast({
               tone: 'error',
               title: copy.failed,
-              description: error.message,
+              description: describeApiError(error, 'infakt'),
             });
           },
         },

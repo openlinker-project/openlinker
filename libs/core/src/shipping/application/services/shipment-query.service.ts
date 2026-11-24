@@ -24,8 +24,30 @@ import type {
   PaginatedShipments,
   ShipmentFilters,
   ShipmentPagination,
+  ShipmentSummary,
+  ShipmentSummaryOptions,
 } from '../../domain/types/shipment-query.types';
+import { ShipmentStatusValues, type ShipmentStatus } from '../../domain/types/shipment-status.types';
+import { ShippingMethodValues, type ShippingMethod } from '../../domain/types/shipping-method.types';
+import { groupFailedShipmentCauses } from '../../domain/failed-shipment-causes';
 import { SHIPMENT_REPOSITORY_TOKEN } from '../../shipping.tokens';
+
+/** "To send": labels not bought yet, or bought and not handed over. */
+const TO_SEND_STATUSES: readonly ShipmentStatus[] = ['draft', 'generated'];
+
+/**
+ * How many recent failures the cause groups are computed from. Groups are the
+ * five largest, so the most recent few hundred failures are what an operator
+ * triages; a bigger sample costs a bigger read for the same top five.
+ */
+const FAILED_CAUSE_SAMPLE = { limit: 500, offset: 0 } as const;
+
+/** The filters with one axis removed - what a tab or option on that axis counts against. */
+function without(filters: ShipmentFilters, keys: readonly (keyof ShipmentFilters)[]): ShipmentFilters {
+  const rest: ShipmentFilters = { ...filters };
+  for (const key of keys) delete rest[key];
+  return rest;
+}
 
 @Injectable()
 export class ShipmentQueryService implements IShipmentQueryService {
@@ -36,6 +58,55 @@ export class ShipmentQueryService implements IShipmentQueryService {
 
   async list(filters: ShipmentFilters, pagination: ShipmentPagination): Promise<PaginatedShipments> {
     return this.shipments.findMany(filters, pagination);
+  }
+
+  /**
+   * The list's counts (#4043). Every number is `count()` over the list's own
+   * predicate with one axis swapped, so it always equals the list total for
+   * the filter a tab or option would apply.
+   */
+  async summarize(filters: ShipmentFilters, options: ShipmentSummaryOptions): Promise<ShipmentSummary> {
+    const withoutStatus = without(filters, ['status', 'statuses']);
+    const withoutMethod = without(filters, ['shippingMethod']);
+    const withoutProcessor = without(filters, ['shippingMethod', 'hasProviderShipmentId']);
+    const withoutConnection = without(filters, ['connectionId']);
+    const count = (f: ShipmentFilters): Promise<number> => this.shipments.count(f);
+
+    const connectionIds = await this.shipments.listConnectionIds();
+    const [total, statusCounts, omp, carrier, methodCounts, connectionCounts, stuck, toSendAll, toSendOmp, failed] =
+      await Promise.all([
+        count(withoutStatus),
+        Promise.all(ShipmentStatusValues.map((status) => count({ ...withoutStatus, status }))),
+        count({ ...withoutProcessor, shippingMethod: 'omp' }),
+        count({ ...withoutProcessor, hasProviderShipmentId: true }),
+        Promise.all(ShippingMethodValues.map((shippingMethod) => count({ ...withoutMethod, shippingMethod }))),
+        Promise.all(connectionIds.map((connectionId) => count({ ...withoutConnection, connectionId }))),
+        count({ ...filters, waybillRelayFailureCountAtLeast: options.waybillRelayStuckFloor }),
+        count({ ...withoutStatus, statuses: TO_SEND_STATUSES }),
+        // `ShipmentFilters` has no "method is not" axis, so the marketplace-fulfilled
+        // share is counted and subtracted rather than given a second predicate.
+        count({ ...withoutStatus, statuses: TO_SEND_STATUSES, shippingMethod: 'omp' }),
+        this.shipments.findMany({ ...withoutStatus, status: 'failed' }, FAILED_CAUSE_SAMPLE),
+      ]);
+
+    return {
+      total,
+      byStatus: Object.fromEntries(ShipmentStatusValues.map((s, i) => [s, statusCounts[i] ?? 0])) as Record<
+        ShipmentStatus,
+        number
+      >,
+      byProcessor: { omp, carrier },
+      byMethod: Object.fromEntries(ShippingMethodValues.map((m, i) => [m, methodCounts[i] ?? 0])) as Record<
+        ShippingMethod,
+        number
+      >,
+      byConnection: Object.fromEntries(
+        connectionIds.map((id, i) => [id, connectionCounts[i] ?? 0]).filter(([, n]) => n !== 0),
+      ) as Record<string, number>,
+      waybillRelayStuck: stuck,
+      toSend: Math.max(toSendAll - toSendOmp, 0),
+      failedCauseGroups: groupFailedShipmentCauses(failed.items),
+    };
   }
 
   async getById(id: string): Promise<Shipment | null> {

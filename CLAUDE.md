@@ -122,6 +122,7 @@ The helpers below live in `apps/web/src/shared/i18n/` from #3856 on.
 - A key in a tight spot (button, nav item, chip, table header) gets a character budget in `locales/limits.json` that `check-locales` enforces in both languages.
 - Counts use `usePlural` (`one/few/many/other` for Polish); numbers, money and dates use `useFormat`.
 - Interpolate `{name}`; use `renderRich` for a link or bold word inside a sentence; one sentence per key.
+- An API error is shown with `describeApiError(error, '<namespace>')`, never its English `error.message`; copy for a code lives in `errors.json` or the feature's `apiErrors.<CODE>`.
 - Plain hyphen, never an em dash. Copy speaks to operators, never names classes, env vars or capabilities.
 - Delete a key the moment nothing reads it.
 

@@ -1,5 +1,14 @@
-import { projectOrderForRouting } from './project-order-for-routing';
+import { projectOrderForRouting as project } from './project-order-for-routing';
 import type { Order } from './types/order.types';
+
+/** The physical list is a required argument; these cases are not bundles, so it is the commercial one. */
+function projectOrderForRouting(
+  order: Order,
+  hash: string | null,
+  storePii: boolean
+): ReturnType<typeof project> {
+  return project(order, hash, storePii, order.items);
+}
 
 function orderWith(overrides: Partial<Order> = {}): Order {
   return {
@@ -58,5 +67,16 @@ describe('projectOrderForRouting', () => {
 
     expect(projection?.shipTo.mode).toBe('hashed');
     expect(JSON.stringify(projection?.shipTo)).toContain('a'.repeat(64));
+  });
+});
+
+describe('projectOrderForRouting - physical lines (#3520)', () => {
+  it('should project the physical list handed in, not the commercial one', () => {
+    const projection = project(orderWith(), null, true, [
+      { id: 'line-1~c:v-a', productId: 'p-a', variantId: 'v-a', quantity: 4 } as never,
+    ]);
+    expect(projection?.lines).toEqual([
+      { orderLineId: 'line-1~c:v-a', productVariantId: 'v-a', quantity: 4 },
+    ]);
   });
 });

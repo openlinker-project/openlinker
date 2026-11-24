@@ -68,6 +68,7 @@ import {
 import type { CorrectionTargetRefusalReason } from '../api/inventory-correction.types';
 import { presentRefusalText } from '../lib/stock-movement-presentation';
 import { stockRowKey, type StockAdjustTarget } from '../lib/stock-row';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface StockCorrectionDialogProps {
   /** `null` closes the dialog; a value opens it for that variant. */
@@ -353,8 +354,14 @@ function DialogBody({
     return (
       <>
         <DialogTitleFor target={target} />
-        <Alert tone="error" title={copy.targetError.title} data-testid="stock-correction-target-error">
-          {targetQuery.error?.message ?? copy.targetError.fallback}
+        <Alert
+          tone="error"
+          title={copy.targetError.title}
+          data-testid="stock-correction-target-error"
+        >
+          {targetQuery.error
+            ? describeApiError(targetQuery.error, 'inventory')
+            : copy.targetError.fallback}
         </Alert>
         <DialogFooter>
           <DialogClose asChild>
@@ -377,7 +384,7 @@ function DialogBody({
       ? null
       : code === 'insufficient-stock'
         ? insufficientStockCopy(copy, masterName, errorCurrentQuantity(mutation.error))
-        : (inlineErrorText(copy, code, masterName) ?? mutation.error.message);
+        : inlineErrorText(copy, code, masterName) ?? describeApiError(mutation.error, 'inventory');
 
   return (
     <div data-testid="stock-correction-dialog">

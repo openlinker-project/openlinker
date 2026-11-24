@@ -38,6 +38,7 @@
  *
  * @module libs/core/src/inventory/application/services
  */
+import type { ComponentLineRef } from '@openlinker/core/products';
 import { Inject, Injectable } from '@nestjs/common';
 
 import {
@@ -45,6 +46,7 @@ import {
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
+import { isRequestNotSentError } from '@openlinker/shared/http';
 import { Logger } from '@openlinker/shared/logging';
 
 import { InventoryItem } from '../../domain/entities/inventory-item.entity';
@@ -163,6 +165,9 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
     if (!Number.isInteger(input.units) || input.units <= 0) {
       throw new RangeError(`units must be a positive integer, got ${String(input.units)}`);
     }
+    if (input.components !== undefined && input.components.length > 0) {
+      return this.reverseComponents(input, input.components);
+    }
     const forLine = await this.lineRows(input.internalOrderId, input.orderLineId);
     const ownKey = buildEditReversalIdempotencyKey(input.changeId, input.orderLineId);
     const replay = this.replayOf(forLine, ownKey);
@@ -179,7 +184,9 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
 
   async reverseLineToTarget(input: ReverseLineToTargetInput): Promise<ReverseLineQuantityResult> {
     if (!Number.isInteger(input.targetUnits) || input.targetUnits < 0) {
-      throw new RangeError(`targetUnits must be a non-negative integer, got ${String(input.targetUnits)}`);
+      throw new RangeError(
+        `targetUnits must be a non-negative integer, got ${String(input.targetUnits)}`
+      );
     }
     const forLine = await this.lineRows(input.internalOrderId, input.orderLineId);
     // One key per (line, target): a repeated reconcile toward the same target
@@ -270,7 +277,12 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
       const take = Math.min(remaining, source.quantity);
       const key = first ? ownKey : `${ownKey}:${source.workId}`;
       first = false;
-      const outcome = await this.reverseLine(this.withQuantity(source, take), positions, adapters, key);
+      const outcome = await this.reverseLine(
+        this.withQuantity(source, take),
+        positions,
+        adapters,
+        key
+      );
       if (outcome.status !== 'applied' && outcome.status !== 'deduplicated') {
         return {
           status: 'failed',
@@ -282,6 +294,40 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
       remaining -= take;
     }
     return { status: 'restored', units: restored, detail: null };
+  }
+
+  /**
+   * A bundle line's give-back (#3607): the decrements sit on the component
+   * lines, so each is reversed on its own idempotency key and the results sum
+   * back to ONE answer for the bundle line. One failed component fails the
+   * line, because a half-restored set is not "restored".
+   */
+  private async reverseComponents(
+    input: ReverseLineQuantityInput,
+    components: readonly ComponentLineRef[]
+  ): Promise<ReverseLineQuantityResult> {
+    const results: ReverseLineQuantityResult[] = [];
+    for (const component of components) {
+      results.push(
+        await this.reverseLineQuantity({
+          internalOrderId: input.internalOrderId,
+          orderLineId: component.componentLineId,
+          units: Math.round(input.units * component.perUnit),
+          changeId: input.changeId,
+        })
+      );
+    }
+    const failed = results.find((r) => r.status === 'failed');
+    const status = failed
+      ? 'failed'
+      : results.some((r) => r.status === 'restored')
+        ? 'restored'
+        : 'not-applicable';
+    return {
+      status,
+      units: results.reduce((sum, r) => sum + r.units, 0),
+      detail: failed?.detail ?? results.find((r) => r.detail !== null)?.detail ?? null,
+    };
   }
 
   /** Units each `(work, line)` has had given back by an edit, from the ledger's own rows. */
@@ -374,6 +420,13 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
       }
     }
 
+    if (settlement.status === 'retryable' && settlement.reason === 'request-not-sent') {
+      this.logger.warn(
+        `Sale reversal request never left the process, will retry: orderId=${row.orderId} ` +
+          `workId=${row.workId} line=${row.orderLineId} owner=${owner} reason=request-not-sent`
+      );
+    }
+
     if (settlement.status !== 'applied' && settlement.status !== 'deduplicated') {
       this.logger.error(
         `Sale reversal did not raise the product master's stock: orderId=${row.orderId} ` +
@@ -414,6 +467,12 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
       if (error instanceof MasterProductNotFoundError) {
         return this.failed('blocked', 'master-product-not-found', detail);
       }
+      if (isRequestNotSentError(error)) {
+        // Provably never left the process, so nothing was raised and the line
+        // is safe to claim again under the same key (#4041). Only the marked
+        // error gets this; every other throw stays in doubt.
+        return this.failed('retryable', 'request-not-sent', detail);
+      }
       return this.failed('in_doubt', 'master-error', detail);
     }
 
@@ -450,7 +509,7 @@ export class InventorySaleReversalService implements IInventorySaleReversalServi
   }
 
   private failed(
-    status: 'blocked' | 'in_doubt',
+    status: 'blocked' | 'in_doubt' | 'retryable',
     reason: SaleDecrementSettlement['reason'],
     detail: string
   ): SaleDecrementSettlement {

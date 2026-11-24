@@ -57,6 +57,7 @@ describe('InventoryLocationsController', () => {
       countPositionsAtLocation: jest.fn(),
       countActiveLocations: jest.fn(),
       bootstrapDefaultLocations: jest.fn(),
+      resolveMasterLocation: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -112,6 +113,17 @@ describe('InventoryLocationsController', () => {
       service.getLocation.mockResolvedValue(null);
 
       await expect(controller.get('missing')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('should send INVENTORY_LOCATION_NOT_FOUND with the location id (#3865)', async () => {
+      service.getLocation.mockResolvedValue(null);
+
+      const error = (await controller.get('missing').catch((e: unknown) => e)) as NotFoundException;
+
+      expect(error.getResponse()).toMatchObject({
+        code: 'INVENTORY_LOCATION_NOT_FOUND',
+        params: { locationId: 'missing' },
+      });
     });
   });
 

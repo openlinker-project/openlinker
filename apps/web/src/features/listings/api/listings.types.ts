@@ -206,6 +206,34 @@ export interface ListingsFilters {
    * `listings-list-page.tsx` sets this.
    */
   includeLifecycleCounts?: boolean;
+  /**
+   * `'selling'`: live offers still selling a product deleted in the shop
+   * (#4045) - exactly the rows `attentionCounts.sellingDeletedProduct` counts.
+   */
+  staleSignal?: 'selling';
+  /**
+   * `true`: listings carrying an account-scoped (shop-level) problem (#4045) -
+   * exactly the rows `attentionCounts.shopBlocked` counts.
+   */
+  shopBlocked?: boolean;
+}
+
+/** Listings blocked by a shop-level problem on one connection (#4045). */
+export interface OfferShopBlockedConnection {
+  connectionId: string;
+  count: number;
+  /** Distinct problems, most widespread first; `code` is absent when the platform sent none. */
+  problems: Array<{ code?: string; message: string }>;
+}
+
+/**
+ * The listings page's "Needs a look" numbers (#4045), each counted under the
+ * list's filters with its own filter removed.
+ */
+export interface OfferAttentionCounts {
+  sellingDeletedProduct: number;
+  shopBlocked: number;
+  shopBlockedByConnection: OfferShopBlockedConnection[];
 }
 
 export interface ListingsPagination {
@@ -222,6 +250,8 @@ export interface OfferMappingCount {
   total: number;
   /** Present only when the request set `includeLifecycleCounts`. */
   lifecycleCounts?: OfferLifecycleCounts;
+  /** "Needs a look" counts (#4045); present only with `includeLifecycleCounts`. */
+  attentionCounts?: OfferAttentionCounts;
 }
 
 export interface PaginatedOfferMappings {
@@ -236,6 +266,8 @@ export interface PaginatedOfferMappings {
    * `includeLifecycleCounts` (#2032 review thread 3).
    */
   lifecycleCounts?: OfferLifecycleCounts;
+  /** "Needs a look" counts (#4045); present only with `includeLifecycleCounts`. */
+  attentionCounts?: OfferAttentionCounts;
   limit: number;
   offset: number;
 }
@@ -978,6 +1010,59 @@ export interface AttributeProjectionPreviewItem {
   ean?: string;
 }
 
+export interface BundleOfferPreviewItem {
+  variantId: string;
+  categoryId?: string;
+}
+
+export interface BundleOfferPreviewRequest {
+  items: BundleOfferPreviewItem[];
+}
+
+/** How a bundle component enters the product-set offer (#3520). */
+export const BundleComponentModeValues = [
+  'own-offer',
+  'catalog-card',
+  'new-product',
+  'missing',
+] as const;
+export type BundleComponentMode = (typeof BundleComponentModeValues)[number];
+
+export interface BundleComponentProblem {
+  code: string;
+  message: string;
+}
+
+export interface BundleOfferPreviewComponent {
+  variantId: string;
+  productId: string;
+  name: string;
+  sku: string | null;
+  quantity: number;
+  giftSlot: boolean;
+  imageUrl: string | null;
+  mode: BundleComponentMode;
+  externalOfferId?: string;
+  cardCategoryId?: string;
+  problems: BundleComponentProblem[];
+}
+
+export type BundleOfferPreviewEntry =
+  | {
+      variantId: string;
+      status: 'ok';
+      components: BundleOfferPreviewComponent[];
+      suggestedCategoryId: string | null;
+      availableSets: number | null;
+      limitingComponentVariantId: string | null;
+    }
+  | { variantId: string; status: 'not-a-bundle' }
+  | { variantId: string; status: 'failed'; reason: 'planning-unsupported' | 'preview-failed' };
+
+export interface BundleOfferPreviewResponse {
+  entries: BundleOfferPreviewEntry[];
+}
+
 export interface AttributeProjectionPreviewRequest {
   items: AttributeProjectionPreviewItem[];
 }
@@ -1035,4 +1120,55 @@ export type AttributeProjectionPreviewEntry =
 
 export interface AttributeProjectionPreviewResponse {
   entries: AttributeProjectionPreviewEntry[];
+}
+
+/**
+ * #3962 - where a product is on sale after it was deleted at the source:
+ * one row per listing (marketplace offer or shop product), and what
+ * OpenLinker did about it. Mirrors `ProductSaleStatusResponseDto`.
+ */
+export type ListingSaleState = 'on_sale' | 'off_sale' | 'unknown';
+export type ListingSaleHoldMethod = 'stock_zero' | 'unpublished' | 'none';
+export type ListingSaleHoldOutcome = 'applied' | 'not_possible' | 'failed';
+export type ListingSaleHoldReason = 'stock_sync_off' | 'no_stock_write' | 'error';
+
+export interface ListingSaleRowHold {
+  id: string;
+  method: ListingSaleHoldMethod;
+  outcome: ListingSaleHoldOutcome;
+  outcomeReason: ListingSaleHoldReason | null;
+  appliedAt: string;
+}
+
+export interface ListingSaleRow {
+  connectionId: string;
+  entityType: 'Offer' | 'ShopProduct';
+  externalId: string;
+  externalParentId: string | null;
+  internalVariantId: string | null;
+  channelStatus: string | null;
+  quantity: number | null;
+  lastCheckedAt: string | null;
+  hold: ListingSaleRowHold | null;
+  state: ListingSaleState;
+}
+
+export interface ProductSaleStatusResponse {
+  productId: string;
+  deletedAtSource: boolean;
+  deletedAt: string | null;
+  staleVariantIds: string[];
+  staleSkus: string[];
+  ordersSinceDeletion: number | null;
+  checkedAt: string | null;
+  rows: ListingSaleRow[];
+}
+
+export interface ReleaseSaleHoldsResponse {
+  released: string[];
+  failed: { holdId: string; message: string }[];
+}
+
+export interface SaleHoldAttentionCountResponse {
+  productsStillOnSale: number;
 }

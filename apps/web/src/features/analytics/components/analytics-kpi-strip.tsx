@@ -110,6 +110,7 @@
  * @module features/analytics/components
  */
 import type { ReactElement } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
@@ -274,7 +275,7 @@ export function AnalyticsKpiStrip({
     return (
       <ErrorState
         title={copy.error.title}
-        message={query.error.message}
+        message={describeApiError(query.error, 'analytics')}
         action={<Button onClick={() => void query.refetch()}>{copy.error.retry}</Button>}
       />
     );

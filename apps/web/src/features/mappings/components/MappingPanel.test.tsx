@@ -14,6 +14,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MappingPanel, type MappingRow } from './MappingPanel';
 import type { MappingOption } from '../api/mappings.types';
+import { getMessages } from '../../../shared/i18n';
+import { ApiError } from '../../../shared/api/api-error';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../demo', () => ({
@@ -271,11 +273,11 @@ describe('MappingPanel', () => {
           targetOptions={[]}
           savedRows={[]}
           onSave={vi.fn()}
-          optionsError={new Error('Allegro 502')}
+          optionsError={new ApiError('Allegro 502', 502, null)}
         />,
       );
       expect(screen.getByText(/unable to load options/i)).toBeInTheDocument();
-      expect(screen.getByText('Allegro 502')).toBeInTheDocument();
+      expect(screen.getByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
     });
 
     it('shows the empty-state copy when no rows are configured', () => {

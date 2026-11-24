@@ -70,6 +70,7 @@ import {
   reservationRiskRows,
 } from '../../features/inventory/lib/duplicate-positions-remediation';
 import { DuplicatePositionsRemediationModal } from './duplicate-positions-remediation-modal';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 /**
  * Mirrors `DEFAULT_DUPLICATE_POSITION_GROUPS` / `MAX_DUPLICATE_POSITION_GROUPS`
@@ -548,14 +549,16 @@ export function DuplicatePositionsPage(): ReactElement {
       ) : initialLoadError ? (
         <ErrorState
           title={copy.errorTitle}
-          message={initialLoadError.message}
+          message={describeApiError(initialLoadError, 'inventory')}
           action={<Button onClick={retry}>{copy.retry}</Button>}
         />
       ) : report && provenance ? (
         <>
           {refreshError ? (
             <Alert tone="error" title={copy.refreshFailedTitle}>
-              {interpolate(copy.refreshFailedBody, { error: refreshError.message })}
+              {interpolate(copy.refreshFailedBody, {
+                error: describeApiError(refreshError, 'inventory'),
+              })}
             </Alert>
           ) : null}
           <Alert tone={isReady ? 'success' : 'warning'} title={isReady ? copy.ready : copy.notReady}>

@@ -73,6 +73,16 @@ export {
   ProjectedParameterSourceValues,
   ProjectedParameterOutcomeValues,
 } from './application/types/attribute-projection.types';
+export type { IBundleOfferPreviewService } from './application/interfaces/bundle-offer-preview.service.interface';
+export type {
+  BundleOfferPreviewInput,
+  BundleOfferPreviewItem,
+  BundleOfferPreviewEntry,
+  BundleOfferPreviewComponent,
+  BundleOfferPreviewFailure,
+  BundleOfferPreviewResult,
+} from './application/types/bundle-offer-preview.types';
+export { BundleOfferPreviewFailureValues } from './application/types/bundle-offer-preview.types';
 export type { IAttributeProjectionPreviewService } from './application/interfaces/attribute-projection-preview.service.interface';
 export type {
   AttributeProjectionPreviewInput,
@@ -111,8 +121,12 @@ export type {
   PaginatedOfferMappings,
   ProductListingsCoverage,
   StaleMappedVariant,
+  OfferAttentionCounts,
+  OfferShopBlockedConnection,
+  OfferAccountProblemSummary,
+  OfferStaleSignalFilter,
 } from './domain/types/offer-mapping.types';
-export { deriveVariantLabel } from './domain/types/offer-mapping.types';
+export { deriveVariantLabel, OfferStaleSignalFilterValues } from './domain/types/offer-mapping.types';
 
 // Offer lifecycle (#2025) — the five disjoint buckets the redesigned listings
 // page partitions on, plus the pure derivation off a status snapshot.
@@ -266,6 +280,7 @@ export type {
   CreateOfferResultStatus,
   CreateOfferValidationError,
   OfferCondition,
+  OfferProductSetComponent,
   OfferVariantGroup,
   OfferVariantAttribute,
   SourceCategoryRef,
@@ -496,6 +511,34 @@ export { OfferStockRestoreReversalIncompleteError } from './domain/exceptions/of
 export { OfferStockRestoreWriteIncompleteError } from './domain/exceptions/offer-stock-restore-write-incomplete.error';
 export type { IStaleOfferPauseService } from './application/interfaces/stale-offer-pause.service.interface';
 export type { StaleOfferPauseResult } from './domain/types/stale-offer-pause.types';
+// Listings taken off sale after a master deletion (#3962): the hold record,
+// and the product page's per-channel read + "put back on sale".
+export { ListingSaleHold } from './domain/entities/listing-sale-hold.entity';
+export type { ListingSaleHoldRepositoryPort } from './domain/ports/listing-sale-hold-repository.port';
+export {
+  ListingSaleHoldEntityTypeValues,
+  ListingSaleHoldMethodValues,
+  ListingSaleHoldOutcomeValues,
+  ListingSaleHoldReasonValues,
+} from './domain/types/listing-sale-hold.types';
+export type {
+  ListingSaleHoldEntityType,
+  ListingSaleHoldMethod,
+  ListingSaleHoldOutcome,
+  ListingSaleHoldReason,
+  ListingSaleHoldProps,
+  ListingRef,
+  RecordListingSaleHoldInput,
+} from './domain/types/listing-sale-hold.types';
+export type { IListingSaleStatusService } from './application/interfaces/listing-sale-status.service.interface';
+export type {
+  ListingSaleState,
+  ListingSaleRow,
+  ProductSaleStatus,
+  ReleaseSaleHoldsResult,
+} from './domain/types/listing-sale-status.types';
+export { ListingSaleStateValues, deriveListingSaleState } from './domain/types/listing-sale-status.types';
+export { SaleHoldReleaseRefusedException } from './domain/exceptions/sale-hold-release-refused.exception';
 export { OfferPollNotSupportedException } from './domain/exceptions/offer-poll-not-supported.exception';
 export { OfferNotFoundOnMarketplaceException } from './domain/exceptions/offer-not-found-on-marketplace.exception';
 export type { OfferReader } from './domain/ports/capabilities/offer-reader.capability';
@@ -517,6 +560,17 @@ export type {
   SafetyAttachmentUploadResult,
 } from './domain/ports/capabilities/safety-attachment-uploader.capability';
 export { isSafetyAttachmentUploader } from './domain/ports/capabilities/safety-attachment-uploader.capability';
+export type {
+  ProductSetPlanner,
+  ProductSetPlanRequest,
+  ProductSetComponentPlan,
+  ProductSetComponentProblem,
+  ProductSetComponentMode,
+} from './domain/ports/capabilities/product-set-planner.capability';
+export {
+  isProductSetPlanner,
+  ProductSetComponentModeValues,
+} from './domain/ports/capabilities/product-set-planner.capability';
 export type { ResponsibleProducerReader } from './domain/ports/capabilities/responsible-producer-reader.capability';
 export { isResponsibleProducerReader } from './domain/ports/capabilities/responsible-producer-reader.capability';
 export type {
@@ -560,6 +614,12 @@ export type {
   ShopProductPriceAmount,
   UpdateShopProductPriceCommand,
 } from './domain/types/shop-product-price-update.types';
+// Visibility-only shop write (#3962): take a published product off sale when it
+// is deleted at the master, and put it back. Narrowed from the
+// `ProductPublisher` adapter via `isShopProductVisibilityWriter`.
+export type { ShopProductVisibilityWriter } from './domain/ports/capabilities/shop-product-visibility-writer.capability';
+export { isShopProductVisibilityWriter } from './domain/ports/capabilities/shop-product-visibility-writer.capability';
+export type { SetShopProductVisibilityCommand } from './domain/types/shop-product-visibility.types';
 // Taxonomy-borrowing sub-capability (#1045): a `borrows` destination (ERLI)
 // names the owner taxonomy whose category/parameter ids it reuses verbatim.
 export type { TaxonomyBorrower } from './domain/ports/capabilities/taxonomy-borrower.capability';
@@ -586,6 +646,7 @@ export type {
   ProvisionCategoryResult,
 } from './domain/types/category-provision.types';
 export { ProductPublishRejectedException } from './domain/exceptions/product-publish-rejected.exception';
+export { ShopPublishMasterPublisherConflictException } from './domain/exceptions/shop-publish-master-publisher-conflict.exception';
 export { ProductPublishTargetNotFoundException } from './domain/exceptions/product-publish-target-not-found.exception';
 
 // Required-to-sell preflight (#1842) — pure, side-effect-free "would publish

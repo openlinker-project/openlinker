@@ -36,15 +36,6 @@ export const omsOnboardingCopy = {
     retry: 'Try again',
   },
 
-  steps: [
-    { title: 'Your product master', meta: 'Products and stock' },
-    { title: 'Sales documents', meta: 'Invoices and receipts' },
-    { title: 'Add packers', meta: 'Optional' },
-    { title: 'See what changes', meta: 'Read before turning on' },
-    { title: 'Automations', meta: 'Review only' },
-    { title: 'Who decides what', meta: 'Review' },
-    { title: 'Turn it on', meta: 'Last step' },
-  ],
   stepOf: (step: number, total: number): string => `Step ${String(step)} of ${String(total)}`,
   salesDocumentsStep: {
     why: 'Decide which document each order gets: an invoice or a receipt. Connect a provider that issues them, then say what each one issues, which goes first, and whether it issues by itself once an order is paid.',
@@ -77,7 +68,7 @@ export const omsOnboardingCopy = {
       open: 'Open document routing',
     },
     automations: {
-      why: 'Automations let OpenLinker act by itself when something happens, for example buy the shipping label as soon as an order is packed. Nothing is set here: this is a look at what exists.',
+      why: 'Automations let OpenLinker act by itself when something happens, for example tell the buyer when an order is packed. Shipping labels are set in the Shipping step. Nothing is set here: this is a look at what exists.',
       detail: 'Automations live on their own page. Review them, or add more, whenever you like.',
       open: 'Open automations',
     },
@@ -224,7 +215,7 @@ export const omsOnboardingCopy = {
       },
       {
         title: 'You buy labels in OpenLinker.',
-        body: 'In Orders, or with an automation that buys one when an order is packed. Then Allegro and Erli get the shipped status and the tracking number.',
+        body: 'At the pack bench or in Orders, or automatically when a parcel is accepted for packing, if you turn that on in the Shipping step. Then Allegro and Erli get the shipped status and the tracking number.',
       },
       {
         title: 'The pack bench prints the label and the invoice.',
@@ -295,7 +286,7 @@ export const omsOnboardingCopy = {
       },
       automations: {
         title: 'Automations',
-        pending: 'None yet. Optional: let OpenLinker act when an order is packed, for example buy the shipping label.',
+        pending: 'None yet. Optional: let OpenLinker act when an order is packed, for example tell the buyer.',
         done: 'At least one automation is set up.',
       },
       whoDecides: {

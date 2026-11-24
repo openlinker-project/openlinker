@@ -20,6 +20,7 @@ import type {
   BenchDocuments,
   BenchInvoice,
   BenchLabel,
+  BenchParcelRoute,
   BenchSalesDocument,
 } from '../api/bench-parcel.types';
 import { BenchDocumentsPanel } from './bench-documents';
@@ -68,6 +69,8 @@ interface MountOptions {
   readonly closed?: boolean;
   readonly plugins?: readonly OpenLinkerPlugin[];
   readonly getReceiptLink?: (workId: string) => Promise<{ url: string }>;
+  /** #3958 - who ships the box. Absent mounts the panel as before. */
+  readonly route?: BenchParcelRoute | null;
 }
 
 /** F3/F4 is a closed-box state; every unlabelled-block test mounts one. */
@@ -81,6 +84,7 @@ function mount(
     closed = false,
     plugins,
     getReceiptLink,
+    route: parcelRoute,
   }: MountOptions = {}
 ) {
   const apiClient = createMockApiClient({
@@ -106,15 +110,18 @@ function mount(
 
   return {
     apiClient,
-    ...renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={6} closed={closed} />, {
-      apiClient,
-      ...(plugins === undefined ? {} : { plugins }),
-      sessionAdapter: createAuthenticatedSessionAdapter({
-        ...PACKER,
-        permissions: [],
-        packStationLabel,
-      }),
-    }),
+    ...renderWithProviders(
+      <BenchDocumentsPanel workId="w-1" unitsPacked={6} closed={closed} route={parcelRoute} />,
+      {
+        apiClient,
+        ...(plugins === undefined ? {} : { plugins }),
+        sessionAdapter: createAuthenticatedSessionAdapter({
+          ...PACKER,
+          permissions: [],
+          packStationLabel,
+        }),
+      }
+    ),
   };
 }
 
@@ -801,3 +808,156 @@ describe('BenchDocumentsPanel - sales documents (#3647)', () => {
   });
 });
 
+
+function route(over: Partial<BenchParcelRoute> = {}): BenchParcelRoute {
+  return {
+    processorKind: 'ol_managed_carrier',
+    processorName: 'InPost',
+    fromRule: true,
+    processorAvailable: true,
+    methodLabel: 'InPost Paczkomat',
+    ...over,
+  };
+}
+
+const NO_LABEL = label({ state: 'none', shipmentId: null, carrier: null, trackingNumber: null });
+
+/** A failed shipment, as a branch-1 row the marketplace reported also looks. */
+const FAILED_LABEL = label({
+  state: 'unavailable',
+  trackingNumber: null,
+  providerCode: 'NO_POINT',
+  failedAt: '2026-09-01T09:20:00Z',
+});
+
+describe('BenchDocumentsPanel - label card by route (#3958)', () => {
+  it('should name the carrier on a ready label when the route buys it', async () => {
+    mount({}, { route: route() });
+
+    expect(await screen.findByText('Label from InPost is ready')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /print label/i })).toBeInTheDocument();
+  });
+
+  it('should say OpenLinker buys the label on close when the route buys one and none exists yet', async () => {
+    mount({ label: NO_LABEL }, { route: route() });
+
+    const card = await screen.findByTestId('bench-documents-label-route');
+    expect(card).toHaveAttribute('data-route', 'buys-label');
+    expect(
+      within(card).getByText('OpenLinker buys the label when you close the box')
+    ).toBeInTheDocument();
+    expect(within(card).getByText('Label on close')).toBeInTheDocument();
+    expect(within(card).getByText(/InPost Paczkomat goes with InPost/)).toBeInTheDocument();
+    // Nothing to print yet, and a packer cannot buy a label here.
+    expect(within(card).queryByRole('button')).toBeNull();
+  });
+
+  it('should not say "when you close it" about a box that is already closed', async () => {
+    mount({ label: NO_LABEL }, { route: route(), closed: true });
+
+    const card = await screen.findByTestId('bench-documents-label-route');
+    expect(within(card).getByText('OpenLinker buys the label for this box')).toBeInTheDocument();
+    expect(within(card).queryByText(/when you close the box/i)).toBeNull();
+  });
+
+  it('should say the shop ships it when a rule routes the method to the shop', async () => {
+    mount(
+      { label: NO_LABEL },
+      {
+        route: route({
+          processorKind: 'omp_fulfilled',
+          processorName: 'Kawiarnia Shop',
+          methodLabel: 'Courier DPD',
+        }),
+      }
+    );
+
+    const card = await screen.findByTestId('bench-documents-label-route');
+    expect(card).toHaveAttribute('data-route', 'shop-ships');
+    expect(within(card).getByText('Kawiarnia Shop ships Courier DPD orders')).toBeInTheDocument();
+    expect(
+      within(card).getByText('Close the box and put it with the shop’s parcels.')
+    ).toBeInTheDocument();
+    expect(within(card).getByText('No OpenLinker label')).toBeInTheDocument();
+  });
+
+  it('should say nobody has chosen when no rule exists for the method', async () => {
+    mount(
+      { label: NO_LABEL },
+      {
+        route: route({
+          processorKind: 'omp_fulfilled',
+          processorName: null,
+          fromRule: false,
+          methodLabel: 'Personal pickup',
+        }),
+      }
+    );
+
+    const card = await screen.findByTestId('bench-documents-label-route');
+    expect(card).toHaveAttribute('data-route', 'no-carrier');
+    expect(within(card).getByText('Nobody has chosen who ships Personal pickup')).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        'Close the box and leave it aside. An admin can choose a carrier in Shipping settings.'
+      )
+    ).toBeInTheDocument();
+    expect(within(card).getByText('No carrier set')).toBeInTheDocument();
+    // Packers get no edit action: routing is an admin's.
+    expect(within(card).queryByRole('button')).toBeNull();
+    expect(within(card).queryByRole('link')).toBeNull();
+  });
+
+  it('should fall back to a neutral method name when the source reports none', async () => {
+    mount(
+      { label: NO_LABEL },
+      { route: route({ processorKind: 'omp_fulfilled', fromRule: false, methodLabel: null }) }
+    );
+
+    expect(
+      await screen.findByText('Nobody has chosen who ships this delivery method')
+    ).toBeInTheDocument();
+  });
+
+  it('should never blame the carrier for a failed shipment the shop ships', async () => {
+    mount(
+      { label: FAILED_LABEL },
+      {
+        ...CLOSED,
+        route: route({ processorKind: 'omp_fulfilled', processorName: 'Kawiarnia Shop' }),
+      }
+    );
+
+    expect(await screen.findByTestId('bench-documents-label-route')).toHaveAttribute(
+      'data-route',
+      'shop-ships'
+    );
+    expect(screen.queryByTestId('bench-documents-unlabelled')).not.toBeInTheDocument();
+    expect(screen.queryByText(/What the carrier said/i)).toBeNull();
+    expect(screen.queryByText(/carrier would not give us a label/i)).toBeNull();
+  });
+
+  it('should keep the carrier refusal when the route buys a label and it failed', async () => {
+    mount({ label: FAILED_LABEL }, { ...CLOSED, route: route() });
+
+    expect(await screen.findByTestId('bench-documents-unlabelled')).toBeInTheDocument();
+    expect(screen.getByText(/What the carrier said/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('bench-documents-label-route')).not.toBeInTheDocument();
+  });
+
+  it('should say no label is coming when the routed carrier is switched off', async () => {
+    mount({ label: NO_LABEL }, { route: route({ processorAvailable: false }) });
+
+    const card = await screen.findByTestId('bench-documents-label-route');
+    expect(card).toHaveAttribute('data-route', 'carrier-off');
+    expect(within(card).getByText('InPost is switched off, so no label is coming')).toBeInTheDocument();
+    expect(within(card).queryByText(/buys the label/i)).toBeNull();
+  });
+
+  it('should render no route card when the route is not known', async () => {
+    mount({ label: NO_LABEL }, { route: null });
+
+    await screen.findByTestId('bench-documents');
+    expect(screen.queryByTestId('bench-documents-label-route')).not.toBeInTheDocument();
+  });
+});

@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OrderEditDialog, type OrderEditDialogProps } from './order-edit-dialog';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import type {
   OrderDiscountResult,
@@ -97,6 +98,8 @@ function discountResult(overrides: Partial<OrderDiscountResult> = {}): OrderDisc
     ...overrides,
   };
 }
+
+const codes = getMessages('errors').codes;
 
 function refusal(code: string, message: string, status = 409, extra: object = {}): ApiError {
   return new ApiError(message, status, { statusCode: status, error: code, message, ...extra });
@@ -389,7 +392,7 @@ describe('OrderEditDialog review and save (#3544, D9)', () => {
 });
 
 describe('OrderEditDialog refusals (#3544, edit-blocked)', () => {
-  it('should render the server reason and a Packing remedy for a packed order', async () => {
+  it('should render the refusal copy and a Packing remedy for a packed order', async () => {
     const editOrderAddress = vi
       .fn()
       .mockRejectedValue(refusal('ORDER_PACKED', 'This order is already packed by akowalczyk.'));
@@ -400,7 +403,7 @@ describe('OrderEditDialog refusals (#3544, edit-blocked)', () => {
     await user.click(screen.getByTestId('order-edit-review-button'));
 
     const blocked = await screen.findByTestId('order-edit-blocked');
-    expect(blocked).toHaveTextContent('This order is already packed by akowalczyk.');
+    expect(blocked).toHaveTextContent(codes.ORDER_PACKED);
     expect(screen.getByTestId('order-edit-blocked-steps')).toHaveTextContent(/Mark the order as not packed/);
     await user.click(screen.getByTestId('order-edit-blocked-remedy'));
     expect(onGoTo).toHaveBeenCalledWith('packing');
@@ -420,7 +423,7 @@ describe('OrderEditDialog refusals (#3544, edit-blocked)', () => {
     await user.click(screen.getByTestId('order-edit-review-button'));
 
     expect(await screen.findByTestId('order-edit-blocked')).toHaveTextContent(
-      'Invoice FV/412/09/2026 is issued for this order.',
+      codes.SALES_DOCUMENT_ISSUED,
     );
     const locked = screen.getByTestId('order-edit-locked-lines');
     expect(within(locked).getAllByTestId('order-edit-line-quantity')[0]).toBeDisabled();
@@ -443,7 +446,7 @@ describe('OrderEditDialog refusals (#3544, edit-blocked)', () => {
     await user.click(screen.getByTestId('order-edit-review-button'));
 
     expect(await screen.findByTestId('order-edit-blocked')).toHaveTextContent(
-      'A label was bought for this order.',
+      codes.LABEL_ALREADY_BOUGHT,
     );
     expect(screen.getByTestId('order-edit-locked-address')).toBeInTheDocument();
     expect(screen.getByTestId('order-edit-locked-delivery')).toBeInTheDocument();
@@ -473,7 +476,7 @@ describe('OrderEditDialog refusals (#3544, edit-blocked)', () => {
     await user.click(screen.getByTestId('order-edit-review-button'));
 
     expect(await screen.findByTestId('order-edit-error')).toHaveTextContent(
-      'Two units of this line already shipped.',
+      codes.QUANTITY_BELOW_FULFILLED,
     );
     expect(screen.queryByTestId('order-edit-blocked')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('order-edit-line-quantity')[0]).toBeEnabled();
@@ -551,7 +554,7 @@ describe('OrderEditDialog refusals (#3544, edit-blocked)', () => {
     await user.click(await screen.findByTestId('order-edit-save'));
 
     expect(await screen.findByTestId('order-edit-blocked')).toHaveTextContent(
-      'An invoice was issued meanwhile.',
+      codes.SALES_DOCUMENT_ISSUED,
     );
     expect(screen.getByTestId('order-edit-blocked-saved')).toHaveTextContent(
       'Already saved: shipping address.',

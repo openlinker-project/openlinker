@@ -448,4 +448,32 @@ describe('Packer exclusion (#2413)', () => {
       ].sort()
     );
   });
+
+  it('discloses only the routing names and flags a packer may see on a parcel (#3958)', () => {
+    // The route tells the label card which of four situations a box is in. It
+    // carries connection NAMES an operator typed and the source's own method
+    // label, both printed on or beside the label anyway, and deliberately no
+    // connection id: a packer has no edit action, so an id would be a handle
+    // to a resource the role cannot read. Widening it is a decision made here.
+    const view = {
+      lines: [],
+      otherParcelBuyerNoteAcknowledgements: [],
+      packerNotes: [],
+      sourceChange: null,
+      route: {
+        processorKind: 'ol_managed_carrier',
+        processorName: 'InPost',
+        fromRule: true,
+        processorAvailable: true,
+        methodLabel: 'InPost Paczkomat',
+      },
+    } as unknown as BenchParcelView;
+    const dto = toParcelResponseDto(view);
+
+    expect(dto.route).not.toBeNull();
+    expect(Object.keys(dto.route ?? {}).sort()).toEqual(
+      ['fromRule', 'methodLabel', 'processorAvailable', 'processorKind', 'processorName'].sort()
+    );
+    expect(Object.keys(dto.route ?? {}).filter((key) => /id$/i.test(key))).toEqual([]);
+  });
 });

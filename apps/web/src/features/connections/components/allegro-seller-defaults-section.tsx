@@ -23,6 +23,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { Textarea } from '../../../shared/ui/textarea';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /** Allegro hard cap — max 20 attachments per product (#449). */
 const MAX_SAFETY_ATTACHMENTS = 20;
@@ -191,7 +192,7 @@ export function AllegroSellerDefaultsSection({
 
         {producersQuery.error ? (
           <Alert tone="error" title={copy.producer.errorTitle}>
-            {producersQuery.error.message}
+            {describeApiError(producersQuery.error, 'connections')}
           </Alert>
         ) : null}
 
@@ -378,8 +379,7 @@ function SafetyAttachmentsField({
       });
       onChange();
     } catch (error) {
-      const message = error instanceof Error ? error.message : copy.uploadFailed;
-      setInlineError(message);
+      setInlineError(describeApiError(error, 'connections'));
     }
   };
 
@@ -404,7 +404,7 @@ function SafetyAttachmentsField({
   // the operator sees what they have before adding more. The single
   // alert below merges client-side validation and API errors — they're
   // the same concern from the operator's POV (this upload didn't land).
-  const errorAlertMessage = inlineError ?? (apiError ? apiError.message : null);
+  const errorAlertMessage = inlineError ?? (apiError ? describeApiError(apiError, 'connections') : null);
   const fileLabel =
     attachments.length === 0
       ? copy.label

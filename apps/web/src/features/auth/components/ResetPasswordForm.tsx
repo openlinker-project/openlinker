@@ -2,6 +2,7 @@ import { useMemo, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useResetPassword } from '../hooks/use-reset-password';
 import { useToast } from '../../../shared/ui/toast-provider';
 import {
@@ -33,8 +34,8 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps): ReactEleme
     resolver: zodResolver(schema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -61,7 +62,7 @@ export function ResetPasswordForm({ token }: ResetPasswordFormProps): ReactEleme
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {mutation.error ? (
         <Alert tone="error" title={copy.failed}>
-          {mutation.error.message}
+          {describeApiError(mutation.error, 'auth')}
         </Alert>
       ) : null}
 

@@ -174,6 +174,8 @@ interface LanguageOptionListProps {
   onDismiss: () => void;
   /** Focus the list on mount; true in a freshly opened popover. */
   autoFocus?: boolean;
+  /** Rows come in one after another on mount; off in the account menu. */
+  entrance?: boolean;
   id?: string;
   'aria-labelledby'?: string;
   'aria-label'?: string;
@@ -189,6 +191,7 @@ function LanguageOptionList({
   onSelect,
   onDismiss,
   autoFocus = true,
+  entrance = true,
   id,
   ...aria
 }: LanguageOptionListProps): ReactElement {
@@ -261,6 +264,7 @@ function LanguageOptionList({
         onSelect={onSelect}
         onDismiss={onDismiss}
         autoFocus={autoFocus}
+        entrance={entrance}
         {...aria}
       />
     </>
@@ -280,7 +284,9 @@ export interface LanguageMenuListProps {
  * gets the list itself. Its own navigation keys stop here so the menu's arrow
  * roving does not take over; Escape still reaches the menu and closes it. A
  * change remounts the app (`LocaleKeyed`), so the choice leaves a note for the
- * menu trigger to take focus back (`restoreFocusAfterLanguageChange`).
+ * menu trigger to take focus back (`restoreFocusAfterLanguageChange`). The
+ * rows do not come in one after another here: the rest of the menu is on
+ * screen at once, and only this section would appear late.
  */
 export function LanguageMenuList({ className }: LanguageMenuListProps): ReactElement | null {
   const localeContext = useOptionalLocale();
@@ -305,6 +311,7 @@ export function LanguageMenuList({ className }: LanguageMenuListProps): ReactEle
         onSelect={choose}
         onDismiss={() => undefined}
         autoFocus={false}
+        entrance={false}
         aria-label={copy.label}
       />
     </div>

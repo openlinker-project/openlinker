@@ -94,6 +94,32 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     return grouped;
   }
 
+  async getUnitsSoldByVariants(
+    variantIds: readonly string[],
+    range: { from: Date; to: Date; sourceConnectionId?: string }
+  ): Promise<Map<string, number>> {
+    if (variantIds.length === 0) {
+      return new Map();
+    }
+    const qb = this.repository
+      .createQueryBuilder('li')
+      .innerJoin(OrderRecordOrmEntity, 'rec', 'rec."internalOrderId" = li."orderRecordId"')
+      .select('li."variantId"', 'variant_id')
+      .addSelect('SUM(li."quantity")', 'units')
+      .where(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('li."variantId" IN (:...variantIds)', { variantIds })
+      .andWhere('li."placedAt" >= :from', { from: range.from })
+      .andWhere('li."placedAt" < :to', { to: range.to });
+    if (range.sourceConnectionId !== undefined) {
+      qb.andWhere('li."sourceConnectionId" = :connectionId', {
+        connectionId: range.sourceConnectionId,
+      });
+    }
+    const rows = await qb.groupBy('li."variantId"').getRawMany<{ variant_id: string; units: string }>();
+    return new Map(rows.map((row) => [row.variant_id, Number(row.units)]));
+  }
+
   /**
    * Units sold per source connection (#1987). Joins back to `order_records`
    * only to apply the `recordStatus = 'ready' AND cancelledAt IS NULL` scope

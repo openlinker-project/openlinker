@@ -42,6 +42,9 @@ const lineSchema = z.object({
   noMatchReason: z.string().nullish(),
   noMatchExplanation: z.string().nullish(),
   candidatesPriceOrRateDiffer: z.boolean().nullish(),
+  componentCredit: z
+    .object({ units: z.number(), amountGross: z.number(), variantIds: z.array(z.string()) })
+    .nullish(),
 });
 
 const proposalSchema = z.object({
@@ -101,6 +104,7 @@ export function parseCorrectionProposal(raw: unknown): ReturnCorrectionProposalR
               // never a claim that one exists. It is evidence shown to an
               // operator, so inventing it would be worse than omitting it.
               candidatesPriceOrRateDiffer: line.candidatesPriceOrRateDiffer ?? false,
+              componentCredit: line.componentCredit ?? null,
             })),
           },
   };

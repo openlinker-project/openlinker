@@ -12,7 +12,7 @@
  * - **No active warehouse** (#2407). Step 1 creates one, so this is reachable
  *   only if it was retired since; mapped by code, never by message.
  *
- * State (mockup vocabulary): `step-7-turn-on`.
+ * State (mockup vocabulary): `step-8-turn-on`.
  *
  * @module features/oms-onboarding/components
  */
@@ -29,6 +29,7 @@ import type { SetupStepsView } from '../hooks/use-setup-steps';
 import { SetupStepKeys, describeSetupStep } from '../lib/setup-steps';
 import { SetupChecklist, type SetupChecklistRow } from './setup-checklist';
 import { StepPanel } from './step-panel';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface StepTurnOnProps {
   readonly masterCount: number;
@@ -143,7 +144,7 @@ export function StepTurnOn(props: StepTurnOnProps): ReactElement {
         </Alert>
       ) : props.turnOnError !== null ? (
         <Alert tone="error" title={COPY.step4.failedTitle}>
-          {props.turnOnError.message}
+          {describeApiError(props.turnOnError)}
         </Alert>
       ) : null}
       {!props.canWrite && !props.demoReadOnly ? <Alert tone="info">{COPY.adminOnly}</Alert> : null}

@@ -70,6 +70,7 @@ import {
   type ReturnBucket,
   type ReturnListItem,
 } from '../../features/returns';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 /** `bucket` absent means "both sides", which is what the All chip selects. */
 type BucketChoice = ReturnBucket | 'all';
@@ -334,7 +335,7 @@ export function ReturnsListPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.error.title}
-          message={query.error.message}
+          message={describeApiError(query.error, 'returns')}
           action={
             <Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>
           }

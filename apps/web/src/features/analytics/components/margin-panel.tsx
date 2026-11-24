@@ -14,6 +14,7 @@
  */
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
@@ -182,7 +183,7 @@ export function MarginPanel({
       return (
         <ErrorState
           title={copy.error.title}
-          message={query.error?.message ?? copy.error.message}
+          message={query.error ? describeApiError(query.error, 'analytics') : copy.error.message}
           action={<Button onClick={() => void query.refetch()}>{copy.error.retry}</Button>}
         />
       );
@@ -279,7 +280,7 @@ export function MarginPanel({
           {productsQuery.error ? (
             <ErrorState
               title={copy.byProductError}
-              message={productsQuery.error.message}
+              message={describeApiError(productsQuery.error, 'analytics')}
               action={
                 <Button onClick={() => void productsQuery.refetch()}>{copy.error.retry}</Button>
               }

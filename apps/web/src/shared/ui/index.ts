@@ -60,6 +60,8 @@ export type { FilterCheckProps, FilterCheckTone } from './filter-check';
 export { ActiveFilterChips } from './active-filter-chips';
 export type { ActiveFilterChip, ActiveFilterChipsProps } from './active-filter-chips';
 export { FilterSheet, FilterSection } from './filter-sheet';
+export { SidePanel } from './side-panel';
+export type { SidePanelProps } from './side-panel';
 export type { FilterSheetProps, FilterSectionProps } from './filter-sheet';
 export { QuickFilters, QuickFiltersLabel, QuickFiltersSeparator } from './quick-filters';
 export type { QuickFiltersProps } from './quick-filters';
@@ -162,6 +164,8 @@ export { MotionPopover, useAnchoredPopover, anchoredPosition } from './motion-po
 export type { MotionPopoverProps, AnchoredPopover, PopoverPlacement } from './motion-popover';
 export { OptionList } from './option-list';
 export type { OptionListItem, OptionListProps } from './option-list';
+export { DescribedSelect } from './described-select';
+export type { DescribedSelectOption, DescribedSelectProps } from './described-select';
 export { SegmentedSwitch } from './segmented-switch';
 export type {
   SegmentedSwitchLabels,

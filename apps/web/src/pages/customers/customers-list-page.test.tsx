@@ -32,6 +32,7 @@ import type {
   CustomerProjection,
   PaginatedCustomers,
 } from '../../features/customers/api/customers.types';
+import { getMessages } from '../../shared/i18n';
 
 const ALLEGRO_CONNECTION_ID = '3f9c1d2e-8a7b-4c5d-9e0f-1a2b3c4d5e6f';
 const NAMED_CUSTOMER_ID = 'ol_customer_74b1e9c03a2d48f6b85c1e70d92f4a36';
@@ -177,7 +178,7 @@ describe('CustomersListPage', () => {
     renderWithProviders(<CustomersListPage />, { apiClient: mockApiClient });
 
     expect(await screen.findByText('Unable to load customers')).toBeInTheDocument();
-    expect(screen.getByText('Network error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('should show empty state with a Browse orders CTA when no customers exist', async () => {

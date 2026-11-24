@@ -6,7 +6,12 @@ import type {
 import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { writeTriggerModelForKind } from '../lib/resolve-trigger-model-for-kind';
 import { schemaMessage } from '../lib/schema-message';
+import {
+  NOTIFY_ON_LABEL_PURCHASE_CONFIG_KEY,
+  SHIPPING_CONFIG_KEY,
+} from '../lib/label-purchase-notification';
 
 const msg = schemaMessage('editConnectionSchema');
 
@@ -110,6 +115,8 @@ const inpostAddressSchema = z.object({
 });
 
 const inpostSenderAddressSchema = z.object({
+  // Allegro Delivery only; InPost never sets it, so its saves are unchanged.
+  company: z.string().trim().max(200).optional(),
   name: z.string().trim().max(200).optional(),
   email: z.union([z.string().trim().email(msg('emailInvalid')), z.literal('')]).optional(),
   phone: z.string().trim().max(30).optional(),
@@ -419,6 +426,8 @@ export const editConnectionSchema = z
     paymentWriteback: z
       .object({ mode: z.enum(['mark-paid', 'leave']), paidStateId: z.string() })
       .optional(),
+    // "Tell the shop when a label is bought" (#4097) — carrier connections.
+    notifyOnLabelPurchase: z.boolean().optional(),
   });
 
 /**
@@ -519,10 +528,10 @@ export type StructuredConfigPatch = {
    */
   subiektBridgeUrl?: string;
   /**
-   * #759 — Subiekt invoice trigger model → NESTED `config.invoicing.triggerModel`
-   * (NOT a flat key — the live BE reader `getInvoiceTriggerModel` reads the
-   * nested path). Empty string clears the key and drops an emptied `invoicing`
-   * object; sibling `invoicing` keys are preserved. Mirrors `unmanagedStockQuantity`.
+   * #759 / #3582 — Subiekt invoice trigger model → kind-scoped
+   * `config.salesDocument.triggerModels.invoice` (the legacy
+   * `config.invoicing.triggerModel` is removed on write). Empty string clears
+   * the entry and drops emptied objects; sibling keys are preserved.
    */
   subiektTriggerModel?: string;
   /**
@@ -602,6 +611,12 @@ export type StructuredConfigPatch = {
    * default paid state).
    */
   paymentWriteback?: { mode: 'mark-paid' | 'leave'; paidStateId: string };
+  /**
+   * "Tell the shop when a label is bought" (#4097) — nested
+   * `config.shipping.notifyMarketplaceOnLabelPurchase`. Written as an explicit
+   * boolean; other keys in the `shipping` namespace are kept.
+   */
+  notifyOnLabelPurchase?: boolean;
 };
 
 /**
@@ -759,24 +774,31 @@ export function mergeStructuredIntoConfig(
       next.subiektBridgeUrl = structured.subiektBridgeUrl;
     }
   }
-  // #759 — Subiekt invoice trigger model: NESTED under `config.invoicing`
-  // (clone of the `inventory` block above). Preserve sibling invoicing keys;
-  // drop the `invoicing` object entirely when clearing leaves it empty. The
-  // BE reader `getInvoiceTriggerModel` reads exactly `config.invoicing.triggerModel`.
+  // #759 / #3582 — Subiekt invoice trigger model: written to the kind-scoped
+  // `config.salesDocument.triggerModels.invoice`, the key the BE gate reads
+  // first. A write to the legacy `config.invoicing.triggerModel` would be
+  // shadowed the moment the sales-documents table set a kind-scoped value, so
+  // the form would report "saved" while nothing changed. The legacy key is
+  // dropped here too: Subiekt issues only invoices, so it was the invoice
+  // fallback and nothing else, and leaving it would make clearing the field
+  // fall back to the old value instead of to `manual`. Sibling `invoicing`
+  // keys are preserved; an emptied `invoicing` object is dropped.
   if (structured.subiektTriggerModel !== undefined) {
     const invoicing: Record<string, unknown> =
       typeof next.invoicing === 'object' && next.invoicing !== null
         ? { ...(next.invoicing as Record<string, unknown>) }
         : {};
-    if (structured.subiektTriggerModel.length === 0) {
-      delete invoicing.triggerModel;
-    } else {
-      invoicing.triggerModel = structured.subiektTriggerModel;
-    }
+    delete invoicing.triggerModel;
     if (Object.keys(invoicing).length === 0) {
       delete next.invoicing;
     } else {
       next.invoicing = invoicing;
+    }
+    const written = writeTriggerModelForKind(next, 'invoice', structured.subiektTriggerModel);
+    if (written.salesDocument === undefined) {
+      delete next.salesDocument;
+    } else {
+      next.salesDocument = written.salesDocument;
     }
   }
   // #759 — Subiekt capability toggles: whole-object under `config.capabilities`
@@ -982,6 +1004,22 @@ export function mergeStructuredIntoConfig(
       paidStateId: stateId.length === 0 ? null : stateId,
     };
   }
+  // "Tell the shop when a label is bought" (#4097). The flag lives inside the
+  // `shipping` namespace, which the shallow spread above would replace whole,
+  // so the namespace's other keys are carried over by hand. A namespace that
+  // is not a plain object reads as off in core and is replaced. Off is an
+  // explicit `false`, never a delete (see `rateLimit`).
+  if (structured.notifyOnLabelPurchase !== undefined) {
+    const existing = base[SHIPPING_CONFIG_KEY];
+    const namespace =
+      typeof existing === 'object' && existing !== null && !Array.isArray(existing)
+        ? (existing as Record<string, unknown>)
+        : {};
+    next[SHIPPING_CONFIG_KEY] = {
+      ...namespace,
+      [NOTIFY_ON_LABEL_PURCHASE_CONFIG_KEY]: structured.notifyOnLabelPurchase === true,
+    };
+  }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are
   // assembled by the platform contribution with the same partial-patch
   // semantics as the host clauses above.
@@ -1037,6 +1075,7 @@ function pruneEmptyInpostSenderAddress(
   values: InpostSenderAddressFormValues,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
+  if (values.company && values.company.length > 0) out.company = values.company;
   if (values.name && values.name.length > 0) out.name = values.name;
   if (values.email && values.email.length > 0) out.email = values.email;
   if (values.phone && values.phone.length > 0) out.phone = values.phone;

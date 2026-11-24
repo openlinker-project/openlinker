@@ -28,16 +28,16 @@
  * @module apps/api/src/invoicing/http
  */
 import {
-  BadRequestException,
+
   Body,
-  ConflictException,
+
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
+
   Param,
   ParseUUIDPipe,
   Patch,
@@ -46,6 +46,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import {
   DocumentNumberTooLongException,
   DuplicateDocumentNumberException,
@@ -175,7 +176,12 @@ export class NumberingSeriesController {
   ): Promise<NumberingSeriesResponseDto> {
     const series = await this.seriesService.getSeries(seriesId);
     if (!series) {
-      throw new NotFoundException(`Invoice numbering series not found: ${seriesId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'NUMBERING_SERIES_NOT_FOUND',
+        `Invoice numbering series not found: ${seriesId}`,
+        { seriesId },
+      );
     }
     return this.toSeriesResponse(series);
   }
@@ -277,8 +283,11 @@ export class NumberingSeriesController {
     @Body() dto: UpsertNumberingRouteRequestDto,
   ): Promise<NumberingRouteResponseDto> {
     if (!(await this.seriesService.seriesExists(dto.seriesId))) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'NUMBERING_SERIES_NOT_FOUND',
         `seriesId references an unknown numbering series: ${dto.seriesId}`,
+        { seriesId: dto.seriesId },
       );
     }
     const route = await this.seriesService.upsertRoute({
@@ -313,22 +322,32 @@ export class NumberingSeriesController {
   /** Map invoicing numbering domain exceptions to HTTP responses at the boundary. */
   private mapDomainError(error: unknown): Error {
     if (error instanceof InvalidNumberingPatternException) {
-      return new BadRequestException({ message: error.message, errors: error.issues });
+      // `errors` keeps the issue sentences for existing clients (#3864).
+      return codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'NUMBERING_PATTERN_INVALID',
+        error.message,
+        undefined,
+        { errors: error.issues },
+      );
     }
     if (error instanceof InvoiceNumberingSeriesNotFoundException) {
-      return new NotFoundException(error.message);
+      return codedHttpError(HttpStatus.NOT_FOUND, 'NUMBERING_SERIES_NOT_FOUND', error.message);
     }
     if (error instanceof MissingNumberingSeriesException) {
-      return new BadRequestException(error.message);
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'MISSING_NUMBERING_SERIES', error.message);
     }
     if (error instanceof NumberingGapNoteReasonRequiredException) {
-      return new BadRequestException(error.message);
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'NUMBERING_GAP_REASON_REQUIRED', error.message);
     }
     if (error instanceof DocumentNumberTooLongException) {
-      return new BadRequestException(error.message);
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'DOCUMENT_NUMBER_TOO_LONG', error.message, {
+        actualLength: error.actualLength,
+        maxLength: error.maxLength,
+      });
     }
     if (error instanceof DuplicateDocumentNumberException) {
-      return new ConflictException(error.message);
+      return codedHttpError(HttpStatus.CONFLICT, 'DOCUMENT_NUMBER_DUPLICATE', error.message);
     }
     return error instanceof Error ? error : new Error(String(error));
   }

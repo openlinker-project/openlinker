@@ -41,18 +41,7 @@
  *
  * @module apps/api/src/analytics/http
  */
-import {
-  BadRequestException,
-  Body,
-  ConflictException,
-  Controller,
-  Get,
-  Inject,
-  NotFoundException,
-  Param,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query, HttpStatus } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   ANALYTICS_REMEDIATION_RUN_SERVICE_TOKEN,
@@ -81,6 +70,12 @@ import {
   CurrencyMismatchOrderDto,
   CurrencyMismatchOrdersResponseDto,
 } from './dto/currency-mismatch-orders-response.dto';
+import {
+  analyticsRangeInvalid,
+  analyticsRangeTooWide,
+  remediationRunNotFound,
+} from './analytics-errors';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 /** Mirrors `AnalyticsCoverageController`'s bound — see that controller. */
 const MAX_COVERAGE_RANGE_DAYS = 400;
@@ -138,7 +133,9 @@ export class AnalyticsRemediationController {
       // Refused rather than resolved-immediately: a run row asserting a repair
       // happened when nothing needed repairing is a false audit record, and the
       // panel's `all-clear` state already covers "nothing to do".
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CURRENCY_RECALCULATION_NOTHING_TO_DO',
         'No currency-mismatched orders in the requested range; nothing to recalculate'
       );
     }
@@ -156,7 +153,9 @@ export class AnalyticsRemediationController {
         // restatements would clear and re-enqueue the same orders under two run
         // ids, and the second's completion poll could resolve while the first
         // still had work in flight.
-        throw new ConflictException(
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'CURRENCY_RECALCULATION_IN_PROGRESS',
           'A currency recalculation is already in progress; wait for it to finish before starting another'
         );
       }
@@ -205,7 +204,9 @@ export class AnalyticsRemediationController {
   async cancel(): Promise<AnalyticsRemediationRunResponseDto> {
     const openRun = await this.runs.getOpenRun(CURRENCY_REMEDIATION_CATEGORY);
     if (!openRun) {
-      throw new NotFoundException(
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'CURRENCY_RECALCULATION_NOT_IN_PROGRESS',
         'No currency recalculation is currently in progress; nothing to cancel'
       );
     }
@@ -217,14 +218,16 @@ export class AnalyticsRemediationController {
     if (!cancelled) {
       // Raced with the run resolving/failing on its own between the read
       // above and the conditional transition - nothing is left to cancel.
-      throw new NotFoundException(
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'CURRENCY_RECALCULATION_NOT_IN_PROGRESS',
         'No currency recalculation is currently in progress; nothing to cancel'
       );
     }
 
     const run = await this.runs.getRun(openRun.id);
     if (!run) {
-      throw new NotFoundException(`Remediation run '${openRun.id}' not found`);
+      throw remediationRunNotFound(openRun.id);
     }
     return AnalyticsRemediationRunResponseDto.fromView(run);
   }
@@ -236,7 +239,7 @@ export class AnalyticsRemediationController {
   async getStatus(@Param('runId') runId: string): Promise<AnalyticsRemediationRunResponseDto> {
     const run = await this.runs.getRun(runId);
     if (!run) {
-      throw new NotFoundException(`Remediation run '${runId}' not found`);
+      throw remediationRunNotFound(runId);
     }
     return AnalyticsRemediationRunResponseDto.fromView(run);
   }
@@ -273,13 +276,11 @@ export class AnalyticsRemediationController {
     const from = new Date(fromRaw);
     const to = new Date(toRaw);
     if (to.getTime() <= from.getTime()) {
-      throw new BadRequestException('to must be after from');
+      throw analyticsRangeInvalid();
     }
     const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
     if (rangeDays > MAX_COVERAGE_RANGE_DAYS) {
-      throw new BadRequestException(
-        `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_COVERAGE_RANGE_DAYS}-day limit`
-      );
+      throw analyticsRangeTooWide(rangeDays, MAX_COVERAGE_RANGE_DAYS);
     }
     return { from, to };
   }

@@ -45,6 +45,7 @@ import {
 import { ExampleDocs } from './delivery-documents-preview';
 import { DeliveryLineEditorDialog, type EditorTarget } from './delivery-line-editor-dialog';
 import { DeliveryRulesTable } from './delivery-rules-table';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface DeliveryOnDocumentsPanelProps {
   /** The order-source connection whose config this tab edits. */
@@ -106,7 +107,11 @@ export function DeliveryOnDocumentsPanel({
       <div className="panel panel--dense dd-panel">
         <ErrorState
           title={copy.panel.errorTitle}
-          message={connectionQuery.error?.message ?? copy.panel.errorFallback}
+          message={
+            connectionQuery.error
+              ? describeApiError(connectionQuery.error, 'delivery-on-documents')
+              : copy.panel.errorFallback
+          }
         />
       </div>
     );
@@ -127,7 +132,7 @@ export function DeliveryOnDocumentsPanel({
       showToast({
         tone: 'error',
         title: copy.panel.saveFailedTitle,
-        description: error instanceof Error ? error.message : copy.panel.saveFailedFallback,
+        description: describeApiError(error, 'delivery-on-documents'),
       });
       return false;
     }

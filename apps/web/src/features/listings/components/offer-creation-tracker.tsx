@@ -24,6 +24,7 @@ import { TERMINAL_OFFER_CREATION_STATUSES } from '../api/listings.types';
 import { buildAllegroSellerPanelUrl } from '../lib/allegro-seller-panel-url';
 import { OfferCreationStatusBadge } from './offer-creation-status-badge';
 import { OfferCreationErrorList } from './offer-creation-error-list';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface OfferCreationTrackerProps {
   connectionId: string;
@@ -103,7 +104,7 @@ export function OfferCreationTracker({
           </Button>
         </div>
         <p className="offer-creation-tracker__body">
-          {interpolate(copy.loadFailed, { message: query.error.message })}
+          {copy.loadFailed} {describeApiError(query.error, 'listings')}
         </p>
       </section>
     );

@@ -9,6 +9,7 @@
  */
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useEnqueueSyncJobMutation } from '../hooks/use-enqueue-sync-job-mutation';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -287,7 +288,7 @@ export function TriggerSyncDialog({
         <div className="trigger-sync-dialog__body">
           {enqueueSyncJob.error ? (
             <Alert tone="error" title={copy.enqueueFailed}>
-              {enqueueSyncJob.error.message}
+              {describeApiError(enqueueSyncJob.error, 'sync-jobs')}
             </Alert>
           ) : null}
 

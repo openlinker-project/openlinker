@@ -93,3 +93,89 @@ export function readSourcingClaim(
   }
   return 'off';
 }
+
+/** Buying a label when a parcel is accepted (#3340), read by the worker from the OMS connection. */
+export const AUTO_DISPATCH_KEY = 'autoDispatch';
+
+/**
+ * `config.autoDispatch` as the wizard reads and writes it. Wire units: grams
+ * and millimetres.
+ */
+export interface AutoDispatchSettings {
+  readonly enabled: boolean;
+  readonly parcelTemplate?: string;
+  /** Per product, used only when a product carries no weight of its own. */
+  readonly defaultWeightGrams?: number;
+  readonly lengthMm?: number;
+  readonly widthMm?: number;
+  readonly heightMm?: number;
+}
+
+function positiveNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * The saved auto-dispatch settings, or `null` when the key is absent or not an
+ * object (nothing was ever chosen).
+ *
+ * Coerces field by field the way the worker's `readAutoDispatchConfig` does,
+ * so the page never shows a setting the worker would not act on: `enabled` is
+ * on only when it is exactly `true`, a blank size is no size, and the box
+ * counts only as a full set. Unlike the worker this keeps the fields of a
+ * switched-off setting, because a stop keeps the parcel defaults for the
+ * restart and the step prefills from them.
+ */
+export function readAutoDispatch(config: Record<string, unknown> | null | undefined): AutoDispatchSettings | null {
+  const raw = config?.[AUTO_DISPATCH_KEY];
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const candidate = raw as Record<string, unknown>;
+
+  const parcelTemplate =
+    typeof candidate.parcelTemplate === 'string' && candidate.parcelTemplate.trim().length > 0
+      ? candidate.parcelTemplate
+      : undefined;
+  const weight = positiveNumber(candidate.defaultWeightGrams);
+  const lengthMm = positiveNumber(candidate.lengthMm);
+  const widthMm = positiveNumber(candidate.widthMm);
+  const heightMm = positiveNumber(candidate.heightMm);
+  const box =
+    lengthMm !== undefined && widthMm !== undefined && heightMm !== undefined
+      ? { lengthMm, widthMm, heightMm }
+      : {};
+
+  return {
+    enabled: candidate.enabled === true,
+    ...(parcelTemplate === undefined ? {} : { parcelTemplate }),
+    ...(weight === undefined ? {} : { defaultWeightGrams: Math.floor(weight) }),
+    ...box,
+  };
+}
+
+/**
+ * A new config with `autoDispatch` replaced by `value`; every other key is
+ * untouched. Absent fields are omitted rather than written as `null`, because
+ * the server refuses a `null` where it expects a number. A partial box is
+ * dropped: the server refuses one, and the worker would ignore it.
+ */
+export function withAutoDispatch(
+  config: Record<string, unknown> | null | undefined,
+  value: AutoDispatchSettings
+): Record<string, unknown> {
+  const parcelTemplate = value.parcelTemplate?.trim();
+  const weight = positiveNumber(value.defaultWeightGrams);
+  const lengthMm = positiveNumber(value.lengthMm);
+  const widthMm = positiveNumber(value.widthMm);
+  const heightMm = positiveNumber(value.heightMm);
+  const box =
+    lengthMm !== undefined && widthMm !== undefined && heightMm !== undefined
+      ? { lengthMm, widthMm, heightMm }
+      : {};
+
+  return withConfigKey(config, AUTO_DISPATCH_KEY, {
+    enabled: value.enabled,
+    ...(parcelTemplate === undefined || parcelTemplate === '' ? {} : { parcelTemplate }),
+    ...(weight === undefined ? {} : { defaultWeightGrams: weight }),
+    ...box,
+  });
+}

@@ -46,6 +46,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import { useToast } from '../../../shared/ui/toast-provider';
 import { interpolate, renderRich } from '../../../shared/i18n';
 import { getInfaktMessages, useInfaktMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 // The events an operator ticks in inFakt's "Nowy webhook" form. Labels are
 // inFakt's own (its UI is Polish) so they match the checkboxes verbatim.
@@ -295,7 +296,7 @@ export function InfaktWebhookConfig({ connection }: { connection: Connection }):
           </form>
           {setSecret.error ? (
             <Alert tone="error" title={copy.save.error}>
-              {setSecret.error.message}
+              {describeApiError(setSecret.error, 'infakt')}
             </Alert>
           ) : null}
           <p className="infakt-webhook__hint muted-text">{renderRich(copy.secret.hint, rich)}</p>

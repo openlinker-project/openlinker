@@ -30,6 +30,7 @@ import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { interpolate, renderRich, useMessages } from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 type VariantCostCopy = ReturnType<typeof useMessages<'products'>>['variantCost'];
 
@@ -208,7 +209,7 @@ function VariantCostForm({
       </p>
       {mutation.isError ? (
         <p className="form-field__error" role="alert">
-          {mutation.error.message || copy.form.saveFailed}
+          {describeApiError(mutation.error, 'products')}
         </p>
       ) : null}
       <div className="variant-cost__actions">
@@ -356,7 +357,7 @@ export function VariantCostSection({
         ) : null}
         {clearMutation.isError ? (
           <p className="form-field__error" role="alert">
-            {clearMutation.error.message || copy.section.clearFailed}
+            {describeApiError(clearMutation.error, 'products')}
           </p>
         ) : null}
         {!canEdit && !write.demoReadOnly ? (

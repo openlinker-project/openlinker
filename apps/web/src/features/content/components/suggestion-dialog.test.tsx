@@ -21,6 +21,7 @@ import { ApiError } from '../../../shared/api/api-error';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import type { SessionUser } from '../../../shared/auth/session.types';
 import type { SuggestionResponse } from '../api/content.types';
+import { getMessages } from '../../../shared/i18n';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../demo', () => ({
@@ -152,7 +153,7 @@ describe('SuggestionDialog', () => {
         'Prompt template not found: key=offer.description.suggest, channel=master, version=1. ' +
           'Seed a template with channel=null for this key, or use a channel-specific template.',
         404,
-        { statusCode: 404, message: 'Prompt template not found: ...' },
+        { statusCode: 404, code: 'PROMPT_TEMPLATE_NOT_FOUND', message: 'Prompt template not found: ...' },
       ),
     );
     const mockApi = createMockApiClient({ content: { suggest } });
@@ -172,7 +173,7 @@ describe('SuggestionDialog', () => {
 
     // The error body shows up inside the dialog's Alert.
     expect(
-      await within_.findByText(/Prompt template not found/),
+      await within_.findByText(getMessages('content').apiErrors.PROMPT_TEMPLATE_NOT_FOUND),
     ).toBeInTheDocument();
     // And it carries the actionable deep link to the admin UI.
     const deepLink = within_.getByRole('link', { name: /Open prompt templates/ });
@@ -198,7 +199,7 @@ describe('SuggestionDialog', () => {
 
     await user.click(within_.getByRole('button', { name: 'Generate' }));
 
-    expect(await within_.findByText('Server exploded')).toBeInTheDocument();
+    expect(await within_.findByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
     expect(within_.queryByRole('link', { name: /Open prompt templates/ })).toBeNull();
   });
 

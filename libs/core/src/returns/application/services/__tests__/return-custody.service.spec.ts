@@ -1322,4 +1322,131 @@ describe('ReturnCustodyService', () => {
       expect(capabilities).not.toContain('ProductPublisher');
     });
   });
+
+  describe('bundle line restock (#3933)', () => {
+    const bundle = (returnedVariantIds?: string[]) => ({
+      paidPerUnitGross: 100,
+      components: [
+        { productId: 'p-a', variantId: 'v-a', perUnit: 2, sku: 'A' },
+        { productId: 'p-b', variantId: 'v-b', perUnit: 1, sku: 'B' },
+      ],
+      ...(returnedVariantIds === undefined ? {} : { returnedVariantIds }),
+    });
+
+    beforeEach(() => {
+      lineState = makeLine({ quantityReceived: 3, custodyState: 'received' });
+      ((products as unknown) as { getVariantsByIds: jest.Mock }).getVariantsByIds = jest.fn(() =>
+        Promise.resolve([
+          { id: 'v-a', price: 30 },
+          { id: 'v-b', price: 40 },
+        ])
+      );
+    });
+
+    it('should restock every component with its own key when the whole set came back', async () => {
+      await service.disposeLine(LINE_ID, {
+        quantity: 1,
+        disposition: 'restock',
+        bundle: bundle(),
+      });
+
+      expect(adjustInventory).toHaveBeenCalledTimes(2);
+      const calls = adjustInventory.mock.calls.map(([arg]) => arg as Record<string, unknown>);
+      expect(calls[0]).toMatchObject({ variantId: 'v-a', quantity: 2 });
+      expect(calls[1]).toMatchObject({ variantId: 'v-b', quantity: 1 });
+      expect(calls[0].idempotencyKey).toBe(`return:${RETURN_ID}:${LINE_ID}~c:v-a:1`);
+      expect(calls[1].idempotencyKey).toBe(`return:${RETURN_ID}:${LINE_ID}~c:v-b:1`);
+      // The counters moved once, on the last act, in LINE units.
+      expect(settledOutcome).toMatchObject({ quantityRestocked: 1 });
+    });
+
+    it('should persist every component act as in_doubt before the first master call (#3520)', async () => {
+      await service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock', bundle: bundle() });
+
+      const writes = repository.runLineWrite.mock.invocationCallOrder;
+      const firstCall = adjustInventory.mock.invocationCallOrder[0];
+      expect(writes).toHaveLength(2);
+      expect(Math.max(...writes)).toBeLessThan(firstCall);
+    });
+
+    it('should restock only the returned component and price its share', async () => {
+      await service.disposeLine(LINE_ID, {
+        quantity: 1,
+        disposition: 'restock',
+        bundle: bundle(['v-b']),
+      });
+
+      expect(adjustInventory).toHaveBeenCalledTimes(1);
+      expect((adjustInventory.mock.calls[0] as unknown[])[0]).toMatchObject({ variantId: 'v-b', quantity: 1 });
+      const share = lastWrite?.event.componentShareGross as number;
+      // 2 x 30 = 60 vs 1 x 40 = 40 of 100: the returned component carries 40.
+      expect(share).toBe(40);
+      expect(lastWrite?.event.componentVariantId).toBe('v-b');
+    });
+
+    it('should not move the counters when one component was refused', async () => {
+      adjustInventory
+        .mockResolvedValueOnce({
+          id: 'i',
+          productId: 'p',
+          quantity: 1,
+          reserved: 0,
+          available: 1,
+          adjustmentOutcome: { disposition: 'applied', idempotency: 'honoured', appliedAt: null },
+        })
+        .mockRejectedValueOnce(new Error('master down'));
+
+      const result = await service.disposeLine(LINE_ID, {
+        quantity: 1,
+        disposition: 'restock',
+        bundle: bundle(),
+      });
+
+      expect(settledOutcome).toBeNull();
+      expect(result.restockBlockedComponents).toHaveLength(1);
+      expect(result.restockBlocked?.sku).toBe('B');
+    });
+
+    it('should refuse a partial return when a component has neither price nor cost', async () => {
+      ((products as unknown) as { getVariantsByIds: jest.Mock }).getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', price: 30 },
+        { id: 'v-b' },
+      ]);
+
+      await expect(
+        service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock', bundle: bundle(['v-a']) })
+      ).rejects.toMatchObject({ reason: 'no-split-basis', variantIds: ['v-b'] });
+      expect(adjustInventory).not.toHaveBeenCalled();
+    });
+
+    it('should offer the Allegro-formula hint without applying anything', async () => {
+      // Paid 100 per set; the buyer keeps v-a (2 x 30 = 60), so the hint is 40.
+      const preview = await service.previewBundleReturn(bundle(['v-b']), 1);
+
+      expect(preview.keptAtStandaloneRefundHintGross).toBe(40);
+      expect(preview.returnedShareGross).toBe(40);
+      expect(adjustInventory).not.toHaveBeenCalled();
+    });
+
+    it('should floor the hint at zero and withhold it when a kept component has no price', async () => {
+      ((products as unknown) as { getVariantsByIds: jest.Mock }).getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', price: 90 },
+        { id: 'v-b', price: 40 },
+      ]);
+      expect((await service.previewBundleReturn(bundle(['v-b']), 1)).keptAtStandaloneRefundHintGross).toBe(0);
+
+      ((products as unknown) as { getVariantsByIds: jest.Mock }).getVariantsByIds.mockResolvedValue([
+        { id: 'v-b', price: 40 },
+      ]);
+      const preview = await service.previewBundleReturn(bundle(['v-b']), 1);
+      expect(preview.keptAtStandaloneRefundHintGross).toBeNull();
+      expect(preview.splitRefusal).toBe('no-split-basis');
+    });
+
+    it('should refuse a selection that names a component the line does not have', async () => {
+      await expect(
+        service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock', bundle: bundle(['zzz']) })
+      ).rejects.toMatchObject({ reason: 'bad-selection' });
+    });
+  });
 });

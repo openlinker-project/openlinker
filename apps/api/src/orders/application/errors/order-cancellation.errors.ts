@@ -7,6 +7,7 @@
  *
  * @module apps/api/src/orders/application/errors
  */
+import type { KnownApiErrorCode } from '@openlinker/shared/errors';
 
 export const OrderCancellationRefusalCodeValues = [
   'ORDER_ALREADY_CANCELLED',
@@ -25,7 +26,7 @@ export const OrderCancellationRefusalCodeValues = [
   'CORRECTION_SUPERSEDED',
   'CORRECTION_IN_PROGRESS',
   'CORRECTION_NEEDS_RECONCILIATION',
-] as const;
+] as const satisfies readonly KnownApiErrorCode[];
 export type OrderCancellationRefusalCode = (typeof OrderCancellationRefusalCodeValues)[number];
 
 /** A 409: the request was well formed and the order or change is in a state that refuses it. */
@@ -40,9 +41,18 @@ export class OrderCancellationRefusedError extends Error {
   }
 }
 
+/** What a 404 is about: the order, or a change on it (#3865). */
+export interface OrderCancellationNotFoundTarget {
+  readonly orderId: string;
+  readonly changeId?: string;
+}
+
 /** A 404: no such order, or no such change on this order. */
 export class OrderCancellationNotFoundError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly target: OrderCancellationNotFoundTarget
+  ) {
     super(message);
     this.name = 'OrderCancellationNotFoundError';
     Error.captureStackTrace(this, this.constructor);

@@ -15,6 +15,7 @@
  * @module apps/web/src/features/ai-provider-settings/components
  */
 import { useState, type ReactElement } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -75,7 +76,7 @@ export function AiProviderTable({ view }: AiProviderTableProps): ReactElement {
       showToast({
         tone: 'error',
         title: copy.clearErrorTitle,
-        description: error instanceof Error ? error.message : copy.unknownError,
+        description: describeApiError(error, 'ai-provider-settings'),
       });
     }
   };
@@ -96,7 +97,7 @@ export function AiProviderTable({ view }: AiProviderTableProps): ReactElement {
       showToast({
         tone: 'error',
         title: copy.switchErrorTitle,
-        description: error instanceof Error ? error.message : copy.unknownError,
+        description: describeApiError(error, 'ai-provider-settings'),
       });
     }
   };

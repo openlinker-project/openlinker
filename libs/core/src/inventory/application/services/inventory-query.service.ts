@@ -186,6 +186,9 @@ export class InventoryQueryService implements IInventoryQueryService {
     // `getPromisableQuantities` is zero-filled and order-preserving, so this
     // map is total over `variantIds`; the `?? null` is unreachable defence.
     const atpById = new Map(promisable.map((p) => [p.productVariantId, p.quantity]));
+    // A bundle variant has no positions of its own (#3931); its observation is
+    // the newest of its components', which the seam already carries.
+    const observedById = new Map(promisable.map((p) => [p.productVariantId, p.observedAt]));
     // Zero-fill unknowns so the caller can build a Map<variantId, …> directly
     // without re-walking the input list. Output order preserves input order.
     return variantIds.map((id) => {
@@ -195,7 +198,11 @@ export class InventoryQueryService implements IInventoryQueryService {
         totalAvailable: row?.totalAvailable ?? 0,
         locationCount: row?.locationCount ?? 0,
         positionCount: row?.positionCount ?? 0,
-        ...(row?.stockUpdatedAt !== undefined ? { stockUpdatedAt: row.stockUpdatedAt } : {}),
+        ...(row?.stockUpdatedAt !== undefined
+          ? { stockUpdatedAt: row.stockUpdatedAt }
+          : observedById.get(id) != null
+            ? { stockUpdatedAt: observedById.get(id) }
+            : {}),
         // A variant with no positions carries a KNOWN zero, not `null` — the
         // #1844 master-is-authoritative-including-zero rule and #1689's
         // stale-variant pause both depend on a zero publish actually happening.

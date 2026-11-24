@@ -42,11 +42,7 @@ import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import type { ParsedOrderSnapshot } from '../api/order-snapshot.schema';
 import type { OrderEditsView } from '../api/order-edit.types';
 import { useEditOrderMutation, type EditOrderOutput } from '../hooks/use-edit-order-mutation';
-import {
-  readRefundCeilingFigures,
-  readServerReason,
-  remainingRefundable,
-} from '../lib/order-cancel';
+import { readRefundCeilingFigures, remainingRefundable } from '../lib/order-cancel';
 import {
   classifyOrderEditRefusal,
   formatDecimalAmount,
@@ -68,6 +64,7 @@ import {
 import type { OrderEditFormValues, PlannedOrderEdit } from './order-form.types';
 import { OrderEditRefusal } from './order-edit-refusal';
 import { OrderEditReview, type OrderEditDryRun } from './order-edit-review';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface OrderEditDialogProps {
   open: boolean;
@@ -340,7 +337,9 @@ export function OrderEditDialog({
           <OrderEditRefusal
             code={refusalCode}
             reason={
-              failure && failureView === 'blocked' ? readServerReason(failure.error, '') : null
+              failure && failureView === 'blocked'
+                ? describeApiError(failure.error, 'orders')
+                : null
             }
             savedSectionLabels={(failure?.saved ?? []).map(orderEditSectionLabel)}
             onGoTo={
@@ -661,7 +660,7 @@ function FailureAlert({ failure }: { failure: Failure }): ReactElement | null {
       title={code ? orderEditRefusalCopy(code).title : copy.title}
       data-testid="order-edit-error"
     >
-      {readServerReason(failure.error, copy.fallback)}
+      {describeApiError(failure.error, 'orders')}
     </Alert>
   );
 }

@@ -36,7 +36,7 @@
       "hint": "Turn this on to pick categories and fill required parameters from a list, the same way you do for Allegro. Leave it off and you'll enter category IDs by hand.",
       "label": "Browse Allegro categories when creating Erli offers"
     },
-    "configSaveFailed": "Category-browsing setting failed to save: {message}. Click Save again to retry.",
+    "configSaveFailed": "Category-browsing setting failed to save. Click Save again to retry.",
     "manual": {
       "clientIdHint": "From an Allegro app you register at apps.developer.allegro.pl. Used only to read the public category catalog - never to sign in as a seller or place offers.",
       "clientIdPlaceholder": "Allegro Client ID",

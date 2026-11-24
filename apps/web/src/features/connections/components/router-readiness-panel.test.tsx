@@ -19,6 +19,7 @@ import {
 import { RouterReadinessPanel } from './router-readiness-panel';
 import type { LocationBootstrapResult } from '../../inventory';
 import type { SessionUser } from '../../../shared/auth/session.types';
+import { getMessages } from '../../../shared/i18n';
 
 function sourcingStatus(state: 'default' | 'resolved'): unknown {
   return {
@@ -140,7 +141,7 @@ describe('RouterReadinessPanel', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /create default location/i }));
 
-    expect(await screen.findByText('locations table is unavailable')).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status.other)).toBeInTheDocument();
     expect(bootstrap).toHaveBeenCalled();
   });
 

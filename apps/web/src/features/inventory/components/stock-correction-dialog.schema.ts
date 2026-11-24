@@ -67,6 +67,7 @@ const REASON_KEY: Record<CorrectionReason, keyof StockCorrectionCopy['reasons']>
   count_correction: 'countCorrection',
   found: 'found',
   damaged: 'damaged',
+  gift: 'gift',
   other: 'other',
 };
 

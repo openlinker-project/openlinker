@@ -11,6 +11,8 @@
  * @module apps/web/src/pages/orders
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
@@ -43,6 +45,7 @@ import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
 import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
 import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
+import { describeSalesDocumentBlockDetail } from '../../features/orders/lib/sales-document-block-detail';
 import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
 import {
   OrderNotesPanel,
@@ -72,6 +75,7 @@ import { WarehouseReleaseBadge } from '../../features/orders/components/warehous
 import { OrderDetailHeader, isChannelStatusStale } from '../../features/orders/components/order-detail-header';
 import { DestinationRoutingCallout } from '../../features/orders/components/destination-routing-callout';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
+import { MultipackHoldBanner } from '../../features/bundles';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
 import { OrderPaymentPanel } from '../../features/orders/components/order-payment-panel';
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
@@ -102,6 +106,7 @@ import { OrderCancelResultNotice } from '../../features/orders/components/order-
 import { buildOrderCancelTimelineEvents } from '../../features/orders/components/order-cancel-timeline-events';
 import type { CancelOrderResult } from '../../features/orders/api/order-cancel.types';
 import { OrderEditAction } from '../../features/orders/components/order-edit-action';
+import { GiftsGuide, OrderAddGiftAction, OrderGiftAttention } from '../../features/gifts';
 import { OrderEditedNotice } from '../../features/orders/components/order-edited-notice';
 import { OrderSourceChangeCard } from '../../features/orders/components/order-source-change-card';
 import { buildOrderEditTimelineEvents } from '../../features/orders/components/order-edit-timeline-events';
@@ -111,7 +116,7 @@ import type { OrderEditRemedyTarget } from '../../features/orders/lib/order-edit
 import { hasAcceptedFulfilmentWork, isOrderCancelTerminal } from '../../features/orders/lib/order-cancel';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
-import { serverErrorText } from '../../features/orders/lib/server-error-text';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -135,7 +140,6 @@ const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
 export function OrderDetailPage(): ReactElement {
   const { internalOrderId = '' } = useParams<{ internalOrderId: string }>();
   const ordersCopy = useMessages('orders');
-  const serverSaid = ordersCopy.common.serverSaid;
   const copy = ordersCopy.orderDetailPage;
   const format = useFormat();
   const plural = usePlural();
@@ -179,6 +183,9 @@ export function OrderDetailPage(): ReactElement {
   // does not persist (per-participant outcomes, voided labels, why a correction
   // could not be drafted) and is gone after a reload, by design. Tagged with its
   // order so a navigation never shows it on another.
+  const demoMode = useDemoMode();
+  const canAddGift = useWriteAccess('gifts:write', demoMode).canWrite;
+  const [giftDialogOpen, setGiftDialogOpen] = useState(false);
   const [cancelOutcome, setCancelOutcome] = useState<{
     internalOrderId: string;
     result: CancelOrderResult;
@@ -264,12 +271,16 @@ export function OrderDetailPage(): ReactElement {
             });
           },
           onError: (error) => {
-            showToast({ tone: 'error', title: copy.retryFailedTitle, description: serverErrorText(serverSaid, error.message, '') });
+            showToast({
+              tone: 'error',
+              title: copy.retryFailedTitle,
+              description: describeApiError(error, 'orders'),
+            });
           },
         },
       );
     },
-    [retry, internalOrderId, showToast, copy, serverSaid],
+    [retry, internalOrderId, showToast, copy]
   );
 
   if (query.isLoading) {
@@ -285,7 +296,7 @@ export function OrderDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <ErrorState
           title={copy.loadErrorTitle}
-          message={serverErrorText(serverSaid, query.error?.message, copy.notFound)}
+          message={query.error ? describeApiError(query.error, 'orders') : copy.notFound}
           action={
             <Button
               onClick={() => {
@@ -325,6 +336,11 @@ export function OrderDetailPage(): ReactElement {
   const documentEmailEvents = mapDocumentEmailsToEvents(documentEmailsQuery.data ?? []);
   const buyerEmailEvents = mapBuyerEmailsToEvents(buyerEmailsQuery.data ?? []);
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
+  // Mirrors the backend refusal (#3990): a live work object or a persisted routing
+  // block means routing owns the order, so a destination retry is a 409. The 409
+  // stays the backstop for the one case this cannot see (a router decision with
+  // neither a work nor a block yet).
+  const isRoutedOrder = Boolean(order.handledInOpenLinker) || Boolean(order.fulfillmentBlockReason);
 
   // #3541 - cancel action inputs. All derived from data the page already holds.
   const sessionCancelResult =
@@ -561,9 +577,11 @@ export function OrderDetailPage(): ReactElement {
       title={copy.title}
       actions={
         <>
+        <GiftsGuide variant="detail" />
         <OrderConfirmRefundAction
           internalOrderId={order.internalOrderId}
           currency={snapshot.totals?.currency ?? null}
+          sourceConnectionId={order.sourceConnectionId}
           orderTotal={
             snapshot.totals
               ? snapshot.totals.total.toFixed(minorUnitExponentFor(snapshot.totals.currency))
@@ -590,6 +608,29 @@ export function OrderDetailPage(): ReactElement {
           amending={order.lifecyclePhase === 'amending'}
           onSaved={handleOrderEdited}
           onGoTo={scrollToRemedy}
+        />
+        <OrderAddGiftAction
+          key={`gift:${order.internalOrderId}`}
+          internalOrderId={order.internalOrderId}
+          orderLabel={snapshot.orderNumber ?? order.internalOrderId}
+          currency={snapshot.totals?.currency}
+          terminal={isOrderCancelTerminal({
+            snapshotStatus: snapshot.status,
+            lifecyclePhase: order.lifecyclePhase,
+            fulfillmentState: order.fulfillmentState,
+          })}
+          parcelClosed={
+            (order.packedAt !== null && order.packedAt !== undefined) ||
+            order.fulfillmentState === 'dispatched' ||
+            (shipmentsQuery.data?.items ?? []).some(
+              (shipment) => shipment.status === 'generated' || shipment.status === 'dispatched',
+            )
+          }
+          hasSalesDocument={order.salesDocument?.document != null}
+          documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
+          notReady={order.recordStatus !== 'ready'}
+          open={giftDialogOpen}
+          onOpenChange={setGiftDialogOpen}
         />
         <OrderCancelAction
           // Remount per order so an open dialog never carries over to a cached next order.
@@ -702,14 +743,18 @@ export function OrderDetailPage(): ReactElement {
                     {copy.viewRaw} <span aria-hidden="true">▸</span>
                   </a>
                 </div>
-                <Button
-                  tone="primary"
-                  className="button--sm"
-                  onClick={() => handleRetry(status.destinationConnectionId)}
-                  disabled={pendingDestinationId === status.destinationConnectionId}
-                >
-                  {pendingDestinationId === status.destinationConnectionId ? copy.retrying : copy.retry}
-                </Button>
+                {isRoutedOrder ? (
+                  <span className="order-detail__failed-error">{copy.routedNote}</span>
+                ) : (
+                  <Button
+                    tone="primary"
+                    className="button--sm"
+                    onClick={() => handleRetry(status.destinationConnectionId)}
+                    disabled={pendingDestinationId === status.destinationConnectionId}
+                  >
+                    {pendingDestinationId === status.destinationConnectionId ? copy.retrying : copy.retry}
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
@@ -729,6 +774,13 @@ export function OrderDetailPage(): ReactElement {
           presence of an episode is a claim. */}
       <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
 
+      {/* #3624 - a multipack waiting for a bundle: the next step is on the banner. */}
+      {(order.multipackHolds ?? (order.multipackHold ? [order.multipackHold] : [])).map(
+        (hold, _index, all) => (
+          <MultipackHoldBanner key={hold.lineId} hold={hold} otherLinesHeld={all.length > 1} />
+        ),
+      )}
+
       {/* #3539 (mockup M2) - the buyer's own message, in the same full-width slot
           as the callout above and ABOVE the panels the operator acts in. Not an
           Alert: it is the buyer's voice. Renders nothing without a note. */}
@@ -742,6 +794,17 @@ export function OrderDetailPage(): ReactElement {
         hasFulfilmentWork={(fulfilmentTasksQuery.data?.total ?? 0) > 0}
       />
 
+      {/* #3940 - why a gift that should be here is not: the gift rules' own
+          records for this order, plus a shop that refused a gift line. */}
+      <OrderGiftAttention
+        key={`gift-attention:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        shopRejected={
+          snapshot.items.some((item) => item.gift != null) && failedDestinations.length > 0
+        }
+        onAddGift={canAddGift ? () => setGiftDialogOpen(true) : undefined}
+      />
+
       {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
           <h3 className="detail-section__title">{copy.pricingTitle}</h3>
@@ -751,6 +814,8 @@ export function OrderDetailPage(): ReactElement {
             internalOrderId={internalOrderId}
             edits={order.edits}
             channelName={cancelSourceName}
+            bundleLines={order.bundleLines}
+            documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
           />
         </section>
       ) : null}
@@ -860,6 +925,7 @@ export function OrderDetailPage(): ReactElement {
             methodFallback={methodFallback}
             deliveryOutcome={deliveryOutcome}
             deliveryOwner={deliveryOwner}
+            deliveryResolution={order.deliveryResolution}
             deliveryRider={order.deliveryRider}
             sourceConnectionId={order.sourceConnectionId}
             sourceDeliveryMethodId={order.sourceDeliveryMethodId}
@@ -955,7 +1021,12 @@ export function OrderDetailPage(): ReactElement {
           mappingFailureReason={order.mappingFailureReason}
           salesDocumentBlockReason={order.salesDocumentBlockReason}
           salesDocumentUnresolvedReason={order.salesDocumentUnresolvedReason}
-          salesDocumentBlockDetail={order.salesDocumentBlockDetail}
+          salesDocumentBlockDetail={describeSalesDocumentBlockDetail({
+            reason: order.salesDocumentBlockReason,
+            unresolvedReason: order.salesDocumentUnresolvedReason,
+            detail: order.salesDocumentBlockDetail,
+            params: order.salesDocumentBlockParams,
+          })}
           invoice={snapshot.invoice}
           lastAmendedAt={order.lastAmendedAt}
           lastAmendmentChanges={order.lastAmendmentChanges}

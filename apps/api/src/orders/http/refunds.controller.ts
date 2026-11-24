@@ -24,7 +24,6 @@
  * @module apps/api/src/orders/http
  */
 import {
-  BadRequestException,
   Body,
   ConflictException,
   ServiceUnavailableException,
@@ -33,7 +32,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
 } from '@nestjs/common';
@@ -53,6 +51,8 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import { orderNotFound, refundAmountPrecision } from './orders-errors';
 import { RecordRefundRequestDto } from './dto/record-refund-request.dto';
 import { RefundRecordResponseDto } from './dto/refund-record-response.dto';
 import { toRefundCeilingVerdictDto } from './dto/refund-ceiling-verdict.dto';
@@ -89,7 +89,7 @@ export class RefundsController {
   ): Promise<RefundRecordResponseDto> {
     const orderRecord = await this.orderRecordService.getOrderRecord(internalOrderId);
     if (!orderRecord) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
 
     this.logger.log(
@@ -122,7 +122,12 @@ export class RefundsController {
       return response;
     } catch (error) {
       if (error instanceof DuplicateRefundRecordException) {
-        throw new ConflictException('A refund with this idempotencyKey already exists for this order');
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'REFUND_RECORD_DUPLICATE',
+          'A refund with this idempotencyKey already exists for this order',
+          { orderId: internalOrderId },
+        );
       }
       if (error instanceof RefundCeilingExceededException) {
         throw new ConflictException({
@@ -153,10 +158,12 @@ export class RefundsController {
         });
       }
       if (error instanceof RefundAmountPrecisionException) {
-        throw new BadRequestException(error.message);
+        throw refundAmountPrecision(error);
       }
       if (error instanceof RefundCurrencyMismatchException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'REFUND_CURRENCY_MISMATCH', error.message, {
+          orderId: internalOrderId,
+        });
       }
       throw error;
     }

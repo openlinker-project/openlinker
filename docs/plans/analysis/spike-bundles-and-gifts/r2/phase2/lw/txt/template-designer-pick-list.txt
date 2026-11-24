@@ -1,0 +1,40 @@
+=== template-designer-pick-list | Template Designer: Picklist
+ 
+ Template Designer: Picklist 
+ Template Type: Picklist
+ Using a Picklist  allows for collecting stock for multiple orders from the warehouse in the most efficient way. They are ordered by BinRack location by default, but this can be altered by editing the table. For more information on editing templates, see this guide .
+ Picklists are internal documents, but we encourage you to customize them to ensure that they suit the needs of your business. Picklists have two main settings that allow configuring how composite items are displayed on the document.
+ Available elements
+ All templates can contain images , labels, and variables . In addition to these, the following pre-defined table elements are available for use in picklists:
+ Order Items
+ Order Items (No Composite Parents) 
+ These can be customized by double-clicking the element on the template. Further information on customizing table elements can be found  here .
+ Order items 
+ This is the default table used in a predefined picklist. This table, by default, will not display the Child SKUs of composite items.
+ Sub-table
+ A sub-table can be added to this table to show the orders that contain the item to be picked. Every stock item will still only be displayed once however, a smaller table will exist underneath each stock item that includes details of the orders for that item.
+ Having a picklist that contains order information in a subtable means that the same document could also be used by packing staff whilst still prioritizing the sorting rules applied to the main stock item table.
+ Order items granular (No Composite Parents)
+ This table will display all items to be picked for an order, including Child SKUs of  composite items .  This table can be used as well for  batched items,  as you can add batch information such as batch number, sell-by, and expire dates or binrack locations, etc.  
+ Adding Item Extended Properties (EPs) 
+ The Add Extended Property option allows you to display additional item information stored in extended properties (EPs) directly in table elements within your Picklist template. This feature is available for both table types:  Order Items and Order Items (No Composite Parents) . 
+ EPs store additional information about items, such as color, size, material, compatibility, or other custom attributes. By adding these properties as table columns, you can include this information directly on printed documents, making picklists more informative and easier to use during order processing. 
+ How to add item EPs to a Picklist's tables 
+Open Settings > Template Designer .
+Open the required Picklist template and click Edit .
+Double-click the table element you want to modify to open the Edit Table window.
+In the Columns tab, click  Add Extended Property .
+In the Extended Property window: 
+Select the Property Type from the dropdown list.
+Select the Property Name corresponding to the property you want to display.
+Click Ok .
+A new column will be added to the table.
+Adjust the column settings as needed (e.g., Header Title , Width , or Alignment ).
+Click OK to close the Edit Table window.
+Click Save to apply the changes to the template.
+ When the template is printed, the column will display the value of the selected EP for each item in the table. For example, if you added an EP called Color , the table will show the color value for each item listed in the picklist. 
+ Notes and limitations of adding item EPs to a Picklist's tables: 
+ EPs must already exist on the item  before they can be displayed in the Picklist template. If the property is not present on the item level, the field in the table will appear empty when the template is printed.
+EPs columns can only be added to the main table , not to sub-tables.
+The column header and column name will automatically use the item's EP name (for example, " Color" ), but you can edit the header to display a different label.
+ 

@@ -5,6 +5,7 @@
     "selectReason": "Select a reason…"
   },
   "actions": {
+    "add-gift": "Add a gift",
     "dispatch-shipment": "Buy the shipping label",
     "issue-sales-document": "Issue the invoice or receipt",
     "place-hold": "Put the order on hold",
@@ -121,7 +122,6 @@
     "removeCondition": "Remove condition",
     "save": "Save automation",
     "saveFailed": "The automation was not saved",
-    "saveFailedGeneric": "Something went wrong saving this automation. Try again.",
     "saving": "Saving…",
     "stopOnFirstFailure": "Steps run in order, and if one fails the rest are skipped. You can add up to {max}.",
     "subjectLabel": "Subject",
@@ -403,6 +403,10 @@
     "order.hold.released": {
       "description": "Whatever was blocking the order has been cleared.",
       "label": "An order comes off hold"
+    },
+    "order.ingested": {
+      "description": "Gift promotions are checked when OpenLinker takes an order in.",
+      "label": "An order arrives (gift promotions)"
     },
     "order.on_hold_for": {
       "description": "Checked on a timer, not the moment the order stops.",

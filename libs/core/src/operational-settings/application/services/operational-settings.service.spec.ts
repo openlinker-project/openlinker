@@ -130,6 +130,22 @@ describe('OperationalSettingsService', () => {
       expect(repository.upsertSettings).not.toHaveBeenCalled();
     });
 
+    it('should name the broken rule and its limit on the error (#3866)', async () => {
+      await expect(service.updateSettings({ catalogueSweepBudget: 5000 }, null)).rejects.toMatchObject({
+        field: 'catalogueSweepBudget',
+        rule: 'recommended',
+        limit: 2000,
+      });
+      await expect(
+        service.updateSettings({ sweepPageSize: 900, acknowledgeAboveRecommended: true }, null)
+      ).rejects.toMatchObject({ field: 'sweepPageSize', rule: 'absolute', limit: 500 });
+      await expect(service.updateSettings({ syncJobRetentionDays: 7 }, null)).rejects.toMatchObject({
+        field: 'syncJobRetentionDays',
+        rule: 'min',
+        limit: 30,
+      });
+    });
+
     it('should refuse a value above the recommendation without an acknowledgement', async () => {
       await expect(service.updateSettings({ sweepPageSize: 250 }, null)).rejects.toThrow(
         'requires acknowledgeAboveRecommended'

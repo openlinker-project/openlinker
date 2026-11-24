@@ -17,6 +17,7 @@ export const BULK_LISTING_BATCH_REPOSITORY_TOKEN = Symbol('BulkListingBatchRepos
 export const BULK_BATCH_ADVANCEMENT_REPOSITORY_TOKEN = Symbol('BulkBatchAdvancementRepositoryPort');
 export const BULK_LISTING_PROGRESS_SERVICE_TOKEN = Symbol('IBulkListingProgressService');
 export const CATEGORY_RESOLUTION_SERVICE_TOKEN = Symbol('ICategoryResolutionService');
+export const BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN = Symbol('IBundleOfferPreviewService');
 export const OFFER_BUILDER_SERVICE_TOKEN = Symbol('IOfferBuilderService');
 export const OFFER_CREATION_EXECUTION_SERVICE_TOKEN = Symbol('IOfferCreationExecutionService');
 export const OFFER_CREATION_ENQUEUE_SERVICE_TOKEN = Symbol('IOfferCreationEnqueueService');
@@ -63,6 +64,9 @@ export const SHOP_STATUS_SYNC_SERVICE_TOKEN = Symbol('IShopStatusSyncService');
 export const SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN = Symbol(
   'ShopProductStatusSnapshotRepositoryPort',
 );
+// Listings taken off sale after a master deletion (#3962)
+export const LISTING_SALE_HOLD_REPOSITORY_TOKEN = Symbol('ListingSaleHoldRepositoryPort');
+export const LISTING_SALE_STATUS_SERVICE_TOKEN = Symbol('IListingSaleStatusService');
 
 // Shop-side global attribute read (#1835)
 export const SHOP_ATTRIBUTE_READ_SERVICE_TOKEN = Symbol('IShopAttributeReadService');

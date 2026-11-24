@@ -10,7 +10,8 @@
  * @module apps/web/src/features/posthog-settings/components
  */
 import { useState, type ReactElement } from 'react';
-import { interpolate, useMessages } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { usePosthogSettingsQuery } from '../hooks/use-posthog-settings-query';
 import { PosthogSettingsDialog } from './posthog-settings-dialog';
@@ -38,7 +39,7 @@ export function PosthogSettingsTile(): ReactElement {
 
       {query.isError ? (
         <p className="muted-text" role="alert">
-          {interpolate(copy.loadError, { message: query.error.message })}
+          {copy.loadError} {describeApiError(query.error, 'posthog-settings')}
         </p>
       ) : null}
 

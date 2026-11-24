@@ -1,4 +1,16 @@
 {
+  "announce": {
+    "joined": "Already in progress.",
+    "newAttempt": "Attempt {n} requested.",
+    "redriven": "Restarted.",
+    "requested": "Registration requested.",
+    "resumed": "Picked up again."
+  },
+  "attempts": {
+    "attempt": "Attempt {n}",
+    "refused": "Refused",
+    "title": "Earlier attempts"
+  },
   "fiscalReceipt": {
     "artefact": {
       "codeAlt": "Scannable code for the receipt",
@@ -33,5 +45,12 @@
       "registering": "Registering",
       "rejected": "Rejected"
     }
+  },
+  "pending": {
+    "attempt": "Registering attempt {n} with the provider. This continues if you leave the page, and the result will be here when you come back."
+  },
+  "rejected": {
+    "registerAgain": "Register again",
+    "registerAgainHint": "Sends a new receipt to the provider as attempt {n}. The refused attempt created nothing, so this cannot produce a second receipt."
   }
 }

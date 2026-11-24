@@ -74,6 +74,8 @@ import { FulfillmentWorkRerouteSweepHandler } from './fulfillment-work-reroute-s
 import { MarketplaceSourceFulfillmentStatusSyncHandler } from './marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
 import { FulfillmentRoutingReapSweepHandler } from './fulfillment-routing-reap-sweep.handler';
+import { SalesDocumentBatchRunHandler } from './sales-document-batch-run.handler';
+import { SalesDocumentBatchTickHandler } from './sales-document-batch-tick.handler';
 import { InventorySaleDecrementHandler } from './inventory-sale-decrement.handler';
 import { InventorySaleDecrementReconcileSweepHandler } from './inventory-sale-decrement-reconcile-sweep.handler';
 
@@ -141,6 +143,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly fulfillmentWorkAutoDispatchHandler: FulfillmentWorkAutoDispatchHandler,
     private readonly fulfillmentWorkRouteHandler: FulfillmentWorkRouteHandler,
     private readonly fulfillmentWorkTimeoutSweepHandler: FulfillmentWorkTimeoutSweepHandler,
+    private readonly salesDocumentBatchTickHandler: SalesDocumentBatchTickHandler,
+    private readonly salesDocumentBatchRunHandler: SalesDocumentBatchRunHandler,
     private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler,
     private readonly inventorySaleDecrementHandler: InventorySaleDecrementHandler,
     private readonly fulfillmentWorkRerouteSweepHandler: FulfillmentWorkRerouteSweepHandler,
@@ -184,7 +188,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     // both NEW job types. The tripwire in `handler-registration.service.spec.ts`
     // is the authority on these counts — this comment had drifted from it
     // before #2330, and again before #2728, which is why it is restated here
-    // rather than only appended to.
+    // rather than only appended to. `salesDocument.batch.tick` and
+    // `salesDocument.batch.run` (#3583) are the newest `bulk` members.
 
     // Register generic marketplace handlers (Option B)
     this.handlerRegistry.register(
@@ -577,6 +582,21 @@ export class HandlerRegistrationService implements OnModuleInit {
       'fiscalization.register',
       this.fiscalizationRegisterHandler,
       'fiscal'
+    );
+    // Batch issuing (#3583). Both `bulk`: the tick is a cron-paced read of
+    // schedules, and a run is orchestration of local reads and enqueues. The
+    // documents themselves are the `invoicing.issue` / `fiscalization.register`
+    // jobs a run enqueues, which stay on `fiscal` - so a month-end run of
+    // thousands of orders never holds a fiscal slot a buyer's document waits on.
+    this.handlerRegistry.register(
+      'salesDocument.batch.tick',
+      this.salesDocumentBatchTickHandler,
+      'bulk'
+    );
+    this.handlerRegistry.register(
+      'salesDocument.batch.run',
+      this.salesDocumentBatchRunHandler,
+      'bulk'
     );
     // Register KSeF regulatory-status reconciliation handler (#1121)
     this.handlerRegistry.register(

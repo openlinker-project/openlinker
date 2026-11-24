@@ -189,6 +189,15 @@ export interface StockViewChannel {
   rule: { stockSafetyBuffer: number; stockZeroThreshold: number } | null;
   willPublish: { quantity: number | null; provenance: StockProvenance };
   channelShows: { quantity: number | null; observedAt: string | null };
+  /**
+   * The last write OpenLinker made to this channel for the variant (#4062).
+   * `null` when none is recorded; absent on older servers.
+   */
+  lastSent?: {
+    quantity: number | null;
+    outcome: 'sent' | 'failed' | 'skipped';
+    pushedAt: string;
+  } | null;
 }
 
 export interface StockViewVariant {

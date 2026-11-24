@@ -69,6 +69,14 @@ export class FiscalRegistrationRecord {
      * Trailing and defaulted so the many positional constructions stay valid.
      */
     public readonly providerFailureDetails: FiscalProviderFailureDetails | null = null,
+    /**
+     * Which attempt at this (connection, order) document this record is, 0-based
+     * (#3960). A provider refusal makes a record final; asking again starts the
+     * next attempt as a new record under its own key.
+     */
+    public readonly attempt: number = 0,
+    /** The refused attempt this one follows, or `null` for a first attempt (#3960). */
+    public readonly previousAttemptId: string | null = null,
   ) {}
 
   /** Pure derivation: the provider reports the sale registered. */

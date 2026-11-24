@@ -32,6 +32,7 @@ import { ruleLabelFor, syncModeLabelFor, toRuleSummary } from '../lib/price-rule
 import { getMessages, interpolate, useMessages } from '../../../shared/i18n';
 import { describeOverride, hasOwnOverride } from '../lib/pricing-sync-overrides';
 import type { ConnectionAsSourceEntry } from '../api/pricing-sync.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface SourceConnectionPricingRollupProps {
   connectionId: string;
@@ -59,7 +60,7 @@ export function SourceConnectionPricingRollup({
     return (
       <ErrorState
         title={copy.errorTitle}
-        message={query.error.message}
+        message={describeApiError(query.error, 'price-changes')}
       />
     );
   }

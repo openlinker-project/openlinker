@@ -28,6 +28,9 @@ import {
   CAN_NOTIFY_DISPATCHED,
   CAN_DOWNLOAD_LABEL,
   cancelShipmentCopy,
+  CancelShipmentErrorAlert,
+  classifyCancelShipmentError,
+  canRetryCancelShipment,
   type Shipment,
 } from '../../shipments';
 import { useMessages } from '../../../shared/i18n';
@@ -244,7 +247,11 @@ export function ShipmentActionButtons({
         <>
           <ConfirmDialog
             open={cancelDialogOpen}
-            onOpenChange={setCancelDialogOpen}
+            onOpenChange={(open) => {
+              setCancelDialogOpen(open);
+              // A failure belongs to one attempt: reopening starts clean.
+              if (!open) cancelMutation.reset();
+            }}
             title={copy.cancelDialog.title}
             description={
               <>
@@ -257,12 +264,21 @@ export function ShipmentActionButtons({
                 ) : null}
               </>
             }
+            body={
+              cancelMutation.isError ? (
+                <CancelShipmentErrorAlert error={cancelMutation.error} />
+              ) : undefined
+            }
             confirmLabel={
               cancelMutation.isPending ? copy.cancelDialog.confirming : copy.cancelDialog.confirm
             }
             cancelLabel={copy.cancelDialog.keep}
             tone="danger"
             isConfirming={cancelMutation.isPending}
+            confirmDisabled={
+              cancelMutation.isError &&
+              !canRetryCancelShipment(classifyCancelShipmentError(cancelMutation.error))
+            }
             onConfirm={() => {
               cancelMutation.mutate(shipment.id, {
                 onSuccess: () => setCancelDialogOpen(false),

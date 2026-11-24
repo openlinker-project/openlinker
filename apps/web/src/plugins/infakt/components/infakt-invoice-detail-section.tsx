@@ -29,6 +29,7 @@ import {
   useResendToAuthorityMutation,
 } from '../../../features/invoicing';
 import { useInfaktMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export function InfaktInvoiceDetailSection({
   invoice,
@@ -50,9 +51,9 @@ export function InfaktInvoiceDetailSection({
       showToast({
         tone: 'error',
         title: copy.pdfDownloadFailed,
-        description:
-          pdfDownload.error?.message ??
-          copy.pdfDownloadFailedDesc,
+        description: pdfDownload.error
+          ? describeApiError(pdfDownload.error, 'infakt')
+          : copy.pdfDownloadFailedDesc,
       });
     }
   }
@@ -69,9 +70,7 @@ export function InfaktInvoiceDetailSection({
       showToast({
         tone: 'error',
         title: copy.resendFailed,
-        description:
-          (error instanceof Error ? error.message : undefined) ??
-          copy.resendFailedDesc,
+        description: describeApiError(error, 'infakt'),
       });
     }
   }

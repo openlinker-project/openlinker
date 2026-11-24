@@ -68,6 +68,10 @@ export class InventoryMovementOrmEntity {
   @Column({ type: 'text', nullable: true })
   actorUserId!: string | null;
 
+  /** The sync run that wrote this row (#4062); null outside a sync. */
+  @Column({ type: 'text', nullable: true })
+  syncRunId!: string | null;
+
   @Column({ type: 'varchar', length: 32, nullable: true })
   operatorReason!: string | null;
 

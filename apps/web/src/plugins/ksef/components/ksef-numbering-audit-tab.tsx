@@ -34,6 +34,7 @@ import { useKsefMessages } from '../messages';
 import { SEQ_STATUS_LABELS, SEQ_STATUS_TONES } from './ksef-numbering.lib';
 import { KsefOswiadczenieDocument } from './ksef-oswiadczenie-document';
 import { readKsefSellerProfile, type KsefOswiadczenieContent } from '../lib/ksef-oswiadczenie';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface KsefNumberingAuditTabProps {
   connectionId: string;
@@ -133,7 +134,7 @@ export function KsefNumberingAuditTab({
       ) : auditQuery.error ? (
         <ErrorState
           title={copy.loadError}
-          message={auditQuery.error.message}
+          message={describeApiError(auditQuery.error, 'ksef')}
           action={
             <Button tone="secondary" onClick={() => void auditQuery.refetch()}>
               {copy.retry}

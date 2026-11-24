@@ -63,6 +63,7 @@ interface HistoryRawRow {
   refusalDetail: string | null;
   occurredAt: Date;
   sourceLabel: string | null;
+  syncRunId: string | null;
 }
 
 function narrow<T extends string>(values: readonly T[], value: string | null): T | null {
@@ -91,6 +92,7 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
         sourceKind: input.sourceKind,
         sourceRef: input.sourceRef,
         actorUserId: input.actorUserId,
+        syncRunId: input.syncRunId ?? null,
         operatorReason: null,
         note: null,
         idempotencyKey: null,
@@ -315,7 +317,8 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
                m."refusalReason", m."refusalDetail", m."occurredAt",
                CASE WHEN m."sourceKind" = 'order' THEN o."orderSnapshot"->>'orderNumber'
                     WHEN m."sourceKind" = 'return' THEN rt."externalReturnId"
-                    ELSE NULL END AS "sourceLabel"
+                    ELSE NULL END AS "sourceLabel",
+               m."syncRunId"
         FROM ${TABLE} m
         LEFT JOIN "order_records" o ON m."sourceKind" = 'order' AND o."internalOrderId" = m."sourceRef"
         LEFT JOIN "returns" rt ON m."sourceKind" = 'return' AND rt."id" = m."sourceRef"
@@ -342,7 +345,8 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
                NULL::varchar AS "operatorReason", NULL::text AS "note", NULL::text AS "actorUserId",
                NULL::varchar AS "refusalReason", NULL::text AS "refusalDetail",
                COALESCE(r."closedAt", r."createdAt") AS "occurredAt",
-               o."orderSnapshot"->>'orderNumber' AS "sourceLabel"
+               o."orderSnapshot"->>'orderNumber' AS "sourceLabel",
+               NULL::text AS "syncRunId"
         FROM "reservations" r
         LEFT JOIN "order_records" o ON o."internalOrderId" = r."orderRecordId"
         JOIN "inventory_items" ii ON ii."id" = r."inventoryItemId"
@@ -384,6 +388,7 @@ export class InventoryMovementRepository implements InventoryMovementRepositoryP
       refusalDetail: row.refusalDetail,
       occurredAt: new Date(row.occurredAt),
       sourceLabel: row.sourceLabel,
+      syncRunId: row.syncRunId,
     };
   }
 

@@ -80,7 +80,8 @@ import {
   missingFieldMessage,
   resolveShippingMethod,
 } from '../lib/dispatch-input';
-import { serverErrorText } from '../lib/server-error-text';
+import { ApiError } from '../../../shared/api/api-error';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 type GenerateLabelCopy = ResolvedCopy<Messages['orders']>['generateLabelForm'];
 
@@ -139,7 +140,7 @@ export function GenerateLabelForm({
   onCancel,
 }: GenerateLabelFormProps): ReactElement {
   const ordersCopy = useMessages('orders');
-  const serverSaid = ordersCopy.common.serverSaid;
+  const technicalDetails = useMessages('ui').apiError.technicalDetailsWith;
   const copy = ordersCopy.generateLabelForm;
   const schema = useMemo(() => createGenerateLabelSchema(copy.validation), [copy]);
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
@@ -269,11 +270,11 @@ export function GenerateLabelForm({
   const lockerTemplateRegister = form.register('lockerTemplate');
   const lockerTemplate = form.watch('lockerTemplate');
 
-  // Default parcel of the routing rule this delivery method matches (#3652).
-  // Rules load asynchronously, so prefill once when the profile arrives and
-  // never overwrite a field the operator already touched. No profile -> no-op,
+  // Default parcel of the routing rule this delivery method matches (#3652),
+  // carried on the order itself (#3958). Prefill when the profile arrives or
+  // changes and never overwrite a field the operator already touched. No profile -> no-op,
   // leaving the empty fields and 'medium' locker size exactly as before.
-  const routedParcel = useRoutedParcelProfile(order.sourceConnectionId, snapshot.shipping?.methodId);
+  const routedParcel = useRoutedParcelProfile(order.deliveryResolution);
   useEffect(() => {
     if (!routedParcel) return;
     const dirty = form.formState.dirtyFields;
@@ -327,11 +328,7 @@ export function GenerateLabelForm({
   // backstop). Only relevant for the editable fallback field, not the read-only
   // sourced panel.
   const orderCurrency = snapshot.totals?.currency;
-  const routedCarrierPlatform = useRoutedCarrierPlatform(
-    order.sourceConnectionId,
-    snapshot.shipping?.methodId,
-    { enabled: codAllowed && !showSourcedCod },
-  );
+  const routedCarrierPlatform = useRoutedCarrierPlatform(order.deliveryResolution);
   const allowedCodCurrencies = useMemo(
     () => codCurrenciesForPlatform(routedCarrierPlatform),
     [routedCarrierPlatform],
@@ -470,7 +467,7 @@ export function GenerateLabelForm({
               const mapped = resolveLabelDownloadError(downloadResult.error);
               showToast({
                 tone: mapped.tone,
-                title: copy.toast.downloadFailed,
+                title: mapped.pending ? mapped.title : copy.toast.downloadFailed,
                 description: mapped.description,
               });
             }
@@ -501,6 +498,7 @@ export function GenerateLabelForm({
     shippingMethod === 'paczkomat' && hasPickupPoint;
 
   const submitDisabled = mutation.isPending || missingFields.length > 0;
+  const carrierDetail = carrierRejectionDetail(mutation.error);
 
   return (
     <form
@@ -568,7 +566,12 @@ export function GenerateLabelForm({
           can quote it to carrier support without a log dive. */}
       {mutation.error ? (
         <Alert tone="error" className="generate-label-form__error">
-          <p className="generate-label-form__error-message">{serverErrorText(serverSaid, mutation.error.message, '')}</p>
+          <p className="generate-label-form__error-message">
+            {describeApiError(mutation.error, 'orders')}
+          </p>
+          {carrierDetail ? (
+            <p className="generate-label-form__error-detail">{interpolate(technicalDetails, { details: carrierDetail })}</p>
+          ) : null}
           <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
           <ShippingTraceReference traceId={extractShippingTraceId(mutation.error)} />
         </Alert>
@@ -841,6 +844,21 @@ export function GenerateLabelForm({
       </div>
     </form>
   );
+}
+
+/**
+ * The carrier's own words for a refused label (`SHIPPING_PROVIDER_*`). The
+ * coded sentence only names the carrier; what it objected to (e.g. DPD's
+ * `NOT_PROCESSED` text) travels in `message` alone and is what the operator
+ * quotes to carrier support, so it stays visible, labelled as untranslated.
+ */
+function carrierRejectionDetail(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  if (error.code !== 'SHIPPING_PROVIDER_REJECTED' && error.code !== 'SHIPPING_PROVIDER_AUTH_FAILED') {
+    return undefined;
+  }
+  // eslint-disable-next-line no-restricted-syntax -- the carrier's own words, shown beside describeApiError under the untranslated technical-details label
+  return error.message.length > 0 ? error.message : undefined;
 }
 
 function buildRecipientPreview(

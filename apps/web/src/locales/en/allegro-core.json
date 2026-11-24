@@ -15,8 +15,7 @@
     "eyebrow": "OAuth callback",
     "failed": {
       "title": "Authorisation failed",
-      "tryAgain": "Try again",
-      "unknown": "Unknown error"
+      "tryAgain": "Try again"
     },
     "invalid": {
       "message": "The authorisation callback is missing required parameters. This may happen if you navigate here directly.",

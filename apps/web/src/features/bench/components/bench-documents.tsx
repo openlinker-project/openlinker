@@ -59,9 +59,14 @@ import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { StatusBadge } from '../../../shared/ui/status-badge';
+import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { getMessages, interpolate, useMessages, usePlural, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { useDemoMode } from '../../system';
-import type { BenchLabel, BenchLabelReplaceResult } from '../api/bench-parcel.types';
+import type {
+  BenchLabel,
+  BenchLabelReplaceResult,
+  BenchParcelRoute,
+} from '../api/bench-parcel.types';
 import {
   useBenchDocumentsQuery,
   useBenchReceiptLinkQuery,
@@ -71,7 +76,12 @@ import {
   describeInvoiceAbsenceAudience,
   describeInvoiceBlock,
 } from '../lib/bench-parcel-presentation';
-import { getMessages, interpolate, useMessages, usePlural } from '../../../shared/i18n';
+import {
+  describeBenchLabelRoute,
+  isCarrierAccountable,
+  labelCarrierName,
+  type BenchLabelRouteCase,
+} from '../lib/bench-label-route';
 import { printBlob } from '../lib/bench-print';
 import { describeBenchDocumentCard, type BenchDocumentCard } from '../lib/bench-sales-document';
 import { BenchChangeParcelDialog } from './bench-change-parcel-dialog';
@@ -92,6 +102,7 @@ function audienceCopy(
   > = {
     'on-office-list': copy.onOfficeList,
     'issued-on-request': copy.issuedOnRequest,
+    'waiting-for-batch': copy.waitingForBatch,
     'nobody-told': copy.nobodyTold,
   };
   return byAudience[audience];
@@ -108,6 +119,12 @@ export interface BenchDocumentsPanelProps {
    * instead (G03-6 found the block on a parcel at "0 of 1").
    */
   readonly closed: boolean;
+  /**
+   * Who ships this box (#3958), from the parcel read. Optional so a caller that
+   * has no parcel to hand renders exactly as before; absent and `null` both
+   * mean "route not known", and the card then says only what the shipment says.
+   */
+  readonly route?: BenchParcelRoute | null;
 }
 
 /**
@@ -138,8 +155,10 @@ export function BenchDocumentsPanel({
   workId,
   unitsPacked,
   closed,
+  route = null,
 }: BenchDocumentsPanelProps): ReactElement | null {
-  const copy = useMessages('bench').parcel;
+  const benchMessages = useMessages('bench');
+  const copy = benchMessages.parcel;
   const plural = usePlural();
   const apiClient = useApiClient();
   const documents = useBenchDocumentsQuery(workId);
@@ -170,10 +189,15 @@ export function BenchDocumentsPanel({
 
   const data = documents.data;
   const labelUnavailable = data?.label.state === 'unavailable';
+  // #3958 - a failed shipment is the carrier's to explain only on a route that
+  // buys a label. On a box the shop ships, or whose method nobody routed, no
+  // carrier was asked, so the route card below says what is true instead.
+  const routeCase = describeBenchLabelRoute(route);
+  const carrierAccountable = isCarrierAccountable(routeCase);
   // F3/F4 is a fact about a FINISHED box. An open box with no label yet gets
   // the neutral pending card below, never "this box cannot go out".
-  const unlabelled = labelUnavailable && closed;
-  const labelPending = labelUnavailable && !closed;
+  const unlabelled = labelUnavailable && closed && carrierAccountable;
+  const labelPending = labelUnavailable && !closed && carrierAccountable;
   // Only asked for while this bench is actually looking at an unlabelled box.
   const others = useBenchUnlabelledQuery({ enabled: unlabelled });
 
@@ -190,6 +214,14 @@ export function BenchDocumentsPanel({
   if (data === undefined || card === null) return null;
 
   const label = data.label;
+  // No label to print, and the route has something true to say about why. The
+  // one route case it leaves to the blocks above is a label route whose label
+  // FAILED: that is the carrier's refusal, and F3/F4 already says so.
+  const showRouteCard =
+    label.state !== 'ready' &&
+    voidNotice === null &&
+    routeCase.kind !== 'unknown' &&
+    !(routeCase.kind === 'buys-label' && labelUnavailable);
 
   const print = (
     download: (id: string) => Promise<Blob>,
@@ -385,7 +417,7 @@ export function BenchDocumentsPanel({
             {copy.documents.readyBadge}
           </StatusBadge>
           <span className="bench-documents__slot">{copy.documents.onLabel}</span>
-          <h3>{copy.documents.labelTitle}</h3>
+          <h3>{labelCardTitle(labelCarrierName(routeCase), benchMessages.documents.labelReady, copy.documents.labelTitle)}</h3>
           {label.trackingNumber === null ? null : (
             <p className="bench-documents__tracking">
               {copy.documents.trackingLabel}: {label.trackingNumber}
@@ -430,6 +462,8 @@ export function BenchDocumentsPanel({
           <h3>{copy.documents.labelPendingTitle}</h3>
           <p>{copy.documents.labelPendingBody}</p>
         </div>
+      ) : showRouteCard ? (
+        renderRouteCard(routeCase, closed, benchMessages.labelRoute, copy.documents.onLabel)
       ) : null}
       </div>
 
@@ -462,6 +496,120 @@ export function BenchDocumentsPanel({
       ) : null}
     </section>
   );
+}
+
+/**
+ * The label card when there is no label to print, in the words of its route
+ * (#3958). No action on any arm: a packer cannot change routing, so the card
+ * says what to do with the box and names the fix as an admin's.
+ */
+function renderRouteCard(
+  routeCase: BenchLabelRouteCase,
+  closed: boolean,
+  copy: LabelRouteMessages,
+  onLabel: string
+): ReactNode {
+  const view = describeRouteCard(routeCase, closed, copy);
+  if (view === null) return null;
+  return (
+    <div
+      className="bench-documents__card bench-documents__label"
+      data-testid="bench-documents-label-route"
+      data-route={routeCase.kind}
+    >
+      <StatusBadge tone={view.tone} withDot>
+        {view.badge}
+      </StatusBadge>
+      <span className="bench-documents__slot">{onLabel}</span>
+      <h3>{view.title}</h3>
+      <p>{view.body}</p>
+    </div>
+  );
+}
+
+type LabelRouteMessages = ResolvedCopy<Messages['bench']>['labelRoute'];
+
+interface RouteCardView {
+  readonly tone: StatusBadgeTone;
+  readonly badge: string;
+  readonly title: string;
+  readonly body: string;
+}
+
+/**
+ * An exhaustive switch rather than a lookup, so a fifth route case added to
+ * `BenchLabelRouteCase` is a compile error here instead of a silent blank card.
+ */
+function describeRouteCard(
+  routeCase: BenchLabelRouteCase,
+  closed: boolean,
+  copy: LabelRouteMessages
+): RouteCardView | null {
+  const method = (label: string | null): string => label ?? copy.methodFallback;
+
+  switch (routeCase.kind) {
+    case 'buys-label': {
+      const name = method(routeCase.methodLabel);
+      const carrier = routeCase.carrierName;
+      // A route whose carrier name could not be read still buys a label; the
+      // sentence then names OpenLinker as the buyer instead of a blank carrier.
+      const body = closed
+        ? carrier === null
+          ? interpolate(copy.buysLabelClosedBodyNoCarrier, { method: name })
+          : interpolate(copy.buysLabelClosedBody, { method: name, carrier })
+        : carrier === null
+          ? interpolate(copy.buysLabelBodyNoCarrier, { method: name })
+          : interpolate(copy.buysLabelBody, { method: name, carrier });
+      return {
+        tone: 'info',
+        badge: copy.buysLabelBadge,
+        title: closed ? copy.buysLabelClosedTitle : copy.buysLabelTitle,
+        body,
+      };
+    }
+    case 'carrier-off':
+      return {
+        tone: 'warning',
+        badge: copy.carrierOffBadge,
+        title:
+          routeCase.carrierName === null
+            ? copy.carrierOffTitleNoCarrier
+            : interpolate(copy.carrierOffTitle, { carrier: routeCase.carrierName }),
+        body: copy.carrierOffBody,
+      };
+    case 'shop-ships': {
+      const name = method(routeCase.methodLabel);
+      return {
+        tone: 'neutral',
+        badge: copy.shopShipsBadge,
+        title:
+          routeCase.shopName === null
+            ? interpolate(copy.shopShipsTitleNoShop, { method: name })
+            : interpolate(copy.shopShipsTitle, { shop: routeCase.shopName, method: name }),
+        body: copy.shopShipsBody,
+      };
+    }
+    case 'no-carrier':
+      return {
+        tone: 'warning',
+        badge: copy.noCarrierBadge,
+        title: interpolate(copy.noCarrierTitle, { method: method(routeCase.methodLabel) }),
+        body: copy.noCarrierBody,
+      };
+    case 'unknown':
+      return null;
+  }
+}
+
+/**
+ * The ready label's heading. The routed connection's name is operator-typed
+ * ("InPost"), so it can name whose label it is; without one the neutral
+ * title stays, never the adapter key `Shipment.carrier` holds.
+ */
+function labelCardTitle(carrierName: string | null, labelReady: string, fallback: string): string {
+  return carrierName === null
+    ? fallback
+    : interpolate(labelReady, { carrier: carrierName });
 }
 
 /** A document's title: its number when it has one, the generic name when not. */

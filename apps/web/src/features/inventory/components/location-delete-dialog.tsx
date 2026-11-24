@@ -25,6 +25,7 @@ import { ApiError, isUnmappedApiError } from '../../../shared/api/api-error';
 import { useDeleteInventoryLocationMutation } from '../hooks/use-delete-inventory-location-mutation';
 import { useUpdateInventoryLocationMutation } from '../hooks/use-update-inventory-location-mutation';
 import type { InventoryLocation } from '../api/inventory-locations.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface LocationDeleteDialogProps {
   location: InventoryLocation | null;
@@ -121,7 +122,7 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
           ) : null}
           {genericError ? (
             <Alert tone="error" title={copy.saveError}>
-              {genericError.message}
+              {describeApiError(genericError, 'inventory')}
             </Alert>
           ) : null}
         </>

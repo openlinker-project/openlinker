@@ -15,6 +15,7 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import type { OrderEditsView } from '../api/order-edit.types';
+import type { OrderBundleLine } from '../api/orders.types';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
 import { OrderLineItemsPanel } from './order-line-items-panel';
 import { OrderTotalsPanel } from './order-totals-panel';
@@ -28,6 +29,17 @@ interface OrderPricingPanelProps {
   edits?: OrderEditsView | null;
   /** Display name of the source connection, for "the buyer paid X on <channel>". */
   channelName?: string | null;
+  /** The bundle lines with their frozen components (#3624). */
+  bundleLines?: readonly OrderBundleLine[];
+  /** The connection issuing the sales document, once there is one (#3940). */
+  documentConnectionId?: string | null;
+}
+
+/** The API reports the epoch when no operator edit stamped the overlay (a system-added gift only); that is "never edited", not 1 Jan 1970. */
+function hasEditInstant(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const time = Date.parse(iso);
+  return Number.isFinite(time) && time > 0;
 }
 
 export function OrderPricingPanel({
@@ -36,6 +48,8 @@ export function OrderPricingPanel({
   internalOrderId,
   edits,
   channelName,
+  bundleLines,
+  documentConnectionId,
 }: OrderPricingPanelProps): ReactElement {
   const copy = useMessages('orders').orderPricing;
   const format = useFormat();
@@ -56,6 +70,8 @@ export function OrderPricingPanel({
           totals={totals}
           internalOrderId={internalOrderId}
           channelQuantities={channelQuantities}
+          bundleLines={bundleLines}
+          documentConnectionId={documentConnectionId}
         />
       ) : null}
 
@@ -72,9 +88,12 @@ export function OrderPricingPanel({
 
       {edits && editedTotals ? (
         <p className="order-pricing__note" data-testid="order-edit-pricing-note">
-          {renderRich(copy.editedOn, {
-            time: () => <TimeDisplay iso={edits.editedAt} format="datetime" />,
-          })}{' '}
+          {hasEditInstant(edits.editedAt)
+            ? renderRich(copy.editedOn, {
+                time: () => <TimeDisplay iso={edits.editedAt} format="datetime" />,
+              })
+            : null}
+          {hasEditInstant(edits.editedAt) ? ' ' : null}
           {renderRich(
             channelName ? copy.buyerPaidOnChannel : copy.buyerPaidOnSalesChannel,
             { b: bold },

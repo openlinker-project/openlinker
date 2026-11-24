@@ -16,6 +16,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { useConfigureWebhooksMutation } from '../../../features/connections';
 import type { Connection } from '../../../features/connections';
 import { usePrestashopMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface PrestashopConnectionActionsProps {
   connection: Connection;
@@ -61,7 +62,7 @@ export function PrestashopConnectionActions({
       showToast({
         tone: 'error',
         title: copy.toast.failed.title,
-        description: (error as Error).message,
+        description: describeApiError(error, 'prestashop'),
       });
     }
   }

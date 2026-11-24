@@ -16,6 +16,7 @@ import {
 } from '../../../test/test-utils';
 import { SubiektSetupForm } from './subiekt-setup-form';
 import { SUBIEKT_GT_IDENTITY, SUBIEKT_NEXO_IDENTITY } from './subiekt-setup.schema';
+import { getMessages } from '../../../shared/i18n';
 
 describe('SubiektSetupForm', () => {
   afterEach(cleanup);
@@ -101,8 +102,7 @@ describe('SubiektSetupForm', () => {
             // and reports nothing: no document kind means the connection is
             // not a routing candidate at all, and the trigger model defaults
             // to `manual` even when it is.
-            salesDocument: { documentKind: 'invoice' },
-            invoicing: { triggerModel: 'manual' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'manual' } },
           },
         }),
       );
@@ -115,9 +115,7 @@ describe('SubiektSetupForm', () => {
     expect(payload).not.toHaveProperty('enabledCapabilities');
     // `isPrimary` is a CROSS-connection tiebreaker the settings panel owns; a
     // wizard writing it would claim a precedence it cannot see.
-    expect((payload.config as { invoicing: Record<string, unknown> }).invoicing).not.toHaveProperty(
-      'isPrimary',
-    );
+    expect(payload.config).not.toHaveProperty('invoicing.isPrimary');
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
 
@@ -147,8 +145,7 @@ describe('SubiektSetupForm', () => {
           config: {
             bridgeBaseUrl: 'https://bridge.local:5000',
             timeoutMs: 30000,
-            salesDocument: { documentKind: 'invoice' },
-            invoicing: { triggerModel: 'manual' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'manual' } },
           },
           credentials: { bridgeToken: 'shared-secret-token' },
         }),
@@ -187,8 +184,7 @@ describe('SubiektSetupForm', () => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
           config: expect.objectContaining({
-            salesDocument: { documentKind: 'invoice' },
-            invoicing: { triggerModel: 'auto-on-paid' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'auto-on-paid' } },
           }),
         }),
       );
@@ -303,7 +299,7 @@ describe('SubiektSetupForm', () => {
     fireEvent.click(testButton);
 
     expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
-    expect(screen.getByText(/Bridge offline/)).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
     // The success/fail result alert must NOT appear on the rejected path.
     expect(screen.queryByText('Connection test passed')).not.toBeInTheDocument();
     expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();

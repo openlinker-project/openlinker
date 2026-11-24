@@ -60,6 +60,7 @@ export class EparagonyConnectionTesterAdapter implements ConnectionTesterPort {
       if (!connection.credentialsRef) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'Connection has no stored credentials',
           latencyMs: Date.now() - startedAt,
         };

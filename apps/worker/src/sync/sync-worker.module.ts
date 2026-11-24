@@ -100,6 +100,8 @@ import { InventorySaleDecrementReconcileSweepHandler } from './handlers/inventor
 import { MarketplaceSourceFulfillmentStatusSyncHandler } from './handlers/marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
 import { FulfillmentRoutingReapSweepHandler } from './handlers/fulfillment-routing-reap-sweep.handler';
+import { SalesDocumentBatchRunHandler } from './handlers/sales-document-batch-run.handler';
+import { SalesDocumentBatchTickHandler } from './handlers/sales-document-batch-tick.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
 import { OrdersExportHandler } from './handlers/orders-export.handler';
@@ -210,6 +212,8 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     FulfillmentWorkTimeoutSweepHandler,
     FulfillmentRoutingReapSweepHandler,
     FulfillmentWorkRelaySweepHandler,
+    SalesDocumentBatchTickHandler,
+    SalesDocumentBatchRunHandler,
     InventorySaleDecrementHandler,
     FulfillmentWorkRerouteSweepHandler,
     InventorySaleDecrementReconcileSweepHandler,

@@ -29,6 +29,7 @@ import { OfferMappingSyncService } from './application/services/offer-mapping-sy
 import { OfferMappingsService } from './application/services/offer-mappings.service';
 import { CategoryResolutionService } from './application/services/category-resolution.service';
 import { AttributeProjectionService } from './application/services/attribute-projection.service';
+import { BundleOfferPreviewService } from './application/services/bundle-offer-preview.service';
 import { AttributeProjectionPreviewService } from './application/services/attribute-projection-preview.service';
 import { OfferMappingRepository } from './infrastructure/persistence/repositories/offer-mapping.repository';
 import { ShopProductMappingRepository } from './infrastructure/persistence/repositories/shop-product-mapping.repository';
@@ -54,6 +55,9 @@ import { BulkShopPublishRetryService } from './application/services/bulk-shop-pu
 import { ShopStatusSyncService } from './application/services/shop-status-sync.service';
 import { ShopProductStatusSnapshotOrmEntity } from './infrastructure/persistence/entities/shop-product-status-snapshot.orm-entity';
 import { ShopProductStatusSnapshotRepository } from './infrastructure/persistence/repositories/shop-product-status-snapshot.repository';
+import { ListingSaleHoldOrmEntity } from './infrastructure/persistence/entities/listing-sale-hold.orm-entity';
+import { ListingSaleHoldRepository } from './infrastructure/persistence/repositories/listing-sale-hold.repository';
+import { ListingSaleStatusService } from './application/services/listing-sale-status.service';
 import { SellerPoliciesCacheOrmEntity } from './infrastructure/persistence/entities/seller-policies-cache.orm-entity';
 import { SellerPoliciesCacheRepository } from './infrastructure/persistence/repositories/seller-policies-cache.repository';
 import { SellerPoliciesService } from './application/services/seller-policies.service';
@@ -101,6 +105,7 @@ import {
   CATEGORY_RESOLUTION_SERVICE_TOKEN,
   ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
   ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+  BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN,
   OFFER_BUILDER_SERVICE_TOKEN,
   OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
   OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -134,6 +139,8 @@ import {
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
   SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
   STALE_OFFER_PAUSE_SERVICE_TOKEN,
+  LISTING_SALE_HOLD_REPOSITORY_TOKEN,
+  LISTING_SALE_STATUS_SERVICE_TOKEN,
   COVERAGE_GAP_READ_SERVICE_TOKEN,
   STOCK_AT_RISK_READ_SERVICE_TOKEN,
   DESTINATION_TAXONOMY_SERVICE_TOKEN,
@@ -189,6 +196,8 @@ export {
   PUBLISHED_VARIANTS_SERVICE_TOKEN,
   SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
   STALE_OFFER_PAUSE_SERVICE_TOKEN,
+  LISTING_SALE_HOLD_REPOSITORY_TOKEN,
+  LISTING_SALE_STATUS_SERVICE_TOKEN,
   COVERAGE_GAP_READ_SERVICE_TOKEN,
   STOCK_AT_RISK_READ_SERVICE_TOKEN,
 } from './listings.tokens';
@@ -205,6 +214,7 @@ export {
       OfferStatusSnapshotOrmEntity,
       OfferCommercialSnapshotOrmEntity,
       ShopProductStatusSnapshotOrmEntity,
+      ListingSaleHoldOrmEntity,
       DestinationCategoryOrmEntity,
       PriceChangeEpisodeOrmEntity,
       PriceChangeAutoAppliedLogOrmEntity,
@@ -232,6 +242,7 @@ export {
     CategoryResolutionService,
     AttributeProjectionService,
     AttributeProjectionPreviewService,
+    BundleOfferPreviewService,
     OfferMappingRepository,
     OfferCreationRecordRepository,
     BulkListingBatchRepository,
@@ -248,6 +259,8 @@ export {
     BulkShopPublishRetryService,
     ShopStatusSyncService,
     ShopProductStatusSnapshotRepository,
+    ListingSaleHoldRepository,
+    ListingSaleStatusService,
     OfferCreationEnqueueService,
     BulkListingSubmitService,
     BulkListingRetryService,
@@ -361,6 +374,10 @@ export {
       useExisting: AttributeProjectionPreviewService,
     },
     {
+      provide: BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN,
+      useExisting: BundleOfferPreviewService,
+    },
+    {
       provide: OFFER_BUILDER_SERVICE_TOKEN,
       useExisting: OfferBuilderService,
     },
@@ -403,6 +420,14 @@ export {
     {
       provide: SHOP_PRODUCT_STATUS_SNAPSHOT_REPOSITORY_TOKEN,
       useExisting: ShopProductStatusSnapshotRepository,
+    },
+    {
+      provide: LISTING_SALE_HOLD_REPOSITORY_TOKEN,
+      useExisting: ListingSaleHoldRepository,
+    },
+    {
+      provide: LISTING_SALE_STATUS_SERVICE_TOKEN,
+      useExisting: ListingSaleStatusService,
     },
     {
       provide: OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -513,6 +538,7 @@ export {
     ATTRIBUTE_PROJECTION_SERVICE_TOKEN,
     // #3995 - the offer wizard's per-variant rule preview.
     ATTRIBUTE_PROJECTION_PREVIEW_SERVICE_TOKEN,
+  BUNDLE_OFFER_PREVIEW_SERVICE_TOKEN,
     OFFER_BUILDER_SERVICE_TOKEN,
     OFFER_CREATION_EXECUTION_SERVICE_TOKEN,
     OFFER_CREATION_ENQUEUE_SERVICE_TOKEN,
@@ -544,6 +570,10 @@ export {
     PUBLISHED_VARIANTS_SERVICE_TOKEN,
     SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN,
     STALE_OFFER_PAUSE_SERVICE_TOKEN,
+    LISTING_SALE_HOLD_REPOSITORY_TOKEN,
+    LISTING_SALE_STATUS_SERVICE_TOKEN,
+  LISTING_SALE_HOLD_REPOSITORY_TOKEN,
+  LISTING_SALE_STATUS_SERVICE_TOKEN,
     COVERAGE_GAP_READ_SERVICE_TOKEN,
     STOCK_AT_RISK_READ_SERVICE_TOKEN,
     DESTINATION_TAXONOMY_SERVICE_TOKEN,

@@ -44,6 +44,16 @@ export interface ShipmentRepositoryPort {
    */
   findMany(filters: ShipmentFilters, pagination: ShipmentPagination): Promise<PaginatedShipments>;
 
+  /**
+   * How many shipments match the filters (#4043) - the same predicate
+   * `findMany` applies, so a summary count always equals the list total for
+   * the same filters.
+   */
+  count(filters: ShipmentFilters): Promise<number>;
+
+  /** Every shipping-provider connection id that owns at least one shipment (#4043). */
+  listConnectionIds(): Promise<string[]>;
+
   findById(id: string): Promise<Shipment | null>;
 
   /**

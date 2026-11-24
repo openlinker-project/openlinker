@@ -208,9 +208,7 @@
     "fa3View": "View",
     "fa3ViewError": "Preview failed. Click 'View' to retry.",
     "fa3ViewFailed": "FA(3) preview failed",
-    "fa3ViewFailedDesc": "Could not fetch the document.",
     "fa3XmlFailed": "FA(3) XML download failed",
-    "fa3XmlFailedDesc": "Could not fetch the source document.",
     "loading": "Loading…",
     "number": "KSeF number",
     "numberHint": "Assigned by KSeF on clearance",
@@ -381,7 +379,6 @@
     "insertVariable": "Insert {variable}",
     "save": "Save series",
     "saveError": {
-      "fallback": "Could not save the series.",
       "title": "Could not save the series"
     },
     "saving": "Saving…",

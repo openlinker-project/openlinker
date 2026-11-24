@@ -25,6 +25,7 @@ import { MissingNumberingSeriesException } from '../../domain/exceptions/missing
 import { OrderAlreadyInvoicedException } from '../../domain/exceptions/order-already-invoiced.exception';
 import { OrderAlreadyHasFiscalReceiptException } from '../../domain/exceptions/order-already-has-fiscal-receipt.exception';
 import { InvoiceIssueContendedException } from '../../domain/exceptions/invoice-issue-contended.exception';
+import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
 import type {
   InvoiceLine,
   IssueCorrectionCommand,
@@ -129,6 +130,15 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     overrides.paymentStatus ?? 'unknown',
     overrides.numberingSeriesId === undefined ? null : overrides.numberingSeriesId,
     overrides.documentNumber === undefined ? null : overrides.documentNumber,
+    overrides.allocatedSeq === undefined ? null : overrides.allocatedSeq,
+    overrides.buyerTaxId === undefined ? null : overrides.buyerTaxId,
+    null,
+    null,
+    null,
+    null,
+    null,
+    overrides.attempt ?? 0,
+    overrides.previousAttemptId === undefined ? null : overrides.previousAttemptId,
   );
 }
 
@@ -203,6 +213,7 @@ describe('InvoiceService', () => {
       findBySeriesId: jest.fn(),
       findLatestByOrderId: jest.fn(),
       findAllByOrderId: jest.fn(),
+      findSuccessorAttempt: jest.fn().mockResolvedValue(null),
       findLatestByOrderIds: jest.fn(),
       findAllByOrderIds: jest.fn(),
       findByProviderInvoiceId: jest.fn(),
@@ -250,6 +261,7 @@ describe('InvoiceService', () => {
       upsertRoute: jest.fn(),
       deleteRoute: jest.fn(),
       allocateNumber: jest.fn(),
+      inheritNumber: jest.fn().mockResolvedValue(null),
     };
 
     heldLocks = new Set<string>();
@@ -1986,6 +1998,83 @@ describe('InvoiceService', () => {
     });
   });
 
+  describe('operator retry of a refused invoice (#3960)', () => {
+    beforeEach(() => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-2', status: 'pending', attempt: 1 }));
+      repo.claimForIssue.mockResolvedValue(makeRecord({ id: 'rec-2', status: 'issuing' }));
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-2', status: 'issued' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+    });
+
+    it('should create the next attempt under a new key when retrying a refused invoice', async () => {
+      repo.findById.mockResolvedValue(
+        makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'rejected' }),
+      );
+
+      await service.issueInvoice(makeCmd({ idempotencyKey: KEY }), { retryOf: 'rec-1' });
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey: `${KEY}:r1`,
+          attempt: 1,
+          previousAttemptId: 'rec-1',
+        }),
+      );
+      expect(adapter.issueInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: `${KEY}:r1` }),
+      );
+    });
+
+    it('should root a keyless refused invoice on its connection and order', async () => {
+      // A keyless chain roots on the same derived key a keyed chain uses
+      // (`invoiceRetryRootKey`), so the two shapes cannot drift apart.
+      repo.findById.mockResolvedValue(
+        makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'rejected', idempotencyKey: null }),
+      );
+
+      await service.issueInvoice(makeCmd(), { retryOf: 'rec-1' });
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: `invoice:${CONNECTION}:${ORDER}:r1`, attempt: 1 }),
+      );
+    });
+
+    it('should resume the existing successor instead of starting a third attempt', async () => {
+      repo.findById.mockResolvedValue(
+        makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'rejected' }),
+      );
+      const successor = makeRecord({ id: 'rec-2', status: 'issued', attempt: 1, previousAttemptId: 'rec-1' });
+      repo.findSuccessorAttempt.mockResolvedValue(successor);
+
+      await expect(
+        service.issueInvoice(makeCmd(), { retryOf: 'rec-1' }),
+      ).resolves.toBe(successor);
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('should never re-send an invoice that was not refused', async () => {
+      const inDoubt = makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'in-doubt' });
+      repo.findById.mockResolvedValue(inDoubt);
+
+      await expect(service.issueInvoice(makeCmd(), { retryOf: 'rec-1' })).resolves.toBe(inDoubt);
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('should refuse to retry a record of another order', async () => {
+      repo.findById.mockResolvedValue(
+        makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'rejected', orderId: 'other-order' }),
+      );
+
+      await expect(service.issueInvoice(makeCmd(), { retryOf: 'rec-1' })).rejects.toBeInstanceOf(
+        InvoiceRecordNotFoundException,
+      );
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('numbering allocation (#1575)', () => {
     // A DocumentNumberConsumer adapter (KSeF-shaped): the marker discriminant
     // makes `isDocumentNumberConsumer` return true so the service allocates.
@@ -2006,6 +2095,45 @@ describe('InvoiceService', () => {
       repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
       repo.claimForIssue.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issuing' }));
       repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+    });
+
+    it('should take over the refused predecessor number for a retry attempt (#3960)', async () => {
+      repo.claimForIssue.mockResolvedValue(
+        makeRecord({ id: 'rec-2', status: 'issuing', previousAttemptId: 'rec-1', attempt: 1 }),
+      );
+      numberingRepo.findSeriesIdForDocument.mockResolvedValue('series-main');
+      numberingRepo.inheritNumber.mockResolvedValue({
+        documentNumber: 'FV/2026/06/0007',
+        allocatedSeq: 7,
+      });
+
+      await service.issueInvoice(makeCmd());
+
+      expect(numberingRepo.inheritNumber).toHaveBeenCalledWith({
+        fromRecordId: 'rec-1',
+        toRecordId: 'rec-2',
+        seriesId: 'series-main',
+      });
+      expect(numberingRepo.allocateNumber).not.toHaveBeenCalled();
+      expect(consumer.issueInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({ documentNumber: 'FV/2026/06/0007' }),
+      );
+    });
+
+    it('should allocate a fresh number when the predecessor number cannot be taken over (#3960)', async () => {
+      repo.claimForIssue.mockResolvedValue(
+        makeRecord({ id: 'rec-2', status: 'issuing', previousAttemptId: 'rec-1', attempt: 1 }),
+      );
+      numberingRepo.findSeriesIdForDocument.mockResolvedValue('series-main');
+      numberingRepo.inheritNumber.mockResolvedValue(null);
+      numberingRepo.allocateNumber.mockResolvedValue({
+        documentNumber: 'FV/2026/06/0008',
+        allocatedSeq: 8,
+      });
+
+      await service.issueInvoice(makeCmd());
+
+      expect(numberingRepo.allocateNumber).toHaveBeenCalled();
     });
 
     it('routes an invoice to the invoice series and passes the rendered number to the adapter', async () => {

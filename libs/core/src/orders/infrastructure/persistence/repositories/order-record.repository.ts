@@ -8,6 +8,7 @@
  * @module libs/core/src/orders/infrastructure/persistence/repositories
  * @implements {OrderRecordRepositoryPort}
  */
+import { readLineExpansion, type LineExpansion } from '@openlinker/core/products';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
@@ -26,11 +27,18 @@ import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import type {
   HeldOrderRef,
   OrderRecordRepositoryPort,
+  HeldOrdersFilter,
 } from '../../../domain/ports/order-record-repository.port';
+import type { OrderGiftReportReaderPort } from '../../../domain/ports/order-gift-report-reader.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
 import { carryForwardLineCosts } from '../../../domain/order-line-cost-snapshot';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
+import {
+  isOrderDeliveryRefusalReason,
+  isOrderDeliveryUpdateOutcome,
+  type OrderDeliveryUpdateReport,
+} from '../../../domain/types/order-delivery-update.types';
 import {
   isFulfillmentRoutingSkipReason,
   type FulfillmentRoutingSkipReason,
@@ -59,7 +67,7 @@ import {
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import { isHoldReason, OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
-import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
+import { DUE_WITHIN_WINDOW_MS, SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import {
   grossRevenueLineAmountSql,
@@ -109,6 +117,7 @@ import {
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
   isTaxRateEra,
+  readSalesDocumentBlockParams,
 } from '@openlinker/core/sales-documents';
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import { isPaymentMethod } from '../../../domain/types/payment-method.types';
@@ -181,7 +190,9 @@ function orderRecordColumnProperties(): readonly string[] {
 const SHIPPED_FULFILLMENT_STATES = ['dispatched', 'delivered'] as const;
 
 @Injectable()
-export class OrderRecordRepository implements OrderRecordRepositoryPort {
+export class OrderRecordRepository
+  implements OrderRecordRepositoryPort, OrderGiftReportReaderPort
+{
   /**
    * The "currency mismatch" predicate (#2464/#2713/#2468 review) — a row
    * that either never got an FX stamp (`reportingCurrency IS NULL`) or was
@@ -210,6 +221,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return this.repository.manager.connection;
   }
 
+  async countOrdersMatchingSearchSince(terms: readonly string[], since: Date): Promise<number> {
+    const patterns = terms
+      .map((term) => normalizeOrderSearchText(term))
+      .filter((normalized) => normalized.length > 0)
+      .map((normalized) => `%${OrderRecordRepository.escapeLikePattern(normalized)}%`);
+    if (patterns.length === 0) return 0;
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where('rec."createdAt" >= :since', { since });
+    qb.andWhere(
+      `(${patterns.map((_, index) => `rec."searchText" LIKE :p${index} ESCAPE '\\'`).join(' OR ')})`,
+      Object.fromEntries(patterns.map((pattern, index) => [`p${index}`, pattern])),
+    );
+    return qb.getCount();
+  }
+
   async findById(internalOrderId: string): Promise<OrderRecord | null> {
     const entity = await this.repository.findOne({
       where: { internalOrderId },
@@ -236,6 +263,37 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return entities.map((e) => this.toDomain(e));
   }
 
+  async findForGiftReport(
+    filters: { from: Date; to: Date; sourceConnectionId?: string; scope: 'gifts' | 'bundles' },
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."placedAt" >= :giftFrom', { giftFrom: filters.from })
+      .andWhere('rec."placedAt" < :giftTo', { giftTo: filters.to });
+    if (filters.scope === 'gifts') {
+      qb.andWhere(
+        `(jsonb_path_exists(rec."orderSnapshot", '$.items[*].gift')
+          OR rec."orderEdits" -> 'addedLines' IS NOT NULL
+          OR jsonb_path_exists(rec."lineExpansion", '$.** ? (@.giftSlot == true)'))`
+      );
+    } else {
+      qb.andWhere('rec."lineExpansion" IS NOT NULL');
+    }
+    if (filters.sourceConnectionId !== undefined) {
+      qb.andWhere('rec."sourceConnectionId" = :giftConnection', {
+        giftConnection: filters.sourceConnectionId,
+      });
+    }
+    if (page.afterId !== null) {
+      qb.andWhere('rec."internalOrderId" > :giftAfter', { giftAfter: page.afterId });
+    }
+    const entities = await qb.orderBy('rec."internalOrderId"', 'ASC').limit(page.limit).getMany();
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   /**
    * Batch earliest-order-date lookup by source connection (#2083). One
    * `GROUP BY` aggregate query, not a per-connection fan-out — mirrors
@@ -257,6 +315,45 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .getRawMany<{ source_connection_id: string; earliest_at: Date }>();
 
     return new Map(rows.map((row) => [row.source_connection_id, row.earliest_at]));
+  }
+
+  async findHeldByReasonCode(
+    filter: HeldOrdersFilter,
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]> {
+    if (filter.offerRefs !== undefined && filter.offerRefs.length === 0) {
+      return [];
+    }
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where('rec.recordStatus = :held', { held: 'awaiting_mapping' })
+      // `[code]` is a literal marker, so the pattern's wildcards are only ours.
+      .andWhere('rec."mappingFailureReason" LIKE :marker', { marker: `%[${filter.reasonCode}]%` });
+    if (page.afterId !== null) {
+      qb.andWhere('rec.internalOrderId > :afterId', { afterId: page.afterId });
+    }
+    const itemConditions: string[] = [];
+    const params: Record<string, unknown> = {};
+    if (filter.packQuantity !== undefined) {
+      itemConditions.push(`(item->>'packQuantity')::numeric = :packQuantity`);
+      params.packQuantity = filter.packQuantity;
+    }
+    if (filter.offerRefs !== undefined) {
+      const refs = filter.offerRefs.map((ref, i) => {
+        params[`refConn${String(i)}`] = ref.connectionId;
+        params[`refExt${String(i)}`] = ref.externalId;
+        return `(rec."sourceConnectionId" = :refConn${String(i)} AND item->'productRef'->>'type' = 'offer' AND item->'productRef'->>'externalId' = :refExt${String(i)})`;
+      });
+      itemConditions.push(`(${refs.join(' OR ')})`);
+    }
+    if (itemConditions.length > 0) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM jsonb_array_elements(rec."orderSnapshot"->'items') item WHERE ${itemConditions.join(' AND ')})`,
+        params
+      );
+    }
+    const entities = await qb.orderBy('rec.internalOrderId', 'ASC').take(page.limit).getMany();
+    return entities.map((e) => this.toDomain(e));
   }
 
   async countOrdersByRoutingCountrySince(
@@ -479,9 +576,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     if (filters.dueBefore) {
       // SLA "breaching / overdue" filter (#927) — only records with a known
       // ship-by deadline at or before the cutoff. NULL deadlines are excluded.
-      qb.andWhere('rec.dispatchByAt IS NOT NULL AND rec.dispatchByAt <= :dueBefore', {
-        dueBefore: filters.dueBefore,
-      });
+      // #4025 - `DUE_BEFORE` is shared with `countByHealth.dueWithin24h`.
+      qb.andWhere(OrderRecordRepository.DUE_BEFORE, { dueBefore: filters.dueBefore });
     }
 
     if (filters.health) {
@@ -559,6 +655,47 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         filters.taxRateConflict
           ? OrderRecordRepository.HAS_TAX_RATE_CONFLICT
           : `NOT (${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`
+      );
+    }
+
+    if (filters.withGift !== undefined) {
+      // #3940 - its own axis, ANDed like `taxRateConflict`: a gifted order is
+      // usually also synced, so folding it into `health` would hide one or the other.
+      qb.andWhere(
+        filters.withGift
+          ? OrderRecordRepository.HAS_GIFT
+          : `NOT (${OrderRecordRepository.HAS_GIFT})`
+      );
+    }
+
+    if (filters.withBundle !== undefined) {
+      // #3935 - its own axis like `withGift`: a bundle order is usually also synced.
+      qb.andWhere(
+        filters.withBundle
+          ? OrderRecordRepository.HAS_BUNDLE
+          : `NOT (${OrderRecordRepository.HAS_BUNDLE})`
+      );
+    }
+
+    if (filters.giftNotAdded !== undefined) {
+      const ids = filters.giftNotAddedOrderIds ?? [];
+      if (ids.length > 0) {
+        qb.andWhere(
+          filters.giftNotAdded
+            ? 'rec."internalOrderId" IN (:...giftNotAddedOrderIds)'
+            : 'rec."internalOrderId" NOT IN (:...giftNotAddedOrderIds)',
+          { giftNotAddedOrderIds: ids }
+        );
+      } else if (filters.giftNotAdded) {
+        qb.andWhere('1 = 0');
+      }
+    }
+
+    if (filters.giftShopRejected !== undefined) {
+      qb.andWhere(
+        filters.giftShopRejected
+          ? OrderRecordRepository.GIFT_SHOP_REJECTED
+          : `NOT (${OrderRecordRepository.GIFT_SHOP_REJECTED})`
       );
     }
 
@@ -660,9 +797,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // an order that went back to `awaiting_mapping` keeps the flag but is not
       // one an operator can work on. `false` is deliberately unchanged.
       qb.andWhere(
-        filters.hasBuyerNote
-          ? `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`
-          : 'rec."hasBuyerNote" = false'
+        filters.hasBuyerNote ? OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE : 'rec."hasBuyerNote" = false'
       );
     }
 
@@ -680,26 +815,52 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       if (normalized.length > 0) {
         const pattern = `%${OrderRecordRepository.escapeLikePattern(normalized)}%`;
         const trackingOrderIds = filters.searchTrackingOrderIds ?? [];
+        const idNeedle = OrderRecordRepository.toOrderIdNeedle(normalized);
+        const idPattern =
+          idNeedle === null ? null : `%${OrderRecordRepository.escapeLikePattern(idNeedle)}%`;
+        // #4229 - the id predicate is built separately from the text one, so it
+        // can drop dashes and the shared prefix; `null` means "do not match ids".
+        const matches = ['rec."searchText" LIKE :searchPattern ESCAPE \'\\\''];
+        const params: Record<string, unknown> = { searchPattern: pattern };
+        if (idPattern !== null) {
+          matches.push('rec."internalOrderId" LIKE :searchIdPattern ESCAPE \'\\\'');
+          params.searchIdPattern = idPattern;
+        }
         if (trackingOrderIds.length > 0) {
-          // #3528 — the tracking-number search resolves a shipment's owning
+          // #3528 - the tracking-number search resolves a shipment's owning
           // order BEFORE `orders` is ever asked (`orders` must not import
           // `shipping`, which already depends on `orders`), so by the time
           // this filter runs it is just a plain id list. ORed with the text
           // match, never ANDed: both are alternate ways ONE query can match
           // an order, not two conditions the order must satisfy together.
-          qb.andWhere(
-            '(rec."searchText" LIKE :searchPattern ESCAPE \'\\\' OR rec."internalOrderId" IN (:...searchTrackingOrderIds))',
-            { searchPattern: pattern, searchTrackingOrderIds: trackingOrderIds }
-          );
-        } else {
-          qb.andWhere('rec."searchText" LIKE :searchPattern ESCAPE \'\\\'', {
-            searchPattern: pattern,
-          });
+          matches.push('rec."internalOrderId" IN (:...searchTrackingOrderIds)');
+          params.searchTrackingOrderIds = trackingOrderIds;
         }
+        qb.andWhere(`(${matches.join(' OR ')})`, params);
       }
     }
 
     return qb;
+  }
+
+  /**
+   * The substring to match against `internalOrderId`, or `null` when the query
+   * should not match ids at all (#4229 review). Every id is
+   * `ol_order_<uuid without dashes>`, so dashes are dropped (a UUID pasted from
+   * a log still matches), the shared prefix is stripped, and a query that lies
+   * inside the prefix (`ol`, `order`, `_`) or is under 3 characters is refused -
+   * it would match every order and only add noise to a text search.
+   */
+  private static toOrderIdNeedle(normalized: string): string | null {
+    const prefix = 'ol_order_';
+    let needle = normalized.replace(/-/g, '');
+    if (prefix.includes(needle)) {
+      return null;
+    }
+    if (needle.startsWith(prefix)) {
+      needle = needle.slice(prefix.length);
+    }
+    return needle.length >= 3 ? needle : null;
   }
 
   /** Escape LIKE metacharacters so a search term is matched literally. */
@@ -856,26 +1017,104 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'sales_document_issued_on_request'
       );
 
+    // #4025 - counts for the redesigned orders filters. Every one reads the
+    // SAME predicate its list filter arm uses, and the three `attention_*`
+    // totals are UNIONS (an order matching two members counts once), which is
+    // why they are computed here rather than summed in the browser.
+    const now = new Date();
+    const openReturnIds = filters.openReturnOrderIds ?? [];
+    const hasOpenReturn =
+      openReturnIds.length > 0 ? `rec."internalOrderId" IN (:...summaryOpenReturnIds)` : 'FALSE';
+    const giftNotAddedIds = filters.giftNotAddedOrderIds ?? [];
+    const giftNotAdded =
+      giftNotAddedIds.length > 0 ? `rec."internalOrderId" IN (:...summaryGiftNotAddedIds)` : 'FALSE';
+    const notShipped = OrderRecordRepository.NOT_SHIPPED;
+    // SLA overdue OR at risk == not shipped with a deadline at or before the
+    // at-risk cutoff - the union of `applySlaFilter`'s two arms.
+    const slaLate = `${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :summarySlaCutoff`;
+    // Bound under its own name so a list-filter `:dueBefore` on a shared scope
+    // can never replace the summary's window.
+    const dueSoon = OrderRecordRepository.DUE_BEFORE.replace(':dueBefore', ':summaryDueBefore');
+    const stuck = [
+      OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED,
+      OrderRecordRepository.HAS_OMS_ATTENTION,
+      OrderRecordRepository.IS_DESTINATION_ROUTING_BLOCKED,
+      OrderRecordRepository.IS_WAITING_IN_OPENLINKER,
+      OrderRecordRepository.HAS_TAX_RATE_CONFLICT,
+    ]
+      .map((predicate) => `(${predicate})`)
+      .join(' OR ');
+    const toHandle = [
+      OrderRecordRepository.IS_ON_PACK_BENCH,
+      OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE,
+      hasOpenReturn,
+    ]
+      .map((predicate) => `(${predicate})`)
+      .join(' OR ');
+    qb.addSelect(`COUNT(*) FILTER (WHERE ${hasOpenReturn})`, 'open_return')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE})`, 'has_buyer_note')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_GIFT})`, 'with_gift')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_BUNDLE})`, 'with_bundle')
+      .addSelect(`COUNT(*) FILTER (WHERE ${giftNotAdded})`, 'gift_not_added')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.GIFT_SHOP_REJECTED})`, 'gift_shop_rejected')
+      .addSelect(`COUNT(*) FILTER (WHERE ${dueSoon})`, 'due_within_24h')
+      .addSelect(`COUNT(*) FILTER (WHERE (${slaLate}) OR (${dueSoon}))`, 'attention_late_to_ship')
+      .addSelect(`COUNT(*) FILTER (WHERE ${stuck})`, 'attention_stuck')
+      .addSelect(`COUNT(*) FILTER (WHERE ${toHandle})`, 'attention_to_handle')
+      .setParameters({
+        summaryDueBefore: new Date(now.getTime() + DUE_WITHIN_WINDOW_MS),
+        summarySlaCutoff: new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS),
+        ...(openReturnIds.length > 0 ? { summaryOpenReturnIds: openReturnIds } : {}),
+        ...(giftNotAddedIds.length > 0 ? { summaryGiftNotAddedIds: giftNotAddedIds } : {}),
+      });
+
     OrderRecordRepository.applySummaryScope(qb, filters);
 
-    const raw = await qb.getRawOne<{
-      total: string;
-      source_deleted: string;
-      awaiting_mapping: string;
-      needs_attention: string;
-      synced: string;
-      awaiting_dispatch: string;
-      sales_document_blocked: string;
-      tax_rate_conflict: string;
-      oms_attention: string;
-      payment_not_sent: string;
-      destination_routing_blocked: string;
-      waiting_in_openlinker: string;
-      waiting_in_openlinker_oldest_at: Date | null;
-      on_pack_bench: string;
-      sales_document_blocked_oldest_at: Date | null;
-      sales_document_issued_on_request: string;
-    }>();
+    // #4025 - per-source counts with the source axis itself removed, so the
+    // Source filter keeps a number beside every option while one is selected.
+    // Independent of the main aggregate, so the two scans run concurrently.
+    const bySourceQb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec."sourceConnectionId"', 'source_connection_id')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('rec."sourceConnectionId"');
+    OrderRecordRepository.applySummaryScope(bySourceQb, { ...filters, sourceConnectionId: undefined });
+
+    const [raw, bySourceRows] = await Promise.all([
+      qb.getRawOne<{
+        total: string;
+        source_deleted: string;
+        awaiting_mapping: string;
+        needs_attention: string;
+        synced: string;
+        awaiting_dispatch: string;
+        sales_document_blocked: string;
+        tax_rate_conflict: string;
+        oms_attention: string;
+        payment_not_sent: string;
+        destination_routing_blocked: string;
+        waiting_in_openlinker: string;
+        waiting_in_openlinker_oldest_at: Date | null;
+        on_pack_bench: string;
+        sales_document_blocked_oldest_at: Date | null;
+        sales_document_issued_on_request: string;
+        open_return: string;
+        has_buyer_note: string;
+        with_gift: string;
+        with_bundle: string;
+        gift_not_added: string;
+        gift_shop_rejected: string;
+        due_within_24h: string;
+        attention_late_to_ship: string;
+        attention_stuck: string;
+        attention_to_handle: string;
+      }>(),
+      bySourceQb.getRawMany<{ source_connection_id: string; count: string }>(),
+    ]);
+    const bySource: Record<string, number> = {};
+    for (const row of bySourceRows) {
+      bySource[row.source_connection_id] = Number(row.count);
+    }
 
     return {
       total: Number(raw?.total ?? 0),
@@ -894,6 +1133,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       onPackBench: Number(raw?.on_pack_bench ?? 0),
       salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
       salesDocumentIssuedOnRequest: Number(raw?.sales_document_issued_on_request ?? 0),
+      openReturn: Number(raw?.open_return ?? 0),
+      hasBuyerNote: Number(raw?.has_buyer_note ?? 0),
+      withGift: Number(raw?.with_gift ?? 0),
+      withBundle: Number(raw?.with_bundle ?? 0),
+      giftNotAdded: Number(raw?.gift_not_added ?? 0),
+      giftShopRejected: Number(raw?.gift_shop_rejected ?? 0),
+      dueWithin24h: Number(raw?.due_within_24h ?? 0),
+      bySource,
+      attention: {
+        lateToShip: Number(raw?.attention_late_to_ship ?? 0),
+        stuck: Number(raw?.attention_stuck ?? 0),
+        toHandle: Number(raw?.attention_to_handle ?? 0),
+      },
     };
   }
 
@@ -1811,6 +2063,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * #4025 - the `hasBuyerNote: true` list filter and `countByHealth.hasBuyerNote`
+   * read this ONE predicate (`recordStatus = 'ready'` per #3538 N-20), so the
+   * count and the rows it reveals cannot disagree.
+   */
+  private static readonly HAS_ACTIONABLE_BUYER_NOTE = `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`;
+  /**
+   * #4025 - the `dueBefore` list filter (#927) and `countByHealth.dueWithin24h`
+   * read this ONE predicate; the caller binds `:dueBefore`.
+   */
+  private static readonly DUE_BEFORE = `rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :dueBefore`;
+
+  /**
    * Constant SQL fragments shared by `applyHealthFilter` and `countByHealth`
    * (no user input). `HAS_*` use `@>` containment — matches when `syncStatus[]`
    * contains an entry with the given status; `IS_SOURCE_DELETED` keys the
@@ -1940,6 +2204,26 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * suppresses itself whenever an invoice exists (epic F1).
    */
   private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
+
+  /**
+   * "Carries a gift" (#3940): a channel/shop line flagged `gift` in the persisted
+   * snapshot, or any overlay-added line (gifts are the only added lines).
+   */
+  private static readonly HAS_GIFT =
+    `(COALESCE(jsonb_path_exists(rec."orderSnapshot", '$.items[*] ? (@.gift != null)'), false) OR ` +
+    // `orderEdits` is NULL on an order nobody edited; a NULL here would make the
+    // negated filter drop that order instead of keeping it.
+    `COALESCE(jsonb_path_exists(rec."orderEdits", '$.addedLines.*'), false))`;
+
+  /**
+   * "Carries a bundle" (#3935): the order froze at least one bundle definition
+   * into `lineExpansion` at ingestion. Same signal the gift report's bundle scope reads.
+   */
+  private static readonly HAS_BUNDLE = `rec."lineExpansion" IS NOT NULL`;
+
+  /** "Shop rejected the gift" (#3935): a gift order whose destination sync failed. */
+  private static readonly GIFT_SHOP_REJECTED =
+    `(${OrderRecordRepository.HAS_GIFT} AND rec."syncStatus" @> '[{"status":"failed"}]'::jsonb)`;
 
   private static readonly IS_SALES_DOCUMENT_BLOCKED =
     OrderRecordRepository.buildSalesDocumentBlockedPredicate();
@@ -2137,6 +2421,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const d = (fallback: 'ASC' | 'DESC'): 'ASC' | 'DESC' =>
       dir === 'asc' ? 'ASC' : dir === 'desc' ? 'DESC' : fallback;
     switch (sort) {
+      case 'placedAt':
+        // #4025 - NULLS LAST in BOTH directions: a source that reports no
+        // placement time must never put its orders on top of "newest first".
+        // `IDX_order_records_placedAt_desc` matches the DESC form exactly.
+        qb.orderBy('rec.placedAt', d('DESC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
+        return;
       case 'dispatchBy':
         qb.orderBy('rec.dispatchByAt', d('ASC'), 'NULLS LAST')
           .addOrderBy('rec.createdAt', 'DESC')
@@ -2737,14 +3029,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * `Repository.update()`'s partial-entity API cannot express a `COALESCE(...)`
    * right-hand side without an unsafe string-interpolated function value.
    * No-op (no throw, no rows affected) when the order row doesn't exist yet.
+   * Returns true only when this call wrote the instant (the first transition).
    */
-  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
-    await this.repository.query(
+  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean> {
+    // `WHERE "cancelledAt" IS NULL` keeps first-write-wins and makes the affected
+    // count the answer to "did THIS call make the transition"; for a raw UPDATE
+    // the count is `result[1]` (rows.length is always 2 on this driver).
+    const result = (await this.repository.query(
       `UPDATE "order_records"
-       SET "cancelledAt" = COALESCE("cancelledAt", $1)
-       WHERE "internalOrderId" = $2`,
+       SET "cancelledAt" = $1
+       WHERE "internalOrderId" = $2 AND "cancelledAt" IS NULL`,
       [cancelledAt, internalOrderId]
-    );
+    )) as [unknown, number];
+    return result[1] > 0;
   }
 
   /**
@@ -2795,10 +3092,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // and a read-then-write there would reintroduce exactly the race this
     // statement's caller-free guard exists to avoid. Only `$n` placeholders are
     // composed below — never a value — so the statement stays fully bound.
+    // $4/$5 (#3583): the connection and kind the block is about. Set for a
+    // batched order (its place in that connection's batch queue), null
+    // otherwise, and moved in the SAME statement so the queue can never name a
+    // connection the reason has already left.
     const params: Array<string | null> = [
       block?.reason ?? null,
       block?.unresolvedReason ?? null,
       block?.detail ?? null,
+      block?.connectionId ?? null,
+      block?.documentKind ?? null,
+      block?.params ? JSON.stringify(block.params) : null,
     ];
     let matchedRuleAssignment = '';
     let matchedRuleGuard = '';
@@ -2816,6 +3120,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
+              "salesDocumentBlockConnectionId" = $4,
+              "salesDocumentBlockDocumentKind" = $5,
+              "salesDocumentBlockParams" = $6::jsonb,
               ${matchedRuleAssignment}
               "salesDocumentBlockedAt" = CASE
                 WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
@@ -2831,6 +3138,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
             OR "salesDocumentUnresolvedReason" IS DISTINCT FROM $2
             OR "salesDocumentBlockDetail" IS DISTINCT FROM $3
+            OR "salesDocumentBlockConnectionId" IS DISTINCT FROM $4
+            OR "salesDocumentBlockDocumentKind" IS DISTINCT FROM $5
+            OR "salesDocumentBlockParams" IS DISTINCT FROM $6::jsonb
             ${matchedRuleGuard})`,
       params
     );
@@ -3170,6 +3480,57 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Freeze the order's bundle expansion (#3607). THE sole writer of
+   * `lineExpansion`; written once, at ingestion, before reservation. The
+   * `IS NULL` guard is the single-writer-once rule: a re-poll, a retry or a
+   * later definition edit changes nothing, and the stored value is returned.
+   */
+  async freezeLineExpansion(
+    internalOrderId: string,
+    expansion: LineExpansion
+  ): Promise<LineExpansion> {
+    const rows = (await this.repository.query(
+      `UPDATE "order_records" SET "lineExpansion" = $2::jsonb
+        WHERE "internalOrderId" = $1 AND "lineExpansion" IS NULL
+        RETURNING "lineExpansion"`,
+      [internalOrderId, JSON.stringify(expansion)]
+    )) as unknown[];
+    const updated = Array.isArray(rows[0]) ? (rows[0] as Record<string, unknown>[]) : rows;
+    if (updated.length > 0) {
+      return expansion;
+    }
+    const existing = (await this.repository.query(
+      `SELECT "lineExpansion" FROM "order_records" WHERE "internalOrderId" = $1`,
+      [internalOrderId]
+    )) as { lineExpansion: unknown }[];
+    return readLineExpansion(existing[0]?.lineExpansion) ?? expansion;
+  }
+
+  /**
+   * Open orders per frozen version of one bundle (#3624). Reads the frozen
+   * `lineExpansion` only - never the live definition - because the question is
+   * "which composition does this order ship with".
+   */
+  async countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]> {
+    const rows = (await this.repository.query(
+      `SELECT (def->>'version')::int AS version, COUNT(DISTINCT rec."internalOrderId")::int AS count
+         FROM "order_records" rec,
+              jsonb_array_elements(COALESCE(rec."lineExpansion"->'definitions', '[]'::jsonb)) AS def
+        WHERE rec."lineExpansion" @> jsonb_build_object(
+                'definitions', jsonb_build_array(jsonb_build_object('variantId', $1::text)))
+          AND def->>'variantId' = $1
+          AND rec."cancelledAt" IS NULL
+          AND (rec."fulfillmentState" IS NULL OR rec."fulfillmentState" = 'not-shipped')
+        GROUP BY (def->>'version')::int
+        ORDER BY version`,
+      [bundleVariantId]
+    )) as { version: number; count: number }[];
+    return rows.map((row) => ({ version: Number(row.version), count: Number(row.count) }));
+  }
+
+  /**
    * Merge one operator edit into the overlay (#3542). THE sole writer of
    * `orderEdits`; see `order-edits.types.ts`.
    *
@@ -3214,14 +3575,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
              || jsonb_build_object('rev', COALESCE(("orderEdits"->>'rev')::int, 0) + 1)
              || CASE WHEN $2::jsonb IS NULL THEN '{}'::jsonb
                      ELSE jsonb_build_object(
-                       'lines', COALESCE("orderEdits"->'lines', '{}'::jsonb) || $2::jsonb) END,
+                       'lines', COALESCE("orderEdits"->'lines', '{}'::jsonb) || $2::jsonb) END
+             || CASE WHEN $9::jsonb IS NULL THEN '{}'::jsonb
+                     ELSE jsonb_build_object(
+                       'addedLines', $9::jsonb || COALESCE("orderEdits"->'addedLines', '{}'::jsonb)) END,
            "shippingAddressHash" = COALESCE($3::text, "shippingAddressHash"),
            "searchText" = COALESCE($4::text, "searchText"),
            "shippingCountry" = CASE WHEN $7::boolean THEN $8::text ELSE "shippingCountry" END,
            "updatedAt" = now()
        WHERE "internalOrderId" = $5
          AND "recordStatus" = 'ready'
-         AND COALESCE(("orderEdits"->>'rev')::int, 0) = $6
+         AND ($6::int IS NULL OR COALESCE(("orderEdits"->>'rev')::int, 0) = $6)
        RETURNING "internalOrderId"`,
       [
         JSON.stringify(sections),
@@ -3235,6 +3599,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         // country is a real answer: the new address names none).
         input.address !== undefined,
         input.address === undefined ? null : normaliseCountryColumn(input.address.shipping.country),
+        input.addedLines === undefined ? null : JSON.stringify(input.addedLines),
       ]
     )) as unknown;
 
@@ -3797,7 +4162,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // is read back from the same statement's RETURNING, so it is atomic with
       // the upsert - which is what lets `persistOrder` hand ingestion the overlay
       // that applied to THIS write rather than one read a moment earlier.
-      if (property === 'orderEdits') {
+      if (property === 'orderEdits' || property === 'lineExpansion') {
         continue;
       }
       entity[property] = EMPTY_COLUMN_DEFAULTS[property]?.() ?? null;
@@ -3922,6 +4287,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       externalOrderId: status.externalOrderId,
       externalOrderNumber: status.externalOrderNumber,
       error: status.error,
+      deliveryFingerprint: status.deliveryFingerprint,
+      deliveryUpdate: status.deliveryUpdate
+        ? {
+            outcome: status.deliveryUpdate.outcome,
+            reason: status.deliveryUpdate.reason,
+            detail: status.deliveryUpdate.detail,
+            at: status.deliveryUpdate.at.toISOString(),
+          }
+        : undefined,
     };
 
     const newAttemptRow: SyncAttemptJson = {
@@ -4002,6 +4376,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       externalOrderId: s.externalOrderId,
       externalOrderNumber: s.externalOrderNumber,
       error: s.error,
+      deliveryFingerprint: s.deliveryFingerprint,
+      deliveryUpdate: toDeliveryUpdateReport(s.deliveryUpdate),
     }));
 
     const syncAttempts: SyncAttempt[] = (entity.syncAttempts ?? []).map((a) => ({
@@ -4124,9 +4500,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.buyerNoteChangedAt ?? null,
       orderEdits === null ? null : entity.orderSnapshot,
       orderEdits,
+      entity.recordStatus === 'ready' ? readLineExpansion(entity.lineExpansion) : null,
       // #3963 - coerced at the mapping boundary: an entry this build does not
       // recognise is absent, never present-and-unrenderable.
-      readPaymentWriteback(entity.paymentWriteback)
+      readPaymentWriteback(entity.paymentWriteback),
+      readSalesDocumentBlockParams(entity.salesDocumentBlockParams)
     );
   }
 
@@ -4317,4 +4695,27 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.unitCostCurrency = item.cost.unitCostCurrency;
     return entity;
   }
+}
+
+/**
+ * Coerce a persisted delivery-relay report (#4195). An unrecognised outcome
+ * reads as absent rather than being surfaced as something this build cannot
+ * describe, and a malformed instant is dropped with it.
+ */
+function toDeliveryUpdateReport(
+  json: OrderSyncStatusJson['deliveryUpdate']
+): OrderDeliveryUpdateReport | undefined {
+  if (!json || !isOrderDeliveryUpdateOutcome(json.outcome)) {
+    return undefined;
+  }
+  const at = new Date(json.at);
+  if (Number.isNaN(at.getTime())) {
+    return undefined;
+  }
+  return {
+    outcome: json.outcome,
+    ...(isOrderDeliveryRefusalReason(json.reason) ? { reason: json.reason } : {}),
+    ...(json.detail ? { detail: json.detail } : {}),
+    at,
+  };
 }

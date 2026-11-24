@@ -14,18 +14,20 @@
  * for the presence of `currentVersion` in the body. Reading the `code` is the
  * whole point; this module is the one place that reads it.
  *
- * ## Two further 409s carry no `code` at all
+ * ## Two further 409s are not conflicts of this kind
  *
  * `FulfillmentHoldLimitExceededError` and `FulfillmentHoldAlreadyReleasedError`
- * map to a plain `ConflictException(message)`. The hold-limit one is reachable
- * from this panel's own primary action, so an unrecognised 409 must surface the
- * SERVER'S message rather than a generic sentence — "could not do that" over
- * "this task already has the maximum number of holds" is a strictly worse
- * answer to a question the server already answered.
+ * answer 409 with their own codes (`FULFILLMENT_HOLD_LIMIT_REACHED`,
+ * `FULFILLMENT_HOLD_ALREADY_RELEASED`). The hold-limit one is reachable from
+ * this panel's own primary action, so any other 409 reads its code's copy
+ * (#3867) rather than a generic sentence - "could not do that" over "this task
+ * already has the maximum of 10 active holds" is a strictly worse answer to a
+ * question the server already answered.
  *
  * @module apps/web/src/features/fulfillment/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { getMessages } from '../../../shared/i18n';
 
 export interface FulfillmentConflict {
@@ -84,24 +86,23 @@ export function readFulfillmentConflict(error: unknown): FulfillmentConflict | n
     };
   }
 
-  // An un-coded 409 (hold limit reached, hold already released) — the server's
-  // message is the specific one, so it is used verbatim rather than replaced.
-  return { retryable: false, message: error.message, supportedActions };
+  // Any other 409 (hold limit reached, hold already released) reads its own
+  // code's copy (#3867), never the server's English sentence.
+  return { retryable: false, message: describeApiError(error, 'fulfillment'), supportedActions };
 }
 
 /**
  * Operator sentence for a failed action that is NOT one of the two coded 409s.
  *
- * A 400 gets the server's message: this endpoint's 400s name the problem
- * precisely — an action this build offered but the API does not execute, or an
- * action invoked without a field it needs — and both are things an operator can
- * report or an engineer can act on. A generic sentence would throw that away.
+ * A 400 reads its code's copy (#3867): this endpoint's 400s name the problem
+ * precisely - an action this build offered but the API does not execute, or an
+ * action invoked without a field it needs - and each code has its own sentence.
  */
 export function describeFulfillmentActionError(error: unknown, fallback: string): string {
   const conflict = readFulfillmentConflict(error);
   if (conflict) return conflict.message;
-  if (error instanceof ApiError && error.status === 400 && error.message.length > 0) {
-    return error.message;
+  if (error instanceof ApiError && error.status === 400) {
+    return describeApiError(error, 'fulfillment');
   }
   if (error instanceof ApiError && error.isForbidden()) {
     return getMessages('fulfillment').fulfillmentConflict.forbidden;

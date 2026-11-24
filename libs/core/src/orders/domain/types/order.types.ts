@@ -14,6 +14,7 @@ import type { TaxRateSource } from '@openlinker/core/products';
 import type { PaymentMethod } from './payment-method.types';
 import type { PaymentStatus } from './payment-status.types';
 import type { CodToCollect } from './cod-to-collect.types';
+import type { LineGift } from './incoming-order.types';
 
 /**
  * Order status values
@@ -352,6 +353,16 @@ export interface OrderItem {
    * on the very rows it describes.
    */
   taxRateChannel?: string;
+
+  /** Present when the line is a gift. Absent means an ordinary line. */
+  gift?: LineGift;
+
+  /**
+   * Units of the mapped variant per sold unit (e.g. an Allegro multipack).
+   * Absent means 1. A value above 1 on a variant with no bundle definition
+   * holds the order, since reserving or shipping one unit would under-deliver.
+   */
+  packQuantity?: number;
 }
 
 /**

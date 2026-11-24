@@ -1,0 +1,109 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/woocommerce-settings"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>WooCommerce: Configure channel settings</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='WooCommerce: Configure channel settings';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+  <h1 id="h1_908215528" data-has-heading-anchor="true">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>WooCommerce: How to Configure<a href="/articles/documentation/woocommerce-settings/a/h1_908215528" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-settings/a/h1_908215528&#39;,this);"></a></h1>
+  <p>
+    <span>Linnworks integration has multiple settings that allow detailed control of how Linnworks interacts with WooCommerce. This guide will help you to configure your WooCommerce to make sure Linnworks is doing what is required.</span>
+  </p>
+  
+  <div class="alert-warning">
+  &nbsp;<span class="fa fa-pen-square icon-background-yellow"></span>
+<b>&nbsp;Note:</b>&nbsp;Your WooCommerce site will need to be a <b>minimum of 5.8</b> to integrate with Linnworks successfully.&nbsp;
+</div>
+  <p>
+    <span>Once the channel is added click on the <i>pen&nbsp;</i><span class="fa fa-pencil">&nbsp;</span>icon in the channel integration screen for the required WooCommerce integration.</span>
+  </p>
+  <p>
+    <span><img src="/resources/Storage/documentation/Screenshots/Channels/ChannelConfig.png" alt="Channel Config" class="leftAlone" loading="lazy"/></span>
+  </p>
+  <h3 id="h4_739406941" style="" data-has-heading-anchor="true">Available for the configuration settings<a href="/articles/documentation/woocommerce-settings/a/h4_739406941" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-settings/a/h4_739406941&#39;,this);"></a></h3>
+  <h4 style="" id="h4_51037994" data-has-heading-anchor="true">Inventory<a href="/articles/documentation/woocommerce-settings/a/h4_51037994" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-settings/a/h4_51037994&#39;,this);"></a></h4><ul>
+    <li>
+      <strong>Enabled:</strong> Tick this option to allow communication between Linnworks and WooCommerce. Without this ticked, no information will be sent or received from WooCommerce. Once enabled, Linnworks will start downloading all unshipped orders. More detailed criteria for the orders download is below:<ul>
+    <li>Linnworks will download orders from WooCommerce if those are in&nbsp;<u><strong>processing</strong> </u>or <strong><u>pending</u> </strong>statuses.</li>
+    
+    <li>An order will be marked as <span style="font-weight: normal;"><i>paid</i></span> in Linnworks when the WooCommerce status is <i><span style="font-weight: normal;">processing</span></i> and the payment method is <i><span style="font-weight: normal;">paid</span></i> in the information provided by WooCommerce.</li>
+    
+    <li>A <i><span style="font-weight: normal;">pending</span></i> order will be downloaded but marked as <i><span style="font-weight: normal;">unpaid</span></i> in Linnworks. It will receive an update from the channel with further order syncs if and when the status changes to <i><span style="font-weight: normal;">processing</span></i>.</li>
+    
+    <li>An order that is in status <i><span style="font-weight: normal;">processing&nbsp;</span></i>but for example a credit card transaction for the order failed, will be downloaded as <i><span style="font-weight: normal;">unpaid</span></i>.</li>
+    </ul>
+  </li>
+    
+    <li><strong>Site URL:</strong> The root URL for your WordPress site.</li>
+    
+    <li><strong>Consumer Key:</strong> The Consumer API Key used by Linnworks to connect to your WooCommece plugin.</li>
+    
+    <li><strong>API Main Endpoint:</strong> The location that the WooCommerce API code is stored on your WordPress site.</li>
+    
+    <li><span style="font-weight: normal;"><span class="btn-old-gray">Test</span>:</span> Clicking this button will check that Linnworks can successfully communicate with Woocommerce</li>
+    
+    <li><span style="font-weight: normal;"><span class="btn-old-gray">Reauthorise</span>:&nbsp;</span>This&nbsp;button will trigger to reauthorize your tokens if it is required.</li>
+    </ul>
+  <h4 style="" id="h4__784112042" data-has-heading-anchor="true">
+    Order<a href="/articles/documentation/woocommerce-settings/a/h4__784112042" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-settings/a/h4__784112042&#39;,this);"></a></h4>
+  <ul><li><span style="font-weight: normal;"><b>Despatch notes</b></span><b>:</b> After processing orders in Linnworks, a dispatch notification will be submitted to the channel. When the option is disabled, no despatch information will be submitted to WooCommerce.<ul><li class="alert-warning"><span style="font-weight: normal;"><b>Note!</b></span> Only if the Woocommerce version is 3.0 or higher we will send the tracking number and vendor via the meta_data field using the new API 2.0.</li></ul>
+  </li><li><strong>Use Shipment Tracking extension: </strong>Enable this setting if you have the<a rel="noopener" href="https://woocommerce.com/products/shipment-tracking/" target="_blank">&nbsp;<em>Shipment Tracking</em></a> extension set up on your WooCommerce account and you want to submit tracking information from Linnworks via this extension. To use this extension, you need to have:<ul><li>WooCommerce 3.5.x or later</li><li>WordPress 4.4 or later.&nbsp;<ul><li><strong>Important</strong>! You need to have vendors specified in Linnworks exactly (case-insensitive) to match with the channel's otherwise, no tracking link will be sent. Alternatively, you can define vendors on the extension itself as they are named in your Linnworks account.</li></ul>
+  </li></ul>
+  </li><li><strong>Use WooCommerce tax settings:</strong>&nbsp;Uses the tax setting from WooCommerce rather than the rate set on Linnworks. If they are the same setting (eg: 20% on WooCommerce and 20% on Linnworks) the Linnworks calculation will override WooCommerce (rounding may differ slightly).</li><li><strong>Download unpaid orders:</strong> i<span>f enabled Linnworks will download unpaid orders from WooCommerce.</span>
+    </li><li><span></span>
+    <strong>Order sync date [UTC]:&nbsp;</strong>This shows the date and time when Linnworks last synchronized with the channel.</li></ul>
+  <h4 style="" id="h4_281174069" data-has-heading-anchor="true">
+    <span>Inventory</span>
+  <a href="/articles/documentation/woocommerce-settings/a/h4_281174069" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-settings/a/h4_281174069&#39;,this);"></a></h4>
+  <ul><li><span style="font-weight: normal;"><b>Update Inventory</b></span>: Allow Linnworks to submit changes in stock levels to WooCommerce.&nbsp;Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to your channel via the&nbsp;<i><a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a></i>&nbsp;screen accessed from the main&nbsp;<i><a href="/articles/documentation/channel-integration-screen" onclick="return n(&#39;!documentation/channel-integration-screen&#39;,this);">Channel Integration</a></i>&nbsp;screen.</li><li><strong>Max Listed:</strong>&nbsp;<span>This specifies the maximum level that will be sent to the channel.&nbsp;</span>
+      For more details go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/max-listed" onclick="return n(&#39;!documentation/channels-inventory-updates/a/max-listed&#39;,this);">Max Listed</a></i>&nbsp;guide.</li><li><strong>Stock Percentage:</strong>&nbsp;This will send a percentage of the currently available stock level to the sales channel. For more details go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/stock-percentage" onclick="return n(&#39;!documentation/channels-inventory-updates/a/stock-percentage&#39;,this);">Stock Percentage</a></i>&nbsp;guide.</li><li><strong>End When:</strong>&nbsp;<span>This enables you to force the listing to end when the stock level gets to the specified amount as opposed to the default value of zero.&nbsp;</span>
+      For more details go to the&nbsp;<i><a href="/articles/documentation/channels-inventory-updates/a/end-when" onclick="return n(&#39;!documentation/channels-inventory-updates/a/end-when&#39;,this);">End When</a></i>&nbsp;guide.</li></ul>
+  <h4 style="" id="h4__733860040" data-has-heading-anchor="true">
+    <span>Inventory - Price Change</span>
+  <a href="/articles/documentation/woocommerce-settings/a/h4__733860040" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-settings/a/h4__733860040&#39;,this);"></a></h4>
+  <ul><li><span style="font-weight: normal;"><b>Price Change</b></span>:&nbsp;Price Change is designed to speed up the process of updating the sales channel once a Linnworks stock item has had its listing price updated and saved. To find out more go to the&nbsp;<i><a href="/articles/documentation/channels-price-change" onclick="return n(&#39;!documentation/channels-price-change&#39;,this);">Price Change</a></i>&nbsp;guide.</li></ul><h4 style="" id="h4__1184546515" data-has-heading-anchor="true">
+    <span>Listings</span>
+  <a href="/articles/documentation/woocommerce-settings/a/h4__1184546515" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-settings/a/h4__1184546515&#39;,this);"></a></h4>
+  <ul><li><span style="font-weight: normal;"><b><b>Auto-link by SKU:&nbsp;</b></b></span>If enabled, Linnworks will automatically link unmatched channel SKUs to matching Linnworks SKUs during&nbsp;<u>order download</u>&nbsp;or the&nbsp;<u>mapping sync</u>&nbsp;(runs ~every 12 hours). Once linked,&nbsp;<a href="/articles/documentation/channels-inventory-updates" onclick="return n(&#39;!documentation/channels-inventory-updates&#39;,this);">inventory sync</a>&nbsp;is triggered. You can check&nbsp;<a href="/articles/documentation/channels-inventory-mapping/a/h4_1759825364" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/h4_1759825364&#39;,this);">this guide</a>&nbsp;for full details on how this feature works.</li><li><span style="font-weight: normal;"><b>Listing Download in Progress</b></span>: This tick box will tick itself if a Listing Update has begun.</li><li><strong>Listing Download start time</strong>: This will show the date and time of when the update has begun.</li><li><strong>Last listing download completion time:</strong> This will show the date and time of when the last manual update was run.</li><li><strong>Listing Download estimated completion:</strong> This will give you an estimate of when the manual scan will be complete – the time can vary depending on server speeds and the number of listings.</li><li><strong>Download Listings:</strong> Click on this button to force Linnworks to request an update from the channel for your active listings.</li></ul>
+  <p>
+    Linnworks.net is designed to update the listings on the mapping page regularly. However, if for any reason it has not then the <span style="font-weight: normal;" class="btn-gray">Download Listings</span> button allows you to force Linnworks to schedule an update.</p><h4 id="h4_15828802" data-has-heading-anchor="true">
+    Next steps<a href="/articles/documentation/woocommerce-settings/a/h4_15828802" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-settings/a/h4_15828802&#39;,this);"></a></h4>
+  <ul>
+    <li>
+      <a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping</a>
+    </li>
+    <li>
+      <a href="/articles/documentation/channels-inventory-mapping" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">Inventory Mapping</a>
+    </li>
+    <li>
+      <a href="/articles/documentation/channels-payment-mapping" onclick="return n(&#39;!documentation/channels-payment-mapping&#39;,this);">Payment Mapping</a>
+    </li>
+    <li>
+      <a href="/articles/documentation/channels-shipping-mapping" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">Shipping Mapping</a>
+    </li>
+  </ul>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

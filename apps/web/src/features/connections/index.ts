@@ -56,6 +56,7 @@ export { readFulfilmentOwnedByDestination } from './lib/fulfilment-ownership';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
 export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
 export { useTestConnectionMutation } from './hooks/use-test-connection-mutation';
+export { describeConnectionTestFailure } from './lib/describe-connection-test-failure';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
 export { useSetDefaultBankAccountMutation } from './hooks/use-set-default-bank-account-mutation';
 export { usePickBankAccount } from './hooks/use-pick-bank-account';
@@ -67,6 +68,14 @@ export {
   INVOICE_TRIGGER_MODEL_LABELS,
 } from './types/invoice-trigger-model.types';
 export type { InvoiceTriggerModel } from './types/invoice-trigger-model.types';
+export {
+  resolveTriggerModelForKind,
+  writeTriggerModelForKind,
+} from './lib/resolve-trigger-model-for-kind';
+export type {
+  ResolvedTriggerModel,
+  TriggerModelSource,
+} from './lib/resolve-trigger-model-for-kind';
 
 // Edit-connection schema seam (#1330) — composed by the host with a platform's
 // `ConnectionConfigContribution`; exported so plugin-local tests can exercise

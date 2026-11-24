@@ -19,7 +19,6 @@
  */
 import { useState, type ReactElement } from 'react';
 import { useEditOrderMutation, type EditOrderOutput } from '../hooks/use-edit-order-mutation';
-import { readServerReason } from '../lib/order-cancel';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -40,6 +39,7 @@ import {
 import { OrderCorrectionProposalDialog } from './order-correction-proposal-dialog';
 import { describeCombinedDiscount } from '../lib/combined-discount';
 import { OrderDiscountRefundDialog } from './order-discount-refund-dialog';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface OrderEditedNoticeProps {
   internalOrderId: string;
@@ -229,7 +229,7 @@ export function OrderEditedNotice({
             {resend.isError ? (
               <span role="alert" data-testid="order-edit-resend-error">
                 {' '}
-                {readServerReason(resend.error, copy.resendFailed)}
+                {describeApiError(resend.error, 'orders')}
               </span>
             ) : null}
           </p>

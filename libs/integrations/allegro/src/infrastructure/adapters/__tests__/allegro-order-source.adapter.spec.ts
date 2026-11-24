@@ -60,6 +60,45 @@ describe('AllegroOrderSourceAdapter', () => {
   // reads. Allegro composes `total` from `summary.totalToPay` while `subtotal`
   // is summed from the lines - so any whole-order coupon moves one and not the
   // other.
+  // #3929. Shape follows Allegro's `OfferProductSetReference` and the tutorial's
+  // product-set line (spike verify/allegro-line-price.md Q2): `quantity` counts
+  // sets sold, `productSet.products[].quantity` counts a product inside ONE set.
+  describe('packQuantity from offer.productSet (#3929)', () => {
+    function form(productSet: unknown): unknown {
+      return {
+        id: 'cf-1',
+        status: 'READY_FOR_PROCESSING',
+        buyer: { id: 'b1', email: 'b@example.com', login: 'b' },
+        payment: { type: 'ONLINE', finishedAt: '2026-09-01T10:00:00Z' },
+        lineItems: [
+          {
+            id: 'li-1',
+            offer: { id: 'off-1', name: 'Coffee 3-pack', ...(productSet ? { productSet } : {}) },
+            quantity: 2,
+            price: { amount: '76.00', currency: 'PLN' },
+            boughtAt: '2026-09-01T09:00:00Z',
+          },
+        ],
+        summary: { totalToPay: { amount: '152.00', currency: 'PLN' } },
+      };
+    }
+
+    it('sets packQuantity for a multipack offer and leaves quantity as sets sold', async () => {
+      (httpClient.get as jest.Mock).mockResolvedValue({
+        data: form({ products: [{ id: '9d689aa5-1111-4222-8333-444455556666', quantity: 3 }] }),
+      });
+      const order = await adapter.getOrder({ externalOrderId: 'cf-1' });
+      expect(order.items[0].packQuantity).toBe(3);
+      expect(order.items[0].quantity).toBe(2);
+    });
+
+    it('leaves the key absent for an offer with no product set', async () => {
+      (httpClient.get as jest.Mock).mockResolvedValue({ data: form(undefined) });
+      const order = await adapter.getOrder({ externalOrderId: 'cf-1' });
+      expect('packQuantity' in order.items[0]).toBe(false);
+    });
+  });
+
   describe('totals.discountTotal - naming the cause of a line-vs-total gap (#3365)', () => {
     function checkoutForm(overrides: Record<string, unknown>): unknown {
       return {
@@ -2025,6 +2064,85 @@ describe('AllegroOrderSourceAdapter', () => {
 
         warnSpy.mockRestore();
       });
+    });
+  });
+
+  describe('listRefunds (#4100)', () => {
+    const refund = (id: string, orderId: string, status = 'SUCCESS'): unknown => ({
+      id,
+      status,
+      order: { id: orderId },
+      totalValue: { amount: '12.50', currency: 'PLN' },
+      createdAt: '2026-11-16T20:44:36.650Z',
+    });
+
+    it('should filter by order.id and page with limit and offset', async () => {
+      httpClient.get.mockResolvedValue({ data: { refunds: [refund('r1', 'cf-1')] } } as never);
+
+      const result = await adapter.listRefunds({ externalOrderId: 'cf-1' });
+
+      expect(httpClient.get).toHaveBeenCalledWith('/payments/refunds', {
+        queryParams: { 'order.id': 'cf-1', limit: 100, offset: 0 },
+      });
+      expect(result).toEqual([
+        {
+          externalRefundId: 'r1',
+          amount: '12.50',
+          currency: 'PLN',
+          occurredAt: new Date('2026-11-16T20:44:36.650Z'),
+        },
+      ]);
+    });
+
+    it('should drop refunds that name another order and unsettled ones', async () => {
+      httpClient.get.mockResolvedValue({
+        data: {
+          refunds: [
+            refund('mine', 'cf-1'),
+            refund('other', 'cf-2'),
+            refund('pending', 'cf-1', 'PENDING'),
+          ],
+        },
+      } as never);
+
+      const result = await adapter.listRefunds({ externalOrderId: 'cf-1' });
+
+      expect(result.map((r) => r.externalRefundId)).toEqual(['mine']);
+    });
+
+    it('should return an empty list when the order has no refunds', async () => {
+      httpClient.get.mockResolvedValue({ data: {} } as never);
+
+      await expect(adapter.listRefunds({ externalOrderId: 'cf-1' })).resolves.toEqual([]);
+      expect(httpClient.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should propagate a 4xx so the caller decides how to report it', async () => {
+      httpClient.get.mockRejectedValue(new AllegroApiException('Forbidden', 403));
+
+      await expect(adapter.listRefunds({ externalOrderId: 'cf-1' })).rejects.toThrow('Forbidden');
+    });
+
+    it('should stop after the page bound even when every page is full', async () => {
+      const fullPage = Array.from({ length: 100 }, (_, i) => refund(`r${i}`, 'cf-1'));
+      httpClient.get.mockResolvedValue({ data: { refunds: fullPage } } as never);
+
+      await adapter.listRefunds({ externalOrderId: 'cf-1' });
+
+      expect(httpClient.get).toHaveBeenCalledTimes(10);
+    });
+
+    it('should stop paging at the first short page', async () => {
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: { refunds: Array.from({ length: 100 }, (_, i) => refund(`a${i}`, 'cf-1')) },
+        } as never)
+        .mockResolvedValueOnce({ data: { refunds: [refund('b1', 'cf-1')] } } as never);
+
+      const result = await adapter.listRefunds({ externalOrderId: 'cf-1' });
+
+      expect(httpClient.get).toHaveBeenCalledTimes(2);
+      expect(result).toHaveLength(101);
     });
   });
 });

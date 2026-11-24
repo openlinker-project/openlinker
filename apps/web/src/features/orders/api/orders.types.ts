@@ -36,6 +36,17 @@ export const OrderSyncStatusValues = [
 ] as const;
 export type OrderSyncStatusValue = (typeof OrderSyncStatusValues)[number];
 
+/**
+ * Last attempt to carry a changed delivery point to a destination copy (#4195).
+ * Mirrors `OrderDeliveryUpdateResponseDto`; `reason` is set for `refused` only.
+ */
+export interface OrderDeliveryUpdate {
+  outcome: 'updated' | 'unchanged' | 'refused' | 'unsupported' | 'failed';
+  reason: 'cancelled' | 'fulfilled' | 'closed' | 'not-found' | null;
+  detail: string | null;
+  at: string;
+}
+
 export interface OrderSyncStatus {
   destinationConnectionId: string;
   status: OrderSyncStatusValue;
@@ -43,6 +54,7 @@ export interface OrderSyncStatus {
   externalOrderId: string | null;
   externalOrderNumber: string | null;
   error: string | null;
+  deliveryUpdate?: OrderDeliveryUpdate | null;
 }
 
 /**
@@ -136,6 +148,7 @@ export const SalesDocumentGateBlockReasonValues = [
   'missing-tax-rate',
   'tax-rate-conflict',
   'line-total-mismatch',
+  'bundle-split-unknown',
   'trigger-model-manual',
   'trigger-model-batched',
 ] as const;
@@ -294,6 +307,40 @@ export interface SalesDocumentMatchedRuleView {
 }
 
 /** Everything a surface needs about one order's sales document (ADR-065). */
+/**
+ * Mirror of core's `RoutedConnectionStateValues` (#3866; apps/web cannot import
+ * core, #591), held identical by `scripts/check-stored-reason-code-mirror.mjs`.
+ */
+export const RoutedConnectionStateValues = [
+  'not-found',
+  'unreadable',
+  'disabled',
+  'error',
+  'needs-reauth',
+  'archived',
+  'missing-capability',
+  'changed',
+] as const;
+
+export type RoutedConnectionState = (typeof RoutedConnectionStateValues)[number];
+
+/** Values behind a sales-document block's detail (#3866); ids, counts and codes only. */
+export interface SalesDocumentBlockParams {
+  readonly candidateCount?: number;
+  readonly eligibleCount?: number;
+  readonly primaryCount?: number;
+  readonly poolKind?: 'invoice' | 'fiscal-receipt' | 'mixed';
+  readonly connectionId?: string;
+  readonly ruleId?: string;
+  readonly documentKind?: string;
+  readonly connectionState?: RoutedConnectionState;
+  readonly missingCapabilities?: readonly string[];
+  readonly taxRateScope?: 'lines' | 'shipping';
+  readonly lineCount?: number;
+  readonly totalLines?: number;
+  readonly firstLineRef?: string;
+}
+
 export interface SalesDocumentView {
   readonly orderId: string;
   /**
@@ -310,6 +357,8 @@ export interface SalesDocumentView {
   readonly unresolvedReason: SalesDocumentUnresolvedReasonValue | null;
   /** Free-text elaboration the gate stored; never parsed, only displayed. */
   readonly blockDetail: string | null;
+  /** The values behind `blockDetail` (#3866); the operator reads these, phrased by the frontend. */
+  readonly blockParams?: SalesDocumentBlockParams | null;
   readonly otherRecords: readonly SalesDocumentOtherRecord[];
   /**
    * The rule that decided this order's document kind (#3186); `null` when none
@@ -366,6 +415,23 @@ export interface OrderDeliveryResolution {
    * for older/degraded payloads → treated as available.
    */
   processorAvailable?: boolean;
+  /**
+   * The matched rule's default parcel (#3651), for prefilling the label forms.
+   * Read here rather than from `GET /connections/:id/routing-rules`, which is
+   * admin-only, so an operator who can buy a label gets the prefill too
+   * (#3958). Null for the default fallback and for a rule saved without one;
+   * absent on older payloads.
+   */
+  parcelProfile?: OrderParcelProfile | null;
+}
+
+/** Mirror of the BE `ParcelProfileResponseDto` (mm / g, carrier template code). */
+export interface OrderParcelProfile {
+  parcelTemplate: string | null;
+  lengthMm: number | null;
+  widthMm: number | null;
+  heightMm: number | null;
+  defaultWeightGrams: number | null;
 }
 
 // Actionable delivery hint (#1792/#1799): `unmapped` (a supported carrier is
@@ -454,6 +520,38 @@ export interface BuyerNoteAcknowledgement {
   acknowledgedByUserId: string | null;
 }
 
+export interface OrderBundleComponent {
+  lineId: string;
+  variantId: string;
+  productId: string;
+  name: string | null;
+  sku: string | null;
+  /** Units for the whole line. */
+  quantity: number;
+  /** Units in one bundle unit. */
+  perUnit: number;
+  giftSlot?: boolean;
+}
+
+export interface OrderBundleLine {
+  /** The commercial line id: the line the buyer paid for. */
+  lineId: string;
+  bundleVariantId: string;
+  version: number;
+  /** The bundle has been changed since this order was frozen. */
+  olderComposition: boolean;
+  components: OrderBundleComponent[];
+}
+
+export interface OrderMultipackHold {
+  lineId: string;
+  packQuantity: number;
+  lineName: string | null;
+  variantId: string | null;
+  productName: string | null;
+  sku: string | null;
+}
+
 export interface OrderRecord {
   internalOrderId: string;
   customerId: string | null;
@@ -514,6 +612,18 @@ export interface OrderRecord {
    */
   mappingFailureReason?: string | null;
   /**
+   * The bundle lines of this order with the components they were frozen with
+   * (#3624, detail read only). Absent when the order holds no bundle.
+   */
+  bundleLines?: OrderBundleLine[];
+  /**
+   * Set while the order is held because a channel line sells several units of
+   * one product and no bundle defines them (#3624, detail read only).
+   */
+  multipackHold?: OrderMultipackHold;
+  /** Every held multipack line; one confirmation per line (#3520). */
+  multipackHolds?: OrderMultipackHold[];
+  /**
    * True when an operator edited this order in OpenLinker (#3542, D9). The
    * snapshot is then the order AS EDITED; the channel keeps its original. On
    * every list row. Optional for graceful degradation on older payloads.
@@ -566,6 +676,8 @@ export interface OrderRecord {
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
+  /** The values behind `salesDocumentBlockDetail` (#3866), phrased by the frontend. */
+  salesDocumentBlockParams?: SalesDocumentBlockParams | null;
   /**
    * How a fulfilment routing decision narrowed this order's destination fan-out
    * (#2703/#2704), or `null` when it narrowed nothing — which is every order
@@ -630,6 +742,8 @@ export interface OrderRecord {
    * degradation on a pre-#3538 payload.
    */
   hasBuyerNote?: boolean;
+  /** The order froze a bundle definition at ingestion (#3935). */
+  hasBundle?: boolean;
   /**
    * What the LIST can say about the note without reading it (#3538/#3539):
    * `present`, `none` (the source asserted the buyer left nothing) or
@@ -749,6 +863,12 @@ export interface OrderRecord {
    */
   openReturn?: OrderOpenReturn;
   /**
+   * Refund state derived on read from the refund records (#4130). Absent means
+   * nothing was refunded or the read failed, never "not refunded". Separate
+   * from `paymentStatus`, which the next poll rewrites.
+   */
+  refundState?: OrderRefundState;
+  /**
    * Tag ids assigned to this order (#3532, D34). Absent means "not
    * projected on this read"; an empty array is a positive "no tags".
    */
@@ -773,6 +893,7 @@ export const FulfillmentBlockReasonValues = [
   'routing-refused',
   'routing-no-shipping-address',
   'routing-failed',
+  'routing-awaiting-payment',
 ] as const;
 export type FulfillmentBlockReasonValue = (typeof FulfillmentBlockReasonValues)[number];
 
@@ -802,6 +923,7 @@ export const WaitingFulfillmentBlockReasonValues = [
   'routing-refused',
   'routing-no-shipping-address',
   'routing-failed',
+  'routing-awaiting-payment',
 ] as const satisfies readonly FulfillmentBlockReasonValue[];
 export type WaitingFulfillmentBlockReasonValue = (typeof WaitingFulfillmentBlockReasonValues)[number];
 
@@ -816,6 +938,13 @@ export interface OrderHandledInOpenLinker {
    */
   assignment?: 'single' | 'mixed';
   assignedToUserId?: string | null;
+}
+
+/** Refund state derived by the API from the order's refund records (#4130). */
+export interface OrderRefundState {
+  state: 'none' | 'partial' | 'full' | 'unknown';
+  refundedAmount: string | null;
+  currency: string | null;
 }
 
 /** The open-return badge payload (#2998) — count plus a stage hint. */
@@ -911,6 +1040,9 @@ export interface ReleaseOrderHoldResult {
 // sortable table columns (server-side).
 export const OrderSortValues = [
   'createdAt',
+  // #4025 - when the buyer placed the order (NULLs last both ways). Mirrors
+  // `OrderRecordSortValues` in core.
+  'placedAt',
   'dispatchBy',
   'customer',
   'items',
@@ -1011,6 +1143,33 @@ export interface OrderHealthSummary {
    * partition. Optional for an older API.
    */
   paymentNotSent?: number;
+  /**
+   * #4025 - counts for the redesigned orders filters. All optional for graceful
+   * degradation against an older API; an absent count is "unknown", never `0`.
+   * `openReturn` / `hasBuyerNote` / `dueWithin24h` use the same predicates as
+   * the `openReturn` / `hasBuyerNote` / `dueBefore` filters.
+   */
+  openReturn?: number;
+  hasBuyerNote?: number;
+  /** Orders carrying a gift line / a bundle (#3935); the `withGift` / `withBundle` predicates. */
+  withGift?: number;
+  withBundle?: number;
+  /** Orders whose promotion gift was not added; absent when unknown (#3935). */
+  giftNotAdded?: number;
+  giftShopRejected?: number;
+  dueWithin24h?: number;
+  /** Order count per source connection id, with the source scope itself removed. Absent id = no orders. */
+  bySource?: Record<string, number>;
+  /** "Needs a look" group totals - each a UNION, never the sum of its members' counts. */
+  attention?: OrderAttentionSummary;
+}
+
+/** #4025 - mirrors core `OrderAttentionSummary`. */
+export interface OrderAttentionSummary {
+  lateToShip: number;
+  stuck: number;
+  /** Absent when the open returns could not be read (unknown, never 0). */
+  toHandle?: number;
 }
 
 export interface OrderFilters {
@@ -1114,6 +1273,16 @@ export interface OrderFilters {
    * result set and not just the loaded page.
    */
   hasBuyerNote?: boolean;
+  /**
+   * "With a gift" filter (#3940), `?withGift=`: orders carrying a gift line,
+   * whoever decided it (the channel, a cart rule, a promotion, an operator).
+   */
+  withGift?: boolean;
+  /** "With a bundle" filter (#3935), `?withBundle=`: orders carrying a bundle. */
+  withBundle?: boolean;
+  /** "Gift not added" / "Shop rejected the gift" filters (#3935). */
+  giftNotAdded?: boolean;
+  giftShopRejected?: boolean;
   /** One tag id (#3532, D34), `?tag=`. Mutually exclusive with `untagged`. */
   tag?: string;
   /** "No tags" filter (#3532), `?untagged=`. Mutually exclusive with `tag`. */
@@ -1225,9 +1394,20 @@ export interface OrderLineCost {
   netEligible: boolean;
 }
 
+export interface OrderGiftSlotCost {
+  lineId: string;
+  componentLineId: string;
+  variantId: string;
+  quantity: number;
+  /** Net cost of the gift units in the order currency; `null` when unknown. */
+  totalCostNet: number | null;
+}
+
 export interface OrderLineCostsResult {
   currency: string | null;
   lines: OrderLineCost[];
+  /** Absent from an API that predates gift slots (#3934). */
+  giftSlots?: OrderGiftSlotCost[];
 }
 
 /**

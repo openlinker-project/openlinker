@@ -27,6 +27,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface EnableConnectionButtonProps {
   connection: Connection;
@@ -60,7 +61,7 @@ export function EnableConnectionButton({
       showToast({
         tone: 'error',
         title: copy.errorTitle,
-        description: (error as Error).message,
+        description: describeApiError(error, 'connections'),
       });
     }
   }

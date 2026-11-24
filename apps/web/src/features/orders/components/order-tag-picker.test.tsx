@@ -11,6 +11,8 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OrderTagPicker } from './order-tag-picker';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -166,14 +168,23 @@ describe('OrderTagPicker (#3532/#3533, D34)', () => {
 
   it('should show the server refusal in the picker when creating fails', async () => {
     const { orders } = renderPicker([]);
-    orders.createTag.mockRejectedValueOnce(new Error('The workspace already has 50 tags.'));
+    orders.createTag.mockRejectedValueOnce(
+      new ApiError('The workspace already has 50 tags.', 409, {
+        code: 'ORDER_TAG_LIMIT_REACHED',
+        params: { limit: 50 },
+      }),
+    );
     const user = userEvent.setup();
     await openPicker(user);
 
     await user.type(screen.getByPlaceholderText('Find or create a tag'), 'New');
     await user.click(screen.getByRole('button', { name: '+ Create “New”' }));
 
-    expect(await screen.findByText('The server said: The workspace already has 50 tags.')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        interpolate(getMessages('errors').codes.ORDER_TAG_LIMIT_REACHED, { limit: 50 }),
+      ),
+    ).toBeInTheDocument();
     expect(orders.assignTag).not.toHaveBeenCalled();
   });
 

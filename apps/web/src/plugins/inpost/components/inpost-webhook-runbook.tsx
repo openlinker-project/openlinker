@@ -30,6 +30,7 @@ import type { Connection } from '../../../features/connections';
 import { useRotateWebhookSecretMutation } from '../../../features/connections';
 import { interpolate, renderRich } from '../../../shared/i18n';
 import { useInpostMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const INPOST_INTEGRATION_EMAIL = 'integration@inpost.pl';
 
@@ -90,7 +91,7 @@ export function InpostWebhookRunbook({ connection }: InpostWebhookRunbookProps):
       showToast({
         tone: 'error',
         title: copy.toast.copyFailed,
-        description: (error as Error).message,
+        description: describeApiError(error, 'inpost'),
       });
     }
   }
@@ -108,7 +109,7 @@ export function InpostWebhookRunbook({ connection }: InpostWebhookRunbookProps):
       showToast({
         tone: 'error',
         title: copy.toast.generateFailed,
-        description: (error as Error).message,
+        description: describeApiError(error, 'inpost'),
       });
     }
   }

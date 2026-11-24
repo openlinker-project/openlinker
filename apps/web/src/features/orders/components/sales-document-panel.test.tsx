@@ -7,7 +7,7 @@
  * image). Also pins the capability gate and that the page never renders two
  * independent panels — there is exactly one `.sales-document-panel`.
  */
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
@@ -100,6 +100,8 @@ function makeFiscalRecord(over: Partial<FiscalRegistrationRecord> = {}): FiscalR
     orderId: ORDER_ID,
     providerType: 'eparagony',
     idempotencyKey: `fiscal:${FISCAL_CONN_ID}:${ORDER_ID}`,
+    attempt: 0,
+    previousAttemptId: null,
     status: 'registered',
     providerReference: 'ep_1',
     documentReference: '1/2026/08/14',
@@ -181,6 +183,58 @@ describe('SalesDocumentPanel — state 1: filled (fiscal receipt)', () => {
     expect(await screen.findByText('1/2026/08/14')).toBeInTheDocument();
     expect(screen.getByText('ABC 1234567890')).toBeInTheDocument();
     expect(document.querySelector('.doc-slot--filled')).not.toBeNull();
+  });
+});
+
+describe('SalesDocumentPanel - technical details disclosure (#4065)', () => {
+  it('should keep the receipt number and date visible and hide the rest in a closed disclosure when a receipt is registered', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: {
+          listForOrder: vi.fn().mockResolvedValue([
+            makeFiscalRecord({
+              regimeExtras: { processingMode: 'ONLINE', POSID: 'pos-7' },
+            }),
+          ]),
+        },
+      }),
+      ...adminSession,
+    });
+
+    const receiptNumber = await screen.findByText('1/2026/08/14');
+    expect(receiptNumber.closest('details')).toBeNull();
+
+    const disclosure = screen.getByTestId('sales-document-technical-details');
+    expect(disclosure.tagName).toBe('DETAILS');
+    expect(disclosure).not.toHaveAttribute('open');
+    expect(screen.getByText('Technical details (3)')).toBeInTheDocument();
+
+    expect(screen.getByText('ABC 1234567890').closest('details')).toBe(disclosure);
+    expect(screen.getByText('Processing mode').closest('details')).toBe(disclosure);
+    expect(screen.getByText('POSID').closest('details')).toBe(disclosure);
+    const extraValue = screen.getByText('ONLINE');
+    expect(extraValue.closest('details')).toBe(disclosure);
+    expect(extraValue.closest('.key-value-list__value--mono')).not.toBeNull();
+  });
+
+  it('should keep the invoice number visible and hide the document type when an invoice is issued', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([invoicingConnection]) },
+        invoicing: { getForOrder: vi.fn().mockResolvedValue(makeInvoice()) },
+      }),
+      ...adminSession,
+    });
+
+    const invoiceNumber = await screen.findByText('FV/2026/06/001');
+    expect(invoiceNumber.closest('details')).toBeNull();
+
+    const disclosure = screen.getByTestId('sales-document-technical-details');
+    expect(disclosure).not.toHaveAttribute('open');
+    expect(screen.getByText('Technical details (1)')).toBeInTheDocument();
+    expect(within(disclosure).getByText('Document')).toBeInTheDocument();
+    expect(within(disclosure).queryByText('FV/2026/06/001')).toBeNull();
   });
 });
 
@@ -433,6 +487,8 @@ describe('SalesDocumentPanel - connection missing a setting (#3772)', () => {
   const setupRefusal = (): ApiError =>
     new ApiError(SETUP_REASON, 422, {
       message: SETUP_REASON,
+      code: 'INVOICE_ISSUE_REJECTED',
+      params: { failureCode: 'connection-setup-incomplete' },
       error: 'InvoiceIssueRejected',
       failureCode: 'connection-setup-incomplete',
       failureReason: SETUP_REASON,
@@ -487,6 +543,8 @@ describe('SalesDocumentPanel - connection missing a setting (#3772)', () => {
     const issue = vi.fn().mockRejectedValue(
       new ApiError('The invoicing provider rejected the request.', 422, {
         message: 'The invoicing provider rejected the request.',
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'provider-rejected' },
         error: 'InvoiceIssueRejected',
         failureCode: 'provider-rejected',
       }),
@@ -521,6 +579,8 @@ describe('SalesDocumentPanel - provider refused a connection setting', () => {
     const issue = vi.fn().mockRejectedValue(
       new ApiError(TIN_REASON, 422, {
         message: TIN_REASON,
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'connection-setting-rejected' },
         error: 'InvoiceIssueRejected',
         failureCode: 'connection-setting-rejected',
         failureReason: TIN_REASON,
@@ -1419,7 +1479,56 @@ describe('SalesDocumentPanel - provider failure details (#3843)', () => {
     expect(screen.getByText('83')).toBeInTheDocument();
     expect(screen.getByText('16')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy details' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Register receipt' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Register again' })).toBeInTheDocument();
+    // #3960 - says what the button does before it is pressed.
+    expect(screen.getByTestId('fiscal-register-again-hint')).toHaveTextContent(/as attempt 2\./);
+  });
+
+  it('announces the new attempt rather than "Registered." after asking again (#3960)', async () => {
+    const register = vi.fn().mockResolvedValue({
+      orderId: ORDER_ID,
+      connectionId: FISCAL_CONN_ID,
+      idempotencyKey: `fiscal:${FISCAL_CONN_ID}:${ORDER_ID}:r1`,
+      jobId: 'job_2',
+      outcome: 'new-attempt',
+      attempt: 1,
+      previousAttemptId: rejected.id,
+      redrivenFromDead: false,
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([rejected]), register },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Register again' }));
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Attempt 2 requested.'));
+    expect(screen.getByRole('status')).not.toHaveTextContent('Registered.');
+  });
+
+  it('keeps a refused attempt on record under the attempt that followed it (#3960)', async () => {
+    const registered = makeFiscalRecord({
+      id: 'fr_2',
+      attempt: 1,
+      previousAttemptId: rejected.id,
+      idempotencyKey: `fiscal:${FISCAL_CONN_ID}:${ORDER_ID}:r1`,
+    });
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([registered, rejected]) },
+      }),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const earlier = await screen.findByTestId('fiscal-earlier-attempts');
+    expect(earlier).toHaveTextContent('Earlier attempts');
+    expect(earlier).toHaveTextContent('Attempt 1');
+    expect(earlier).toHaveTextContent('Refused');
   });
 
   it('gives a viewer the short sentence with no identifiers and no register action', async () => {
@@ -1437,6 +1546,6 @@ describe('SalesDocumentPanel - provider failure details (#3843)', () => {
     expect(await screen.findByText(/A user with order write access can see the details/)).toBeInTheDocument();
     expect(screen.queryByTestId('fiscal-failure-details')).toBeNull();
     expect(screen.queryByText('83')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Register again' })).toBeNull();
   });
 });

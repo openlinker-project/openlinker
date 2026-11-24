@@ -1,4 +1,16 @@
 {
+  "announce": {
+    "joined": "Już w toku.",
+    "newAttempt": "Zlecono próbę {n}.",
+    "redriven": "Uruchomiono ponownie.",
+    "requested": "Zlecono rejestrację.",
+    "resumed": "Wznowiono."
+  },
+  "attempts": {
+    "attempt": "Próba {n}",
+    "refused": "Odrzucona",
+    "title": "Wcześniejsze próby"
+  },
   "fiscalReceipt": {
     "artefact": {
       "codeAlt": "Kod paragonu do zeskanowania",
@@ -33,5 +45,12 @@
       "registering": "Rejestrowanie",
       "rejected": "Odrzucony"
     }
+  },
+  "pending": {
+    "attempt": "Rejestrujemy próbę {n} u dostawcy. Trwa to dalej po opuszczeniu strony, a wynik pojawi się tutaj."
+  },
+  "rejected": {
+    "registerAgain": "Zarejestruj ponownie",
+    "registerAgainHint": "Wysyła do dostawcy nowy paragon jako próbę {n}. Odrzucona próba niczego nie utworzyła, więc nie powstanie drugi paragon."
   }
 }

@@ -16,6 +16,7 @@ import {
   SalesDocumentUnresolvedReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
+  readSalesDocumentBlockParams,
 } from './sales-document-reason.types';
 
 describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
@@ -40,6 +41,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'missing-tax-rate',
       'tax-rate-conflict',
       'line-total-mismatch',
+      'bundle-split-unknown',
       'trigger-model-manual',
       'trigger-model-batched',
     ]);
@@ -67,9 +69,11 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'missing-tax-rate',
       'tax-rate-conflict',
       'line-total-mismatch',
-      'trigger-model-batched',
+      'bundle-split-unknown',
     ]);
     expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-manual');
+    // #3583: an order waiting for its scheduled batch is a workflow, not a fault.
+    expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-batched');
   });
 
   it('should leave out of the install-level count only what an unconfigured install looks like', () => {
@@ -105,5 +109,42 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
     expect(isSalesDocumentGateBlockReason(null)).toBe(false);
     expect(isSalesDocumentGateBlockReason(undefined)).toBe(false);
     expect(isSalesDocumentGateBlockReason(42)).toBe(false);
+  });
+});
+
+describe('readSalesDocumentBlockParams', () => {
+  it('should keep known fields with the right type', () => {
+    expect(
+      readSalesDocumentBlockParams({
+        connectionId: 'conn-1',
+        connectionState: 'missing-capability',
+        missingCapabilities: ['Fiscalization'],
+        lineCount: 2,
+      }),
+    ).toEqual({
+      connectionId: 'conn-1',
+      connectionState: 'missing-capability',
+      missingCapabilities: ['Fiscalization'],
+      lineCount: 2,
+    });
+  });
+
+  it('should drop unknown fields, unknown codes and wrongly typed values', () => {
+    expect(
+      readSalesDocumentBlockParams({
+        connectionState: 'on-fire',
+        poolKind: 'invoice',
+        eligibleCount: '2',
+        primaryCount: -1,
+        extra: 'x',
+      }),
+    ).toEqual({ poolKind: 'invoice' });
+  });
+
+  it('should return null when nothing usable is left', () => {
+    expect(readSalesDocumentBlockParams({ extra: 'x' })).toBeNull();
+    expect(readSalesDocumentBlockParams(null)).toBeNull();
+    expect(readSalesDocumentBlockParams([1, 2])).toBeNull();
+    expect(readSalesDocumentBlockParams('text')).toBeNull();
   });
 });

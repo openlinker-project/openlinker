@@ -100,7 +100,6 @@
     "loadingMessage": "Pobieranie tego połączenia.",
     "loadingTitle": "Wczytywanie ustawień dostawy",
     "otherSaved": "Zapisano pozostałe kraje.",
-    "saveFailedFallback": "Nie udało się zapisać ustawień dostawy.",
     "saveFailedTitle": "Zmiany nie zostały zapisane",
     "suggest": {
       "body": "Dla tego kraju są dostępne sugerowane ustawienia.",

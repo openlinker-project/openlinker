@@ -1,9 +1,9 @@
 /**
  * Reading an automation write refusal (#2365)
  *
- * `AutomationExceptionFilter` answers with a STRUCTURED body — `error` carries
- * the domain exception's own name, and each refusal carries the facts that name
- * it (`trigger`, `action`, `field`, `index`, `count`/`min`/`max`). Its docblock
+ * `AutomationExceptionFilter` answers with a STRUCTURED body - a stable `code`
+ * per refusal (#3863), and `params` carrying the facts that name it
+ * (`trigger`, `action`, `field`, `index`, `count`/`min`/`max`). Its docblock
  * says why: the eight are separate types "precisely so a caller can tell them
  * apart", and "a renderer that had to parse the copy would drift the first time
  * the wording changed".
@@ -20,7 +20,9 @@
  * @module apps/web/src/features/automation/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { getMessages, interpolate } from '../../../shared/i18n';
+import type { ApiErrorParams } from '../../../shared/api/api-error.types';
 
 /** Which field array a refusal points at, when it points at one. */
 export type AutomationErrorTarget = 'conditions' | 'actions' | null;
@@ -36,15 +38,13 @@ export interface AutomationWriteRefusal {
   isDuplicate: boolean;
 }
 
-function readString(details: unknown, key: string): string | null {
-  if (typeof details !== 'object' || details === null || !(key in details)) return null;
-  const value: unknown = (details as Record<string, unknown>)[key];
+function readString(params: ApiErrorParams, key: string): string | null {
+  const value = params[key];
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-function readIndex(details: unknown): number | null {
-  if (typeof details !== 'object' || details === null || !('index' in details)) return null;
-  const value: unknown = (details as Record<string, unknown>).index;
+function readIndex(params: ApiErrorParams): number | null {
+  const value = params.index;
   // A negative or fractional index is not a row reference; treat it as absent
   // rather than calling `setError` on a path that does not exist.
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
@@ -53,59 +53,46 @@ function readIndex(details: unknown): number | null {
 /**
  * Describe a failed create/replace.
  *
- * Falls back to the raw message for anything this build does not recognise —
- * a refusal added backend-side must still reach the operator, and a generic
- * "something went wrong" would hide a sentence that already explains itself.
+ * A refusal this build does not recognise still reads through
+ * `describeApiError`, so a code added backend-side reaches the operator in
+ * their language.
  */
 export function describeAutomationWriteError(error: unknown): AutomationWriteRefusal {
   const copy = getMessages('automation').composer;
+  const message = describeApiError(error, 'automation');
   if (!(error instanceof ApiError)) {
-    const message =
-      error instanceof Error && error.message.length > 0
-        ? error.message
-        : copy.saveFailedGeneric;
     return { message, target: null, index: null, isDuplicate: false };
   }
 
-  const name = readString(error.details, 'error');
-  const index = readIndex(error.details);
+  const index = readIndex(error.params);
 
-  switch (name) {
-    case 'AutomationRuleConflictError':
+  switch (error.code) {
+    case 'AUTOMATION_RULE_CONFLICT':
       return {
         message: copy.duplicateRule,
         target: null,
         index: null,
         isDuplicate: true,
       };
-    case 'AutomationIllegalPairError': {
-      // Both facts come off the body; the sentence is ours so it can name the
-      // remediation the backend has no opinion about.
-      const action = readString(error.details, 'action');
+    case 'AUTOMATION_TRIGGER_ACTION_ILLEGAL': {
+      // The sentence is ours so it can name the remediation the backend has
+      // no opinion about.
+      const action = readString(error.params, 'action');
       return {
-        message:
-          action === null
-            ? error.message
-            : interpolate(copy.illegalPair, { action }),
+        message: action === null ? message : interpolate(copy.illegalPair, { action }),
         target: 'actions',
         index,
         isDuplicate: false,
       };
     }
-    case 'AutomationInvalidActionError':
-      return { message: error.message, target: 'actions', index, isDuplicate: false };
-    case 'AutomationIllegalConditionFieldError':
-    case 'AutomationInvalidConditionError':
-      return { message: error.message, target: 'conditions', index, isDuplicate: false };
-    case 'AutomationStepCountError':
-      return { message: error.message, target: 'actions', index: null, isDuplicate: false };
+    case 'AUTOMATION_ACTION_INVALID':
+      return { message, target: 'actions', index, isDuplicate: false };
+    case 'AUTOMATION_CONDITION_FIELD_ILLEGAL':
+    case 'AUTOMATION_CONDITION_INVALID':
+      return { message, target: 'conditions', index, isDuplicate: false };
+    case 'AUTOMATION_STEP_COUNT_INVALID':
+      return { message, target: 'actions', index: null, isDuplicate: false };
     default:
-      return {
-        message:
-          error.message.length > 0 ? error.message : copy.saveFailedGeneric,
-        target: null,
-        index: null,
-        isDuplicate: false,
-      };
+      return { message, target: null, index: null, isDuplicate: false };
   }
 }

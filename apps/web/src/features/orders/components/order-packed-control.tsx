@@ -31,7 +31,7 @@ import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { renderRich, useMessages } from '../../../shared/i18n';
 import { useMarkPackedMutation } from '../hooks/use-mark-packed-mutation';
-import { serverErrorText } from '../lib/server-error-text';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface OrderPackedControlProps {
   internalOrderId: string;
@@ -49,7 +49,6 @@ export function OrderPackedControl({
   const packWrite = useWriteAccess('orders:write', demoMode);
   const markPacked = useMarkPackedMutation();
   const copy = useMessages('orders').packedControl;
-  const serverSaid = useMessages('orders').common.serverSaid;
 
   const packed = Boolean(packedAt);
 
@@ -66,7 +65,7 @@ export function OrderPackedControl({
         onError: (error: Error) => {
           showToast({
             tone: 'error',
-            description: serverErrorText(serverSaid, error.message, copy.toasts.failed),
+            description: describeApiError(error, 'orders'),
           });
         },
       },

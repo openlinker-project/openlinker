@@ -27,6 +27,7 @@ import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const DEFAULT_CONFIG = JSON.stringify(
   {
@@ -127,8 +128,8 @@ export function CreateConnectionForm(): ReactElement {
     // omitting it cannot go stale.
   }, [watchedPlatformType]);
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : []
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : []
   );
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -165,7 +166,7 @@ export function CreateConnectionForm(): ReactElement {
         {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
         {createConnection.error ? (
           <Alert tone="error" title={copy.errorTitle}>
-            {createConnection.error.message}
+            {describeApiError(createConnection.error, 'connections')}
           </Alert>
         ) : null}
 

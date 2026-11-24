@@ -742,11 +742,14 @@ export interface RoutingRuleInput {
 }
 
 /**
- * PUT /connections/:connectionId/mappings/categories/:sourceCategoryId body —
+ * PUT /connections/:connectionId/mappings/categories/:sourceCategoryId body -
  * the destination (Allegro) category a source (PrestaShop) category maps to.
+ * `:connectionId` is the marketplace the mapping is for.
  * Mirrors the FE `upsertCategoryMapping` payload.
  */
 export interface CategoryMappingInput {
+  /** The master (catalogue) connection that owns the source category (#3993). */
+  sourceConnectionId: string;
   allegroCategoryId: string;
   allegroCategoryName: string;
   allegroCategoryPath?: string;
@@ -1320,6 +1323,35 @@ export interface BuyerEmailDeliveryView {
   suppressionReason: string | null;
   suppressionMessage: string | null;
   createdAt: string;
+}
+
+/** `GET /sales-documents/batches/:connectionId` (#3583). Only what specs read. */
+export interface SalesDocumentBatchOverview {
+  connectionId: string;
+  queueCounts: Record<string, number>;
+  runningRun: SalesDocumentBatchRun | null;
+}
+
+export interface SalesDocumentBatchRun {
+  id: string;
+  status: string;
+  trigger: string;
+  eligibleCount: number;
+  enqueuedCount: number;
+  blockedCount: number;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface SalesDocumentBatchRunDetail {
+  run: SalesDocumentBatchRun;
+  items: Array<{
+    orderId: string;
+    documentKind: string | null;
+    result: string;
+    outcome: string;
+    blockReason: string | null;
+  }>;
 }
 
 /** One row of `GET /orders/:id/document-emails` (#3550) - the fields G06 reads. */

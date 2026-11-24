@@ -57,8 +57,15 @@ import { FiscalRegistrationNotInDoubtException } from '../../domain/exceptions/f
 import { FiscalRegistrationRecordNotFoundException } from '../../domain/exceptions/fiscal-registration-record-not-found.exception';
 import { MissingIdempotencyKeyException } from '../../domain/exceptions/missing-idempotency-key.exception';
 import { MissingFiscalTaxRateException } from '../../domain/exceptions/missing-tax-rate.exception';
-import { isTaxRateEnforced, notifySalesDocumentIssued } from '@openlinker/core/sales-documents';
-import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
+import {
+  attemptRootKey,
+  isTaxRateEnforced,
+  notifySalesDocumentIssued,
+  withAttemptSuffix,
+} from '@openlinker/core/sales-documents';
+import type { DocumentRequestOutcome, SalesDocumentInFlight } from '@openlinker/core/sales-documents';
+import { FiscalRegistrationNotRestartableException } from '../../domain/exceptions/fiscal-registration-not-restartable.exception';
+import { FiscalRegistrationAttemptClosedException } from '../../domain/exceptions/fiscal-registration-attempt-closed.exception';
 import { OrderAlreadyRegisteredException } from '../../domain/exceptions/order-already-registered.exception';
 import { OrderAlreadyHasInvoiceException } from '../../domain/exceptions/order-already-has-invoice.exception';
 import { FiscalRegistrationContendedException } from '../../domain/exceptions/fiscal-registration-contended.exception';
@@ -223,53 +230,115 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       throw new MissingIdempotencyKeyException(cmd.orderId);
     }
 
-    // Read gate FIRST, exactly as `registerLocked` does it. A same-key row is a
-    // resume, not a second originating registration, so the order-level guard
-    // must not be applied to it - a `pending` row whose job died blocks
-    // `blocksFurtherRegistration`, and running the guard here would make the
-    // re-drive below unreachable for the one case it exists to fix.
-    const existing = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
-    if (existing === null || !isResumableUnderSameKey(existing)) {
-      await this.assertRegistrable(cmd.orderId, cmd.connectionId);
+    // The attempt to work on is decided by the LATEST attempt this connection
+    // holds for the order (#3960). A refused attempt is final: asking again must
+    // start the NEXT attempt under its own key, because the provider answers the
+    // refused key with the document it already refused.
+    const latest = await this.repo.findLatestAttempt(cmd.connectionId, cmd.orderId);
+    const target = await this.resolveRequestTarget(cmd, key, latest);
+
+    const payload = toFiscalizationRegisterPayload(
+      { ...cmd, idempotencyKey: target.key },
+      provenance,
+    );
+
+    // Asked BEFORE scheduling, because `schedule` is create-or-return and would
+    // hand back a finished job as though it were this request's - which is
+    // exactly how a retry used to answer 202 and do nothing.
+    const existingJob = await this.syncJobs.findJobByIdempotencyKey(target.key);
+    let jobId: string;
+    let outcome: DocumentRequestOutcome;
+
+    if (existingJob?.status === 'queued' || existingJob?.status === 'running') {
+      jobId = existingJob.id;
+      outcome = 'joined';
+    } else if (existingJob?.status === 'dead') {
+      // A job that exhausted its retries is restarted under the SAME key, which
+      // the write path treats as a resume, so it can never become a second
+      // registration. A `false` means a concurrent request restarted it first.
+      const redriven = await this.syncJobs.requeueDeadByIdempotencyKey(target.key);
+      jobId = existingJob.id;
+      outcome = redriven ? 'redriven' : 'joined';
+    } else if (existingJob) {
+      // The job finished, yet the attempt it was for is unfinished. There is
+      // nothing to join and nothing to restart, so answering 202 would report a
+      // request that did nothing. Refuse instead.
+      throw new FiscalRegistrationNotRestartableException(
+        cmd.orderId,
+        target.recordId ?? target.key,
+      );
+    } else {
+      const job = await this.syncJobs.schedule({
+        jobType: 'fiscalization.register',
+        connectionId: cmd.connectionId,
+        payload: payload as unknown as Record<string, unknown>,
+        idempotencyKey: target.key,
+        maxAttempts: MANUAL_REGISTRATION_RETRY_BUDGET,
+        runAfter: new Date(),
+      });
+      jobId = job.id;
+      outcome = target.resumes ? 'resumed' : 'new-attempt';
     }
-
-    const payload = toFiscalizationRegisterPayload({ ...cmd, idempotencyKey: key }, provenance);
-
-    const job = await this.syncJobs.schedule({
-      jobType: 'fiscalization.register',
-      connectionId: cmd.connectionId,
-      payload: payload as unknown as Record<string, unknown>,
-      idempotencyKey: key,
-      maxAttempts: MANUAL_REGISTRATION_RETRY_BUDGET,
-      runAfter: new Date(),
-    });
-
-    // A job that exhausted its retries is left `dead`, and `schedule` returns
-    // that dead row rather than a fresh one - the key is already taken. Without
-    // this the order would be un-registrable from any surface for good: the
-    // enqueue would keep reporting success and nothing would ever run.
-    // Re-driving re-runs the SAME key against the SAME record, which the write
-    // path treats as a resume, so it can never become a second registration.
-    //
-    // Asked only of a job that IS dead. The re-drive is itself guarded on that
-    // status, so calling it unconditionally was merely a wasted write on the
-    // ordinary path - but it also read as though every request re-drove
-    // something, which is not what happens.
-    const redrivenFromDead =
-      job.status === 'dead' ? await this.syncJobs.requeueDeadByIdempotencyKey(key) : false;
 
     this.logger.log(
       `Fiscal registration requested: orderId=${cmd.orderId} connectionId=${cmd.connectionId} ` +
-        `jobId=${job.id} redrivenFromDead=${String(redrivenFromDead)}`,
+        `jobId=${jobId} attempt=${target.attempt} outcome=${outcome}`,
     );
 
     return {
       orderId: cmd.orderId,
       connectionId: cmd.connectionId,
-      idempotencyKey: key,
-      jobId: job.id,
-      redrivenFromDead,
+      idempotencyKey: target.key,
+      jobId,
+      outcome,
+      attempt: target.attempt,
+      previousAttemptId: target.previousAttemptId,
+      redrivenFromDead: outcome === 'redriven',
     };
+  }
+
+  /**
+   * Which key a request works under, given the latest attempt (#3960).
+   *
+   * - none: the first attempt, under the caller's key.
+   * - `pending` / `registering`: that attempt, resumed under its own key. The
+   *   order-level guard is skipped, because the attempt's own unfinished row is
+   *   exactly what it would refuse.
+   * - refused: the next attempt, under the next key.
+   * - anything else (`registered`, in doubt): refused by the order-level guard.
+   */
+  private async resolveRequestTarget(
+    cmd: RegisterTransactionCommand,
+    rootKey: string,
+    latest: FiscalRegistrationRecord | null,
+  ): Promise<RequestTarget> {
+    if (latest !== null && isResumableUnderSameKey(latest)) {
+      return {
+        key: latest.idempotencyKey,
+        attempt: latest.attempt,
+        previousAttemptId: latest.previousAttemptId,
+        recordId: latest.id,
+        resumes: true,
+      };
+    }
+
+    await this.assertRegistrable(cmd.orderId, cmd.connectionId);
+
+    if (latest === null) {
+      return { key: rootKey, attempt: 0, previousAttemptId: null, recordId: null, resumes: false };
+    }
+    if (latest.isReattemptableFailure) {
+      return {
+        key: nextAttemptKey(latest),
+        attempt: latest.attempt + 1,
+        previousAttemptId: latest.id,
+        recordId: null,
+        resumes: false,
+      };
+    }
+    // The guard refuses every other state; reaching here means it did not, and
+    // the honest answer is still that nothing can be started.
+    throw new FiscalRegistrationNotRestartableException(cmd.orderId, latest.id);
   }
 
   /**
@@ -408,6 +477,18 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     // leaves durable evidence to reconcile against. ADR-005's
     // delete-the-row-on-failure step is deliberately NOT adopted here: deleting
     // on a throw is the blind-resend path, and the row IS the in-doubt evidence.
+    // (3') Link to the refused attempt this one follows (#3960), read under the
+    // per-order lock so the attempt number cannot race. The guard above already
+    // refused every predecessor that is not a final refusal.
+    const predecessor = await this.repo.findLatestAttempt(
+      normalized.connectionId,
+      normalized.orderId,
+    );
+    const link =
+      predecessor?.isReattemptableFailure === true
+        ? { attempt: predecessor.attempt + 1, previousAttemptId: predecessor.id }
+        : {};
+
     let pending: FiscalRegistrationRecord;
     try {
       pending = await this.repo.create({
@@ -418,6 +499,7 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
         providerType: '',
         idempotencyKey: key,
         status: 'pending',
+        ...link,
       });
     } catch (error) {
       // (3a) Create-race: a concurrent same-key call won the unique guard
@@ -486,15 +568,31 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
     connectionId: string,
   ): Promise<FiscalRegistrationProgressView> {
     const now = new Date();
-    const key = fiscalRegistrationIdempotencyKey(connectionId, orderId);
-    // Two reads, because the answer genuinely needs two facts. The record is
-    // absent for the whole window between enqueueing and the job running, and
-    // the job is the only evidence in that window that anything was asked for.
-    const [record, job, inFlight] = await Promise.all([
-      this.repo.findByIdempotencyKey(connectionId, key),
-      this.syncJobs.findJobByIdempotencyKey(key),
+    // Two facts, because the answer genuinely needs both. The record is absent
+    // for the whole window between enqueueing and the job running, and the job
+    // is the only evidence in that window that anything was asked for.
+    const [record, inFlight] = await Promise.all([
+      this.repo.findLatestAttempt(connectionId, orderId),
       this.getInFlightRegistration(orderId),
     ]);
+
+    // After a refusal, the work that matters is the NEXT attempt's job (#3960).
+    // While it waits or runs, its record does not exist yet, so the answer is
+    // the job's - with the refused attempt still returned as the last record.
+    if (record?.isReattemptableFailure === true) {
+      const nextJob = await this.syncJobs.findJobByIdempotencyKey(nextAttemptKey(record));
+      if (nextJob !== null && nextJob.status !== 'succeeded') {
+        const progress = resolveFiscalRegistrationProgress({
+          record: null,
+          job: readJobLiveness(nextJob.status),
+        });
+        return { progress, record, inFlight };
+      }
+    }
+
+    const job = await this.syncJobs.findJobByIdempotencyKey(
+      record?.idempotencyKey ?? fiscalRegistrationIdempotencyKey(connectionId, orderId),
+    );
 
     const progress = resolveFiscalRegistrationProgress({
       record:
@@ -736,17 +834,37 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
       return existing;
     }
 
-    if (existing.status === 'failed' && !existing.isReattemptableFailure) {
+    if (existing.isReattemptableFailure) {
+      // A refusal is final under its key (#3960): the provider keeps the refused
+      // document under it, and a NEW attempt record under a new key is how the
+      // sale is asked for again (see `requestRegistration`). Re-sending here
+      // would also resend an old attempt after a newer one registered.
+      //
+      // Thrown rather than returned, because the caller reaching this arm is a
+      // job enqueued under this key before #3960 (or a duplicate of the job that
+      // was refused). Returning the record would end that job as a plain `ok`,
+      // indistinguishable from one that did its work; the handler maps this to
+      // a terminal `business_failure` instead, and never to a retry.
       this.logger.warn(
-        `Fiscal registration record ${existing.id} failed in doubt ` +
-          `(failureMode=${existing.failureMode ?? 'unknown'}); not auto-re-attempting - ` +
-          `surfaced for reconciliation`,
+        `Fiscal registration record ${existing.id} was refused and is final under its key; ` +
+          `not re-attempting (a new request starts the next attempt)`,
+      );
+      throw new FiscalRegistrationAttemptClosedException(cmd.orderId, existing.id);
+    }
+
+    if (existing.status === 'failed') {
+      // In doubt (or a mode this build cannot read): the sale may already be
+      // registered, so it is surfaced for reconciliation and never re-sent.
+      // Unchanged by #3960 - returned as before.
+      this.logger.warn(
+        `Fiscal registration record ${existing.id} failed ` +
+          `(failureMode=${existing.failureMode ?? 'unknown'}); not re-attempting under its key`,
       );
       return existing;
     }
 
-    // Re-attemptable: `pending`, an expired lease, or a terminal `rejected`
-    // failure. The claim below decides which single attempt proceeds.
+    // Re-attemptable: `pending` or an expired lease. The claim below decides
+    // which single attempt proceeds.
     return this.registerWithAdapter(cmd, existing.id);
   }
 
@@ -993,20 +1111,39 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
  * Mirrors the resume invariant `resumeExisting` enforces, from the outside: a
  * `pending` row was never sent, a `registering` row is either in flight (the
  * repeat is a no-op) or was abandoned by a dead process (the repeat re-claims it
- * under the same key), and a terminally `rejected` failure means the provider
- * definitely created nothing.
+ * under the same key).
  *
- * `registered` and any other failure - `in-doubt` included - are excluded, so a
- * repeat on those falls through to the order-level guard and is refused there.
+ * Every `failed` row is excluded (#3960). A refused one is final under its key
+ * and is followed by a NEW attempt, which the order-level guard allows because a
+ * refusal blocks nothing. `registered` and an in-doubt failure fall through to
+ * that guard and are refused there.
  * That is the point: a request must never be reported as accepted when the sale
  * is already registered, or may be.
  */
 function isResumableUnderSameKey(record: FiscalRegistrationRecord): boolean {
-  return (
-    record.status === 'pending' ||
-    record.status === 'registering' ||
-    record.isReattemptableFailure
+  return record.status === 'pending' || record.status === 'registering';
+}
+
+/**
+ * The key the attempt after a refused `record` is held under (#3960). Derived
+ * from the refused record's own key, so a chain of attempts never mixes roots.
+ */
+function nextAttemptKey(record: FiscalRegistrationRecord): string {
+  return withAttemptSuffix(
+    attemptRootKey(record.idempotencyKey, record.attempt),
+    record.attempt + 1,
   );
+}
+
+/** What a registration request works on (#3960). */
+interface RequestTarget {
+  key: string;
+  attempt: number;
+  previousAttemptId: string | null;
+  /** The record the key already belongs to, or `null` for a new attempt. */
+  recordId: string | null;
+  /** True when the key belongs to an unfinished attempt being picked up again. */
+  resumes: boolean;
 }
 
 

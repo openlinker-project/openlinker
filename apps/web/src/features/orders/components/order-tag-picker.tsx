@@ -48,7 +48,7 @@ import { pickNextColor } from '../lib/order-tag-color';
 import { ORDER_TAG_NAME_MAX_LENGTH } from '../lib/order-tags';
 import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { OrderTagChip } from './order-tag-chip';
-import { serverErrorText } from '../lib/server-error-text';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /** The `<768` band, as the fractional complement of `min-width: 768px` (lessons). */
 const PHONE_QUERY = '(max-width: 767.98px)';
@@ -70,7 +70,6 @@ interface TagPickerPanelProps {
 
 function TagPickerPanel({ internalOrderId, assignedTagIds }: TagPickerPanelProps): ReactElement {
   const copy = useMessages('orders').orderTags.picker;
-  const serverSaid = useMessages('orders').common.serverSaid;
   const plural = usePlural();
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
@@ -95,7 +94,7 @@ function TagPickerPanel({ internalOrderId, assignedTagIds }: TagPickerPanelProps
     showToast({
       tone: 'error',
       title: copy.saveErrorTitle,
-      description: serverErrorText(serverSaid, error.message, copy.saveErrorFallback),
+      description: describeApiError(error, 'orders'),
     });
   }
 
@@ -177,7 +176,7 @@ function TagPickerPanel({ internalOrderId, assignedTagIds }: TagPickerPanelProps
       />
       {createTag.isError ? (
         <Alert tone="error" title={copy.createErrorTitle}>
-          {serverErrorText(serverSaid, createTag.error.message, copy.createErrorFallback)}
+          {describeApiError(createTag.error, 'orders')}
         </Alert>
       ) : null}
       <div

@@ -58,8 +58,9 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { interpolate, renderRich } from '../../../shared/i18n';
+import { renderRich } from '../../../shared/i18n';
 import { useErliMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 type AllegroCredentialSource = 'reuse' | 'manual';
 type AllegroCatalogEnvironment = 'sandbox' | 'production';
@@ -268,10 +269,10 @@ export function ErliCredentialsPanel({ connection }: { connection: Connection })
 
   return (
     <div className="form-grid">
-      {rotate.error ? <Alert tone="error">{rotate.error.message}</Alert> : null}
+      {rotate.error ? <Alert tone="error">{describeApiError(rotate.error, 'erli')}</Alert> : null}
       {updateConfig.error ? (
-        <Alert tone="error">
-          {interpolate(copy.configSaveFailed, { message: updateConfig.error.message })}
+        <Alert tone="error" title={copy.configSaveFailed}>
+          {describeApiError(updateConfig.error, 'erli')}
         </Alert>
       ) : null}
       {validationError ? <Alert tone="error">{validationError}</Alert> : null}

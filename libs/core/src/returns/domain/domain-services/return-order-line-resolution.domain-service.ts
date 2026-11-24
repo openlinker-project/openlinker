@@ -258,3 +258,53 @@ export function resolveReturnLineOrderLine(
   }
   return { status: 'unresolved', reason: byPrice.length === 0 ? 'no-candidate' : 'ambiguous' };
 }
+
+/**
+ * A SUGGESTION for a return line whose automatic resolution stayed ambiguous
+ * (#3933): the same offer appears on several order lines, typically because one
+ * of them sits inside an offer-bundle discount. The automatic pass refuses to
+ * guess; this proposes one candidate and says on what basis, and the operator
+ * confirms it. Nothing here writes.
+ *
+ * Basis, in order: the candidate whose price equals the price the source
+ * reported for the return line (`price-match`, only when exactly one does), else
+ * the candidate with the highest unit price (`highest-price`, the line a full
+ * price return is most likely to belong to; labelled as a guess).
+ */
+export interface ReturnOrderLineSuggestion {
+  candidates: ResolvableOrderLine[];
+  suggestedOrderLineId: string | null;
+  basis: 'price-match' | 'highest-price' | null;
+}
+
+export function suggestReturnLineOrderLine(
+  line: ResolvableReturnLine,
+  orderLines: readonly ResolvableOrderLine[]
+): ReturnOrderLineSuggestion {
+  const identity = normalizeIdentifier(line.sku) ?? normalizeIdentifier(line.offerId);
+  const candidates =
+    identity === null
+      ? []
+      : orderLines.filter((candidate) => normalizeIdentifier(candidate.sku) === identity);
+  if (candidates.length < 2) {
+    return { candidates: [...candidates], suggestedOrderLineId: null, basis: null };
+  }
+
+  const unitPrice =
+    typeof line.unitPrice === 'number' && Number.isFinite(line.unitPrice) ? line.unitPrice : null;
+  if (unitPrice !== null) {
+    const byPrice = candidates.filter((candidate) => samePrice(candidate.price, unitPrice));
+    if (byPrice.length === 1) {
+      return {
+        candidates: [...candidates],
+        suggestedOrderLineId: byPrice[0].id,
+        basis: 'price-match',
+      };
+    }
+  }
+
+  const highest = candidates.reduce((best, candidate) =>
+    candidate.price > best.price ? candidate : best
+  );
+  return { candidates: [...candidates], suggestedOrderLineId: highest.id, basis: 'highest-price' };
+}

@@ -24,8 +24,8 @@ import type { OrderRecord } from '../api/orders.types';
 import { useBulkMarkBuyerNoteReadMutation } from '../hooks/use-bulk-order-actions';
 import { useMessages, usePlural } from '../../../shared/i18n';
 import { bulkNoteRow, splitBuyerNoteCandidates } from '../lib/bulk-order-actions';
-import { readServerReason } from '../lib/order-cancel';
 import { BulkResultRows, type BulkResultRow } from './bulk-result-rows';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface BulkBuyerNoteReadDialogProps {
   open: boolean;
@@ -126,7 +126,7 @@ export function BulkBuyerNoteReadDialog({
         <DialogDescription>{COPY.description}</DialogDescription>
         {mutation.isError ? (
           <Alert tone="error" title={COPY.requestError} data-testid="orders-bulk-read-error">
-            {readServerReason(mutation.error, COPY.requestError)}
+            {describeApiError(mutation.error, 'orders')}
           </Alert>
         ) : null}
         {split.candidates.length === 0 ? (

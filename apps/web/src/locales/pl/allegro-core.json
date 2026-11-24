@@ -15,8 +15,7 @@
     "eyebrow": "Powrót OAuth",
     "failed": {
       "title": "Autoryzacja nie powiodła się",
-      "tryAgain": "Spróbuj ponownie",
-      "unknown": "Nieznany błąd"
+      "tryAgain": "Spróbuj ponownie"
     },
     "invalid": {
       "message": "W odpowiedzi autoryzacyjnej brakuje wymaganych parametrów. Może się tak zdarzyć po bezpośrednim wejściu na tę stronę.",

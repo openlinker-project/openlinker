@@ -10,6 +10,7 @@
  * @module apps/web/src/pages/ai-provider-settings
  */
 import type { ReactElement } from 'react';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { useSession } from '../../shared/auth/use-session';
 import { useMessages } from '../../shared/i18n';
 import { Alert } from '../../shared/ui/alert';
@@ -43,7 +44,7 @@ export function AiProviderSettingsPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={query.error instanceof Error ? query.error.message : copy.unknownError}
+          message={describeApiError(query.error, 'ai-provider-settings')}
           action={
             <Button tone="secondary" onClick={() => void query.refetch()}>
               {copy.retry}

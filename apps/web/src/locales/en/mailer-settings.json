@@ -29,8 +29,7 @@
       "console": "Console (log only, no email sent)",
       "smtp": "SMTP"
     },
-    "transportLabel": "Transport",
-    "unknownError": "Unknown error"
+    "transportLabel": "Transport"
   },
   "mailerSettingsFormSchema": {
     "fromInvalid": "Enter a valid email address, optionally with a display name (e.g. \"OpenLinker <noreply@example.com>\")",
@@ -49,7 +48,7 @@
     "eyebrow": "Outbound mail",
     "fromLabel": "From address",
     "hostLabel": "Host",
-    "loadError": "Could not load mailer settings: {message}",
+    "loadError": "Could not load mailer settings.",
     "loading": "Loading mailer settings…",
     "notSet": "Not set",
     "passwordLabel": "SMTP password",

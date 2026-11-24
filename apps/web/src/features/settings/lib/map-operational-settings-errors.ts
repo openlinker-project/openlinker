@@ -6,18 +6,60 @@
  * range" over five controls asks the operator to find the offending one, and
  * they are the person least equipped to.
  *
- * Every message the API can return for this surface begins with the field
- * name — both `class-validator`'s (`catalogueSweepBudget must not be greater
- * than 2000`) and the domain error's (`deletionAuditCadence must fire at
- * least once every 7 days...`), which is what makes prefix matching sound
- * rather than a guess. Anything that matches nothing is returned as a
- * form-level message instead of being dropped: an unattributed error is still
- * an error, and swallowing it is worse than showing it once at the top.
+ * A validation refusal names each invalid field by its path into the request
+ * body (#3861), and the domain refusal (`OPERATIONAL_SETTING_INVALID`) names
+ * its field in `params.field`, so routing a message to its control is a match
+ * on a name rather than a guess. When the domain refusal also names the rule
+ * the value broke and its limit (#3866), the sentence says that, with the
+ * setting's own reason; otherwise it comes from the shared error copy, in the
+ * operator's language either way. Anything that names no known field is
+ * returned as a form-level message instead of being dropped: an unattributed
+ * error is still an error, and swallowing it is worse than showing it once at
+ * the top.
  *
  * @module apps/web/src/features/settings/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { describeFieldError } from '../../../shared/api/apply-field-errors';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { OperationalSettingField } from '../api/operational-settings.types';
+
+/** The rules the API names on `OPERATIONAL_SETTING_INVALID`, to their copy key. */
+const RULE_COPY_KEY = {
+  'not-a-number': 'notANumber',
+  min: 'min',
+  absolute: 'absolute',
+  recommended: 'recommended',
+  'cadence-format': 'cadenceFormat',
+  'cadence-invalid': 'cadenceInvalid',
+  'cadence-too-rare': 'cadenceTooRare',
+} as const;
+
+function isKnownRule(rule: unknown): rule is keyof typeof RULE_COPY_KEY {
+  return typeof rule === 'string' && Object.prototype.hasOwnProperty.call(RULE_COPY_KEY, rule);
+}
+
+/**
+ * The refusal phrased from its rule and limit, with the setting's reason after
+ * an absolute or recommended ceiling. `null` when the error carries no rule
+ * this build knows, so the caller falls back to the shared copy.
+ */
+function describeRuleBreach(error: ApiError, field: OperationalSettingField): string | null {
+  if (error.code !== 'OPERATIONAL_SETTING_INVALID') return null;
+  const { rule, limit } = error.params;
+  if (!isKnownRule(rule)) return null;
+  const page = getMessages('settings').operationalSettingsPage;
+  const template = page.fieldErrors[RULE_COPY_KEY[rule]];
+  const needsLimit = rule === 'min' || rule === 'absolute' || rule === 'recommended';
+  if (needsLimit && typeof limit !== 'number') return null;
+  const sentence = interpolate(template, { limit: typeof limit === 'number' ? limit : '' });
+  const reasons: Partial<Record<string, { recommended: string; absolute: string }>> =
+    page.boundReasons;
+  const reason =
+    rule === 'absolute' || rule === 'recommended' ? reasons[field]?.[rule] : undefined;
+  return reason ? `${sentence} ${reason}` : sentence;
+}
 
 const FIELDS: readonly OperationalSettingField[] = [
   'catalogueSweepBudget',
@@ -42,24 +84,8 @@ export const NO_OPERATIONAL_SETTINGS_ERRORS: OperationalSettingsErrors = {
   formErrors: [],
 };
 
-function readMessages(error: unknown): string[] {
-  if (error instanceof ApiError) {
-    const details = error.details;
-    if (typeof details === 'object' && details !== null && 'message' in details) {
-      const raw = (details as { message: unknown }).message;
-      if (Array.isArray(raw)) {
-        return raw.map((entry) => String(entry));
-      }
-      if (typeof raw === 'string') {
-        return [raw];
-      }
-    }
-    return [error.message];
-  }
-  if (error instanceof Error) {
-    return [error.message];
-  }
-  return [];
+function fieldFor(path: string): OperationalSettingField | undefined {
+  return FIELDS.find((candidate) => path === candidate || path.startsWith(`${candidate}.`));
 }
 
 export function mapOperationalSettingsErrors(error: unknown): OperationalSettingsErrors {
@@ -70,18 +96,31 @@ export function mapOperationalSettingsErrors(error: unknown): OperationalSetting
   const fieldErrors: Partial<Record<OperationalSettingField, string>> = {};
   const formErrors: string[] = [];
 
-  for (const message of readMessages(error)) {
-    const field = FIELDS.find((candidate) => message.includes(candidate));
-    if (field === undefined) {
-      formErrors.push(message);
-      continue;
+  if (error instanceof ApiError && error.fields.length > 0) {
+    for (const field of error.fields) {
+      const target = fieldFor(field.path);
+      if (target === undefined) {
+        formErrors.push(describeFieldError(field));
+        continue;
+      }
+      // First message per field wins — a second one for the same control would
+      // replace a specific complaint with a generic one.
+      if (fieldErrors[target] === undefined) {
+        fieldErrors[target] = describeFieldError(field);
+      }
     }
-    // First message per field wins — a second one for the same control would
-    // replace a specific complaint with a generic one.
-    if (fieldErrors[field] === undefined) {
-      fieldErrors[field] = message;
-    }
+    return { fieldErrors, formErrors };
   }
 
+  const named = error instanceof ApiError ? error.params.field : undefined;
+  const target = typeof named === 'string' ? fieldFor(named) : undefined;
+  const sentence =
+    (error instanceof ApiError && target !== undefined ? describeRuleBreach(error, target) : null) ??
+    describeApiError(error, 'settings');
+  if (target === undefined) {
+    formErrors.push(sentence);
+  } else {
+    fieldErrors[target] = sentence;
+  }
   return { fieldErrors, formErrors };
 }

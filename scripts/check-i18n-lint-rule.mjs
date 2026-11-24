@@ -188,6 +188,66 @@ if (resolved && isOn(resolved.rules?.[LITERAL_RULE]) && isOn(resolved.rules?.[SY
   }
 }
 
+// 4. The API error guard (#3867, API_ERROR_MESSAGE_SYNTAX). It rides in the
+// same rule, so a later override that replaces no-restricted-syntax silences it
+// exactly as it would the JSX-child selectors. Checked on a real .ts and .tsx in
+// every folder it covers, then on fixtures through the resolved options.
+const isApiMessageSelector = (s) => s.includes("property.name='message'");
+let apiSyntax = null;
+for (const folder of ['app', 'features', 'pages', 'plugins', 'shared/ui']) {
+  for (const ext of ['.tsx', '.ts']) {
+    const prefix = `apps/web/src/${folder}/`;
+    const sample = webFiles.find(
+      (f) =>
+        f.startsWith(prefix) &&
+        f.endsWith(ext) &&
+        !/\.(test|copy)\.tsx?$/.test(f) &&
+        !f.endsWith('.d.ts') &&
+        !f.startsWith('apps/web/src/pages/dev-ui/'),
+    );
+    if (!sample) continue;
+    const config = await eslint.calculateConfigForFile(join(ROOT, sample));
+    const syntax = config.rules?.[SYNTAX_RULE];
+    const selectors = Array.isArray(syntax) ? syntax.slice(1).map((o) => o.selector ?? '') : [];
+    if (!isOn(syntax) || selectors.filter(isApiMessageSelector).length < 2) {
+      fail(`the API error guard (API_ERROR_MESSAGE_SYNTAX) is not active for ${sample}`);
+    } else if (apiSyntax === null) {
+      apiSyntax = syntax;
+    }
+  }
+}
+const apiFixtures = [
+  { name: 'a query error message', fires: true, code: 'export const f = (query: { error: Error }): string => query.error.message;' },
+  { name: 'a caught error message', fires: true, code: 'export const f = (error: Error): string => error.message;' },
+  { name: 'a named error message', fires: true, code: 'export const f = (saveError: Error): string => saveError.message;' },
+  { name: 'a copy object', fires: false, code: 'export const f = (copy: { error: { message: string } }): string => copy.error.message;' },
+  { name: 'a form field error', fires: false, code: 'export const f = (fieldError: { message: string }): string => fieldError.message;' },
+  { name: 'a field state error', fires: false, code: 'export const f = (fieldState: { error: { message: string } }): string => fieldState.error.message;' },
+];
+if (apiSyntax !== null) {
+  const linter = new ESLint({
+    cwd: ROOT,
+    useEslintrc: false,
+    baseConfig: {
+      parser: '@typescript-eslint/parser',
+      parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },
+      rules: { [SYNTAX_RULE]: apiSyntax },
+    },
+  });
+  for (const fixture of apiFixtures) {
+    const [result] = await linter.lintText(fixture.code, { filePath: join(ROOT, 'fixture.ts') });
+    const fatal = result.messages.find((m) => m.fatal);
+    if (fatal) {
+      fail(`API error guard, ${fixture.name}: could not parse (${fatal.message})`);
+      continue;
+    }
+    const fired = result.messages.some((m) => m.ruleId === SYNTAX_RULE && m.message.includes('describeApiError'));
+    if (fired !== fixture.fires) {
+      fail(`API error guard, ${fixture.name}: expected it to ${fixture.fires ? 'fire' : 'stay quiet'}, it did not`);
+    }
+  }
+}
+
 if (failures.length > 0) {
   console.error('✗ check-i18n-lint-rule:\n');
   for (const f of failures) console.error(`  ${f}`);
@@ -195,5 +255,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `✓ check-i18n-lint-rule: ${globs(override.files).length} files glob(s) match, the rule is on for ${realFile} and off for tests and copy, ${fixtures.length} fixtures behave.`,
+  `✓ check-i18n-lint-rule: ${globs(override.files).length} files glob(s) match, the rule is on for ${realFile} and off for tests and copy, ${fixtures.length} fixtures behave; the API error guard is active and ${apiFixtures.length} of its fixtures behave.`,
 );

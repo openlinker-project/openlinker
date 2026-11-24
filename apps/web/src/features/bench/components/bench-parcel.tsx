@@ -74,7 +74,8 @@
  *
  * @module apps/web/src/features/bench/components
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactElement } from 'react';
+import { bundleBlockingClose, bundleGroups, clusterBundleLines } from '../lib/bench-bundle-groups';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -126,6 +127,7 @@ import { BenchSourceChange } from './bench-source-change';
 import { useBenchSourceChangeTakenOutMutation } from '../hooks/use-bench-source-change-taken-out-mutation';
 import { BenchParcelLineRow } from './bench-parcel-line';
 import { BenchScanDock } from './bench-scan-dock';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface BenchParcelProps {
   readonly workId: string;
@@ -226,6 +228,7 @@ export function BenchParcelView({
    */
   const [pickedLineId, setPickedLineId] = useState<string | null>(null);
   const layout = useBenchLayout();
+  const bundleCopy = useMessages('bundles');
 
   /**
    * H2's in-flight ledger: line id → gestures sent and unanswered.
@@ -595,7 +598,7 @@ export function BenchParcelView({
     return (
       <ErrorState
         title={copy.errors.loadTitle}
-        message={query.error?.message ?? ''}
+        message={query.error ? describeApiError(query.error, 'bench') : ''}
         action={
           <Button
             tone="secondary"
@@ -657,9 +660,14 @@ export function BenchParcelView({
    * cache's own array. A line with no bin sorts last rather than first, so
    * turning the control on never buries the items that do have one.
    */
-  const orderedLines = groupByBin
-    ? [...parcel.lines].sort((a, b) => (a.binCode ?? '\uffff').localeCompare(b.binCode ?? '\uffff'))
-    : parcel.lines;
+  // #3624 - components of one bundle stay together whichever order was chosen.
+  const orderedLines = clusterBundleLines(
+    groupByBin
+      ? [...parcel.lines].sort((a, b) => (a.binCode ?? '\uffff').localeCompare(b.binCode ?? '\uffff'))
+      : parcel.lines,
+  );
+  const bundleGroupByLine = new Map(bundleGroups(parcel.lines).map((group) => [group.lineId, group]));
+  const blockingBundle = bundleBlockingClose(parcel.lines);
   const progressPercent =
     totals.required === 0 ? 100 : Math.round((totals.verified / totals.required) * 100);
   /**
@@ -1107,8 +1115,47 @@ export function BenchParcelView({
             </span>
             <span />
           </div>
-          <ul className="bench-parcel__lines">
-            {orderedLines.map((line) => (
+          {/* #3624 - the only thing keeping the parcel open is a bundle with a
+              component missing. The box still closes by itself on the system's
+              count; this says why it has not, in plain words. */}
+          {blockingBundle === null ? null : (
+            <Alert
+              tone="warning"
+              title={bundleCopy.bench.missingTitle}
+              data-testid="bench-component-missing-alert"
+            >
+              <span data-testid="bench-missing-detail">
+                {interpolate(bundleCopy.bench.missingDetail, {
+                  name: blockingBundle.name ?? bundleCopy.bench.bundleFallbackName,
+                  total: blockingBundle.lines.length,
+                  done: blockingBundle.lines.length - blockingBundle.missingNames.length,
+                  missing: blockingBundle.missingNames.join(', '),
+                })}
+              </span>
+            </Alert>
+          )}
+          <ul className="bench-parcel__lines" data-testid="bench-lines">
+            {orderedLines.map((line, lineIndex) => (
+              <Fragment key={line.workLineId}>
+                {line.bundle && orderedLines[lineIndex - 1]?.bundle?.lineId !== line.bundle.lineId ? (
+                  <li
+                    className="bench-parcel__bundle-head"
+                    data-testid="bench-bundle-group"
+                    style={{ listStyle: 'none', padding: 'var(--space-2) var(--space-3)', background: 'var(--bg-surface-muted)', display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}
+                  >
+                    <span data-testid="bench-bundle-header">
+                      {interpolate(bundleCopy.bench.bundleHeader, {
+                        name: line.bundle.name ?? bundleCopy.bench.bundleFallbackName,
+                      })}
+                    </span>
+                    <span className="text-muted" data-testid="bench-bundle-progress">
+                      {interpolate(bundleCopy.bench.bundleProgress, {
+                        done: bundleGroupByLine.get(line.bundle.lineId)?.done ?? 0,
+                        total: bundleGroupByLine.get(line.bundle.lineId)?.total ?? 0,
+                      })}
+                    </span>
+                  </li>
+                ) : null}
               <BenchParcelLineRow
                 key={line.workLineId}
                 line={line}
@@ -1126,6 +1173,7 @@ export function BenchParcelView({
                   submit(target, gesture.gestureId, sequence.current);
                 }}
               />
+              </Fragment>
             ))}
           </ul>
         </div>
@@ -1139,7 +1187,12 @@ export function BenchParcelView({
           per document whether it is ready, so an open box is never told a
           label exists that does not — nor told an open box is closed. */}
       {canWrite ? (
-        <BenchDocumentsPanel workId={workId} unitsPacked={totals.verified} closed={closed} />
+        <BenchDocumentsPanel
+          workId={workId}
+          unitsPacked={totals.verified}
+          closed={closed}
+          route={parcel.route}
+        />
       ) : null}
 
       {/* #3411 (epic #3401). Rendered on every state — activity happened

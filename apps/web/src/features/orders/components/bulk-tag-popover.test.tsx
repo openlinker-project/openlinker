@@ -11,6 +11,8 @@ import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BulkTagPopover } from './bulk-tag-popover';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -121,7 +123,9 @@ describe('BulkTagPopover (#3532/#3533)', () => {
   });
 
   it('should surface a failure as an error toast when bulk-assign fails', async () => {
-    const bulkAssignTag = vi.fn().mockRejectedValue(new Error('Tag not found'));
+    const bulkAssignTag = vi
+      .fn()
+      .mockRejectedValue(new ApiError('Tag not found', 404, { code: 'ORDER_TAG_NOT_FOUND' }));
     renderMenu({ bulkAssignTag });
     const user = userEvent.setup();
     await openMenu(user);
@@ -129,7 +133,9 @@ describe('BulkTagPopover (#3532/#3533)', () => {
     await user.click(screen.getByRole('menuitem', { name: /Fragile/ }));
 
     expect(await findToastTitle('Tag not added')).toBeInTheDocument();
-    expect(await findToastDescription('The server said: Tag not found')).toBeInTheDocument();
+    expect(
+      await findToastDescription(getMessages('errors').codes.ORDER_TAG_NOT_FOUND),
+    ).toBeInTheDocument();
   });
 
   it('should offer "Manage tags" only when the caller is an admin', async () => {

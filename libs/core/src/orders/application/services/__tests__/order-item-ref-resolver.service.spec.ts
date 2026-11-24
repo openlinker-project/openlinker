@@ -40,7 +40,7 @@ describe('OrderItemRefResolverService', () => {
   let identifierMapping: jest.Mocked<IIdentifierMappingService>;
   // Only the products-service method the SUT actually calls — keeps the mock
   // surface tight per #718 review.
-  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getProduct'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getProduct' | 'getVariantsByProductId' | 'getVariantsBySkus'>>;
   let service: OrderItemRefResolverService;
 
   beforeEach(() => {
@@ -57,6 +57,8 @@ describe('OrderItemRefResolverService', () => {
     productsService = {
       getVariant: jest.fn(),
       getProduct: jest.fn(),
+      getVariantsByProductId: jest.fn().mockResolvedValue([]),
+      getVariantsBySkus: jest.fn().mockResolvedValue([]),
     };
 
     service = new OrderItemRefResolverService(
@@ -176,6 +178,28 @@ describe('OrderItemRefResolverService', () => {
       ).rejects.toBeInstanceOf(StaleOrderItemError);
     });
 
+    it('throws StaleOrderItemError when an unmapped sku matches a stale catalogue variant (deleted Shopify variant)', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce(null);
+      productsService.getVariantsBySkus.mockResolvedValueOnce([
+        makeStaleVariant('ol_variant_1', 'ol_product_1'),
+      ]);
+
+      await expect(
+        service.resolve(connectionId, { type: 'sku', externalId: 'SKU-1' })
+      ).rejects.toBeInstanceOf(StaleOrderItemError);
+    });
+
+    it('keeps the missing-mapping error when an unmapped sku matches only a live variant', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce(null);
+      productsService.getVariantsBySkus.mockResolvedValueOnce([
+        makeVariant('ol_variant_1', 'ol_product_1'),
+      ]);
+
+      await expect(
+        service.resolve(connectionId, { type: 'sku', externalId: 'SKU-1' })
+      ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+    });
+
     it('tryResolve surfaces a stale variant as resolved=false with a message-rich reason', async () => {
       identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
       productsService.getVariant.mockResolvedValueOnce(
@@ -212,6 +236,78 @@ describe('OrderItemRefResolverService', () => {
         }
       }
     );
+  });
+
+  describe('lone-variant precedence for product-only refs', () => {
+    it('should resolve a product ref to its lone variant when the product has exactly one', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_product_1');
+      productsService.getVariantsByProductId.mockResolvedValueOnce([
+        makeVariant('ol_variant_1', 'ol_product_1'),
+      ]);
+
+      await expect(
+        service.resolve(connectionId, { type: 'product', externalId: 'p-1' })
+      ).resolves.toEqual({ internalProductId: 'ol_product_1', internalVariantId: 'ol_variant_1' });
+    });
+
+    it('should stay product-level when the product has several variants', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_product_1');
+      productsService.getVariantsByProductId.mockResolvedValueOnce([
+        makeVariant('ol_variant_1', 'ol_product_1'),
+        makeVariant('ol_variant_2', 'ol_product_1'),
+      ]);
+
+      await expect(
+        service.resolve(connectionId, { type: 'product', externalId: 'p-1' })
+      ).resolves.toEqual({ internalProductId: 'ol_product_1' });
+    });
+
+    it('should throw StaleOrderItemError when the lone variant is stale', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_product_1');
+      productsService.getVariantsByProductId.mockResolvedValueOnce([
+        makeStaleVariant('ol_variant_1', 'ol_product_1'),
+      ]);
+
+      await expect(
+        service.resolve(connectionId, { type: 'product', externalId: 'p-1' })
+      ).rejects.toBeInstanceOf(StaleOrderItemError);
+    });
+
+    it('should resolve a sku ref that maps to a product to its lone variant', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_product_1');
+      productsService.getVariant.mockResolvedValueOnce(null);
+      productsService.getVariantsByProductId.mockResolvedValueOnce([
+        makeVariant('ol_variant_1', 'ol_product_1'),
+      ]);
+
+      await expect(
+        service.resolve(connectionId, { type: 'sku', externalId: 'SKU-2' })
+      ).resolves.toEqual({ internalProductId: 'ol_product_1', internalVariantId: 'ol_variant_1' });
+    });
+
+    it('should resolve a product ref reached through the publish record to its lone variant', async () => {
+      identifierMapping.getInternalId
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('ol_product_9');
+      productsService.getVariant.mockResolvedValueOnce(null);
+      productsService.getProduct.mockResolvedValueOnce(makeProduct('ol_product_9'));
+      productsService.getVariantsByProductId.mockResolvedValueOnce([
+        makeVariant('ol_variant_9', 'ol_product_9'),
+      ]);
+
+      await expect(
+        service.resolve(connectionId, { type: 'product', externalId: 'wc-79' })
+      ).resolves.toEqual({ internalProductId: 'ol_product_9', internalVariantId: 'ol_variant_9' });
+    });
+
+    it('should not load variants when an offer ref already resolves a variant', async () => {
+      identifierMapping.getInternalId.mockResolvedValueOnce('ol_variant_1');
+      productsService.getVariant.mockResolvedValueOnce(makeVariant('ol_variant_1', 'ol_product_1'));
+
+      await service.resolve(connectionId, { type: 'offer', externalId: 'o-1' });
+
+      expect(productsService.getVariantsByProductId).not.toHaveBeenCalled();
+    });
   });
 
   describe('tryResolve', () => {

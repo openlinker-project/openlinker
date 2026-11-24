@@ -16,16 +16,13 @@
  * @module apps/api/src/sales-documents/http
  */
 import {
-  BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
   Put,
@@ -58,6 +55,7 @@ import { SalesDocumentThresholdResponseDto } from './dto/sales-document-threshol
 import { SalesDocumentCountrySummaryResponseDto } from './dto/sales-document-country-summary-response.dto';
 import { SalesDocumentCountryAcknowledgmentResponseDto } from './dto/sales-document-country-acknowledgment-response.dto';
 import { SalesDocumentCapabilityGuardService } from '../sales-document-capability-guard.service';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @Roles('admin')
 @ApiBearerAuth()
@@ -74,7 +72,7 @@ export class SalesDocumentRulesController {
   @ApiOperation({ summary: 'List sales-document rules for one country (or Rest of world, "*")' })
   @ApiQuery({ name: 'country', required: true })
   @ApiResponse({ status: 200, type: [SalesDocumentRuleResponseDto] })
-  async listRules(@Query('country') country: string): Promise<SalesDocumentRuleResponseDto[]> {
+  async listRules(@Query('country') country: string | undefined): Promise<SalesDocumentRuleResponseDto[]> {
     this.assertValidCountryParam(country);
     const rules = await this.service.listRules(country);
     return rules.map((rule) => SalesDocumentRuleResponseDto.fromDomain(rule));
@@ -284,32 +282,62 @@ export class SalesDocumentRulesController {
    * otherwise surface an oversized value as a raw DB error (500) rather than
    * a clean 400.
    */
-  private assertValidCountryParam(country: string): void {
-    if (country.length < 1 || country.length > 8) {
-      throw new BadRequestException(
+  private assertValidCountryParam(country: string | undefined): asserts country is string {
+    // A missing query param arrives as undefined, not as an empty string.
+    if (typeof country !== 'string' || country.length < 1 || country.length > 8) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'VALIDATION_FAILED',
         `'country' must be between 1 and 8 characters (ISO 3166-1 alpha-2, or '*' for Rest of world).`,
+        undefined,
+        { fields: [{ path: 'country', code: 'isLength' }] },
       );
     }
   }
 
   private toHttpException(error: unknown): Error {
     if (error instanceof SalesDocumentRuleConflictException) {
-      return new ConflictException(error.message);
+      return codedHttpError(HttpStatus.CONFLICT, 'SALES_DOCUMENT_RULE_CONFLICT', error.message, {
+        ruleId: error.conflictingRuleId,
+        connectionId: error.conflictingConnectionId,
+      });
     }
     if (error instanceof SalesDocumentCountryAlreadyConfiguredException) {
-      return new ConflictException(error.message);
+      return codedHttpError(
+        HttpStatus.CONFLICT,
+        'SALES_DOCUMENT_COUNTRY_ALREADY_CONFIGURED',
+        error.message,
+        { country: error.country },
+      );
     }
-    if (
-      error instanceof SalesDocumentThresholdNotFoundException ||
-      error instanceof SalesDocumentInvalidConditionException
-    ) {
-      return new BadRequestException(error.message);
+    if (error instanceof SalesDocumentThresholdNotFoundException) {
+      return codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'SALES_DOCUMENT_THRESHOLD_NOT_FOUND',
+        error.message,
+        { thresholdRef: error.thresholdRef },
+      );
     }
-    if (
-      error instanceof SalesDocumentRuleNotFoundException ||
-      error instanceof SalesDocumentCountryDefaultNotFoundException
-    ) {
-      return new NotFoundException(error.message);
+    if (error instanceof SalesDocumentInvalidConditionException) {
+      return codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'SALES_DOCUMENT_CONDITION_MALFORMED',
+        error.message,
+        { conditionIndex: error.conditionIndex },
+      );
+    }
+    if (error instanceof SalesDocumentRuleNotFoundException) {
+      return codedHttpError(HttpStatus.NOT_FOUND, 'SALES_DOCUMENT_RULE_NOT_FOUND', error.message, {
+        ruleId: error.ruleId,
+      });
+    }
+    if (error instanceof SalesDocumentCountryDefaultNotFoundException) {
+      return codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'SALES_DOCUMENT_COUNTRY_DEFAULT_NOT_FOUND',
+        error.message,
+        { defaultId: error.defaultId },
+      );
     }
     return error instanceof Error ? error : new Error(String(error));
   }

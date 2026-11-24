@@ -476,6 +476,82 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
       await expect(adapter.createOrder(order)).rejects.toThrow('Failed to create PrestaShop order');
     });
 
+    it('should keep the original module failure as the cause when wrapping an order create error (#3984)', async () => {
+      const order = createTestOrder();
+      const externalCustomerId = '42';
+      const externalProductId1 = '100';
+      const externalProductId2 = '200';
+      const externalVariantId = '300';
+
+      mockIdentifierMapping.getExternalIds = jest
+        .fn()
+        .mockImplementation((entityType, internalId) => {
+          if (entityType === 'Customer' && internalId === 'internal-customer-123') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalCustomerId,
+                entityType: 'Customer',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-456') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId1,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'Product' && internalId === 'internal-product-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalProductId2,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          if (entityType === 'ProductVariant' && internalId === 'internal-variant-789') {
+            return Promise.resolve([
+              {
+                connectionId: connection.id,
+                externalId: externalVariantId,
+                entityType: 'Product',
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        });
+
+      // Mock cart + specific_prices to succeed; the order INSERT
+      // (importOrder / validateOrder) fails.
+      const createdCart = { id: '123' };
+      mockHttpClient.createResource = jest.fn().mockImplementation((resource: string) => {
+        if (resource === 'carts') {
+          return Promise.resolve(createdCart);
+        }
+        if (resource === 'specific_prices') {
+          return Promise.resolve({ id: 'sp_test' });
+        }
+        return Promise.reject(new Error(`Unexpected resource: ${resource}`));
+      });
+      // The OL module import fails — a plain Error is wrapped by the outer
+      // catch into PrestashopApiException ("Failed to create PrestaShop order").
+      mockOpenLinkerModuleClient.importOrder = jest
+        .fn()
+        .mockRejectedValue(new PrestashopOlModuleException(connection.id, 123, 429, 'http-429'));
+
+      const error = await adapter.createOrder(order).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(PrestashopApiException);
+      expect((error as Error).cause).toBeInstanceOf(PrestashopOlModuleException);
+      expect(((error as Error).cause as PrestashopOlModuleException).status).toBe(429);
+    });
+
     it('should use created order reference if order number not provided', async () => {
       const order = createTestOrder({ orderNumber: undefined });
       const externalCustomerId = '42';
@@ -619,6 +695,44 @@ describe('PrestashopOrderProcessorManagerAdapter — createOrder', () => {
 
         // Pins are cleaned up after the order is created.
         expect(mockHttpClient.deleteResource).toHaveBeenCalledWith('specific_prices', 'sp_test');
+      });
+
+      it('pins one quantity-weighted price for a gift of a product the buyer also paid for', async () => {
+        arrange();
+        (mockTaxRateResolver.resolveProductTaxRate as jest.Mock).mockResolvedValue({
+          kind: 'resolved',
+          rate: 0.23,
+          matchedBy: 'catch-all',
+        });
+
+        await adapter.createOrder(
+          createTestOrder({
+            items: [
+              { id: 'paid', productId: 'internal-product-789', quantity: 1, price: 49.99, sku: 'P' },
+              {
+                id: 'gift',
+                productId: 'internal-product-789',
+                quantity: 1,
+                price: 0,
+                sku: 'P',
+                gift: { source: 'cart-rule', ruleRef: '1' },
+              },
+            ],
+            totals: {
+              subtotal: 49.99,
+              tax: 0,
+              shipping: 5.0,
+              total: 54.99,
+              currency: 'EUR',
+              taxTreatment: 'inclusive',
+            },
+          })
+        );
+
+        const pins = createCalls().filter((c) => c[0] === 'specific_prices');
+        // One cart row, one pin: gross 49.99 over 2 units, so no unit is pinned at 0.
+        expect(pins).toHaveLength(1);
+        expect(pins[0][1].price).toBe((49.99 / 2 / 1.23).toFixed(6));
       });
 
       // #2597: a module that advertises `line_prices` pins the whole set inside

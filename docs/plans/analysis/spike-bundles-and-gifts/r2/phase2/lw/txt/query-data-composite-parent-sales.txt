@@ -1,0 +1,29 @@
+=== query-data-composite-parent-sales | Query Data: Composite Parent Sales History
+ 
+ Query Data: Composite Parent Sales History 
+ Composite Parent Sales History
+ The Composite Parent Sales History report returns a list of composite parent items and a number of processed orders they have been included in for a certain amount of days.
+ Selection criteria
+ Linnworks includes items in the report based on the following criteria.
+ Parameters 
+ Use the parameters below to configure this report:
+ The number of days : The number of days you wish to get the report for based on the date the order was placed on the sales channel, up to 30 days . 
+ Rules 
+ This is the internal logic applied by the system to extract only those records that fulfill the specified criteria.
+ Only composite parents are included in the report.
+ How to generate the report: a step-by-step guide
+ Select the  Composite Parent Sales History report in the Query type drop-down menu. 
+Enter Number of days .
+ Click the   Generate Report button. This will generate and pre-load the report on the screen. 
+Click the   Download (CSV file)  button when you need to download the report.
+ Reported values
+ The following values are returned by the report:
+ Column Name 
+ Description 
+ Item Number 
+ The Linnworks stock item number of the parent item.
+ Parent Title 
+ The Linnworks stock item title of the parent item.
+ Orders 
+ The number of orders the parent item was included in.
+ 

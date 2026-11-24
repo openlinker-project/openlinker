@@ -30,13 +30,23 @@ import {
   AVAILABILITY_SERVICE_TOKEN,
 } from '@openlinker/core/inventory';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import { IProductsService, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  IProductsService,
+  PRODUCTS_SERVICE_TOKEN,
+  type IBundleDefinitionService,
+} from '@openlinker/core/products';
 import {
   IOrderRoutingRetryService,
   ORDER_ROUTING_RETRY_SERVICE_TOKEN,
 } from '@openlinker/core/orders';
 
 type SyncJob = SyncJobEntity;
+import {
+  LISTING_SALE_STATUS_SERVICE_TOKEN,
+  type IListingSaleStatusService,
+  type ListingRef,
+} from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -78,7 +88,11 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
     @Inject(AVAILABILITY_SERVICE_TOKEN)
     private readonly availabilityService: IAvailabilityService,
     @Inject(ORDER_ROUTING_RETRY_SERVICE_TOKEN)
-    private readonly orderRoutingRetry: IOrderRoutingRetryService
+    private readonly orderRoutingRetry: IOrderRoutingRetryService,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService,
+    @Inject(LISTING_SALE_STATUS_SERVICE_TOKEN)
+    private readonly listingSaleStatus: IListingSaleStatusService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -196,7 +210,10 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       const mappingTargetId = payload.variantId || payload.productId;
       const offerMappings = variantIsStale
         ? []
-        : await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Offer, mappingTargetId);
+        : await this.withoutHeld(
+            'Offer',
+            await this.identifierMapping.getExternalIds(CORE_ENTITY_TYPE.Offer, mappingTargetId)
+          );
 
       if (variantIsStale) {
         this.logger.warn(
@@ -223,9 +240,12 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
               mapping,
               promisableQuantity,
               // Include write-event token to avoid suppressing legitimate
-              // quantity oscillations (e.g. 5->6->5).
-              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}`,
-              payload.inventoryUpdatedAt
+              // quantity oscillations (e.g. 5->6->5). The offer id is part of the
+              // key: two offers mapped to one variant on a connection would
+              // otherwise share a key and the second update be deduplicated.
+              `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}:offer:${mapping.externalId}`,
+              payload.inventoryUpdatedAt,
+              payload.variantId
             )
           )
         );
@@ -247,12 +267,20 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       // narrows to active connections with `OfferManager` enabled; the
       // inventory-master exclusion is the authoritative runtime authority
       // guard — the master connection must never be a write-back target.
-      const shopMappings = payload.variantId
-        ? await this.identifierMapping.getExternalIds(
-            CORE_ENTITY_TYPE.ShopProduct,
-            payload.variantId
-          )
-        : [];
+      //
+      // A variant deleted at the master never gets a non-zero quantity here,
+      // and a listing OpenLinker took off sale (#3962) stays off sale until an
+      // operator puts it back - even once the product reappears.
+      const shopMappings =
+        payload.variantId && !variantIsStale
+          ? await this.withoutHeld(
+              'ShopProduct',
+              await this.identifierMapping.getExternalIds(
+                CORE_ENTITY_TYPE.ShopProduct,
+                payload.variantId
+              )
+            )
+          : [];
 
       let enqueuedShopCount = 0;
       if (shopMappings.length > 0) {
@@ -276,6 +304,20 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
           return false;
         });
 
+        // A variation of a grouped shop product is written under its parent
+        // (#3962): addressed as a product, the write misses and the shop
+        // adapter's not-found handling unlinks the variation.
+        const parentByConnection = new Map(
+          eligibleShopMappings.length > 0
+            ? (
+                await this.identifierMapping.getExternalIds(
+                  CORE_ENTITY_TYPE.ShopProduct,
+                  payload.productId
+                )
+              ).map((m) => [m.connectionId, m.externalId])
+            : []
+        );
+
         await Promise.all(
           eligibleShopMappings.map((mapping) =>
             this.enqueueQuantityUpdate(
@@ -286,7 +328,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
               // verbatim would dedupe an Offer update against a ShopProduct
               // update for the same connection/variant/quantity.
               `inventory:${mapping.connectionId}:${payload.productId}:${payload.variantId || 'base'}:${promisableQuantity}:${writeEventToken}:shop:${mapping.externalId}`,
-              payload.inventoryUpdatedAt
+              payload.inventoryUpdatedAt,
+              payload.variantId,
+              parentByConnection.get(mapping.connectionId)
             )
           )
         );
@@ -296,6 +340,13 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       this.logger.log(
         `Enqueued ${offerMappings.length} offer + ${enqueuedShopCount} shop-product quantity update job(s) for product ${payload.productId}`
       );
+
+      // #3931: a bundle is promised from its components, so a component write
+      // moves every bundle that contains it. One reverse lookup, one propagation
+      // per bundle; a bundle is never itself a component, so this cannot recurse.
+      if (payload.variantId) {
+        await this.propagateToBundles(payload.variantId, job, payload.inventoryUpdatedAt);
+      }
 
       // #3558: orders held because a line could not be fulfilled are re-routed
       // now rather than at the sweep's next tick. Runs AFTER the channel fan-out
@@ -323,14 +374,90 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
   }
 
   /**
+   * Enqueue a propagation for each bundle that contains `componentVariantId`.
+   *
+   * The key is the same location-free scheme `InventoryService` uses, keyed on
+   * the BUNDLE and the component's write stamp, so a component reported at N
+   * locations (or two components written in the same pull) collapses to one job
+   * per bundle and stamp. The component's stamp is carried as the bundle's
+   * observation: it orders concurrent bundle writes the same way (#2617).
+   *
+   * A failure to enqueue throws: this job is event-driven with no cron backstop,
+   * and swallowing it would leave the bundle offer at its last quantity.
+   */
+  private async propagateToBundles(
+    componentVariantId: string,
+    job: SyncJob,
+    inventoryUpdatedAt: string | null | undefined
+  ): Promise<void> {
+    const bundles = await this.bundleDefinitions.findCurrentContainingComponents([componentVariantId]);
+    if (bundles.length === 0) return;
+
+    const bundleVariants = await this.productsService.getVariantsByIds(
+      bundles.map((bundle) => bundle.variantId)
+    );
+    const productByVariant = new Map(bundleVariants.map((v) => [v.id, v.productId]));
+    const stamp = inventoryUpdatedAt ?? 'legacy';
+    for (const bundle of bundles) {
+      const bundleProductId = productByVariant.get(bundle.variantId);
+      if (bundleProductId === undefined) {
+        this.logger.warn(
+          `inventory_bundle_propagation_skipped variant=${bundle.variantId} - bundle variant no longer exists`
+        );
+        continue;
+      }
+      await this.jobEnqueue.enqueueJob({
+        jobType: 'inventory.propagateToMarketplaces',
+        connectionId: job.connectionId,
+        payload: {
+          productId: bundleProductId,
+          variantId: bundle.variantId,
+          ...(inventoryUpdatedAt ? { inventoryUpdatedAt } : {}),
+        },
+        idempotencyKey: `inventory:propagate:${bundleProductId}:${bundle.variantId}:${stamp}`,
+      });
+    }
+    this.logger.log(
+      `Enqueued propagation for ${bundles.length} bundle(s) containing variant ${componentVariantId}`
+    );
+  }
+
+  /**
    * Enqueue one marketplace.offerQuantity.update job for a mapping target.
    * Shared by both fan-out branches — only the idempotency key differs.
    */
+  /**
+   * Drop the listings OpenLinker took off sale after a master deletion
+   * (#3962). Only an operator's "put back on sale" ends a hold.
+   */
+  private async withoutHeld(
+    entityType: ListingRef['entityType'],
+    mappings: ExternalIdMapping[]
+  ): Promise<ExternalIdMapping[]> {
+    if (mappings.length === 0) return mappings;
+    const held = await this.listingSaleStatus.findActiveHolds(
+      mappings.map((m) => ({ connectionId: m.connectionId, entityType, externalId: m.externalId }))
+    );
+    if (held.length === 0) return mappings;
+    const heldKeys = new Set(held.map((h) => `${h.connectionId}|${h.externalId}`));
+    return mappings.filter((m) => {
+      const isHeld = heldKeys.has(`${m.connectionId}|${m.externalId}`);
+      if (isHeld) {
+        this.logger.log(
+          `Skipping quantity propagation for ${entityType} ${m.externalId} (connection: ${m.connectionId}) - taken off sale after a master deletion (#3962)`
+        );
+      }
+      return !isHeld;
+    });
+  }
+
   private async enqueueQuantityUpdate(
     mapping: ExternalIdMapping,
     quantity: number,
     idempotencyKey: string,
-    observedAt: string | null | undefined
+    observedAt: string | null | undefined,
+    productVariantId: string | null | undefined,
+    externalParentId?: string
   ): Promise<void> {
     const updatePayload = {
       schemaVersion: 1 as const,
@@ -341,6 +468,9 @@ export class InventoryPropagateToMarketplacesHandler implements SyncJobHandler {
       // offer (#2617). Absent on a legacy propagation payload, which writes
       // unguarded exactly as before.
       ...(observedAt ? { observedAt } : {}),
+      // Recorded with the push, never sent to the channel (#4062).
+      ...(productVariantId ? { productVariantId } : {}),
+      ...(externalParentId ? { externalParentId } : {}),
     };
 
     const updateJobRequest: SyncJobRequest = {

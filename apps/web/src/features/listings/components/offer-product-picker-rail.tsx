@@ -19,7 +19,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tool
 import type { PublishDestination, PublishDestinationKind } from '../lib/publish-destinations';
 import { PublishDestinationRail } from './publish-destination-rail';
 import type { RailGroup } from './offer-product-picker.types';
-import { serverErrorText } from '../lib/server-error-text';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface OfferProductPickerRailProps {
   railBackRef: RefObject<HTMLButtonElement | null>;
@@ -67,7 +67,6 @@ export function OfferProductPickerRail({
   selectionSummary,
 }: OfferProductPickerRailProps): ReactElement {
   const copy = useMessages('listings').offerProductPickerRail;
-  const common = useMessages('listings').common;
   const plural = usePlural();
   return (
     <aside className="offer-product-picker__rail" aria-label={copy.ariaLabel}>
@@ -214,7 +213,7 @@ export function OfferProductPickerRail({
               </Button>
             }
           >
-            {serverErrorText(common.serverSaid, connectionsError.message, common.unknownError)}
+            {describeApiError(connectionsError, 'listings')}
           </Alert>
         ) : eligibleDestinations.length === 0 ? (
           <Alert tone="warning" title={copy.noDestinations.title}>

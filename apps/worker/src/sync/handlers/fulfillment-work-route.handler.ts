@@ -87,6 +87,7 @@ import { CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/ide
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
+  isRoutingAwaitingPayment,
   orderFromReadySnapshot,
   projectOrderForRouting,
   type OrderRoutingProjection,
@@ -194,6 +195,12 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
         // shape), so the predicate has one definition rather than a second copy
         // here. It is a getter, not a method.
         return record?.isCancelled === true;
+      },
+      // #4033 — an unpaid order is not routed, also when the reroute sweep or
+      // an operator retry re-drives it. Same inside-the-lock read.
+      isAwaitingPayment: async () => {
+        const record = await this.orderRecords.getOrderRecord(payload.orderId);
+        return isRoutingAwaitingPayment(record?.paymentStatus);
       },
     });
 
@@ -453,7 +460,8 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
     return projectOrderForRouting(
       order,
       record.shippingAddressHash,
-      getEnvBoolean('OL_STORE_PII', true)
+      getEnvBoolean('OL_STORE_PII', true),
+      record.physicalItems
     );
   }
 

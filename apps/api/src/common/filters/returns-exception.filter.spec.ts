@@ -70,6 +70,8 @@ describe('ReturnsExceptionFilter', () => {
     expect(captured.status).toHaveBeenCalledWith(404);
     expect(captured.body).toMatchObject({
       statusCode: 404,
+      code: 'RETURN_NOT_FOUND',
+      params: { returnId: 'ol_return_1' },
       error: 'ReturnNotFoundError',
     });
   });
@@ -82,6 +84,8 @@ describe('ReturnsExceptionFilter', () => {
     expect(captured.status).toHaveBeenCalledWith(409);
     expect(captured.body).toMatchObject({
       statusCode: 409,
+      code: 'RETURN_NOT_ATTRIBUTED',
+      params: { trigger: 'decline' },
       error: 'ReturnNotAttributedError',
       trigger: 'decline',
     });
@@ -92,7 +96,7 @@ describe('ReturnsExceptionFilter', () => {
 
     filter.catch(
       new ReturnDeclineUnsupportedError('ol_return_1', 'conn_1', 'no decline endpoint'),
-      host,
+      host
     );
 
     expect(captured.status).toHaveBeenCalledWith(400);
@@ -111,7 +115,7 @@ describe('ReturnsExceptionFilter', () => {
 
     filter.catch(
       new ReturnDeclineInvalidRequestError('ext-return-1', 'reasonCode', 'not a known code'),
-      host,
+      host
     );
 
     expect(captured.status).toHaveBeenCalledWith(400);
@@ -187,7 +191,12 @@ describe('ReturnsExceptionFilter — the #2376 write-API refusals', () => {
       409,
       'already-attributed',
     ],
-    ['ReturnRefundBlockedError', new ReturnRefundBlockedError('ret-1', 'no-lines'), 409, 'no-lines'],
+    [
+      'ReturnRefundBlockedError',
+      new ReturnRefundBlockedError('ret-1', 'no-lines'),
+      409,
+      'no-lines',
+    ],
     ['ReturnRefundContendedError', new ReturnRefundContendedError('ret-1'), 409, null],
 
     // 400 — the request PAYLOAD was inapplicable.

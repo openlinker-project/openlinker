@@ -33,6 +33,7 @@ import {
 } from '../lib/find-sales-document-destination-warnings';
 import type { SalesDocumentRule } from '../api/sales-document-rules.types';
 import { interpolate, useMessages } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface SalesDocumentRulesListProps {
   country: string;
@@ -97,7 +98,7 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
     return (
       <ErrorState
         title={copy.loadError}
-        message={(rulesQuery.error ?? connectionsQuery.error)?.message ?? copy.unknownError}
+        message={describeApiError(rulesQuery.error ?? connectionsQuery.error, 'sales-documents')}
       />
     );
   }

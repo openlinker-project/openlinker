@@ -8,6 +8,7 @@
  * @module pages/settings
  */
 import type { ReactElement } from 'react';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import {
   LoginPageSettingsEditor,
   useLoginPageSettingsQuery,
@@ -30,7 +31,7 @@ function LoginPageSettingsContent(): ReactElement {
     return (
       <ErrorState
         title={copy.loadError}
-        message={query.error?.message ?? copy.loadError}
+        message={query.error ? describeApiError(query.error, 'login-page-settings') : copy.loadError}
         action={<Button onClick={() => void query.refetch()}>{copy.save}</Button>}
       />
     );

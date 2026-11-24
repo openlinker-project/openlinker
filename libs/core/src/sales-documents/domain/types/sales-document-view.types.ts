@@ -58,6 +58,7 @@ import type { SalesDocumentKind } from './sales-document-kind.types';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
+  SalesDocumentBlockParams,
 } from './sales-document-reason.types';
 import type { SalesDocumentCondition } from './sales-document-condition.types';
 
@@ -294,6 +295,8 @@ export interface SalesDocumentView {
    * none. Never parsed by a surface - it is displayed or dropped.
    */
   readonly blockDetail: string | null;
+  /** The values behind `blockDetail` (#3866); `null` when it stored none. */
+  readonly blockParams: SalesDocumentBlockParams | null;
   /**
    * Records for this order on other connections. Empty for the overwhelming
    * majority of orders; a non-empty list is surfaced, never hidden behind the

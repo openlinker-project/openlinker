@@ -18,8 +18,14 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN } from '@openlinker/core/orders';
-import { DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
+import {
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
+import {
+  DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN,
+  SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN,
+} from '@openlinker/core/sales-documents';
 import {
   INVOICE_SERVICE_TOKEN,
   INVOICE_ATTACHMENT_SERVICE_TOKEN,
@@ -360,7 +366,15 @@ describe('InvoicingController', () => {
           useValue: { enqueueUpload: jest.fn().mockResolvedValue('enqueued'), getStatus: jest.fn().mockResolvedValue([]) },
         },
         { provide: ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN, useValue: documentEmails },
+        {
+          provide: ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+          useValue: { resolveForDocuments: jest.fn().mockResolvedValue(undefined) },
+        },
         { provide: DOCUMENT_EMAIL_DELIVERY_SERVICE_TOKEN, useValue: documentEmailDeliveries },
+        {
+          provide: SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN,
+          useValue: { getGiftDocumentForm: jest.fn().mockResolvedValue({ form: 'technical-cent', source: 'default' }) },
+        },
       ],
     }).compile();
 
@@ -507,6 +521,69 @@ describe('InvoicingController', () => {
       expect(lastLineName()).toBe('Koszt wysyłki');
     });
 
+    it('takes 0.01 from a paid line for a gift when the order-source connection chose show and the adapter refuses zero (#3930)', async () => {
+      const record = makeOrderRecord({
+        id: 'ol_order_1',
+        status: 'processing',
+        billingAddress: {
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          address1: 'ul. Testowa 1',
+          city: 'Poznań',
+          postalCode: '61-001',
+          country: 'PL',
+        },
+        createdAt: '2026-06-20T08:00:00.000Z',
+        updatedAt: '2026-06-21T09:30:00.000Z',
+        items: [
+          { id: 'li_1', productId: 'p_1', quantity: 1, price: 100, name: 'Widget' },
+          { id: 'g1', productId: 'p_g', quantity: 1, price: 0, name: 'Gift', gift: { source: 'channel' } },
+        ],
+        totals: { subtotal: 100, tax: 0, shipping: 0, total: 100, currency: 'PLN', taxTreatment: 'inclusive' },
+      });
+      orders.getOrderRecord.mockResolvedValue(record);
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      connectionPort.get.mockResolvedValue({
+        id: 'any',
+        config: { giftOnDocuments: { form: 'show-zero' } },
+      } as unknown as Connection);
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        acceptsZeroValueLine: () => false,
+      } as never);
+      await controller.issueInvoice(dto);
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn_1', 'Invoicing');
+      const cmd = invoiceService.issueInvoice.mock.calls[0][0];
+      expect(cmd.lines).toHaveLength(2);
+      expect(cmd.lines[1].unitPriceGross).toBeCloseTo(0.01);
+      const total = cmd.lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(total).toBe(10000);
+    });
+
+    it('warn-logs, and still issues, when the saved gift form cannot be read', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      orders.getOrderRecord.mockResolvedValue(orderWithShipping());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      const settings = controller['salesDocumentSettings'] as unknown as { getGiftDocumentForm: jest.Mock };
+      settings.getGiftDocumentForm.mockRejectedValueOnce(new Error('db down'));
+
+      await controller.issueInvoice(dto);
+
+      expect(invoiceService.issueInvoice).toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('gift document form could not be read'));
+      warnSpy.mockRestore();
+    });
+
+    it('still issues when the adapter cannot be resolved for the zero-line declaration (#3930)', async () => {
+      orders.getOrderRecord.mockResolvedValue(orderWithShipping());
+      invoiceService.getInvoice.mockResolvedValue(null);
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      integrations.getCapabilityAdapter.mockRejectedValue(new Error('no adapter'));
+      await controller.issueInvoice(dto);
+      expect(invoiceService.issueInvoice).toHaveBeenCalled();
+    });
+
     it('falls back to the neutral default shipping label when none is configured', async () => {
       orders.getOrderRecord.mockResolvedValue(orderWithShipping());
       invoiceService.getInvoice.mockResolvedValue(null);
@@ -559,6 +636,24 @@ describe('InvoicingController', () => {
       await controller.issueInvoice(dto);
       const cmd = invoiceService.issueInvoice.mock.calls[0][0];
       expect(cmd.idempotencyKey).toBeUndefined();
+    });
+
+    it('keyless re-issue over a REFUSED row starts its next attempt (#3960)', async () => {
+      // Re-sending under the refused key reaches a provider that answers it with
+      // the document it already refused, so the controller names the refused
+      // row and the service starts the next attempt under a new key.
+      orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
+      invoiceService.getInvoice.mockResolvedValue(
+        makeInvoiceRecord({
+          id: 'inv_refused',
+          status: 'failed',
+          failureMode: 'rejected',
+          idempotencyKey: 'prior-key',
+        }),
+      );
+      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord());
+      await controller.issueInvoice(dto);
+      expect(invoiceService.issueInvoice.mock.calls[0][1]).toEqual({ retryOf: 'inv_refused' });
     });
 
     it('caller-supplied idempotencyKey passes through to the mapper verbatim', async () => {
@@ -664,6 +759,9 @@ describe('InvoicingController', () => {
       expect(body).toEqual({
         message: 'The buyer tax identifier was rejected as invalid.',
         error: 'InvoiceIssueRejected',
+        statusCode: 422,
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'buyer-tax-id-invalid' },
         failureCode: 'buyer-tax-id-invalid',
       });
       // A marker-classified code keeps its FIXED sentence: the provider's
@@ -688,6 +786,9 @@ describe('InvoicingController', () => {
       expect((error as UnprocessableEntityException).getResponse()).toEqual({
         message: reason,
         error: 'InvoiceIssueRejected',
+        statusCode: 422,
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'connection-setup-incomplete' },
         failureCode: 'connection-setup-incomplete',
         failureReason: reason,
       });
@@ -709,6 +810,9 @@ describe('InvoicingController', () => {
       expect((error as UnprocessableEntityException).getResponse()).toEqual({
         message: reason,
         error: 'InvoiceIssueRejected',
+        statusCode: 422,
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'connection-setting-rejected' },
         failureCode: 'connection-setting-rejected',
         failureReason: reason,
       });
@@ -728,6 +832,9 @@ describe('InvoicingController', () => {
       expect((error as UnprocessableEntityException).getResponse()).toEqual({
         message: 'The provider rejected the document (code 57).',
         error: 'InvoiceIssueRejected',
+        statusCode: 422,
+        code: 'INVOICE_ISSUE_REJECTED',
+        params: { failureCode: 'provider-rejected' },
         failureCode: 'provider-rejected',
       });
     });
@@ -1255,7 +1362,10 @@ describe('InvoicingController', () => {
   });
 
   describe('retryInvoices (#1245)', () => {
-    it('should retry only failed+rejected records and reuse the record idempotencyKey', async () => {
+    it('should retry a refused record as its next attempt rather than re-sending its key', async () => {
+      // #3960: re-sending under the refused key reaches a provider that answers
+      // it with the document it already refused, so the retry names the refused
+      // record and the service starts the next attempt under a new key.
       const eligible = makeInvoiceRecord({
         id: 'inv_fail',
         status: 'failed',
@@ -1264,21 +1374,20 @@ describe('InvoicingController', () => {
       });
       invoiceService.getInvoiceById.mockResolvedValue(eligible);
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
-      invoiceService.issueInvoice.mockResolvedValue(makeInvoiceRecord({ status: 'issued' }));
+      invoiceService.issueInvoice.mockResolvedValue(
+        makeInvoiceRecord({ id: 'inv_next', status: 'issued' }),
+      );
 
       const res = await controller.retryInvoices({ invoiceIds: ['inv_fail'] });
 
       expect(res.retried).toBe(1);
       expect(res.skipped).toBe(0);
-      expect(res.results).toEqual([{ id: 'inv_fail', outcome: 'retried' }]);
-      // Reuses the record's OWN key so the service resumes THAT row (R2/R3). The
-      // command rebuilt from the order snapshot carries no scheme-tagged buyer tax
-      // id (the projection doesn't persist it) → buyer.taxId is null.
+      expect(res.results).toEqual([{ id: 'inv_fail', outcome: 'retried', recordId: 'inv_next' }]);
+      // The command rebuilt from the order snapshot carries no scheme-tagged
+      // buyer tax id (the projection doesn't persist it) -> buyer.taxId is null.
       expect(invoiceService.issueInvoice).toHaveBeenCalledWith(
-        expect.objectContaining({
-          idempotencyKey: 'key-fail',
-          buyer: expect.objectContaining({ taxId: null }),
-        }),
+        expect.objectContaining({ buyer: expect.objectContaining({ taxId: null }) }),
+        { retryOf: 'inv_fail' },
       );
     });
 
@@ -1613,6 +1722,19 @@ describe('InvoicingController', () => {
 
       await expect(controller.getInvoice('nope')).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it('should name the code and the invoice id on a 404 (#3864)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(null);
+
+      const error = await controller.getInvoice('nope').catch((caught: unknown) => caught);
+
+      expect((error as NotFoundException).getResponse()).toEqual({
+        statusCode: 404,
+        code: 'INVOICE_NOT_FOUND',
+        message: 'Invoice not found: nope',
+        params: { invoiceId: 'nope' },
+      });
+    });
   });
 
   describe('getContent', () => {
@@ -1702,6 +1824,30 @@ describe('InvoicingController', () => {
       await expect(
         controller.downloadDocument('rec-inv-1', mockResponse(), 'source'),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('should say why the document is unavailable (#3864)', async () => {
+      invoiceService.getInvoiceById.mockResolvedValue(recordWithSource(null));
+
+      const error = await controller
+        .downloadDocument('rec-inv-1', mockResponse(), 'source')
+        .catch((caught: unknown) => caught);
+
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        code: 'INVOICE_DOCUMENT_UNAVAILABLE',
+        params: { invoiceId: 'rec-inv-1', reason: 'no-source', kind: 'source' },
+      });
+    });
+
+    it('should name the unknown kind and the supported ones (#3864)', async () => {
+      const error = await controller
+        .downloadDocument('rec-inv-1', mockResponse(), 'bogus')
+        .catch((caught: unknown) => caught);
+
+      expect((error as BadRequestException).getResponse()).toMatchObject({
+        code: 'DOCUMENT_KIND_UNKNOWN',
+        params: { kind: 'bogus', supported: 'confirmation, source, rendered' },
+      });
     });
 
     it('should 400 on an unknown kind', async () => {

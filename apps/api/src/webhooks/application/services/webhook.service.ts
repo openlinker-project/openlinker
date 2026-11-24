@@ -211,6 +211,7 @@ export class WebhookService implements IWebhookService {
             ? 'received'
             : 'deadlettered',
       dlqReason: routing.kind === 'unroutable' ? routing.reason.slice(0, 500) : null,
+      dlqCode: routing.kind === 'unroutable' ? routing.code : null,
     };
     const gateResult = await this.jobGate.insertDeliveryWithJobs(
       delivery,

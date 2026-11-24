@@ -68,7 +68,7 @@
  * @module apps/api/src/automation/application
  * @implements {IAutomationRetryService}
  */
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, type HttpException } from '@nestjs/common';
 import {
   AUTOMATION_DISPATCH_SERVICE_TOKEN,
   AUTOMATION_RULES_SERVICE_TOKEN,
@@ -91,6 +91,8 @@ import type {
   AutomationRetryInput,
   IAutomationRetryService,
 } from './automation-retry.service.interface';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import { automationRunNotFound } from '../automation-errors';
 
 /** Operator-facing refusals. The frontend renders its own copy; this is the API's. */
 const REFUSAL_MESSAGE: Readonly<Record<RetryRefusalReason, string>> = {
@@ -103,6 +105,17 @@ const REFUSAL_MESSAGE: Readonly<Record<RetryRefusalReason, string>> = {
   'retry-exhausted':
     'This has already been run again the maximum number of times without succeeding. Fix what is failing at the source, or dismiss this run.',
 };
+
+function retryRefused(reason: RetryRefusalReason): HttpException {
+  return codedHttpError(
+    HttpStatus.BAD_REQUEST,
+    'AUTOMATION_RETRY_REFUSED',
+    REFUSAL_MESSAGE[reason],
+    { reason },
+    { reason }
+  );
+}
+
 
 @Injectable()
 export class AutomationRetryService implements IAutomationRetryService {
@@ -123,7 +136,7 @@ export class AutomationRetryService implements IAutomationRetryService {
   async retry(input: AutomationRetryInput): Promise<AutomationRunView> {
     const run = await this.runs.getRunById(input.runId);
     if (run === null) {
-      throw new NotFoundException(`Automation run "${input.runId}" not found.`);
+      throw automationRunNotFound(input.runId);
     }
 
     // `getRule` already answers `null` for an absent rule — no catch, which would
@@ -144,26 +157,24 @@ export class AutomationRetryService implements IAutomationRetryService {
       supersededByRetry: run.supersededByRetry,
     });
     if (!eligibility.retryable) {
-      throw new BadRequestException({
-        message: REFUSAL_MESSAGE[eligibility.reason],
-        reason: eligibility.reason,
-      });
+      throw retryRefused(eligibility.reason);
     }
     // Unreachable — `retryable` implies the rule resolved — but the compiler
     // cannot see that through the discriminant, and a cast would hide a real
     // regression if the rule ever gains a fourth refusal.
     if (rule === null) {
-      throw new BadRequestException({
-        message: REFUSAL_MESSAGE['rule-deleted'],
-        reason: 'rule-deleted' satisfies RetryRefusalReason,
-      });
+      throw retryRefused('rule-deleted');
     }
 
     const record = await this.orders.getOrderRecord(run.subjectId);
     if (record === null) {
-      throw new NotFoundException(
-        `Order "${run.subjectId}" no longer exists, so this automation cannot run again.`
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ORDER_NOT_FOUND',
+        `Order "${run.subjectId}" no longer exists, so this automation cannot run again.`,
+        { orderId: run.subjectId }
       );
+
     }
 
     // Property 3: the SAME projection the original firing used. A retry built

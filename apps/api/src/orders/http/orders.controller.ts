@@ -48,9 +48,7 @@ import {
   Body,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   ServiceUnavailableException,
-  BadRequestException,
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
@@ -68,6 +66,8 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedErrorBody, codedHttpError } from '../../common/errors/coded-http.exception';
+import { orderCancellationNotFound, orderNotFound } from './orders-errors';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import {
@@ -80,6 +80,7 @@ import {
   NoBuyerNoteException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
+  OrderDestinationHandledByRoutingException,
   MissingSourceExternalIdException,
   IOrderDestinationRetryService,
   ORDER_HOLD_SERVICE_TOKEN,
@@ -92,6 +93,7 @@ import {
   HoldReleaseNoteRequiredError,
   HoldReleaseNotPermittedError,
   deriveSlaState,
+  MULTIPACK_WITHOUT_BUNDLE_REASON_CODE,
   IOrderHoldService,
   IOrderProvisioningResumeService,
   IOrderRoutingRetryService,
@@ -116,6 +118,9 @@ import {
   ISalesDocumentViewService,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
   PAYMENT_WRITEBACK_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+  deriveOrderRefundState,
+  type IOrderRefundService,
   isPaymentWritebackProblem,
   type IPaymentWritebackService,
 } from '@openlinker/core/orders';
@@ -124,6 +129,7 @@ import {
   IInvoiceService,
 } from '@openlinker/core/invoicing';
 import { Logger } from '@openlinker/shared/logging';
+import type { KnownApiErrorCode } from '@openlinker/shared/errors';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import {
   RESERVATION_SHORTFALL_SERVICE_TOKEN,
@@ -160,6 +166,10 @@ import {
   type IReturnsService,
   type OpenReturnOrderSummary,
 } from '@openlinker/core/returns';
+import {
+  PROMOTION_APPLICATION_LOG_TOKEN,
+  type PromotionApplicationLogPort,
+} from '@openlinker/core/promotions';
 import {
   ORDER_CHANGE_SERVICE_TOKEN,
   ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
@@ -220,7 +230,22 @@ import {
 import { OrderSlaSummaryResponseDto } from './dto/order-sla-summary-response.dto';
 import { OrderSlaSummaryQueryDto } from './dto/order-sla-summary-query.dto';
 import { OrderLifecyclePhaseSummaryResponseDto } from './dto/order-lifecycle-phase-summary-response.dto';
-import { OrderRecordResponseDto } from './dto/order-record-response.dto';
+import {
+  OrderRecordResponseDto,
+  type OrderBundleLineDto,
+  type OrderMultipackHoldDto,
+} from './dto/order-record-response.dto';
+import {
+  CORE_ENTITY_TYPE,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  type IIdentifierMappingService,
+} from '@openlinker/core/identifier-mapping';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+  type IBundleDefinitionService,
+  type IProductsService,
+} from '@openlinker/core/products';
 import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-response.dto';
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
@@ -251,6 +276,7 @@ import {
   FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
   type IFulfillmentParcelClosureNotifier,
 } from '../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
+import { toSalesDocumentBlockParamsDto } from './dto/sales-document-block-params.dto';
 
 /**
  * The one DTO-to-filters mapping this list has (#2944).
@@ -294,6 +320,9 @@ export function toOrderRecordFilters(
     lifecyclePhase: query.phase,
     taxRateConflict: query.taxRateConflict,
     omsAttention: query.attention,
+    withGift: query.withGift,
+    withBundle: query.withBundle,
+    giftShopRejected: query.giftShopRejected,
     omsAttentionReason: query.attentionReason,
     paymentNotSent: query.paymentNotSent,
     activeHoldReason: query.hold,
@@ -325,13 +354,16 @@ function assertCancelledPhaseAgree(
   if (cancelled === undefined || phase === undefined) return;
   const phaseIsCancelled = phase === 'cancelled';
   if (phaseIsCancelled === cancelled) return;
-  throw new BadRequestException(
+  throw codedHttpError(
+    HttpStatus.BAD_REQUEST,
+    'ORDER_FILTERS_CONTRADICTORY',
     phaseIsCancelled
       ? '?phase=cancelled contradicts ?cancelled=false: the cancelled phase IS the cancelled ' +
         'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
       : `?phase=${phase} contradicts ?cancelled=true: only ?phase=cancelled can match a ` +
         'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
-        '?cancelled=false.'
+        '?cancelled=false.',
+    { phase, cancelled }
   );
 }
 
@@ -352,10 +384,11 @@ function assertCancelledPhaseAgree(
  */
 export async function enrichCrossContextFilters(
   filters: OrderRecordFilters,
-  query: { search?: string; openReturn?: boolean },
+  query: { search?: string; openReturn?: boolean; giftNotAdded?: boolean },
   shipmentQuery: IShipmentQueryService,
   returnsService: IReturnsService,
-  logger: Logger
+  logger: Logger,
+  promotionLog?: PromotionApplicationLogPort
 ): Promise<OrderRecordFilters> {
   const enriched: OrderRecordFilters = { ...filters };
 
@@ -391,15 +424,33 @@ export async function enrichCrossContextFilters(
     }
   }
 
+  if (query.giftNotAdded !== undefined && promotionLog !== undefined) {
+    enriched.giftNotAdded = query.giftNotAdded;
+    try {
+      enriched.giftNotAddedOrderIds = await promotionLog.findOrderIdsNeedingAttention(
+        GIFT_NOT_ADDED_ID_LIMIT
+      );
+    } catch (error) {
+      logger.error(
+        'Failed to resolve gift-not-added order ids for the ?giftNotAdded= filter',
+        (error as Error).stack
+      );
+      enriched.giftNotAddedOrderIds = [];
+    }
+  }
+
   return enriched;
 }
+
+/** Ceiling on the gift-not-added id list handed to the order query (#3935). */
+const GIFT_NOT_ADDED_ID_LIMIT = 5000;
 
 /**
  * The 409 `error` code for each routing-retry refusal (#3558). Upper-snake, the
  * shape `ORDER_ALREADY_ON_HOLD` and `NO_BUYER_NOTE` already use on this
  * controller, so a client reads one error shape across `/orders`.
  */
-const ROUTING_RETRY_REFUSAL_ERROR_CODES: Record<OrderRoutingRetryRefusal, string> = {
+const ROUTING_RETRY_REFUSAL_ERROR_CODES: Record<OrderRoutingRetryRefusal, KnownApiErrorCode> = {
   'not-held': 'ROUTING_RETRY_NOT_HELD',
   'not-retryable': 'ROUTING_RETRY_NOT_RETRYABLE',
   'no-router': 'ROUTING_RETRY_NO_ROUTER',
@@ -455,6 +506,8 @@ export class OrdersController {
     private readonly shipmentQuery: IShipmentQueryService,
     // #2998 — the "open return" badge + filter; `returns` may not import
     // `orders` back, so the composition happens here.
+    @Inject(PROMOTION_APPLICATION_LOG_TOKEN)
+    private readonly promotionLog: PromotionApplicationLogPort,
     @Inject(RETURNS_SERVICE_TOKEN)
     private readonly returnsService: IReturnsService,
     // #3482 — the packing stage of an order OpenLinker handles itself. `orders`
@@ -462,6 +515,13 @@ export class OrdersController {
     // service seam, one batch per page.
     @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
     private readonly fulfillmentWork: IFulfillmentWorkQueryService,
+    // #3624 - the bundle lines' component names and "older composition" flag.
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService,
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService,
     // #3532 — the tag ids rendered as the third line of the identity cell.
     @Inject(ORDER_TAG_SERVICE_TOKEN)
     private readonly tagService: IOrderTagService,
@@ -481,7 +541,10 @@ export class OrdersController {
     private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier,
     // #3963 - Retry and Mark as handled for a payment that did not reach a shop.
     @Inject(PAYMENT_WRITEBACK_SERVICE_TOKEN)
-    private readonly paymentWriteback: IPaymentWritebackService
+    private readonly paymentWriteback: IPaymentWritebackService,
+    // #4130 - the refund-derived order state, read from the refund records.
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly orderRefunds: IOrderRefundService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -512,10 +575,11 @@ export class OrdersController {
 
     const filters = await enrichCrossContextFilters(
       toOrderRecordFilters(query),
-      { search: query.search, openReturn: query.openReturn },
+      { search: query.search, openReturn: query.openReturn, giftNotAdded: query.giftNotAdded },
       this.shipmentQuery,
       this.returnsService,
-      this.logger
+      this.logger,
+      this.promotionLog
     );
 
     // `?withTotal=false` skips the COUNT entirely and the response OMITS
@@ -617,9 +681,17 @@ export class OrdersController {
       items.map((order) => order.internalOrderId)
     );
 
+    // Batch the refund summaries for the whole page (#4130): one grouped query,
+    // never a per-row read. Derived on read so the poll that rewrites
+    // `paymentStatus` cannot overwrite it.
+    const refundSummaries = await this.loadRefundSummariesForPage(
+      items.map((order) => order.internalOrderId)
+    );
+
     return {
       items: items.map((order) => {
         const dto = this.toDto(order, amendingOrderIds.has(order.internalOrderId));
+        this.applyRefundState(dto, order, refundSummaries);
         const invoice = invoiceByOrderId.get(order.internalOrderId);
         if (invoice) {
           dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoice) };
@@ -681,10 +753,11 @@ export class OrdersController {
     // total for.
     const filters = await enrichCrossContextFilters(
       toOrderRecordFilters(query),
-      { search: query.search, openReturn: query.openReturn },
+      { search: query.search, openReturn: query.openReturn, giftNotAdded: query.giftNotAdded },
       this.shipmentQuery,
       this.returnsService,
-      this.logger
+      this.logger,
+      this.promotionLog
     );
     const total = await this.orderRecordRepository.countMany(filters);
     return { total };
@@ -708,15 +781,52 @@ export class OrdersController {
     @Query() query: OrderHealthSummaryQueryDto
   ): Promise<OrderHealthSummaryResponseDto> {
     const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
+    // #4025 - the open-return count reads the same id list the ?openReturn=
+    // filter resolves. A failure must not fail the whole summary the list page
+    // renders above its rows, and must not report 0 either: the two counts
+    // built on that list are OMITTED, which the client reads as "unknown".
+    let openReturnOrderIds: string[] = [];
+    let openReturnKnown = true;
+    try {
+      openReturnOrderIds = await this.returnsService.listOpenReturnOrderIds();
+    } catch (error) {
+      openReturnKnown = false;
+      this.logger.error(
+        'Failed to resolve open-return order ids for the health summary',
+        (error as Error).stack
+      );
+    }
+    // #3935 - the gift-not-added count reads the promotion application log;
+    // a failed read omits the count (unknown), never reports 0.
+    let giftNotAddedOrderIds: string[] = [];
+    let giftNotAddedKnown = true;
+    try {
+      giftNotAddedOrderIds = await this.promotionLog.findOrderIdsNeedingAttention(
+        GIFT_NOT_ADDED_ID_LIMIT
+      );
+    } catch (error) {
+      giftNotAddedKnown = false;
+      this.logger.error(
+        'Failed to resolve gift-not-added order ids for the health summary',
+        (error as Error).stack
+      );
+    }
     const summary = await this.orderRecordRepository.countByHealth({
+      giftNotAddedOrderIds,
       sourceConnectionId,
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
+      openReturnOrderIds,
     });
+    const { openReturn, attention, giftNotAdded, ...rest } = summary;
+    const { toHandle, ...attentionKnown } = attention;
     // The wire carries an ISO string; the domain summary carries a Date (#2254).
     return {
-      ...summary,
+      ...rest,
+      ...(openReturnKnown ? { openReturn } : {}),
+      ...(giftNotAddedKnown ? { giftNotAdded } : {}),
+      attention: openReturnKnown ? { ...attentionKnown, toHandle } : attentionKnown,
       salesDocumentBlockedOldestAt: summary.salesDocumentBlockedOldestAt?.toISOString() ?? null,
       waitingInOpenLinkerOldestAt: summary.waitingInOpenLinkerOldestAt?.toISOString() ?? null,
     };
@@ -789,7 +899,7 @@ export class OrdersController {
   ): Promise<OrderRecordResponseDto> {
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
     const dto = this.toDto(order, await this.hasOpenAmendment(internalOrderId));
     // Buyer tax id (#3180). DETAIL READ ONLY — off the shared `toDto`, so the
@@ -863,6 +973,11 @@ export class OrdersController {
     // `/orders`. Best-effort: a shortfall projection failing must not take the
     // whole order detail down with it, and the episodes are re-readable.
     dto.reservationShortfalls = await this.loadReservationShortfalls(order.internalOrderId);
+    this.applyRefundState(
+      dto,
+      order,
+      await this.loadRefundSummariesForPage([order.internalOrderId])
+    );
     // Hold projection (#2341). DETAIL ONLY — one query per order, which on the
     // paged list would be N. `activeHold` is derived from the same read rather
     // than a second `getOpenHold` call, so the two answers cannot disagree.
@@ -873,6 +988,13 @@ export class OrdersController {
     // hold surface. Reaching that needs direct SQL — both the request DTO and
     // the service validate against the union — so failing loudly is the right
     // trade, but it is a new consequence rather than a pre-existing one.
+    dto.bundleLines = await this.loadBundleLines(order);
+    const multipackHolds = await this.loadMultipackHolds(order);
+    if (multipackHolds.length > 0) {
+      dto.multipackHolds = multipackHolds;
+      // First line, kept for readers of the single-line shape.
+      dto.multipackHold = multipackHolds[0];
+    }
     const holds = await this.holdService.listHolds(order.internalOrderId);
     dto.holdHistory = holds.map((hold) => this.toHoldDto(hold));
     dto.activeHold = dto.holdHistory.find((hold) => hold.releasedAt === null) ?? null;
@@ -928,7 +1050,7 @@ export class OrdersController {
   ): Promise<SalesDocumentViewResponseDto> {
     const view = await this.salesDocumentView.getForOrder(internalOrderId);
     if (view === null) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
     return toSalesDocumentViewDto(view);
   }
@@ -965,7 +1087,7 @@ export class OrdersController {
       return toSourceFulfillmentDto(await this.sourceFulfillment.read(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(`Order not found: ${internalOrderId}`);
+        throw orderNotFound(internalOrderId);
       }
       throw error;
     }
@@ -1020,7 +1142,7 @@ export class OrdersController {
     type: RetryOrderDestinationResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Order or destination row not found' })
-  @ApiResponse({ status: 409, description: 'Destination is not in a retryable state' })
+  @ApiResponse({ status: 409, description: 'Destination is not in a retryable state, or the order is handled by OMS routing (ORDER_HANDLED_BY_ROUTING)' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async retryDestination(
     @Param('internalOrderId') internalOrderId: string,
@@ -1038,17 +1160,35 @@ export class OrdersController {
         jobType: result.jobType,
       };
     } catch (error) {
-      if (
-        error instanceof OrderRecordNotFoundException ||
-        error instanceof OrderDestinationNotFoundException
-      ) {
-        throw new NotFoundException(error.message);
+      if (error instanceof OrderRecordNotFoundException) {
+        throw orderNotFound(error.internalOrderId, error.message);
+      }
+      if (error instanceof OrderDestinationNotFoundException) {
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_DESTINATION_NOT_FOUND', error.message, {
+          orderId: error.internalOrderId,
+          connectionId: error.destinationConnectionId,
+        });
       }
       if (error instanceof OrderDestinationNotRetryableException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(HttpStatus.CONFLICT, 'ORDER_DESTINATION_NOT_RETRYABLE', error.message, {
+          orderId: error.internalOrderId,
+          connectionId: error.destinationConnectionId,
+          status: error.currentStatus,
+        });
+      }
+      if (error instanceof OrderDestinationHandledByRoutingException) {
+        throw codedHttpError(HttpStatus.CONFLICT, 'ORDER_HANDLED_BY_ROUTING', error.message, {
+          orderId: error.internalOrderId,
+          connectionId: error.destinationConnectionId,
+        });
       }
       if (error instanceof MissingSourceExternalIdException) {
-        throw new InternalServerErrorException(error.message);
+        throw new InternalServerErrorException(
+          codedErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, 'ORDER_SOURCE_ID_MISSING', error.message, {
+            orderId: error.internalOrderId,
+            connectionId: error.sourceConnectionId,
+          })
+        );
       }
       throw error;
     }
@@ -1090,7 +1230,7 @@ export class OrdersController {
       case 'enqueued':
         return { internalOrderId, jobId: result.jobId };
       case 'order-not-found':
-        throw new NotFoundException(`Order not found: ${internalOrderId}`);
+        throw orderNotFound(internalOrderId);
       case 'refused':
         // A machine-readable CODE: the three states have different remedies, and
         // a status code alone cannot tell an operator which one.
@@ -1100,7 +1240,12 @@ export class OrdersController {
           message: `Routing cannot be retried for order ${internalOrderId}`,
         });
       case 'enqueue-failed':
-        throw new ServiceUnavailableException('Could not queue the routing retry');
+        throw codedHttpError(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'ROUTING_RETRY_NOT_QUEUED',
+          'Could not queue the routing retry',
+          { orderId: internalOrderId }
+        );
     }
   }
 
@@ -1132,7 +1277,7 @@ export class OrdersController {
       return dto;
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw orderNotFound(error.internalOrderId, error.message);
       }
       if (error instanceof NoBuyerNoteException) {
         throw new ConflictException({
@@ -1198,7 +1343,7 @@ export class OrdersController {
 
   private async requireOrder(internalOrderId: string): Promise<void> {
     if ((await this.orderRecordService.getOrderRecord(internalOrderId)) === null) {
-      throw new NotFoundException(`Order ${internalOrderId} not found`);
+      throw orderNotFound(internalOrderId, `Order ${internalOrderId} not found`);
     }
   }
 
@@ -1228,7 +1373,7 @@ export class OrdersController {
       return this.toDto(packed, await this.hasOpenAmendment(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw orderNotFound(error.internalOrderId, error.message);
       }
       throw error;
     }
@@ -1254,7 +1399,7 @@ export class OrdersController {
       return this.toDto(cleared, await this.hasOpenAmendment(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw orderNotFound(error.internalOrderId, error.message);
       }
       throw error;
     }
@@ -1289,6 +1434,41 @@ export class OrdersController {
       );
       return new Map();
     }
+  }
+
+  /**
+   * Best-effort, like the other batched projections: a failed read renders no
+   * refund state and makes no "not refunded" claim.
+   */
+  private async loadRefundSummariesForPage(
+    internalOrderIds: string[]
+  ): Promise<Awaited<ReturnType<IOrderRefundService['getRefundSummariesForOrders']>>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+    try {
+      return await this.orderRefunds.getRefundSummariesForOrders(internalOrderIds);
+    } catch (error) {
+      this.logger.error(
+        `Failed to project refund state for a page of ${String(internalOrderIds.length)} order(s)`,
+        (error as Error).stack
+      );
+      return new Map();
+    }
+  }
+
+  private applyRefundState(
+    dto: OrderRecordResponseDto,
+    order: OrderRecord,
+    summaries: Awaited<ReturnType<IOrderRefundService['getRefundSummariesForOrders']>>
+  ): void {
+    const view = deriveOrderRefundState(order, summaries.get(order.internalOrderId) ?? null);
+    // `none` stays absent: no field means nothing was refunded or the read
+    // failed, never a positive claim either way.
+    if (view.state === 'none') {
+      return;
+    }
+    dto.refundState = view;
   }
 
   private async loadReservationShortfallsForPage(
@@ -1405,7 +1585,7 @@ export class OrdersController {
     // NOT worth a lock: the window is tiny and the row is inert audit data.
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
 
     try {
@@ -1471,8 +1651,11 @@ export class OrdersController {
     // refusal: a concurrent release in the window is caught below as 409.
     const holds = await this.holdService.listHolds(internalOrderId);
     if (!holds.some((hold) => hold.id === holdId)) {
-      throw new NotFoundException(
-        `Hold not found on order ${internalOrderId}: ${holdId}`
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ORDER_HOLD_NOT_FOUND',
+        `Hold not found on order ${internalOrderId}: ${holdId}`,
+        { orderId: internalOrderId, holdId }
       );
     }
 
@@ -1486,7 +1669,10 @@ export class OrdersController {
       released = transition.hold;
     } catch (error) {
       if (error instanceof OrderHoldNotFoundError) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_HOLD_NOT_FOUND', error.message, {
+          orderId: internalOrderId,
+          holdId: error.holdId,
+        });
       }
       if (error instanceof HoldAlreadyReleasedError) {
         throw new ConflictException({
@@ -1498,12 +1684,17 @@ export class OrdersController {
       if (error instanceof HoldReleaseNoteRequiredError) {
         // Fixable by resubmitting with a note — a request problem, not a
         // permission one.
-        throw new BadRequestException(error.message);
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'HOLD_RELEASE_NOTE_REQUIRED', error.message, {
+          holdId: error.holdId,
+          placedByService: error.placedByService,
+        });
       }
       if (error instanceof HoldReleaseNotPermittedError) {
         // Unreachable from this route (the actor is always a user), but mapped
         // so a future service-actor route cannot fall through to a 500.
-        throw new ForbiddenException(error.message);
+        throw codedHttpError(HttpStatus.FORBIDDEN, 'HOLD_RELEASE_NOT_PERMITTED', error.message, {
+          holdId: error.holdId,
+        });
       }
       throw error;
     }
@@ -1565,7 +1756,7 @@ export class OrdersController {
     // 404 first, before any state is read or written.
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
 
     try {
@@ -1646,7 +1837,7 @@ export class OrdersController {
   ): Promise<OrderChangeResponseDto[]> {
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
     const items = await this.orderChanges.listOperatorChangesByOrder(internalOrderId);
     return items.map(({ change, open }) => this.toOrderChangeDto(change, open));
@@ -1700,7 +1891,7 @@ export class OrdersController {
 
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
 
     try {
@@ -1824,13 +2015,15 @@ export class OrdersController {
       });
     }
     if (error instanceof OrderCancellationNotFoundError) {
-      return new NotFoundException(error.message);
+      return orderCancellationNotFound(error);
     }
-    if (
-      error instanceof OrderCancellationNoteRequiredError ||
-      error instanceof OrderCancellationInvalidReasonError
-    ) {
-      return new BadRequestException(error.message);
+    if (error instanceof OrderCancellationNoteRequiredError) {
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'ORDER_CANCEL_NOTE_REQUIRED', error.message);
+    }
+    if (error instanceof OrderCancellationInvalidReasonError) {
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'ORDER_CANCEL_REASON_INVALID', error.message, {
+        reason: error.reason,
+      });
     }
     if (error instanceof CancelCorrectionFailedError) {
       return new UnprocessableEntityException({
@@ -1904,6 +2097,112 @@ export class OrdersController {
     return ids.has(internalOrderId);
   }
 
+  /**
+   * Every held multipack line and the product its offer maps to (#3624). DETAIL
+   * only; best-effort, because the banner still helps without the product. One
+   * entry per line: an order can hold several, and confirming one leaves the
+   * others held.
+   */
+  private async loadMultipackHolds(order: OrderRecord): Promise<OrderMultipackHoldDto[]> {
+    if (
+      order.recordStatus !== 'awaiting_mapping' ||
+      !order.mappingFailureReason?.includes(`[${MULTIPACK_WITHOUT_BUNDLE_REASON_CODE}]`)
+    ) {
+      return [];
+    }
+    const holds: OrderMultipackHoldDto[] = [];
+    for (const line of order.rawMultipackLines) {
+      let variantId: string | null = null;
+      let productName: string | null = null;
+      let sku: string | null = null;
+      try {
+        if (line.productRef.type === 'offer') {
+          variantId = await this.identifierMapping.getInternalId(
+            CORE_ENTITY_TYPE.Offer,
+            line.productRef.externalId,
+            order.sourceConnectionId
+          );
+        }
+        if (variantId !== null) {
+          const [variant] = await this.productsService.getVariantsByIds([variantId]);
+          sku = variant?.sku ?? null;
+          if (variant !== undefined) {
+            const [product] = await this.productsService.getProductsByIds([variant.productId]);
+            productName = product?.name ?? null;
+          }
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Could not resolve the held multipack product for order ${order.internalOrderId}: ${(error as Error).message}`
+        );
+      }
+      holds.push({
+        lineId: line.itemId,
+        packQuantity: line.packQuantity,
+        lineName: line.name,
+        variantId,
+        productName,
+        sku,
+      });
+    }
+    return holds;
+  }
+
+  /**
+   * The order's bundle lines with component names and whether the bundle has
+   * changed since the order was frozen (#3624). DETAIL only. Best-effort: names
+   * are display, so a failed read drops them and keeps the structure.
+   */
+  private async loadBundleLines(order: OrderRecord): Promise<OrderBundleLineDto[] | undefined> {
+    const lines = order.bundleLines;
+    if (lines.length === 0) {
+      return undefined;
+    }
+    const variantIds = [...new Set(lines.flatMap((l) => l.components.map((c) => c.variantId)))];
+    const names = new Map<string, { name: string | null; sku: string | null }>();
+    const currentVersion = new Map<string, number>();
+    try {
+      const [variants, current] = await Promise.all([
+        this.productsService.getVariantsByIds(variantIds),
+        this.bundleDefinitions.findCurrentByVariantIds(lines.map((l) => l.bundleVariantId)),
+      ]);
+      const products = await this.productsService.getProductsByIds([
+        ...new Set(variants.map((v) => v.productId)),
+      ]);
+      const productById = new Map(products.map((p) => [p.id, p]));
+      for (const variant of variants) {
+        names.set(variant.id, {
+          name: productById.get(variant.productId)?.name ?? null,
+          sku: variant.sku,
+        });
+      }
+      for (const definition of current) {
+        currentVersion.set(definition.variantId, definition.version);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not load bundle component names for order ${order.internalOrderId}: ${(error as Error).message}`
+      );
+    }
+    return lines.map((line) => ({
+      lineId: line.lineId,
+      bundleVariantId: line.bundleVariantId,
+      version: line.version,
+      olderComposition: (currentVersion.get(line.bundleVariantId) ?? line.version) > line.version,
+      components: line.components.map((component) => ({
+        lineId: component.lineId,
+        variantId: component.variantId,
+        productId: component.productId,
+        name: names.get(component.variantId)?.name ?? null,
+        sku: names.get(component.variantId)?.sku ?? null,
+        quantity: component.quantity,
+        perUnit: component.perUnit,
+        ...(component.giftSlot === true && { giftSlot: true }),
+        ...(component.giftDocumentForm !== undefined && { giftDocumentForm: component.giftDocumentForm }),
+      })),
+    }));
+  }
+
   private toDto(order: OrderRecord, hasOpenAmendment = false): OrderRecordResponseDto {
     const fulfillmentState = order.fulfillmentState ?? 'not-shipped';
     return {
@@ -1923,6 +2222,7 @@ export class OrdersController {
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,
+      salesDocumentBlockParams: toSalesDocumentBlockParamsDto(order.salesDocumentBlockParams),
       destinationRoutingBlockReason: order.destinationRoutingBlockReason,
       destinationRoutingBlockDetail: order.destinationRoutingBlockDetail,
       salesDocumentBlockedAt: order.salesDocumentBlockedAt?.toISOString() ?? null,
@@ -1962,6 +2262,7 @@ export class OrdersController {
       // read the list widens who may read the start of the buyer's note: decide
       // a list audience as if it were the note's audience.
       hasBuyerNote: order.hasBuyerNote,
+      hasBundle: (order.lineExpansion?.definitions.length ?? 0) > 0,
       buyerNoteState: classifyBuyerNoteForList(order.hasBuyerNote, order.buyerNoteState),
       buyerNotePreview: buildBuyerNotePreview(order.buyerNoteState),
       // The read marker is a timestamp, not free text, so the list may carry it:
@@ -2145,6 +2446,14 @@ export class OrdersController {
       externalOrderId: s.externalOrderId ?? null,
       externalOrderNumber: s.externalOrderNumber ?? null,
       error: s.error ?? null,
+      deliveryUpdate: s.deliveryUpdate
+        ? {
+            outcome: s.deliveryUpdate.outcome,
+            reason: s.deliveryUpdate.reason ?? null,
+            detail: s.deliveryUpdate.detail ?? null,
+            at: s.deliveryUpdate.at.toISOString(),
+          }
+        : null,
     };
   }
 

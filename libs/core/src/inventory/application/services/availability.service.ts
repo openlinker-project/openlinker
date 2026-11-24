@@ -26,6 +26,13 @@ import {
   readStockSafetyBuffer,
   readStockZeroThreshold,
 } from '@openlinker/core/identifier-mapping';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+  type BundleDefinition,
+  type IBundleDefinitionService,
+  type IProductsService,
+} from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import {
   INVENTORY_REPOSITORY_TOKEN,
@@ -40,6 +47,7 @@ import type {
 } from '../../domain/types/availability.types';
 import {
   applyScopedLedgerSubtraction,
+  computeBundleUnits,
   toPromisableQuantity,
   unknownPromisableQuantity,
 } from '../../domain/types/availability.types';
@@ -63,7 +71,11 @@ export class AvailabilityService implements IAvailabilityService {
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
     @Inject(RESERVATION_LEDGER_READER_TOKEN)
-    private readonly reservationLedger: ReservationLedgerReaderPort
+    private readonly reservationLedger: ReservationLedgerReaderPort,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService
   ) {}
 
   async getPromisableQuantities(
@@ -88,7 +100,7 @@ export class AvailabilityService implements IAvailabilityService {
       // `applyPublishControls` and UnsupportedAvailabilityScopeError).
       if (error instanceof UnsupportedAvailabilityScopeError) throw error;
       this.logger.error(
-        `availability_controls_read_failed scope=${scope.kind} variants=${variantIds.length} — ` +
+        `availability_controls_read_failed scope=${scope.kind} variants=${variantIds.length} - ` +
           `reporting provenance 'unknown' for the whole batch; callers must suppress the publish write`,
         (error as Error).stack
       );
@@ -97,13 +109,40 @@ export class AvailabilityService implements IAvailabilityService {
 
     if (variantIds.length === 0) return [];
 
-    const rows = await this.inventoryRepository.findAvailabilityByVariantIds(variantIds);
+    // Bundles (#3931): a bundle variant is promised from its components. If the
+    // definitions cannot be read OL cannot tell a bundle from an ordinary
+    // variant, and answering from the bundle's own (empty) positions would
+    // publish a 0 - so the whole batch is unknown, like a failed ledger read.
+    let definitions: readonly BundleDefinition[];
+    let staleComponentIds: ReadonlySet<string>;
+    try {
+      definitions = await this.bundleDefinitions.findCurrentByVariantIds(variantIds);
+      const componentIds = [
+        ...new Set(definitions.flatMap((d) => d.components.map((c) => c.variantId))),
+      ];
+      const componentVariants =
+        componentIds.length === 0 ? [] : await this.productsService.getVariantsByIds(componentIds);
+      staleComponentIds = new Set(componentVariants.filter((v) => v.isStale === true).map((v) => v.id));
+    } catch (error) {
+      this.logger.error(
+        `availability_bundle_read_failed scope=${scope.kind} variants=${variantIds.length} - ` +
+          `reporting provenance 'unknown' for the whole batch; callers must suppress the publish write`,
+        (error as Error).stack
+      );
+      return variantIds.map((id) => unknownPromisableQuantity(id));
+    }
+    const bundleById = new Map(definitions.map((d) => [d.variantId, d]));
+    const lookupIds = [
+      ...new Set([...variantIds, ...definitions.flatMap((d) => d.components.map((c) => c.variantId))]),
+    ];
+
+    const rows = await this.inventoryRepository.findAvailabilityByVariantIds(lookupIds);
     const byVariantId = new Map(rows.map((r) => [r.productVariantId, r]));
 
     let reserved: ReadonlyMap<string, number>;
     try {
       reserved = await this.reservationLedger.sumReservedByVariantIds({
-        variantIds,
+        variantIds: lookupIds,
         scope,
         // ADR-061 decision 1: only holds stamped `published` reduce ATP.
         atpEffect: 'published',
@@ -113,7 +152,7 @@ export class AvailabilityService implements IAvailabilityService {
       // publishes the un-reserved quantity, which oversells by exactly the
       // outstanding holds — the failure mode reservations exist to prevent.
       this.logger.error(
-        `availability_ledger_read_failed scope=${scope.kind} variants=${variantIds.length} — ` +
+        `availability_ledger_read_failed scope=${scope.kind} variants=${variantIds.length} - ` +
           `reporting provenance 'unknown' for the whole batch; callers must suppress the publish write`,
         (error as Error).stack
       );
@@ -123,6 +162,41 @@ export class AvailabilityService implements IAvailabilityService {
     // Zero-fill in input order so the caller can build a Map directly without
     // re-walking its own list (the `getAvailabilityByVariantIds` idiom).
     return variantIds.map((id) => {
+      const bundle = bundleById.get(id);
+      if (bundle !== undefined) {
+        // The min is taken over component ATP BEFORE any Control; the buffer is
+        // then applied once, to the bundle number (ADR-061 decision 3).
+        const componentRows = bundle.components.map((c) => byVariantId.get(c.variantId));
+        const observed = componentRows
+          .map((r) => r?.stockUpdatedAt ?? null)
+          .filter((d): d is Date => d !== null);
+        return toPromisableQuantity({
+          productVariantId: id,
+          provenance: 'computed',
+          atp: applyScopedLedgerSubtraction(
+            {
+              answeredBy: 'computed',
+              totalAvailable: computeBundleUnits(
+                bundle.components.map((c, i) => ({
+                  variantId: c.variantId,
+                  quantity: c.quantity,
+                  availableToPromise: Math.max(
+                    0,
+                    (componentRows[i]?.totalAvailable ?? 0) - (reserved.get(c.variantId) ?? 0)
+                  ),
+                  isStale: staleComponentIds.has(c.variantId),
+                }))
+              ),
+            },
+            0,
+            controls.buffer,
+            controls.zeroThreshold
+          ),
+          observedAt:
+            observed.length === 0 ? null : new Date(Math.max(...observed.map((d) => d.getTime()))),
+          now,
+        });
+      }
       const row = byVariantId.get(id);
       return toPromisableQuantity({
         productVariantId: id,

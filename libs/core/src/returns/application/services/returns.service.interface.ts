@@ -28,6 +28,7 @@ import type { ReturnSegmentCounts } from '../../domain/types/return-segment.type
 import type { ReturnTimelineForOrder } from '../../domain/types/return-timeline-entry.types';
 import type {
   ResolvableOrderLine,
+  ReturnOrderLineSuggestion,
   ReturnOrderLineUnresolvedReason,
 } from '../../domain/domain-services/return-order-line-resolution.domain-service';
 
@@ -480,4 +481,30 @@ export interface IReturnsService {
     returnId: string,
     orderLines: readonly ResolvableOrderLine[]
   ): Promise<ReturnOrderLineResolutionSummary>;
+
+  /**
+   * Candidates and a suggestion for a return line whose order line is still
+   * unresolved (#3933). A read: nothing is written, and the operator confirms
+   * through {@link confirmOrderLineForReturnLine}. Order data enters as an
+   * argument because `returns` takes no orders-module edge.
+   */
+  suggestOrderLineForReturnLine(
+    returnLineId: string,
+    orderLines: readonly ResolvableOrderLine[]
+  ): Promise<ReturnOrderLineSuggestion & { alreadyResolvedOrderLineId: string | null }>;
+
+  /**
+   * The operator's confirmation of one order line for a return line. Goes through
+   * the SAME fill-in-when-NULL claim as automatic resolution, so a confirmation
+   * can never overwrite an answer. `orderLineId` must be one of `orderLines`.
+   *
+   * @returns `claimed: false` when the line was already resolved (by a peer or an
+   *   earlier run); the stored answer is unchanged.
+   * @throws {ReturnLineNotFoundError}
+   */
+  confirmOrderLineForReturnLine(
+    returnLineId: string,
+    orderLineId: string,
+    orderLines: readonly ResolvableOrderLine[]
+  ): Promise<{ claimed: boolean; known: boolean }>;
 }

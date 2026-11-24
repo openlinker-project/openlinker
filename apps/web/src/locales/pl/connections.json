@@ -21,8 +21,7 @@
         "bytes": "{n} B",
         "kilobytes": "{n} KB",
         "megabytes": "{n} MB"
-      },
-      "uploadFailed": "Przesyłanie nie powiodło się"
+      }
     },
     "description": "Allegro wymaga w każdej ofercie miejsca wysyłki i danych GPSR UE (rozporządzenie 2023/988, obowiązkowe od 13 grudnia 2024). Te ustawienia domyślne są wysyłane przy tworzeniu produktu w ofercie i używane awaryjnie, gdy nie uda się powiązać z istniejącą kartą produktu.",
     "eyebrow": "Domyślne ustawienia sprzedawcy Allegro",
@@ -102,7 +101,8 @@
     "ReturnsAuthority": "Decyduje, co dzieje się z towarem odesłanym przez klienta - czy wraca do sprzedaży i kto to zatwierdza."
   },
   "capabilityMetadata": {
-    "conflict": "Niedostępne, gdy wybrano {capability} - główne źródło stanów nie może być jednocześnie celem zapisu stanów."
+    "conflict": "Niedostępne, gdy wybrano {capability} - główne źródło stanów nie może być jednocześnie celem zapisu stanów.",
+    "conflictMasterPublisher": "Niedostępne, gdy wybrano {capability} - opublikowane produkty wróciłyby z tego sklepu jako duplikaty. Drugą rolę ustaw na osobnym połączeniu."
   },
   "catalogTrustPanel": {
     "cycleNone": "Brak otwartego",
@@ -197,6 +197,10 @@
     "enabledToast": "Włączono {capability}.",
     "errorTitle": "Nie udało się zaktualizować możliwości",
     "eyebrow": "Możliwości",
+    "legacyMasterPublisher": {
+      "body": "To połączenie jest jednocześnie źródłem katalogu i miejscem publikacji, więc opublikowane produkty mogą wracać jako duplikaty. Publikowanie na to połączenie jest odrzucane, dopóki nie wyłączysz roli Źródło produktów.",
+      "title": "Katalog i publikowanie na jednym połączeniu"
+    },
     "none": "To połączenie nie ma możliwości, które można tu przełączać.",
     "noneEnabled": {
       "body": "To połączenie jest nieaktywne dla wszystkich możliwości. Żadne zadanie synchronizacji z niego nie skorzysta.",
@@ -213,51 +217,6 @@
     "supported": "Obsługiwane możliwości",
     "title": "Włączone role",
     "updatedTitle": "Zaktualizowano możliwości"
-  },
-  "connectionCategoryMappingsPage": {
-    "desktopOnly": {
-      "body": "Edytor mapowania kategorii zestawia obok siebie drzewo kategorii i wyszukiwarkę marketplace, więc potrzebuje szerszego ekranu. Otwórz tę stronę na komputerze lub tablecie w poziomie, aby przypisywać kategorie.",
-      "title": "Otwórz na komputerze, aby edytować kategorie"
-    },
-    "error": {
-      "title": "Nie udało się wczytać"
-    },
-    "eyebrow": "Połączenie",
-    "loading": {
-      "message": "Pobieranie kategorii i mapowań...",
-      "title": "Wczytywanie"
-    },
-    "mappedSummary": {
-      "few": "Zmapowano {mapped} z {n} kategorii",
-      "many": "Zmapowano {mapped} z {n} kategorii",
-      "one": "Zmapowano {mapped} z {n} kategorii",
-      "other": "Zmapowano {mapped} z {n} kategorii"
-    },
-    "marketplaceHeading": "Kategoria marketplace",
-    "marketplaceSelect": {
-      "label": "Połączenie z marketplace",
-      "option": "{name} ({platform})",
-      "placeholder": "Wybierz połączenie z marketplace…"
-    },
-    "noCategories": {
-      "message": "Nie znaleziono kategorii dla tego połączenia. Upewnij się, że sklep ma skonfigurowane kategorie.",
-      "title": "Brak kategorii sklepu"
-    },
-    "noMarketplace": {
-      "addConnection": "Dodaj połączenie",
-      "message": "Przed mapowaniem kategorii dodaj połączenie z marketplace.",
-      "title": "Brak skonfigurowanego połączenia z marketplace"
-    },
-    "pickCategory": {
-      "message": "Kliknij kategorię sklepu po lewej, aby przypisać kategorię marketplace.",
-      "title": "Wybierz kategorię"
-    },
-    "pickMarketplace": {
-      "message": "Wybierz powyżej połączenie z marketplace, aby przeglądać jego drzewo kategorii.",
-      "title": "Wybierz połączenie z marketplace"
-    },
-    "sourceHeading": "Kategorie sklepu",
-    "title": "Mapowania kategorii"
   },
   "connectionCell": {
     "copiedId": "Skopiowano ID połączenia",
@@ -276,6 +235,7 @@
     "ariaLabel": "{name}, {platform}",
     "sandboxFace": "{platform} sandbox",
     "sandboxLabel": "{platform} (sandbox)",
+    "sandboxTag": "sandbox",
     "title": "{name} - {platform}"
   },
   "connectionConfigPanel": {
@@ -360,6 +320,7 @@
     "tabs": {
       "actions": "Akcje",
       "config": "Konfiguracja",
+      "gifts": "Gratisy na dokumentach",
       "health": "Kondycja",
       "overview": "Przegląd"
     }
@@ -890,10 +851,10 @@
       "body": "Popraw poniżej surową konfigurację JSON, zanim zaczniesz edytować pola formularza - są zablokowane, aby własne klucze JSON nie zostały po cichu utracone.",
       "title": "Surowy JSON jest nieprawidłowy"
     },
+    "readOnlyNote": "Masz dostęp tylko do odczytu, więc tych ustawień nie można zmienić.",
     "save": "Zapisz zmiany",
     "saving": "Zapisywanie...",
     "someNeedAttention": "Niektóre pola wymagają uwagi. Zobacz listę na górze formularza.",
-    "unexpectedError": "Wystąpił nieoczekiwany błąd.",
     "updatedDescription": "Ustawienia połączenia zostały zapisane.",
     "updatedTitle": "Połączenie zaktualizowane",
     "warningsTitle": "Zapisano, ale coś wymaga sprawdzenia"
@@ -912,6 +873,10 @@
     "notFound": {
       "message": "Nie zwrócono danych połączenia. Sprawdź ID połączenia lub wróć do listy.",
       "title": "Nie znaleziono połączenia"
+    },
+    "readOnly": {
+      "message": "Edycja połączenia wymaga uprawnień do zapisu. Poproś administratora o zmianę tych ustawień.",
+      "title": "Dostęp tylko do odczytu"
     },
     "title": "Edytuj połączenie"
   },
@@ -1123,6 +1088,12 @@
       "batched": "Zbiorczo",
       "manual": "Ręcznie"
     }
+  },
+  "labelPurchaseNotificationSection": {
+    "heading": "Po zakupie etykiety",
+    "help": "Sklep lub marketplace dostaje numer przesyłki i oznacza zamówienie jako wysłane od razu po zakupie etykiety nadawczej. Kupujący może wtedy dostać informację o wysyłce w chwili zakupu etykiety, a nie wtedy, gdy paczka faktycznie wyjedzie. Włącz tylko, jeśli kupujesz etykiety i oddajesz paczki przewoźnikowi w tym samym czasie.",
+    "manualDispatch": "„Oznacz jako nadane” działa niezależnie od tego ustawienia: gdy jest wyłączone, użyj go po oddaniu paczki przewoźnikowi.",
+    "toggle": "Powiadom sklep lub marketplace po zakupie etykiety"
   },
   "newConnectionPage": {
     "backLabel": "Połączenia",
@@ -1336,7 +1307,6 @@
       }
     },
     "save": "Zapisz zmiany",
-    "saveFailed": "Nie udało się zapisać ustawień cen i synchronizacji.",
     "savedDescription": "Zaktualizowano ustawienia cen i synchronizacji.",
     "savedTitle": "Zapisano",
     "saving": "Zapisywanie…",
@@ -1389,8 +1359,7 @@
     "restore": "Przywróć",
     "restoring": "Przywracanie...",
     "successDescription": "„{name}” wróciło jako wyłączone połączenie. Przed włączeniem podaj ponownie dane uwierzytelniające.",
-    "successTitle": "Połączenie przywrócone",
-    "tryAgain": "Spróbuj ponownie."
+    "successTitle": "Połączenie przywrócone"
   },
   "routerReadinessPanel": {
     "activeLocations": "Aktywne lokalizacje magazynowe",
@@ -1440,6 +1409,46 @@
     "eyebrow": "Integracje",
     "guidedSetup": "Kreator konfiguracji",
     "next": "Dalej"
+  },
+  "shipping": {
+    "backToOmsSetup": "Wróć do konfiguracji OMS",
+    "createdAction": "Wybierz metody dostawy",
+    "createdBody": "Teraz wybierz, które metody dostawy wysyła {carrier}. Do tego czasu nie trafi tam żadne zamówienie.",
+    "createdTitle": "Połączono {carrier}.",
+    "rowChange": "Zmień",
+    "rowChoose": "Wybierz",
+    "rowLoading": "Wczytywanie metod dostawy...",
+    "rowUnavailable": "Nie udało się wczytać, kto wysyła te metody dostawy.",
+    "shippingAllLabelled": "Każda metoda dostawy dostaje etykietę z OpenLinker.",
+    "shippingChange": "Zmień, kto co wysyła",
+    "shippingCoverage": {
+      "few": "<count>{labelled} z {n}</count> metod dostawy dostaje etykietę z OpenLinker",
+      "many": "<count>{labelled} z {n}</count> metod dostawy dostaje etykietę z OpenLinker",
+      "one": "<count>{labelled} z {n}</count> metody dostawy dostaje etykietę z OpenLinker",
+      "other": "<count>{labelled} z {n}</count> metody dostawy dostaje etykietę z OpenLinker"
+    },
+    "shippingEyebrow": "Kto wysyła",
+    "shippingLoading": "Wczytywanie metod dostawy...",
+    "shippingNoMethods": "Ten kanał sprzedaży nie ma jeszcze metod dostawy.",
+    "shippingRestByShop": {
+      "few": "{n} metody dostawy wysyła twój sklep, tak jak przed OpenLinker.",
+      "many": "{n} metod dostawy wysyła twój sklep, tak jak przed OpenLinker.",
+      "one": "{n} metodę dostawy wysyła twój sklep, tak jak przed OpenLinker.",
+      "other": "{n} metody dostawy wysyła twój sklep, tak jak przed OpenLinker."
+    },
+    "shippingTitle": "Wysyłka",
+    "shippingUnlisted": "Ten kanał sprzedaży nie udostępnia listy metod dostawy, więc nie ma tu czego przypisać.",
+    "shipsForEmpty": "Żadna metoda dostawy nie trafia jeszcze do {carrier}.",
+    "shipsForEyebrow": "Metody dostawy",
+    "shipsForIntro": "Metody dostawy, dla których etykiety są kupowane u {carrier}, według kanału sprzedaży.",
+    "shipsForNoSources": "Nie połączono jeszcze żadnego kanału sprzedaży. Najpierw połącz kanał, a potem wybierz, które jego metody dostawy wysyła ten przewoźnik.",
+    "shipsForTitle": "Wysyła dla",
+    "shipsForUnnamed": {
+      "few": "{n} metody dostawy (nie wczytano nazw)",
+      "many": "{n} metod dostawy (nie wczytano nazw)",
+      "one": "{n} metoda dostawy (nie wczytano nazwy)",
+      "other": "{n} metody dostawy (nie wczytano nazw)"
+    }
   },
   "shoperSetupForm": {
     "beforeYouStart": {
@@ -1642,6 +1651,17 @@
     "timeoutWhole": "Limit czasu zapytania musi być całkowitą liczbą milisekund",
     "tokenRequired": "Token mostka jest wymagany - mostek {product} odrzuca każde zapytanie bez niego."
   },
+  "testOutcome": {
+    "failed": "Test się nie powiódł.",
+    "misconfigured": "Brakuje części ustawień lub danych logowania albo są nieprawidłowe.",
+    "not-found": "Pod tym adresem nic nie znaleziono. Sprawdź adres sklepu lub API.",
+    "ok": "Połączenie działa.",
+    "timeout": "Platforma nie odpowiedziała na czas.",
+    "unauthorized": "Platforma odrzuciła dane logowania. Sprawdź klucz lub hasło.",
+    "unexpected-status": "Platforma odpowiedziała w nieoczekiwany sposób.",
+    "unreachable": "Nie udało się połączyć z platformą. Sprawdź adres i czy platforma działa.",
+    "unsupported": "Tego rodzaju połączenia nie da się jeszcze przetestować."
+  },
   "woocommerceSetupForm": {
     "beforeYouStart": {
       "body": "W panelu administracyjnym {platform} przejdź do <strong>{platform} → Ustawienia → Zaawansowane → REST API</strong> i wygeneruj klucz z uprawnieniami <strong>Odczyt/Zapis</strong>. Skopiuj poniżej consumer key i consumer secret - są wyświetlane tylko raz.",
@@ -1694,7 +1714,7 @@
     "title": "Połącz z {platform}"
   },
   "woocommerceSetupSchema": {
-    "capabilityConflict": "W tym samym połączeniu nie można jednocześnie włączyć głównego źródła stanów i zapisu stanów do tego sklepu.",
+    "capabilityConflict": "W tym samym połączeniu nie można jednocześnie włączyć głównego źródła stanów i zapisu stanów do tego sklepu, ani katalogu produktów i publikowania produktów.",
     "consumerKeyPrefix": "Consumer key musi zaczynać się od ck_",
     "consumerKeyRequired": "Consumer key jest wymagany",
     "consumerSecretPrefix": "Consumer secret musi zaczynać się od cs_",

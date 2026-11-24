@@ -59,6 +59,7 @@ export class InfaktConnectionTesterAdapter implements ConnectionTesterPort {
       if (!connection.credentialsRef) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'Connection has no stored credentials',
           latencyMs: Date.now() - startedAt,
         };
@@ -116,6 +117,7 @@ export class InfaktConnectionTesterAdapter implements ConnectionTesterPort {
         // The exception message is OL-authored and bounded, so it is forwarded
         // verbatim rather than flattened - it names the offending field, which
         // is the whole point of surfacing this separately.
+        outcome: 'misconfigured',
         message: `Infakt connection configuration is invalid: ${error.message}`,
         latencyMs,
       };

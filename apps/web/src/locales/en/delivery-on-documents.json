@@ -98,7 +98,6 @@
     "loadingMessage": "Fetching this connection.",
     "loadingTitle": "Loading delivery settings",
     "otherSaved": "All other countries saved.",
-    "saveFailedFallback": "The delivery settings could not be saved.",
     "saveFailedTitle": "Changes not saved",
     "suggest": {
       "body": "There are suggested settings for it.",

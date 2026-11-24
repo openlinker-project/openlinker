@@ -81,6 +81,7 @@ import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { MetricCard } from '../../../shared/ui/metric-card';
 import { formatAmount } from '../../../shared/format/format-amount';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { usePlatform } from '../../../shared/plugins';
 import { useConnectionsQuery } from '../../connections';
@@ -89,7 +90,6 @@ import {
   useInvoiceQuery,
   type CorrectionSuggestedLine,
 } from '../../invoicing';
-import { interpolate, useMessages } from '../../../shared/i18n';
 import {
   computeCorrectionProposalBreakdown,
   lineCredit,
@@ -132,6 +132,7 @@ export function CorrectionProposalPanel({
   const outcomeTexts: Readonly<Record<string, string>> = copy.outcomes;
   const noMatchReasons: Readonly<Record<string, string>> = copy.noMatchReasons;
   const { showToast } = useToast();
+  const bundleReturnCopy = useMessages('bundle-returns');
   const record = useRecordCorrectionProposalMutation(returnId);
   const [correctionOpen, setCorrectionOpen] = useState(false);
 
@@ -310,6 +311,15 @@ export function CorrectionProposalPanel({
             {line.status === 'matched' ? (
               <p className="text-muted tabular">
                 {formatAmount(lineCredit(line), proposal.currency)}
+              </p>
+            ) : null}
+
+            {line.status === 'matched' && line.componentCredit ? (
+              <p className="text-muted" data-testid="return-component-correction-note">
+                {interpolate(bundleReturnCopy.correction.componentCredit, {
+                  amount: formatAmount(line.componentCredit.amountGross, proposal.currency),
+                  units: line.componentCredit.units,
+                })}
               </p>
             ) : null}
 

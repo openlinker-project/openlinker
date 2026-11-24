@@ -36,6 +36,7 @@ import {
   useAutomationSummaryQuery,
   useAutomationVocabularyQuery,
 } from '../../features/automation';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 /**
  * The trigger the §5.1 suggestion is built on (T5 → A2 → A3).
@@ -61,9 +62,11 @@ export function AutomationsPage(): ReactElement {
   );
 
   const header = (
-    <Button tone="secondary" onClick={() => void navigate('/automations/activity')}>
-      {pageCopy.runLogAction}
-    </Button>
+    <>
+      <Button tone="secondary" onClick={() => void navigate('/automations/activity')}>
+        {pageCopy.runLogAction}
+      </Button>
+    </>
   );
 
   if (vocabularyQuery.isLoading || summaryQuery.isLoading) {
@@ -108,7 +111,7 @@ export function AutomationsPage(): ReactElement {
       >
         <ErrorState
           title={errorCopy.summaryTitle}
-          message={summaryQuery.error.message}
+          message={describeApiError(summaryQuery.error, 'automation')}
         />
       </PageLayout>
     );

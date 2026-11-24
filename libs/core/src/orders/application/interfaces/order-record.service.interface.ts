@@ -7,6 +7,7 @@
  *
  * @module libs/core/src/orders/application/interfaces
  */
+import type { LineExpansion } from '@openlinker/core/products';
 import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import type { ApplyOrderEditInput } from '../../domain/types/order-edits.types';
 import type { Order } from '../../domain/types/order.types';
@@ -54,6 +55,12 @@ import type {
 
 export interface IOrderRecordService {
   /**
+   * Orders placed in OpenLinker since `since` that mention any of the SKUs
+   * (#3962) - matched like the orders list search.
+   */
+  countOrdersForSkusSince(skus: readonly string[], since: Date): Promise<number>;
+
+  /**
    * Persist order record with PII-aware snapshot
    *
    * Creates a snapshot of the order that respects OL_STORE_PII configuration.
@@ -98,7 +105,8 @@ export interface IOrderRecordService {
    * Persist raw incoming snapshot before item resolution.
    *
    * Called immediately after ID resolution but before offer→variant mapping.
-   * Sets recordStatus='awaiting_mapping'. On retry, once all items resolve,
+   * Sets recordStatus='awaiting_mapping'. Once all items resolve (on a
+   * retry, or on re-ingestion after an unlisted offer gets mapped, #4040),
    * persistOrder() upserts with recordStatus='ready'.
    *
    * The orderSnapshot stores the raw IncomingOrder — items retain external offer
@@ -286,7 +294,7 @@ export interface IOrderRecordService {
    * cancel event or a later re-poll can never overwrite an already-recorded
    * instant. No-op (no throw) when no record exists yet for `internalOrderId`.
    */
-  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
+  markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean>;
 
   /**
    * Durably record that a cancellation arrived for an order OL has not yet
@@ -352,10 +360,7 @@ export interface IOrderRecordService {
    * becoming a DI cycle — the same shape #2100 established for the invoicing
    * gate.
    */
-  markFulfillmentBlock(
-    internalOrderId: string,
-    block: FulfillmentBlock | null
-  ): Promise<void>;
+  markFulfillmentBlock(internalOrderId: string, block: FulfillmentBlock | null): Promise<void>;
 
   /**
    * Persist how a routing decision narrowed this order's destination fan-out
@@ -469,6 +474,14 @@ export interface IOrderRecordService {
    * such order, not `ready`, or a stale `expectedRev`).
    */
   applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null>;
+
+  /** Freeze the bundle expansion once at ingestion (#3607); see the repository port. */
+  freezeLineExpansion(internalOrderId: string, expansion: LineExpansion): Promise<LineExpansion>;
+
+  /** Open orders per frozen version of one bundle (#3624); see the repository port. */
+  countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]>;
 
   /**
    * Record that the source amended this order after it was already ingested

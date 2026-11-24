@@ -169,6 +169,14 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
     ['waitingInOpenLinker=false', { waitingInOpenLinker: false }],
     ['onPackBench=true', { onPackBench: true }],
     ['onPackBench=false', { onPackBench: false }],
+    ['withGift=true', { withGift: true }],
+    ['withGift=false', { withGift: false }],
+    ['withBundle=true', { withBundle: true }],
+    ['withBundle=false', { withBundle: false }],
+    ['giftNotAdded=true', { giftNotAdded: true, giftNotAddedOrderIds: ['o1'] }],
+    ['giftNotAdded=true with no ids', { giftNotAdded: true, giftNotAddedOrderIds: [] }],
+    ['giftShopRejected=true', { giftShopRejected: true }],
+    ['giftShopRejected=false', { giftShopRejected: false }],
     [
       'every filter at once',
       {
@@ -194,6 +202,7 @@ describe('OrderRecordRepository paged/count predicate parity (#2944)', () => {
         destinationRoutingBlocked: true,
         waitingInOpenLinker: true,
         onPackBench: true,
+        withGift: true,
       },
     ],
   ];

@@ -182,6 +182,8 @@ export interface PrestashopCategory {
 export interface CategoryMapping {
   id: string;
   connectionId: string;
+  /** Master connection; `null` on a source-agnostic historical row. */
+  sourceConnectionId: string | null;
   prestashopCategoryId: string;
   allegroCategoryId: string;
   allegroCategoryName: string;
@@ -189,9 +191,18 @@ export interface CategoryMapping {
 }
 
 export interface UpsertCategoryMappingPayload {
+  /** The master connection that owns the source category (#3993). */
+  sourceConnectionId: string;
   allegroCategoryId: string;
   allegroCategoryName: string;
   allegroCategoryPath?: string;
+}
+
+/** Result of moving category mappings onto a marketplace (#3993). */
+export interface CategoryMappingReassignResult {
+  moved: number;
+  /** Source categories that already had a mapping there and kept it. */
+  keptSourceCategoryIds: string[];
 }
 
 // ── Attribute mapping rules (#1841) ────────────────────────────────────────

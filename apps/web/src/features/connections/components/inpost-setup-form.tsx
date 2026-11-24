@@ -16,8 +16,9 @@
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
+import { createdConnectionLandingPath, isFromOmsSetup } from '../lib/oms-setup-return';
 import {
   INPOST_SETUP_DEFAULT_VALUES,
   inpostSetupSchema,
@@ -39,6 +40,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { captureDemoEvent } from '../../demo';
 import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 // Analytics step names, kept in English so events stay comparable across languages.
 const STEP_EVENT_IDS = ['Account & credentials', 'Sender address', 'Review & connect'] as const;
@@ -70,6 +72,7 @@ export function InpostSetupForm(): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const form = useForm<InpostSetupFormValues, undefined, InpostSetupFormSubmission>({
     defaultValues: INPOST_SETUP_DEFAULT_VALUES,
     resolver: zodResolver(inpostSetupSchema),
@@ -89,8 +92,8 @@ export function InpostSetupForm(): ReactElement {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty]);
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   async function goNext(): Promise<void> {
@@ -132,7 +135,9 @@ export function InpostSetupForm(): ReactElement {
         title: copy.createdTitle,
         description: interpolate(copy.createdDescription, { platform, name: created.name }),
       });
-      void navigate('/connections');
+      // A new carrier ships nothing until a delivery method is routed to it,
+      // so the operator lands where that next step is offered (#3958).
+      void navigate(createdConnectionLandingPath(created.id, isFromOmsSetup(searchParams)));
     } catch {
       return;
     }
@@ -166,7 +171,7 @@ export function InpostSetupForm(): ReactElement {
         ) : null}
         {createConnection.error ? (
           <Alert tone="error" title={copy.createError}>
-            {createConnection.error.message}
+            {describeApiError(createConnection.error, 'connections')}
           </Alert>
         ) : null}
 

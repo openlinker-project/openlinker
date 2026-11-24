@@ -18,6 +18,7 @@ describe('PublishedVariantsService', () => {
       countMany: jest.fn(),
       findMappingPage: jest.fn(),
       countByLifecycle: jest.fn(),
+      countAttention: jest.fn(),
       countByConnectionAndVariants: jest.fn(),
       findDeadFailedCreationOfferIds: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
@@ -28,6 +29,7 @@ describe('PublishedVariantsService', () => {
       countByConnectionAndVariants: jest.fn(),
       countListedVariantsByProducts: jest.fn(),
       findRecentlyListedVariantIds: jest.fn(),
+      findStaleMappedProductIds: jest.fn(),
     };
     service = new PublishedVariantsService(offerRepo, shopRepo);
   });

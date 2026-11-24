@@ -13,6 +13,8 @@ function makeRecord(over: Partial<FiscalRegistrationRecord> = {}): FiscalRegistr
     orderId: 'o1',
     providerType: 'eparagony',
     idempotencyKey: 'fiscal:c1:o1',
+    attempt: 0,
+    previousAttemptId: null,
     status: 'registered',
     providerReference: null,
     documentReference: null,

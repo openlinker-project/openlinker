@@ -10,6 +10,9 @@
 import type { Product } from '../entities/product.entity';
 import type { ProductVariant } from '../entities/product-variant.entity';
 
+export const ProductBundleFilterValues = ['only', 'exclude'] as const;
+export type ProductBundleFilter = (typeof ProductBundleFilterValues)[number];
+
 /**
  * Product filters
  *
@@ -66,6 +69,10 @@ export interface ProductCreate {
   price: number;
   currency?: string;
   weight?: number;
+  /** Barcode, when the caller has one. */
+  ean?: string;
+  /** The rate the gross `price` includes, as a percent code (ADR-063): `'23'`, `'0'`, `'zw'`. */
+  taxRate?: string;
   [key: string]: unknown;
 }
 
@@ -226,6 +233,21 @@ export interface ProductListFilters {
    * with zero variants is also kept (staleness is not what that means).
    */
   hideFullyStale?: boolean;
+
+  /**
+   * Narrow by bundle-ness (#3624). `only` keeps products with a variant that has a
+   * CURRENT bundle definition; `exclude` keeps the rest. A retired definition does not
+   * count as a bundle. Absent applies no filter.
+   */
+  bundleFilter?: ProductBundleFilter;
+
+  /**
+   * Exactly this product (#4026 follow-up). Lets a surface open a product's
+   * peek by id - an order line, a deep link - with the same list-shaped row
+   * (stock aggregates, listings coverage) the products page renders, which the
+   * single-product detail read does not carry.
+   */
+  productId?: string;
 }
 
 /**

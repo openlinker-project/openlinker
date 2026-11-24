@@ -109,6 +109,7 @@ export const OrderChangeKindValues = [
   'order.line_quantity_change',
   'order.delivery_method_change',
   'order.discount_change',
+  'order.gift_added',
   'order.discount_refund',
   'order.discount_correction',
 ] as const;

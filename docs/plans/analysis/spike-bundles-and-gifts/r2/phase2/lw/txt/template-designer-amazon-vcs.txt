@@ -1,0 +1,25 @@
+=== template-designer-amazon-vcs | Template Designer: Amazon VCS
+ 
+ Template Designer: Amazon VCS 
+Template Type: Amazon VCS 
+ Linnworks allows customizing the template(s) you wish to use for uploads with Amazon VCS (VAT Calculation Service). For each Amazon channel that supports VCS, a separate invoice can be created.
+ Creating a template 
+ Like other invoice templates, Amazon VCS templates can contain template elements such as:
+Images 
+Order items
+Labels and variables
+ To work with template elements, first, drag and drop the element to the invoice and then these can be customized by double-clicking the element on the template. Further information on customizing table elements is  here . 
+ For VCS templates there are specific recommendations from Amazon that is highly recommended to follow and note:
+Amend the default template and at minimum replace the logo and [{AmazonShipFromAddress}] (“Your Company Address”)  with your full registered VAT address. This will default to Amazon fulfillment centers in some cases. 
+Use the following variables to facilitate information supplied by Amazon: 
+ [{AmazonOrderNumber}] 
+ [{AmazonOrderDate}] 
+ [{CustomerShippingAddress}] 
+ [{CustomerBillingAddress}] - this includes the Buyers VAT Number 
+ [{AmazonShipFromAddress}] 
+ [{AmazonInvoiceType}] 
+ [{SellerVATNumber}] 
+ [{AmazonLegalText}] - citation text if required by EU VAT Directive for example: “This is an intra-community supply of goods” 
+ The Order Item table has limited options due to the way this information is supplied from Amazon. Also, it will contain the shipping, gift wrapping, and promotional discounts as separate order item entities. (See default Amazon VCS template) 
+ Next, you will need to enable Amazon VCS Self-Invoice Upload in your Amazon Channel Integration Settings and set which template you wish to use for this channel. With this option enabled Linnworks will check Amazon every 12 hours for the latest  _VAT_INVOICE_DATA_REPORT_  and use this data to upload the relevant invoices.
+ 

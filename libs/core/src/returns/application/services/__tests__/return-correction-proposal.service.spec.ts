@@ -122,7 +122,10 @@ function buildChange(id = 'change-corr-1', payload: Record<string, unknown> | nu
 
 describe('ReturnCorrectionProposalService', () => {
   let repository: jest.Mocked<
-    Pick<ReturnRepositoryPort, 'findById' | 'findOutstandingRestockEventsForReturn'>
+    Pick<
+      ReturnRepositoryPort,
+      'findById' | 'findOutstandingRestockEventsForReturn' | 'findComponentActsForReturn'
+    >
   >;
   let invoices: jest.Mocked<Pick<IInvoiceService, 'getLatestIssuedInvoiceForOrder'>>;
   let orderChanges: jest.Mocked<IOrderChangeService>;
@@ -134,6 +137,7 @@ describe('ReturnCorrectionProposalService', () => {
     repository = {
       findById: jest.fn(),
       findOutstandingRestockEventsForReturn: jest.fn().mockResolvedValue([]),
+      findComponentActsForReturn: jest.fn().mockResolvedValue([]),
     };
 
     invoices = {
@@ -462,6 +466,49 @@ describe('ReturnCorrectionProposalService', () => {
       expect(preview.outcome).toBe('nothing-correctable');
       expect(preview.proposal?.lines[0].noMatchReason).toBe('no-line-by-name');
       expect(orderChanges.openOrReuse).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a bundle returned component by component (#3933)', () => {
+    const act = (over: Record<string, unknown> = {}): ReturnLineEvent => ({
+      returnLineId: 'rl-1',
+      componentGroup: 'g1',
+      componentVariantId: 'v-b',
+      componentShareGross: 40,
+      quantity: 1,
+      restockState: 'applied',
+      ...over,
+    }) as unknown as ReturnLineEvent;
+
+    it('should credit the component share as an amount and leave the quantity alone', async () => {
+      repository.findById.mockResolvedValue(buildReturn([buildLine({ quantityRestocked: 1 })]));
+      repository.findComponentActsForReturn.mockResolvedValue([act()]);
+
+      const result = await service.previewProposal(RETURN_ID);
+
+      expect(result.outcome).toBe('proposed');
+      const [line] = result.proposal?.lines ?? [];
+      expect(line.componentCredit).toEqual({
+        units: 1,
+        amountGross: 40,
+        variantIds: ['v-b'],
+        components: [{ variantId: 'v-b', bundleUnits: 1 }],
+      });
+      // The set is ONE invoice line: nothing is cut from its quantity.
+      expect(line.newQuantity).toBe(3);
+      expect(line.quantityDisposed).toBe(0);
+    });
+
+    it('should not credit a group whose component restock was refused', async () => {
+      repository.findById.mockResolvedValue(buildReturn([buildLine({ quantityRestocked: 1 })]));
+      repository.findComponentActsForReturn.mockResolvedValue([
+        act(),
+        act({ componentVariantId: 'v-c', restockState: 'blocked' }),
+      ]);
+
+      const result = await service.previewProposal(RETURN_ID);
+
+      expect(result.proposal?.lines[0].componentCredit ?? null).toBeNull();
     });
   });
 });

@@ -40,6 +40,7 @@ import { SubiektIntegrationModule as SubiektNexoIntegrationModule } from '@openl
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { ShoperIntegrationModule } from '@openlinker/integrations-shoper';
+import { ShopifyIntegrationModule } from '@openlinker/integrations-shopify';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 import { OmsModule } from '@openlinker/oms';
 
@@ -73,6 +74,11 @@ export const apiPlugins: PluginEntry[] = [
   // CategoryProvisioner, OrderProcessorManager and OrderSource, plus signed
   // webhooks and one request budget shared by every connection to a shop.
   ShoperIntegrationModule,
+  // #3974: Shopify - connection, token (client credentials, pre-issued token or
+  // OAuth install), tester and classifiers, plus ProductMaster, InventoryMaster,
+  // OrderSource, OrderProcessorManager, ProductPublisher, CategoryProvisioner
+  // and OfferManager, and signed webhooks.
+  ShopifyIntegrationModule,
   // #2123: reference exchange-rate providers (NBP, ECB). NOT a plugin - it
   // registers no adapter manifest and exposes no capability; it appears here
   // purely as a module-composition seam, exactly as AiIntegrationModule does.

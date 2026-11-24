@@ -141,14 +141,6 @@
       "sectionTitle": "Decline this return",
       "submitting": "Sending…"
     },
-    "declineError": {
-      "conflictPrefix": "This return is not matched to an order, so it cannot be declined.",
-      "conflictWithTrigger": "This return is not matched to an order, so it cannot be declined. Blocked action: {trigger}",
-      "generic": "The decline could not be sent.",
-      "notFound": "This return no longer exists. Reload the page to see the current list.",
-      "unsupported": "The channel cannot be asked to decline this return.",
-      "unsupportedWithReason": "The channel cannot be asked to decline this return. {reason}"
-    },
     "declineOutcome": {
       "already-declined": {
         "body": "This return was already declined, so nothing was sent again.",

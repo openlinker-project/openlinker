@@ -16,11 +16,21 @@ import type {
   PaginatedShipments,
   ShipmentFilters,
   ShipmentPagination,
+  ShipmentSummary,
+  ShipmentSummaryOptions,
 } from '../../domain/types/shipment-query.types';
 
 export interface IShipmentQueryService {
   /** Filtered, paginated list across all orders/connections (most-recent first). */
   list(filters: ShipmentFilters, pagination: ShipmentPagination): Promise<PaginatedShipments>;
+
+  /**
+   * The list's counts for the same filters (#4043): per status, processor,
+   * method and connection (each with its own axis removed), stuck tracking
+   * relays, shipments still to send, and the largest shared failure causes
+   * across every page.
+   */
+  summarize(filters: ShipmentFilters, options: ShipmentSummaryOptions): Promise<ShipmentSummary>;
 
   /** Single shipment by internal id, or null when absent. */
   getById(id: string): Promise<Shipment | null>;

@@ -1,36 +1,402 @@
 {
-  "cursorsListPage": {
-    "caption": "Kursory połączeń",
-    "columns": {
-      "connectionId": "ID połączenia",
-      "cursorKey": "Klucz kursora",
-      "updatedAt": "Ostatnia zmiana",
-      "value": "Wartość"
+  "syncGuide": {
+    "canStartOver": "Można zacząć od nowa",
+    "description": "Objaśnia każdy stan, linię postępu, synchronizację i akcję na stronie Postęp synchronizacji.",
+    "footer": "Naciśnij ? w dowolnym miejscu strony, żeby otworzyć przewodnik, Esc, żeby go zamknąć.",
+    "found": "Znaleziono: {n}",
+    "intro1": " to miejsce, do którego synchronizacja doszła ostatnio. Następne uruchomienie zaczyna od niego, więc nic nie jest czytane dwa razy i nic nie jest pomijane.",
+    "intro2": "Każdy wiersz to jedna synchronizacja jednego połączenia. Stan mówi, czy trzyma się harmonogramu. Postęp mówi, gdzie jest.",
+    "introBookmark": "Zakładka synchronizacji",
+    "items": {
+      "a-fetch": {
+        "name": "Pobierz ponownie",
+        "text": "Cofa przejście katalogu albo kontrolę na początek, żeby następne uruchomienie odczytało wszystko jeszcze raz. Kanałów zamówień nie da się cofnąć: ich pozycja jest we własnym formacie platformy.",
+        "todo": "Rozpoczęcie przejścia od nowa jest zablokowane, gdy trwa uruchomienie."
+      },
+      "a-history": {
+        "name": "Historia uruchomień",
+        "text": "Otwiera listę uruchomień tego połączenia z błędem każdego nieudanego."
+      },
+      "a-keys": {
+        "name": "Pokaż klucze techniczne",
+        "text": "Pokazuje wewnętrzną nazwę każdej zakładki pod jej etykietą. Przydatne w rozmowie z supportem albo przy czytaniu logów. Surowa wartość jest zawsze w Szczegółach technicznych w każdym wierszu."
+      },
+      "a-run": {
+        "name": "Uruchom teraz",
+        "text": "Dodaje synchronizację do kolejki od razu, bez czekania na harmonogram. Rusza od zakładki, więc nic nie jest czytane dwa razy."
+      },
+      "h-failing": {
+        "how": "Ostatnie uruchomienie tej synchronizacji się nie udało.",
+        "name": "Błąd",
+        "text": "Ostatnie uruchomienie zakończyło się błędem. Zakładka zostaje na miejscu, więc nic nie jest pomijane. Ruszy dalej po naprawie błędu.",
+        "todo": "Przeczytaj błąd w szczegółach. Wygasły token naprawisz, łącząc konto ponownie na stronie połączenia."
+      },
+      "h-late": {
+        "how": "Brak ruchu i udanego uruchomienia przez 2× do 6× zwykłego odstępu.",
+        "name": "Opóźniona",
+        "text": "Synchronizacja jest za harmonogramem, ale jeszcze w zasięgu. Często to zajęta kolejka albo wolny sklep.",
+        "todo": "Poczekaj jeszcze jeden odstęp. Jeśli dalej jest opóźniona, otwórz historię uruchomień."
+      },
+      "h-misplaced": {
+        "how": "Nazwa zakładki wskazuje jedną platformę, a połączenie to inna.",
+        "name": "Złe połączenie",
+        "text": "Ta zakładka należy do innej platformy niż połączenie, na którym jest. Synchronizacja uruchomiła się na złym połączeniu, więc jej postęp nie jest wiarygodny.",
+        "todo": "Zgłoś to osobie, która utrzymuje Twoją instalację. Nie zaczynaj jej od nowa na tym połączeniu."
+      },
+      "h-ok": {
+        "how": "Ruch lub udane uruchomienie w ciągu 2× zwykłego odstępu.",
+        "name": "Na czas",
+        "text": "Synchronizacja uruchomiła się wystarczająco niedawno jak na swój harmonogram. Nic nie trzeba robić."
+      },
+      "h-plain": {
+        "name": "OK",
+        "text": "Zakładka bez własnego harmonogramu, np. kolejność zapisu stanów. Nigdy nie jest opóźniona."
+      },
+      "h-pushes": {
+        "name": "Wysyła zmiany",
+        "text": "Połączenie wysyła każdą zmianę do OpenLinkera w chwili, gdy się dzieje, więc nie ma zakładki do pilnowania. Pusta lista jest tu normalna.",
+        "todo": "Jeśli zmiany przestaną przychodzić, sprawdź webhook na stronie połączenia."
+      },
+      "h-stuck": {
+        "how": "Brak ruchu i udanego uruchomienia przez ponad 6× zwykłego odstępu.",
+        "name": "Stoi",
+        "text": "Synchronizacja nie działa od dawna. W OpenLinkerze może brakować zamówień albo stanów z tego źródła.",
+        "todo": "Otwórz historię uruchomień, żeby zobaczyć przyczynę. Sprawdź, czy połączenie jest włączone, a jego zadanie w harmonogramie aktywne. Potem użyj „Uruchom teraz”."
+      },
+      "k-completion-stamp": {
+        "name": "Pamięta, kiedy przejście się zakończyło",
+        "text": "Pokazywane w wierszu katalogu jako „Ostatnie przejście zakończone”, nie jako osobny wiersz."
+      },
+      "k-event-bookmark": {
+        "name": "Odczytuje nowe zdarzenia z kanału",
+        "text": "Gdy surowa wartość jest pusta: nic jeszcze nie odczytano. Następne uruchomienie zacznie od początku kanału albo od daty startu połączenia."
+      },
+      "k-rolling-offset": {
+        "name": "Sprawdza znane pozycje, jedną stronę na uruchomienie",
+        "text": "Gdy surowa wartość jest pusta: jeszcze się nie uruchomiła albo właśnie zawróciła. Następne uruchomienie zacznie od pierwszej pozycji."
+      },
+      "k-sweep-cycle": {
+        "name": "Przechodzi przez cały katalog w kilku uruchomieniach",
+        "text": "Gdy surowa wartość jest pusta: ostatnie przejście się zakończyło. To normalny stan między przejściami."
+      },
+      "k-write-order": {
+        "name": "Nie pozwala starszym stanom nadpisać nowszych",
+        "text": "Gdy surowa wartość jest pusta: do tej oferty nie zapisano jeszcze stanu."
+      },
+      "p-checked": {
+        "name": "Sprawdzono do pozycji N",
+        "text": "Kontrola, która przechodzi przez pozycje znane OpenLinkerowi, jedną stronę na uruchomienie, i na końcu zaczyna od początku."
+      },
+      "p-finished": {
+        "name": "Zakończone, czeka na następne przejście",
+        "text": "Ostatnie przejście objęło cały katalog. Zakładka jest celowo wyczyszczona, a surowa wartość jest pusta. To normalny stan spoczynku, nie błąd."
+      },
+      "p-inprogress": {
+        "name": "W toku: N pozycji",
+        "text": "Długie przejście przez katalog jest w połowie. Duże katalogi wymagają kilku uruchomień, więc jedno przejście może trwać godzinami. Samo ruszy dalej przy następnym uruchomieniu."
+      },
+      "p-notstarted": {
+        "name": "Jeszcze nie ruszyła",
+        "text": "Ta synchronizacja niczego jeszcze nie odczytała. Normalne dla nowego połączenia albo świeżo włączonej funkcji. Jeśli tak zostanie, sprawdź etykietę stanu."
+      },
+      "p-readupto": {
+        "name": "Odczytano do (czas)",
+        "text": "Wszystko, co platforma zgłosiła przed tą chwilą, jest już w OpenLinkerze. Następne uruchomienie pyta tylko o to, co przyszło później."
+      },
+      "p-stock": {
+        "name": "Stan wysłany do N ofert",
+        "text": "Jeden wpis na ofertę z najnowszym stanem, jaki tam wysłano. Starszy stan, który przyjdzie później, jest odrzucany, więc wolny job nigdy nie przywróci starego stanu na ofercie."
+      },
+      "q-alert": {
+        "name": "Czy dostanę powiadomienie, gdy synchronizacja stanie?",
+        "text": "Jeszcze nie. Na razie sygnałem jest ramka „do sprawdzenia” na tej stronie. Zajrzyj tu po awarii albo gdy brakuje zamówień."
+      },
+      "q-empty": {
+        "name": "Dlaczego wartość jest pusta?",
+        "text": "Dla przejścia katalogu pusta oznacza, że przejście się zakończyło. To normalny stan między przejściami. Dla każdej innej synchronizacji oznacza, że nic jeszcze nie odczytano."
+      },
+      "q-late-ok": {
+        "name": "Nic się nie ruszyło, więc czemu „Na czas”?",
+        "text": "Uruchomienie, które nie znajdzie nic nowego, zostawia zakładkę na miejscu. Synchronizacja i tak działała zgodnie z harmonogramem, więc liczy się jej ostatnie udane uruchomienie."
+      },
+      "q-nobookmarks": {
+        "name": "Dlaczego połączenie nie ma zakładek?",
+        "text": "Połączenia, które wysyłają zmiany do OpenLinkera na bieżąco, nie potrzebują zakładek. Ich lista jest pusta z założenia."
+      },
+      "q-safe": {
+        "name": "Czy „Pobierz ponownie” jest bezpieczne?",
+        "text": "Tak. Ponowna kontrola tylko czyta. Ponowne przejście katalogu odczytuje każdy produkt, co przez kilka uruchomień obciąża sklep, i niczego nie zapisuje podwójnie."
+      },
+      "q-unknown": {
+        "name": "Czym jest nieznana zakładka?",
+        "text": "Zakładka, której ta wersja OpenLinkera nie umie opisać, zwykle z pluginu. Działa normalnie, strona po prostu nie umie jej wyjaśnić."
+      },
+      "s-catalogue": {
+        "name": "Katalog produktów",
+        "text": "Odczytuje każdy produkt z Twojego katalogu głównego, partię na uruchomienie, żeby nazwy, ceny i warianty były aktualne."
+      },
+      "s-categories": {
+        "name": "Drzewo kategorii",
+        "text": "Kopiuje drzewo kategorii marketplace'u albo sklepu do OpenLinkera, żeby wybór i wyszukiwanie działały bez pytania platformy. Działa w tle i nie ma stałego harmonogramu, względem którego mogłoby się opóźnić."
+      },
+      "s-changed-orders": {
+        "name": "Zmienione zamówienia (kontrola zapasowa)",
+        "text": "Sklep zwykle wysyła zamówienia webhookiem. Ta kontrola odczytuje każde zamówienie zmienione po pokazanym czasie, żeby złapać to, co webhook pominął."
+      },
+      "s-deleted": {
+        "name": "Kontrola usuniętych produktów",
+        "text": "Szuka produktów usuniętych z katalogu, żeby ich oferty przestały sprzedawać."
+      },
+      "s-listing-status": {
+        "name": "Kontrola statusu ofert",
+        "text": "Ponownie sprawdza, czy każda oferta jest aktywna, zakończona albo zablokowana na marketplace, jedną stronę na uruchomienie."
+      },
+      "s-offer-changes": {
+        "name": "Zmiany ofert",
+        "text": "Odczytuje zmiany Twoich ofert na Allegro, np. zakończenie albo edycję na Allegro, żeby OpenLinker pokazywał ten sam stan."
+      },
+      "s-orders": {
+        "name": "Nowe zamówienia",
+        "text": "Odczytuje nowe i zmienione zamówienia z kanału marketplace'u i tworzy je w OpenLinkerze."
+      },
+      "s-parcel": {
+        "name": "Śledzenie przesyłek",
+        "text": "Ponownie odczytuje status przesyłek w drodze, jedną stronę na uruchomienie."
+      },
+      "s-returns": {
+        "name": "Nowe zwroty",
+        "text": "Odczytuje zwroty otwierane przez kupujących na Allegro. Domyślnie wyłączone, bo kanał zwrotów Allegro jest wciąż w becie."
+      },
+      "s-returns-check": {
+        "name": "Kontrola otwartych zwrotów",
+        "text": "Ponownie odczytuje wciąż otwarte zwroty, jedną stronę na uruchomienie, żeby wyłapać zmiany statusu."
+      },
+      "s-shop-status": {
+        "name": "Kontrola statusu zamówień w sklepie",
+        "text": "Ponownie odczytuje status zamówienia w sklepie, żeby wysyłka oznaczona tam pojawiła się w OpenLinkerze."
+      },
+      "s-stock": {
+        "name": "Stany magazynowe",
+        "text": "Odczytuje stany wszystkich produktów z katalogu głównego, partię na uruchomienie. Zmiany trafiają dalej do marketplace'ów."
+      },
+      "s-system": {
+        "name": "Kontrole systemowe",
+        "text": "Kontrole działające dla wszystkich połączeń, np. terminy automatyzacji i braki stanów. Są w grupie System."
+      }
     },
-    "description": "Stan kursorów synchronizacji dla każdego połączenia - śledź pozycje synchronizacji przyrostowej.",
-    "empty": {
-      "filtered": "Żaden kursor nie pasuje do bieżącego filtra.",
-      "none": "Nie utworzono jeszcze żadnych kursorów synchronizacji. Kursory pojawiają się po pierwszym uruchomieniu zadania synchronizacji w tle.",
-      "title": "Nie znaleziono kursorów"
+    "nothingFound": "Nic w przewodniku nie pasuje do „{q}”.",
+    "runsEvery": "Uruchamia się co {n} min",
+    "searchLabel": "Szukaj w przewodniku",
+    "searchPlaceholder": "Szukaj: pusta, opóźniona, token…",
+    "sections": {
+      "actions": {
+        "summary": "Co robi każdy przycisk",
+        "title": "Akcje"
+      },
+      "faq": {
+        "summary": "6 odpowiedzi",
+        "title": "Częste pytania"
+      },
+      "health": {
+        "summary": "Co oznaczają etykiety",
+        "title": "Stan"
+      },
+      "kinds": {
+        "summary": "5 rodzajów",
+        "title": "Rodzaje zakładek"
+      },
+      "progress": {
+        "summary": "Jak czytać środkową kolumnę",
+        "title": "Postęp"
+      },
+      "syncs": {
+        "summary": "13 synchronizacji",
+        "title": "Każda synchronizacja na tej stronie"
+      }
     },
-    "error": {
-      "retry": "Ponów",
-      "title": "Nie udało się wczytać kursorów"
-    },
+    "shownWhen": "Kiedy się pokazuje: {how}",
+    "title": "Jak czytać postęp synchronizacji",
+    "whatToDo": "Co zrobić:"
+  },
+  "syncProgress": {
+    "allConnections": "Wszystkie połączenia",
+    "allGood": "Wszystkie synchronizacje działają na czas.",
+    "clearFilters": "Wyczyść filtry",
+    "colHealth": "Stan",
+    "colLastMoved": "Ostatni ruch",
+    "colProgress": "Postęp",
+    "colSync": "Synchronizacja",
+    "connection": "Połączenie",
+    "description": "Każda synchronizacja pamięta, dokąd doszła, więc następne uruchomienie zaczyna od tego miejsca. Sprawdź tutaj, czy zamówienia, stany i oferty są pobierane na czas.",
+    "details": "Szczegóły",
+    "emptyMessage": "Zakładki pojawią się po pierwszej synchronizacji na połączeniu.",
+    "emptyTitle": "Brak synchronizacji",
+    "errorTitle": "Nie udało się wczytać postępu synchronizacji",
     "eyebrow": "Diagnostyka",
-    "filter": {
-      "ariaLabel": "Filtruj po ID połączenia",
-      "placeholder": "ID połączenia..."
+    "filterAll": "Wszystkie",
+    "filterOk": "Na czas",
+    "filterProblem": "Do sprawdzenia",
+    "health": "Stan",
+    "healthFilterLabel": "Filtruj po stanie",
+    "healthLabel": {
+      "failing": "Błąd",
+      "late": "Opóźniona",
+      "misplaced": "Złe połączenie",
+      "ok": "Na czas",
+      "plain": "OK",
+      "stuck": "Stoi"
     },
-    "loading": {
-      "message": "Pobieranie danych kursorów...",
-      "title": "Wczytywanie kursorów"
+    "healthWhy": {
+      "failing": "Ostatnie uruchomienie nieudane: {error}",
+      "failingNoError": "Ostatnie uruchomienie nieudane. Błąd znajdziesz w historii uruchomień.",
+      "late": "Ostatnio uruchomiona {ago}, powinna co {every} min.",
+      "misplaced": "Ta zakładka należy do {keyPlatform}, ale jest na połączeniu {connPlatform}. Synchronizacja zapisała ją pod złym połączeniem.",
+      "stuck": "Nie działa od {when}. Zwykle uruchamia się co {every} min."
     },
-    "pagination": {
-      "next": "Dalej",
-      "previous": "Wstecz",
-      "range": "Wyświetlono {from}-{to} z {total}"
+    "howToRead": "Jak to czytać",
+    "kindLine": {
+      "completion-stamp": "Pamięta, kiedy przejście się zakończyło.",
+      "event-bookmark": "Odczytuje nowe zdarzenia z kanału.",
+      "rolling-offset": "Sprawdza znane pozycje, jedną stronę na uruchomienie.",
+      "sweep-cycle": "Przechodzi przez cały katalog w kilku uruchomieniach.",
+      "write-order": "Nie pozwala starszym stanom nadpisać nowszych."
     },
-    "title": "Kursory"
+    "labels": {
+      "automationDeadlines": "Terminy automatyzacji",
+      "categoryTree": "Drzewo kategorii",
+      "changedOrders": "Zmienione zamówienia (kontrola zapasowa)",
+      "changedProducts": "Zmienione produkty",
+      "channelOrderStatus": "Kontrola statusu zamówień w kanale",
+      "deletedProducts": "Kontrola usuniętych produktów",
+      "listingStatus": "Kontrola statusu ofert",
+      "newOrders": "Nowe zamówienia",
+      "newReturns": "Nowe zwroty",
+      "offerChanges": "Zmiany ofert",
+      "openReturnsCheck": "Kontrola otwartych zwrotów",
+      "orphanReturns": "Kontrola nieprzypisanych zwrotów",
+      "parcelTracking": "Śledzenie przesyłek",
+      "productCatalogue": "Katalog produktów",
+      "rerouteCheck": "Kontrola przekierowania realizacji",
+      "shopOrderStatus": "Kontrola statusu zamówień w sklepie",
+      "shopProductStatus": "Kontrola statusu produktów w sklepie",
+      "shortfallClose": "Odzyskiwanie braków stanów",
+      "shortfallDetect": "Kontrola braków stanów",
+      "stockLevels": "Stany magazynowe",
+      "stockWriteOrder": "Kolejność zapisu stanów",
+      "unrecognised": "Nieznana zakładka",
+      "unsentTasks": "Kontrola nieprzyjętych zadań realizacji"
+    },
+    "lastRunFailed": "Błąd uruchomienia {ago}",
+    "lastRunOk": "Uruchomienie ok {ago}",
+    "lastRunQueued": "W kolejce",
+    "lastRunRunning": "Trwa teraz",
+    "needsLookExplain": "Co oznaczają te etykiety?",
+    "needsLookTitle": {
+      "few": "{n} synchronizacje do sprawdzenia",
+      "many": "{n} synchronizacji do sprawdzenia",
+      "one": "{n} synchronizacja do sprawdzenia",
+      "other": "{n} synchronizacji do sprawdzenia"
+    },
+    "noMatch": "Żadna synchronizacja nie pasuje do filtrów.",
+    "openConnection": "Otwórz połączenie",
+    "progress": {
+      "checkedUpTo": "Sprawdzono do pozycji {n}",
+      "notStarted": "Jeszcze nie ruszyła",
+      "passContinues": "Kontynuuje przy następnym uruchomieniu",
+      "passDoneAgo": "Przejście zakończone {ago}",
+      "passFinished": "Zakończone, czeka na następne przejście",
+      "passInProgress": {
+        "few": "W toku: {n} pozycje",
+        "many": "W toku: {n} pozycji",
+        "one": "W toku: {n} pozycja",
+        "other": "W toku: {n} pozycji"
+      },
+      "passNextOnSchedule": "Następne przejście zgodnie z harmonogramem",
+      "readUpTo": "Odczytano do {when}",
+      "stamped": "Zakończone {when}",
+      "startsOver": "Na końcu zaczyna od nowa",
+      "stockSent": "Najnowszy stan wysłany {ago}",
+      "waitingFirstRun": "Czeka na pierwsze uruchomienie"
+    },
+    "pushesNote": "{name} wysyła zmiany do OpenLinkera na bieżąco, więc nie trzyma zakładek. To normalne.",
+    "retry": "Spróbuj ponownie",
+    "rewind": {
+      "cancel": "Anuluj",
+      "confirm": "Zacznij od nowa",
+      "consequenceCheck": "Następne uruchomienie sprawdzi wszystko od pierwszej pozycji. Nic nie zostanie zapisane na platformie.",
+      "consequencePass": "Bieżące przejście zostanie porzucone, a następne uruchomienie zacznie od pozycji 1. Każdy produkt zostanie odczytany ponownie, co przez kilka uruchomień obciąży sklep.",
+      "done": "Gotowe. Następne uruchomienie zacznie od nowa.",
+      "failed": "Nie udało się zacząć od nowa: {message}",
+      "passFinished": "Ostatnie przejście już się zakończyło. Użyj „Uruchom teraz”, żeby zacząć następne wcześniej.",
+      "restartCheck": "Zacznij kontrolę od nowa",
+      "restartCheckHint": "Następne uruchomienie zaczyna od pierwszej pozycji.",
+      "restartPass": "Zacznij przejście od nowa",
+      "restartPassHint": "Porzuca bieżące przejście. Następne uruchomienie czyta cały katalog od pozycji 1.",
+      "review": "Sprawdź"
+    },
+    "roles": {
+      "carrier": "Przewoźnik",
+      "marketplace": "Marketplace",
+      "masterCatalogue": "Katalog główny",
+      "shop": "Sklep"
+    },
+    "search": "Szukaj",
+    "searchPlaceholder": "Zamówienia, stany, id oferty…",
+    "sheet": {
+      "aboutThisSync": "O tej synchronizacji",
+      "connectionId": "Id połączenia",
+      "description": "Szczegóły jednej zakładki synchronizacji: gdzie jest, jej uruchomienia i co możesz zrobić.",
+      "emptyString": "pusty tekst",
+      "everyMinutes": "{n} min",
+      "feedCannotRewind": "Kanały zamówień trzymają pozycję we własnym formacie platformy, więc nie da się ich stąd cofnąć. Użyj „Uruchom teraz”, żeby pobrać nowe dane.",
+      "fetchAgain": "Pobierz ponownie",
+      "firstSeen": "Pierwszy raz",
+      "isItSafe": "Czy to bezpieczne?",
+      "itemsDone": "Gotowe pozycje",
+      "key": "Klucz",
+      "lastMoved": "Ostatni ruch",
+      "lastRun": "Ostatnie uruchomienie",
+      "lastRunValue": {
+        "dead": "Nieudane {ago}",
+        "queued": "W kolejce {ago}",
+        "running": "Trwa od {ago}",
+        "succeeded": "Udane {ago}"
+      },
+      "passId": "Id przejścia",
+      "rawValue": "Surowa wartość",
+      "runFailed": "Nie udało się dodać synchronizacji do kolejki: {message}",
+      "runNow": "Uruchom teraz",
+      "runQueued": "Synchronizacja w kolejce. Ruszy w ciągu kilku sekund.",
+      "runs": "Uruchomienia",
+      "runsEvery": "Uruchamia się co",
+      "technical": "Szczegóły techniczne",
+      "viewHistory": "Historia uruchomień",
+      "whatDoesThisMean": "Co to oznacza?",
+      "whereItIs": "Gdzie jest"
+    },
+    "showAllProblems": "Pokaż wszystkie ({n})",
+    "showFewerProblems": "Pokaż mniej",
+    "showKeys": "Pokaż klucze techniczne",
+    "systemName": "System",
+    "systemRole": "Działa dla wszystkich połączeń",
+    "title": "Postęp synchronizacji",
+    "truncated": "Pokazujemy pierwsze 1000 zakładek. Wybierz połączenie, żeby zobaczyć resztę.",
+    "verdictNeedLook": {
+      "few": "{n} do sprawdzenia",
+      "many": "{n} do sprawdzenia",
+      "one": "{n} do sprawdzenia",
+      "other": "{n} do sprawdzenia"
+    },
+    "verdictOnTime": "Na czas",
+    "verdictPushes": "Wysyła zmiany",
+    "why": "Dlaczego?",
+    "writeMarks": {
+      "few": "Stan wysłany do {n} ofert",
+      "many": "Stan wysłany do {n} ofert",
+      "one": "Stan wysłany do {n} oferty",
+      "other": "Stan wysłany do {n} ofert"
+    },
+    "writeMarksMore": "Pokazujemy {shown} z {total}. Wpisz id oferty, żeby ją znaleźć.",
+    "writeMarksRange": "najnowszy {newest}, najstarszy {oldest}"
   }
 }

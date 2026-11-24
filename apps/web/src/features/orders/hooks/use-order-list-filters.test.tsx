@@ -119,13 +119,14 @@ describe('useOrderListFilters', () => {
   });
 
   it('should flip direction when the active sort column is clicked again', () => {
+    // #4026 - the default is Recently synced (createdAt), newest first.
     const { result } = setup('');
-    expect(result.current.api.sort).toBe('dispatchBy');
-    expect(result.current.api.dir).toBe('asc');
-    act(() => {
-      result.current.api.applySort('dispatchBy');
-    });
+    expect(result.current.api.sort).toBe('createdAt');
     expect(result.current.api.dir).toBe('desc');
+    act(() => {
+      result.current.api.applySort('createdAt');
+    });
+    expect(result.current.api.dir).toBe('asc');
   });
 
   it('should report active filters for search alone when only search is set', () => {

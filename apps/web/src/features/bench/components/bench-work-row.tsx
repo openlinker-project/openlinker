@@ -200,6 +200,12 @@ export function BenchWorkRow({
         </span>
       </span>
 
+      {(work.giftUnits ?? 0) > 0 ? (
+        <span className="bench-work-row__gifts" data-testid="bench-work-row-gifts">
+          {plural(work.giftUnits ?? 0, copy.row.withGift)}
+        </span>
+      ) : null}
+
       {work.buyerName === null ? null : (
         <span className="bench-work-row__buyer">{work.buyerName}</span>
       )}

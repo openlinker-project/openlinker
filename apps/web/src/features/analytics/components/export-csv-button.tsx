@@ -13,6 +13,7 @@
  * @module features/analytics/components
  */
 import type { ReactElement } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -123,7 +124,7 @@ export function ExportCsvButton({
             </>
           }
         >
-          {exportCsv.error.message}
+          {describeApiError(exportCsv.error, 'analytics')}
         </Alert>
       ) : null}
     </div>

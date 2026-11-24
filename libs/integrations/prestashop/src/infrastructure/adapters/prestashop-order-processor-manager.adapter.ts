@@ -127,6 +127,15 @@ interface PrestashopCarrierRow {
  */
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
+/** PrestaShop module technical names are lowercase `[a-z0-9_]` identifiers. */
+const PAYMENT_MODULE_NAME_PATTERN = /^[a-z0-9_]{1,64}$/;
+
+interface ResolvedPayment {
+  label: string;
+  /** Set only when the mapped value names a payment module (#3988). */
+  module?: string;
+}
+
 /**
  * The `payment_method` label sent when no payment mapping applies (#3474). It
  * matches the payment module the OL endpoint actually delegates to
@@ -584,8 +593,30 @@ export class PrestashopOrderProcessorManagerAdapter
         } catch (cartError) {
           const errorMessage = cartError instanceof Error ? cartError.message : String(cartError);
           this.logger.error(`Failed to create cart in PrestaShop: ${errorMessage}`);
+          // The cause keeps the status so the retry classifier can defer a
+          // throttled or unavailable shop (#3984). A cart is a pre-order
+          // artefact (a repeat leaves at most an orphan cart, and order
+          // duplication is guarded by the reference lookup), so the client's
+          // "ambiguous write" marker is deliberately dropped here: it would
+          // otherwise veto the deferral for a write that is safe to repeat. The
+          // response body is left out on purpose too: classification needs only
+          // the status and Retry-After, and the body (already logged by the
+          // client) is shop-controlled text we do not copy onto a second error.
           throw new PrestashopProvisioningException(
-            `Failed to create cart in PrestaShop: ${errorMessage}`
+            `Failed to create cart in PrestaShop: ${errorMessage}`,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            cartError instanceof PrestashopApiException
+              ? new PrestashopApiException(
+                  cartError.message,
+                  cartError.statusCode,
+                  undefined,
+                  cartError.connectionId,
+                  cartError.retryAfterSeconds
+                )
+              : undefined
           );
         }
 
@@ -699,7 +730,7 @@ export class PrestashopOrderProcessorManagerAdapter
 
         // Resolved BEFORE the try: it never throws, and a lookup failure must
         // not be mistaken for an import failure by the ambiguous-write handling.
-        const paymentMethodLabel = await this.resolvePaymentMethodLabel(order);
+        const payment = await this.resolvePayment(order);
 
         this.logger.debug(`Submitting order import (validateOrder) request to PrestaShop`);
         try {
@@ -707,11 +738,14 @@ export class PrestashopOrderProcessorManagerAdapter
             idCart: Number.parseInt(String(externalCartId), 10),
             idOrderState: stateId,
             amountPaid: order.totals.total,
-            // The module delegates to ps_checkpayment::validateOrder, so this is
-            // the order's display label (`orders.payment`) - it does not switch
-            // the payment module. The operator's payment mapping (#3474) decides
-            // it; `DEFAULT_PAYMENT_METHOD_LABEL` is what the WS path recorded.
-            paymentMethod: paymentMethodLabel,
+            // The order's display label (`orders.payment`). The operator's
+            // payment mapping (#3474) decides it; `DEFAULT_PAYMENT_METHOD_LABEL`
+            // is what the WS path recorded.
+            paymentMethod: payment.label,
+            // The mapped payment MODULE (#3988), so `orders.module` is it and
+            // not the endpoint's `ps_checkpayment` default. An older OL module
+            // ignores the field and keeps the default module.
+            ...(payment.module ? { paymentModule: payment.module } : {}),
             orderReference: referenceKey ?? '',
             ...(moduleWritesLinePins ? { linePrices: linePins } : {}),
           });
@@ -826,7 +860,10 @@ export class PrestashopOrderProcessorManagerAdapter
       throw new PrestashopApiException(
         `Failed to create PrestaShop order: ${errorMessage}`,
         undefined,
-        undefined
+        undefined,
+        undefined,
+        undefined,
+        error
       );
     }
   }
@@ -886,6 +923,21 @@ export class PrestashopOrderProcessorManagerAdapter
     const weightsMinor = order.items.map((item) => Math.round(item.price * item.quantity * 100));
     const lineGrossMinor = allocateByLargestRemainder(subtotalMinor, weightsMinor);
 
+    // PrestaShop prices a cart by (product, combination), so two order lines
+    // sharing that key (a free gift of a product the buyer also paid for) are
+    // ONE cart row and can carry only ONE pin. They are merged here into one
+    // group whose unit price is the quantity-weighted mean: group gross / group
+    // quantity. When that does not divide exactly in minor units, the six-decimal
+    // net unit price carries the remainder (error under qty * 5e-7), which PS
+    // rounds away when it re-grosses unit * quantity at the currency precision.
+    interface PinGroup {
+      productId: string | number;
+      variantId: number;
+      quantity: number;
+      grossMinor: number;
+      sku?: string;
+    }
+    const groups = new Map<string, PinGroup>();
     for (let index = 0; index < order.items.length; index++) {
       const item = order.items[index];
       if (item.quantity <= 0) {
@@ -900,11 +952,31 @@ export class PrestashopOrderProcessorManagerAdapter
       // marker (`product:<n>`), which PS 400-rejects as a non-numeric
       // `id_product_attribute` — collapse it (and any unmapped variant) to 0,
       // matching the order/cart mapper (#923).
-      const externalVariantId = toPrestashopProductAttributeId(
-        item.variantId ? externalVariantIds.get(item.variantId) : undefined
+      const externalVariantId = Number(
+        toPrestashopProductAttributeId(
+          item.variantId ? externalVariantIds.get(item.variantId) : undefined
+        )
       );
+      const key = `${String(externalProductId)}:${externalVariantId}`;
+      const existing = groups.get(key);
+      if (existing === undefined) {
+        groups.set(key, {
+          productId: externalProductId,
+          variantId: externalVariantId,
+          quantity: item.quantity,
+          grossMinor: lineGrossMinor[index],
+          ...(item.sku !== undefined ? { sku: item.sku } : {}),
+        });
+      } else {
+        existing.quantity += item.quantity;
+        existing.grossMinor += lineGrossMinor[index];
+      }
+    }
 
-      const grossUnit = lineGrossMinor[index] / 100 / item.quantity;
+    for (const group of groups.values()) {
+      const externalProductId = group.productId;
+      const externalVariantId = group.variantId;
+      const grossUnit = group.grossMinor / 100 / group.quantity;
       let rate = 0;
       if (convertGrossToNet) {
         const resolution = await this.taxRateResolver.resolveProductTaxRate(
@@ -923,7 +995,7 @@ export class PrestashopOrderProcessorManagerAdapter
             order.totals.currency,
             grossUnit,
             externalProductId,
-            item.sku
+            group.sku
           );
         }
         rate = resolution.rate;
@@ -983,7 +1055,11 @@ export class PrestashopOrderProcessorManagerAdapter
             reduction: '0',
             reduction_type: 'amount',
             reduction_tax: '0',
-            from: '0000-00-00 00:00:00',
+            // Not the zero date: a strict MySQL stores it as NULL, and
+            // PrestaShop's lookup (`from = zero OR now >= from`) then never
+            // matches the row, so the pin is silently ignored and the line is
+            // priced from the catalogue. Same value as the module's PIN_FROM.
+            from: '2000-01-01 00:00:01',
             to: toExpiry,
           }
         );
@@ -1381,7 +1457,10 @@ export class PrestashopOrderProcessorManagerAdapter
   /** The first active state that reads as "processing, paid" - "Payment accepted" on a default install. */
   private defaultPaidStateId(states: PrestashopOrderStateSnapshot): number | null {
     for (const state of states.active()) {
-      if (states.statusOf(state.id) === 'processing' && states.paymentStatusOf(state.id) === 'paid') {
+      if (
+        states.statusOf(state.id) === 'processing' &&
+        states.paymentStatusOf(state.id) === 'paid'
+      ) {
         const id = Number(state.id);
         if (Number.isFinite(id) && id > 0) return id;
       }
@@ -1623,6 +1702,19 @@ export class PrestashopOrderProcessorManagerAdapter
    * before the mapping was honoured. Logs carry ids and the source payment type
    * only - no buyer data.
    */
+  private async resolvePayment(order: OrderCreate): Promise<ResolvedPayment> {
+    const mapped = await this.resolvePaymentMethodLabel(order);
+    if (!PAYMENT_MODULE_NAME_PATTERN.test(mapped)) {
+      return { label: mapped };
+    }
+    // A module-shaped mapped value (what the Payments tab offers) names the
+    // module; the label is its readable curated name. Anything else is a
+    // free-text label from an older mapping and stays a label only.
+    const curated = PRESTASHOP_PAYMENT_MODULES.find((m) => m.value === mapped);
+    const label = curated ? curated.label.replace(/\s*\([a-z0-9_]+\)$/, '') : mapped;
+    return { label, module: mapped };
+  }
+
   private async resolvePaymentMethodLabel(order: OrderCreate): Promise<string> {
     const sourceConnectionId = order.source?.connectionId;
     const sourcePaymentMethod = order.sourcePaymentMethod;

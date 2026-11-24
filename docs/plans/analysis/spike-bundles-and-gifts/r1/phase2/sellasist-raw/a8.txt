@@ -1,0 +1,476 @@
+##### Jak działa synchronizacja stanów magazynowych i jak ją włączyć? | https://sellasist.pl/pomoc/jak-dziala-synchronizacja-stanow-magazynowych-i-jak-ja-wlaczyc/ | modified 2025-12-19
+Synchronizacja stanów magazynowych między Sellingo lub Sellasist a ofertami w Allegro, eBay oraz Arena.pl pozwala na bieżąco aktualizować ilość produktów w ofertach.
+Proces odbywa się automatycznie przy każdym pobraniu nowego zamówienia, dzięki czemu stany magazynowe w systemie i na platformach sprzedażowych są zawsze zgodne.
+Dzięki temu:
+- unikniesz sytuacji, w której klient kupi produkt, którego brakuje w magazynie;
+- po zakupie w sklepie stan magazynowy zostanie automatycznie zaktualizowany także w pozostałych kanałach sprzedaży.
+ #### 
+ Włączanie synchronizacji cen z listy ofert 
+ 1. Przejdź do Oferty → Wybrany marketplace.
+2. Zaznacz produkty, a następnie z rozwijanej listy wybierz rodzaj synchronizacji.
+[IMG:]
+3. Kliknij przycisk Wykonaj.
+[IMG:]
+Uwaga: Synchronizacja stanów nie aktywuje zamkniętych ofert — aktualizuje jedynie stan magazynowy w ofertach, które są aktywne. Aby wznowić ofertę, na liście ofert należy uruchomić proces ponownego wystawiania, wybierając jedną z opcji wznawiania ofert (screen poniżej).
+[IMG:]
+ #### 
+ Włączanie synchronizacji podczas wystawiania oferty 
+ Aby włączyć synchronizację, zaznacz opcję Synchronizacja stanów magazynowych w formularzu podczas wystawiania nowej oferty.
+[IMG:]
+ #### 
+ Logi synchronizacji 
+ Wszelkie zmiany w stanach magazynowych wprowadzone w ramach synchronizacji znajdziesz w logach, w zakładce Logi.
+[IMG:]
+Co stanie się z ofertą Allegro lub eBay kiedy stan magazynowy zmieni się na 0?
+Czy po integracji z hurtownią stany magazynowe będą się aktualizować automatycznie?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Co stanie się z ofertą Allegro lub eBay kiedy stan magazynowy zmieni się na 0? | https://sellasist.pl/pomoc/co-stanie-sie-z-oferta-allegro-lub-ebay-kiedy-stan-magazynowy-zmieni-sie-na-0/ | modified 2026-04-25
+Jeśli podczas wystawiania oferty włączono synchronizację stanów magazynowych z produktem, oferta zakończy się automatycznie w chwili, gdy stan magazynowy spadnie do zera.
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Regał kompletujący – efektywne zbieranie zamówień w Sellasist WMS | https://sellasist.pl/pomoc/regal-kompletujacy/ | modified 2024-10-25
+Regał kompletujący to zaawansowane rozwiązanie magazynowe, które usprawnia proces zbierania zamówień, szczególnie w dużych magazynach z licznymi zamówieniami wieloelementowymi. Działa poprzez przypisywanie zamówień do określonych lokalizacji w regale, co pozwala na szybsze i bardziej efektywne kompletowanie produktów. Zbieracze otrzymują informacje o lokalizacjach na swoich monitorach, co przyspiesza proces pakowania i umożliwia podwójną kontrolę zamówień. Regał kompletujący jest idealny dla magazynów o dużej liczbie zamówień, gdzie produkty muszą posiadać przypisaną lokalizację i kody kreskowe na opakowaniu. Wymaga on jednak dodatkowych inwestycji w urządzenia do zbierania zamówień, wózki oraz sam regał.
+ #### 
+ Korzyści z zastosowania Regału kompletującego: 
+ 1. Podział zamówień na rundy.
+Zamówienia dzielimy na rundy, które zawierają określoną liczbę zbiorów. Np. 150 zamówień, które są podzielone na 3 rundy po 50 zamówień każda.
+ #### 
+ Zbieranie Tradycyjne a Regał Kompletujący: 
+ Tradycyjnie: Każdy zbieracz otrzymuje 50 zamówień do zebrania, co często oznacza konieczność przemierzania całego magazynu, aby zebrać wszystkie produkty. Na przykład, jeżeli w każdym zamówieniu jest czekolada, zbieracz musi odwiedzić jej miejsce przechowywania 50 razy. 
+Regał kompletujący: Zamówienia są przypisywane do konkretnej lokalizacji w regale. Tworzymy listę wszystkich produktów z 150 zamówień i dzielimy je pomiędzy 3 zbieraczy. Każdy zbieracz zbiera tylko określone produkty z całej puli. Np. jeden zbieracz może być odpowiedzialny za zebranie wszystkich czekolad ze 150 zamówień.
+Zamiast przemierzać cały magazyn, zbieracze zbierają określone produkty (np. wszystkie czekolady) z całej puli zamówień, ograniczając się do swojego sektora. Ma to znaczący wpływ na efektywność zbierania.
+2. Proces zbierania i składania zamówień:
+Po zebraniu produktów, zbieracz skanuje je przy regale, a system wskazuje, gdzie umieścić każdy produkt. W ten sposób zamówienia są efektywnie kompletowane na regale.
+3. Odpowiednie zarządzanie przestrzenią regału:
+Jeśli regał jest pełny i nie ma miejsca na kolejne zamówienia, zbieracze mogą tymczasowo przechowywać produkty w wózkach. System pozwoli na umieszczenie produktów w regale tylko wtedy, gdy jest dostępne miejsce.
+Dzięki regałowi kompletującemu, zbieranie zamówień staje się szybsze i bardziej efektywne, ponieważ zbieracze nie muszą przemieszczać całego magazynu, a zamówienia są składane w jednym miejscu
+ #### 
+ Jak skonfigurować regał kompletujący w panelu Sellasist WMS? 
+ 1. Zaloguj się do Panelu Administracyjnego Sellasist. 
+2. Z zakładki Magazyn kliknij Ustawienia WMS. 
+3. W sekcji Tryb zbierania i zaznacz odpowiednie opcje:
+[IMG:]
+ #### 
+ Status zamówienia do rozpoczęcia zbierania: 
+ Ustaw status, jaki musi mieć zamówienie, aby można zacząć zbieranie. Zamówienia o tym statusie będą automatycznie przechodziły do trybu zbierania, a zbieracz będzie mógł rozpocząć kompletację zamówienia, tj. skanowanie produktów. Możesz tu wybrać dodane przez siebie własne statusy zamówień. Statusy dodajesz i usuwasz w Administracja ⇨ Statusy zamówień. Status zamówienia do rozpoczęcia zbierania często nazywany jest przez naszych klientów jako np. W realizacji/W kompletacji/Kompletowane/Zbierane. W ten sposób, dzięki natychmiastowej synchronizacji, każde zamówienie o wybranym statusie jest od razu widoczne w aplikacji dla zbieracza i można zacząć zbieranie.
+Jak dodać i skonfigurować własne statusy zamówień w Sellasist WMS?
+Jak i gdzie edytować powiadomienia i statusy zamówień?
+ #### 
+ Status zamówienia po zakończeniu zbierania 
+ Ustaw status, jaki otrzyma zamówienie po zakończeniu zbierania. Po zeskanowaniu ostatniego produktu z danego zamówienia jego status zostanie automatycznie zmieniony na ten, który tu ustawisz.
+Z trybu zbierania od razu do trybu pakowania
+Jeśli chcesz, aby zamówienie po zebraniu od razu przeszło do trybu pakowania to statusy Status zamówienia po zakończeniu zbierania oraz Status zamówienia do rozpoczęcia pakowania powinny być takie same. Na przykład Pakowane. Statusy dla trybu pakowania ustawisz w Administracja -> Sellasist WMS.
+Status zamówienia z brakującymi produktami
+Ustaw status, jaki będzie miało zamówienie w przypadku braku zamawianego produktu. Gdy na stanie magazynowym brakuje produktu z danego zamówienia i zostanie ono oznaczone jako brak towaru, status tego zamówienia automatycznie zmieni się na ten, który tu wybierzesz.
+Tryb zbierania: ustaw na Zbieranie po zamówieniach.
+Objętość zamówień jednoelementowych – Zamówienia jednoelementowe zostaną ograniczone do sumy objętości produktów. Zamówienia powyżej tej wartości zostaną potraktowane jako zamówienia wieloelementowe. Jeżeli nie chcesz korzystać z tego ustawienia zostaw pole puste lub ustaw zero.
+Domyślna notatka dla brakujących produktów – Możesz w oknie zdefiniować domyślną notatkę do zamówienia, widoczną w przypadku, gdy zamówienie będzie oznaczone statusem z brakującymi produktami. Wpisany dowolny tekst będzie widoczny zarówno w Sellasist jak i z poziomu aplikacji dla wszystkich pracowników magazynu.
+Jak dodać szablon notatek w Sellasist WMS?
+Dzielenie zamówień na zbiory – Po włączeniu tej opcji zamówienia zostaną podzielone na zbiory. Zbieracz będzie miał przydzielaną pulę zamówień do zebrania. Możesz ustawić liczbę zamówień w zbiorze. Zbiory mogą być przydzielane do zbieraczy automatycznie albo zarządzane ręcznie przez administratora.
+Akcja po zebraniu zbioru zamówień – Wybierz odpowiednią pozycje: 
+Przejście do trybu pakowania – Zbieracz przekazuje zebrany zbiór zamówień pakowaczowi, a sam pozostaje w trybie zbierania i ma przydzielony nowy zbiór do kompletacji.
+Przejście do nowego zbioru – Zebrany zbiór przechodzi do trybu pakowania – zbieracz nie kompletuje następnego zbioru zamówień, a przechodzi w tryb pakowania i przygotowuje zebrany zbiór zamówień do wysyłki.
+Liczba zamówień w polu wieloelementowych zamówień – wpisz odpowiednią liczbę. Jest to maksymalna liczba zamówień wieloelementowych, jaką może otrzymać zbieracz.
+Liczba zamówień w polu jednoelementowych zamówień – wpisz odpowiednią liczbę. Jest to maksymalna liczba zamówień jednoelementowych, jaką może otrzymać zbieracz.
+W polu Zrządzanie zbiorami: wybierz Ręcznie* lub Automatyczne*.
+*Ręcznie i automatyczne przydzielanie zamówień – Zobacz, Jak podzielić zamówienia na zbiory i ustawić zbieraczy dla zamówień w Sellasist WMS?
+4. Aby aktywować w panelu tryb zbierania po produktach za pomocą Regału kompletującego zaznacz: Zbieranie zamówień na regał pakowawczy.
+[IMG:]
+5. Kliknij Zapisz. 
+Po zapisaniu, na górze strony pojawią się dwie nowe zakładki: Regały pakowania oraz Wózki – Regał pakowania.
+[IMG:]
+6. Przejdź do zakładki Regały pakowania i kliknij Dodaj magazyn regałów pakowania. 
+[IMG:]
+7. Wpisz Nazwę regału oraz wybierz Magazyn. Kliknij Zapisz. 
+[IMG:]
+8. Po zapisaniu regału można skonfigurować półki.
+Liczba kolumn koszyków – wpisz liczbę kolumn dla regału, czyli ile koszyków, na które będą kompletowane zamówienia zmieści się na danej półce
+Liczba rzędów koszyków – wpisz liczbę rzędów, czyli ilość półek z koszykami zamówień
+Domyślna pojemność koszyka – jest to wartość umowna, wpisz preferowaną wartość.
+[IMG:]
+Regały tworzymy tak samo jak w Gospodarce Magazynowej.
+9. Kliknij Stwórz regał, a następnie kliknij Zapisz. 
+10. Dla każdej kolumny możesz przypisać odpowiednie stanowisko. 
+Dla każdej półki masz możliwość przypisania unikalnej nazwy oraz kodu koszyka.
+Możesz także określić pojemność półki oraz wyszczególnić minimalną objętość.
+Domyślna pojemność półki – Pojemność półek to wartość umowna, pozwalająca na rozlokowanie produktów o różnej objętości. Do jednej lokalizacji może zostać przypisanych wiele produktów. Dzięki ustaleniu pojemności, niemożliwe jest przypisanie zbyt dużej liczby produktów do jednej półki w magazynie. Wpisz przybliżoną pojemność jednej półki (możesz ją podawać cm³, dm³, m³ – pamiętaj, że jest to wartość umowna – może stanowić np. 4 opakowania oferowanych przez Ciebie produktów).
+Minimalna pojemność półki – To określona wartość wskazująca, od jakiej pojemności zamówionych produktów system będzie mógł przypisać daną półkę do konkretnego zamówienia. 
+[IMG:]
+11. Dostosuj regał do swoich potrzeb i kliknij Zapisz. 
+Możesz wydrukować kod kreskowy regału oraz kody kreskowe półek:
+[IMG:]
+12. Przejdź do zakładki Wózek – Regał pakowania i kliknij Dodaj wózek. 
+[IMG:]
+13. Wpisz nazwę* oraz pojemność dodawanego wózka. 
+*Optymalna długość nazwy to 11 znaków.
+Wózek do przesunięć magazynowych – to jest checkbox do opcji wielomagazynowych 
+[IMG:]
+14. Kliknij Zapisz. 
+15. Wróć do zakładki Wózki – Regał pakowania. 
+W tym miejscu możesz edytować wózek, który właśnie utworzyłeś. 
+W kolumnie Akcje klikając ikonę ołówka możesz edytować wózek, klikając X usuniesz go. 
+W kolumnie Kody wózków możesz pobrać kod kreskowy wózka.  
+Kliknij i wygeneruj kod kreskowy dla wózka.
+[IMG:]
+16. Kod kreskowy wózka możesz pobrać, wydrukować i przykleić na wózek. 
+[IMG:]
+Pamiętaj, aby nazwa wózka nie była zbyt długa. Optymalna długość to 11 znaków.
+ #### 
+ POJEMNOŚĆ -Znaczenie precyzyjnego określenia dla produktów, wózków oraz regałów 
+ Przy projektowaniu wózków i regałów kompletujących kluczowe jest precyzyjne określenie ich pojemności. Zarówno w regale kompletującym czy w wózku, możemy przypisać odpowiednie pojemności. 
+Objętość w regale i w wózku jest odpowiednikiem objętości przypisanej do każdego produktu w bazie sklepu,  Objętość produktu ustawisz w Asortyment -> Produkty -> edycja wybranego produktu -> Informacje Podstawowe -> Sekcja Magazyn
+[IMG:]
+Jeżeli chcesz ustawić objętość dla większej ilości produktów w sklepie, możesz to zrobić z poziomu Asortyment -> Szybkie zmiany  i w kolumnie Objętość przypisać odpowiednie wartości.
+[IMG:]
+Wartość ta powinna być indywidualnie dostosowana do rodzaju sprzedawanego towaru. Przykład 1: mały słoiczek z tabletkami może mieć objętość 1, natomiast duża herbata ziołowa 1 kg – objętość 10.
+ #### 
+ Przykład 2: 
+ W przypadku regałów kompletujących oraz wózków, przyjmując, że produkty mają przypisaną objętość 1, w trybie zbierania po zeskanowaniu wózka i ustawieniu jego pojemności na 50, można umieścić w nim 50 produktów. Następnie, w trybie zbierania, zebrane produkty rozkłada się do odpowiednich koszyków na półkach regału kompletującego, zgodnie z przypisanymi pojemnościami dla danego koszyka.
+ #### 
+ Przykład 3: 
+ Jeśli mamy trzy zamówienia o różnych objętościach, system automatycznie przypisze je do odpowiednich koszyków w regale kompletującym, bazując na ich pojemnościach i minimalnych wartościach zamówienia. Dzięki temu, przy prawidłowym ustawieniu parametrów pojemności – w edycji produktu, w ustawieniach wózka oraz regału – system efektywnie zarządza procesem kompletacji, przypisując i wskazując, gdzie umieścić dany produkt na regale, uwzględniając wszystkie objętości i zawartość zamówienia.
+Zamówienie 1:Ma łączną objętość 6.
+- W regale kompletującym, koszyk A1 (kod koszyka 12) ma pojemność 6 i minimalną wartość zamówienia 5.
+ System przypisze to zamówienie do koszyka A1.
+Zamówienie 2: Ma łączną objętość 3. 
+- Koszyk B1 (kod koszyka 12) w regale ma pojemność 4 i minimalną objętość zamówienia 3.
+System przypisze to zamówienie do koszyka B1.
+Zamówienie 3: Ma łączną objętość 1.
+- Koszyk C1 (kod koszyka 13) w regale ma pojemność 2 i minimalną objętość zamówienia 1.
+System przypisze to zamówienie do koszyka C1.
+[IMG:]
+ #### 
+ Pamiętaj! 
+ Przy prawidłowym ustawieniu parametrów pojemności – w edycji produktu, w ustawieniach wózka oraz regału – system efektywnie zarządza procesem kompletacji, przypisując i wskazując, gdzie umieścić dany produkt na regale, uwzględniając wszystkie objętości i zawartość zamówienia.
+ #### 
+ Powiązane artykuły 
+ Czym jest pojemność i objętość w Sellasist WMS?
+Gospodarka magazynowa. Jak stworzyć magazyn w Sellasist WMS?
+Jak włączyć tryb zbierania w Sellasist WMS?
+Jak skonfigurować tryb zbierania po zamówieniach za pomocą urządzenia mobilnego i wózka z koszykami?
+Jak 
+
+##### Asystent Pakowania Sellasist | https://sellasist.pl/pomoc/asystent-pakowania-sellasist/ | modified 2026-10-13
+Asystent pakowania – SmartPack Sellasist
+Uwaga! Asystent Pakowania Sellasist został uruchomiony dla wszystkich naszych klientów posiadających aktywny abonament.
+Dla naszych użytkowników udostępniliśmy prostą funkcjonalność pakowania zamówień. Asystent Pakowania Sellasist pozwala na szybkie, wygodne i precyzyjne pakowanie zamówień bez konieczności korzystania z funkcji WMS. Dzięki Asystentowi pakowania Sellasist – SmartPack możesz dostosować proces pakowania do specyficznych potrzeb Twojego asortymentu i rodzaju zamówień. Jest to szczególnie przydatne dla osób, które chcą pakować zamówienia bezpośrednio z panelu administracyjnego.
+*Pamiętaj, że Asystent Pakowania Sellasist to zaledwie niewielka część możliwości, jakie oferuje nasz autorski Sellasist WMS – zaawansowany system magazynowy, który obsługuje różnorodne procesy, takie jak kompletacja, zarządzanie zapasami, optymalizacja magazynu i wiele więcej. Przy odpowiedniej konfiguracji, nasz Sellasist WMS jest w stanie obsłużyć kilkanaście tysięcy zamówień dziennie! Dlatego, jeśli szukasz indywidualnie dopasowanych rozwiązań i optymalizacji dla swojego magazynu, Sellasist WMS to rozwiązanie, którego potrzebujesz.
+ #### 
+ BEZPŁATNY OKRES TESTOWY — Wypróbuj Tryb zbierania i pakowania w Sellasist WMS! 
+ Dajemy Ci czas do końca miesiąca rozliczeniowego na bezpłatne testowanie Trybu zbierania i pakowania w aplikacji Sellasist WMS. Masz pełną swobodę, aby sprawdzić, jak nasze oprogramowanie spełnia Twoje potrzeby i jak znacząco wpływa na efektywność Twojego magazynu. Bez żadnych zobowiązań i ryzyka finansowego zyskasz dostęp do pełnej funkcjonalności systemu i doświadczysz wszystkich jego zalet.
+Nasz Sellasist WMS traktujemy jak nasz „skarb” i nieustannie dbamy o jego rozwój, wprowadzając nowe ulepszenia, aby praca na nim była jeszcze wygodniejsza i bardziej efektywna. System z powodzeniem służy naszym klientom od wielu lat. Jeśli chcesz poznać opinie użytkowników z pierwszej ręki, zapraszamy do obejrzenia materiału TUTAJ.
+Dołącz do grona zadowolonych użytkowników i odkryj, jak Sellasist WMS może zmienić oblicze Twojego magazynu!
+Sprawdź, jakie możliwości ma pełny Sellasist WMS
+ #### 
+ Korzyści Asystenta Pakowania Sellasist 
+- Oszczędność czasu 
+Automatyzacja kluczowych procesów, takich jak zmiana statusu zamówienia, generowanie dokumentów sprzedażowych i listów przewozowych.
+ • Automatyczne przejście do kolejnego zamówienia
+Asystent zapewnia płynność procesu pakowania, eliminując potrzebę ręcznego wyszukiwania i klikania zamówień do spakowania.
+ • Wygoda i intuicyjność
+Pakowanie zamówień bezpośrednio z panelu administracyjnego. Przejrzysty interfejs, łatwa konfiguracja i obsługa dopasowana do Twoich potrzeb.
+ • Precyzja i kontrola zamówień
+Masz możliwość grupowania zamówień według statusów. Dzięki temu masz pełną kontrolę nad procesem pakowania, co minimalizuje ryzyko błędów. Możesz dopasować statusy zamówień do odpowiednich typów produktów i zamówień.
+• Skanowanie kodów kreskowych
+Obsługa skanerów kodów, co znacząco przyspiesza proces pakowania i zwiększa jego dokładność – wystarczy skanować i pakować!
+• Automatyczny wydruk dokumentów
+Automatyczne generowanie, drukowanie i pobieranie faktur oraz listów przewozowych podczas pakowania.
+ • Możliwość nagrywania wideo 
+Rejestrowanie procesu pakowania dla pełnej kontroli i analizy. Dajemy Ci możliwość nagrywania procesu pakowania, co pozwali Ci utrzymywać wysokie standardy obsługi klienta i będziesz miał dostęp do nagrania wideo z pakowania konkretnego zamówienia!
+• Możliwość dopasowania widoku Asystenta Pakowania do własnych potrzeb
+Dajemy Ci również możliwość indywidualnej konfiguracji interfejsu użytkownika w Asystencie Pakowania. Możesz dostosować wygląd i funkcjonalność panelu do swoich specyficznych potrzeb, co zwiększy efektywność pracy oraz zapewni lepszą organizację procesu pakowania.
+Zobacz, jak skonfigurować widok Asystenta Pakowania
+• Możliwość rozdzielenia zamówień na jednoelementowe i wieloelementowe
+Masz możliwość konfiguracji automatycznego podziału zamówień na zamówienia jednoelementowe i wieloelementowe dla uprawnionego statusu do pakowania. Jeżeli chcesz, system automatycznie rozdzieli zamówienia jednoelementowe i wieloelementowe na dwie podgrupy i wtedy sam zadecydujesz, które zamówienia chcesz pakować najpierw.
+• Skanowanie kodu zamówienia
+Możesz również sam wybrać, co powinno się wydarzyć po zeskanowaniu kodu kreskowego zamówienia. Do wyboru: Otwórz szczegóły zamówienia lub Przejdź do Asystenta Pakowania
+• Możliwość ukrycia na liście spakowanych zamówień 
+Możesz ukryć na liście zamówień już spakowane zamówienia w Asystencie Pakowania Sellasist oraz masz możliwość podejrzenia w trakcie pakowania, które zamówienia już zostały spakowane.
+• Aktywatory szablonów nadania
+Masz również możliwość ustawienia wymuszania zeskanowania aktywatora odpowiedniego szablonu nadania w Asystencie Pakowania Sellasist
+• Akcje automatyczne
+Pamiętaj, że w Sellasist masz dostęp do szerokiej gamy różnorodnych akcji automatycznych, które znacząco usprawniają proces obsługi klienta dzięki automatyzacji wielu czynności.
+Dzięki elastyczności akcji automatycznych w Sellasist możesz dostosować je do swoich potrzeb, tworząc rozwiązania idealnie dopasowane do Twojego procesu obsługi.
+ #### 
+ Jak skorzystać z Asystenta Pakowania Sellasist - SmartPack ? 
+ Aby skorzystać z udostępnionej przez nas funkcji pakowania, która jest w cenie abonamentu Sellasist, wykonaj poniższe kroki:
+ #### 
+ KROK 1 -Tworzenie statusów zamówień do pakowania 
+ 1. Przejdź do: Administracja -> Statusy zamówień.
+2. Kliknij „Dodaj status” i utwórz statusy zamówień odpowiadające Twoim potrzebom pakowania. Oto przykładowe propozycje:
+- Gabaryty – dla zamówień, które składają się z dużych produktów
+- Pakowanie produkty delikatne – do produktów wymagających szczególnej ostrożności
+- Szybkie pakowanie – do małych, prostych zamówień.
+- Pakowanie na prezent – do zamówień wymagających dodatkowego zapakowania.
+- Pakowanie z gratisem – gdy chcesz dodać do paczki dodatkowy upominek.
+[IMG:]
+Dzięki takim statusom możesz elastycznie zarządzać zamówieniami w zależności od ich charakterystyki i odpowiednio przygotować swoje stanowisko pracy przed rozpoczęciem pakowania dla odpowiedniej grupy towarów.
+ #### 
+ KROK 2 - Konfiguracja ustawień pakowania 
+ 1. Przejdź do: Magazyn -> Ustawienia WMS.
+2. Przejdź do zakładki „Tryb pakowania” i przejdź do sekcji „Tryb pakowania – ustawienia„.
+[IMG:]
+- Statusy zamówienia do rozpoczęcia pakowania (wiele): Wybierz wcześniej utworzone statusy zamówień, które mają być używane w procesie pakowania. (KROK 1)
+- Status dla spakowanego zamówienia: Ustal, jaki status otrzyma zamówienie po zakończeniu pakowania (np. „Spakowane”).
+- Status dla braków w zamówieniu: Określ status dla zamówień z brakami magazynowymi (np. „Braki”).
+- Akcje automatyczne po spakowaniu zamówienia:
+– Wystaw dokument sprzedaży.
+– Wygeneruj list przewozowy.
+– Wydrukuj / pobierz dokument sprzedaży.
+– Wydrukuj / pobierz list przewozowy.
+– Zmień status zamówienia.
+- Wybierz również preferowane ustawienia dla dokumentów sprzedażowych: Pobieranie lub drukowanie przez wspieraną przez nas aplikację Sellasist Cloud Print.
+Dowiedz się więcej, o ePrint drukowanie online.
+– Dopasuj pozostałe ustawienia trybu pakowania.
+3. Zapisz ustawienia na dole strony, klikając „Zapisz”.
+ #### 
+ Jak ustawić widok Asystenta Pakowania - Trybu Pakowania? 
+ Zobacz, jak ustawić wygląd dla Asystenta Pakowania do Twoich indywidualnych
+preferencji:
+Jak skonfigurować widok Trybu Pakowania? – Zarządzanie sprzedażą internetową, integracja sklepu z Allegro, Amazon, eBay w Sellasist
+ #### 
+ Jak ustawić nagrywanie wideo w Asystencie Pakowania? 
+ Razem z Asystentem Pakowania dajemy Ci możliwość rejestrowania każdego zamówienia. 
+Funkcja nagrywania w Asystencie Pakowania to znakomite narzędzie dla każdego magazynu e-commerce, pozwalające na dokładne śledzenie i analizę procesu pakowania. Dzięki łatwej konfiguracji i intuicyjnej obsłudze, możesz szybko zacząć korzystać z tej funkcji i czerpać z niej korzyści. Pamiętaj, że nagrania te są cennym źródłem informacji, które pomogą Ci utrzymać wysokie standardy obsługi i efektywność operacji magazynowych.
+Więcej o nagrywaniu wideo -> znajdziesz TUTAJ.
+ #### 
+ KROK 3 - Proces pakowania 
+ 1. Przejdź do Listy zamówień i z panelu bocznego wybierz zamówienia z odpowiednim statusem zamówienia (ustawionego w KROKU 2).
+[IMG:]
+2. Zaznacz zamówienia z wybranym statusem, które chcesz spakować.
+3. Kliknij przycisk „Spakuj” znajdujący się nad listą zamówień.
+4. Wybierz stanowisko druku dla Asystenta pakowania.
+[IMG:]
+Po wybraniu stanowiska pojawi się komunikat na zielonym tle „Przypisano stanowisko numer X: nazwa stanowiska”.
+5. Przejdź do „Tryb pakowania” – wyświetlą się zamówienia według wybranego statusu.
+[IMG:]
+ #### 
+ Uwaga! 
+ Jeżeli chcesz drukować dokumenty sprzedażowe po spakowaniu zamówienia, wpierw skonfiguruj odpowiednio swoje stanowisko drukowania:
+-> Dowiedz się więcej, o ePrint drukowanie online. 
+-> a następnie przechodząc już do pakowania w Asystencie Pakowania pamiętaj o wybraniu stanowiska druku!
+ #### 
+ Jak wygląda sam proces pakowania w Asystencie Pakowania Sellasist? 
+- System automatycznie przechodzi do spakowania kolejnego zamówienia: w tej samej grupie statusów po zakończeniu pakowania poprzedniego zamówienia
+- Komentarze klientów do zamówień: Asystent Pakowania Sellasist wyświetla komentarz klienta, dodany do zamówienia podczas jego składania.
+- Asystent Sprzedaży Sellasist wyświetla informacje o zamówieniu oraz o poszczególnych produktach – w zależności od Twoich indywidualnych preferencji.
+- Jeśli chcesz, w procesie pakowania możesz wykorzystać skaner kodów kreskowych, lub po prostu użyć myszki i zaznaczać spakowane produkty w panelu Sellasist.
+Po wejściu w szczegóły zamówienia wybierz manualnie odpowiednią liczbę produktu za pomocą +/- lub wpisz odpowiednią liczbę produktu i  kliknij przycisk „Spakuj” lub po prostu skanuj kody kreskowe produktów.
+[IMG:]
+- Dokumenty sprzedażowe i listy przewozowe mogą być automatycznie wygenerowane i wydrukowane po spakowaniu zamówienia.
+Pamiętaj! Jeżeli brakuje towaru podczas pakowania,  kliknij strzałkę i wybierz Brak Towaru, a następnie potwierdź brak towaru. Zamówienie z brakującymi towarami trafiają do statusu ustawionego w Magazyn -> Ustawienia WMS -> Tryb Pakowania -> Status dla braków w zamówieniu: 
+[IMG:]
+5. Po spakowaniu zamówień według odpowiedniego statusu poczekaj, aż system zamknie okno Asystenta pakowania i wróci do listy zamówień.
+Zanim okno zostanie samoistnie zamknięte wyświetli się stosowny komunikat:
+[IMG:]
+Przejdź do kolejnej grupy zamówień posiadającej status uprawniony do pakowania w Asystencie Pakowania Sellasist i powtórz czynność opisaną wyżej.
+ #### 
+ Uwaga! 
+ Jeśli wybierzesz wiele statusów zamówień w konfiguracji uprawnionych do pakowania przy pomocy Asystenta Pakowania Sellasist, a na liście zamówień zaznaczysz zamówienia do spakowania z przypisanymi > 1 uprawniony status do pakowania to system pokaże stosowny komunikat:
+[IMG:]
+Jeżeli zaznaczysz zamówienia, które nie są skonfigurowane w Magazyn->Ustawienia WMS -> Tryb Pakowania, system pokaże Ci stosowny komunikat:
+[IMG:]
+Do Asystenta Pakowania trafiają zamówienia, które:
+- są odpowiednio uprawnione i przypisane w Magazyn-> Ustawienia WMS -> Tryb pakowania „Statusy zamówień do rozpoczęcia pakowania (wiele):”, a jeżeli nie ma tu nic zaznaczonego to system pobiera status z pola „Status zamówień do rozpoczęcia pakowania” (1 opcją z możliwością wyboru z listy wyboru)
+- system pokaże zamówienia tylko jednej grupy statusowej na raz. Oznacza to, że i dla naszego przykładu pokaże np. tylko zamówienia ze statusem „Gabaryty”, a żeby spakować pozostałe zamówienia, należy najpierw spakować „Gabaryty”, zamknąć okno pakowania i ponownie wybrać kolejne zamówienia z odpowiednim statusem uprawnionym do pakowania.
+Pamiętaj, że podczas pakowania masz możliwość skorzystania ze skanera kodów kreskowych, co przyspiesza pro
+
+##### Czym są Opcje w produktach Sellasist? | https://sellasist.pl/pomoc/czym-sa-opcje-w-produktach-sellasist/ | modified 2024-12-16
+Opcje to dodatkowe elementy do wyboru dla produktu, nie mają stanów magazynowych. 
+Klient nie jest zobowiązany do wyboru opcji i robi to z własnej woli. Opcje pozwalają wybrać dodatkowy element opcjonalny dla produktu, także za dodatkową opłatą. Można tu umieścić np. gratisy do wyboru, wpisać cechy, które wpłyną na zmianę ceny produktu np. dodatkowa para sznurówek, niestandardowe wykończenie, czy kolor, dodać ozdobne opakowanie do produktu.
+ #### 
+ Powiązane artykuły 
+ Zobacz jak dodasz opcje
+Jak stworzyć, a następnie dodać Opcję do produktu w Sellasist?
+Zobacz jak użyjesz opcji
+Jak użyć Opcji w Sellingo do zwiększenia sprzedaży?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak utworzyć korektę do faktury? | https://sellasist.pl/pomoc/jak-utworzyc-korekte-do-faktury/ | modified 2026-04-15
+#### 
+ Tworzenie korekty Z poziomu modułu dokumentów 
+ 1. Przejdź do Dokumenty [Nowe] → Dokumenty sprzedaży i otwórz edycję wybranej faktury.
+[IMG:]
+2. Kliknij przycisk Wystaw korektę.
+[IMG:]
+3. Na ekranie zobaczysz formularz tworzenia korekty.
+[IMG:]
+Popraw wszelkie dane według własnych potrzeb i/lub zmodyfikuj listę produktów w zamówieniu, którą znajdziesz na dole formularza.
+Wskazówka: Każdą pozycję możesz edytować za pomocą przycisku akcji po prawej stronie (screen poniżej).
+[IMG:]
+4. Kliknij przycisk Zapisz.
+ #### 
+ Z poziomu zamówienia 
+ 1. Przejdź do Zamówienia → Zamówienia → Wybrane zamówienie.
+2. Kliknij ikonę nowych dokumentów, a następnie kliknij przycisk z ikoną plusa.
+[IMG:]
+3. Na ekranie zobaczysz formularz tworzenia korekty — taki sam, jak w przypadku wystawiania korekty z modułu dokumentów.
+4. Po wypełnieniu formularza kliknij przycisk Zapisz.
+ #### 
+ Przegląd i eksport dokumentów korygujących 
+ Utworzone korekty znajdziesz w Dokumenty [Nowe] → Dokumenty korygujące.
+[IMG:]
+Dokumenty korygujące możesz filtrować i procesować według własnych potrzeb — np. zaktualizować, eksportować w wybranym formacie czy wysłać powiadomieniem do kupującego.
+[IMG:]
+ #### 
+ Powiązane artykuły 
+ Jak wystawić fakturę?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### WARIANT/PRODUKT W ZESTAWIE DYNAMICZNYM – warunek automatyzacji dla zamówień | https://sellasist.pl/pomoc/wariantprodukt-w-zestawie-dynamicznym-warunek-automatyzacji-dla-zamowien/ | modified 2024-02-13
+Jak skonfigurować warunek automatyzacji Wariant/Produkt w zestawie dynamicznym w akcjach dla zamówień?
+1. W zakładce Administracja kliknij Automatyzacja  i przejdź do sekcji Akcje dla zamówień.
+[IMG:]
+2. Na górze strony znajdziesz karty: Dziennik zdarzeń, Akcje dla asortymentu, Akcje dla zamówień.
+W Dzienniku zdarzeń znajdziesz wszystkie wykonane akcje.
+Możesz tu przeglądać raporty z ostatniego miesiąca i ręcznie uruchamiać akcje.
+Przejdź do sekcji Akcje dla zamówień i kliknij Dodaj akcję automatyczną.
+[IMG:]
+3. Uzupełnij nazwę akcji 
+ #### 
+ Uwaga! 
+ Jeżeli chcesz dodać nową akcję w Sellasist  możesz wybrać między automatycznym uruchamianiem akcji po spełnieniu określonych warunków lub ręcznym aktywowaniem ich za pomocą przycisków (więcej o przyciskach: TUTAJ).
+Możesz również użyć obu sposobów uruchamiania akcji jednocześnie. Dzięki temu będziesz miał np. możliwość ponownego wykonania akcji, gdy automatyczna próba zakończy się niepowodzeniem.
+[IMG:]
+Dla uruchamiania samoczynnego:
+4. ustaw opóźnienie jej wykonania w minutach.
+Opóźnienie określa czas, przez jaki wszystkie warunki muszą być spełnione, by akcja została wykonana. Dzięki temu można, np. sprawić, by produkty z zerowym stanem magazynowym zostały wyłączone dopiero wtedy, gdy ten stan utrzymuje się przez 5 dni. Jeżeli użyjesz opóźnienia nie może być ono niższe niż 5 minut. 
+Ustaw tryb działania akcji.
+Masz do wyboru: tryb ciągły lub wybrane dni i godziny. 
+Wybrane dni i godziny: w tym trybie akcje będą wykonywane tylko w wybranych dniach i godzinach. Zdarzenia, które miałyby się wykonać poza nimi będą wstrzymywane i realizowane dopiero w wybranym czasie. Jeśli nie podasz godzin działania, akcja będzie mogła być wykonywana całą dobę.
+Dzięki odpowiedniej konfiguracji możesz sprawić, by np. zamówienia trafiały do realizacji tylko w godzinach pracy Twojego magazynu.
+[IMG:]
+5. Kliknij Dodaj warunek. 
+Wybierz warunek: Wariant/Produkt w zestawie dynamicznym
+Kliknij Dodaj warunek. 
+6.  Możesz wybrać datę złożenia zamówienia, aby zastosować warunek do zamówień złożonych w określonym okresie.
+Pamiętaj! Data jest ustawiana na czas tworzenia danej nowej akcji, tak aby nowa akcja była skierowana dla nowo wpływających zamówień. Jeżeli ustawisz datę wstecz, system sprawdzi wszystkie zamówienia z tego okresu i zastosuje do nich wybrany efekt akcji, co może być problematyczne dla zamówień już zrealizowanych.  
+[IMG:]
+7. Wybierz odpowiednią opcję z listy: 
+8. Kliknij Dodaj efekt i wybierz z listy preferowany efekt np. Wygenerowanie listu przewozowego z wybraną metodą wysyłki i szablonem. Uzupełnij ustawienia efektu. 
+np. 
+7. Kliknij Zapisz.
+Dodatkowo, dla twojej wygody oraz oszczędności Twojego czasu masz możliwość tworzenia kopii utworzonych już wcześniej akcji.
+Aby utworzyć kopię danej akcji przejdź do Administracja -> Automatyzacja -> edycja wybranej akcji automatycznej, którą chcesz skopiować. Klikając Zapisz jako nowy – utworzysz jej kopię. 
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak korzystać z funkcji Menadżer Pakowania? | https://sellasist.pl/pomoc/jak-korzystac-z-funkcji-menadzer-pakowania/ | modified 2024-08-07
+Narzędzie Menadżer Pakowania wspomaga pracę magazyniera. Ułatwia skompletowanie zamówień i pomaga uniknąć pomyłek. Możesz z jego pomocą łatwo skompletować wiele zamówień jednocześnie. Pozwala też na wydrukowanie listy zamówionych produktów z wybranego okresu. 
+ #### 
+ Jak mogę korzystać z funkcji Menadżer Pakowania? 
+ 1. Zaloguj się w Panelu Administracyjnym.
+2. Kliknij Zamówienia -> Menadżer pakowania.
+3. Przejdziesz tym samym do menadżera pakowania. Za pomocą filtrów możesz sortować produkty, wyświetlając np. tylko produkty zamówione w wybranym okresie.
+[IMG:]
+4. Kliknij wybrany produkt, aby zobaczyć listę zamówień dla niego.
+[IMG:]
+5. Kliknij zamówienie, aby zobaczyć wszystkie zamawiane produkty.
+[IMG:]
+6. W czasie kompletowania zamówienia oznaczaj spakowane produkty. Pasek postępu ułatwia sprawdzanie zamówień.
+[IMG:]
+Po spakowaniu wszystkich produktów w danym zamówieniu możesz bezpośrednio z listy wydrukować wcześniej przygotowaną dla zamówienia fakturę oraz list przewozowy, o ile wcześniej zamówiłeś już kuriera. 
+[IMG:]
+POWIĄZANE ARTYKUŁY:
+ Dowiedz się jak ręcznie zamówić kuriera
+ Jak w Sellasist zamówić kuriera bezpośrednio z zamówienia?
+Dowiedz się jak automatycznie zamówić kuriera
+ Jak w Sellasist ustawić automatyczne zamawianie kuriera?
+Zobacz jak wydrukować listę zamówień
+Jak wydrukować listę zamówień? Export do CSV, Optima.
+ Skonfiguruj szablony wysyłki
+ Jak w Sellasist dodać i poprawnie skonfigurować Szablony Wysyłki?
+Zobacz jak dodać i skonfigurować metody dostawy 
+Jak skonfigurować dostawę? Jak stworzyć metody i szablony wysyłki?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Statystyki zbierania oraz pakowania zamówień w Sellasist WMS | https://sellasist.pl/pomoc/statystyki-zbierania-oraz-pakowania-zamowien-w-sellasist-wms/ | modified 2024-07-18
+Statystyki zbierania oraz pakowania zamówień 
+W zakładce Statystyki znajdziesz kompleksowe dane dotyczące procesu pakowania oraz zbierania zamówień. Statystyki te są dostępne w formie wykresów oraz plików do pobrania w formatach CSV i XLS.
+Aby uzyskać dostęp do tych danych, przejdź do zakładki Statystyki i skorzystaj z dostępnych filtrów oraz opcji pobierania raportów.
+ #### 
+ Statystyki pakowania zamówień 
+ 1. Zaloguj się do panelu administracyjnego. 
+2. Z zakładki wybierz Statystyki -> Pakowanie WMS
+3. Aby wyświetlić statystyki, ustaw odpowiednie filtry: 
+[IMG:]
+- Osoba pakująca: Możesz wybrać jedną osobę pakującą lub zaznaczyć wiele osób.
+- Rodzaj raportu: Do wyboru są raporty dzienne, miesięczne i roczne.
+- Zakres dat: Określ zakres dat (maksymalnie do 1 roku).
+4. Kliknij przycisk Filtruj.
+Po ustawieniu filtrów i kliknięciu Filtruj, poniżej pojawi się wykres oraz raport ze statystykami w tabeli.
+[IMG:]
+Po najechaniu na wykres pojawiają się szczegółowe wartości dotyczące ilości przez konkretną osobę pakującą: 
+[IMG:]
+Raporty można pobrać również w formacie XLSX lub CSV.
+[IMG:]
+ #### 
+ Parametry zamówień uwzględnione w tabeli: 
+- ID zamówień
+- Użytkownik (osoba pakująca)
+- Data pakowania
+- Godzina rozpoczęcia pakowania zamówienia
+- Godzina zakończenia pakowania zamówienia
+- Czas pakowania w minutach dla konkretnego zamówienia
+- Ilość produktów w danym zamówieniu
+- Waga zamówienia
+Dzięki tym statystykom możesz analizować wydajność procesu pakowania, monitorować czas pracy poszczególnych pracowników. 
+ #### 
+ Statystyki zbierania zamówień 
+ 1. Zaloguj się do panelu administracyjnego. 
+2. Z zakładki wybierz Statystyki -> Zbieranie WMS
+3. Aby wyświetlić statystyki, ustaw odpowiednie filtry: 
+[IMG:]
+- Zbieracz: Możesz wybrać jedną osobę zbierającą lub zaznaczyć wiele osób.
+- Rodzaj raportu: Do wyboru są raporty dzienne, miesięczne i roczne.
+- Zakres dat: Określ zakres dat (maksymalnie do 1 roku).
+4. Kliknij przycisk Filtruj.
+Po ustawieniu filtrów i kliknięciu Filtruj, poniżej pojawi się wykres oraz raport ze statystykami w tabeli.
+[IMG:]
+Raporty można pobrać również w formacie XLSX lub CSV.
+[IMG:]
+ #### 
+ Parametry zamówień uwzględnione w tabeli: 
+- ID Koszyka
+- Numer zamówienia
+- Użytkownik (osoba zbierająca)
+- Data zebrania
+- Godzina rozpoczęcia zbierania zamówienia
+- Godzina zakończenia zbierania zamówienia
+- ID produktu 
+- Nazwa produktu 
+- EAN
+- Numer katalogowy 
+- Symbol 
+- Ilość 
+- Waga 
+- Długość 
+- Szerokość
+- Wysokość
+- Czas pakowania w minutach dla konkretnego zamówienia
+- Ilość produktów w danym zamówieniu
+- Waga zamówienia
+Dzięki tym statystykom możesz analizować wydajność procesu zbierania. 
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+

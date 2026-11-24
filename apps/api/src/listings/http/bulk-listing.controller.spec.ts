@@ -260,6 +260,13 @@ describe('BulkListingController', () => {
       // duplicate-guard modal on a real selection must not be told they
       // selected nothing.
       await expect(submitPromise).rejects.toThrow(/already listed/);
+      await expect(submitPromise).rejects.toMatchObject({
+        response: {
+          statusCode: 400,
+          code: 'BULK_VARIANTS_ALREADY_LISTED',
+          params: { skippedCount: 3 },
+        },
+      });
     });
 
     it('propagates other exceptions unchanged (Nest filters map them to the documented codes)', async () => {
@@ -313,6 +320,13 @@ describe('BulkListingController', () => {
           createdAt: new Date('2026-05-17T10:01:00Z'),
           updatedAt: new Date('2026-05-17T10:03:00Z'),
           errors: [{ field: 'price', code: 'INVALID', message: 'Price too low' }],
+          request: {
+            schemaVersion: 1,
+            internalVariantId: 'v-b',
+            stock: 1,
+            publishImmediately: true,
+            overrides: { title: 'Edited title', categoryId: 'cat-9' },
+          },
         } as unknown as OfferCreationRecord,
       ];
       bulkSubmit.getBatch.mockResolvedValue({
@@ -352,6 +366,13 @@ describe('BulkListingController', () => {
             updatedAt: '2026-05-17T10:03:00.000Z',
             errors: [{ field: 'price', code: 'INVALID', message: 'Price too low' }],
             productId: null,
+            request: {
+              schemaVersion: 1,
+              internalVariantId: 'v-b',
+              stock: 1,
+              publishImmediately: true,
+              overrides: { title: 'Edited title', categoryId: 'cat-9' },
+            },
           },
         ],
       });
@@ -422,6 +443,12 @@ describe('BulkListingController', () => {
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(InternalServerErrorException);
       expect((error as Error).message).toContain(recordId);
+      expect((error as InternalServerErrorException).getResponse()).toMatchObject({
+        statusCode: 500,
+        code: 'BULK_RETRY_SNAPSHOT_MISSING',
+        params: { recordId, batchId: BATCH_ID },
+      });
+
     });
   });
 });

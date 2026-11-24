@@ -90,6 +90,20 @@ describe('edited figures on the panels (#3544)', () => {
     expect(screen.getByTestId('order-edit-line-was')).toHaveTextContent('was 3');
   });
 
+  it('should not claim an edit time when the API reports the epoch (a system-added gift only)', () => {
+    renderWithProviders(
+      <OrderPricingPanel
+        items={[]}
+        totals={{ subtotal: 78, tax: 0, shipping: 0, total: 78, currency: 'PLN' }}
+        edits={{ ...edits, editedAt: new Date(0).toISOString() }}
+        channelName="Allegro"
+      />,
+    );
+    const note = screen.getByTestId('order-edit-pricing-note');
+    expect(note).not.toHaveTextContent(/1970|Changed in OpenLinker|Edited in OpenLinker/);
+    expect(note).toHaveTextContent(/The buyer paid/);
+  });
+
   it('should show what the channel shows beside the edited address and method', () => {
     renderWithProviders(
       <OrderDeliveryPanel

@@ -118,6 +118,23 @@ import {
   variantImageProxyPath,
 } from '../../../products/http/product-image-path';
 import { BenchExecutorResolver } from './bench-executor.resolver';
+import { BenchRouteResolver, type BenchRouteQuery } from './bench-route.resolver';
+
+/**
+ * The order facts a route is resolved from, or `null` when there is no order.
+ *
+ * `?? null` on the two getters: an order record that predates either column
+ * reads `undefined` rather than `null`, and the routing query wants a plain
+ * "no delivery method", which resolves to the default route.
+ */
+function toRouteQuery(order: OrderRecord | undefined): BenchRouteQuery | null {
+  if (order === undefined) return null;
+  return {
+    sourceConnectionId: order.sourceConnectionId,
+    sourceDeliveryMethodId: order.sourceDeliveryMethodId ?? null,
+    methodLabel: order.sourceDeliveryMethodName ?? null,
+  };
+}
 
 /** Raised when the work is not a parcel this bench may see at all. */
 export class BenchParcelNotAtThisBenchError extends Error {
@@ -125,6 +142,43 @@ export class BenchParcelNotAtThisBenchError extends Error {
     super(`Work ${workId} is not packing work at this bench`);
     this.name = 'BenchParcelNotAtThisBenchError';
   }
+}
+
+/**
+ * Component physical line id -> its bundle (#3624). Reads the commercial
+ * lines for the bundle's NAME only (what the buyer saw); the grouping itself
+ * comes from the order's frozen expansion.
+ */
+/**
+ * Commercial line ids that are a gift by themselves (#3935): a promotion's,
+ * the channel's or an operator's gift line, not a component of a bundle. No price
+ * or cost is read: the bench shows the marker only.
+ */
+function standaloneGiftLineIds(order: OrderRecord | undefined): ReadonlySet<string> {
+  if (order === undefined) {
+    return new Set();
+  }
+  return new Set(order.orderItems.filter((item) => item.gift !== undefined).map((item) => item.id));
+}
+
+function bundleOf(
+  order: OrderRecord | undefined
+): Map<string, { lineId: string; name: string | null; giftSlot: boolean }> {
+  const result = new Map<string, { lineId: string; name: string | null; giftSlot: boolean }>();
+  if (order === undefined) {
+    return result;
+  }
+  for (const bundle of order.bundleLines) {
+    const name = order.orderItems.find((item) => item.id === bundle.lineId)?.name ?? null;
+    for (const component of bundle.components) {
+      result.set(component.lineId, {
+        lineId: bundle.lineId,
+        name,
+        giftSlot: component.giftSlot === true,
+      });
+    }
+  }
+  return result;
 }
 
 @Injectable()
@@ -167,7 +221,9 @@ export class BenchParcelService implements IBenchParcelService {
     private readonly workQuery: IFulfillmentWorkQueryService,
     // #3961 - "Done, I took it out" re-runs the reconcile that held the box.
     @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
-    private readonly sourceAmendment: IOrderSourceAmendmentEffectsService
+    private readonly sourceAmendment: IOrderSourceAmendmentEffectsService,
+    // #3958 - who ships this box, for the label card.
+    private readonly routes: BenchRouteResolver
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
@@ -212,7 +268,9 @@ export class BenchParcelService implements IBenchParcelService {
     if (workLine === undefined) return refused('no-such-line');
 
     const order = (await this.orders.findByIds([work.orderId]))[0];
-    const keep = (order?.orderItems ?? [])
+    // The PHYSICAL list: a bundle's work lines carry its component ids, which
+    // only the expansion knows (ADR-083). For an ordinary order the two lists agree.
+    const keep = (order?.physicalItems ?? [])
       .filter((item) => item.id === workLine.orderLineId)
       .reduce((sum, item) => sum + item.quantity, 0);
     await this.verification.voidSurplusOnLine({
@@ -855,10 +913,11 @@ export class BenchParcelService implements IBenchParcelService {
     work: FulfillmentWorkView,
     state: ParcelVerificationState
   ): Promise<BenchParcelView> {
+    const orderRead = this.orders.findByIds([work.orderId]).then((records) => records[0]);
     const [order, siblings, lines, packerNotesByOrder, acknowledgements] = await Promise.all([
-      this.orders.findByIds([work.orderId]).then((records) => records[0]),
+      orderRead,
       this.worklist.listSiblingWorkIds([work.orderId]),
-      this.describeLines(work, state),
+      this.describeLines(work, state, orderRead),
       this.notes.getPackerVisibleForOrders([work.orderId]),
       this.workQuery.listBuyerNoteAcknowledgements(work.orderId),
     ]);
@@ -872,6 +931,10 @@ export class BenchParcelService implements IBenchParcelService {
     // fetched inside this projection, so it is never staler than the response
     // that carries it, whichever write preceded the call.
     const ownAcknowledgement = acknowledgements.find((entry) => entry.workId === work.id);
+
+    // After the order read rather than inside the `Promise.all` above: the
+    // route is resolved FROM the order's source connection and delivery method.
+    const route = await this.routes.resolve(toRouteQuery(order));
 
     // Field-by-field, never a spread — see the view type's module note.
     return {
@@ -888,6 +951,7 @@ export class BenchParcelService implements IBenchParcelService {
       totalAmount: order?.totalAmount ?? null,
       currency: order?.currency ?? null,
       carrierName: order?.sourceDeliveryMethodName ?? null,
+      route,
       dispatchByAt: order?.dispatchByAt?.toISOString() ?? null,
       parcelIndex: index >= 0 ? index + 1 : 1,
       parcelTotal: parcels.length > 0 ? parcels.length : 1,
@@ -947,8 +1011,12 @@ export class BenchParcelService implements IBenchParcelService {
    */
   private async describeLines(
     work: FulfillmentWorkView,
-    state: ParcelVerificationState
+    state: ParcelVerificationState,
+    orderRead: Promise<OrderRecord | undefined>
   ): Promise<BenchParcelLineView[]> {
+    const orderForLines = await orderRead;
+    const bundleByComponentLine = bundleOf(orderForLines);
+    const giftLineIds = standaloneGiftLineIds(orderForLines);
     const variantIds = [...new Set(work.lines.map((line) => line.productVariantId))];
     const variants =
       variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
@@ -971,6 +1039,8 @@ export class BenchParcelService implements IBenchParcelService {
       const counts = stateByLine.get(line.id);
       return {
         workLineId: line.id,
+        bundle: bundleByComponentLine.get(line.orderLineId) ?? null,
+        gift: giftLineIds.has(line.orderLineId),
         productVariantId: line.productVariantId,
         // `null`, never a placeholder that reads like a name: a variant absent
         // from the catalogue is a fact the packer can act on (match the codes),

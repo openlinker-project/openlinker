@@ -49,4 +49,13 @@ export interface ShopProductMappingRepositoryPort {
   findRecentlyListedVariantIds(
     options: FindRecentlyListedVariantIdsOptions
   ): Promise<RecentlyListedVariant[]>;
+
+  /**
+   * Products with a variant deleted at the master since `staleSince` that are
+   * still mapped on this shop connection (#3962 stale-pause sweep).
+   */
+  findStaleMappedProductIds(
+    connectionId: string,
+    options: { limit: number; staleSince: Date }
+  ): Promise<string[]>;
 }

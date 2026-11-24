@@ -33,6 +33,9 @@ export const listingsQueryKeys = {
   /** #1760 — live publication status of a product's offers (per snapshot). */
   offerPublicationStatus: (productId: string, connectionId?: string) =>
     ['listings', 'offerPublicationStatus', productId, connectionId ?? ''] as const,
+  /** #3962 - per-channel sale status of a product deleted at the source. */
+  productSaleStatus: (productId: string) => ['listings', 'productSaleStatus', productId] as const,
+  saleHoldAttentionCount: () => ['listings', 'saleHoldAttentionCount'] as const,
   sellerPolicies: (connectionId: string) => ['listings', 'sellerPolicies', connectionId] as const,
   responsibleProducers: (connectionId: string) =>
     ['listings', 'responsibleProducers', connectionId] as const,
@@ -98,6 +101,8 @@ export const listingsQueryKeys = {
    * in each item's category and EAN override, because a rule can be scoped to a
    * category and a `place-value` rule can read the EAN.
    */
+  bundleOfferPreview: (connectionId: string, signature: string) =>
+    ['listings', 'bundleOfferPreview', connectionId, signature] as const,
   attributeProjectionPreview: (connectionId: string, signature: string) =>
     ['listings', 'attributeProjectionPreview', connectionId, signature] as const,
 };

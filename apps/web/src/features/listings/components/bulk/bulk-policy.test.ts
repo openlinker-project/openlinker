@@ -10,6 +10,7 @@ import {
   clampMarkupPercent,
   computeBlockers,
   computeResolvedPrice,
+  bundleStock,
   computeResolvedStock,
   productCategoryIdOf,
   roundHalfUp,
@@ -363,6 +364,8 @@ import {
   distinguishingLabel,
   duplicateEanVariantIds,
   effectiveVariantEan,
+  hasExplicitNoBarcode,
+  variantProductCardIdOf,
   imageCountForVariant,
   isValidGtin,
   operatorPickedCategory,
@@ -451,6 +454,87 @@ describe('effectiveVariantEan', () => {
         makeVariant('ol_variant_1', { override: { overrides: { ean: '4006381333931' } } })
       )
     ).toBe('4006381333931');
+  });
+});
+
+describe('a cleared barcode is an explicit "no barcode" (#4036)', () => {
+  const cleared = (): BulkVariantRow =>
+    makeVariant('ol_variant_1', { override: { overrides: { ean: '' } } });
+
+  it('should read an empty ean override as no barcode, not as inherit', () => {
+    expect(hasExplicitNoBarcode(cleared())).toBe(true);
+    expect(hasExplicitNoBarcode(makeVariant('ol_variant_1'))).toBe(false);
+    expect(effectiveVariantEan(cleared())).toBeNull();
+  });
+
+  it('should drop the catalogue card together with the barcode', () => {
+    expect(variantProductCardIdOf(makeVariant('ol_variant_1'))).toBe('card-1');
+    expect(variantProductCardIdOf(cleared())).toBeNull();
+    expect(
+      variantProductCardIdOf(
+        makeVariant('ol_variant_1', { override: { overrides: { ean: '', productCardId: 'card-2' } } }),
+      ),
+    ).toBeNull();
+  });
+
+  it('should require product parameters once the card link is gone', () => {
+    const row = makeWizardRow([cleared()]);
+    const blockers = recomputeVariantBlockers(
+      row,
+      row.variants[0],
+      CONFIG,
+      new Map([['cat-1', ['p1']]]),
+      allegroValidate,
+    );
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+});
+
+describe('a card-linked variant moved to another category (#4035)', () => {
+  const blockersFor = (variant: BulkVariantRow): string[] => {
+    const row = makeWizardRow([variant]);
+    return recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+  };
+
+  it('should block the row when the chosen category differs from the card category', () => {
+    const moved = makeVariant('ol_variant_1', { override: { overrides: { categoryId: 'cat-2' } } });
+    expect(blockersFor(moved)).toContain('card-category-mismatch');
+  });
+
+  it('should stay ready when the chosen category is the card category', () => {
+    const same = makeVariant('ol_variant_1', { override: { overrides: { categoryId: 'cat-1' } } });
+    expect(blockersFor(same)).not.toContain('card-category-mismatch');
+    expect(blockersFor(makeVariant('ol_variant_1'))).not.toContain('card-category-mismatch');
+  });
+
+  it('should not block once the barcode is cleared or the card was picked explicitly', () => {
+    const cleared = makeVariant('ol_variant_1', {
+      override: { overrides: { categoryId: 'cat-2', ean: '' } },
+    });
+    const picked = makeVariant('ol_variant_1', {
+      override: { overrides: { categoryId: 'cat-2', productCardId: 'card-9' } },
+    });
+    expect(blockersFor(cleared)).not.toContain('card-category-mismatch');
+    expect(blockersFor(picked)).not.toContain('card-category-mismatch');
+  });
+});
+
+describe('a sibling card in another category than the resolved one (#4035 review)', () => {
+  const card = { id: 'card-1', name: 'Card' } as unknown as BulkVariantRow['overriddenCard'];
+
+  it('should block a resolved-only mismatch with no operator pick', () => {
+    const variant = makeVariant('ol_variant_1');
+    const row = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-family' };
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+    expect(blockers).toContain('card-category-mismatch');
+  });
+
+  it('should never show the advisory chip next to the gating one', () => {
+    const variant = makeVariant('ol_variant_1', { overriddenCard: card });
+    const row = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-family' };
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+    expect(blockers).toContain('card-category-mismatch');
+    expect(blockers).not.toContain('card-category-differs');
   });
 });
 
@@ -1081,5 +1165,68 @@ describe('catalogue card vs category mapping (#3994)', () => {
         { ...variant, override: { overrides: { categoryId: 'cat-variant' } } },
       ),
     ).toBe('cat-variant');
+  });
+});
+
+describe('computeBlockers for a bundle (#3520)', () => {
+  const bundle = (suggested: string | null, chosen: string | null, codes: string[] = []) => ({
+    components: [
+      {
+        variantId: 'c1',
+        productId: 'p1',
+        name: 'Kubek',
+        problems: codes.map((code) => ({ code, message: code })),
+      },
+    ],
+    suggestedCategoryId: suggested,
+    chosenCategoryId: chosen,
+  });
+  const input = (over: Partial<ComputeBlockersInput> = {}): ComputeBlockersInput => ({
+    hasVariant: true,
+    categoryResult: { kind: 'no-ean' },
+    pricingPolicy: { mode: 'use-master' },
+    stockPolicy: { mode: 'use-master' },
+    masterPrice: 12,
+    masterStock: 3,
+    masterCurrency: 'PLN',
+    batchCurrency: 'PLN',
+    override: {},
+    platformValidate: allegroValidate,
+    imageCount: 1,
+    effectiveTitle: 'Zestaw poranny kawa i kubek',
+    barcode: '5901234123457',
+    catalogueConsulted: true,
+    ...over,
+  });
+
+  it('should drop the own-barcode category and catalogue chips when a category is suggested', () => {
+    const blockers = computeBlockers(input({ bundle: bundle('74035', '74035') }));
+    expect(blockers).toEqual([]);
+  });
+
+  it('should still ask for a category when nothing is suggested or chosen', () => {
+    expect(computeBlockers(input({ bundle: bundle(null, null) }))).toEqual(['no-match']);
+  });
+
+  it('should name a category that differs from the first component card', () => {
+    expect(computeBlockers(input({ bundle: bundle('74035', '110886'), productCategoryId: '110886' }))).toEqual([
+      'allegro:bundle-category-mismatch',
+    ]);
+  });
+
+  it('should carry the component problems through as blockers', () => {
+    expect(
+      computeBlockers(
+        input({ bundle: bundle('74035', '74035', ['PRODUCT_SET_COMPONENT_UNPUBLISHABLE']) }),
+      ),
+    ).toEqual(['allegro:bundle-component-missing']);
+  });
+
+  it('should list at the sets sellable and fall back to the row stock when unknown', () => {
+    const variant = { masterStock: 50 } as unknown as Parameters<typeof bundleStock>[1];
+    const preview = (availableSets: number | null) =>
+      ({ availableSets }) as unknown as Parameters<typeof bundleStock>[0];
+    expect(bundleStock(preview(3), variant)).toBe(3);
+    expect(bundleStock(preview(null), variant)).toBe(50);
   });
 });

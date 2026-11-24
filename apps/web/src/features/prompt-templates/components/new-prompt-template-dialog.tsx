@@ -37,6 +37,7 @@ import {
   useNewPromptTemplateSchema,
   type NewPromptTemplateFormValues,
 } from './new-prompt-template.schema';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface NewPromptTemplateDialogProps {
   open: boolean;
@@ -75,8 +76,8 @@ export function NewPromptTemplateDialog({
     resolver: zodResolver(schema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   // Live JSON-status indicator below the variables textarea — cockpit
@@ -144,7 +145,7 @@ export function NewPromptTemplateDialog({
           className="new-prompt-template-form"
         >
           {mutation.error ? (
-            <Alert tone="error">{mutation.error.message}</Alert>
+            <Alert tone="error">{describeApiError(mutation.error, 'prompt-templates')}</Alert>
           ) : null}
 
           {form.formState.submitCount > 0 && validationMessages.length > 0 ? (

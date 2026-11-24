@@ -276,6 +276,12 @@ export interface ExtraConfigSectionProps {
   form: UseFormReturn<EditConnectionFormValues>;
   configIsParseable: boolean;
   syncSellerDefaultsToJson: () => void;
+  /**
+   * Whole-object serializer for `config.senderAddress` (the host's
+   * `inpostSenderAddress` form field). Optional: the Allegro Delivery sender
+   * section uses it; other plugins ignore it.
+   */
+  syncInpostSenderAddressToJson?: () => void;
 }
 
 /**
@@ -433,6 +439,7 @@ export const OfferBlockerFieldValues = [
   'images',
   'parameters',
   'category',
+  'bundle',
 ] as const;
 export type OfferBlockerField = (typeof OfferBlockerFieldValues)[number];
 
@@ -495,6 +502,32 @@ export interface OfferRowValidationInput {
   siblingsWithoutCatalogueCard?: number;
   /** Included sibling count for the row's product; 1 ⇒ nothing to group. */
   includedSiblingCount?: number;
+  /**
+   * Present when the row is a bundle published as ONE offer made of several
+   * products (#3520). Its own barcode and catalogue card then say nothing about
+   * the offer - the components carry them - so a destination skips the
+   * single-product checks and reads this instead.
+   */
+  bundle?: OfferRowBundleInput;
+}
+
+/** One component of a bundle row, as the destination's preview reported it (#3520). */
+export interface OfferRowBundleComponent {
+  variantId: string;
+  productId: string;
+  name: string;
+  /** Destination-neutral problems the preview attached; `code` is the destination's own. */
+  problems: readonly { code: string; message: string }[];
+  /** Category of the component's product card, when known. */
+  cardCategoryId?: string;
+}
+
+export interface OfferRowBundleInput {
+  components: readonly OfferRowBundleComponent[];
+  /** Category the destination requires: that of the first component's card. */
+  suggestedCategoryId: string | null;
+  /** Category the offer would be submitted under right now. */
+  chosenCategoryId: string | null;
 }
 
 /**

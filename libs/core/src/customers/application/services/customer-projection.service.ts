@@ -18,6 +18,9 @@ import type { DestinationAddressMapping } from '../../domain/entities/destinatio
 import { getPiiConfig } from '@openlinker/shared/config';
 import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN } from '../../customers.tokens';
 
+/** Bound-parameter ceiling per IN read. */
+const PROJECTION_READ_CHUNK = 500;
+
 @Injectable()
 export class CustomerProjectionService implements ICustomerProjectionService {
   private readonly piiConfig = getPiiConfig();
@@ -29,6 +32,18 @@ export class CustomerProjectionService implements ICustomerProjectionService {
 
   async getProjection(internalCustomerId: string): Promise<CustomerProjection | null> {
     return this.repository.findById(internalCustomerId);
+  }
+
+  async getProjectionsByIds(
+    internalCustomerIds: readonly string[]
+  ): Promise<ReadonlyMap<string, CustomerProjection>> {
+    const unique = [...new Set(internalCustomerIds)];
+    const found = new Map<string, CustomerProjection>();
+    for (let i = 0; i < unique.length; i += PROJECTION_READ_CHUNK) {
+      const rows = await this.repository.findByIds(unique.slice(i, i + PROJECTION_READ_CHUNK));
+      for (const row of rows) found.set(row.internalCustomerId, row);
+    }
+    return found;
   }
 
   async upsertProjection(projection: CustomerProjection): Promise<CustomerProjection> {

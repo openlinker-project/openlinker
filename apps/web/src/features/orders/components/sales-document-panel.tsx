@@ -151,6 +151,8 @@ import {
   FiscalFailureDetails,
   CopyFiscalFailureDetailsButton,
   FiscalArtefactList,
+  FiscalEarlierAttempts,
+  type AcceptedFiscalRegistration,
   type FiscalRegistrationRecord,
 } from '../../fiscalization';
 
@@ -158,6 +160,7 @@ import type { IssueInvoiceOptions } from '../../invoicing';
 import type { ResolvedDeliveryLine } from '../../delivery-on-documents/lib/delivery-line';
 import type { OrderRecord } from '../api/orders.types';
 import { parseOrderSnapshot } from '../api/order-snapshot.schema';
+import { humanizeExtraKey } from '../lib/humanize-extra-key';
 import type { ParsedOrderItem, ParsedOrderTotals } from '../api/order-snapshot.schema';
 
 interface SalesDocumentPanelProps {
@@ -166,13 +169,23 @@ interface SalesDocumentPanelProps {
 
 type PanelCopy = ResolvedCopy<Messages['orders']>['salesDocumentPanel'];
 
+/**
+ * The rows of a document's field list, split by who needs them (#4065). An
+ * operator glancing at an order needs which document it is and when it was
+ * issued; everything else is support data and starts collapsed.
+ */
+interface DocumentFieldItems {
+  summary: KeyValueItem[];
+  details: KeyValueItem[];
+}
+
 /** Mirrors `buildInvoiceFieldItems` from the pre-#2160 `OrderInvoicePanel`. */
 function buildInvoiceFieldItems(
   invoice: InvoiceRecord,
   showRegulatoryBadge: boolean,
   copy: PanelCopy,
-): KeyValueItem[] {
-  const items: KeyValueItem[] = [
+): DocumentFieldItems {
+  const summary: KeyValueItem[] = [
     {
       id: 'number',
       label: copy.invoice.field.number,
@@ -182,22 +195,17 @@ function buildInvoiceFieldItems(
         <span className="text-muted">—</span>
       ),
     },
-    {
-      id: 'document',
-      label: copy.invoice.field.document,
-      value: DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
-    },
   ];
 
   if (showRegulatoryBadge) {
-    items.push({
+    summary.push({
       id: 'clearance',
       label: copy.invoice.field.clearance,
       value: <RegulatoryStatusBadge status={invoice.regulatoryStatus} />,
     });
   }
 
-  items.push({
+  summary.push({
     id: 'issued',
     label: copy.invoice.field.issued,
     value: invoice.issuedAt ? (
@@ -207,30 +215,32 @@ function buildInvoiceFieldItems(
     ),
   });
 
-  return items;
+  const details: KeyValueItem[] = [
+    {
+      id: 'document',
+      label: copy.invoice.field.document,
+      value: DOCUMENT_TYPE_LABEL_FALLBACK[invoice.documentType] ?? invoice.documentType,
+    },
+  ];
+
+  return { summary, details };
 }
 
 /** Mirrors `buildRegisteredFieldItems` from the pre-#2160 `OrderReceiptPanel`. */
 function buildFiscalFieldItems(
   record: FiscalRegistrationRecord,
   copy: PanelCopy,
-): KeyValueItem[] {
+): DocumentFieldItems {
   const notReported = (
     <span className="text-muted">{copy.fiscalReceipt.field.notReported}</span>
   );
 
-  const items: KeyValueItem[] = [
+  const summary: KeyValueItem[] = [
     {
       id: 'documentReference',
       label: copy.fiscalReceipt.field.documentReference,
       value: record.documentReference ?? notReported,
       mono: Boolean(record.documentReference),
-    },
-    {
-      id: 'signingIdentity',
-      label: copy.fiscalReceipt.field.signingIdentity,
-      value: record.signingIdentity ?? notReported,
-      mono: Boolean(record.signingIdentity),
     },
     {
       id: 'registeredAt',
@@ -243,13 +253,49 @@ function buildFiscalFieldItems(
     },
   ];
 
+  const details: KeyValueItem[] = [
+    {
+      id: 'signingIdentity',
+      label: copy.fiscalReceipt.field.signingIdentity,
+      value: record.signingIdentity ?? notReported,
+      mono: Boolean(record.signingIdentity),
+    },
+  ];
+
   if (record.regimeExtras) {
     for (const [key, value] of Object.entries(record.regimeExtras)) {
-      items.push({ id: `extra-${key}`, label: key, value, mono: true });
+      // Humanized for reading only; the vendor key is provider vocabulary and
+      // is not translated.
+      details.push({ id: `extra-${key}`, label: humanizeExtraKey(key), value, mono: true });
     }
   }
 
-  return items;
+  return { summary, details };
+}
+
+function DocumentFieldList({
+  items,
+  copy,
+}: {
+  items: DocumentFieldItems;
+  copy: PanelCopy;
+}): ReactElement {
+  return (
+    <>
+      <KeyValueList items={items.summary} />
+      {items.details.length > 0 ? (
+        <details
+          className="sales-document-panel__routing-disclosure sales-document-panel__technical-details"
+          data-testid="sales-document-technical-details"
+        >
+          <summary>
+            {interpolate(copy.panel.technicalDetails, { count: items.details.length })}
+          </summary>
+          <KeyValueList items={items.details} />
+        </details>
+      ) : null}
+    </>
+  );
 }
 
 export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactElement | null {
@@ -344,6 +390,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const reauthConnections = selectReauthInvoicingConnections(allConnections);
   const fiscalCandidates = selectFiscalizationCandidates(allConnections);
 
+  const fiscalCopy = useMessages('fiscalization');
   const invoice = invoiceQuery.data ?? null;
   const fiscalRecords = fiscalQuery.data ?? [];
   // Newest record only — mirrors the pre-#2160 `OrderReceiptPanel` (a record on
@@ -365,6 +412,26 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   // describe: the request has been accepted and the job has not run yet, so
   // there is nothing but the job to read.
   const fiscalWorkOutstanding = fiscalProgress === 'queued' || fiscalProgress === 'running';
+
+  // #3960 - asking again after a refusal creates a NEW attempt record, so the
+  // refused ones stay on record. While the next attempt waits or runs, the
+  // newest record IS the refused attempt, so it joins the earlier list rather
+  // than rendering as the receipt's current state.
+  const fiscalNextAttemptQueued =
+    fiscalWorkOutstanding && fiscalRecord?.status === 'failed' && fiscalRecord.failureMode === 'rejected';
+  const fiscalEarlierAttempts = fiscalRecord
+    ? fiscalRecords.filter(
+        (candidate) =>
+          candidate.connectionId === fiscalRecord.connectionId &&
+          candidate.status === 'failed' &&
+          candidate.failureMode === 'rejected' &&
+          (candidate.id !== fiscalRecord.id || fiscalNextAttemptQueued),
+      )
+    : [];
+  // 1-based, as an operator counts.
+  const fiscalCurrentAttemptNumber = fiscalRecord
+    ? fiscalRecord.attempt + (fiscalNextAttemptQueued ? 2 : 1)
+    : 1;
 
   // #2559 — a contended attempt is transient by nature: once progress moves
   // past the window that produced it, the flag is stale and must clear itself
@@ -571,8 +638,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
     registerMutation.mutate(
       { connectionId, orderId: order.internalOrderId },
       {
-        onSuccess: () => {
-          announce(copy.fiscalReceipt.announce.registered);
+        onSuccess: (accepted) => {
+          // #3960 - the answer says what the REQUEST did. It never says the sale
+          // is registered: that arrives later, on the receipt itself.
+          announce(announceFiscalRequest(accepted, fiscalCopy.announce));
         },
         onError: (error) => {
           // #2559 — a 409 here is the exactly-once claim refusing a SECOND
@@ -880,7 +949,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           {invoiceSettled && invoiceDisplayStatus === 'issued' && invoice ? (
             <div className="sales-document-panel__body">
               <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice)} />
-              <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, copy)} />
+              <DocumentFieldList
+                items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, copy)}
+                copy={copy}
+              />
               {/* #3549 - did the document reach the marketplace order? */}
               <InvoiceMarketplaceUploadStatus invoiceId={invoice.id} />
               {/* #3551 - one neutral email control for every provider. */}
@@ -888,6 +960,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 kind="invoice"
                 documentId={invoice.id}
                 internalOrderId={order.internalOrderId}
+                buyerEmail={parsedSnapshot.customerEmail ?? null}
                 notReadyReason={
                   // The mailer refuses a document the authority has not settled, so
                   // the card says why instead of offering a send that is refused.
@@ -1228,8 +1301,11 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                     is true and nothing more: it continues, and it will be here.
                     There is deliberately no estimate - OpenLinker hands the sale
                     over and waits for one answer, observing nothing in between. */}
-                {copy.fiscalReceipt.pending.body}
+                {fiscalCurrentAttemptNumber > 1
+                  ? interpolate(fiscalCopy.pending.attempt, { n: fiscalCurrentAttemptNumber })
+                  : copy.fiscalReceipt.pending.body}
               </p>
+              <FiscalEarlierAttempts attempts={fiscalEarlierAttempts} />
             </>
           ) : null}
 
@@ -1272,7 +1348,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
 
           {fiscalSettled && fiscalDisplayStatus === 'registered' && fiscalRecord ? (
             <div className="sales-document-panel__body">
-              <KeyValueList items={buildFiscalFieldItems(fiscalRecord, copy)} />
+              <DocumentFieldList items={buildFiscalFieldItems(fiscalRecord, copy)} copy={copy} />
               {fiscalRecord.artefacts && fiscalRecord.artefacts.length > 0 ? (
                 <FiscalArtefactList artefacts={fiscalRecord.artefacts} />
               ) : (
@@ -1292,8 +1368,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                 kind="fiscal-receipt"
                 documentId={fiscalRecord.id}
                 internalOrderId={order.internalOrderId}
+                buyerEmail={parsedSnapshot.customerEmail ?? null}
               />
               {whyKindDisclosure}
+              <FiscalEarlierAttempts attempts={fiscalEarlierAttempts} />
               {/* #2559 — a registered receipt is final. OpenLinker never issues
                   a fiscal correction, so this state must not imply one is
                   possible here. */}
@@ -1303,7 +1381,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             </div>
           ) : null}
 
-          {fiscalSettled && fiscalDisplayStatus === 'rejected' && fiscalRecord ? (
+          {fiscalSettled && fiscalDisplayStatus === 'rejected' && fiscalRecord && !fiscalNextAttemptQueued ? (
             <>
               {/* #3843: the cause and the provider's identifiers are for someone
                   who acts on the order; a read-only role gets the fact alone. */}
@@ -1340,10 +1418,18 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                     }
                     onClick={() => handleRegister(fiscalRecord.connectionId)}
                   >
-                    {copy.fiscalReceipt.action.retry}
+                    {fiscalCopy.rejected.registerAgain}
                   </Button>
                 </div>
               ) : null}
+              {isAdmin || demoMode ? (
+                <p className="sales-document-panel__notice" data-testid="fiscal-register-again-hint">
+                  {interpolate(fiscalCopy.rejected.registerAgainHint, {
+                    n: fiscalRecord.attempt + 2,
+                  })}
+                </p>
+              ) : null}
+              <FiscalEarlierAttempts attempts={fiscalEarlierAttempts} />
             </>
           ) : null}
 
@@ -1657,6 +1743,32 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
  * cannot release THIS order, because the marketplace stamped the rate at
  * purchase. Those are different instructions, so they cannot share a sentence.
  */
+/**
+ * What a fiscal registration request did, as a sentence for the live region
+ * (#3960). Never "Registered.": the request only asks, and the receipt carries
+ * the answer when it arrives.
+ */
+function announceFiscalRequest(
+  accepted: AcceptedFiscalRegistration,
+  copy: Messages['fiscalization']['announce'],
+): string {
+  switch (accepted.outcome) {
+    case 'new-attempt':
+      return accepted.attempt > 0
+        ? interpolate(copy.newAttempt, { n: accepted.attempt + 1 })
+        : copy.requested;
+    case 'joined':
+      return copy.joined;
+    case 'redriven':
+      return copy.redriven;
+    case 'resumed':
+      return copy.resumed;
+    default:
+      // An outcome this build does not know still answered a request.
+      return copy.requested;
+  }
+}
+
 function collectRateLessLines(items: readonly ParsedOrderItem[]): RateLessLine[] {
   return items
     .filter((item) => !item.taxRate)

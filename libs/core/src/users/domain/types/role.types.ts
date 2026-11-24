@@ -124,6 +124,15 @@ export const PermissionValues = [
   // on `OrderExportsController`; this permission is what the FE's Export
   // button and row checkboxes on the export dialog key on.
   'orders:export',
+  // DISPLAY-ONLY (#3520): gates the FE's bundle/multipack write affordances.
+  // Not `products:write`, which operators lack: the roles holding this MUST
+  // stay identical to the `@Roles('admin', 'operator')` lists on
+  // `BundleDefinitionsController` and the multipack-hold confirm route.
+  'bundles:write',
+  // DISPLAY-ONLY (#3940): gates the gift promotions and "Add gift" affordances.
+  // The roles holding this MUST stay identical to the `@Roles('admin', 'operator')`
+  // lists on `GiftRulesController` and the order-edit gift route.
+  'gifts:write',
 ] as const;
 
 /**
@@ -166,6 +175,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'automations:read',
     // D35: admin and operator only — see `PermissionValues`'s own comment.
     'orders:export',
+    'bundles:write',
+    'gifts:write',
   ],
   viewer: [
     'connections:read',

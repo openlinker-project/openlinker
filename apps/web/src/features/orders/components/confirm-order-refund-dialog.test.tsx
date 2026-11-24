@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ConfirmOrderRefundDialog } from './confirm-order-refund-dialog';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 
 const ORDER_ID = 'ol_order_1';
@@ -126,9 +127,13 @@ describe('ConfirmOrderRefundDialog (#3541)', () => {
     expect(recordRefund.mock.calls[1][1].idempotencyKey).toBe(recordRefund.mock.calls[0][1].idempotencyKey);
   });
 
-  it('should show the server reason for any other refusal', async () => {
+  it('should show the copy for any other refusal', async () => {
     renderDialog(
-      vi.fn().mockRejectedValue(new ApiError('A refund with this idempotencyKey already exists for this order', 409, {})),
+      vi.fn().mockRejectedValue(
+        new ApiError('A refund with this idempotencyKey already exists for this order', 409, {
+          code: 'REFUND_RECORD_DUPLICATE',
+        }),
+      ),
     );
     const user = userEvent.setup();
 
@@ -136,7 +141,7 @@ describe('ConfirmOrderRefundDialog (#3541)', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm refund' }));
 
     expect(
-      await screen.findByText(/already exists for this order/),
+      await screen.findByText(getMessages('errors').codes.REFUND_RECORD_DUPLICATE),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('order-refund-ceiling')).not.toBeInTheDocument();
   });

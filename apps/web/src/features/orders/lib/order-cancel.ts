@@ -130,9 +130,27 @@ export function readOrderCancelErrorCode(error: unknown): OrderCancelErrorCode |
   return readErrorCodeFrom(error, ORDER_CANCEL_ERROR_CODES);
 }
 
-/** The server's own sentence, or the fallback when the error carries none. */
-export function readServerReason(error: unknown, fallback: string): string {
-  return (error instanceof Error && error.message) || fallback;
+/**
+ * Codes whose server sentence carries something the coded copy cannot: the
+ * carrier's or channel's own refusal, the provider's reason for a failed
+ * correction, the number of the document that superseded a proposal.
+ */
+const ORDER_CANCEL_DETAIL_CODES = [
+  'LABEL_NOT_VOIDABLE',
+  'CHANNEL_REFUSED_CANCEL',
+  'CORRECTION_FAILED',
+  'CORRECTION_SUPERSEDED',
+] as const;
+
+/**
+ * The server's untranslated sentence for a refusal whose detail the operator
+ * needs to act on, or null. Shown under the translated "technical details"
+ * label beside `describeApiError`, never in its place.
+ */
+export function readOrderCancelRefusalDetail(error: unknown): string | null {
+  if (readErrorCodeFrom(error, ORDER_CANCEL_DETAIL_CODES) === null) return null;
+  // eslint-disable-next-line no-restricted-syntax -- the carrier's, channel's or provider's own words, shown beside describeApiError under the untranslated technical-details label
+  return error instanceof ApiError && error.message.length > 0 ? error.message : null;
 }
 
 /** Which layout a failed cancel renders in the dialog. */

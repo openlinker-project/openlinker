@@ -1,33 +1,27 @@
 /**
- * describePriceChangeActionError (#3148, #3873)
+ * describePriceChangeActionError (#3148, #3873, #3867)
  *
  * Maps a price-change write failure to operator-facing copy (#3148 review,
  * finding 9). With a 30 s background poll and a per-dialog version
- * snapshot, a 409 (the episode changed again since it was opened) is a
- * ROUTINE outcome; the backend exception text carries episode ids and raw
- * version tokens, so it never reaches the toast. The raw error still belongs
- * in `console.error` for debugging.
+ * snapshot, a stale episode (`PRICE_CHANGE_STALE`) is a ROUTINE outcome, so
+ * its copy lives in this feature's `apiErrors`. A block caused by a currency
+ * mismatch names the connection setting to fix, which the shared
+ * `PRICE_CHANGE_BLOCKED` copy cannot; every other failure reads through
+ * `describeApiError`.
  *
  * @module apps/web/src/features/price-changes/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import { getMessages, interpolate } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { getMessages } from '../../../shared/i18n';
 
 export function describePriceChangeActionError(error: unknown): string {
-  const copy = getMessages('price-changes').describePriceChangeError;
-  if (error instanceof ApiError) {
-    if (error.isConflict()) {
-      return copy.conflict;
-    }
-    if (error.status === 422) {
-      if (error.message.includes('currency-mismatch')) {
-        return copy.currencyMismatch;
-      }
-      return copy.blocked;
-    }
+  if (
+    error instanceof ApiError &&
+    error.code === 'PRICE_CHANGE_BLOCKED' &&
+    error.params.blockReason === 'currency-mismatch'
+  ) {
+    return getMessages('price-changes').describePriceChangeError.currencyMismatch;
   }
-  // Any other server text is shown behind a translated prefix, never bare.
-  return error instanceof Error && error.message
-    ? interpolate(copy.withServerMessage, { message: error.message })
-    : copy.fallback;
+  return describeApiError(error, 'price-changes');
 }

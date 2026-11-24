@@ -26,6 +26,7 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useConfirmEmail } from '../hooks/use-confirm-email';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -34,10 +35,6 @@ import { useMessages } from '../../../shared/i18n';
 
 interface ConfirmEmailStatusProps {
   token: string;
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
 }
 
 export function ConfirmEmailStatus({ token }: ConfirmEmailStatusProps): ReactElement {
@@ -69,7 +66,7 @@ export function ConfirmEmailStatus({ token }: ConfirmEmailStatusProps): ReactEle
           ✕
         </span>
         <h2 className="confirm-email__heading">{copy.failed}</h2>
-        <Alert tone="error">{getErrorMessage(state.error, copy.fallbackError)}</Alert>
+        <Alert tone="error">{describeApiError(state.error, 'auth')}</Alert>
         <div className="confirm-email__actions">
           <Link className="button" to="/login">
             {auth.common.backToSignIn}

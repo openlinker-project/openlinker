@@ -3,6 +3,7 @@ import { connectionsQueryKeys } from '../api/connections.query-keys';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface SetDefaultBankAccountVariables {
   connectionId: string;
@@ -49,7 +50,7 @@ export function useSetDefaultBankAccountMutation(): UseMutationResult<
       showToast({
         tone: 'error',
         title: copy.errorTitle,
-        description: interpolate(copy.errorDescription, { message: error.message }),
+        description: interpolate(copy.errorDescription, { message: describeApiError(error, 'connections') }),
       });
     },
   });

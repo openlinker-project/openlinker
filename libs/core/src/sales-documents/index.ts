@@ -54,6 +54,8 @@ export * from './domain/types/sales-document-dry-run.types';
 export * from './domain/types/sales-document-country-summary.types';
 export * from './domain/types/sales-document-market-discovery.types';
 export * from './domain/types/sales-document-view.types';
+export * from './domain/types/batch-schedule.types';
+export * from './domain/types/document-attempt.types';
 export * from './domain/ports/capabilities/self-routing-document-kind.capability';
 export * from './domain/domain-services/resolve-sales-document-routing';
 export * from './domain/domain-services/evaluate-sales-document-rules';
@@ -103,6 +105,14 @@ export * from './domain/types/gross-price-eligibility.types';
 // rate suffix a receipt name carries (#3905, ADR-082). Import-free, here for the
 // same reason the shipping split is.
 export * from './domain/types/delivery-line.types';
+export * from './domain/types/gift-lines.types';
+export * from './domain/exceptions/invalid-gift-document-form.error';
+export type {
+  GiftDocumentFormSetting,
+  ISalesDocumentSettingsService,
+} from './application/interfaces/sales-document-settings.service.interface';
+export * from './domain/types/bundle-document-lines.types';
+export * from './domain/ports/capabilities/zero-value-line.capability';
 
 // #3550 - manual "send this document to the buyer": the shared vocabulary, the
 // timeline record and the service that writes and reads it.

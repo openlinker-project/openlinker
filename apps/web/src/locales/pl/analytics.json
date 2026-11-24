@@ -994,7 +994,6 @@
       },
       "requeuedSkipped": "{jobType} - ponownie dodano do kolejki: {count}, pominięto już trwające: {skipped}.",
       "retryFailed": "Ponowienie nie powiodło się",
-      "unknownError": "Nieznany błąd",
       "willRerun": "{jobType} zostanie uruchomione ponownie."
     },
     "truncated": "{text}…",

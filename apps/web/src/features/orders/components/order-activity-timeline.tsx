@@ -107,6 +107,10 @@ interface OrderActivityTimelineProps {
   /** Routing reason paired with a `'unresolved-routing'` block (ADR-041 §107). */
   salesDocumentUnresolvedReason?: SalesDocumentUnresolvedReasonValue | null;
   /** PII-free elaboration the backend supplied. */
+  /**
+   * Operator-facing elaboration of the block, already phrased by
+   * `describeSalesDocumentBlockDetail` (#3866).
+   */
   salesDocumentBlockDetail?: string | null;
   /**
    * The order's invoice projection, when it has one. Suppresses the block entry —

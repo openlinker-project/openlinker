@@ -65,6 +65,7 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
       if (!base.ok) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: `Invalid connection config: ${base.issues.join('; ')}`,
           latencyMs: elapsed(),
         };
@@ -73,6 +74,7 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
       if (!connection.credentialsRef) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'Connection has no stored credentials',
           latencyMs: elapsed(),
         };
@@ -84,6 +86,7 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
       if (typeof credentials.token !== 'string' || credentials.token.trim().length === 0) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'Stored credentials have no API token',
           latencyMs: elapsed(),
         };
@@ -107,6 +110,7 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
         return {
           success: false,
           status: response.status,
+          outcome: 'misconfigured',
           message: 'The host answered, but not like a Shoper REST API - verify the shop host name',
           latencyMs: elapsed(),
         };
@@ -173,6 +177,7 @@ export class ShoperConnectionTesterAdapter implements ConnectionTesterPort {
       this.logger.warn('Shoper connection test failed', { connectionId, error: error.message });
       return {
         success: false,
+        outcome: error.timedOut ? 'timeout' : 'unreachable',
         message: error.timedOut
           ? 'Shoper connection test timed out - the shop did not respond in time'
           : error.originalError?.message ?? error.message,

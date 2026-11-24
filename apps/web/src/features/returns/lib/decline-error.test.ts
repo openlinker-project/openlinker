@@ -1,28 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../../shared/api/api-error';
-import { describeDeclineError, readBlockedTrigger } from './decline-error';
 import { getMessages } from '../../../shared/i18n';
+import { describeDeclineError, readBlockedTrigger } from './decline-error';
 
-const RETURN_DECLINE_ERROR_COPY = getMessages('returns').detail.declineError;
+const codes = (): Record<string, string> => getMessages('errors').codes as Record<string, string>;
 
 describe('readBlockedTrigger', () => {
-  it('should read the trigger from the error body', () => {
+  it('should read the trigger from the params', () => {
     const error = new ApiError('conflict', 409, {
-      statusCode: 409,
+      code: 'RETURN_NOT_ATTRIBUTED',
+      params: { trigger: 'decline' },
       error: 'ReturnNotAttributedError',
-      message: 'Return … is not attributed …',
       trigger: 'decline',
     });
 
     expect(readBlockedTrigger(error)).toBe('decline');
   });
 
-  it('should return null when the body carries no trigger', () => {
-    expect(readBlockedTrigger(new ApiError('conflict', 409, { statusCode: 409 }))).toBeNull();
+  it('should return null when the params carry no trigger', () => {
+    expect(readBlockedTrigger(new ApiError('conflict', 409, { code: 'RETURN_NOT_ATTRIBUTED' }))).toBeNull();
   });
 
   it('should return null for a non-string trigger', () => {
-    expect(readBlockedTrigger(new ApiError('conflict', 409, { trigger: 7 }))).toBeNull();
+    expect(readBlockedTrigger(new ApiError('conflict', 409, { params: { trigger: 7 } }))).toBeNull();
   });
 
   it('should return null for anything that is not an ApiError', () => {
@@ -31,39 +31,35 @@ describe('readBlockedTrigger', () => {
 });
 
 describe('describeDeclineError', () => {
-  it('should report the return as gone on 404', () => {
-    expect(describeDeclineError(new ApiError('nope', 404, {}))).toBe(
-      RETURN_DECLINE_ERROR_COPY.notFound,
-    );
+  it('should read a gone return by its code', () => {
+    const error = new ApiError('nope', 404, { code: 'RETURN_NOT_FOUND', params: { returnId: 'r-1' } });
+
+    expect(describeDeclineError(error)).toBe(codes().RETURN_NOT_FOUND);
   });
 
-  it('should name the blocked trigger on 409 rather than quoting the message', () => {
-    const message = 'Return ol_return_1 is not attributed to an order — the "decline" trigger…';
+  it('should read an unmatched return by its code, never quoting the message', () => {
+    const message = 'Return ol_return_1 is not attributed to an order - the "decline" trigger';
     const sentence = describeDeclineError(
-      new ApiError(message, 409, { message, trigger: 'decline' }),
+      new ApiError(message, 409, { code: 'RETURN_NOT_ATTRIBUTED', params: { trigger: 'decline' } })
     );
 
-    expect(sentence).toContain(RETURN_DECLINE_ERROR_COPY.conflictPrefix);
-    expect(sentence).toContain('decline');
-    expect(sentence).not.toContain(message);
+    expect(sentence).toBe(codes().RETURN_NOT_ATTRIBUTED);
+    expect(sentence).not.toContain('ol_return_1');
   });
 
-  it('should fall back to the plain conflict sentence when no trigger is reported', () => {
-    expect(describeDeclineError(new ApiError('conflict', 409, {}))).toBe(
-      RETURN_DECLINE_ERROR_COPY.conflictPrefix,
-    );
-  });
-
-  it("should pass through the adapter's own explanation on 400", () => {
+  it("should follow the translated sentence with the adapter's own explanation", () => {
     const sentence = describeDeclineError(
-      new ApiError('Accepted codes: REFUND_REJECTED, DAMAGED', 400, {}),
+      new ApiError('Accepted codes: REFUND_REJECTED, DAMAGED', 400, {
+        code: 'RETURN_DECLINE_INVALID',
+        params: { field: 'reasonCode' },
+      })
     );
 
-    expect(sentence).toContain(RETURN_DECLINE_ERROR_COPY.unsupported);
+    expect(sentence).toContain(codes().RETURN_DECLINE_INVALID);
     expect(sentence).toContain('REFUND_REJECTED');
   });
 
-  it('should fall back to the generic sentence for a non-ApiError with no message', () => {
-    expect(describeDeclineError(new Error(''))).toBe(RETURN_DECLINE_ERROR_COPY.generic);
+  it('should never be blank, also for a non-ApiError with no message', () => {
+    expect(describeDeclineError(new Error('')).length).toBeGreaterThan(0);
   });
 });

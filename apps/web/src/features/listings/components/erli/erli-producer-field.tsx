@@ -21,7 +21,7 @@ import { FormField } from '../../../../shared/ui/form-field';
 import { Input } from '../../../../shared/ui/input';
 import { Select } from '../../../../shared/ui/select';
 import { useResponsibleProducersQuery } from '../../hooks/use-responsible-producers-query';
-import { serverErrorText } from '../../lib/server-error-text';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 
 interface ErliProducerFieldProps {
   connectionId: string;
@@ -39,7 +39,6 @@ export function ErliProducerField({
   onChange,
 }: ErliProducerFieldProps): ReactElement {
   const copy = useMessages('listings').erliProducerField;
-  const common = useMessages('listings').common;
   const query = useResponsibleProducersQuery(connectionId);
   const producers = query.data?.responsibleProducers ?? [];
 
@@ -56,7 +55,7 @@ export function ErliProducerField({
   } else if (query.error) {
     control = (
       <Alert tone="error" title={copy.loadErrorTitle}>
-        {serverErrorText(common.serverSaid, query.error instanceof Error ? query.error.message : undefined, copy.tryAgain)}
+        {describeApiError(query.error, 'listings')}
       </Alert>
     );
   } else if (producers.length === 0) {

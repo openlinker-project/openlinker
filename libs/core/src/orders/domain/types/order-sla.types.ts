@@ -44,6 +44,15 @@ export type SlaState = (typeof SlaStateValues)[number];
 export const SLA_AT_RISK_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Look-ahead of the "ships within 24 h or overdue" list filter (#927, `dueBefore`)
+ * as counted by the health summary (#4025). The web app sends `now + 24 h` as
+ * `dueBefore` for the same filter; this is the server-side twin, kept separate
+ * from `SLA_AT_RISK_WINDOW_MS` because the filter is a cutoff the client
+ * chooses, not the SLA bucket boundary, even though both are 24 hours today.
+ */
+export const DUE_WITHIN_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
  * Aggregate count of order records per SLA bucket (#1108) for the list KPI
  * strip. `total` equals the sum of the four buckets for the same filter scope.
  * Reuses `OrderHealthSummaryFilters` for its scope subset.

@@ -9,6 +9,7 @@
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
+import { markRequestNotSent } from '@openlinker/shared/http';
 
 import { InventorySaleDecrement } from '../../../domain/entities/inventory-sale-decrement.entity';
 import type { InventoryItem } from '../../../domain/entities/inventory-item.entity';
@@ -198,7 +199,10 @@ const HONOURED = { disposition: 'applied', idempotency: 'honoured', appliedAt: n
 describe('InventorySaleReversalService', () => {
   let repository: InMemorySaleDecrementRepository;
   let positions: InventoryOwnerPosition[];
-  let adapters: Map<string, jest.Mocked<Pick<InventoryMasterPort, 'adjustInventory' | 'listInventory'>>>;
+  let adapters: Map<
+    string,
+    jest.Mocked<Pick<InventoryMasterPort, 'adjustInventory' | 'listInventory'>>
+  >;
   let integrations: { getCapabilityAdapter: jest.Mock };
   let inventoryService: { setInventory: jest.Mock };
   let service: InventorySaleReversalService;
@@ -209,12 +213,14 @@ describe('InventorySaleReversalService', () => {
   });
 
   /** Seed the applied `order_sale` decrement row #3453 would have written. */
-  function seedAppliedDecrement(overrides: {
-    orderLineId?: string;
-    ownerConnectionId?: string;
-    quantity?: number;
-    status?: InventorySaleDecrement['status'];
-  } = {}): void {
+  function seedAppliedDecrement(
+    overrides: {
+      orderLineId?: string;
+      ownerConnectionId?: string;
+      quantity?: number;
+      status?: InventorySaleDecrement['status'];
+    } = {}
+  ): void {
     const orderLineId = overrides.orderLineId ?? 'line-1';
     const ownerConnectionId = overrides.ownerConnectionId ?? 'conn-shop';
     repository.seed({
@@ -280,7 +286,7 @@ describe('InventorySaleReversalService', () => {
     ]);
   });
 
-  it('should write the master\'s new quantity to the mirror so propagation runs', async () => {
+  it("should write the master's new quantity to the mirror so propagation runs", async () => {
     seedAppliedDecrement();
 
     await service.reverseForOrder('ol_order_1');
@@ -414,11 +420,18 @@ describe('InventorySaleReversalService', () => {
       seedAppliedDecrement();
       shop().adjustInventory.mockRejectedValue(new Error('PrestaShop answered 500'));
       shop().listInventory.mockResolvedValue([
-        { id: 'inv-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 5, reserved: 0, available: 5 },
+        {
+          id: 'inv-1',
+          productId: 'ol_product_1',
+          variantId: 'ol_variant_1',
+          quantity: 5,
+          reserved: 0,
+          available: 5,
+        },
       ]);
     });
 
-    it('should mark the line in doubt with the adapter\'s own words', async () => {
+    it("should mark the line in doubt with the adapter's own words", async () => {
       const result = await service.reverseForOrder('ol_order_1');
 
       expect(result.lines[0]).toMatchObject({ status: 'in_doubt', reason: 'master-error' });
@@ -432,9 +445,49 @@ describe('InventorySaleReversalService', () => {
     });
   });
 
+  describe('when the write fails before the request left (#4041)', () => {
+    beforeEach(() => {
+      seedAppliedDecrement();
+    });
+
+    it('should mark the line retryable and not re-read the master', async () => {
+      shop().adjustInventory.mockRejectedValueOnce(markRequestNotSent(new Error('ENOTFOUND')));
+
+      const result = await service.reverseForOrder('ol_order_1');
+
+      expect(result.lines[0]).toMatchObject({ status: 'retryable', reason: 'request-not-sent' });
+      expect(shop().listInventory).not.toHaveBeenCalled();
+    });
+
+    it('should reverse once on the retry, under the same key', async () => {
+      shop().adjustInventory.mockRejectedValueOnce(markRequestNotSent(new Error('ENOTFOUND')));
+      await service.reverseForOrder('ol_order_1');
+
+      const retry = await service.reverseForOrder('ol_order_1');
+
+      expect(shop().adjustInventory).toHaveBeenCalledTimes(2);
+      const keys = shop().adjustInventory.mock.calls.map(
+        ([adjustment]) => (adjustment as { idempotencyKey?: string }).idempotencyKey
+      );
+      expect(keys[0]).toBe(keys[1]);
+      expect(retry.lines[0]).toMatchObject({ status: 'applied' });
+    });
+
+    it('should keep an unmarked network failure in doubt', async () => {
+      shop().adjustInventory.mockRejectedValue(new TypeError('fetch failed'));
+      shop().listInventory.mockResolvedValue([]);
+
+      const result = await service.reverseForOrder('ol_order_1');
+
+      expect(result.lines[0]).toMatchObject({ status: 'in_doubt', reason: 'master-error' });
+    });
+  });
+
   it('should block rather than doubt when the master reports the product absent', async () => {
     seedAppliedDecrement();
-    shop().adjustInventory.mockRejectedValue(new MasterProductNotFoundError('ol_product_1', 'conn-shop'));
+    shop().adjustInventory.mockRejectedValue(
+      new MasterProductNotFoundError('ol_product_1', 'conn-shop')
+    );
 
     const result = await service.reverseForOrder('ol_order_1');
 
@@ -471,7 +524,7 @@ describe('InventorySaleReversalService', () => {
       expect(inventoryService.setInventory).not.toHaveBeenCalled();
     });
 
-    it('should never guess a sibling variant\'s position even when one exists for the owner', async () => {
+    it("should never guess a sibling variant's position even when one exists for the owner", async () => {
       // A live position for the SAME owner and product, but a DIFFERENT
       // variant — the exact shape `forOwner[0]` used to pick.
       positions = [position({ productVariantId: 'ol_variant_OTHER' })];
@@ -507,6 +560,23 @@ describe('InventorySaleReversalService', () => {
   });
 
   describe('reverseLineQuantity (#3542)', () => {
+    it('should give back each component of a bundle line and sum back to one answer (#3607)', async () => {
+      seedAppliedDecrement({ orderLineId: 'line-1~c:va', quantity: 6 });
+
+      const result = await service.reverseLineQuantity({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        units: 1,
+        components: [{ componentLineId: 'line-1~c:va', perUnit: 3 }],
+        changeId: 'chg-1',
+      });
+
+      expect(shop().adjustInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ quantity: 3, idempotencyKey: 'edit:chg-1:line-1~c:va' })
+      );
+      expect(result).toEqual({ status: 'restored', units: 3, detail: null });
+    });
+
     it('should give back only the lowered units under edit:{changeId}:{orderLineId}', async () => {
       seedAppliedDecrement({ quantity: 3 });
 
@@ -555,7 +625,12 @@ describe('InventorySaleReversalService', () => {
 
     it('should not touch the master twice when the same edit is retried', async () => {
       seedAppliedDecrement({ quantity: 3 });
-      const input = { internalOrderId: 'ol_order_1', orderLineId: 'line-1', units: 2, changeId: 'chg-1' };
+      const input = {
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        units: 2,
+        changeId: 'chg-1',
+      };
 
       await service.reverseLineQuantity(input);
       const replay = await service.reverseLineQuantity(input);
@@ -576,7 +651,10 @@ describe('InventorySaleReversalService', () => {
       await service.reverseForOrder('ol_order_1');
 
       expect(shop().adjustInventory).toHaveBeenLastCalledWith(
-        expect.objectContaining({ quantity: 1, idempotencyKey: 'sale-reversal:conn-shop:w-1:line-1' })
+        expect.objectContaining({
+          quantity: 1,
+          idempotencyKey: 'sale-reversal:conn-shop:w-1:line-1',
+        })
       );
     });
 
@@ -643,9 +721,17 @@ describe('InventorySaleReversalService', () => {
 
     it('should give back only the further difference for a later, lower target', async () => {
       seedAppliedDecrement({ quantity: 3 });
-      await service.reverseLineToTarget({ internalOrderId: 'ol_order_1', orderLineId: 'line-1', targetUnits: 2 });
+      await service.reverseLineToTarget({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        targetUnits: 2,
+      });
 
-      await service.reverseLineToTarget({ internalOrderId: 'ol_order_1', orderLineId: 'line-1', targetUnits: 0 });
+      await service.reverseLineToTarget({
+        internalOrderId: 'ol_order_1',
+        orderLineId: 'line-1',
+        targetUnits: 0,
+      });
 
       expect(shop().adjustInventory).toHaveBeenLastCalledWith(
         expect.objectContaining({ quantity: 2, idempotencyKey: 'edit:source-target-0:line-1' })

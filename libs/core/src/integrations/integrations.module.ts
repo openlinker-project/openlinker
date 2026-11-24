@@ -24,6 +24,7 @@ import { EmailNormalizerRegistryService } from './infrastructure/adapters/email-
 import { ConnectionConfigShapeValidatorRegistryService } from './infrastructure/adapters/connection-config-shape-validator-registry.service';
 import { ConnectionCredentialsShapeValidatorRegistryService } from './infrastructure/adapters/connection-credentials-shape-validator-registry.service';
 import { ConnectionCredentialsRewriterRegistryService } from './infrastructure/adapters/connection-credentials-rewriter-registry.service';
+import { ConnectionArchiveHookRegistryService } from './infrastructure/adapters/connection-archive-hook-registry.service';
 import { OAuthCompletionRegistryService } from './infrastructure/adapters/oauth-completion-registry.service';
 import { CredentialsWebhookSecretAdapter } from './infrastructure/adapters/credentials-webhook-secret.adapter';
 import { WebhookSecretService } from './application/services/webhook-secret.service';
@@ -48,6 +49,7 @@ import {
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+  CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN,
   INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
   ENTITY_CLAIM_SERVICE_TOKEN,
 } from './integrations.tokens';
@@ -70,6 +72,7 @@ export {
   CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+  CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN,
   INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
   ENTITY_CLAIM_SERVICE_TOKEN,
 } from './integrations.tokens';
@@ -93,6 +96,7 @@ export {
     ConnectionConfigShapeValidatorRegistryService,
     ConnectionCredentialsShapeValidatorRegistryService,
     ConnectionCredentialsRewriterRegistryService,
+    ConnectionArchiveHookRegistryService,
     OAuthCompletionRegistryService,
     CredentialsWebhookSecretAdapter,
     WebhookSecretService,
@@ -149,6 +153,10 @@ export {
       useExisting: ConnectionCredentialsRewriterRegistryService,
     },
     {
+      provide: CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN,
+      useExisting: ConnectionArchiveHookRegistryService,
+    },
+    {
       provide: INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
       useExisting: OAuthCompletionRegistryService,
     },
@@ -186,6 +194,7 @@ export {
     CONNECTION_CONFIG_SHAPE_VALIDATOR_REGISTRY_TOKEN,
     CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
     CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+    CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN,
     INTEGRATIONS_OAUTH_COMPLETION_REGISTRY_TOKEN,
     WEBHOOK_SECRET_PROVIDER_TOKEN,
     WEBHOOK_SECRET_SERVICE_TOKEN,
@@ -203,6 +212,7 @@ export {
     ConnectionConfigShapeValidatorRegistryService,
     ConnectionCredentialsShapeValidatorRegistryService,
     ConnectionCredentialsRewriterRegistryService,
+    ConnectionArchiveHookRegistryService,
     OAuthCompletionRegistryService,
     WebhookSecretService,
   ],

@@ -1,6 +1,8 @@
 import { fireEvent, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { ChangePasswordForm } from './ChangePasswordForm';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 
 function fill(container: ReturnType<typeof within>, values: [string, string, string]): void {
@@ -80,7 +82,9 @@ describe('ChangePasswordForm', () => {
     const apiClient = createMockApiClient({
       auth: {
         changePassword: async () => {
-          throw new Error('Current password is incorrect');
+          throw new ApiError('Current password is incorrect', 400, {
+            code: 'CURRENT_PASSWORD_INCORRECT',
+          });
         },
       },
     });
@@ -91,6 +95,6 @@ describe('ChangePasswordForm', () => {
     fireEvent.click(container.getByRole('button', { name: 'Set my password' }));
 
     expect(await container.findByText('Password not changed')).toBeInTheDocument();
-    expect(container.getByText('Current password is incorrect')).toBeInTheDocument();
+    expect(container.getByText(getMessages('errors').codes.CURRENT_PASSWORD_INCORRECT)).toBeInTheDocument();
   });
 });

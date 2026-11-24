@@ -1,4 +1,12 @@
-import { useCallback, useState, type KeyboardEvent, type ReactElement } from 'react';
+import {
+  useCallback,
+  useState,
+  type ComponentPropsWithoutRef,
+  type KeyboardEvent,
+  type ReactElement,
+} from 'react';
+import { useApiClient } from '../../../app/api/api-client-provider';
+import { useAuthenticatedImage } from '../../../shared/hooks/use-authenticated-image';
 import {
   Dialog,
   DialogContent,
@@ -11,9 +19,41 @@ import { interpolate, useMessages } from '../../../shared/i18n';
 interface ProductGalleryProps {
   images: string[];
   name: string;
+  /**
+   * When given, each picture is read through the API's image proxy
+   * (`/products/:id/images/:index`) instead of the stored url. The stored url
+   * is the one the catalogue sync used, which on a self-hosted install is
+   * often an internal host the browser cannot resolve.
+   */
+  productId?: string;
 }
 
-export function ProductGallery({ images, name }: ProductGalleryProps): ReactElement {
+interface GalleryImgProps extends Omit<ComponentPropsWithoutRef<'img'>, 'src'> {
+  src: string;
+  productId?: string;
+  index: number;
+}
+
+/** One gallery picture: proxied with the session's token when a product id is known. */
+function GalleryImg({ src, productId, index, onError, ...props }: GalleryImgProps): ReactElement {
+  const apiClient = useApiClient();
+  const fetchImage = useCallback((path: string) => apiClient.requestBlob(path), [apiClient]);
+  const proxied = useAuthenticatedImage(
+    productId ? `/products/${encodeURIComponent(productId)}/images/${String(index)}` : null,
+    fetchImage,
+  );
+  if (proxied.status === 'ready') {
+    // The proxied bytes loaded, so a broken mark the stored url earned does not apply.
+    const { className, ...rest } = props;
+    const kept = className?.split(' ').filter((c) => c !== 'is-broken').join(' ') || undefined;
+    return <img src={proxied.objectUrl} className={kept} {...rest} />;
+  }
+  // No product id, or the proxy has nothing (yet): the stored url, hidden by
+  // the caller's `onError` when the browser cannot load it either.
+  return <img src={src} onError={onError} {...props} />;
+}
+
+export function ProductGallery({ images, name, productId }: ProductGalleryProps): ReactElement {
   const copy = useMessages('products').productGallery;
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLightboxOpen, setLightboxOpen] = useState(false);
@@ -59,8 +99,10 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
             <span className="product-gallery__placeholder" aria-hidden="true">
               {initial}
             </span>
-            <img
+            <GalleryImg
               src={activeImage}
+              productId={productId}
+              index={activeIndex}
               alt={name}
               className={isActiveBroken ? 'is-broken' : undefined}
               onError={() => setBrokenImages((prev) => ({ ...prev, [activeImage]: true }))}
@@ -85,8 +127,10 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
                   total: images.length,
                 })}
               >
-                <img
+                <GalleryImg
                   src={image}
+                  productId={productId}
+                  index={index}
                   alt=""
                   loading="lazy"
                   className={brokenImages[image] ? 'is-broken' : undefined}
@@ -121,7 +165,7 @@ export function ProductGallery({ images, name }: ProductGalleryProps): ReactElem
               ✕
             </button>
             <div className="lightbox__frame">
-              <img src={activeImage} alt={interpolate(copy.lightboxAlt, {
+              <GalleryImg src={activeImage} productId={productId} index={activeIndex} alt={interpolate(copy.lightboxAlt, {
                   name,
                   index: activeIndex + 1,
                   total: images.length,

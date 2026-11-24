@@ -33,3 +33,5 @@ export class ConflictError extends DomainError {
   }
 }
 
+export * from './api-error-code.types';
+export * from './api-error-envelope.types';

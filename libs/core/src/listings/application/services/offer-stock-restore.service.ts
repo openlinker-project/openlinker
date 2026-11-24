@@ -13,6 +13,11 @@
  *      (`IInventoryQueryService.getAvailabilityByVariantIds`, #823) — master is
  *      authoritative, including 0 - together with the stock observation it was
  *      derived from;
+ *   3b. (#4193) resolves the variants' `ShopProduct` mappings on every eligible
+ *      shop connection (WooCommerce, Shopify - the same eligibility rule the
+ *      inventory propagation's shop branch uses) and restores them in the same
+ *      pass, whatever the order's source is; each skipped shop target is logged
+ *      with its reason;
  *   4. when the connection declares the `OfferStockRestorer` capability (no-op
  *      when honestly absent), writes those quantities through
  *      `IInventorySyncService.updateOfferQuantities` - the ordered write every
@@ -76,6 +81,17 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+  type IBundleDefinitionService,
+  type IProductsService,
+} from '@openlinker/core/products';
+import {
+  CORE_ENTITY_TYPE,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  type IIdentifierMappingService,
+} from '@openlinker/core/identifier-mapping';
+import {
   CapabilityNotSupportedException,
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -105,7 +121,11 @@ import type {
 import { isOfferStockRestorer, OfferMappingRepositoryPort } from '@openlinker/core/listings';
 import { ContendedWriteError } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
-import { OFFER_MAPPING_REPOSITORY_TOKEN } from '../../listings.tokens';
+import {
+  LISTING_SALE_STATUS_SERVICE_TOKEN,
+  OFFER_MAPPING_REPOSITORY_TOKEN,
+} from '../../listings.tokens';
+import { IListingSaleStatusService } from '../interfaces/listing-sale-status.service.interface';
 import type { IOfferStockRestoreService } from '../interfaces/offer-stock-restore.service.interface';
 import type { OfferStockRestoreResult } from '../types/offer-stock-restore.types';
 import { OfferStockRestoreReleaseIncompleteError } from '../../domain/exceptions/offer-stock-restore-release-incomplete.error';
@@ -146,6 +166,13 @@ function toObservation(stamp: Date | null | undefined): string | undefined {
   return stamp.toISOString();
 }
 
+interface ShopRestoreTarget {
+  variantId: string;
+  connectionId: string;
+  externalId: string;
+  externalParentId?: string;
+}
+
 @Injectable()
 export class OfferStockRestoreService implements IOfferStockRestoreService {
   private readonly logger = new Logger(OfferStockRestoreService.name);
@@ -167,6 +194,14 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     private readonly shipments: IShipmentQueryService,
     @Inject(INVENTORY_SALE_REVERSAL_SERVICE_TOKEN)
     private readonly saleReversal: IInventorySaleReversalService,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService,
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService,
+    @Inject(LISTING_SALE_STATUS_SERVICE_TOKEN)
+    private readonly listingSaleStatus: IListingSaleStatusService,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly products: IProductsService,
   ) {}
 
   async restoreStockForCancelledOrder(
@@ -328,49 +363,74 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
           `[connectionId=${connectionId}, orderId=${internalOrderId}]`,
       );
     }
-    // Ask whether the destination participates before the per-variant reads
-    // below: the ingestion hook enqueues this job on every `→ cancelled`
-    // transition regardless of marketplace, and many connections restore their
-    // own stock or expose no `OfferStockRestorer` at all. A capability that is
-    // unsupported / disabled on the connection is a routine no-op - not a job
-    // failure that should dead-letter. The capability is the participation
-    // declaration only: the write itself goes through the ordered seam below.
-    if (!(await this.participatesInRestore(connectionId, internalOrderId))) {
-      return this.skipped(release, 'skipped-no-restorer');
-    }
+    // The source marketplace participates only when its `OfferManager` adapter
+    // declares `OfferStockRestorer` (its own marketplace does not restore stock).
+    // That decides ONLY the marketplace half: products published to a shop
+    // (`ShopProduct` mappings, #4193) are written back whatever the cancelled
+    // order's source is, exactly as `inventory.propagateToMarketplaces` does.
+    const participates = await this.participatesInRestore(connectionId, internalOrderId);
+    const emptyOutcome = participates ? 'skipped-no-targets' : 'skipped-no-restorer';
 
     const record = await this.orderRecordService.getOrderRecord(internalOrderId);
     if (!record) {
       this.logger.debug(
         `Stock-restore skipped: no order record found [connectionId=${connectionId}, orderId=${internalOrderId}]`,
       );
-      return this.skipped(release, 'skipped-no-targets');
+      return this.skipped(release, emptyOutcome);
     }
 
-    const variantIds = this.collectVariantIds(record.orderSnapshot);
+    // #3607: a bundle line's stock lives on its components, so a cancellation
+    // restores the components' offers too. The commercial variants stay in the
+    // list - republishing a BUNDLE offer from component stock is #3931's.
+    const orderVariantIds = [
+      ...new Set([
+        ...this.collectVariantIds(record.orderSnapshot),
+        ...record.physicalItems
+          .map((item) => item.variantId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      ]),
+    ];
+    // #3931: the restored component also feeds OTHER bundles that were not on
+    // this order, and their offers advertise a number derived from it. The
+    // availability read below is bundle-aware, so adding their variants here is
+    // all it takes to republish them.
+    const containingBundles =
+      orderVariantIds.length === 0
+        ? []
+        : await this.bundleDefinitions.findCurrentContainingComponents(orderVariantIds);
+    const variantIds = [
+      ...new Set([...orderVariantIds, ...containingBundles.map((bundle) => bundle.variantId)]),
+    ];
     if (variantIds.length === 0) {
       this.logger.debug(
         `Stock-restore skipped: order has no resolved variants [connectionId=${connectionId}, orderId=${internalOrderId}]`,
       );
-      return this.skipped(release, 'skipped-no-targets');
+      return this.skipped(release, emptyOutcome);
     }
 
-    // Resolve distinct external offer ids for these variants on the source
-    // connection. One variant maps to at most one offer per connection here;
-    // dedupe defensively so a variant with multiple mappings restores once.
-    const externalOfferIdsByVariant = await this.resolveExternalOfferIds(connectionId, variantIds);
-    if (externalOfferIdsByVariant.size === 0) {
+    // Resolve every external offer id for these variants on the source
+    // connection (marketplace half), and every shop-published target (#4193).
+    const externalOfferIdsByVariant = participates
+      ? await this.resolveExternalOfferIds(connectionId, variantIds)
+      : new Map<string, string[]>();
+    const shopTargets = await this.resolveShopTargets(connectionId, internalOrderId, variantIds);
+    if (externalOfferIdsByVariant.size === 0 && shopTargets.length === 0) {
       this.logger.debug(
-        `Stock-restore skipped: no offer mapping for the order's variants [connectionId=${connectionId}, orderId=${internalOrderId}]`,
+        `Stock-restore skipped: no offer or shop-product mapping for the order's variants [connectionId=${connectionId}, orderId=${internalOrderId}]`,
       );
-      return this.skipped(release, 'skipped-no-targets');
+      return this.skipped(release, emptyOutcome);
     }
 
-    const mappedVariantIds = [...externalOfferIdsByVariant.keys()];
+    const mappedVariantIds = [
+      ...new Set([
+        ...externalOfferIdsByVariant.keys(),
+        ...shopTargets.map((target) => target.variantId),
+      ]),
+    ];
     const availability = await this.inventoryQuery.getAvailabilityByVariantIds(mappedVariantIds);
-    // #2323 — restore to available-to-promise, not raw master stock: this writes
+    // #2323 - restore to available-to-promise, not raw master stock: this writes
     // a live marketplace quantity, so it must be net of OL's own outstanding
-    // holds. #2348 — and this read happens strictly AFTER `releaseHolds`, which
+    // holds. #2348 - and this read happens strictly AFTER `releaseHolds`, which
     // is why the cancelled order's own hold is no longer among them. On an empty
     // ledger the two numbers are identical, so no restore changes today.
     const availabilityByVariant = new Map(availability.map((row) => [row.productVariantId, row]));
@@ -381,39 +441,48 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     // known-zero write then goes out unguarded, as a legacy propagation does.
     const items: UpdateOfferQuantityCommand[] = [];
     for (const [variantId, externalOfferIds] of externalOfferIdsByVariant) {
-      const row = availabilityByVariant.get(variantId);
-      // OMITTED, not zeroed, when availability is unknown. `getAvailability
-      // ByVariantIds` zero-fills every id it can answer for, so an absent entry
-      // or a `null` ATP means OL does not know - and writing 0 there would
-      // DEACTIVATE a live offer (#1689 uses exactly that primitive to pause one)
-      // on the strength of a failed read. This is why the read is not defaulted.
-      if (row === undefined || row.availableToPromise === null) continue;
-      const observedAt = toObservation(row.stockUpdatedAt);
       for (const externalOfferId of externalOfferIds) {
-        items.push({
-          offerId: externalOfferId,
-          quantity: row.availableToPromise,
-          idempotencyKey: stockRestoreIdempotencyKey(
-            internalOrderId,
-            externalOfferId,
-            row.availableToPromise,
-            observedAt
-          ),
-          ...(observedAt ? { observedAt } : {}),
-        });
+        const built = this.restoreCommand(
+          internalOrderId,
+          externalOfferId,
+          availabilityByVariant.get(variantId),
+        );
+        if (built) items.push(built);
       }
     }
 
-    if (items.length === 0) {
+    const shopItemsByConnection = new Map<string, UpdateOfferQuantityCommand[]>();
+    for (const target of shopTargets) {
+      const built = this.restoreCommand(
+        internalOrderId,
+        target.externalId,
+        availabilityByVariant.get(target.variantId),
+        {
+          productVariantId: target.variantId,
+          ...(target.externalParentId ? { externalParentId: target.externalParentId } : {}),
+        },
+      );
+      if (!built) {
+        // Visible, not debug: an operator asking why a shop listing did not go
+        // back up must be able to find the reason.
+        this.logger.warn(
+          `Stock-restore skipped a shop product: availability unknown, nothing written rather than 0 ` +
+            `[shopConnectionId=${target.connectionId}, externalId=${target.externalId}, orderId=${internalOrderId}]`,
+        );
+        continue;
+      }
+      const list = shopItemsByConnection.get(target.connectionId) ?? [];
+      list.push(built);
+      shopItemsByConnection.set(target.connectionId, list);
+    }
+
+    if (items.length === 0 && shopItemsByConnection.size === 0) {
       this.logger.debug(
         `Stock-restore skipped: availability unknown for every mapped variant [connectionId=${connectionId}, orderId=${internalOrderId}]`,
       );
       return this.skipped(release, 'skipped-no-targets');
     }
 
-    this.logger.debug(
-      `Restoring marketplace stock for ${items.length} offer(s) [connectionId=${connectionId}, orderId=${internalOrderId}]`,
-    );
     // The restore is an ABSOLUTE set, so it goes through the same ordered write
     // every propagation uses (#2617, ADR-067), never straight to the adapter: a
     // propagation for the same offer can carry a newer observation, and an
@@ -421,16 +490,158 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     // older figure - overselling when that figure is the higher one. The seam
     // also applies the connection's publish Controls (#1844 reserve, #2610 zero
     // threshold), which is why the raw ATP is passed here and not a buffered
-    // number: buffering it here too would hold the reserve back twice.
-    const result = await this.inventorySync.updateOfferQuantities(connectionId, { items });
-    this.throwIfIncomplete(result, internalOrderId);
+    // number: buffering it here too would hold the reserve back twice. One call
+    // per connection: the seam scopes the Controls and the freshness marks to it.
+    const writes: Array<[string, UpdateOfferQuantityCommand[]]> = [
+      ...(items.length > 0 ? [[connectionId, items] as [string, UpdateOfferQuantityCommand[]]] : []),
+      ...shopItemsByConnection,
+    ];
+    const merged: UpdateOfferQuantitiesBatchResult = { succeeded: [], failed: [] };
+    for (const [targetConnectionId, targetItems] of writes) {
+      this.logger.debug(
+        `Restoring stock for ${targetItems.length} offer(s) [connectionId=${targetConnectionId}, orderId=${internalOrderId}]`,
+      );
+      const result = await this.inventorySync.updateOfferQuantities(targetConnectionId, {
+        items: targetItems,
+      });
+      merged.succeeded.push(...result.succeeded);
+      merged.failed.push(...result.failed);
+    }
+    this.throwIfIncomplete(merged, internalOrderId);
 
     return {
       released: release.closed,
       alreadyTerminal: release.alreadyTerminal,
-      offersRestored: result.succeeded.length,
+      offersRestored: merged.succeeded.length,
       outcome: 'restored',
     };
+  }
+
+  /**
+   * One restore write, or `null` when availability is unknown.
+   *
+   * OMITTED, not zeroed: `getAvailabilityByVariantIds` zero-fills every id it
+   * can answer for, so an absent entry or a `null` ATP means OL does not know -
+   * and writing 0 there would DEACTIVATE a live offer (#1689 uses exactly that
+   * primitive to pause one) on the strength of a failed read.
+   */
+  private restoreCommand(
+    internalOrderId: string,
+    externalOfferId: string,
+    row: { availableToPromise: number | null; stockUpdatedAt?: Date | null } | undefined,
+    extra: Pick<UpdateOfferQuantityCommand, 'productVariantId' | 'externalParentId'> = {},
+  ): UpdateOfferQuantityCommand | null {
+    if (row === undefined || row.availableToPromise === null) return null;
+    const observedAt = toObservation(row.stockUpdatedAt);
+    return {
+      offerId: externalOfferId,
+      quantity: row.availableToPromise,
+      idempotencyKey: stockRestoreIdempotencyKey(
+        internalOrderId,
+        externalOfferId,
+        row.availableToPromise,
+        observedAt,
+      ),
+      ...(observedAt ? { observedAt } : {}),
+      ...extra,
+    };
+  }
+
+  /**
+   * Shop-published targets for the order's variants (#4193): every
+   * `ShopProduct` mapping on a connection that is an eligible write-back target
+   * - the same rule `inventory.propagateToMarketplaces` applies to its shop
+   * branch. Eligible means `OfferManager` enabled on an active connection that
+   * is NOT the inventory master (the master is never a write-back target), and
+   * a listing OpenLinker took off sale (#3962) stays off sale.
+   *
+   * Every skipped target is logged at `log` with its reason: before #4193 this
+   * path did not look at shop products at all, so a shop listing that stayed
+   * short after a cancellation left no trace.
+   */
+  private async resolveShopTargets(
+    sourceConnectionId: string,
+    internalOrderId: string,
+    variantIds: string[],
+  ): Promise<ShopRestoreTarget[]> {
+    const mappings: Array<{ variantId: string; connectionId: string; externalId: string }> = [];
+    for (const variantId of variantIds) {
+      const found = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.ShopProduct,
+        variantId,
+      );
+      for (const mapping of found) {
+        mappings.push({ variantId, connectionId: mapping.connectionId, externalId: mapping.externalId });
+      }
+    }
+    if (mappings.length === 0) return [];
+
+    const candidates = await this.integrationsService.listCapabilityAdapters({
+      capability: 'OfferManager',
+      lazy: true,
+    });
+    const eligibleConnectionIds = new Set(
+      candidates
+        .filter((entry) => !entry.connection.enabledCapabilities.includes('InventoryMaster'))
+        .map((entry) => entry.connectionId),
+    );
+    const eligible = mappings.filter((mapping) => {
+      if (eligibleConnectionIds.has(mapping.connectionId)) return true;
+      this.logger.log(
+        `Stock-restore skipped a shop product: connection is not an eligible write-back target ` +
+          `(OfferManager disabled, connection inactive, or the inventory master) ` +
+          `[shopConnectionId=${mapping.connectionId}, externalId=${mapping.externalId}, ` +
+          `triggeringConnectionId=${sourceConnectionId}]`,
+      );
+      return false;
+    });
+    if (eligible.length === 0) return [];
+
+    const held = await this.listingSaleStatus.findActiveHolds(
+      eligible.map((m) => ({
+        connectionId: m.connectionId,
+        entityType: 'ShopProduct' as const,
+        externalId: m.externalId,
+      })),
+    );
+    const heldKeys = new Set(held.map((h) => `${h.connectionId}|${h.externalId}`));
+    const live = eligible.filter((m) => {
+      if (!heldKeys.has(`${m.connectionId}|${m.externalId}`)) return true;
+      this.logger.log(
+        `Stock-restore skipped a shop product: taken off sale after a master deletion (#3962) ` +
+          `[shopConnectionId=${m.connectionId}, externalId=${m.externalId}]`,
+      );
+      return false;
+    });
+
+    // A variation of a grouped shop product is written under its parent (#3962):
+    // addressed as a product, a WooCommerce write misses and unlinks the variation.
+    const parentsByProduct = new Map<string, Map<string, string>>();
+    const targets: ShopRestoreTarget[] = [];
+    for (const mapping of live) {
+      const variant = await this.products.getVariant(mapping.variantId);
+      let externalParentId: string | undefined;
+      if (variant) {
+        let byConnection = parentsByProduct.get(variant.productId);
+        if (!byConnection) {
+          byConnection = new Map(
+            (
+              await this.identifierMapping.getExternalIds(
+                CORE_ENTITY_TYPE.ShopProduct,
+                variant.productId,
+              )
+            ).map((m) => [m.connectionId, m.externalId]),
+          );
+          parentsByProduct.set(variant.productId, byConnection);
+        }
+        externalParentId = byConnection.get(mapping.connectionId);
+      }
+      targets.push({ ...mapping, ...(externalParentId ? { externalParentId } : {}) });
+    }
+    this.logger.debug(
+      `Stock-restore resolved ${targets.length} shop target(s) [orderId=${internalOrderId}]`,
+    );
+    return targets;
   }
 
   /**

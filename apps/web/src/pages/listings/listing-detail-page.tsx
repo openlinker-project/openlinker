@@ -20,7 +20,7 @@ import {
   KNOWN_MAPPING_ENTITY_TYPES,
   type KnownMappingEntityType,
 } from '../../features/listings/api/listings.types';
-import { serverErrorText } from '../../features/listings/lib/server-error-text';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 /**
  * Both `entityType === 'ProductVariant'` and `entityType === 'Offer'` mappings
@@ -93,7 +93,6 @@ function renderInternalIdValue(
 export function ListingDetailPage(): ReactElement {
   const { id = '' } = useParams<{ id: string }>();
   const copy = useMessages('listings').listingDetailPage;
-  const common = useMessages('listings').common;
   const query = useListingQuery(id);
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
 
@@ -119,7 +118,7 @@ export function ListingDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <ErrorState
           title={copy.errorTitle}
-          message={serverErrorText(common.serverSaid, query.error?.message, copy.notFound)}
+          message={query.error ? describeApiError(query.error, 'listings') : copy.notFound}
           action={<Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>}
         />
       </PageLayout>

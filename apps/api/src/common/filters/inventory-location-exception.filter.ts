@@ -32,6 +32,8 @@
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
+import { codedErrorBody } from '../errors/coded-http.exception';
+import type { ApiErrorParams, KnownApiErrorCode } from '@openlinker/shared/errors';
 import {
   DuplicateLocationCodeError,
   LocationInUseError,
@@ -55,11 +57,32 @@ export class InventoryLocationExceptionFilter implements ExceptionFilter {
   catch(exception: InventoryLocationException, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     const statusCode = this.resolveStatus(exception);
-    response.status(statusCode).json({
-      statusCode,
-      error: exception.name,
-      message: exception.message,
-    });
+    const { code, params } = this.describe(exception);
+    response
+      .status(statusCode)
+      .json(codedErrorBody(statusCode, code, exception.message, params, { error: exception.name }));
+  }
+
+  private describe(exception: InventoryLocationException): {
+    code: KnownApiErrorCode;
+    params: ApiErrorParams;
+  } {
+    if (exception instanceof LocationNotFoundException) {
+      return { code: 'INVENTORY_LOCATION_NOT_FOUND', params: { locationId: exception.locationId } };
+    }
+    if (exception instanceof LocationInUseError) {
+      return {
+        code: 'INVENTORY_LOCATION_IN_USE',
+        params: { locationId: exception.locationId, positionCount: exception.positionCount },
+      };
+    }
+    if (exception instanceof LocationOwnerConnectionNotFoundError) {
+      return {
+        code: 'INVENTORY_LOCATION_OWNER_NOT_FOUND',
+        params: { ownerConnectionId: exception.ownerConnectionId },
+      };
+    }
+    return { code: 'INVENTORY_LOCATION_CODE_DUPLICATE', params: { code: exception.code } };
   }
 
   private resolveStatus(exception: InventoryLocationException): HttpStatus {

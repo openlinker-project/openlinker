@@ -86,7 +86,7 @@ import {
   type PickerStep,
   type SelectionEntry,
 } from './offer-product-picker.types';
-import { serverErrorText } from '../lib/server-error-text';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -113,7 +113,6 @@ export function OfferProductPickerModal({
 }: OfferProductPickerModalProps): ReactElement | null {
   const navigate = useNavigate();
   const copy = useMessages('listings').offerProductPickerModal;
-  const common = useMessages('listings').common;
   const plural = usePlural();
   const format = useFormat();
 
@@ -470,7 +469,7 @@ export function OfferProductPickerModal({
                       </Button>
                     }
                   >
-                    {serverErrorText(common.serverSaid, productsQuery.error.message, common.unknownError)}
+                    {describeApiError(productsQuery.error, 'listings')}
                   </Alert>
                 ) : products.length === 0 ? (
                   <p className="muted-text">

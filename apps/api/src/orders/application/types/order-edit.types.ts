@@ -9,6 +9,7 @@
  */
 import type {
   Address,
+  GiftDocumentForm,
   OrderDiscountEdit,
   OrderEditedTotals,
   OrderOperatorEditKind,
@@ -44,6 +45,33 @@ export interface EditOrderDiscountInput extends EditOrderBase {
   readonly percent: number | null;
   /** Let a refund intent that would pass the order's refund ceiling through (#3289). */
   readonly acknowledgeAboveCeiling: boolean;
+}
+
+export interface EditOrderAddGiftInput extends EditOrderBase {
+  /** Internal variant id of the gift. */
+  readonly variantId: string;
+  readonly quantity: number;
+  /** Absent means "as in settings" (gifts spec 8.3). */
+  readonly documentForm?: GiftDocumentForm;
+  /** Gross unit price per gift unit; meaningful only with `custom-price`. */
+  readonly documentUnitPrice?: string;
+}
+
+/** What adding a gift by hand did beyond the overlay (#3940). */
+export interface OrderGiftAddedOutcome {
+  /** `op-gift:{changeId}`; the line's own id on the order. `null` in a dry run. */
+  readonly lineKey: string | null;
+  /** A sales document already exists: it does not show this gift (one warning, gifts spec 5). */
+  readonly salesDocumentExists: boolean;
+  /** The hold on the gift's stock was recorded. */
+  readonly reserved: boolean;
+  /**
+   * The gift is on the packing work, so it shows on the pick list. `false` on an
+   * order already routed: extending an existing work object is not supported by
+   * order edits, so the gift is a line of the order and is reserved, but the
+   * packer is not asked to pick it.
+   */
+  readonly onPickList: boolean;
 }
 
 /** What a discount does to money, by what the buyer has already done. */
@@ -182,4 +210,6 @@ export interface OrderEditResult {
   readonly workNarrowingFailures: readonly OrderEditWorkNarrowingFailure[];
   /** Discount edits only (#3543). */
   readonly discount?: OrderDiscountOutcome;
+  /** Add-gift edits only (#3940). */
+  readonly gift?: OrderGiftAddedOutcome;
 }

@@ -12,6 +12,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -120,7 +121,7 @@ export function AiProviderKeyDialog({ provider, onClose }: AiProviderKeyDialogPr
 
         {mutation.error ? (
           <Alert tone="error" title={copy.saveErrorTitle}>
-            {mutation.error.message}
+            {describeApiError(mutation.error, 'ai-provider-settings')}
           </Alert>
         ) : null}
 

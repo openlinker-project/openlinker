@@ -95,12 +95,18 @@ import {
   type InvoiceRecord,
 } from '@openlinker/core/invoicing';
 import { INTEGRATIONS_SERVICE_TOKEN, type IIntegrationsService } from '@openlinker/core/integrations';
+import { PRODUCTS_SERVICE_TOKEN, taxRateState, type IProductsService } from '@openlinker/core/products';
 import {
   addressEditTargetRef,
   applyOrderEditsToSnapshot,
   decideRefundCeiling,
   decimalPlaces,
   deliveryMethodEditTargetRef,
+  freezeGiftUnitCost,
+  giftEditTargetRef,
+  OPERATOR_GIFT_LINE_KEY_PREFIX,
+  type OrderAddedLineEdit,
+  type LineGift,
   discountCorrectionTargetRef,
   discountedUnitPriceGross,
   discountEditTargetRef,
@@ -157,12 +163,14 @@ import type {
   DiscountCorrectionUnavailableReason,
   DiscountPaymentBranch,
   DiscountRefundIntent,
+  EditOrderAddGiftInput,
   EditOrderAddressInput,
   EditOrderDeliveryMethodInput,
   EditOrderDiscountInput,
   EditOrderLinesInput,
   OrderDiscountOutcome,
   OrderEditLineStock,
+  OrderGiftAddedOutcome,
   OrderEditWorkNarrowingFailure,
   OrderEditResult,
   OrderEditsView,
@@ -216,6 +224,14 @@ interface PreparedEdit {
    * is still open, so only the idempotent follow-ups and the confirm are left.
    */
   readonly recoverChangeId?: string;
+  /** Add-gift only (#3940): what to hold once the overlay line is written. */
+  readonly gift?: {
+    readonly productId: string;
+    readonly variantId: string;
+    readonly quantity: number;
+    readonly salesDocumentExists: boolean;
+    readonly routed: boolean;
+  };
 }
 
 /** A document line the discount would correct, before the change row exists. */
@@ -243,6 +259,20 @@ interface DiscountPlan {
 interface RawOrderLine extends DiscountableLine {
   readonly productId: string | null;
   readonly name: string | null;
+}
+
+/** Two gift-add payloads describe the same request (variant, quantity, form). */
+function sameGiftPayload(
+  existing: Record<string, unknown> | null,
+  requested: Record<string, unknown>
+): boolean {
+  return (
+    existing !== null &&
+    existing['variantId'] === requested['variantId'] &&
+    existing['quantity'] === requested['quantity'] &&
+    existing['documentForm'] === requested['documentForm'] &&
+    existing['documentUnitPrice'] === requested['documentUnitPrice']
+  );
 }
 
 @Injectable()
@@ -275,8 +305,166 @@ export class OrderEditService implements IOrderEditService {
     @Inject(ORDER_REFUND_SERVICE_TOKEN)
     private readonly refunds: IOrderRefundService,
     @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
-    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly products: IProductsService
   ) {}
+
+  addGift(input: EditOrderAddGiftInput): Promise<OrderEditResult> {
+    return this.run(
+      input,
+      async (record, assessment, _shipments, documentIssued) => {
+        if (!Number.isInteger(input.quantity) || input.quantity < 1) {
+          throw new OrderEditInvalidError(
+            'The gift quantity must be a whole number, one or more.',
+            'quantity-invalid'
+          );
+        }
+        const variant = await this.products.getVariant(input.variantId);
+        if (variant === null) {
+          throw new OrderEditNotFoundError(`Gift product not found: ${input.variantId}`, {
+            orderId: input.internalOrderId,
+          });
+        }
+        const product = await this.products.getProduct(variant.productId);
+        const now = new Date().toISOString();
+        const gift: LineGift = {
+          source: 'operator',
+          ...(input.documentForm !== undefined && { documentForm: input.documentForm }),
+          ...(input.documentForm === 'custom-price' &&
+            input.documentUnitPrice !== undefined && { documentUnitPrice: input.documentUnitPrice }),
+        };
+        const entry: OrderAddedLineEdit = {
+          changeId: '',
+          editedAt: now,
+          editedBy: input.actorUserId,
+          productId: variant.productId,
+          variantId: variant.id,
+          quantity: input.quantity,
+          ...(variant.sku !== null && { sku: variant.sku }),
+          ...(product?.name !== undefined && { name: product.name }),
+          gift,
+          ...(await this.catalogueTaxRate(variant.productId, variant.id)),
+          // Frozen like a rule gift's: the same helper, so the two writers agree.
+          ...(await freezeGiftUnitCost(
+            this.products,
+            variant.id,
+            record.placedAt ?? record.createdAt,
+            this.logger
+          )),
+        };
+        return {
+          kind: 'order.gift_added',
+          targetRef: giftEditTargetRef(record.internalOrderId),
+          payload: {
+            variantId: variant.id,
+            quantity: input.quantity,
+            ...(input.documentForm !== undefined && { documentForm: input.documentForm }),
+            ...(input.documentForm === 'custom-price' &&
+              input.documentUnitPrice !== undefined && {
+                documentUnitPrice: input.documentUnitPrice,
+              }),
+          },
+          // The key carries the change id, which does not exist yet: `stampChange` mints it.
+          patch: { addedLines: { [OPERATOR_GIFT_LINE_KEY_PREFIX]: entry } },
+          loweredLines: [],
+          gift: {
+            productId: variant.productId,
+            variantId: variant.id,
+            quantity: input.quantity,
+            salesDocumentExists: documentIssued,
+            routed: !assessment.unrouted,
+          },
+        };
+      },
+      true
+    );
+  }
+
+  /** The shop catalogue's rate for a gift, stamped on the overlay line; best-effort, never guessed. */
+  private async catalogueTaxRate(
+    productId: string,
+    variantId: string
+  ): Promise<Pick<OrderAddedLineEdit, 'taxRate' | 'taxRateCountry' | 'taxSource' | 'taxRateReadAt'>> {
+    try {
+      const rate = await this.products.getEffectiveTaxRate(productId, variantId);
+      if (rate && taxRateState(rate) === 'known' && rate.code) {
+        return {
+          taxRate: rate.code,
+          ...(rate.countryIso2 ? { taxRateCountry: rate.countryIso2 } : {}),
+          taxSource: 'shop',
+          ...(rate.readAt ? { taxRateReadAt: rate.readAt.toISOString() } : {}),
+        };
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Tax rate for gift product ${productId} could not be read: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    return {};
+  }
+
+  /**
+   * Hold the gift's stock like any other line. Best-effort: the overlay is already
+   * written and the order IS edited; a failed hold is reported, never thrown, and
+   * the next ingestion re-reserves from the edited order.
+   */
+  private async followUpGift(
+    written: OrderRecord,
+    gift: NonNullable<PreparedEdit['gift']>,
+    changeId: string
+  ): Promise<OrderGiftAddedOutcome> {
+    const lineKey = `${OPERATOR_GIFT_LINE_KEY_PREFIX}${changeId}`;
+    let reserved = false;
+    let onPickList = !gift.routed;
+    if (gift.routed) {
+      try {
+        // Only OpenLinker's own pack bench reads these lines; a work held by an
+        // outside executor was already sent its list and cannot be told.
+        const added = await this.fulfillmentEdit.addLineToOpenWork({
+          orderId: written.internalOrderId,
+          orderLineId: lineKey,
+          productVariantId: gift.variantId,
+          quantity: gift.quantity,
+          acceptsHolder: async (connectionId) =>
+            connectionId !== null && (await this.isOpenLinkerExecutor(connectionId)),
+        });
+        onPickList = added.outcome === 'added' || added.outcome === 'unchanged';
+      } catch (error) {
+        this.logger.error(
+          `Could not add the gift ${lineKey} to the packing work of order ${written.internalOrderId}: ` +
+            (error instanceof Error ? error.message : String(error))
+        );
+      }
+    }
+    try {
+      const result = await this.reservations.reserveForOrder({
+        orderRecordId: written.internalOrderId,
+        // A routed order is picked by OpenLinker, so the hold must reduce what channels are told.
+        atpEffect: gift.routed ? 'published' : 'diagnostic',
+        lines: [
+          {
+            orderLineId: lineKey,
+            productId: gift.productId,
+            productVariantId: gift.variantId,
+            quantity: gift.quantity,
+          },
+        ],
+      });
+      reserved = result.granted.length > 0;
+    } catch (error) {
+      this.logger.error(
+        `Could not hold the gift ${lineKey} of order ${written.internalOrderId}: ` +
+          (error instanceof Error ? error.message : String(error))
+      );
+    }
+    return {
+      lineKey,
+      salesDocumentExists: gift.salesDocumentExists,
+      reserved,
+      onPickList,
+    };
+  }
 
   editAddress(input: EditOrderAddressInput): Promise<OrderEditResult> {
     return this.run(input, async (record, assessment, shipments) => {
@@ -325,17 +513,23 @@ export class OrderEditService implements IOrderEditService {
       const seen = new Set<string>();
       for (const line of input.lines) {
         if (seen.has(line.orderLineId)) {
-          throw new OrderEditInvalidError(`Order line ${line.orderLineId} appears more than once.`);
+          throw new OrderEditInvalidError(
+            `Order line ${line.orderLineId} appears more than once.`,
+            'line-repeated',
+            { orderLineId: line.orderLineId }
+          );
         }
         seen.add(line.orderLineId);
         if (!Number.isInteger(line.quantity) || line.quantity < 0) {
           throw new OrderEditInvalidError(
-            `The quantity of line ${line.orderLineId} must be a whole number, zero or more.`
+            `The quantity of line ${line.orderLineId} must be a whole number, zero or more.`,
+            'quantity-invalid',
+            { orderLineId: line.orderLineId }
           );
         }
       }
       if (input.lines.length === 0) {
-        throw new OrderEditInvalidError('Name at least one line to lower.');
+        throw new OrderEditInvalidError('Name at least one line to lower.', 'no-lines');
       }
       if (latestInvoiceBlocks) {
         throw new OrderEditRefusedError(
@@ -355,7 +549,10 @@ export class OrderEditService implements IOrderEditService {
       for (const line of input.lines) {
         const channelQuantity = channelItems.get(line.orderLineId);
         if (channelQuantity === undefined) {
-          throw new OrderEditNotFoundError(`Order line not found: ${line.orderLineId}`);
+          throw new OrderEditNotFoundError(`Order line not found: ${line.orderLineId}`, {
+            orderId: input.internalOrderId,
+            orderLineId: line.orderLineId,
+          });
         }
         const effective = effectiveLineQuantity(channelQuantity, currentEdits?.lines?.[line.orderLineId]);
         if (line.quantity > effective) {
@@ -436,7 +633,7 @@ export class OrderEditService implements IOrderEditService {
   editDeliveryMethod(input: EditOrderDeliveryMethodInput): Promise<OrderEditResult> {
     return this.run(input, async (record, assessment, shipments) => {
       if (input.methodId.trim() === '') {
-        throw new OrderEditInvalidError('A delivery method is required.');
+        throw new OrderEditInvalidError('A delivery method is required.', 'delivery-method-required');
       }
       this.assertLabelNotBought(shipments);
       await this.assertNotHandedOff(assessment);
@@ -584,11 +781,18 @@ export class OrderEditService implements IOrderEditService {
   ): Promise<OrderEditResult> {
     const record = await this.orderRecords.getOrderRecord(input.internalOrderId);
     if (!record) {
-      throw new OrderEditNotFoundError(`Order not found: ${input.internalOrderId}`);
+      throw new OrderEditNotFoundError(`Order not found: ${input.internalOrderId}`, {
+        orderId: input.internalOrderId,
+      });
     }
 
     const shipments = await this.shipmentQuery.getOutboundByOrderId(input.internalOrderId);
-    const assessment = await this.fulfillmentEdit.assessForEdit(input.internalOrderId);
+    // #3607: a bundle line's units live on its component lines, so the guards
+    // are asked per commercial line through the frozen composition.
+    const assessment = await this.fulfillmentEdit.assessForEdit(
+      input.internalOrderId,
+      this.bundleComponentsByLine(record)
+    );
     await this.assertEditable(record, shipments, assessment, allowAfterShipping);
     const documentIssued = checksDocuments ? await this.hasIssuedDocument(record) : false;
 
@@ -603,6 +807,14 @@ export class OrderEditService implements IOrderEditService {
         view: await this.viewAfter(record, hypothetical),
         stock: [],
         workNarrowingFailures: [],
+        ...(prepared.gift !== undefined && {
+          gift: {
+            lineKey: null,
+            salesDocumentExists: prepared.gift.salesDocumentExists,
+            reserved: false,
+            onPickList: !prepared.gift.routed,
+          },
+        }),
         ...(prepared.discountPlan !== undefined && {
           discount: this.discountOutcome(record, hypothetical, prepared.discountPlan, {
             discountChangeId: null,
@@ -632,14 +844,25 @@ export class OrderEditService implements IOrderEditService {
       };
     }
 
-    const { change } = await this.changes.openOrReuse({
+    const openRequest = {
       internalOrderId: input.internalOrderId,
       kind: prepared.kind,
       targetRef: prepared.targetRef,
       payload: prepared.payload,
       requestedBy: input.actorUserId,
       requestedAt: new Date(),
-    });
+    };
+    const { change, opened } = await this.changes.openOrReuse(openRequest);
+    if (!opened && prepared.gift !== undefined && !sameGiftPayload(change.payload, prepared.payload)) {
+      // The gift's line key carries the change id and the overlay keeps the FIRST
+      // entry written under a key: reusing an open change for a DIFFERENT gift
+      // would drop it from the overlay while the follow-up reserved and reported
+      // it. An identical request is a retry of the interrupted one and finishes it.
+      throw new OrderEditRefusedError(
+        'ORDER_EDIT_CONTENDED',
+        'Another gift is still being added to this order. Wait a moment, reload the order and try again.'
+      );
+    }
 
     const stamped = this.stampChange(prepared.patch, change.id);
     const written = await this.orderRecords.applyOrderEdit({
@@ -665,6 +888,8 @@ export class OrderEditService implements IOrderEditService {
     }
 
     const { stock, workNarrowingFailures } = await this.followUpLines(written, prepared, change.id);
+    const giftOutcome =
+      prepared.gift === undefined ? undefined : await this.followUpGift(written, prepared.gift, change.id);
     const discount =
       prepared.discountPlan === undefined
         ? undefined
@@ -702,6 +927,7 @@ export class OrderEditService implements IOrderEditService {
       stock,
       workNarrowingFailures,
       ...(discount !== undefined && { discount }),
+      ...(giftOutcome !== undefined && { gift: giftOutcome }),
     };
   }
 
@@ -922,6 +1148,7 @@ export class OrderEditService implements IOrderEditService {
           orderId: written.internalOrderId,
           orderLineId: line.orderLineId,
           newQuantity: line.newQuantity,
+          components: written.componentsOfLine(line.orderLineId),
         });
         closedWorkIds.push(...lowered.closedParcels.map((closed) => closed.workId));
       } catch (error) {
@@ -951,6 +1178,7 @@ export class OrderEditService implements IOrderEditService {
         lines: prepared.loweredLines.map((line) => ({
           orderLineId: line.orderLineId,
           quantity: line.newQuantity,
+          components: written.componentsOfLine(line.orderLineId),
         })),
       });
     } catch (error) {
@@ -967,6 +1195,7 @@ export class OrderEditService implements IOrderEditService {
           internalOrderId: written.internalOrderId,
           orderLineId: line.orderLineId,
           units: line.removedUnits,
+          components: written.componentsOfLine(line.orderLineId),
           changeId,
         });
         stock.push({
@@ -986,6 +1215,18 @@ export class OrderEditService implements IOrderEditService {
     return { stock, workNarrowingFailures };
   }
 
+  /** Bundle line id -> its frozen components, for the work assessment (#3607). */
+  private bundleComponentsByLine(
+    record: OrderRecord
+  ): Record<string, ReturnType<OrderRecord['componentsOfLine']>> {
+    const out: Record<string, ReturnType<OrderRecord['componentsOfLine']>> = {};
+    for (const item of record.orderItems) {
+      const components = record.componentsOfLine(item.id);
+      if (components.length > 0) out[item.id] = components;
+    }
+    return out;
+  }
+
   private stampChange(
     patch: PreparedEdit['patch'],
     changeId: string
@@ -999,6 +1240,14 @@ export class OrderEditService implements IOrderEditService {
       ...(patch.lines !== undefined && {
         lines: Object.fromEntries(
           Object.entries(patch.lines).map(([lineId, line]) => [lineId, { ...line, changeId }])
+        ),
+      }),
+      ...(patch.addedLines !== undefined && {
+        addedLines: Object.fromEntries(
+          Object.values(patch.addedLines).map((line) => [
+            `${OPERATOR_GIFT_LINE_KEY_PREFIX}${changeId}`,
+            { ...line, changeId },
+          ])
         ),
       }),
     };
@@ -1021,6 +1270,9 @@ export class OrderEditService implements IOrderEditService {
       }),
       ...(stamped.address !== undefined && { address: stamped.address }),
       ...(stamped.deliveryMethod !== undefined && { deliveryMethod: stamped.deliveryMethod }),
+      ...((current?.addedLines !== undefined || stamped.addedLines !== undefined) && {
+        addedLines: { ...(current?.addedLines ?? {}), ...(stamped.addedLines ?? {}) },
+      }),
     };
   }
 
@@ -1045,7 +1297,10 @@ export class OrderEditService implements IOrderEditService {
     shipments: readonly Shipment[]
   ): Promise<PreparedEdit> {
     if ((input.amount === null) === (input.percent === null)) {
-      throw new OrderEditInvalidError('Give either an amount or a percent, not both and not neither.');
+      throw new OrderEditInvalidError(
+        'Give either an amount or a percent, not both and not neither.',
+        'discount-amount-or-percent'
+      );
     }
     const currency = this.readCurrency(record);
     const exponent = minorUnitExponentFor(currency);
@@ -1175,18 +1430,26 @@ export class OrderEditService implements IOrderEditService {
   ): number {
     if (input.amount !== null) {
       if (!isDecimalAmountText(input.amount)) {
-        throw new OrderEditInvalidError('The discount amount must be a plain decimal number such as 12.50.');
+        throw new OrderEditInvalidError(
+          'The discount amount must be a plain decimal number such as 12.50.',
+          'discount-amount-format'
+        );
       }
       if (decimalPlaces(input.amount) > exponent) {
         throw new OrderEditInvalidError(
-          `${currency} has ${String(exponent)} decimal place(s); the discount amount has more.`
+          `${currency} has ${String(exponent)} decimal place(s); the discount amount has more.`,
+          'discount-amount-precision',
+          { currency, decimalPlaces: exponent }
         );
       }
       return Number(Number(input.amount).toFixed(exponent));
     }
     const percent = input.percent as number;
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-      throw new OrderEditInvalidError('The discount percent must be between 0 and 100.');
+      throw new OrderEditInvalidError(
+        'The discount percent must be between 0 and 100.',
+        'discount-percent-range'
+      );
     }
     return Number(((goodsValue * percent) / 100).toFixed(exponent));
   }
@@ -1613,7 +1876,10 @@ export class OrderEditService implements IOrderEditService {
         : undefined;
     const currency = (typeof fromSnapshot === 'string' ? fromSnapshot : (record.currency ?? '')).trim();
     if (currency === '') {
-      throw new OrderEditInvalidError('This order has no currency, so a discount amount cannot be sized.');
+      throw new OrderEditInvalidError(
+        'This order has no currency, so a discount amount cannot be sized.',
+        'currency-missing'
+      );
     }
     return currency.toUpperCase();
   }

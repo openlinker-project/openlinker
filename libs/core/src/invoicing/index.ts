@@ -24,8 +24,18 @@ export {
 export {
   InvoiceTriggerModelValues,
   parseTriggerModel,
+  resolveTriggerModelForKind,
+  describeInvalidTriggerModels,
+  isInBatchRun,
+  TriggerModelSourceValues,
 } from './domain/types/invoice-trigger.types';
-export type { InvoiceTriggerModel } from './domain/types/invoice-trigger.types';
+export type {
+  AutoIssueBatchRunScope,
+  AutoIssueOptions,
+  InvoiceTriggerModel,
+  ResolvedTriggerModel,
+  TriggerModelSource,
+} from './domain/types/invoice-trigger.types';
 export { normalizeShippingLineName } from './domain/types/shipping-line-label.types';
 // A missing per-line tax rate holds the document (#2248, ADR-063 § 6).
 export {
@@ -87,7 +97,6 @@ export * from './domain/exceptions/invalid-numbering-pattern.exception';
 export * from './domain/exceptions/invoice-numbering-series-not-found.exception';
 export * from './domain/exceptions/numbering-gap-note-reason-required.exception';
 export * from './domain/exceptions/source-document-immutable.error';
-export { BatchedTriggerNotImplementedError } from './domain/exceptions/batched-trigger-not-implemented.error';
 export { InvalidBuyerProfileError } from './application/mappers/errors/invalid-buyer-profile.error';
 export { InvalidInvoiceLineError } from './application/mappers/errors/invalid-invoice-line.error';
 export { UnsupportedPriceTreatmentError } from './application/mappers/errors/unsupported-price-treatment.error';
@@ -97,7 +106,7 @@ export {
   toIssueInvoiceCommand,
   OrderToIssueInvoiceCommandInput,
 } from './application/mappers/order-to-issue-invoice-command.mapper';
-export { IInvoiceService } from './application/services/invoice.service.interface';
+export { IInvoiceService, IssueInvoiceOptions } from './application/services/invoice.service.interface';
 export { InvoiceService } from './application/services/invoice.service';
 // Per-order issuance lock key + TTL (#2047), reused verbatim by
 // FiscalRegistrationService (#2157) so both write paths serialize under the
@@ -142,3 +151,5 @@ export type { INumberingSeriesService } from './application/services/numbering-s
 export { NumberingSeriesService } from './application/services/numbering-series.service';
 export * from './invoicing.tokens';
 export { InvoicingModule } from './invoicing.module';
+// #3960 - one derivation of the invoice exactly-once key and its retry root.
+export * from './domain/types/invoice-idempotency-key.types';

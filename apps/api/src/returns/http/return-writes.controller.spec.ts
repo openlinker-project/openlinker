@@ -165,6 +165,155 @@ describe('ReturnWritesController', () => {
       expect(result.line.quantityRestocked).toBe(0);
     });
 
+    describe('bundle line (#3933)', () => {
+      const order = {
+        orderItems: [{ id: 'l1', price: 100, unitPriceGross: 120, quantity: 1 }],
+        taxTreatment: null,
+        lineExpansion: {
+          definitions: [
+            {
+              variantId: 'bundle',
+              components: [
+                { variantId: 'v-a', productId: 'p-a', quantity: 2 },
+                { variantId: 'v-b', productId: 'p-b', quantity: 1 },
+              ],
+            },
+          ],
+        },
+        componentsOfLine: jest.fn().mockReturnValue([
+          { componentLineId: 'l1~c:v-a', perUnit: 2 },
+          { componentLineId: 'l1~c:v-b', perUnit: 1 },
+        ]),
+      };
+
+      beforeEach(() => {
+        returns.getReturn.mockResolvedValue({
+          id: RETURN_ID,
+          internalOrderId: 'ol_order_1',
+          lines: [{ id: LINE_ID, resolvedOrderLineId: 'l1' }],
+        });
+        orderRecords.getOrderRecord.mockResolvedValue(order);
+        custody.disposeLine.mockResolvedValue({
+          line: buildLine(),
+          event: { id: 'e' },
+          restockBlocked: null,
+          restockBlockedComponents: [],
+        });
+      });
+
+      it('should hand the composition to the service from the order, with the gross price paid', async () => {
+        await controller.disposeLine(
+          RETURN_ID,
+          LINE_ID,
+          { quantity: 1, disposition: 'restock', returnedVariantIds: ['v-b'] },
+          USER
+        );
+
+        expect(custody.disposeLine).toHaveBeenCalledWith(
+          LINE_ID,
+          expect.objectContaining({
+            bundle: {
+              paidPerUnitGross: 120,
+              components: [
+                { productId: 'p-a', variantId: 'v-a', perUnit: 2 },
+                { productId: 'p-b', variantId: 'v-b', perUnit: 1 },
+              ],
+              returnedVariantIds: ['v-b'],
+            },
+          })
+        );
+      });
+
+      it('should refuse a component selection on a line that is not a bundle', async () => {
+        order.componentsOfLine.mockReturnValueOnce([]);
+
+        await expect(
+          controller.disposeLine(
+            RETURN_ID,
+            LINE_ID,
+            { quantity: 1, disposition: 'restock', returnedVariantIds: ['v-b'] },
+            USER
+          )
+        ).rejects.toMatchObject({ reason: 'bad-selection' });
+        expect(custody.disposeLine).not.toHaveBeenCalled();
+      });
+
+      it('should sum the formula hint over partially returned sets and apply nothing', async () => {
+        custody.listReturnedBundleComponents = jest
+          .fn()
+          .mockResolvedValue([{ returnLineId: LINE_ID, units: 1, returnedVariantIds: ['v-b'] }]);
+        custody.previewBundleReturn = jest.fn().mockResolvedValue({
+          keptAtStandaloneRefundHintGross: 25,
+          hintInputs: { paidForSetGross: 64.99, keptStandaloneGross: 39.99 },
+        });
+
+        const result = await controller.bundleRefundHint(RETURN_ID);
+
+        expect(result).toEqual({
+          applicable: true,
+          hintGross: 25,
+          paidForSetGross: 64.99,
+          keptStandaloneGross: 39.99,
+        });
+        expect(refunds.triggerRefund).not.toHaveBeenCalled();
+      });
+
+      it('should load the return and the order once however many bundle lines it has', async () => {
+        returns.getReturn.mockResolvedValue({
+          id: RETURN_ID,
+          internalOrderId: 'ol_order_1',
+          lines: [
+            { id: LINE_ID, resolvedOrderLineId: 'l1' },
+            { id: 'line-2', resolvedOrderLineId: 'l1' },
+          ],
+        });
+        orderRecords.getOrderRecord.mockResolvedValue(order);
+        custody.listReturnedBundleComponents = jest.fn().mockResolvedValue([
+          { returnLineId: LINE_ID, units: 1, returnedVariantIds: ['v-b'] },
+          { returnLineId: 'line-2', units: 1, returnedVariantIds: ['v-b'] },
+        ]);
+        custody.previewBundleReturn = jest.fn().mockResolvedValue({
+          keptAtStandaloneRefundHintGross: 25,
+          hintInputs: { paidForSetGross: 64.99, keptStandaloneGross: 39.99 },
+        });
+        returns.getReturn.mockClear();
+        orderRecords.getOrderRecord.mockClear();
+
+        await controller.bundleRefundHint(RETURN_ID);
+
+        expect(returns.getReturn).toHaveBeenCalledTimes(1);
+        expect(orderRecords.getOrderRecord).toHaveBeenCalledTimes(1);
+        expect(custody.previewBundleReturn).toHaveBeenCalledTimes(2);
+      });
+
+      it('should report the hint as not applicable when no set came back partially', async () => {
+        custody.listReturnedBundleComponents = jest.fn().mockResolvedValue([]);
+
+        await expect(controller.bundleRefundHint(RETURN_ID)).resolves.toMatchObject({
+          applicable: false,
+          hintGross: null,
+        });
+      });
+
+      it('should preview the split and the hint without writing', async () => {
+        custody.previewBundleReturn = jest.fn().mockResolvedValue({
+          components: [],
+          splitRefusal: null,
+          splitRefusalVariantIds: [],
+          returnedShareGross: 40,
+          keptAtStandaloneRefundHintGross: 40,
+        });
+
+        const result = await controller.previewBundleReturn(RETURN_ID, LINE_ID, {
+          returnedVariantIds: 'v-b',
+          quantity: 1,
+        });
+
+        expect(result).toMatchObject({ isBundle: true, allegroRefundHintGross: 40 });
+        expect(custody.disposeLine).not.toHaveBeenCalled();
+      });
+    });
+
     it('should report null restockBlocked on an applied disposition', async () => {
       custody.disposeLine.mockResolvedValue({
         line: buildLine({ quantityScrapped: 2, disposition: 'scrap' }),
@@ -241,7 +390,7 @@ describe('ReturnWritesController', () => {
   describe('confirmRefund', () => {
     const body = { amount: '19.99', currency: 'PLN', reason: 'other' as const };
 
-    it('should write the linked RefundRecord when money moved', async () => {
+    it('should write the linked RefundRecord and report no money moved for an out-of-band refund', async () => {
       refunds.triggerRefund.mockResolvedValue({
         moneyState: 'triggered',
         claimedLineIds: ['b', 'a'],
@@ -255,6 +404,40 @@ describe('ReturnWritesController', () => {
           reason: 'other',
           note: null,
           executedBy: 'operator_out_of_band',
+          recordedAt: new Date('2026-08-02T00:00:00.000Z'),
+          providerRefundId: null,
+        },
+      });
+      orderRefunds.recordRefund.mockResolvedValue({ id: 'refund-1' });
+
+      const result = await controller.confirmRefund(RETURN_ID, body, USER);
+
+      // Recorded only: the operator refunded out of band, OpenLinker sent nothing (#4194).
+      expect(result.moneyMoved).toBe(false);
+      expect(result.refundRecordWritten).toBe(true);
+      expect(result.refundRecordId).toBe('refund-1');
+      // Deterministic per attempt, and order-independent, so one attempt cannot
+      // insert twice and inflate the order's refund total.
+      expect(orderRefunds.recordRefund).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: `return:${RETURN_ID}:a+b` }),
+        expect.anything()
+      );
+    });
+
+    it('should report money moved when a refund executor performed the refund', async () => {
+      refunds.triggerRefund.mockResolvedValue({
+        moneyState: 'triggered',
+        claimedLineIds: ['b', 'a'],
+        providerMessage: null,
+        refundCeiling: { status: 'unknown', reason: 'order-total-unknown' } as const,
+        refundRecordIntent: {
+          returnId: RETURN_ID,
+          internalOrderId: 'ol_order_1',
+          amount: '19.99',
+          currency: 'PLN',
+          reason: 'other',
+          note: null,
+          executedBy: 'refund_executor',
           recordedAt: new Date('2026-08-02T00:00:00.000Z'),
           providerRefundId: null,
         },
@@ -510,7 +693,7 @@ describe('ReturnWritesController', () => {
 
       // Propagating would claim the refund failed when it did not — and the
       // operator's retry would then answer 409 `already-attempted`.
-      expect(result.moneyMoved).toBe(true);
+      expect(result.moneyMoved).toBe(false);
       expect(result.refundRecordWritten).toBe(false);
       expect(result.refundRecordError).toBe('connection reset');
       expect(result.moneyState).toBe('triggered');

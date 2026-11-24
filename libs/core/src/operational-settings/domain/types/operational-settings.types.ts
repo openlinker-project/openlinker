@@ -375,22 +375,74 @@ export interface OperationalSettingsInput {
  * no explanation is the kind of message an operator works around rather than
  * understands.
  */
+/**
+ * Which rule a refused write broke (#3866): a code a client phrases in the
+ * operator's language, instead of the English sentence the error carries.
+ */
+export const OperationalSettingRuleValues = [
+  /** Not a number at all. */
+  'not-a-number',
+  /** Not an integer, or below `min`. */
+  'min',
+  /** Above `absoluteMax`. */
+  'absolute',
+  /** Above `recommendedMax` without `acknowledgeAboveRecommended`. */
+  'recommended',
+  /** The deletion-audit cadence is not a 5- or 6-field cron expression. */
+  'cadence-format',
+  /** The deletion-audit cadence does not parse. */
+  'cadence-invalid',
+  /** The deletion-audit cadence fires less than once every 7 days. */
+  'cadence-too-rare',
+] as const;
+
+export type OperationalSettingRule = (typeof OperationalSettingRuleValues)[number];
+
+/** A broken bound: the rule and the limit it names. */
+export interface OperationalSettingBoundBreach {
+  readonly rule: 'min' | 'absolute' | 'recommended';
+  readonly limit: number;
+  /** The English sentence, for the error message and logs. */
+  readonly message: string;
+}
+
+/** Which bound `value` breaks, or `null` when it is acceptable. */
+export function findOperationalSettingBoundBreach(
+  key: OperationalSettingKey,
+  value: number,
+  acknowledgeAboveRecommended = false
+): OperationalSettingBoundBreach | null {
+  const bound = OPERATIONAL_SETTING_BOUNDS[key];
+  if (!Number.isInteger(value) || value < bound.min) {
+    return {
+      rule: 'min',
+      limit: bound.min,
+      message: `${key} must be an integer of at least ${String(bound.min)}`,
+    };
+  }
+  if (value > bound.absoluteMax) {
+    return {
+      rule: 'absolute',
+      limit: bound.absoluteMax,
+      message: `${key} must not exceed ${String(bound.absoluteMax)}. ${bound.absoluteReason}`,
+    };
+  }
+  if (value > bound.recommendedMax && !acknowledgeAboveRecommended) {
+    return {
+      rule: 'recommended',
+      limit: bound.recommendedMax,
+      message: `${key} above the recommended maximum of ${String(bound.recommendedMax)} requires acknowledgeAboveRecommended: true. ${bound.recommendedReason}`,
+    };
+  }
+  return null;
+}
+
 export function checkOperationalSettingBound(
   key: OperationalSettingKey,
   value: number,
   acknowledgeAboveRecommended = false
 ): string | null {
-  const bound = OPERATIONAL_SETTING_BOUNDS[key];
-  if (!Number.isInteger(value) || value < bound.min) {
-    return `${key} must be an integer of at least ${String(bound.min)}`;
-  }
-  if (value > bound.absoluteMax) {
-    return `${key} must not exceed ${String(bound.absoluteMax)}. ${bound.absoluteReason}`;
-  }
-  if (value > bound.recommendedMax && !acknowledgeAboveRecommended) {
-    return `${key} above the recommended maximum of ${String(bound.recommendedMax)} requires acknowledgeAboveRecommended: true. ${bound.recommendedReason}`;
-  }
-  return null;
+  return findOperationalSettingBoundBreach(key, value, acknowledgeAboveRecommended)?.message ?? null;
 }
 
 /**

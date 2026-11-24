@@ -36,6 +36,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { OrderLineMatchBanner } from './order-line-match-banner';
 import { ReturnLinesTable } from './return-lines-table';
 import { ReturnReceiveForm } from './return-receive-form';
 import { ReturnDisposeForm } from './return-dispose-form';
@@ -163,7 +164,12 @@ export function ReturnCustodyPanel({
 
   const runDispose = (
     line: ReturnLine,
-    input: { quantity: number; disposition: 'restock' | 'scrap'; note?: string }
+    input: {
+      quantity: number;
+      disposition: 'restock' | 'scrap';
+      note?: string;
+      returnedVariantIds?: string[];
+    }
   ): void => {
     setError(line.id, null);
     setPendingLineId(line.id);
@@ -271,6 +277,15 @@ export function ReturnCustodyPanel({
     return (
       <ReadOnlyLock active={writeAccess.demoReadOnly} message={receiveCopy.readOnly}>
         <div className="return-custody-detail">
+          {/* Only an attributed return has an order to match against (#3933). */}
+          {!isOrphan ? (
+            <OrderLineMatchBanner
+              canWrite={writeAccess.canWrite}
+              currency={detail.orderCurrency}
+              line={line}
+              returnId={detail.id}
+            />
+          ) : null}
 
           {canReceive && canDispose ? (
             <div className="return-custody-detail__switch">
@@ -307,6 +322,7 @@ export function ReturnCustodyPanel({
               isOrphan={isOrphan}
               line={line}
               restockBlocked={restockBlockedLineIds.has(line.id)}
+              bundleScope={{ returnId: detail.id, currency: detail.orderCurrency }}
               onCancel={() => setError(line.id, null)}
               onSubmit={(input) => runDispose(line, input)}
               pending={dispose.isPending && pendingLineId === line.id}

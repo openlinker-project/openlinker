@@ -187,9 +187,20 @@ const ALLOW_LIST = new Map([
     new Set(['SyncJobRepositoryPort']),
   ],
   ['apps/worker/src/sync/sync-job.runner.ts', new Set(['SyncJobRepositoryPort'])],
+  // #3986: the webhook drain claims queued peer jobs through the same port the runner uses.
+  ['apps/worker/src/sync/handlers/master-product-sync.handler.ts', new Set(['SyncJobRepositoryPort'])],
+  [
+    'apps/worker/src/sync/handlers/__tests__/master-product-sync.handler.spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  ['apps/worker/test/integration/hook-sync-scope-claim.int-spec.ts', new Set(['SyncJobRepositoryPort'])],
   ['apps/worker/src/sync/__tests__/sync-job.runner.spec.ts', new Set(['SyncJobRepositoryPort'])],
   [
     'apps/worker/test/integration/allegro-offer-quantity-update-e2e.int-spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/inventory-propagate-offer-key-e2e.int-spec.ts',
     new Set(['SyncJobRepositoryPort']),
   ],
   [

@@ -34,10 +34,10 @@ import {
   readOrderCancelErrorCode,
   readRefundCeilingFigures,
   confirmCorrectionErrorTitle,
-  readServerReason,
   remainingRefundable,
 } from '../lib/order-cancel';
 import { formatDecimalAmount } from '../lib/order-edit';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface OrderDiscountRefundDialogProps {
   open: boolean;
@@ -119,7 +119,7 @@ export function OrderDiscountRefundDialog({
             }
             data-testid="order-edit-refund-error"
           >
-            {readServerReason(mutation.error, copy.errorBody)}
+            {describeApiError(mutation.error, 'orders')}
           </Alert>
         ) : null}
 

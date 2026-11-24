@@ -13,6 +13,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { ShoperSetupForm } from './shoper-setup-form';
+import { getMessages } from '../../../shared/i18n';
 
 vi.mock('../../demo', () => ({ captureDemoEvent: vi.fn() }));
 
@@ -159,7 +160,7 @@ describe('ShoperSetupForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create connection' }));
 
     expect(await screen.findByText('Unable to create connection')).toBeInTheDocument();
-    expect(screen.getByText(/must use https/)).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('points to the order defaults only when the shop will receive orders', async () => {

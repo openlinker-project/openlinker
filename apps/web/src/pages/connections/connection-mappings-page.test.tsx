@@ -26,6 +26,7 @@ import type {
   MappingSide,
   MappingOptionListKind,
 } from '../../features/mappings/api/mappings.types';
+import { getMessages } from '../../shared/i18n';
 
 // PrestaShop master (destination). sampleConnection is prestashop with both
 // OrderSource + OrderProcessorManager and no pairing key of its own.
@@ -247,7 +248,7 @@ describe('ConnectionMappingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save mappings' }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Server error');
+      expect(screen.getByRole('alert')).toHaveTextContent(getMessages('errors').status.other);
     });
   });
 

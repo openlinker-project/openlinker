@@ -14,12 +14,14 @@ import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import {
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
 import { classifyLineCost } from '../../domain/order-line-cost-view';
 import { deriveNetLineAmount } from '../../domain/types/net-sales-tax-rate.types';
 import type { OrderLineCostsResult } from '../../domain/types/order-line-cost.types';
+import { IOrderBundleDocumentService } from './order-bundle-document.service.interface';
 import type { IOrderLineCostService } from './order-line-cost.service.interface';
 
 @Injectable()
@@ -30,7 +32,9 @@ export class OrderLineCostService implements IOrderLineCostService {
     @Inject(ORDER_LINE_ITEM_REPOSITORY_TOKEN)
     private readonly lineItems: OrderLineItemRepositoryPort,
     @Inject(PRODUCTS_SERVICE_TOKEN)
-    private readonly products: IProductsService
+    private readonly products: IProductsService,
+    @Inject(ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN)
+    private readonly bundleDocuments: IOrderBundleDocumentService
   ) {}
 
   async getLineCosts(
@@ -42,8 +46,17 @@ export class OrderLineCostService implements IOrderLineCostService {
       return null;
     }
     const lines = await this.lineItems.findByOrderId(internalOrderId);
+    // Best-effort: a failed gift read must not hide the line costs beside it.
+    const gifts = await this.bundleDocuments.getGiftSlotCosts(record).catch(() => []);
+    const giftSlots = gifts.map((gift) => ({
+      lineId: gift.lineId,
+      componentLineId: gift.componentLineId,
+      variantId: gift.variantId,
+      quantity: gift.quantity,
+      totalCostNet: gift.totalCostNet,
+    }));
     if (lines.length === 0) {
-      return { currency: record.currency, lines: [] };
+      return { currency: record.currency, lines: [], giftSlots };
     }
 
     const variantIds = [
@@ -63,6 +76,7 @@ export class OrderLineCostService implements IOrderLineCostService {
     const eraEligible = includeBackfilledPreRollout || record.taxRateEra !== 'pre-rollout';
     return {
       currency: record.currency,
+      giftSlots,
       lines: lines.map((line) => {
         const netAmount = deriveNetLineAmount(
           line.unitPrice,

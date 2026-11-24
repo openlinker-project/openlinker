@@ -67,6 +67,7 @@ describe('BuyerEmailsController', () => {
     expect((error as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
     expect((error as HttpException).getResponse()).toEqual({
       statusCode: HttpStatus.TOO_MANY_REQUESTS,
+      code: BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE,
       error: BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE,
       message: 'slow down',
     });

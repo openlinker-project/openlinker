@@ -133,7 +133,7 @@ export function ReleaseOrderHoldDialog({
         <DialogDescription>{copy.description}</DialogDescription>
 
         {mutation.isError ? (
-          <Alert tone="error">{describeHoldWriteError(mutation.error, copy.errorFallback)}</Alert>
+          <Alert tone="error">{describeHoldWriteError(mutation.error)}</Alert>
         ) : null}
 
         <dl className="order-hold-dialog__summary">

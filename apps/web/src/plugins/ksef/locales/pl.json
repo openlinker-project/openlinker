@@ -208,9 +208,7 @@
     "fa3View": "Pokaż",
     "fa3ViewError": "Nie udało się wyświetlić podglądu. Kliknij 'Pokaż', aby ponowić.",
     "fa3ViewFailed": "Podgląd FA(3) nieudany",
-    "fa3ViewFailedDesc": "Nie udało się pobrać dokumentu.",
     "fa3XmlFailed": "Nie udało się pobrać XML FA(3)",
-    "fa3XmlFailedDesc": "Nie udało się pobrać dokumentu źródłowego.",
     "loading": "Wczytywanie…",
     "number": "Numer KSeF",
     "numberHint": "Nadawany przez KSeF przy rozliczeniu",
@@ -383,7 +381,6 @@
     "insertVariable": "Wstaw {variable}",
     "save": "Zapisz serię",
     "saveError": {
-      "fallback": "Nie udało się zapisać serii.",
       "title": "Nie udało się zapisać serii"
     },
     "saving": "Zapisywanie…",

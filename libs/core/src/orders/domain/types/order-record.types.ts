@@ -202,6 +202,54 @@ export interface OrderHealthSummary {
    * queue without reading it as a problem.
    */
   salesDocumentIssuedOnRequest: number;
+  /**
+   * #4025 - orders with an open return. Built from the SAME id list the
+   * `hasOpenReturn` list filter uses (`OrderHealthSummaryFilters.openReturnOrderIds`,
+   * resolved by the caller because `orders` may not import `returns`), so the
+   * count and the rows it reveals cannot disagree. 0 when no list was supplied.
+   */
+  openReturn: number;
+  /** #4025 - orders with a buyer note an operator can act on (the `hasBuyerNote` filter's predicate). */
+  hasBuyerNote: number;
+  /** #3935 - orders carrying a gift line (the `withGift` filter's predicate). Orthogonal to the health partition. */
+  withGift: number;
+  /** #3935 - orders carrying a bundle (the `withBundle` filter's predicate). Orthogonal to the health partition. */
+  withBundle: number;
+  /** #3935 - orders whose promotion gift was not added (ids resolved by the caller). 0 when no list was supplied. */
+  giftNotAdded: number;
+  /** #3935 - orders with a gift line that the shop refused (a failed destination sync). */
+  giftShopRejected: number;
+  /**
+   * #4025 - orders with a ship-by deadline inside the next 24 hours or already
+   * past (the `dueBefore` list filter's predicate, evaluated at now + 24 h).
+   */
+  dueWithin24h: number;
+  /**
+   * #4025 - order count per source connection id. Counted with every summary
+   * scope applied EXCEPT `sourceConnectionId` itself, so the Source filter can
+   * show a number beside each option while one of them is selected.
+   * Connections with no orders in scope are absent, never `0`.
+   */
+  bySource: Record<string, number>;
+  /** #4025 - the three "Needs a look" group totals. */
+  attention: OrderAttentionSummary;
+}
+
+/**
+ * The three "Needs a look" group totals on the orders list (#4025, #4026).
+ *
+ * Each is the number of DISTINCT orders matching ANY filter in its group - a
+ * union, which is why it lives here and not in the browser: summing the
+ * per-filter counts would count an order that is both overdue and due within
+ * 24 h twice. Every member predicate is the one its own list filter uses.
+ */
+export interface OrderAttentionSummary {
+  /** SLA overdue OR SLA at risk OR ship-by within 24 h (`dueBefore`). */
+  lateToShip: number;
+  /** Sales document blocked OR OpenLinker stopped OR routing blocked OR waiting in OpenLinker OR tax rate conflict. */
+  stuck: number;
+  /** On pack bench OR buyer note OR open return. */
+  toHandle: number;
 }
 
 /**
@@ -244,6 +292,20 @@ export interface OrderHealthSummaryFilters {
    * silently re-scoping it would move numbers on surfaces not in scope here.
    */
   cancelled?: boolean;
+  /**
+   * #4025 - internal ids of orders with an open return, resolved by the caller
+   * from the `returns` context exactly as for `OrderRecordFilters.openReturnOrderIds`.
+   * NOT a scope: it only feeds `countByHealth`'s `openReturn` and
+   * `attention.toHandle` counts, so omitting it reports both without the open
+   * returns rather than narrowing anything.
+   */
+  openReturnOrderIds?: string[];
+  /**
+   * #3935 - internal ids of orders whose gift was not added and nobody handled
+   * it, resolved by the caller from the promotions context. Feeds only the
+   * `giftNotAdded` count; omitted means the count is unknown and is left out.
+   */
+  giftNotAddedOrderIds?: string[];
 }
 
 /**
@@ -422,6 +484,21 @@ export interface OrderRecordFilters {
    */
   omsAttention?: boolean;
   /**
+   * "With a gift" filter (#3940). `true` keeps orders that carry at least one gift
+   * line: one the channel or the shop sent (`gift` on a channel line) or one an
+   * OpenLinker rule or an operator added (`orderEdits.addedLines`, gifts only).
+   * `false` keeps the rest, absent does not filter. A plain jsonb test over the
+   * two columns, ANDed with every other axis; not a health bucket.
+   */
+  withGift?: boolean;
+  /** "With a bundle" filter (#3935): orders that froze a bundle definition at ingestion. */
+  withBundle?: boolean;
+  /** "Gift not added" filter (#3935): ids of such orders resolved by the caller; `true` keeps only them. */
+  giftNotAdded?: boolean;
+  giftNotAddedOrderIds?: string[];
+  /** "Shop rejected the gift" filter (#3935): an order with a gift line whose destination sync failed. */
+  giftShopRejected?: boolean;
+  /**
    * Restrict to orders carrying an attention entry with exactly this reason
    * (#3961 - the "Changed by the shop" filter). Composes with `omsAttention`;
    * `undefined` means "don't filter".
@@ -538,12 +615,19 @@ export interface OrderRecordFilters {
  * Sort fields for order-record list queries (#927, extended #944).
  *
  * - `createdAt` / `dispatchBy` — top-level timestamp columns.
+ * - `placedAt` (#4025) — when the BUYER placed the order, as the source reports
+ *   it. Distinct from `createdAt`, which is when OpenLinker first stored the
+ *   record: after an import of older orders the two differ by days, so "newest
+ *   first" by `createdAt` puts the import on top. A source that reports no
+ *   placement time (WooCommerce) leaves it NULL, and NULLs sort LAST in both
+ *   directions so an unknown date never jumps to the top of the list.
  * - `customer` / `items` / `status` / `total` / `payment` — derived from
  *   `orderSnapshot` JSONB (and the health `CASE` for `status`); back the
  *   sortable table columns.
  */
 export const OrderRecordSortValues = [
   'createdAt',
+  'placedAt',
   'dispatchBy',
   'customer',
   'items',

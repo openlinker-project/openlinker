@@ -8,6 +8,7 @@
  * @see {@link OrderSyncService} for the implementation
  */
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
+import type { OrderDeliveryUpdateReport } from '../../domain/types/order-delivery-update.types';
 import type { Order } from '../../domain/types/order.types';
 
 /**
@@ -32,6 +33,15 @@ export interface OrderSyncRequest {
   sourceEventId?: string;
 
   /**
+   * The product ids of the order's PHYSICAL lines (#3607, ADR-083), when a
+   * bundle expanded them. Absent means the physical list equals `order.items`
+   * and the commercial product ids are used. Only the stock-facing steps read
+   * it (the post-sale master refresh and the absorbed-hold consume); the
+   * destination mirror keeps `order.items`.
+   */
+  physicalProductIds?: readonly string[];
+
+  /**
    * Optional routing filter — the destinations a router selected for this order
    * (#2397, design §5.5).
    *
@@ -54,6 +64,19 @@ export interface OrderSyncRequest {
    * `syncOrder`'s `@throws`.
    */
   readonly destinationConnectionIds?: readonly string[];
+
+  /**
+   * The calling job's remaining penalty-free deferral budget (#3984).
+   *
+   * Present only when the caller is a job the runner can requeue without
+   * spending an attempt. When a destination answers with a failure its plugin
+   * classifies as deferrable AND `spentMs + delay <= maxMs`, `syncOrder`
+   * rethrows so the runner defers the job. When absent, or when the deferral
+   * would overrun the budget, the destination settles as `failed` instead, so
+   * the operator keeps a per-order failure and a Retry action rather than a
+   * dead job nobody sees from the order.
+   */
+  readonly deferralBudget?: { readonly spentMs: number; readonly maxMs: number };
 }
 
 /**
@@ -89,6 +112,17 @@ export type OrderSyncResult =
        * older caller still type-checks; absent reads as "not created now".
        */
       created?: boolean;
+      /**
+       * Digest of the delivery point the destination copy now carries (#4195),
+       * for ingestion to store beside the sync status so a later re-ingestion
+       * can tell a changed locker from the same one. Optional like `created`.
+       */
+      deliveryFingerprint?: string;
+      /**
+       * What relaying a changed delivery point to this destination did, when a
+       * relay was attempted or an earlier report still stands (#4195).
+       */
+      deliveryUpdate?: OrderDeliveryUpdateReport;
     }
   | {
       destinationConnectionId: string;

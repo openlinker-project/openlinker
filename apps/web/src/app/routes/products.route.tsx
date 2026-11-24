@@ -7,6 +7,12 @@ const productsListCrumb: RouteCrumbHandle = {
 const costPricesCrumb: RouteCrumbHandle = {
   crumb: { group: 'operations', page: 'costPrices' },
 };
+const bundleNewCrumb: RouteCrumbHandle = {
+  crumb: { group: 'operations', page: 'bundleNew' },
+};
+const bundleEditCrumb: RouteCrumbHandle = {
+  crumb: { group: 'operations', page: 'bundleEdit' },
+};
 const productDetailCrumb: RouteCrumbHandle = {
   crumb: { group: 'operations', page: 'product' },
 };
@@ -28,6 +34,22 @@ export const productsRoute: RouteObject = {
       lazy: async () => {
         const { CostPricesPage } = await import('../../pages/products/cost-prices-page');
         return { Component: CostPricesPage };
+      },
+    },
+    {
+      path: 'bundles/new',
+      handle: bundleNewCrumb,
+      lazy: async () => {
+        const { BundleFormPage } = await import('../../pages/products/bundle-form-page');
+        return { Component: BundleFormPage };
+      },
+    },
+    {
+      path: 'bundles/:variantId',
+      handle: bundleEditCrumb,
+      lazy: async () => {
+        const { BundleFormPage } = await import('../../pages/products/bundle-form-page');
+        return { Component: BundleFormPage };
       },
     },
     {

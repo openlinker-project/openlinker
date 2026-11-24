@@ -50,6 +50,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useKsefMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /**
  * Clearance statuses in which a document is still waiting for its KSeF number,
@@ -104,9 +105,9 @@ export function KsefInvoiceDetailSection({
       showToast({
         tone: 'error',
         title: copy.upoPreviewFailed,
-        description:
-          upoPreview.error?.message ??
-          copy.upoPreviewFailedDesc,
+        description: upoPreview.error
+          ? describeApiError(upoPreview.error, 'ksef')
+          : copy.upoPreviewFailedDesc,
       });
     }
   }
@@ -117,9 +118,9 @@ export function KsefInvoiceDetailSection({
       showToast({
         tone: 'error',
         title: copy.upoDownloadFailed,
-        description:
-          upoDownload.error?.message ??
-          copy.upoDownloadFailedDesc,
+        description: upoDownload.error
+          ? describeApiError(upoDownload.error, 'ksef')
+          : copy.upoDownloadFailedDesc,
       });
     }
   }
@@ -133,8 +134,7 @@ export function KsefInvoiceDetailSection({
       showToast({
         tone: 'error',
         title: copy.fa3ViewFailed,
-        description:
-          err.message ?? copy.fa3ViewFailedDesc,
+        description: describeApiError(err, 'ksef'),
       });
     }
   }
@@ -146,8 +146,7 @@ export function KsefInvoiceDetailSection({
       showToast({
         tone: 'error',
         title: copy.fa3XmlFailed,
-        description:
-          err.message ?? copy.fa3XmlFailedDesc,
+        description: describeApiError(err, 'ksef'),
       });
     }
   }

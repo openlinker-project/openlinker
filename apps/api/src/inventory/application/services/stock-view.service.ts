@@ -26,12 +26,16 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
 import {
   AVAILABILITY_SERVICE_TOKEN,
+  INVENTORY_MOVEMENT_SERVICE_TOKEN,
   INVENTORY_QUERY_SERVICE_TOKEN,
   LOCATION_SERVICE_TOKEN,
   MAX_STOCK_VIEW_VARIANT_IDS,
   type AvailabilityProvenance,
+  type ChannelQuantityPushOutcome,
   type IAvailabilityService,
+  type IInventoryMovementService,
   type IInventoryQueryService,
+  type LastChannelQuantityPush,
   type ILocationService,
   type VariantStockView,
 } from '@openlinker/core/inventory';
@@ -107,6 +111,17 @@ export interface StockViewChannel {
     readonly quantity: number | null;
     readonly observedAt: Date | null;
   };
+  /**
+   * The last quantity OpenLinker tried to write to this channel for the
+   * variant (#4062), with how it went; `null` when nothing is recorded or the
+   * record could not be read. Beside `channelShows` it tells "we sent 7 and it
+   * shows 9" from "we never sent anything".
+   */
+  readonly lastSent: {
+    readonly quantity: number | null;
+    readonly outcome: ChannelQuantityPushOutcome;
+    readonly pushedAt: Date;
+  } | null;
 }
 
 export interface StockViewPositionDetail {
@@ -182,7 +197,9 @@ export class StockViewService {
     @Inject(CONNECTION_PORT_TOKEN)
     private readonly connectionPort: ConnectionPort,
     @Inject(OPERATIONAL_SETTINGS_SERVICE_TOKEN)
-    private readonly settings: IOperationalSettingsService
+    private readonly settings: IOperationalSettingsService,
+    @Inject(INVENTORY_MOVEMENT_SERVICE_TOKEN)
+    private readonly movements: IInventoryMovementService
   ) {}
 
   /**
@@ -323,6 +340,22 @@ export class StockViewService {
     const observedByKey = new Map(
       observed.map((o) => [`${o.internalVariantId}:${o.connectionId}`, o])
     );
+
+    // A failed read degrades "last sent" to null and nothing else: it is a
+    // diagnostic beside the channel's own figure, not part of what publishes.
+    const lastSent: LastChannelQuantityPush[] = [];
+    try {
+      for (const chunk of chunked(variantIds)) {
+        lastSent.push(...(await this.movements.getLastChannelPushes(chunk)));
+      }
+    } catch (error) {
+      lastSent.length = 0;
+      this.logger.error(
+        'stock_view_last_sent_read_failed - "last sent" reported as unknown',
+        (error as Error).stack
+      );
+    }
+    const lastSentByKey = new Map(lastSent.map((p) => [`${p.productVariantId}:${p.connectionId}`, p]));
     const atpByVariant = new Map(views.map((v) => [v.productVariantId, v.availableToPromise]));
 
     let partial = !observedReadable;
@@ -358,6 +391,7 @@ export class StockViewService {
         for (const variantId of publishedIds) {
           const controlledAnswer = willPublishByVariant.get(variantId);
           const seen = observedByKey.get(`${variantId}:${connectionId}`);
+          const sent = lastSentByKey.get(`${variantId}:${connectionId}`);
           const list = channelsByVariant.get(variantId) ?? [];
           list.push({
             connectionId,
@@ -371,6 +405,9 @@ export class StockViewService {
               quantity: seen?.availableQuantity ?? null,
               observedAt: seen?.observedAt ?? null,
             },
+            lastSent: sent
+              ? { quantity: sent.quantity, outcome: sent.outcome, pushedAt: sent.pushedAt }
+              : null,
           });
           channelsByVariant.set(variantId, list);
         }

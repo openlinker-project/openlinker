@@ -425,6 +425,8 @@ export interface ReturnCorrectionProposalLine {
   noMatchExplanation: string | null;
   /** Evidence that the choice changes the amount — never a tie-break. */
   candidatesPriceOrRateDiffer: boolean;
+  /** Part of this line came back as bundle components (#3933): credited as an amount. */
+  componentCredit?: { units: number; amountGross: number; variantIds: string[] } | null;
 }
 
 export interface ReturnCorrectionProposal {
@@ -521,6 +523,52 @@ export interface DisposeReturnLineInput {
   quantity: number;
   disposition: ReturnDisposition;
   note?: string;
+  /** Bundle lines only (#3933): the component variants that came back. Absent means all. */
+  returnedVariantIds?: string[];
+}
+
+export interface BundleReturnComponent {
+  variantId: string;
+  sku: string | null;
+  perUnit: number;
+  standaloneUnitPriceGross: number | null;
+  shareGross: number | null;
+  shareBasis: string | null;
+}
+
+/** What a (partial) return of a bundle line is worth. A read; nothing is written. */
+export interface BundleReturnPreview {
+  isBundle: boolean;
+  paidPerUnitGross: number | null;
+  components: BundleReturnComponent[];
+  /** `no-split-basis` or `bad-total`; null when the split could be computed. */
+  splitRefusal: string | null;
+  splitRefusalVariantIds: string[];
+  returnedShareGross: number | null;
+  /** The Allegro formula as a hint. Never applied by default. */
+  allegroRefundHintGross: number | null;
+}
+
+/** The Allegro formula as a hint for a partially returned bundle (#3933). */
+export interface BundleRefundHint {
+  applicable: boolean;
+  hintGross: number | null;
+  paidForSetGross: number | null;
+  keptStandaloneGross: number | null;
+}
+
+export interface ReturnOrderLineCandidate {
+  id: string;
+  price: number;
+  quantity: number;
+  sku: string | null;
+}
+
+export interface ReturnOrderLineSuggestion {
+  candidates: ReturnOrderLineCandidate[];
+  suggestedOrderLineId: string | null;
+  basis: string | null;
+  alreadyResolvedOrderLineId: string | null;
 }
 
 export interface ConfirmReturnRefundInput {
@@ -589,6 +637,8 @@ export interface DisposeReturnLineResult {
   line: ReturnLineCounters;
   eventId: string;
   restockBlocked: ReturnRestockBlocked | null;
+  /** Bundle restocks (#3933): every component whose write was refused. */
+  restockBlockedComponents: ReturnRestockBlocked[];
 }
 
 export interface MarkReturnLineNotReturnedResult {

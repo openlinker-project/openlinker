@@ -10,6 +10,8 @@
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { SyncLockPort } from '@openlinker/core/sync';
+import { markRequestNotSent } from '@openlinker/shared/http';
+import { Logger } from '@openlinker/shared/logging';
 
 import { InventorySaleDecrement } from '../../../domain/entities/inventory-sale-decrement.entity';
 import type { InventoryItem } from '../../../domain/entities/inventory-item.entity';
@@ -164,7 +166,10 @@ const HONOURED = { disposition: 'applied', idempotency: 'honoured', appliedAt: n
 describe('InventorySaleDecrementService', () => {
   let repository: InMemorySaleDecrementRepository;
   let positions: InventoryOwnerPosition[];
-  let adapters: Map<string, jest.Mocked<Pick<InventoryMasterPort, 'adjustInventory' | 'listInventory'>>>;
+  let adapters: Map<
+    string,
+    jest.Mocked<Pick<InventoryMasterPort, 'adjustInventory' | 'listInventory'>>
+  >;
   let integrations: { getCapabilityAdapter: jest.Mock };
   let inventoryService: { setInventory: jest.Mock };
   let syncLock: { acquire: jest.Mock; release: jest.Mock; extend: jest.Mock };
@@ -268,6 +273,28 @@ describe('InventorySaleDecrementService', () => {
     expect(syncLock.release).not.toHaveBeenCalled();
   });
 
+  it('should record the ledger row as gift when the line says it is a gift', async () => {
+    await service.decrementForWork(
+      input({
+        lines: [
+          {
+            orderLineId: 'line-1',
+            productId: 'ol_product_1',
+            productVariantId: 'ol_variant_1',
+            quantity: 1,
+            movementReason: 'gift',
+          },
+        ],
+      })
+    );
+
+    expect((inventoryService.setInventory.mock.calls[0] as unknown[])[2]).toEqual({
+      reason: 'gift',
+      sourceKind: 'order',
+      sourceRef: 'ol_order_1',
+    });
+  });
+
   // OL's location id is not the adapter's: the Subiekt adapter reads it as a magazynId.
   it('should never pass the OL location id to the adapter', async () => {
     await service.decrementForWork(input());
@@ -275,7 +302,7 @@ describe('InventorySaleDecrementService', () => {
     expect(shop().adjustInventory.mock.calls[0][0]).not.toHaveProperty('locationId');
   });
 
-  it('should write the master\'s new quantity to the mirror so propagation runs', async () => {
+  it("should write the master's new quantity to the mirror so propagation runs", async () => {
     await service.decrementForWork(input());
 
     expect(inventoryService.setInventory).toHaveBeenCalledTimes(1);
@@ -344,10 +371,8 @@ describe('InventorySaleDecrementService', () => {
     expect(result.attention).toEqual({ kind: 'none' });
   });
 
-  it('should skip and persist the reason when the order came from the line\'s own master', async () => {
-    const result = await service.decrementForWork(
-      input({ orderSourceConnectionId: 'conn-shop' })
-    );
+  it("should skip and persist the reason when the order came from the line's own master", async () => {
+    const result = await service.decrementForWork(input({ orderSourceConnectionId: 'conn-shop' }));
 
     expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
     expect(shop().adjustInventory).not.toHaveBeenCalled();
@@ -374,8 +399,18 @@ describe('InventorySaleDecrementService', () => {
     await service.decrementForWork(
       input({
         lines: [
-          { orderLineId: 'line-1', productId: 'ol_product_1', productVariantId: 'ol_variant_1', quantity: 1 },
-          { orderLineId: 'line-2', productId: 'ol_product_2', productVariantId: 'ol_variant_2', quantity: 2 },
+          {
+            orderLineId: 'line-1',
+            productId: 'ol_product_1',
+            productVariantId: 'ol_variant_1',
+            quantity: 1,
+          },
+          {
+            orderLineId: 'line-2',
+            productId: 'ol_product_2',
+            productVariantId: 'ol_variant_2',
+            quantity: 2,
+          },
         ],
       })
     );
@@ -444,11 +479,18 @@ describe('InventorySaleDecrementService', () => {
     beforeEach(() => {
       shop().adjustInventory.mockRejectedValue(new Error('PrestaShop answered 500'));
       shop().listInventory.mockResolvedValue([
-        { id: 'inv-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 5, reserved: 0, available: 5 },
+        {
+          id: 'inv-1',
+          productId: 'ol_product_1',
+          variantId: 'ol_variant_1',
+          quantity: 5,
+          reserved: 0,
+          available: 5,
+        },
       ]);
     });
 
-    it('should mark the line in doubt with the adapter\'s own words', async () => {
+    it("should mark the line in doubt with the adapter's own words", async () => {
       const result = await service.decrementForWork(input());
 
       expect(result.lines[0]).toMatchObject({ status: 'in_doubt', reason: 'master-error' });
@@ -459,7 +501,7 @@ describe('InventorySaleDecrementService', () => {
       expect(result.attention).toMatchObject({ kind: 'blocked' });
     });
 
-    it('should re-read the master\'s stock so the marketplaces show its real number', async () => {
+    it("should re-read the master's stock so the marketplaces show its real number", async () => {
       await service.decrementForWork(input());
 
       expect(shop().listInventory).toHaveBeenCalledWith('ol_product_1');
@@ -480,8 +522,64 @@ describe('InventorySaleDecrementService', () => {
     });
   });
 
+  describe('when the write fails before the request left (#4041)', () => {
+    it('should mark the line retryable and keep it unsettled', async () => {
+      shop().adjustInventory.mockRejectedValueOnce(
+        markRequestNotSent(new Error('Shopify request failed: fetch failed'))
+      );
+
+      const result = await service.decrementForWork(input());
+
+      expect(result.lines[0]).toMatchObject({ status: 'retryable', reason: 'request-not-sent' });
+      expect(result.retryableLineIds).toEqual(['line-1']);
+      expect(shop().listInventory).not.toHaveBeenCalled();
+    });
+
+    it('should warn with the order, line and reason so an operator can see it', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      shop().adjustInventory.mockRejectedValueOnce(markRequestNotSent(new Error('ENOTFOUND')));
+
+      await service.decrementForWork(input());
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('reason=request-not-sent'));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('line=line-1'));
+      warn.mockRestore();
+    });
+
+    it('should apply the decrement once on the retry, under the same key', async () => {
+      shop().adjustInventory.mockRejectedValueOnce(markRequestNotSent(new Error('refused')));
+      await service.decrementForWork(input());
+
+      const retry = await service.decrementForWork(input());
+
+      expect(shop().adjustInventory).toHaveBeenCalledTimes(2);
+      const keys = shop().adjustInventory.mock.calls.map(
+        ([adjustment]) => (adjustment as { idempotencyKey?: string }).idempotencyKey
+      );
+      expect(keys[0]).toBe(keys[1]);
+      expect(retry.retryableLineIds).toEqual([]);
+      expect(retry.lines[0]).toMatchObject({ status: 'applied' });
+    });
+
+    it.each(['ETIMEDOUT', 'ECONNRESET', 'UND_ERR_SOCKET'])(
+      'should keep a %s failure in doubt, because it can happen after send',
+      async (code) => {
+        shop().adjustInventory.mockRejectedValue(
+          new TypeError('fetch failed', { cause: Object.assign(new Error(code), { code }) })
+        );
+
+        const result = await service.decrementForWork(input());
+
+        expect(result.lines[0]).toMatchObject({ status: 'in_doubt', reason: 'master-error' });
+        expect(result.retryableLineIds).toEqual([]);
+      }
+    );
+  });
+
   it('should block rather than doubt when the master reports the product absent', async () => {
-    shop().adjustInventory.mockRejectedValue(new MasterProductNotFoundError('ol_product_1', 'conn-shop'));
+    shop().adjustInventory.mockRejectedValue(
+      new MasterProductNotFoundError('ol_product_1', 'conn-shop')
+    );
 
     const result = await service.decrementForWork(input());
 
@@ -532,7 +630,12 @@ describe('InventorySaleDecrementService', () => {
     const result = await service.decrementForWork(
       input({
         lines: [
-          { orderLineId: 'line-1', productId: 'ol_product_1', productVariantId: 'ol_variant_1', quantity: 3 },
+          {
+            orderLineId: 'line-1',
+            productId: 'ol_product_1',
+            productVariantId: 'ol_variant_1',
+            quantity: 3,
+          },
         ],
       })
     );
@@ -562,7 +665,9 @@ describe('InventorySaleDecrementService', () => {
 
     await service.decrementForWork(
       input({
-        lines: [{ orderLineId: 'line-1', productId: 'ol_product_1', productVariantId: null, quantity: 1 }],
+        lines: [
+          { orderLineId: 'line-1', productId: 'ol_product_1', productVariantId: null, quantity: 1 },
+        ],
       })
     );
 
@@ -571,14 +676,14 @@ describe('InventorySaleDecrementService', () => {
     );
   });
 
-  describe('closing the routed order\'s hold (#3480)', () => {
+  describe("closing the routed order's hold (#3480)", () => {
     const consumedLine = {
       orderRecordId: 'ol_order_1',
       terminalStatus: 'consumed',
       orderLineIds: ['line-1'],
     };
 
-    it('should consume the line\'s hold once the decrement lands', async () => {
+    it("should consume the line's hold once the decrement lands", async () => {
       await service.decrementForWork(input());
 
       expect(reservations.closeForOrder).toHaveBeenCalledWith(consumedLine);

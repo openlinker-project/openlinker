@@ -70,6 +70,19 @@ const orderItemSchema = z.object({
   taxSource: z.enum(['shop', 'channel', 'backfill']).nullish(),
   taxRateReadAt: z.string().nullish(),
   taxRateChannel: z.string().nullish(),
+  /**
+   * Present on a gift line (#3940): who decided it was a gift. Absent means an
+   * ordinary line. A source this build does not know drops the mark rather than
+   * the line, so an unfamiliar value shows an ordinary line, never an error.
+   */
+  gift: z
+    .object({
+      source: z.enum(['channel', 'cart-rule', 'ol-rule', 'operator']),
+      ruleRef: z.string().nullish(),
+      documentForm: z.string().nullish(),
+    })
+    .nullish()
+    .catch(undefined),
 });
 
 /**

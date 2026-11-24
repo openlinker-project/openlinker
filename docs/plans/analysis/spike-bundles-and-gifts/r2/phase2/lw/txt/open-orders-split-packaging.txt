@@ -1,0 +1,38 @@
+=== open-orders-split-packaging | Split Packaging for Orders
+ 
+ Split Packaging for Orders 
+ Open Orders: How to Split Packaging 
+ Use the Split Packaging functionality when you need to ship different items from the same order in separate packages . Printing a shipping label for split orders produces separate labels for each package created in the Split Packaging screen.
+ To apply split packaging for an open order: 
+Go to Orders > Open Orders. 
+Select the order by ticking the selection box.
+Click the Actions button. Alternatively, double-click the order.
+Click Shipping > Split Packaging .
+In the Split Packaging screen, create required packaging bins.
+Click Save .
+ NB! If an order with split packaging is split into multiple orders , previously applied split packaging is automatically removed. 
+ How to work in the Split Packaging screen 
+ The guide below provides more details on how to split packaging for orders in the Split Packaging  screen.
+ Info! The packaging needs to be split for open orders individually. It is not possible to split packaging for orders in bulk. 
+ Step 1: create packaging bins for items 
+ In the Split Packaging screen, drag and drop items into the blue section. This will create new packaging bins for each item dragged into the section. 
+ When the quantity of an item is more than one, use the Move section to specify the quantity of the item to be placed into a separate package.
+ If you need to move an item into an existing packaging bin, drag the item into one of the already created packaging bins in the main section of the screen.
+ Step 2: check and update packaging info 
+ Once you finish allocating order items to new packaging bins, Linnworks automatically assigns the appropriate packaging types to each bin based on the chosen automated packaging assignment method . 
+ Double-check if the packaging assigned to each bin is correct. Click Edit if you need to manually change: 
+Packaging group
+Packaging type
+Packaging size
+Weight
+ Click the Recalculate button when you need to revert any completed packaging changes.
+ Step 3: finalize packaging bins for items 
+ Repeat the steps above for each item in the order until every item has been allocated to an appropriate packaging bin.
+ On the same screen, use the View Order button to check the order information. Clicking the Remove Split button allows you to reset any changes done in the Split Packaging screen and lets you restart the splitting process.
+ Step 4: split packaging 
+ Click Save to split the packaging.
+ Now that the packaging is split you can proceed and print the order .
+ NB! For the documentation on the earlier version of the Open Order s screen, see here:
+ Order packaging 
+ Split packaging 
+ 

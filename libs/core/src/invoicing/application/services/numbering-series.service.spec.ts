@@ -51,6 +51,7 @@ describe('NumberingSeriesService', () => {
       upsertRoute: jest.fn(),
       deleteRoute: jest.fn(),
       allocateNumber: jest.fn(),
+      inheritNumber: jest.fn(),
     };
     service = new NumberingSeriesService(repository);
   });

@@ -218,6 +218,17 @@ describe('RoutingDryRunService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
+    it('should answer ORDER_NOT_FOUND with the order id (#3865)', async () => {
+      const h = build();
+      h.getOrderRecord.mockResolvedValue(null);
+
+      await expect(
+        h.service.dryRun('conn-oms', { subject: { orderId: 'ol_order_x' } })
+      ).rejects.toMatchObject({
+        response: { code: 'ORDER_NOT_FOUND', params: { orderId: 'ol_order_x' } },
+      });
+    });
+
     it('should reject an order that is not fully ingested', async () => {
       const h = build();
       h.getOrderRecord.mockResolvedValue({ shippingAddressHash: null });
@@ -245,6 +256,9 @@ describe('RoutingDryRunService', () => {
       h.getOrderRecord.mockResolvedValue({
         shippingAddressHash: 'h'.repeat(64),
         fulfillmentRoutingSkipReason: null,
+        physicalItems: [
+          { id: 'line-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 2 },
+        ],
       });
       mockOrderFromReadySnapshot.mockReturnValue({
         items: [
@@ -269,6 +283,9 @@ describe('RoutingDryRunService', () => {
       h.getOrderRecord.mockResolvedValue({
         shippingAddressHash: null,
         fulfillmentRoutingSkipReason: 'own-shop-order',
+        physicalItems: [
+          { id: 'line-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 1 },
+        ],
       });
       mockOrderFromReadySnapshot.mockReturnValue({
         items: [

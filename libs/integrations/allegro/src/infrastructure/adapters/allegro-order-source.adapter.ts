@@ -20,6 +20,8 @@ import type {
   DispatchCarrierHint,
   MappingOption,
   ReturnSourceReader,
+  RefundSourceReader,
+  SourceRefundObservation,
   ReturnDecliner,
   OrderBillingDocumentUploader,
   OrderBillingDocumentLinker,
@@ -65,6 +67,13 @@ import type {
   AllegroShippingRateDetailResponse,
 } from '../../domain/types/allegro-api.types';
 import { ALLEGRO_ORDER_STATUS_OPTIONS } from '../../domain/types/allegro-order-status.types';
+import { toSourceRefundObservations } from './allegro-payment-refund.mapper';
+import {
+  ALLEGRO_REFUND_MAX_PAGES,
+  ALLEGRO_REFUND_PAGE_LIMIT,
+  type AllegroPaymentRefundWire,
+  type AllegroPaymentRefundsResponse,
+} from '../../domain/types/allegro-payment-refund.types';
 import { deriveAllegroPaymentMethod } from './allegro-payment-method';
 import { ALLEGRO_PAYMENT_TYPE_OPTIONS } from '../../domain/types/allegro-payment-type.types';
 import type {
@@ -97,6 +106,7 @@ import type {
 } from '../../domain/types/allegro-customer-return.types';
 import { toIncomingReturn, toReturnFeedItem } from './allegro-customer-return.mapper';
 import { toNeutralTaxRate } from './allegro-tax-rate.mapper';
+import { toPackQuantity } from './allegro-pack-quantity.mapper';
 import {
   attachBillingDocumentLinkToAllegro,
   uploadBillingDocumentToAllegro,
@@ -135,6 +145,7 @@ export class AllegroOrderSourceAdapter
     OrderStatusWriteback,
     OrderFulfillmentReadback,
     ReturnSourceReader,
+    RefundSourceReader,
     ReturnDecliner,
     OrderBillingDocumentUploader,
     OrderBillingDocumentLinker
@@ -905,6 +916,37 @@ export class AllegroOrderSourceAdapter
   }
 
   /**
+   * Settled payment refunds Allegro holds for one checkout form (#4126).
+   *
+   * `GET /payments/refunds?order.id=` (`checkoutForm.id` is silently ignored by the
+   * endpoint and returns every refund of the seller, so it must not be used; the
+   * mapper additionally keeps only rows naming this order). The checkout form itself carries
+   * no refund signal (`payment.paidAmount` stays at the original total), so this
+   * is the only place a seller-side "refund payment" is visible. Only `SUCCESS`
+   * is returned - a pending or failed refund moved no money. `totalValue` is the
+   * whole refund (lines plus delivery), which is what the record needs.
+   */
+  async listRefunds(input: { externalOrderId: string }): Promise<SourceRefundObservation[]> {
+    const wires: AllegroPaymentRefundWire[] = [];
+    for (let page = 0; page < ALLEGRO_REFUND_MAX_PAGES; page += 1) {
+      const response = await this.httpClient.get<AllegroPaymentRefundsResponse>(
+        '/payments/refunds',
+        {
+          queryParams: {
+            'order.id': input.externalOrderId,
+            limit: ALLEGRO_REFUND_PAGE_LIMIT,
+            offset: page * ALLEGRO_REFUND_PAGE_LIMIT,
+          },
+        }
+      );
+      const rows = response.data.refunds ?? [];
+      wires.push(...rows);
+      if (rows.length < ALLEGRO_REFUND_PAGE_LIMIT) break;
+    }
+    return toSourceRefundObservations(wires, input.externalOrderId);
+  }
+
+  /**
    * Hydrate a full order by Allegro-native checkout form id.
    *
    * Returns an `IncomingOrder` with the raw buyer details; identifier mapping
@@ -1010,6 +1052,7 @@ export class AllegroOrderSourceAdapter
           // before this epic report nothing here at all, which is exactly the
           // gap the propagation half closes.
           const neutralTaxRate = toNeutralTaxRate(lineItem.tax);
+          const packQuantity = toPackQuantity(lineItem.offer.productSet);
           return {
             id: lineItem.id,
             productRef: { type: 'offer' as const, externalId: lineItem.offer.id },
@@ -1018,6 +1061,7 @@ export class AllegroOrderSourceAdapter
             sku: lineItem.offer.id,
             name: lineItem.offer.name,
             ...(neutralTaxRate ? { taxRate: neutralTaxRate } : {}),
+            ...(packQuantity !== undefined ? { packQuantity } : {}),
             // imageUrl intentionally omitted — Allegro's checkout-form endpoint
             // does not expose a product image URL. Future enrichment from the
             // internal product catalog is tracked as a separate follow-up.

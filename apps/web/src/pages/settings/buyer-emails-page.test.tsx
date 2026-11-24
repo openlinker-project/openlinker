@@ -9,6 +9,7 @@
  */
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { ApiError } from '../../shared/api/api-error';
+import { getMessages, interpolate } from '../../shared/i18n';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -297,7 +298,10 @@ describe('BuyerEmailEditorPage (#3555)', () => {
   it('should say the sender was saved but the wording was not when only the rule write fails', async () => {
     renderEditor({
       connections: { getById: vi.fn().mockResolvedValue(SHOP), update: vi.fn().mockResolvedValue(SHOP) },
-      automations: { ...automations, replace: vi.fn().mockRejectedValue(new Error('Server error')) },
+      automations: {
+        ...automations,
+        replace: vi.fn().mockRejectedValue(new ApiError('Server error', 500, null)),
+      },
     });
 
     await screen.findByTestId('buyer-email-editor');
@@ -305,7 +309,9 @@ describe('BuyerEmailEditorPage (#3555)', () => {
 
     expect(
       await screen.findByText(
-        'The switch and sender were saved, but the subject and message were not. Server error',
+        interpolate(getMessages('buyer-emails').editor.saveWordingFailed, {
+          reason: getMessages('errors').status['5xx'],
+        }),
       ),
     ).toBeInTheDocument();
   });
@@ -343,7 +349,7 @@ describe('BuyerEmailEditorPage (#3555)', () => {
       new ApiError(
         'config.buyerEmails: fromAddress of "shipped" must be a single email address',
         400,
-        null,
+        { code: 'CONNECTION_CONFIG_INVALID' },
       ),
     );
     renderEditor({
@@ -357,7 +363,9 @@ describe('BuyerEmailEditorPage (#3555)', () => {
 
     expect(
       await screen.findByText(
-        'Nothing was saved. config.buyerEmails: fromAddress of "shipped" must be a single email address',
+        interpolate(getMessages('buyer-emails').editor.saveSettingsFailed, {
+          reason: getMessages('errors').codes.CONNECTION_CONFIG_INVALID,
+        }),
       ),
     ).toBeInTheDocument();
   });

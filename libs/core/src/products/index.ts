@@ -30,6 +30,54 @@ export { MasterProductNotFoundError } from './domain/exceptions/master-product-n
 export { ProductVariantNotFoundError } from './domain/exceptions/product-variant-not-found.error';
 export { InvalidVariantCostError } from './domain/exceptions/invalid-variant-cost.error';
 
+// Bundle definitions and the pure component expansion (#3607, ADR-083)
+export type {
+  BundleComponent,
+  BundleDefinition,
+  BundleDefinitionVersion,
+  MultipackConfirmation,
+  ExpandableLine,
+  ComponentLineRef,
+  PhysicalLine,
+  LineExpansion,
+  BundleGiftDocumentForm,
+} from './domain/types/bundle.types';
+export {
+  COMPONENT_LINE_ID_SEPARATOR,
+  EMPTY_LINE_EXPANSION,
+  buildComponentLineId,
+  buildPackLineDefinitions,
+  componentLineIdsFor,
+  componentRefsFor,
+  expandBundleLines,
+  readLineExpansion,
+  BundleGiftDocumentFormValues,
+  BundleGiftSlotFormValues,
+  isBundleGiftDocumentForm,
+} from './domain/types/bundle.types';
+export type { BundleDefinitionRepositoryPort } from './domain/ports/bundle-definition-repository.port';
+export type {
+  IBundleMasterSyncService,
+  BundleReadingMaster,
+  MasterBundleComposition,
+  MasterBundleComponentPreview,
+} from './application/services/bundle-master-sync.service.interface';
+export type {
+  IBundleDefinitionService,
+  BundleComponentInput,
+} from './application/services/bundle-definition.service.interface';
+export {
+  BundleNestingError,
+  BundleNestingReasonValues,
+  BundleDefinitionNotFoundError,
+  BundleDefinitionInvalidError,
+  BundleDefinitionAlreadyExistsError,
+  BundleDefinitionConcurrentWriteError,
+  BundleMasterSyncRefusedError,
+  BundleMasterSyncRefusalReasonValues,
+} from './domain/exceptions/bundle-definition.errors';
+export type { BundleNestingReason } from './domain/exceptions/bundle-definition.errors';
+
 // Master-deletion event contract (#1599)
 export {
   MASTER_DELETION_EVENT_STREAM,
@@ -79,6 +127,8 @@ export {
   PaginatedProductVariants,
   ProductStockFilter,
   ProductStockFilterValues,
+  ProductBundleFilter,
+  ProductBundleFilterValues,
   ProductListSortField,
   ProductListSortFieldValues,
   ProductListSortDirection,
@@ -97,6 +147,12 @@ export type {
 } from './domain/ports/capabilities/modified-product-lister.capability';
 export { isModifiedProductLister } from './domain/ports/capabilities/modified-product-lister.capability';
 export type { BulkProductReader } from './domain/ports/capabilities/bulk-product-reader.capability';
+export type {
+  BundleReader,
+  ExternalBundleComposition,
+  ExternalBundleComponent,
+} from './domain/ports/capabilities/bundle-reader.capability';
+export { isBundleReader } from './domain/ports/capabilities/bundle-reader.capability';
 export { isBulkProductReader } from './domain/ports/capabilities/bulk-product-reader.capability';
 
 // Neutral per-line tax rate (#2054, ADR-063). The vocabulary a ProductMaster
@@ -168,3 +224,20 @@ export type { ITaxRateJournalService } from './application/services/tax-rate-jou
 
 
 
+
+// Bundle product creation at a master (#3935).
+export type {
+  IBundleProductCreationService,
+  BundleCreationTarget,
+  CreateBundleProductInput,
+  CreatedBundleProduct,
+} from './application/services/bundle-product-creation.service.interface';
+export type {
+  ProductCreator,
+  ProductCreationMode,
+} from './domain/ports/capabilities/product-creator.capability';
+export {
+  isProductCreator,
+  ProductCreationModeValues,
+} from './domain/ports/capabilities/product-creator.capability';
+export { BundleProductCreationRefusedError } from './domain/exceptions/bundle-definition.errors';

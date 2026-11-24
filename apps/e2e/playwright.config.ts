@@ -75,6 +75,10 @@
  *                      the confirmation says about variants that will not be
  *                      listed. Stubbed the same way, screenshots attached per
  *                      state. `retries: 1` (nothing is mutated).
+ *   - `oms-mvp-g10`  - batched sales-document issuing (#3585, mockup M15):
+ *                      mockup baselines, the live screen in every M15 state
+ *                      (reads stubbed), and a seeded golden path through a
+ *                      real batch run. `retries: 0` (the golden path seeds).
  *
  * Reporters: html + list. Retries are per-project: read-only projects (setup,
  * smoke) retry once; the mutating golden-path project runs with `retries: 0` —
@@ -476,6 +480,20 @@ export default defineConfig({
       retries: 0,
       dependencies: ['delivery-on-documents-auth'],
       use: { ...devices['Desktop Chrome'], storageState: DELIVERY_STORAGE_STATE },
+    },
+    {
+      // G10 batched sales-document issuing (#3585, mockup M15). Mockup
+      // baselines read the committed file; the live-state spec stubs the
+      // screen's reads; the golden path seeds Postgres (the
+      // `sales-document-*-seed.ts` exception) and runs a real batch through
+      // the worker. MUTATING, so `retries: 0`: a retry would re-seed mid-run.
+      // Scoped to `g10/` only - the sibling `oms-mvp/g03/` specs belong to
+      // their own epic and are not adopted here.
+      name: 'oms-mvp-g10',
+      testMatch: /oms-mvp\/g10\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],
 });

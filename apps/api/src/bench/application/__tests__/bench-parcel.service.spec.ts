@@ -28,6 +28,7 @@ import type { IShipmentQueryService } from '@openlinker/core/shipping';
 import type { IUserManagementService } from '../../../users/user-management.service.interface';
 import type { IFulfillmentParcelClosureNotifier } from '../../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
 import { BenchExecutorResolver } from '../services/bench-executor.resolver';
+import type { BenchRouteResolver } from '../services/bench-route.resolver';
 import {
   BenchParcelNotAtThisBenchError,
   BenchParcelService,
@@ -103,6 +104,8 @@ function harness(options: {
   /** #3538 - the order's note as `OrderRecord.buyerNoteState` reads it. */
   buyerNoteState?: string | null;
   hasBuyerNote?: boolean;
+  /** #3624 - the order's bundle lines as `OrderRecord.bundleLines` derives them. */
+  bundleLines?: Array<{ lineId: string; components: Array<{ lineId: string; giftSlot?: boolean }> }>;
   acknowledgements?: Array<{
     workId: string;
     acknowledgedAt: Date;
@@ -172,6 +175,8 @@ function harness(options: {
         internalOrderId: 'ol_order_1',
         buyerNoteState: options.buyerNoteState,
         hasBuyerNote: options.hasBuyerNote ?? options.buyerNoteState !== undefined,
+        bundleLines: options.bundleLines ?? [],
+        orderItems: options.bundleLines === undefined ? [] : [{ id: 'L1', name: 'Zestaw poranny' }],
         orderSnapshot: {
           orderNumber: 'OL-4471',
           shippingAddress: {
@@ -233,6 +238,11 @@ function harness(options: {
       .mockResolvedValue(options.acknowledgements ?? []),
   } as unknown as IFulfillmentWorkQueryService;
 
+  // #3958 - resolved from the order's source connection and delivery method.
+  const routes = {
+    resolve: jest.fn().mockResolvedValue(null),
+  } as unknown as BenchRouteResolver;
+
   const parcelClosureNotifier = {
     notifyParcelClosed: options.notifyParcelClosed ?? jest.fn().mockResolvedValue(undefined),
     relayRecordedClose: jest.fn().mockResolvedValue(undefined),
@@ -259,6 +269,7 @@ function harness(options: {
       parcelClosureNotifier,
       workQuery,
       sourceAmendment as never,
+      routes
     ),
     sourceAmendment,
     verification,
@@ -266,6 +277,7 @@ function harness(options: {
     worklist,
     parcelClosureNotifier,
     workQuery,
+    routes,
   };
 }
 
@@ -627,6 +639,38 @@ describe('BenchParcelService (#2418)', () => {
     });
   });
 
+  describe('bundle components (#3624)', () => {
+    it('should name the bundle a component line belongs to, and leave ordinary lines unmarked', async () => {
+      const { service } = harness({
+        work: workView({
+          lines: [
+            { id: 'line-1', orderLineId: 'L1~c:ol_variant_1', productVariantId: 'ol_variant_1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+            { id: 'line-2', orderLineId: 'L2', productVariantId: 'ol_variant_2', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+          ],
+        } as Partial<FulfillmentWorkView>),
+        bundleLines: [{ lineId: 'L1', components: [{ lineId: 'L1~c:ol_variant_1' }] }],
+      });
+      const parcel = await service.getParcel('work-1');
+      expect(parcel.lines[0].bundle).toEqual({ lineId: 'L1', name: 'Zestaw poranny', giftSlot: false });
+      expect(parcel.lines[1].bundle).toBeNull();
+    });
+
+    it('should mark the gift slot component from the frozen expansion (#3934)', async () => {
+      const { service } = harness({
+        work: workView({
+          lines: [
+            { id: 'line-1', orderLineId: 'L1~c:ol_variant_1', productVariantId: 'ol_variant_1', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+          ],
+        } as Partial<FulfillmentWorkView>),
+        bundleLines: [
+          { lineId: 'L1', components: [{ lineId: 'L1~c:ol_variant_1', giftSlot: true }] },
+        ],
+      });
+      const parcel = await service.getParcel('work-1');
+      expect(parcel.lines[0].bundle?.giftSlot).toBe(true);
+    });
+  });
+
   describe('story D4 — the projection an interruption watches', () => {
     it('carries exactly the fields it is supposed to and no others', async () => {
       // This list IS the D4 guarantee: an interruption fires when this
@@ -675,6 +719,9 @@ describe('BenchParcelService (#2418)', () => {
           'parcelIndex',
           'parcelTotal',
           'refusal',
+          // #3958 - who ships the box: a processor kind, an operator-given
+          // connection name and the delivery method's label. No buyer data.
+          'route',
           // #3961 - what to take out of a box the shop changed; null otherwise.
           'sourceChange',
           'totalAmount',
@@ -686,7 +733,9 @@ describe('BenchParcelService (#2418)', () => {
         [
           'attributes',
           'binCode',
+          'bundle',
           'ean',
+          'gift',
           'gtin',
           'heightMm',
           'imageUrl',
@@ -1372,7 +1421,13 @@ describe('BenchParcelService (#2418)', () => {
         activeHolds: [{ fromSourceChange: true } as FulfillmentWorkView['activeHolds'][number]],
       });
     const orderAsking = (quantity: number): OrderRecord =>
-      ({ internalOrderId: 'ol_order_1', orderItems: [{ id: 'ol_line_1', quantity }], orderSnapshot: {} }) as unknown as OrderRecord;
+      ({
+        internalOrderId: 'ol_order_1',
+        orderItems: [{ id: 'ol_line_1', quantity }],
+        physicalItems: [{ id: 'ol_line_1', quantity }],
+        bundleLines: [],
+        orderSnapshot: {},
+      }) as unknown as OrderRecord;
 
     it('should void the line down to what the order now asks for, re-check, and relay a box that closed', async () => {
       const closedAt = new Date('2026-11-09T10:00:00Z');
@@ -1428,5 +1483,43 @@ describe('BenchParcelService (#2418)', () => {
       expect(result).toMatchObject({ outcome: 'refused', reason: 'no-such-line' });
       expect(verification.voidSurplusOnLine).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('BenchParcelService route (#3958)', () => {
+  it('should carry the resolver answer when the parcel is opened', async () => {
+    const { service, routes } = harness({});
+    const route = {
+      processorKind: 'ol_managed_carrier' as const,
+      processorName: 'InPost',
+      fromRule: true,
+      processorAvailable: true,
+      methodLabel: 'InPost Paczkomat',
+    };
+    (routes.resolve as jest.Mock).mockResolvedValueOnce(route);
+
+    const parcel = await service.getParcel('work-1');
+
+    expect(parcel.route).toEqual(route);
+  });
+
+  it('should ask for the route from the order record when one exists', async () => {
+    const { service, routes } = harness({});
+
+    await service.getParcel('work-1');
+
+    // The harness order is a plain object, so both getters read `undefined`
+    // and must arrive as a plain "no delivery method", never `undefined`.
+    expect(routes.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceDeliveryMethodId: null, methodLabel: null })
+    );
+  });
+
+  it('should report no route when the resolver cannot answer', async () => {
+    const { service } = harness({});
+
+    const parcel = await service.getParcel('work-1');
+
+    expect(parcel.route).toBeNull();
   });
 });

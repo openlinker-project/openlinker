@@ -39,7 +39,6 @@ import {
   ORDER_CANCEL_NOTE_MAX_LENGTH,
   OrderCancelReasonValues,
   orderCancelReasonLabel,
-  readServerReason,
 } from '../lib/order-cancel';
 import { BulkResultRows, type BulkResultRow } from './bulk-result-rows';
 import {
@@ -47,6 +46,7 @@ import {
   type BulkCancelFormValues,
   type BulkCancelSubmission,
 } from './bulk-cancel-dialog.schema';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const DEFAULTS: BulkCancelFormValues = {
   reason: 'buyer-request',
@@ -210,7 +210,7 @@ export function BulkCancelDialog({
           </Alert>
         ) : mutation.isError ? (
           <Alert tone="error" title={COPY.requestError} data-testid="orders-bulk-cancel-error">
-            {readServerReason(mutation.error, COPY.requestError)}
+            {describeApiError(mutation.error, 'orders')}
           </Alert>
         ) : null}
 

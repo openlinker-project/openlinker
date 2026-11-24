@@ -11,11 +11,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
 import { BulkEditModal } from './bulk-edit-modal';
 import type * as CategoryParametersStepModule from '../category-parameters-step';
 import type { BulkVariantRow, BulkWizardRow } from './bulk-wizard.types';
 import type { EanMatchCandidate } from '../../api/listings.types';
+import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
 import type { Product, ProductVariant } from '../../../products';
 import type { Connection } from '../../../connections';
 
@@ -1278,6 +1280,53 @@ describe('BulkEditModal', () => {
       expect(screen.getByLabelText('Zalezny for Rozmiar: M')).toBeInTheDocument();
     });
 
+    // #4038 - the bulk editor reuses the shared combobox converter, so a
+    // dictionary pick on a custom-values parameter must reach the save as the
+    // entry id in `valuesIds`, never as the id sent for free text.
+    it('saves a dictionary pick on a custom-values parameter as valuesIds (#4038)', async () => {
+      const onSave = vi.fn();
+      const user = userEvent.setup();
+      mockCategoryParameters = [
+        {
+          id: '201017',
+          name: 'Materiał dominujący',
+          type: 'dictionary',
+          required: true,
+          restrictions: { customValuesEnabled: true },
+          section: 'product',
+          dictionary: [
+            { id: '201017_2317', value: 'bawełna' },
+            { id: '201017_2318', value: 'len' },
+          ],
+        },
+      ];
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={{ ...makeMultiRow(), override: { overrides: { categoryId: 'cat_men' } } }}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={onSave}
+        />,
+      );
+
+      await user.click(
+        await screen.findByRole('combobox', { name: 'Materiał dominujący for Rozmiar: M' }),
+      );
+      await user.click(within(screen.getByRole('listbox')).getByText('bawełna'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+
+      expect(savedVariantParams(onSave, 'var_m')).toContainEqual(
+        expect.objectContaining({ id: '201017', valuesIds: ['201017_2317'] }),
+      );
+    });
+
     describe('attribute prefill (#3851)', () => {
       // `S` deliberately has no entry: a value with no exact match stays empty.
       const sizeParam = {
@@ -2412,5 +2461,81 @@ describe('BulkEditModal', () => {
       };
       expect(baseOverride.overrides?.platformParams?.deliveryPriceList).toBe('Kurier');
     });
+  });
+});
+
+describe('BulkEditModal for a bundle (#3520)', () => {
+  const bundle: BundleOfferPreviewOk = {
+    variantId: 'var_1',
+    status: 'ok',
+    suggestedCategoryId: '74035',
+    availableSets: 4,
+    limitingComponentVariantId: 'c1',
+    components: [
+      {
+        variantId: 'c1',
+        productId: 'p-c1',
+        name: 'Kawa 250 g',
+        sku: 'KAW-250',
+        quantity: 1,
+        giftSlot: false,
+        imageUrl: null,
+        mode: 'own-offer',
+        externalOfferId: '778',
+        cardCategoryId: '74035',
+        problems: [],
+      },
+      {
+        variantId: 'c2',
+        productId: 'p-c2',
+        name: 'Kubek 350 ml',
+        sku: 'KUB-350',
+        quantity: 1,
+        giftSlot: false,
+        imageUrl: null,
+        mode: 'new-product',
+        problems: [],
+      },
+    ],
+  };
+
+  function renderBundle(): void {
+    renderWithProviders(
+      <BulkEditModal
+        open
+        onOpenChange={() => undefined}
+        row={makeRow()}
+        connection={connection}
+        canBrowseCategories={true}
+        currency="PLN"
+        defaults={DEFAULTS}
+        onSave={vi.fn()}
+        bundles={new Map([['var_1', bundle]])}
+      />,
+    );
+  }
+
+  it('should say the product is a set instead of a simple product', () => {
+    renderBundle();
+    expect(screen.getByText('Set · 2 products')).toBeInTheDocument();
+    expect(screen.queryByText('Simple product · no variants')).not.toBeInTheDocument();
+  });
+
+  it('should list the components on the marketplace with their modes', () => {
+    renderBundle();
+    expect(screen.getByText('Set contents on Allegro')).toBeInTheDocument();
+    expect(screen.getByText('Kubek 350 ml')).toBeInTheDocument();
+    expect(screen.getByText('own offer 778')).toBeInTheDocument();
+    expect(screen.getByText('new product')).toBeInTheDocument();
+  });
+
+  it('should explain that a set needs no barcode of its own', () => {
+    renderBundle();
+    expect(screen.getByText(/A set does not need its own barcode/)).toBeInTheDocument();
+  });
+
+  it('should not ask for single-product category parameters', () => {
+    renderBundle();
+    expect(screen.queryByTestId('category-parameters-step')).not.toBeInTheDocument();
   });
 });

@@ -77,6 +77,8 @@ function orderRecord(over: Partial<OrderRecord> = {}): OrderRecord {
   return {
     internalOrderId: 'ol_order_1',
     dispatchByAt: new Date('2026-09-04T16:00:00Z'),
+    orderItems: [],
+    bundleLines: [],
     orderSnapshot: {
       orderNumber: 'OL-4471',
       shippingAddress: { firstName: 'Jan', lastName: 'Wiśniewski', address1: 'Secret 1' },
@@ -310,6 +312,32 @@ describe('BenchWorkService (#2416)', () => {
       // not subtracted: OpenLinker cannot see a shelf, and a smaller number
       // here would be a readiness claim.
       expect(view.works[0].unitsToVerify).toBe(3);
+    });
+
+    it('should count gift units from standalone gift lines and bundle gift slots, not cancelled ones (#3935)', async () => {
+      const { service } = harness({
+        orders: [
+          orderRecord({
+            orderItems: [{ id: 'gift-line', gift: { source: 'ol-rule' } }],
+            bundleLines: [{ lineId: 'b', components: [{ lineId: 'slot', giftSlot: true }, { lineId: 'plain' }] }],
+          } as never),
+        ],
+        page: {
+          works: [
+            workView({
+              lines: [
+                { id: 'l-1', orderLineId: 'gift-line', productVariantId: 'v', totalQuantity: 2, fulfilledQuantity: 0, cancelledQuantity: 1 },
+                { id: 'l-2', orderLineId: 'slot', productVariantId: 'v', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+                { id: 'l-3', orderLineId: 'plain', productVariantId: 'v', totalQuantity: 4, fulfilledQuantity: 0, cancelledQuantity: 0 },
+              ],
+            }),
+          ],
+        },
+      });
+
+      const view = await service.listBenchWork('viewer-1', true);
+
+      expect(view.works[0].giftUnits).toBe(2);
     });
 
     it('should carry the order reference and buyer name, and NOTHING else from the snapshot', async () => {

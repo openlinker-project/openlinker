@@ -19,6 +19,7 @@
 import type { ReactElement } from 'react';
 
 import { interpolate, renderRich, useMessages, usePlural } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { TimeDisplay } from '../../../shared/ui/time-display';
@@ -93,14 +94,14 @@ export function OrderPaymentPanel({
     retry.mutate([internalOrderId], {
       onSuccess: (result) =>
         showToast({ tone: 'success', title: plural(result.enqueued, copy.retryDone), description: copy.retryDoneDetail }),
-      onError: (error) => showToast({ tone: 'error', title: copy.retryFailed, description: error.message }),
+      onError: (error) => showToast({ tone: 'error', title: copy.retryFailed, description: describeApiError(error, 'orders') }),
     });
   };
   const onHandled = (): void => {
     markHandled.mutate([internalOrderId], {
       onSuccess: (result) =>
         showToast({ tone: 'success', title: plural(result.updated, copy.handledDone), description: copy.handledDoneDetail }),
-      onError: (error) => showToast({ tone: 'error', title: copy.markHandledFailed, description: error.message }),
+      onError: (error) => showToast({ tone: 'error', title: copy.markHandledFailed, description: describeApiError(error, 'orders') }),
     });
   };
 

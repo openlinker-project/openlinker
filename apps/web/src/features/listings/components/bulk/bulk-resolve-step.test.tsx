@@ -569,6 +569,22 @@ describe('BulkResolveStep', () => {
     expect(variants.find((v) => v.variantId === 'v2')?.blockers).toContain('no-match');
   });
 
+  it('blocks a sibling whose card category differs from the product-tier category right after Resolve', async () => {
+    const onComplete = vi.fn<OnComplete>();
+    const apiClient = mockClient(
+      () => scriptedStream([result('v1', 'matched'), done()]),
+      [{ productVariantId: 'v1', totalAvailable: 5, locationCount: 1, positionCount: 1 }],
+    );
+    const row = { ...makeRow('prod_1', [variantRow('v1')]), resolvedCategoryId: 'cat-family' };
+
+    renderStep(apiClient, onComplete, [row]);
+
+    await waitFor(() => {
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onComplete.mock.calls[0][0][0].variants[0].blockers).toContain('card-category-mismatch');
+  });
+
   it('does not turn a no-match into a category blocker when no catalogue was consulted', async () => {
     const onComplete = vi.fn<OnComplete>();
     const apiClient = mockClient(

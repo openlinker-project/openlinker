@@ -40,12 +40,23 @@ import type {
 import type { OrderProcessorManagerPort } from '../../domain/ports/order-processor-manager.port';
 import { lowersStockOnOrderCreate } from '../../domain/ports/capabilities/order-create-stock-effect.capability';
 import { isOrderContactRefresher } from '../../domain/ports/capabilities/order-contact-refresher.capability';
+import { isOrderDeliveryUpdater } from '../../domain/ports/capabilities/order-delivery-updater.capability';
+import {
+  computeDeliveryFingerprint,
+  type OrderDeliveryUpdateReport,
+} from '../../domain/types/order-delivery-update.types';
+import type { OrderSyncStatus } from '../../domain/types/order-sync.types';
 import type { OrderCreate, OrderRef } from '../../domain/types/order-processor.types';
 import { OrderStatusValues } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
-import { SyncLockPort, SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
+import {
+  SyncLockPort,
+  SYNC_LOCK_TOKEN,
+  RETRY_CLASSIFIER_REGISTRY_TOKEN,
+  type IRetryClassifierRegistry,
+} from '@openlinker/core/sync';
 import {
   IIdentifierMappingService,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
@@ -80,6 +91,13 @@ interface DestinationCreateOutcome {
 interface SettledDestination extends DestinationCreateOutcome {
   readonly connectionId: string;
   readonly lowersStock: boolean;
+  readonly delivery: DeliveryRelayOutcome;
+}
+
+/** What the delivery relay leaves for ingestion to store beside the sync status (#4195). */
+interface DeliveryRelayOutcome {
+  readonly fingerprint: string;
+  readonly report?: OrderDeliveryUpdateReport;
 }
 
 @Injectable()
@@ -102,11 +120,16 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
     private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
     @Inject(MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN)
-    private readonly masterAbsorbedReservations: IMasterAbsorbedReservationService
+    private readonly masterAbsorbedReservations: IMasterAbsorbedReservationService,
+    @Inject(RETRY_CLASSIFIER_REGISTRY_TOKEN)
+    private readonly retryClassifierRegistry: IRetryClassifierRegistry
   ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {
     const { order, sourceConnectionId, sourceEventId } = request;
+    // #3607: stock sites read the physical products; the mirror keeps `order.items`.
+    const physicalProductIds =
+      request.physicalProductIds ?? order.items.map((item) => item.productId);
 
     this.logger.log(
       `Syncing order ${order.id} from source connection ${sourceConnectionId}${sourceEventId ? ` (event: ${sourceEventId})` : ''}`
@@ -342,6 +365,10 @@ export class OrderSyncService implements IOrderSyncService {
         // the order is refused for not reporting a figure the source DID
         // report. Spread conditionally so absence stays absence.
         ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
+        // #3929 - a destination may read `gift` to set a native flag; the mirror
+        // sends the line as it is. Absence stays absence.
+        ...(item.gift !== undefined ? { gift: item.gift } : {}),
+        ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
       })),
       totals: {
         subtotal: order.totals.subtotal,
@@ -413,7 +440,18 @@ export class OrderSyncService implements IOrderSyncService {
                 orderCreate
               );
             }
+            const delivery = created
+              ? { fingerprint: computeDeliveryFingerprint(orderCreate) }
+              : await this.relayDeliveryChange(
+                  adapter,
+                  connectionId,
+                  order.id,
+                  orderRef,
+                  orderCreate,
+                  record?.syncStatus.find((row) => row.destinationConnectionId === connectionId)
+                );
             return {
+              delivery,
               connectionId,
               orderRef,
               created,
@@ -448,7 +486,7 @@ export class OrderSyncService implements IOrderSyncService {
     // Runs BEFORE the post-sale refresh is enqueued, so that refresh - whose
     // `setInventory` propagates the master's lowered number - can only ever
     // read an ATP where the absorbed hold is already gone.
-    await this.consumeHoldsAbsorbedByDestinations(order, settled);
+    await this.consumeHoldsAbsorbedByDestinations(order, settled, physicalProductIds);
 
     // Best-effort post-sale close of the "it sold, so re-read the master and
     // propagate" loop (#2623). The sweep (`master.inventory.syncAll`) is the
@@ -465,7 +503,7 @@ export class OrderSyncService implements IOrderSyncService {
     if (anyDestinationSucceeded) {
       try {
         await this.postSaleInventoryRefresh.enqueue({
-          productIds: order.items.map((item) => item.productId),
+          productIds: physicalProductIds,
           // Byte-identical to the key this service used when the logic was
           // private here, so an order mid-flight across the deploy does not
           // re-enqueue under a new key.
@@ -478,11 +516,44 @@ export class OrderSyncService implements IOrderSyncService {
       }
     }
 
+    // #3984: a destination that refused us for a reason its own plugin classifies
+    // as deferrable (429 / 503) is not a failure the operator should have to
+    // click through. Rethrow AFTER the successful siblings have finished their
+    // post-create steps above: the runner then requeues the job penalty-free
+    // with the plugin's delay (bounded by the deferral budget), and the rerun is
+    // safe because create is idempotent per destination via its mapping, so
+    // destinations that already succeeded hit the skip path. Permanent failures
+    // and errors no classifier calls deferrable still settle as `failed` below.
+    //
+    // Opt-in per caller, and bounded: the runner's deferral budget is spent only
+    // by the job that carries it, so a caller that does not pass
+    // `request.deferralBudget` (or whose budget this deferral would overrun) gets
+    // the pre-#3984 behaviour and the destination settles as `failed` with the
+    // operator's Retry action. Rethrowing past the budget would let the job die
+    // with no per-order `failed` row at all.
+    const transient = settled.find(
+      (outcome): outcome is PromiseRejectedResult =>
+        outcome.status === 'rejected' &&
+        this.canDeferDestinationFailure(outcome.reason, request.deferralBudget)
+    );
+    if (transient) {
+      // Persist the permanent failures of this run first: the rethrow skips the
+      // caller's settle step, and a destination that failed for good would
+      // otherwise show no failed row until the budget is spent.
+      await this.settlePermanentFailuresBeforeDeferral(order.id, destinations, settled);
+      this.logger.warn(
+        `Order ${order.id} hit a transient destination failure; retrying sync job: ${
+          transient.reason instanceof Error ? transient.reason.message : String(transient.reason)
+        }`
+      );
+      throw transient.reason;
+    }
+
     return settled.map((outcome, index): OrderSyncResult => {
       const destinationConnectionId = destinations[index].connectionId;
 
       if (outcome.status === 'fulfilled') {
-        const { orderRef, created } = outcome.value;
+        const { orderRef, created, delivery } = outcome.value;
         this.logger.log(
           `Order ${order.id} synced to destination ${destinationConnectionId} (destination order: ${orderRef.orderId}${orderRef.orderNumber ? `, orderNumber: ${orderRef.orderNumber}` : ''})`
         );
@@ -491,6 +562,8 @@ export class OrderSyncService implements IOrderSyncService {
           status: 'success',
           orderRef,
           created,
+          deliveryFingerprint: delivery.fingerprint,
+          ...(delivery.report ? { deliveryUpdate: delivery.report } : {}),
         };
       }
 
@@ -506,6 +579,75 @@ export class OrderSyncService implements IOrderSyncService {
         error: { message },
       };
     });
+  }
+
+  /**
+   * True when a destination plugin's own classifier says this failure is a
+   * deferrable one AND the caller's deferral budget can still grant the wait.
+   * A deterministic cause wins the tie, mirroring the runner, so a failure one
+   * plugin calls permanent is never re-driven for ever.
+   */
+  private canDeferDestinationFailure(
+    cause: unknown,
+    budget: OrderSyncRequest['deferralBudget']
+  ): boolean {
+    if (!budget) {
+      return false;
+    }
+    if (this.retryClassifierRegistry.isNonRetryable(cause)) {
+      return false;
+    }
+    const deferral = this.retryClassifierRegistry.resolveRetryDeferral(cause);
+    if (deferral === null) {
+      return false;
+    }
+    // Same arithmetic as the runner (`<=`), so "we rethrow" and "the runner
+    // grants it" cannot disagree.
+    return budget.spentMs + deferral.delaySeconds * 1000 <= budget.maxMs;
+  }
+
+  /**
+   * Best-effort `failed` rows for destinations that were rejected and are not
+   * themselves deferrable, written before a sibling's deferral rethrows.
+   */
+  private async settlePermanentFailuresBeforeDeferral(
+    orderId: string,
+    destinations: ReadonlyArray<{ connectionId: string }>,
+    settled: ReadonlyArray<PromiseSettledResult<unknown>>
+  ): Promise<void> {
+    await Promise.all(
+      settled.map(async (outcome, index) => {
+        if (
+          outcome.status !== 'rejected' ||
+          outcome.reason instanceof OrderCreateContendedException ||
+          this.isDeferrableByPlugin(outcome.reason)
+        ) {
+          return;
+        }
+        const destinationConnectionId = destinations[index].connectionId;
+        try {
+          await this.orderRecordService.updateSyncStatus(orderId, destinationConnectionId, {
+            destinationConnectionId,
+            status: 'failed',
+            error:
+              outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
+          });
+        } catch (error) {
+          this.logger.warn(
+            `Could not record failed sync status for order ${orderId} on destination ${destinationConnectionId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+      })
+    );
+  }
+
+  private isDeferrableByPlugin(cause: unknown): boolean {
+    return (
+      !this.retryClassifierRegistry.isNonRetryable(cause) &&
+      this.retryClassifierRegistry.resolveRetryDeferral(cause) !== null
+    );
   }
 
   /**
@@ -536,9 +678,9 @@ export class OrderSyncService implements IOrderSyncService {
    */
   private async consumeHoldsAbsorbedByDestinations(
     order: OrderSyncRequest['order'],
-    settled: ReadonlyArray<PromiseSettledResult<SettledDestination>>
+    settled: ReadonlyArray<PromiseSettledResult<SettledDestination>>,
+    productIds: readonly string[]
   ): Promise<void> {
-    const productIds = order.items.map((item) => item.productId);
     for (const outcome of settled) {
       if (outcome.status !== 'fulfilled') continue;
       const { connectionId, created, lowersStock } = outcome.value;
@@ -596,6 +738,100 @@ export class OrderSyncService implements IOrderSyncService {
           `${destinationConnectionId} (destination order: ${orderRef.orderId}): ` +
           `${error instanceof Error ? error.message : String(error)}`
       );
+    }
+  }
+
+  /**
+   * Carry a changed delivery point or shipping method to a destination that
+   * already holds the order (`OrderDeliveryUpdater`, #4195).
+   *
+   * Idempotent on the VALUE: the digest of what the copy was last given is kept
+   * on its sync status and compared with the order's current one, so the same
+   * change re-ingested by a poll and a webhook is relayed once. Where no digest
+   * was ever stored (a copy created before the relay existed) the current value
+   * is recorded as the baseline and nothing is relayed: what the copy holds is
+   * unknown, and editing every historical order on first sight would touch
+   * orders nobody changed.
+   *
+   * Never throws: the order is already at the destination. A refusal (the copy
+   * is fulfilled, closed or cancelled) and a destination without the
+   * capability are recorded with their reason and their digest, since asking
+   * again cannot change the answer. A failed call keeps the OLD digest so the
+   * next re-ingestion tries again.
+   */
+  private async relayDeliveryChange(
+    adapter: OrderProcessorManagerPort,
+    destinationConnectionId: string,
+    internalOrderId: string,
+    orderRef: OrderRef,
+    orderCreate: OrderCreate,
+    previous: OrderSyncStatus | undefined
+  ): Promise<DeliveryRelayOutcome> {
+    const current = computeDeliveryFingerprint(orderCreate);
+    const stored = previous?.deliveryFingerprint;
+    if (stored === undefined) {
+      return { fingerprint: current, report: previous?.deliveryUpdate };
+    }
+    if (stored === current) {
+      return { fingerprint: current, report: previous?.deliveryUpdate };
+    }
+
+    const at = new Date();
+    if (!isOrderDeliveryUpdater(adapter)) {
+      this.logger.warn(
+        `Delivery point of order ${internalOrderId} changed at the source, but destination ` +
+          `${destinationConnectionId} cannot edit an order after create; its copy keeps the old one`
+      );
+      return {
+        fingerprint: current,
+        report: {
+          outcome: 'unsupported',
+          detail: 'The destination cannot edit an order after it is created',
+          at,
+        },
+      };
+    }
+
+    try {
+      const result = await adapter.updateOrderDelivery({
+        externalOrderId: orderRef.orderId,
+        order: orderCreate,
+      });
+      if (result.outcome === 'refused') {
+        this.logger.warn(
+          `Destination ${destinationConnectionId} refused the new delivery point of order ` +
+            `${internalOrderId} (destination order ${orderRef.orderId}): ${result.reason}` +
+            `${result.detail ? ` - ${result.detail}` : ''}`
+        );
+        return {
+          fingerprint: current,
+          report: {
+            outcome: 'refused',
+            reason: result.reason,
+            ...(result.detail ? { detail: result.detail } : {}),
+            at,
+          },
+        };
+      }
+      this.logger.log(
+        `Delivery point of order ${internalOrderId} ${result.outcome} at destination ` +
+          `${destinationConnectionId} (destination order ${orderRef.orderId})`
+      );
+      return {
+        fingerprint: current,
+        report: {
+          outcome: result.outcome,
+          ...(result.outcome === 'updated' && result.detail ? { detail: result.detail } : {}),
+          at,
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Could not update the delivery point of order ${internalOrderId} at destination ` +
+          `${destinationConnectionId} (destination order ${orderRef.orderId}): ${message}`
+      );
+      return { fingerprint: stored, report: { outcome: 'failed', detail: message, at } };
     }
   }
 

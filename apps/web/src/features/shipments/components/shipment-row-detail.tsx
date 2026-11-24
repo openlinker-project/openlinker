@@ -65,6 +65,8 @@ import { buildCarrierTrackingUrl, getCarrierDisplayName } from '../lib/carrier-t
 import { resolveLabelDownloadError } from '../lib/label-download-error';
 import { deriveRetryabilityClass, RETRYABILITY_LABEL } from '../lib/shipment-retryability';
 import { useCancelShipmentMutation } from '../hooks/use-cancel-shipment-mutation';
+import { canRetryCancelShipment, classifyCancelShipmentError } from '../lib/cancel-shipment-error';
+import { CancelShipmentErrorAlert } from './cancel-shipment-error-alert';
 import { useLabelDownload } from '../hooks/use-label-download';
 import { useNotifyDispatchedMutation } from '../hooks/use-notify-dispatched-mutation';
 
@@ -359,7 +361,11 @@ export function ShipmentRowDetail({
 
       <ConfirmDialog
         open={cancelDialogOpen}
-        onOpenChange={setCancelDialogOpen}
+        onOpenChange={(open) => {
+          setCancelDialogOpen(open);
+          // A failure belongs to one attempt: reopening starts clean.
+          if (!open) cancelMutation.reset();
+        }}
         title={copy.cancelDialog.title}
         description={
           <>
@@ -372,10 +378,19 @@ export function ShipmentRowDetail({
             ) : null}
           </>
         }
+        body={
+          cancelMutation.isError ? (
+            <CancelShipmentErrorAlert error={cancelMutation.error} />
+          ) : undefined
+        }
         confirmLabel={cancelMutation.isPending ? copy.cancelDialog.cancelling : copy.cancelDialog.confirm}
         cancelLabel={copy.cancelDialog.cancelLabel}
         tone="danger"
         isConfirming={cancelMutation.isPending}
+        confirmDisabled={
+          cancelMutation.isError &&
+          !canRetryCancelShipment(classifyCancelShipmentError(cancelMutation.error))
+        }
         onConfirm={() => {
           cancelMutation.mutate(shipment.id, {
             onSuccess: () => setCancelDialogOpen(false),

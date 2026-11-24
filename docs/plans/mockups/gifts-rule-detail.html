@@ -1,0 +1,200 @@
+<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gratisy: szczegóły promocji</title><style>:root{
+--font-sans:'IBM Plex Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
+--font-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+--bg-canvas:oklch(99% 0.003 80);--bg-shell:oklch(97.5% 0.004 80);--bg-surface:#fff;--bg-muted:oklch(96% 0.005 80);--bg-surface-hover:oklch(93% 0.006 80);--bg-strong:oklch(93% 0.006 80);
+--border-subtle:oklch(93.5% 0.006 80);--border-default:oklch(88% 0.008 80);--border-strong:oklch(78% 0.010 80);
+--text-primary:oklch(20% 0.012 80);--text-secondary:oklch(38% 0.010 80);--text-muted:oklch(52% 0.008 80);--text-on-primary:oklch(18% 0.012 50);--text-link:oklch(50% 0.14 250);
+--accent-primary:oklch(68% 0.18 50);--accent-primary-hover:oklch(62% 0.19 50);--accent-primary-active:oklch(56% 0.20 50);--accent-primary-soft:oklch(96% 0.04 60);--accent-primary-border:oklch(85% 0.10 55);--accent-ring:oklch(68% 0.18 50 / .30);
+--status-success-soft:oklch(96% 0.04 150);--status-success-border:oklch(85% 0.08 150);--status-success-fg:oklch(36% 0.12 150);--status-success:oklch(54% 0.14 150);
+--status-warning-soft:oklch(96% 0.05 85);--status-warning-border:oklch(85% 0.10 85);--status-warning-fg:oklch(42% 0.12 80);
+--status-error-soft:oklch(96% 0.04 25);--status-error-border:oklch(85% 0.10 25);--status-error-fg:oklch(42% 0.16 25);--status-error:oklch(58% 0.20 25);
+--status-info-soft:oklch(96% 0.03 245);--status-info-border:oklch(85% 0.08 245);--status-info-fg:oklch(40% 0.12 245);
+--status-disabled-soft:oklch(95% 0.005 80);--status-disabled-border:oklch(85% 0.008 80);--status-disabled-fg:oklch(38% 0.010 80);
+--channel-allegro:oklch(70% 0.18 35);--channel-prestashop:oklch(60% 0.18 250);--channel-erli:oklch(66% 0.17 320);--channel-woocommerce:oklch(64% 0.16 150);
+--shadow-xs:0 1px 2px rgb(15 18 26/.04);--shadow-sm:0 1px 2px rgb(15 18 26/.04),0 1px 3px rgb(15 18 26/.06);--shadow-md:0 2px 4px rgb(15 18 26/.04),0 6px 16px rgb(15 18 26/.08);--shadow-focus:0 0 0 3px var(--accent-ring);--shadow-inset-top:inset 0 1px 0 rgb(255 255 255/.6);
+--space-1:.25rem;--space-2:.5rem;--space-3:.75rem;--space-4:1rem;--space-5:1.5rem;--space-6:2rem;
+--radius-sm:6px;--radius-md:8px;--radius-lg:10px;--tracking-tight:-.012em;
+font-family:var(--font-sans);line-height:1.5;color:var(--text-primary);background:var(--bg-canvas);-webkit-font-smoothing:antialiased;font-feature-settings:'cv11','ss01'}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-canvas)}
+.shell{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+.sidebar{background:var(--bg-shell);border-right:1px solid var(--border-subtle);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-1)}
+.brand{display:flex;align-items:center;gap:var(--space-2);font-weight:600;margin-bottom:var(--space-4)}
+.brand i{width:22px;height:22px;border-radius:6px;background:var(--accent-primary);display:block}
+.nav-label{font-size:.75rem;color:var(--text-muted);margin:var(--space-3) var(--space-2) var(--space-1)}
+.nav a{display:block;padding:6px var(--space-2);border-radius:var(--radius-sm);font-size:.8125rem;color:var(--text-secondary);text-decoration:none}
+.nav a.active{background:var(--bg-surface);color:var(--text-primary);font-weight:500;box-shadow:var(--shadow-xs);border:1px solid var(--border-subtle)}
+.content{padding:var(--space-5) var(--space-6);display:grid;gap:var(--space-5);align-content:start;min-width:0;max-width:1240px;width:100%}
+@media(max-width:1023.98px){.shell{grid-template-columns:1fr}.sidebar{display:none}.content{padding:var(--space-4)}}
+a{color:var(--text-link)}
+:focus-visible{outline:none;box-shadow:var(--shadow-focus)}
+.back-link{display:inline-flex;gap:.375rem;font-size:.8125rem;color:var(--text-muted);text-decoration:none;padding:.25rem 0}
+.back-link:hover{color:var(--text-primary)}
+.page-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--space-4);align-items:start}
+.page-header__content{display:grid;gap:.45rem}
+.eyebrow{margin:0;font-size:.76rem;font-weight:600;color:var(--accent-primary-hover)}
+h1{margin:0;font-size:1.5rem;line-height:1.25;font-weight:600;letter-spacing:var(--tracking-tight);display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap}
+.lead{margin:0;color:var(--text-secondary);font-size:.875rem;max-width:62ch}
+.page-header__actions{display:flex;gap:var(--space-2);align-items:center}
+@media(max-width:767.98px){.page-header{grid-template-columns:1fr}.page-header__actions{flex-wrap:wrap}}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);border:1px solid var(--accent-primary-border);border-radius:var(--radius-md);padding:0 var(--space-4);height:2rem;background:var(--accent-primary);color:var(--text-on-primary);font:500 .8125rem var(--font-sans);cursor:pointer;text-decoration:none;white-space:nowrap;box-shadow:var(--shadow-xs),var(--shadow-inset-top)}
+.button:hover{background:var(--accent-primary-hover)}
+.button--secondary{border-color:var(--border-default);background:var(--bg-surface);color:var(--text-primary)}
+.button--secondary:hover{background:var(--bg-muted);border-color:var(--border-strong)}
+.button--ghost{border-color:transparent;background:transparent;box-shadow:none;color:var(--text-secondary)}
+.button--ghost:hover{background:var(--bg-muted)}
+.button--icon{width:2rem;padding:0}
+.button--sm{height:1.75rem;padding:0 var(--space-3)}
+.status-badge{display:inline-flex;align-items:center;gap:var(--space-2);padding:2px var(--space-2);border:1px solid var(--status-disabled-border);border-radius:var(--radius-sm);background:var(--status-disabled-soft);color:var(--status-disabled-fg);font:500 .75rem/1.5 var(--font-sans);white-space:nowrap}
+.status-badge i{width:.375rem;height:.375rem;border-radius:99px;background:currentColor;opacity:.75}
+.status-badge--success{border-color:var(--status-success-border);background:var(--status-success-soft);color:var(--status-success-fg)}
+.status-badge--warning{border-color:var(--status-warning-border);background:var(--status-warning-soft);color:var(--status-warning-fg)}
+.status-badge--error{border-color:var(--status-error-border);background:var(--status-error-soft);color:var(--status-error-fg)}
+.status-badge--info{border-color:var(--status-info-border);background:var(--status-info-soft);color:var(--status-info-fg)}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3)}
+@media(max-width:1023.98px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi-card{display:flex;flex-direction:column;gap:var(--space-1);padding:var(--space-3) var(--space-4);background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);box-shadow:var(--shadow-xs);min-height:5.25rem;position:relative}
+.kpi-card::before{content:"";position:absolute;left:12px;right:12px;top:0;height:2px;background:var(--accent-primary);border-radius:0 0 2px 2px;opacity:.7}
+.kpi-card__label{font-size:.75rem;color:var(--text-muted)}
+.kpi-card__value{font-size:1.5rem;line-height:1.1;font-weight:600;letter-spacing:var(--tracking-tight);font-variant-numeric:tabular-nums}
+.kpi-card__value small{font-size:.8125rem;font-weight:500;color:var(--text-muted)}
+.kpi-card__desc{font-size:.75rem;color:var(--text-secondary)}
+.detail-card{min-width:0;padding:1.25rem var(--space-5);border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--bg-surface);box-shadow:var(--shadow-xs)}
+.detail-card__head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--space-3);margin-bottom:var(--space-3)}
+.detail-card__title{margin:0;font-size:.875rem;font-weight:600;color:var(--text-primary)}
+.detail-card__aside{font-size:.75rem;color:var(--text-muted)}
+@media(max-width:479.98px){.detail-card{padding:var(--space-4)}}
+.form-field{display:grid;gap:var(--space-2)}
+.form-field__label{font-size:.8125rem;font-weight:500}
+.form-field__description{margin:0;color:var(--text-muted);font-size:.75rem}
+.form-field__error{margin:0;color:var(--status-error-fg);font-size:.75rem;display:flex;gap:6px;align-items:center}
+input[type=text],input[type=date],select,input[type=number]{height:2rem;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);padding:0 var(--space-3);font:400 .8125rem var(--font-sans);color:var(--text-primary);width:100%;min-width:0}
+input.is-invalid{border-color:var(--status-error);}
+.row2{align-items:start;display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}
+@media(max-width:479.98px){.row2{grid-template-columns:1fr}}
+.thumb{width:2rem;height:2rem;border-radius:var(--radius-sm);border:1px solid var(--border-subtle);display:grid;place-items:center;font-size:.6875rem;font-weight:600;color:var(--text-secondary);flex:none;background:var(--bg-muted)}
+.thumb--lg{width:3rem;height:3rem;border-radius:var(--radius-md);font-size:.8125rem}
+.t1{background:oklch(94% 0.04 60)}.t2{background:oklch(94% 0.04 150)}.t3{background:oklch(94% 0.04 245)}.t4{background:oklch(94% 0.04 320)}.t5{background:oklch(94% 0.04 85)}
+.muted{color:var(--text-muted)}.small{font-size:.75rem}
+.bar{height:4px;border-radius:99px;background:var(--bg-strong);overflow:hidden}
+.bar>span{display:block;height:100%;background:var(--accent-primary);border-radius:99px}
+.bar--warn>span{background:oklch(72% 0.16 85)}
+.menu{position:relative}
+.menu summary{list-style:none;cursor:pointer}
+.menu summary::-webkit-details-marker{display:none}
+.menu__list{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:11rem;background:var(--bg-surface);border:1px solid var(--border-default);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:var(--space-1);display:grid}
+.menu__list button{all:unset;box-sizing:border-box;padding:6px var(--space-2);border-radius:var(--radius-sm);font-size:.8125rem;cursor:pointer}
+.menu__list button:hover,.menu__list button:focus-visible{background:var(--bg-muted)}
+.menu__list .danger{color:var(--status-error-fg)}
+.menu__list hr{border:0;border-top:1px solid var(--border-subtle);margin:var(--space-1) 0;width:100%}
+
+.layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:var(--space-5);align-items:start}
+@media(max-width:1023.98px){.layout{grid-template-columns:1fr}}
+.stack{display:grid;gap:var(--space-4);min-width:0}
+.seg{display:flex;width:100%;border:1px solid var(--border-default);border-radius:var(--radius-md);padding:2px;background:var(--bg-muted);gap:2px;margin-bottom:var(--space-3)}
+.seg button{all:unset;box-sizing:border-box;flex:1;text-align:center;white-space:nowrap;cursor:pointer;padding:4px var(--space-3);border-radius:6px;font-size:.8125rem;color:var(--text-secondary)}
+.seg button[aria-pressed=true]{background:var(--bg-surface);color:var(--text-primary);font-weight:500;box-shadow:var(--shadow-xs)}
+.seg button:focus-visible{box-shadow:var(--shadow-focus)}
+.picker{display:flex;gap:var(--space-3);align-items:center;padding:var(--space-3);border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-shell)}
+.picker__body{flex:1;min-width:0}.picker__name{font-weight:500}
+.cost{display:flex;gap:var(--space-2);align-items:center;font-size:.8125rem;color:var(--text-secondary);margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--border-subtle);flex-wrap:wrap}
+.cost b{color:var(--text-primary);font-weight:600}
+.checks{display:grid;gap:0}
+.check{display:flex;align-items:center;gap:var(--space-3);min-height:36px;padding:0 var(--space-1);border-top:1px solid var(--border-subtle);font-size:.8125rem}
+.check:first-child{border-top:0}
+.check input{width:16px;height:16px;accent-color:var(--accent-primary)}
+.check label{flex:1;display:flex;gap:var(--space-2);align-items:center;cursor:pointer}
+.dot{width:8px;height:8px;border-radius:99px;display:inline-block}
+.disc{border:1px solid var(--border-subtle);border-radius:var(--radius-md);background:var(--bg-shell)}
+.disc summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:var(--space-3);padding:0 var(--space-3);min-height:40px;font-size:.8125rem}
+.disc summary::-webkit-details-marker{display:none}
+.disc summary .chev{transition:transform 120ms;color:var(--text-muted)}
+.disc[open] summary .chev{transform:rotate(90deg)}
+.disc summary b{font-weight:500}.disc summary span.sum{color:var(--text-muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.disc__body{padding:var(--space-3);display:grid;gap:var(--space-3);border-top:1px solid var(--border-subtle);background:var(--bg-surface);border-radius:0 0 var(--radius-md) var(--radius-md)}
+.switch{display:flex;gap:var(--space-3);align-items:flex-start;font-size:.8125rem}.switch input{margin-top:3px;accent-color:var(--accent-primary);width:16px;height:16px}
+.switch small{display:block;color:var(--text-muted);font-size:.75rem}
+.sentence{margin:0;font-size:.875rem;line-height:1.6}
+.results{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-3);margin-top:var(--space-4)}
+.results div span{display:block;font-size:.75rem;color:var(--text-muted)}.results div b{font-size:1.125rem;font-variant-numeric:tabular-nums}
+.tabpanel{min-height:280px}
+.tabpanel[hidden]{display:none}
+.verdicts{display:grid;margin-top:var(--space-3)}
+.verdict{display:grid;gap:2px;padding:var(--space-2) 0;border-top:1px solid var(--border-subtle);font-size:.8125rem}
+.verdict__top{display:flex;justify-content:space-between;gap:var(--space-2);align-items:center}
+.run{display:grid;grid-template-columns:auto 1fr auto;gap:var(--space-3);align-items:center;min-height:44px;border-top:1px solid var(--border-subtle);font-size:.8125rem}
+.run:first-child{border-top:0}
+.inline{display:flex;gap:var(--space-2)}
+.inline input{flex:1}
+.hint{display:flex;gap:6px;align-items:flex-start}
+</style></head><body><div class="shell"><aside class="sidebar"><div class="brand"><i></i>OpenLinker</div><nav class="nav">
+<div class="nav-label">Sprzedaż</div><a href="#">Zamówienia</a><a href="#">Produkty</a><a href="#">Oferty</a>
+<div class="nav-label">Automatyzacje</div><a href="#">Reguły</a><a class="active" href="#">Gratisy</a><a href="#">Zadania</a>
+<div class="nav-label">Ustawienia</div><a href="#">Połączenia</a></nav></aside><main class="content">
+<a class="back-link" href="gifts-list.html">← Promocje z gratisem</a>
+<header class="page-header"><div class="page-header__content"><h1>Kubek przy zakupach od 200 zł <span class="status-badge status-badge--success"><i></i>Aktywna</span></h1><p class="lead">Zmiana działa od teraz. Zamówienia już złożone zostają przy swoim gratisie.</p></div>
+<div class="page-header__actions"><button class="button button--secondary" type="button">Wstrzymaj</button><button class="button" type="button">Zapisz zmiany</button>
+<details class="menu"><summary class="button button--secondary button--icon" aria-label="Więcej działań">⋯</summary><div class="menu__list"><button>Kopiuj</button><hr><button class="danger">Usuń</button></div></details></div></header>
+<div class="layout">
+<div class="stack">
+<section class="detail-card"><div class="detail-card__head"><h2 class="detail-card__title">Kiedy</h2></div>
+<div class="seg" role="group" aria-label="Warunek promocji"><button type="button" aria-pressed="true">Koszyk od kwoty</button><button type="button" aria-pressed="false">Zawiera produkt</button></div>
+<div class="row2"><div class="form-field"><label class="form-field__label" for="amt">Zamówienie od</label><input id="amt" type="text" value="200,00"></div>
+<div class="form-field"><label class="form-field__label" for="cur">Waluta</label><select id="cur"><option>PLN</option><option>EUR</option></select></div></div>
+<p class="form-field__description" style="margin-top:var(--space-2)">Liczy się kwota, którą zapłacił klient, bez dostawy.</p></section>
+
+<section class="detail-card"><div class="detail-card__head"><h2 class="detail-card__title">Gratis</h2></div>
+<div class="picker"><span class="thumb thumb--lg t3">KU</span><div class="picker__body"><div class="picker__name">Kubek ceramiczny 300 ml</div><div class="small muted">SKU KUB-300-BIA · na stanie 212 szt.</div></div><button class="button button--secondary button--sm" type="button">Zmień</button></div>
+<div class="row2" style="margin-top:var(--space-3)"><div class="form-field"><label class="form-field__label" for="qty">Ilość</label><input id="qty" type="number" value="1" min="1"></div><div></div></div>
+<div class="cost"><span>Klient płaci <b>0,00 zł</b></span><span class="muted">·</span><span>Kosztuje Cię <b>4,20 zł</b> za sztukę</span></div></section>
+
+<section class="detail-card"><div class="detail-card__head"><h2 class="detail-card__title">Kanały</h2><span class="detail-card__aside">2 z 4</span></div>
+<div class="checks" role="group" aria-label="Kanały">
+<div class="check"><input type="checkbox" id="c1" checked><label for="c1"><span class="dot" style="background:var(--channel-allegro)"></span>Allegro główne <span class="muted small">Allegro</span></label></div>
+<div class="check"><input type="checkbox" id="c2" checked><label for="c2"><span class="dot" style="background:var(--channel-prestashop)"></span>Sklep kawowy <span class="muted small">PrestaShop</span></label></div>
+<div class="check"><input type="checkbox" id="c3"><label for="c3"><span class="dot" style="background:var(--channel-woocommerce)"></span>Sklep herbaciany <span class="muted small">WooCommerce</span></label></div>
+<div class="check"><input type="checkbox" id="c4"><label for="c4"><span class="dot" style="background:var(--channel-erli)"></span>Erli outlet <span class="muted small">Erli</span></label></div></div></section>
+
+<section class="detail-card"><div class="detail-card__head"><h2 class="detail-card__title">Okres</h2></div>
+<div class="row2"><div class="form-field"><label class="form-field__label" for="from">Od</label><input id="from" type="date" value="2026-10-01"></div><div class="form-field"><label class="form-field__label" for="to">Do (opcjonalnie)</label><input id="to" type="date" value="2026-09-15" class="is-invalid" aria-describedby="to-err"><p class="form-field__error" id="to-err" role="alert"><span aria-hidden="true">⚠</span>Data końca musi być po dacie początku.</p></div></div>
+<p class="form-field__description" style="margin-top:var(--space-2)">Liczy się data złożenia zamówienia. Promocja nie działa wstecz.</p></section>
+
+<section class="detail-card"><div class="detail-card__head"><h2 class="detail-card__title">Limity i dokumenty</h2></div>
+<div class="row2"><div class="form-field"><label class="form-field__label" for="cap">Limit sztuk w całej promocji</label><input id="cap" type="number" value="100"></div>
+<div class="form-field"><label class="form-field__label" for="form">Na dokumencie</label><select id="form"><option>Jak zwykła pozycja</option><option>Pozycja za 0,00 zł</option></select></div></div>
+<details class="disc" style="margin-top:var(--space-3)"><summary><span class="chev" aria-hidden="true">▸</span><b>Więcej opcji</b><span class="sum">Nie łączy się z innymi · pomija, gdy gratis już jest · 1 na klienta</span></summary>
+<div class="disc__body">
+<label class="switch"><input type="checkbox" checked><span>Nie łącz z innymi promocjami<small>Promocje pod tą nie zadziałają, gdy ta zadziała.</small></span></label>
+<label class="switch"><input type="checkbox" checked><span>Pomiń, jeśli produkt jest już w zamówieniu<small>Także jako składnik zestawu.</small></span></label>
+<div class="form-field"><label class="form-field__label" for="cl">Najwyżej na klienta</label><input id="cl" type="number" value="1"></div></div></details></section>
+</div>
+
+<aside class="stack">
+<section class="detail-card"><div class="detail-card__head"><h2 class="detail-card__title">Podsumowanie</h2></div>
+<p class="sentence">Gdy zamówienie z Allegro lub PrestaShop ma wartość od <b>200,00 zł</b>, dodajemy <b>1 szt.</b> kubka ceramicznego. Limit to 100 szt., promocja nie łączy się z innymi.</p></section>
+
+<section class="detail-card"><div class="detail-card__head"><h2 class="detail-card__title">Wyniki</h2><span class="detail-card__aside">ostatnie 30 dni</span></div>
+<div style="display:flex;justify-content:space-between;font-size:.8125rem;margin-bottom:6px"><span>Wydano</span><span><b>34</b> <span class="muted">/ 100 szt.</span></span></div>
+<div class="bar" role="progressbar" aria-valuenow="34" aria-valuemin="0" aria-valuemax="100" aria-label="Wydane gratisy"><span style="width:34%"></span></div>
+<div class="results"><div><span>Zamówienia</span><b>34</b></div><div><span>Koszt</span><b>143 zł</b></div><div><span>Średnio</span><b>4,20 zł</b></div></div></section>
+
+<section class="detail-card"><div class="seg" role="tablist" aria-label="Test i historia">
+<button type="button" role="tab" id="tab-test" aria-controls="p-test" aria-pressed="true">Test na zamówieniu</button><button type="button" role="tab" id="tab-hist" aria-controls="p-hist" aria-pressed="false">Uruchomienia</button></div>
+<div class="tabpanel" id="p-test" role="tabpanel" aria-labelledby="tab-test">
+<p class="form-field__description" style="margin-bottom:var(--space-3)">Pokazuje, które promocje dodałyby gratis do tego zamówienia i dlaczego pozostałe nie. Nic się nie zapisuje.</p>
+<div class="inline"><label class="form-field__label" style="position:absolute;left:-9999px" for="ord">Zamówienie</label><input id="ord" type="text" value="ol_order_8f2c41" placeholder="Id zamówienia (ol_order_...)"><button class="button button--secondary" type="button">Sprawdź</button></div>
+<div class="verdicts" aria-live="polite">
+<div class="verdict"><div class="verdict__top"><b>Ta promocja</b><span class="status-badge status-badge--success"><i></i>Doda 1 szt.</span></div><span class="muted small">Zamówienie ma 236,40 zł.</span></div>
+<div class="verdict"><div class="verdict__top"><span>Próbka kawy od 150 zł</span><span class="status-badge status-badge--warning"><i></i>Pominięta</span></div><span class="muted small">Wyższa promocja, która nie łączy się z innymi, już zadziałała.</span></div>
+<div class="verdict"><div class="verdict__top"><span>Herbata od 120 zł</span><span class="status-badge"><i></i>Nie dotyczy</span></div><span class="muted small">Zamówienie nie spełnia warunków.</span></div></div></div>
+<div class="tabpanel" id="p-hist" role="tabpanel" aria-labelledby="tab-hist" hidden>
+<div class="run"><span class="status-badge status-badge--success"><i></i>Dodano</span><span>Zamówienie #AL-20418</span><span class="muted small">dziś, 14:12</span></div>
+<div class="run"><span class="status-badge status-badge--success"><i></i>Dodano</span><span>Zamówienie #PS-7741</span><span class="muted small">dziś, 11:40</span></div>
+<div class="run"><span class="status-badge"><i></i>Pominięto</span><span>Zamówienie #AL-20397 <span class="muted small">klient dostał już gratis</span></span><span class="muted small">wczoraj, 19:03</span></div>
+<div class="run"><span class="status-badge status-badge--error"><i></i>Błąd</span><span>Zamówienie #PS-7702 <span class="muted small">nie znamy stanu gratisu</span></span><span class="muted small">wczoraj, 08:51</span></div></div>
+</section>
+</aside></div></main></div>
+<script>
+const t=[['tab-test','p-test'],['tab-hist','p-hist']];
+t.forEach(([b,p])=>document.getElementById(b).addEventListener('click',()=>{t.forEach(([b2,p2])=>{document.getElementById(b2).setAttribute('aria-pressed',b2===b);document.getElementById(p2).hidden=p2!==p})}));
+</script></body></html>

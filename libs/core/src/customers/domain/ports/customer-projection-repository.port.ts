@@ -29,6 +29,11 @@ export interface CustomerProjectionRepositoryPort {
   findById(internalCustomerId: string): Promise<CustomerProjection | null>;
 
   /**
+   * Find projections for many internal ids in one read; ids with no projection are absent.
+   */
+  findByIds(internalCustomerIds: readonly string[]): Promise<CustomerProjection[]>;
+
+  /**
    * Find customer projections by email hash
    * Returns array to support collision detection (0, 1, or >1 matches)
    */

@@ -7,7 +7,6 @@
  * @module apps/api/src/login-page-settings/http
  */
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -25,6 +24,7 @@ import {
   type ILoginPageSettingsService,
 } from '@openlinker/core/login-page-settings';
 import { AuthenticatedUser } from '../../auth/auth.types';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { LoginPageSettingsResponseDto } from './dto/login-page-settings-response.dto';
@@ -74,7 +74,9 @@ export class LoginPageSettingsController {
       );
     } catch (error) {
       if (error instanceof InvalidLoginPageSettingError) {
-        throw new BadRequestException(error.message);
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'LOGIN_PAGE_SETTING_INVALID', error.message, {
+          field: error.field,
+        });
       }
       throw error;
     }

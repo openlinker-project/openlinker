@@ -45,6 +45,7 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const STEP_COUNT = 5;
 
@@ -112,8 +113,8 @@ export function AllegroSetupForm(): ReactElement {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty]);
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : []
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : []
   );
 
   async function goNext(): Promise<void> {
@@ -208,7 +209,7 @@ export function AllegroSetupForm(): ReactElement {
         ) : null}
         {startOAuth.error ? (
           <Alert tone="error" title={copy.startFailed}>
-            {startOAuth.error.message}
+            {describeApiError(startOAuth.error, 'allegro-core')}
           </Alert>
         ) : null}
 

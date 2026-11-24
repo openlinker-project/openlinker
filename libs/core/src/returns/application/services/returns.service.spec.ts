@@ -42,6 +42,7 @@ describe('ReturnsService', () => {
     countReturnsByBucket: jest.Mock;
     claimAttribution: jest.Mock;
     claimOrderLineResolution: jest.Mock;
+    findLine: jest.Mock;
     backfillResolvedCatalogIdentity: jest.Mock;
   };
   let identifierMapping: {
@@ -74,6 +75,7 @@ describe('ReturnsService', () => {
       countReturnsByBucket: jest.fn().mockResolvedValue({ total: 0, orphan: 0, attributed: 0 }),
       claimAttribution: jest.fn().mockResolvedValue(true),
       claimOrderLineResolution: jest.fn().mockResolvedValue(true),
+      findLine: jest.fn(),
       backfillResolvedCatalogIdentity: jest.fn().mockResolvedValue(true),
     };
     identifierMapping = {
@@ -920,6 +922,57 @@ describe('ReturnsService', () => {
         expect(summary.skipped).toBeNull();
         expect(summary.resolved).toBe(1);
       });
+    });
+  });
+
+  describe('suggest / confirm an order line for a return line (#3933)', () => {
+    const orderLines = [
+      { id: 'l1', quantity: 1, price: 100, sku: 'KUB', productId: 'p', variantId: 'v1' },
+      { id: 'l2', quantity: 1, price: 80, sku: 'KUB', productId: 'p', variantId: 'v1' },
+    ];
+    const found = {
+      line: { id: 'rl-1', lineIndex: 0, sku: 'KUB', offerId: null, resolvedOrderLineId: null },
+      record: { rawPayload: null },
+    };
+
+    it('should suggest a candidate without writing anything', async () => {
+      repository.findLine.mockResolvedValue(found);
+
+      const result = await service.suggestOrderLineForReturnLine('rl-1', orderLines);
+
+      expect(result.candidates).toHaveLength(2);
+      expect(result.suggestedOrderLineId).toBe('l1');
+      expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+    });
+
+    it('should claim the confirmed line through the fill-in-when-empty claim', async () => {
+      repository.findLine.mockResolvedValue(found);
+
+      await expect(
+        service.confirmOrderLineForReturnLine('rl-1', 'l2', orderLines)
+      ).resolves.toEqual({ claimed: true, known: true });
+      expect(repository.claimOrderLineResolution).toHaveBeenCalledWith('rl-1', 'l2', {
+        productId: 'p',
+        variantId: 'v1',
+      });
+    });
+
+    it('should refuse a line that is not on the order without claiming', async () => {
+      repository.findLine.mockResolvedValue(found);
+
+      await expect(
+        service.confirmOrderLineForReturnLine('rl-1', 'zzz', orderLines)
+      ).resolves.toEqual({ claimed: false, known: false });
+      expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+    });
+
+    it('should report claimed false when the line was already resolved', async () => {
+      repository.findLine.mockResolvedValue(found);
+      repository.claimOrderLineResolution.mockResolvedValue(false);
+
+      await expect(
+        service.confirmOrderLineForReturnLine('rl-1', 'l1', orderLines)
+      ).resolves.toEqual({ claimed: false, known: true });
     });
   });
 });

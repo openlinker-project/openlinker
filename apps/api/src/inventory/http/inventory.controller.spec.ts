@@ -308,6 +308,7 @@ describe('InventoryController', () => {
                 rule: { stockSafetyBuffer: 1, stockZeroThreshold: 0 },
                 willPublish: { quantity: null, provenance: 'unknown' },
                 channelShows: { quantity: null, observedAt: null },
+                lastSent: null,
               },
             ],
           },

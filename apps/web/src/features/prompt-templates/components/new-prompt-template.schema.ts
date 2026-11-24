@@ -132,6 +132,7 @@ export function useNewPromptTemplateSchema(): z.ZodType<
             code: z.ZodIssueCode.custom,
             path: ['variablesJson'],
             message: interpolate(copy.invalidJson, {
+              // eslint-disable-next-line no-restricted-syntax -- a local JSON.parse error, not an API error
               error: err instanceof Error ? err.message : copy.parseError,
             }),
           });

@@ -7,6 +7,7 @@ import {
   createAuthenticatedSessionAdapter,
 } from '../../../test/test-utils';
 import { ConnectionActionsPanel } from './ConnectionActionsPanel';
+import { getMessages } from '../../../shared/i18n';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../demo', () => ({
@@ -143,7 +144,7 @@ describe('ConnectionActionsPanel', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
 
     expect(await screen.findByText('Unable to enable connection')).toBeInTheDocument();
-    expect(screen.getByText('Connection is locked by another job')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
     expect(screen.queryByText('Connection enabled')).not.toBeInTheDocument();
   });
 
@@ -175,7 +176,7 @@ describe('ConnectionActionsPanel', () => {
   });
 
   it('renders no plugin-specific actions for an unregistered platformType', async () => {
-    const unknownConnection = { ...sampleConnection, platformType: 'shopify' };
+    const unknownConnection = { ...sampleConnection, platformType: 'unregistered-platform' };
     renderWithProviders(<ConnectionActionsPanel connection={unknownConnection} />, adminSession);
     expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /configure webhooks/i })).not.toBeInTheDocument();

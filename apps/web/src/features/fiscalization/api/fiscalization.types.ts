@@ -14,6 +14,15 @@ export type FiscalRegistrationStatus = (typeof FiscalRegistrationStatusValues)[n
 
 export type FiscalRegistrationFailureMode = 'rejected' | 'in-doubt';
 
+/** Mirrors core `DocumentRequestOutcomeValues` (#3960). */
+export const FiscalRegistrationRequestOutcomeValues = [
+  'new-attempt',
+  'joined',
+  'redriven',
+  'resumed',
+] as const;
+export type FiscalRegistrationRequestOutcome = (typeof FiscalRegistrationRequestOutcomeValues)[number];
+
 export type FiscalArtefactMedium = 'document' | 'markup' | 'code' | 'link' | 'text';
 
 export type FiscalArtefactDisposition = 'print' | 'display' | 'send' | 'retain';
@@ -32,6 +41,10 @@ export interface FiscalRegistrationRecord {
   orderId: string;
   providerType: string;
   idempotencyKey: string;
+  /** 0-based attempt at this (connection, order) receipt (#3960). */
+  attempt: number;
+  /** The refused attempt this one follows, or `null` (#3960). */
+  previousAttemptId: string | null;
   status: FiscalRegistrationStatus;
   providerReference: string | null;
   documentReference: string | null;
@@ -93,13 +106,22 @@ export interface ReconcileFiscalRegistrationResult {
  *
  * The answer to asking for a registration. It carries no status and no record,
  * because when it is sent a job exists and no provider has been called. Nothing
- * may read an outcome out of it.
+ * may read the registration's outcome out of it; `outcome` describes only what
+ * the request did.
  */
 export interface AcceptedFiscalRegistration {
   orderId: string;
   connectionId: string;
   idempotencyKey: string;
   jobId: string;
+  /**
+   * What the request did (#3960). A request that would do nothing is refused
+   * with 409, so none of these means "nothing happened".
+   */
+  outcome: FiscalRegistrationRequestOutcome;
+  /** 0-based attempt the request works on (#3960). */
+  attempt: number;
+  previousAttemptId: string | null;
   /** The request restarted a job that had given up, rather than joining a live one. */
   redrivenFromDead: boolean;
 }

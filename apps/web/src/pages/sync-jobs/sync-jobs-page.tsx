@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
@@ -377,7 +378,7 @@ function StreamDeadLettersSection(): ReactElement {
       ) : listQuery.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={listQuery.error.message}
+          message={describeApiError(listQuery.error, 'sync-jobs')}
           action={
             <Button
               onClick={() => {
@@ -607,7 +608,7 @@ export function SyncJobsPage(): ReactElement {
       ) : query.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={query.error.message}
+          message={describeApiError(query.error, 'sync-jobs')}
           action={
             <Button
               onClick={() => {

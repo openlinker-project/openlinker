@@ -20,6 +20,9 @@
 import { z } from 'zod/v4';
 import { getMessages } from '../../../shared/i18n';
 import type {
+  BundleRefundHint,
+  BundleReturnPreview,
+  ReturnOrderLineSuggestion,
   AttestReturnLineStockResult,
   ConfirmReturnRefundResult,
   DisposeReturnLineResult,
@@ -69,7 +72,104 @@ const disposeResultSchema = z.object({
   line: lineCountersSchema,
   eventId: z.string(),
   restockBlocked: restockBlockedSchema.nullish(),
+  restockBlockedComponents: z.array(restockBlockedSchema).nullish(),
 });
+
+const bundlePreviewSchema = z.object({
+  isBundle: z.boolean(),
+  paidPerUnitGross: z.number().nullish(),
+  components: z.array(
+    z.object({
+      variantId: z.string(),
+      sku: z.string().nullish(),
+      perUnit: z.number(),
+      standaloneUnitPriceGross: z.number().nullish(),
+      shareGross: z.number().nullish(),
+      shareBasis: z.string().nullish(),
+    })
+  ),
+  splitRefusal: z.string().nullish(),
+  splitRefusalVariantIds: z.array(z.string()).nullish(),
+  returnedShareGross: z.number().nullish(),
+  allegroRefundHintGross: z.number().nullish(),
+});
+
+const orderLineSuggestionSchema = z.object({
+  candidates: z.array(
+    z.object({
+      id: z.string(),
+      price: z.number(),
+      quantity: z.number(),
+      sku: z.string().nullish(),
+    })
+  ),
+  suggestedOrderLineId: z.string().nullish(),
+  basis: z.string().nullish(),
+  alreadyResolvedOrderLineId: z.string().nullish(),
+});
+
+const bundleRefundHintSchema = z.object({
+  applicable: z.boolean(),
+  hintGross: z.number().nullish(),
+  paidForSetGross: z.number().nullish(),
+  keptStandaloneGross: z.number().nullish(),
+});
+
+export function parseBundleRefundHint(raw: unknown): BundleRefundHint {
+  const parsed = bundleRefundHintSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ReturnCustodyResultUnreadableError();
+  }
+  return {
+    applicable: parsed.data.applicable,
+    hintGross: orNull(parsed.data.hintGross),
+    paidForSetGross: orNull(parsed.data.paidForSetGross),
+    keptStandaloneGross: orNull(parsed.data.keptStandaloneGross),
+  };
+}
+
+export function parseBundleReturnPreview(raw: unknown): BundleReturnPreview {
+  const parsed = bundlePreviewSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ReturnCustodyResultUnreadableError();
+  }
+  const data = parsed.data;
+  return {
+    isBundle: data.isBundle,
+    paidPerUnitGross: orNull(data.paidPerUnitGross),
+    components: data.components.map((component) => ({
+      variantId: component.variantId,
+      sku: orNull(component.sku),
+      perUnit: component.perUnit,
+      standaloneUnitPriceGross: orNull(component.standaloneUnitPriceGross),
+      shareGross: orNull(component.shareGross),
+      shareBasis: orNull(component.shareBasis),
+    })),
+    splitRefusal: orNull(data.splitRefusal),
+    splitRefusalVariantIds: data.splitRefusalVariantIds ?? [],
+    returnedShareGross: orNull(data.returnedShareGross),
+    allegroRefundHintGross: orNull(data.allegroRefundHintGross),
+  };
+}
+
+export function parseReturnOrderLineSuggestion(raw: unknown): ReturnOrderLineSuggestion {
+  const parsed = orderLineSuggestionSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new ReturnCustodyResultUnreadableError();
+  }
+  const data = parsed.data;
+  return {
+    candidates: data.candidates.map((candidate) => ({
+      id: candidate.id,
+      price: candidate.price,
+      quantity: candidate.quantity,
+      sku: orNull(candidate.sku),
+    })),
+    suggestedOrderLineId: orNull(data.suggestedOrderLineId),
+    basis: orNull(data.basis),
+    alreadyResolvedOrderLineId: orNull(data.alreadyResolvedOrderLineId),
+  };
+}
 
 function orNull<T>(value: T | null | undefined): T | null {
   return value === undefined || value === null ? null : value;
@@ -168,5 +268,15 @@ export function parseDisposeReturnLineResult(raw: unknown): DisposeReturnLineRes
             connectionName: orNull(blocked.connectionName),
             state: blocked.state,
           },
+    restockBlockedComponents: (parsed.data.restockBlockedComponents ?? []).map((item) => ({
+      eventId: item.eventId,
+      quantity: item.quantity,
+      sku: orNull(item.sku),
+      reason: item.reason,
+      detail: orNull(item.detail),
+      connectionId: orNull(item.connectionId),
+      connectionName: orNull(item.connectionName),
+      state: item.state,
+    })),
   };
 }

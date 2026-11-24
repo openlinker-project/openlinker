@@ -1,0 +1,41 @@
+=== package-slip | Package Slip
+ 
+ Package Slip 
+Template Type: Package Slip
+ Linnworks allows you to customize package slip templates, which act as additional documents to invoices, especially for orders shipped in multiple packages. For example, if an order is split into two boxes, Linnworks generates two package slips—one for each box—listing the items inside.
+ By using package slips along with invoices, you can provide detailed, package-specific information that improves both internal processes and customer communication. 
+ Template settings
+ In addition to the standard Template Settings , package slip templates include the Label on the new page setting. When you enable this option, Linnworks prints the shipping label for each package immediately after its corresponding package slip.  
+ For example, if you split an order into two packages and print the package slips, Linnworks generates the following sequence when the Label on new page setting is enabled:  
+ Package slip for box 1
+ Shipping label for box 1
+ Package slip for box 2
+ Shipping label for box 2
+ This setup ensures that each package slip is paired with its shipping label, making handling and shipping more efficient.
+ Available elements
+ All templates can contain images , labels, and variables . In addition, the following pre-defined table elements are available for package slips.
+ Package Items
+ Order Notes
+ Shipping Label
+ These can be customized by double-clicking the element on the template. Further information on customizing table elements can be found  here .
+ Shipping Label
+ Integrated Shipping Labels are made for self-adhesive paper with a peel-off section that you can stick to the front of the parcel. They can be added to a template in the same way as other elements.
+ Using Integrated Shipping Labels
+ Step 1:  Create a package slip template with a shipping label.
+ Confirm the label position.
+ Integrated shipping labels in Linnworks are 6x4 . Ensure the label is positioned correctly on the page.
+ To make the label portrait, double-click the label element, uncheck the Landscape option, and click OK .
+ If you change the orientation, resize the bounding box to ensure the label fits properly and isn’t cropped. 
+ Click Save to apply changes to the template.
+ Step 2: Print the package slip with the integrated label.
+ Go to the Open Orders screen and select the order(s) you want to print.
+ Click Actions or right-click the selected orders.
+ Select  Print > Package slip , and choose the template with the integrated shipping label. 
+ If the shipping service supports integrated labels:
+ Linnworks will send a request to the courier and retrieve the label details.
+ The tracking number will automatically be added to the order.
+ Printing may take slightly longer than usual, but this is expected behavior.
+  Video tutorial 
+ If you prefer a visual explanation, this video tutorial walks you through the Package Slip template and the benefits of using it . The tutorial can help clarify how the template works and answer any additional questions.
+ Update to Order Management (OMS) in Linnworks - Package Slips 
+ 

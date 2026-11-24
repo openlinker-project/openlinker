@@ -35,6 +35,8 @@ export * from './domain/exceptions/missing-tax-rate.exception';
 export * from './domain/exceptions/order-already-registered.exception';
 export * from './domain/exceptions/order-already-has-invoice.exception';
 export * from './domain/exceptions/fiscal-registration-contended.exception';
+export * from './domain/exceptions/fiscal-registration-not-restartable.exception';
+export * from './domain/exceptions/fiscal-registration-attempt-closed.exception';
 export { InvalidFiscalLineError } from './application/mappers/errors/invalid-fiscal-line.error';
 export { UnsupportedFiscalPriceTreatmentError } from './application/mappers/errors/unsupported-fiscal-price-treatment.error';
 export {

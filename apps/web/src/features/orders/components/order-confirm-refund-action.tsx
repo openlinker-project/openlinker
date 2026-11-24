@@ -27,6 +27,7 @@ export interface OrderConfirmRefundActionProps {
   internalOrderId: string;
   currency: string | null;
   orderTotal: string | null;
+  sourceConnectionId?: string | null;
   /** The order is cancelled, or has an open or confirmed cancel request. */
   visible: boolean;
 }

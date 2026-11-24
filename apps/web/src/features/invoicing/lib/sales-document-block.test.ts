@@ -138,13 +138,14 @@ describe('resolveSalesDocumentBlockCopy — invoice kind (default, #2100 wording
     expect(copy).toMatchObject({ tone: 'info', offerSetPrimary: false });
   });
 
-  it('warns on batched', () => {
+  // #3583: queued for the next batch run, not a fault.
+  it('says a batched order is waiting for the next batch', () => {
     const copy = resolveSalesDocumentBlockCopy(
       order({ salesDocumentBlockReason: 'trigger-model-batched' }),
       false,
     );
-    expect(copy).toMatchObject({ tone: 'warning', offerSetPrimary: false });
-    expect(copy?.title).toMatch(/batched invoicing is not available/i);
+    expect(copy).toMatchObject({ tone: 'info', offerSetPrimary: false });
+    expect(copy?.title).toMatch(/waiting for the next batch/i);
   });
 
   it('carries copy for the declared-but-unwritten reasons', () => {
@@ -220,14 +221,14 @@ describe('resolveSalesDocumentBlockCopy — fiscal-receipt kind (#2156/#2160)', 
     expect(copy?.title).toMatch(/Automatic fiscal registration is off/i);
   });
 
-  it('warns on batched with a receipt-flavored title', () => {
+  it('offers the receipt action in the batched copy', () => {
     const copy = resolveSalesDocumentBlockCopy(
       order({ salesDocumentBlockReason: 'trigger-model-batched' }),
       false,
       'fiscal-receipt',
     );
-    expect(copy?.title).toMatch(/not registered/i);
-    expect(copy?.title).toMatch(/batched fiscal registration/i);
+    expect(copy?.title).toMatch(/waiting for the next batch/i);
+    expect(copy?.body).toMatch(/register/i);
   });
 });
 

@@ -13,7 +13,7 @@
  */
 import { Command } from 'cmdk';
 import { forwardRef, type ComponentPropsWithoutRef, type ReactElement } from 'react';
-import { Dialog, DialogContent } from './dialog';
+import { Dialog, DialogContent, DialogTitle } from './dialog';
 import { useMessages } from '../i18n/use-messages';
 
 export interface PaletteItem {
@@ -55,11 +55,15 @@ export function CommandPalette({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="command-palette"
-        aria-label={copy.label}
+        // The palette has no prose to describe it; `undefined` tells Radix the
+        // omission is deliberate (it warns on a dialog with no description).
+        aria-describedby={undefined}
         // cmdk's Command provides its own focus management — suppress the
         // Radix default auto-focus so the input receives focus instead.
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
+        {/* Radix names the dialog from its Title; visually the input says it all. */}
+        <DialogTitle className="sr-only">{copy.label}</DialogTitle>
         <Command className="command-palette__command" shouldFilter={false} loop>
           <div className="command-palette__input-row">
             <span className="command-palette__search-icon" aria-hidden="true">

@@ -21,6 +21,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useDpdMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export function DpdCredentialsPanel({ connection }: { connection: Connection }): ReactElement {
   const copy = useDpdMessages().dpdCredentialsPanel;
@@ -69,7 +70,7 @@ export function DpdCredentialsPanel({ connection }: { connection: Connection }):
     >
       {showRotate ? (
         <div className="form-grid">
-          {rotate.error ? <Alert tone="error">{rotate.error.message}</Alert> : null}
+          {rotate.error ? <Alert tone="error">{describeApiError(rotate.error, 'dpd')}</Alert> : null}
           <Input
             autoComplete="off"
             className="mono-text"

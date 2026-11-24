@@ -1,0 +1,222 @@
+{
+  "addDialog": {
+    "added": "Gratis dodany",
+    "addedBody": "Gratis jest w zamówieniu, a jego stan zarezerwowany.",
+    "cancel": "Anuluj",
+    "changeProduct": "Zmień",
+    "closedBody": "Gratis można dodać, dopóki paczka nie jest zamknięta. Najpierw cofnij oznaczenie jako spakowane albo dodaj gratis do następnego zamówienia.",
+    "closedTitle": "Paczka jest już zamknięta",
+    "customPriceLabel": "Cena gratisu na dokumencie",
+    "description": "Gratis trafia tylko do tego zamówienia. Stan jest rezerwowany jak przy zwykłej pozycji.",
+    "documentTitle": "Dokument sprzedaży jest już wystawiony",
+    "documentWarning": "Dokument nie pokaże tego gratisu. Gratis i tak trafi do zamówienia.",
+    "notOnPickList": "Gratis jest w zamówieniu, ale ono jest już u pakowaczy: powiedz im o gratisie.",
+    "notReadyBody": "Jego produkty nie są jeszcze dopasowane. Popraw dopasowanie produktów, potem dodaj gratis.",
+    "notReadyTitle": "Zamówienie nie skończyło się importować",
+    "onDocument": "Na dokumencie",
+    "product": "Produkt na gratis",
+    "productPlaceholder": "Wpisz nazwę lub SKU produktu",
+    "quantity": "Ilość",
+    "reason": "Dodany ręcznie. Na zamówieniu widać go jako gratis od Ciebie.",
+    "submit": "Dodaj gratis",
+    "title": "Dodaj gratis do zamówienia {order}"
+  },
+  "attention": {
+    "addAnother": "Dodaj ręcznie",
+    "decisionSaved": "Decyzja zapisana",
+    "openRule": "Otwórz promocję",
+    "readFailed": "Nie udało się odczytać, dlaczego brakuje gratisu.",
+    "reasons": {
+      "below-threshold": {
+        "body": "Zamówienie nie osiąga tego, czego chce promocja, więc gratisu nie dodano.",
+        "title": "{rule}: poniżej progu"
+      },
+      "customer-limit": {
+        "body": "Limit na klienta jest wyczerpany. Klienta rozpoznajemy po tożsamości w OpenLinkerze, nie po koncie kupującego w kanale.",
+        "title": "{rule}: ten klient dostał już gratis"
+      },
+      "customer-unknown": {
+        "body": "Nie dało się sprawdzić limitu na klienta, więc gratisu nie dodano.",
+        "title": "{rule}: klient jest nieznany"
+      },
+      "failed": {
+        "body": "Coś poszło nie tak przy dodawaniu. Możesz dodać gratis ręcznie albo otworzyć promocję i historię uruchomień.",
+        "title": "{rule}: nie udało się dodać gratisu"
+      },
+      "limit-reached": {
+        "body": "Nie dodano gratisu. Otwórz promocję, żeby podnieść limit i ją wznowić.",
+        "title": "{rule}: limit sztuk wyczerpany"
+      },
+      "other": {
+        "body": "Promocja nie dodała gratisu do tego zamówienia. Otwórz ją, żeby zobaczyć szczegóły.",
+        "title": "{rule}: nie dodano gratisu"
+      },
+      "out-of-stock": {
+        "body": "Zamówienie idzie dalej bez gratisu. Możesz dodać inny gratis ręcznie. Promocja wznowi się sama, gdy produkt wróci.",
+        "title": "{rule}: gratisu brak na stanie"
+      },
+      "stock-unknown": {
+        "body": "Gratisu nie dodano, bo nieznana liczba nigdy nie jest traktowana jak zero. Sprawdź stan i w razie potrzeby dodaj gratis ręcznie.",
+        "title": "{rule}: nie znamy stanu gratisu"
+      },
+      "superseded": {
+        "body": "Wyższa promocja, która nie łączy się z innymi, już dała swój gratis, więc ta nie zadziałała.",
+        "title": "{rule}: zadziałała wyższa promocja"
+      }
+    },
+    "seePromotion": "Zobacz promocję",
+    "shopRejected": {
+      "body": "Zamówienie ma pozycję z gratisem, a sklep je odrzucił. Usuń przyczynę w statusie synchronizacji niżej albo zdejmij gratis z zamówienia i ponów.",
+      "title": "Sklep nie przyjął zamówienia z gratisem"
+    },
+    "skip": "Pomiń gratis",
+    "skipFailed": "Nie udało się zapisać decyzji"
+  },
+  "cost": {
+    "failed": "Kosztuje Cię: nie udało się odczytać ceny zakupu",
+    "loading": "Kosztuje Cię: sprawdzam cenę zakupu",
+    "otherCurrency": "Kosztuje Cię: cena zakupu jest zapisana w innej walucie ({currency})"
+  },
+  "filter": {
+    "bundleCheck": "Z zestawem",
+    "bundleChipLabel": "Zestaw",
+    "bundleChipValue": "Jest",
+    "bundleRowIcon": "Zawiera zestaw",
+    "check": "Z gratisem",
+    "chipLabel": "Gratis",
+    "chipValue": "Jest",
+    "chipValueYes": "Tak",
+    "notAddedCheck": "Gratis nie dodany",
+    "notAddedChipLabel": "Gratis nie dodany",
+    "quick": "Z gratisem",
+    "rowIcon": "Zawiera gratis",
+    "shopRejectedCheck": "Sklep odrzucił gratis",
+    "shopRejectedChipLabel": "Sklep odrzucił gratis"
+  },
+  "guide": {
+    "footer": "Naciśnij ? na tej stronie, aby otworzyć przewodnik, Esc zamyka.",
+    "kicker": "Przewodnik",
+    "variants": {
+      "bench": {
+        "button": "Jak pakować zestawy i gratisy",
+        "intro": "Co widzisz przy paczce, w której jest zestaw albo gratis.",
+        "sections": {
+          "s1": {
+            "p1": "Zestaw jest rozpisany na produkty, które kładziesz do pudełka. Skanujesz każdy z osobna. Nagłówek „Zestaw: …” pokazuje, ile składników już jest w paczce.",
+            "p2": "Gratis to zwykła sztuka do zeskanowania, tylko oznaczona. Dotyczy gratisu z zestawu i gratisu z promocji lub dodanego ręcznie. Cen i kosztów tu nie widać.",
+            "p3": "Jeśli składnik zestawu nie ma kodu do zeskanowania, paczka zamknie się dopiero po ręcznym potwierdzeniu. Nie wysyłaj zestawu w częściach.",
+            "tag": "sztuki fizyczne",
+            "title": "Zestaw w paczce"
+          },
+          "s2": {
+            "p1": "Gdy zweryfikujesz ostatnią sztukę, paczka zamyka się, bez żadnego przycisku. Jeśli zamknęła się przez pomyłkę, otwórz ją ponownie, a sztuki wyzerują się.",
+            "tag": "samo",
+            "title": "Zamykanie paczki"
+          }
+        },
+        "title": "Pakowanie zestawów i gratisów"
+      },
+      "detail": {
+        "button": "Jak działają gratisy i zestawy",
+        "intro": "Jak czytać pozycje, które nie kosztują klienta nic albo są częścią zestawu, i co zrobić, gdy gratisu zabrakło.",
+        "sections": {
+          "s1": {
+            "p1": "Zestaw jest jedną pozycją za cenę zestawu. Pod nią widać składniki z napisem „w cenie zestawu”. Pakowacz dostaje skład z dnia zamówienia, więc późniejsza zmiana zestawu nie rusza tego zamówienia.",
+            "p2": "Pozycja za 0,00 zł. Kliknij znaczek, żeby zobaczyć, skąd jest gratis, kto za niego płaci i jak pokaże się na dokumencie sprzedaży.",
+            "p3": "Promocja w OpenLinkerze (z linkiem do niej), reguła koszyka w sklepie, aplikacja gratisów w sklepie albo dodany ręcznie przez operatora. Każdy finansujesz Ty: klient płaci 0,00 zł, a koszt widać wg ceny zakupu.",
+            "tag": "zestaw i gratis",
+            "title": "Pozycje zamówienia"
+          },
+          "s2": {
+            "p1": "Zamówienie idzie dalej bez gratisu. Decyzja się zapisuje i powiadomienie znika. Promocja nie próbuje drugi raz.",
+            "p2": "Możesz dać inny gratis zamiast brakującego. Działa, dopóki paczka nie jest zamknięta.",
+            "tag": "2 decyzje",
+            "title": "Gdy gratisu zabrakło"
+          },
+          "s3": {
+            "p1": "Forma gratisu to decyzja podatkowa. Wygrywa najbardziej szczegółowe ustawienie: sam gratis, potem kanał sprzedaży, potem domyślne w OpenLinkerze. Przy każdym gratisie widać, skąd pochodzi jego forma. Własna cena pokazuje gratis w wybranej kwocie i zdejmuje ją z najdroższej płatnej pozycji, więc suma się nie zmienia.",
+            "tag": "forma",
+            "title": "Gratis na dokumencie"
+          }
+        },
+        "title": "Gratisy i zestawy w zamówieniu"
+      },
+      "list": {
+        "button": "Jak działają gratisy i zestawy",
+        "intro": "Tak OpenLinker pokazuje na liście zamówień towar, którego klient nie zapłacił osobno, i to, co z nim zrobić.",
+        "sections": {
+          "s1": {
+            "p1": "Zamówienie ma pozycję za 0,00 zł. Dodała ją promocja, reguła koszyka w sklepie albo operator. Filtr „Z gratisem” pokazuje tylko takie zamówienia.",
+            "p2": "Jedna pozycja zamówienia składa się z kilku produktów. W podglądzie widzisz je pod zestawem, z napisem „w cenie zestawu”. Gratis w zestawie jest oznaczony osobno.",
+            "p3": "Promocja miała dodać gratis, ale się nie udało, na przykład z braku towaru. Zamówienie idzie dalej bez gratisu. Otwórz je, żeby pominąć gratis albo dodać go ręcznie.",
+            "tag": "dwie ikony",
+            "title": "Oznaczenia w wierszu"
+          },
+          "s2": {
+            "p1": "Przycisk obok filtrów włącza ten filtr jednym kliknięciem. To samo znajdziesz w Filtry, w sekcji Wyjątki.",
+            "p2": "Liczby nad tabelą to zamówienia, w których coś wymaga Ciebie: gratis nie dodany, sklep odrzucił gratis, termin minął.",
+            "tag": "od ręki",
+            "title": "Filtry"
+          }
+        },
+        "title": "Gratisy i zestawy w zamówieniach"
+      },
+      "returns": {
+        "button": "Jak działają zwroty zestawów",
+        "intro": "Zwrot jednego składnika zestawu i decyzja o gratisie, którego klient nie zwraca.",
+        "sections": {
+          "s1": {
+            "p1": "Zaznacz składniki, które naprawdę wróciły. Wracają na stan tylko one. Zestaw zostaje jedną pozycją faktury, a podpowiedź zwrotu pieniędzy liczy się wg wzoru Allegro: zapłacone minus to, co zostaje u klienta w pełnej cenie. Nic się nie wpisuje samo.",
+            "p2": "Jeśli składnik nie ma ceny ani kosztu, nie wiadomo, ile wart jest zwracany element. Zablokujemy zwrot częściowy i powiemy, któremu składnikowi czegoś brakuje. Cały zestaw przyjmiesz zawsze.",
+            "tag": "jeden składnik",
+            "title": "Zestaw przy zwrocie"
+          },
+          "s2": {
+            "p1": "OpenLinker nigdy sam nie odlicza gratisu. Dopóki nie wybierzesz, gratis jest „jeszcze nie zdecydowany”. Odliczenie to podpowiedź przy kwocie zwrotu, nic nie wpisze się samo. Zrób to tylko wtedy, gdy mówią o tym warunki oferty.",
+            "tag": "twoja decyzja",
+            "title": "Gratis przy zwrocie"
+          }
+        },
+        "title": "Zwroty zestawów i gratisów"
+      },
+      "stock": {
+        "button": "Jak działają ruchy z gratisami",
+        "intro": "Gratis zabiera towar ze stanu jak każda pozycja, tylko ma własny typ, żeby było widać, ile go rozdano.",
+        "sections": {
+          "s1": {
+            "p1": "Gdy gratis trafia do zamówienia, jego stan jest rezerwowany. Dopóki zamówienie nie wyjdzie, stan w systemie głównym się nie zmienia.",
+            "p2": "Gdy paczka zostanie nadana, rezerwacja zamienia się w zmianę stanu.",
+            "p3": "Zamówienie anulowane albo odrzucone przez sklep zwalnia rezerwację gratisu. Stan wraca do puli.",
+            "tag": "rezerwacja i zużycie",
+            "title": "Typ „Gratis”"
+          },
+          "s2": {
+            "p1": "W podglądzie ruchu widzisz zamówienie i, jeśli gratis dała promocja, link do niej. Gratis dodany ręcznie pokazuje, kto go dodał.",
+            "tag": "link do zamówienia",
+            "title": "Skąd jest gratis"
+          }
+        },
+        "title": "Ruchy magazynowe z gratisami"
+      }
+    }
+  },
+  "order": {
+    "add": "Dodaj gratis",
+    "costUnknown": "Koszt nieznany",
+    "costsYou": "Kosztuje Cię {cost}",
+    "customerPays": "Klient płaci {price}",
+    "decidedBy": "Skąd jest",
+    "onDocument": "Na dokumencie",
+    "readOnly": "Gratis mogą dodawać tylko administratorzy i operatorzy.",
+    "readOnlyNotice": "Możesz wszystko zobaczyć, ale „Dodaj gratis” jest wyłączone.",
+    "source": {
+      "cartRule": "Dała go reguła koszyka w sklepie. Finansujesz go Ty.",
+      "channel": "Kanał sprzedaży oznaczył go jako gratis. Finansujesz go Ty.",
+      "operator": "Dodany ręcznie przez operatora. Finansujesz go Ty.",
+      "rule": "Dodała go promocja w OpenLinkerze. Finansujesz go Ty."
+    },
+    "tag": "Gratis",
+    "tagLabel": "Gratis: pokaż, skąd jest",
+    "whoPays": "Kto płaci"
+  }
+}

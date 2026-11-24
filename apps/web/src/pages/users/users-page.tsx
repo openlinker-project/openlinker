@@ -10,6 +10,7 @@
 import type { ReactElement } from 'react';
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../shared/ui/tabs';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -423,7 +424,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
           error={allUsersQuery.error}
           onRetry={() => void allUsersQuery.refetch()}
           copy={{
-            error: { title: copy.errors.loadFailed, message: allUsersQuery.error.message, retry: copy.errors.retry },
+            error: { title: copy.errors.loadFailed, message: describeApiError(allUsersQuery.error, 'users'), retry: copy.errors.retry },
             denied: {
               title: copy.errors.deniedTitle,
               message: copy.errors.deniedMessage,
@@ -456,7 +457,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
           error={pendingUsersQuery.error}
           onRetry={() => void pendingUsersQuery.refetch()}
           copy={{
-            error: { title: copy.errors.loadFailed, message: pendingUsersQuery.error.message, retry: copy.errors.retry },
+            error: { title: copy.errors.loadFailed, message: describeApiError(pendingUsersQuery.error, 'users'), retry: copy.errors.retry },
             denied: {
               title: copy.errors.deniedTitle,
               message: copy.errors.deniedMessage,
@@ -492,7 +493,7 @@ export function UsersPage({ defaultTab = 'all' }: UsersPageProps): ReactElement 
       title={copy.page.title}
       description={copy.page.description}
     >
-      {anyError ? <Alert tone="error">{anyError.message}</Alert> : null}
+      {anyError ? <Alert tone="error">{describeApiError(anyError, 'users')}</Alert> : null}
 
       {/* #4028 - where requests for access come from, and where they are switched on. */}
       {systemConfig.data && !systemConfig.data.demoMode ? (

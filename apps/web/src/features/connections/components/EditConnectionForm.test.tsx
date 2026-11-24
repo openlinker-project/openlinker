@@ -14,6 +14,13 @@ import { EditConnectionForm } from './EditConnectionForm';
 import { ApiError } from '../../../shared/api/api-error';
 import type { PaginatedInventoryLocations } from '../../inventory';
 import type * as ReactRouterDom from 'react-router-dom';
+import { getMessages } from '../../../shared/i18n';
+
+// The form is now read-only without `connections:write`, so these tests must act as an admin
+// (the default noop session holds no permissions) to exercise the editable form.
+const renderAsAdmin: typeof renderWithProviders = (ui, options = {}) =>
+  renderWithProviders(ui, { sessionAdapter: createAuthenticatedSessionAdapter(), ...options });
+
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -92,7 +99,7 @@ describe('EditConnectionForm', () => {
   });
 
   it('renders pre-filled form fields from the connection', () => {
-    renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
+    renderAsAdmin(<EditConnectionForm connection={sampleConnection} />);
 
     expect(screen.getByDisplayValue(sampleConnection.name)).toBeInTheDocument();
     expect(screen.getByDisplayValue(sampleConnection.platformType)).toBeInTheDocument();
@@ -100,7 +107,7 @@ describe('EditConnectionForm', () => {
   });
 
   it('shows platform type as disabled and credentials behind a rotate button', () => {
-    renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
+    renderAsAdmin(<EditConnectionForm connection={sampleConnection} />);
 
     const platformInput = screen.getByDisplayValue(sampleConnection.platformType);
     expect(platformInput).toBeDisabled();
@@ -115,7 +122,7 @@ describe('EditConnectionForm', () => {
       connections: { update: updateFn, getById: vi.fn().mockResolvedValue(sampleConnection) },
     });
 
-    renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+    renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, { apiClient });
 
     const nameInput = screen.getByDisplayValue(sampleConnection.name);
     fireEvent.change(nameInput, { target: { value: 'Updated Store' } });
@@ -130,7 +137,7 @@ describe('EditConnectionForm', () => {
 
   it('shows validation errors in summary after submit attempt', async () => {
     const connectionWithBadConfig = { ...sampleConnection, config: {}, name: '' };
-    renderWithProviders(<EditConnectionForm connection={connectionWithBadConfig} />);
+    renderAsAdmin(<EditConnectionForm connection={connectionWithBadConfig} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
@@ -146,15 +153,15 @@ describe('EditConnectionForm', () => {
       },
     });
 
-    renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+    renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, { apiClient });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(await screen.findByText('Unable to update connection')).toBeInTheDocument();
-    expect(screen.getByText('Server error', { selector: '.alert__description' })).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other, { selector: '.alert__description' })).toBeInTheDocument();
     // #3765 - the Alert sits at the top of a long form, so the failure is
     // also reported where the operator is looking.
     expect(await findToastTitle('Changes not saved')).toBeInTheDocument();
-    expect(getToastDescription('Server error')).toBeInTheDocument();
+    expect(getToastDescription(getMessages('errors').status.other)).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -167,12 +174,12 @@ describe('EditConnectionForm', () => {
       },
     });
 
-    renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+    renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, { apiClient });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(await findToastTitle('Changes not saved')).toBeInTheDocument();
     expect(
-      getToastDescription('Network unreachable'),
+      getToastDescription(getMessages('errors').status.other),
     ).toBeInTheDocument();
     expect(updateFn).not.toHaveBeenCalled();
     expect(mockNavigate).not.toHaveBeenCalled();
@@ -188,7 +195,7 @@ describe('EditConnectionForm', () => {
       connections: { update: updateFn, getById: vi.fn().mockResolvedValue(connectionWithRateLimit) },
     });
 
-    renderWithProviders(<EditConnectionForm connection={connectionWithRateLimit} />, { apiClient });
+    renderAsAdmin(<EditConnectionForm connection={connectionWithRateLimit} />, { apiClient });
     fireEvent.change(screen.getByLabelText('Max concurrent requests'), { target: { value: '65' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
@@ -212,7 +219,7 @@ describe('EditConnectionForm', () => {
       },
     });
 
-    renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+    renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, { apiClient });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(await findToastTitle('Connection updated')).toBeInTheDocument();
@@ -270,7 +277,7 @@ describe('EditConnectionForm', () => {
       inventory: { listLocations: vi.fn().mockResolvedValue(locations) },
     });
 
-    renderWithProviders(<EditConnectionForm connection={connectionWithOverride} />, { apiClient });
+    renderAsAdmin(<EditConnectionForm connection={connectionWithOverride} />, { apiClient });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     // The field-level error renders under the Location select (and, since
@@ -279,7 +286,7 @@ describe('EditConnectionForm', () => {
     // bug this test guards against). Exactly two, not `> 0` (#3207
     // review) — the count is deterministic here, and a fixed length also
     // fails loudly if the field and the summary ever stop agreeing.
-    const fieldErrors = await screen.findAllByText(fieldErrorMessage);
+    const fieldErrors = await screen.findAllByText(getMessages('errors').codes.STOCK_LOCATION_OVERRIDE_INVALID);
     expect(fieldErrors).toHaveLength(2);
     // The generic "Unable to update connection" banner must not also render
     // — before the fix, `updateConnection.error` stayed set independently of
@@ -319,7 +326,7 @@ describe('EditConnectionForm', () => {
       inventory: { listLocations },
     });
 
-    renderWithProviders(<EditConnectionForm connection={connectionWithoutInventoryMaster} />, {
+    renderAsAdmin(<EditConnectionForm connection={connectionWithoutInventoryMaster} />, {
       apiClient,
     });
 
@@ -346,7 +353,7 @@ describe('EditConnectionForm', () => {
       inventory: { listLocations },
     });
 
-    renderWithProviders(<EditConnectionForm connection={connectionWithOverride} />, { apiClient });
+    renderAsAdmin(<EditConnectionForm connection={connectionWithOverride} />, { apiClient });
 
     expect(
       screen.queryByLabelText("Assign a location to this connection's stock"),
@@ -383,7 +390,7 @@ describe('EditConnectionForm', () => {
       },
     });
 
-    renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+    renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, { apiClient });
     // Operator changes something unrelated and saves — never touches the raw
     // JSON block, so `allegroCategoryAccessEnabled` never appears in this
     // form's own state at all.
@@ -421,7 +428,7 @@ describe('EditConnectionForm', () => {
       },
     });
 
-    renderWithProviders(<EditConnectionForm connection={connectionWithRateLimit} />, { apiClient });
+    renderAsAdmin(<EditConnectionForm connection={connectionWithRateLimit} />, { apiClient });
 
     expect(screen.getByLabelText('Enable rate limiting')).toBeChecked();
     fireEvent.click(screen.getByLabelText('Enable rate limiting'));
@@ -458,7 +465,7 @@ describe('EditConnectionForm', () => {
       },
     });
 
-    renderWithProviders(<EditConnectionForm connection={eparagonyConnection} />, { apiClient });
+    renderAsAdmin(<EditConnectionForm connection={eparagonyConnection} />, { apiClient });
 
     expect(screen.getByRole('radio', { name: 'Print' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('radio', { name: 'Not set' }));
@@ -474,7 +481,7 @@ describe('EditConnectionForm', () => {
 
   describe('structured PrestaShop inputs + raw JSON toggle', () => {
     it('renders Shop URL / Storefront URL / Shop ID inputs for a PrestaShop connection', () => {
-      renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
+      renderAsAdmin(<EditConnectionForm connection={sampleConnection} />);
       expect(screen.getByLabelText('Shop URL')).toHaveValue('https://example.com');
       expect(screen.getByLabelText('Storefront URL (optional)')).toHaveValue('');
       expect(screen.getByLabelText('Shop ID (optional)')).toHaveValue('');
@@ -497,7 +504,7 @@ describe('EditConnectionForm', () => {
             ),
           },
         });
-        renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+        renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, { apiClient });
 
         // Wait for the carriers query to resolve and the picker to swap
         // out of its loading-state placeholder.
@@ -536,7 +543,7 @@ describe('EditConnectionForm', () => {
             ),
           },
         });
-        renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+        renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, { apiClient });
 
         await screen.findByLabelText('Fallback carrier (optional)');
         // OL Dynamic carrier is in the options, so even though defaultCarrierId
@@ -560,7 +567,7 @@ describe('EditConnectionForm', () => {
             ),
           },
         });
-        renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+        renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, { apiClient });
 
         // Operator-actionable warning. Wait until the carriers query
         // resolves — the warning is suppressed during loading.
@@ -589,7 +596,7 @@ describe('EditConnectionForm', () => {
             ),
           },
         });
-        renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+        renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, { apiClient });
 
         const select = await screen.findByLabelText('Fallback carrier (optional)');
         // Wait for warning to appear after carriers settle.
@@ -614,7 +621,7 @@ describe('EditConnectionForm', () => {
     });
 
     it('keeps the raw JSON textarea hidden by default and reveals it via the toggle', () => {
-      renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
+      renderAsAdmin(<EditConnectionForm connection={sampleConnection} />);
       expect(screen.queryByLabelText('Config JSON')).toBeNull();
 
       fireEvent.click(screen.getByRole('button', { name: 'Show raw config JSON' }));
@@ -630,7 +637,7 @@ describe('EditConnectionForm', () => {
       };
       const updateFn = vi.fn().mockResolvedValue(connectionWithStorefront);
       const apiClient = createMockApiClient({ connections: { update: updateFn } });
-      renderWithProviders(<EditConnectionForm connection={connectionWithStorefront} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={connectionWithStorefront} />, { apiClient });
 
       expect(screen.getByLabelText('Storefront URL (optional)')).toHaveValue('https://example.com');
 
@@ -659,7 +666,7 @@ describe('EditConnectionForm', () => {
       };
       const updateFn = vi.fn().mockResolvedValue(connectionWithStorefront);
       const apiClient = createMockApiClient({ connections: { update: updateFn } });
-      renderWithProviders(<EditConnectionForm connection={connectionWithStorefront} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={connectionWithStorefront} />, { apiClient });
 
       fireEvent.change(screen.getByLabelText('Storefront URL (optional)'), {
         target: { value: '' },
@@ -677,7 +684,7 @@ describe('EditConnectionForm', () => {
     it('syncs structured Shop URL edits into the underlying Config JSON payload', async () => {
       const updateFn = vi.fn().mockResolvedValue(sampleConnection);
       const apiClient = createMockApiClient({ connections: { update: updateFn } });
-      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, { apiClient });
 
       fireEvent.change(screen.getByLabelText('Shop URL'), {
         target: { value: 'https://new.example.com' },
@@ -704,7 +711,7 @@ describe('EditConnectionForm', () => {
       };
       const updateFn = vi.fn().mockResolvedValue(connectionWithExtras);
       const apiClient = createMockApiClient({ connections: { update: updateFn } });
-      renderWithProviders(<EditConnectionForm connection={connectionWithExtras} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={connectionWithExtras} />, { apiClient });
 
       fireEvent.change(screen.getByLabelText('Shop URL'), {
         target: { value: 'https://rotated.example.com' },
@@ -726,7 +733,7 @@ describe('EditConnectionForm', () => {
     });
 
     it('locks the structured inputs and surfaces a warning when raw JSON is invalid', () => {
-      renderWithProviders(<EditConnectionForm connection={sampleConnection} />);
+      renderAsAdmin(<EditConnectionForm connection={sampleConnection} />);
       fireEvent.click(screen.getByRole('button', { name: 'Show raw config JSON' }));
 
       fireEvent.change(screen.getByLabelText('Config JSON'), {
@@ -743,7 +750,7 @@ describe('EditConnectionForm', () => {
   describe('marketplace branch — Product catalog connection picker', () => {
     it('renders the catalog picker for an Allegro connection and hides it for PrestaShop', async () => {
       const apiClient = apiClientWithCandidates([candidatePrestashop]);
-      const { rerender } = renderWithProviders(
+      const { rerender } = renderAsAdmin(
         <EditConnectionForm connection={allegroConnection} />,
         { apiClient },
       );
@@ -758,7 +765,7 @@ describe('EditConnectionForm', () => {
 
     it('auto-selects the only ProductMaster candidate when config has no stored value', async () => {
       const apiClient = apiClientWithCandidates([candidatePrestashop]);
-      renderWithProviders(<EditConnectionForm connection={allegroConnection} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={allegroConnection} />, { apiClient });
 
       const picker = await screen.findByLabelText<HTMLSelectElement>(
         'Product catalog connection',
@@ -774,7 +781,7 @@ describe('EditConnectionForm', () => {
         ...allegroConnection,
         config: { environment: 'sandbox', masterCatalogConnectionId: '' },
       };
-      renderWithProviders(<EditConnectionForm connection={optedOut} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={optedOut} />, { apiClient });
 
       const picker = await screen.findByLabelText<HTMLSelectElement>(
         'Product catalog connection',
@@ -788,7 +795,7 @@ describe('EditConnectionForm', () => {
 
     it('does NOT auto-select when 2+ ProductMaster candidates exist', async () => {
       const apiClient = apiClientWithCandidates([candidatePrestashop, secondPrestashop]);
-      renderWithProviders(<EditConnectionForm connection={allegroConnection} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={allegroConnection} />, { apiClient });
 
       const picker = await screen.findByLabelText<HTMLSelectElement>(
         'Product catalog connection',
@@ -808,7 +815,7 @@ describe('EditConnectionForm', () => {
       // re-fire. This exercises both the run-once ref AND the operator-touched
       // ref, since RHF's `dirtyFields` would clear once value == default.
       const apiClient = apiClientWithCandidates([candidatePrestashop]);
-      renderWithProviders(<EditConnectionForm connection={allegroConnection} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={allegroConnection} />, { apiClient });
 
       const picker = await screen.findByLabelText<HTMLSelectElement>(
         'Product catalog connection',
@@ -833,7 +840,7 @@ describe('EditConnectionForm', () => {
       const apiClient = apiClientWithCandidates([candidatePrestashop], {
         connections: { update: updateFn, getById: vi.fn().mockResolvedValue(allegroConnection) },
       });
-      renderWithProviders(<EditConnectionForm connection={allegroConnection} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={allegroConnection} />, { apiClient });
 
       const picker = await screen.findByLabelText<HTMLSelectElement>(
         'Product catalog connection',
@@ -866,7 +873,7 @@ describe('EditConnectionForm', () => {
         ...allegroConnection,
         config: { environment: 'sandbox', masterCatalogConnectionId: staleId },
       };
-      renderWithProviders(<EditConnectionForm connection={stale} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={stale} />, { apiClient });
 
       expect(await screen.findByText('Linked catalog is missing')).toBeInTheDocument();
       const picker = await screen.findByLabelText<HTMLSelectElement>(
@@ -879,7 +886,7 @@ describe('EditConnectionForm', () => {
 
     it('locks the Select when raw JSON is unparseable', async () => {
       const apiClient = apiClientWithCandidates([candidatePrestashop]);
-      renderWithProviders(<EditConnectionForm connection={allegroConnection} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={allegroConnection} />, { apiClient });
 
       const picker = await screen.findByLabelText<HTMLSelectElement>(
         'Product catalog connection',
@@ -902,7 +909,7 @@ describe('EditConnectionForm', () => {
       const apiClient = apiClientWithCandidates([candidatePrestashop, secondPrestashop], {
         connections: { update: updateFn, getById: vi.fn().mockResolvedValue(allegroConnection) },
       });
-      renderWithProviders(<EditConnectionForm connection={allegroConnection} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={allegroConnection} />, { apiClient });
 
       const picker = await screen.findByLabelText<HTMLSelectElement>(
         'Product catalog connection',
@@ -935,7 +942,7 @@ describe('EditConnectionForm', () => {
       const apiClient = apiClientWithCandidates([candidatePrestashop, secondPrestashop], {
         connections: { update: updateFn, getById: vi.fn().mockResolvedValue(linked) },
       });
-      renderWithProviders(<EditConnectionForm connection={linked} />, { apiClient });
+      renderAsAdmin(<EditConnectionForm connection={linked} />, { apiClient });
 
       const picker = await screen.findByLabelText<HTMLSelectElement>(
         'Product catalog connection',
@@ -973,7 +980,7 @@ describe('EditConnectionForm', () => {
 
     it('opens with editable inputs but disables the final submit', async () => {
       mockDemoMode = true;
-      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, {
+      renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, {
         sessionAdapter: viewerAdapter,
       });
 
@@ -990,7 +997,7 @@ describe('EditConnectionForm', () => {
       mockDemoMode = true;
       // Default authenticated adapter holds connections:write, so canWrite wins
       // over demo read-only — the affordance stays enabled for a real admin.
-      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, {
+      renderAsAdmin(<EditConnectionForm connection={sampleConnection} />, {
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 

@@ -29,11 +29,15 @@ import {
 } from '../../shared/ui';
 import { usePlural, useMessages } from '../../shared/i18n';
 import { BulkWizard } from '../../features/listings/components/bulk/bulk-wizard';
-import { MAX_WIZARD_PRODUCTS } from '../../features/listings/lib/batch-recovery';
+import {
+  MAX_WIZARD_PRODUCTS,
+  buildRecoveryPrefill,
+} from '../../features/listings/lib/batch-recovery';
+import { useBulkBatchQuery } from '../../features/listings/hooks/use-bulk-batch-query';
 import { useConnectionsQuery } from '../../features/connections';
 import { useProductsBatchQuery } from '../../features/products';
 import type { Product } from '../../features/products';
-import { serverErrorText } from '../../features/listings/lib/server-error-text';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 /**
  * Shared with the batch-recovery helpers (#2234) so the failed-batch "Fix and
@@ -46,7 +50,6 @@ export function BulkCreateWizardPage(): ReactElement {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const copy = useMessages('listings').bulkCreateWizardPage;
-  const common = useMessages('listings').common;
   const plural = usePlural();
 
   const ids = useMemo<string[]>(() => {
@@ -83,6 +86,19 @@ export function BulkCreateWizardPage(): ReactElement {
 
   const connectionsQuery = useConnectionsQuery();
 
+  // "Fix and resubmit" (#4037): the failed records' saved requests are what
+  // the operator had already typed, so the wizard opens on them. A batch that
+  // cannot be read opens the wizard unfilled rather than blocking the fix.
+  const fromBatchId = searchParams.get('fromBatch') ?? undefined;
+  const batchQuery = useBulkBatchQuery(fromBatchId);
+  const recoveryPrefill = useMemo(
+    () =>
+      batchQuery.data
+        ? buildRecoveryPrefill(batchQuery.data.records, selectedVariantIds)
+        : undefined,
+    [batchQuery.data, selectedVariantIds],
+  );
+
   if (ids.length === 0 || ids.length > MAX_PRODUCTS) {
     return (
       <LoadingState
@@ -92,7 +108,9 @@ export function BulkCreateWizardPage(): ReactElement {
     );
   }
 
-  const isLoading = productQueries.some((q) => q.isLoading);
+  const isLoading =
+    productQueries.some((q) => q.isLoading) ||
+    (fromBatchId !== undefined && batchQuery.isLoading);
   const failed = productQueries.find((q) => q.error);
 
   if (isLoading) {
@@ -108,7 +126,7 @@ export function BulkCreateWizardPage(): ReactElement {
     return (
       <ErrorState
         title={copy.errorTitle}
-        message={serverErrorText(common.serverSaid, failed.error.message, common.unknownError)}
+        message={describeApiError(failed.error, 'listings')}
         action={
           <Button
             onClick={() => {
@@ -142,7 +160,8 @@ export function BulkCreateWizardPage(): ReactElement {
       products={products}
       preSelectedVariantIds={selectedVariantIds}
       preselectedConnectionId={searchParams.get('connectionId') ?? undefined}
-      resumedFromBatchId={searchParams.get('fromBatch') ?? undefined}
+      resumedFromBatchId={fromBatchId}
+      recoveryPrefill={recoveryPrefill}
       resolveConnectionName={(connectionId) =>
         connectionsQuery.data?.find((c) => c.id === connectionId)?.name ??
         connectionId

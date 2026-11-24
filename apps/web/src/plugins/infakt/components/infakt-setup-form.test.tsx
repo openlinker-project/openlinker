@@ -15,6 +15,7 @@ import {
 } from '../../../test/test-utils';
 import { InfaktSetupForm } from './infakt-setup-form';
 import type { BankAccount } from '../../../features/connections';
+import { getMessages } from '../../../shared/i18n';
 
 describe('InfaktSetupForm', () => {
   afterEach(cleanup);
@@ -239,7 +240,7 @@ describe('InfaktSetupForm', () => {
     fireEvent.click(testButton);
 
     expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
-    expect(screen.getByText(/Network unreachable/)).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other, { exact: false })).toBeInTheDocument();
     expect(screen.queryByText('Connection test passed')).not.toBeInTheDocument();
     expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();
   });

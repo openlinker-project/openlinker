@@ -884,7 +884,6 @@
       },
       "requeuedSkipped": "{jobType} - re-queued {count}, skipped {skipped} already running.",
       "retryFailed": "Retry failed",
-      "unknownError": "Unknown error",
       "willRerun": "{jobType} will re-run."
     },
     "truncated": "{text}…",

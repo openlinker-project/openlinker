@@ -77,6 +77,15 @@ export interface AllegroCheckoutForm {
     offer: {
       id: string;
       name: string;
+      /**
+       * Present only when the offer is a product set (swagger
+       * `OfferProductSetReference`). `products[].quantity` counts that product
+       * inside ONE set, while `quantity` below counts sets sold, so the units of
+       * a product per sold unit is the per-set count (#3929).
+       */
+      productSet?: {
+        products?: Array<{ id?: string; quantity?: number }>;
+      } | null;
     };
     quantity: number;
     price: {
@@ -360,6 +369,8 @@ export interface AllegroProductSetEntry {
      */
     id?: string;
     name?: string;
+    /** Inline products only: the product's own category (bundle components). */
+    category?: { id: string };
     parameters?: AllegroOfferParameter[];
     images?: string[];
     /**
@@ -373,8 +384,8 @@ export interface AllegroProductSetEntry {
   /**
    * How many units of the catalog product one offer item contains
    * (`quantity.value`, default 1 - Allegro uses it for bundles/sets).
-   * Read-side field consumed by `getOffer` (#1482); the create path never
-   * sets it.
+   * Read by `getOffer` (#1482); written on create only for a bundle's
+   * product-set entries (#3520).
    */
   quantity?: { value?: number };
   /**

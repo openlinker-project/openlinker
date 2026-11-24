@@ -52,11 +52,13 @@ const TRANSLATIONS: Record<string, Translator> = {
   // record is the likelier mistake, and the shop is where a fix serves every channel.
   TAX_RATE_NOT_ALLOWED_IN_CATEGORY: (error) => ({
     message: interpolate(copy().taxRateNotAllowed, {
+      // eslint-disable-next-line no-restricted-syntax -- a StructuredError from the marketplace payload, not an ApiError; its own words are the reason
       reason: error.message ?? copy().taxRateNotAllowedDefault,
     }),
   }),
   TAX_RATE_MISSING: () => ({ message: copy().taxRateMissing }),
   TAX_RATE_NOT_EXPRESSIBLE: (error) => ({
+    // eslint-disable-next-line no-restricted-syntax -- a StructuredError from the marketplace payload, not an ApiError; its own words are the reason
     message: error.message ?? copy().taxRateNotExpressible,
   }),
   SAFETY_INFO_NOT_DEFINED: () => ({ message: copy().safetyInfoNotDefined }),

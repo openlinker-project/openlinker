@@ -66,7 +66,9 @@ describe('OrderBulkActionsController (#3545)', () => {
         .mockRejectedValueOnce(
           new OrderCancellationRefusedError('ORDER_ALREADY_SHIPPED', 'Already shipped.')
         )
-        .mockRejectedValueOnce(new OrderCancellationNotFoundError('nope'))
+        .mockRejectedValueOnce(
+          new OrderCancellationNotFoundError('nope', { orderId: 'ol_order_1' })
+        )
         .mockRejectedValueOnce(new Error('connection string postgres://secret'))
         .mockResolvedValueOnce(cancelled());
 

@@ -14,24 +14,13 @@
  *
  * @module apps/api/src/orders/http
  */
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  HttpCode,
-  HttpException,
-  HttpStatus,
-  Inject,
-  InternalServerErrorException,
-  NotFoundException,
-  Post,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Inject, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
   type IBuyerEmailNotificationService,
 } from '@openlinker/core/orders';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
@@ -88,31 +77,49 @@ export class BuyerEmailsController {
     if (result.status === 'refused') {
       switch (result.reason) {
         case 'connection-not-found':
-          throw new NotFoundException(result.message);
+          throw codedHttpError(HttpStatus.NOT_FOUND, 'CONNECTION_NOT_FOUND', result.message, {
+            connectionId: dto.connectionId,
+          });
         case 'rate-limited':
-          throw new HttpException(
-            {
-              statusCode: HttpStatus.TOO_MANY_REQUESTS,
-              error: BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE,
-              message: result.message,
-            },
-            HttpStatus.TOO_MANY_REQUESTS
+          throw codedHttpError(
+            HttpStatus.TOO_MANY_REQUESTS,
+            BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE,
+            result.message,
+            undefined,
+            // Kept for the clients that branch on `error` (#3555).
+            { error: BUYER_EMAIL_TEST_RATE_LIMITED_ERROR_CODE }
           );
         case 'invalid-address':
+          throw codedHttpError(
+            HttpStatus.BAD_REQUEST,
+            'BUYER_EMAIL_TEST_ADDRESS_INVALID',
+            result.message
+          );
         case 'template-not-allowed':
-          throw new BadRequestException(result.message);
+          throw codedHttpError(
+            HttpStatus.BAD_REQUEST,
+            'BUYER_EMAIL_TEMPLATE_NOT_ALLOWED',
+            result.message,
+            { templateKey: dto.templateKey }
+          );
         default: {
           // A reason this controller does not map must never fall through to
           // `sent`: the email was refused, so answering 200 would be a lie.
           const unmapped: never = result.reason;
-          throw new InternalServerErrorException(
+          throw codedHttpError(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'INTERNAL_ERROR',
             `Unmapped buyer email test refusal: ${String(unmapped)}`
           );
         }
       }
     }
     if (result.status === 'failed') {
-      throw new ServiceUnavailableException(result.message);
+      throw codedHttpError(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'BUYER_EMAIL_TEST_SEND_FAILED',
+        result.message
+      );
     }
     return { status: 'sent' };
   }

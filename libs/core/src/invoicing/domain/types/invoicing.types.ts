@@ -500,6 +500,14 @@ export interface InvoiceLine {
    */
   orderLineId?: string;
   /**
+   * Set only on a line that is a COMPONENT of a set (`{lineId}~c:{variantId}`
+   * order line id): the number of set units the whole component line covers.
+   * It lets a return credit a returned set across its component lines
+   * (`component units x returned set units / this`) without re-reading the
+   * order. Absent everywhere else; additive, ignorable by providers.
+   */
+  bundleSetQuantity?: number;
+  /**
    * Opaque per-line goods/services classification code (#1586 Phase 2). Neutral
    * seam carrying an operator-asserted classification the provider maps onto its
    * regime's line-level marker (a PL adapter maps it onto the FA(3) `GTU_xx`
@@ -1285,6 +1293,10 @@ export interface CreateInvoiceRecordInput {
   sourceDocument?: StoredDocument | null;
   /** Issuance-time line snapshot (#1297); `null` when not captured. */
   issuedLineSnapshot?: IssuedLineSnapshot | null;
+  /** 0-based attempt number (#3960). Omitted means a first attempt. */
+  attempt?: number;
+  /** The refused attempt this one follows (#3960). Omitted means none. */
+  previousAttemptId?: string | null;
 }
 
 /**

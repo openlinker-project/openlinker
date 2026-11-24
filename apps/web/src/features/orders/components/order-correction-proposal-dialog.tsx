@@ -44,9 +44,10 @@ import { useConfirmOrderChangeMutation } from '../hooks/use-confirm-order-change
 import {
   readOrderCancelErrorCode,
   confirmCorrectionErrorTitle,
-  readServerReason,
+  readOrderCancelRefusalDetail,
   type OrderCancelErrorCode,
 } from '../lib/order-cancel';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /** Codes after which confirming again can never succeed. */
 const NOT_RETRYABLE: readonly OrderCancelErrorCode[] = [
@@ -82,6 +83,7 @@ export function OrderCorrectionProposalDialog({
 }: OrderCorrectionProposalDialogProps): ReactElement {
   const discount = kind === 'order.discount_correction';
   const copy = useMessages('orders').orderCorrectionProposal;
+  const technicalDetails = useMessages('ui').apiError.technicalDetailsWith;
   const format = useFormat();
   const price = (value: number): string =>
     format.number(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -99,6 +101,7 @@ export function OrderCorrectionProposalDialog({
   }, [open, resetMutation]);
 
   const errorCode = mutation.isError ? readOrderCancelErrorCode(mutation.error) : null;
+  const errorDetail = mutation.isError ? readOrderCancelRefusalDetail(mutation.error) : null;
   const retryable = errorCode === null || !NOT_RETRYABLE.includes(errorCode);
 
   const confirm = (): void => {
@@ -135,7 +138,12 @@ export function OrderCorrectionProposalDialog({
             title={(errorCode ? confirmCorrectionErrorTitle(errorCode) : undefined) ?? copy.errorTitle}
             data-testid="order-correction-error"
           >
-            {readServerReason(mutation.error, copy.errorBody)}
+            {describeApiError(mutation.error, 'orders')}
+            {errorDetail ? (
+              <p className="muted-text" data-testid="order-correction-error-detail">
+                {interpolate(technicalDetails, { details: errorDetail })}
+              </p>
+            ) : null}
           </Alert>
         ) : null}
 

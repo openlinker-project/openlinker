@@ -47,10 +47,24 @@ describe('OrderEditsController (#3542)', () => {
       editLines: jest.fn().mockResolvedValue(result),
       editDeliveryMethod: jest.fn().mockResolvedValue(result),
       editDiscount: jest.fn(),
+      addGift: jest.fn().mockResolvedValue(result),
       getEditsView: jest.fn(),
     };
     orderRecords = { getOrderRecord: jest.fn() };
     controller = new OrderEditsController(edits, orderRecords as unknown as IOrderRecordService);
+  });
+
+  it('should add a gift as the signed-in user and pass the document form through', async () => {
+    await controller.addGift('ol_order_1', { variantId: 'v-1', quantity: 2, documentForm: 'show-zero' }, user);
+
+    expect(edits.addGift).toHaveBeenCalledWith({
+      internalOrderId: 'ol_order_1',
+      actorUserId: 'user-1',
+      dryRun: false,
+      variantId: 'v-1',
+      quantity: 2,
+      documentForm: 'show-zero',
+    });
   });
 
   it('should take the actor from the session and pass dryRun through, not into the address', async () => {
@@ -101,8 +115,12 @@ describe('OrderEditsController (#3542)', () => {
   });
 
   it('should answer an unknown order or line as 404 and an unusable payload as 400', async () => {
-    edits.editLines.mockRejectedValueOnce(new OrderEditNotFoundError('no line'));
-    edits.editLines.mockRejectedValueOnce(new OrderEditInvalidError('twice'));
+    edits.editLines.mockRejectedValueOnce(
+      new OrderEditNotFoundError('no line', { orderId: 'ol_order_1', orderLineId: 'line-9' })
+    );
+    edits.editLines.mockRejectedValueOnce(
+      new OrderEditInvalidError('twice', 'line-repeated', { orderLineId: 'line-1' })
+    );
     const body = { lines: [{ orderLineId: 'l1', quantity: 0 }] };
 
     await expect(controller.editLines('o', body, user)).rejects.toBeInstanceOf(NotFoundException);

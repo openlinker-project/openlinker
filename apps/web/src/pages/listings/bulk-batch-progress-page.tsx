@@ -50,14 +50,13 @@ import {
   type BulkBatchRecordSummary,
   type BulkBatchStatus,
 } from '../../features/listings/api/bulk-listings.types';
-import { serverErrorText } from '../../features/listings/lib/server-error-text';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 type BulkBatchProgressCopy = ResolvedCopy<Messages['listings']>['bulkBatchProgressPage'];
 
 export function BulkBatchProgressPage(): ReactElement {
   const { batchId } = useParams<{ batchId: string }>();
   const copy = useMessages('listings').bulkBatchProgressPage;
-  const common = useMessages('listings').common;
   const format = useFormat();
   const plural = usePlural();
   const query = useBulkBatchQuery(batchId);
@@ -124,14 +123,10 @@ export function BulkBatchProgressPage(): ReactElement {
       showToast({
         tone: 'error',
         title: copy.toasts.retryFailedTitle,
-        description: serverErrorText(
-          common.serverSaid,
-          (error as Error).message,
-          common.unknownError
-        ),
+        description: describeApiError(error, 'listings'),
       });
     }
-  }, [batchId, common, copy.toasts, plural, retryMutation, showToast]);
+  }, [batchId, copy.toasts, plural, retryMutation, showToast]);
 
   if (!batchId) {
     return <ErrorState title={copy.missingIdTitle} message={copy.missingIdMessage} />;
@@ -145,7 +140,7 @@ export function BulkBatchProgressPage(): ReactElement {
     return (
       <ErrorState
         title={copy.errorTitle}
-        message={serverErrorText(common.serverSaid, query.error.message, common.unknownError)}
+        message={describeApiError(query.error, 'listings')}
         action={
           <Button
             onClick={() => {

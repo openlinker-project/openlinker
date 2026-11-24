@@ -13,6 +13,8 @@ import {
   SlaStateValues,
   FulfillmentRollupStateValues,
   PaymentMethodValues,
+  OrderRefundStateValues,
+  type OrderRefundState,
 } from '@openlinker/core/orders';
 import {
   OrderRecordStatus,
@@ -23,8 +25,9 @@ import {
   type FulfillmentRoutingSkipReason,
   type PaymentMethod,
 } from '@openlinker/core/orders';
-import { DestinationRoutingBlockReasonValues } from '@openlinker/core/orders';
+import { DestinationRoutingBlockReasonValues, GiftDocumentFormValues } from '@openlinker/core/orders';
 import type { DestinationRoutingBlockReason } from '@openlinker/core/orders';
+import { GiftDocumentForm } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
   HoldReasonValues,
@@ -57,7 +60,62 @@ import { OrderOpenReturnDto } from './order-open-return.dto';
 import { OrderDeliveryResolutionDto } from './order-delivery-resolution.dto';
 import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 import { SalesDocumentViewResponseDto } from './sales-document-view-response.dto';
+import { SalesDocumentBlockParamsDto } from './sales-document-block-params.dto';
 
+
+export class OrderBundleComponentDto {
+  @ApiProperty({ description: 'Physical line id of the component' }) lineId!: string;
+  @ApiProperty() variantId!: string;
+  @ApiProperty() productId!: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) name!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) sku!: string | null;
+  @ApiProperty({ description: 'Units for the whole line' }) quantity!: number;
+  @ApiProperty({ description: 'Units in ONE bundle unit' }) perUnit!: number;
+  @ApiPropertyOptional() giftSlot?: boolean;
+  @ApiPropertyOptional({
+    description: 'The gift slot\'s own document form (#3940); absent means as in settings',
+    enum: GiftDocumentFormValues,
+  })
+  giftDocumentForm?: GiftDocumentForm;
+}
+
+export class OrderBundleLineDto {
+  @ApiProperty({ description: 'Commercial line id (the line the buyer paid for)' }) lineId!: string;
+  @ApiProperty() bundleVariantId!: string;
+  @ApiProperty({ description: 'Definition version the order was frozen with' }) version!: number;
+  @ApiProperty({
+    description:
+      'True when the bundle has been changed since this order was frozen: the order still ships the composition it holds.',
+  })
+  olderComposition!: boolean;
+  @ApiProperty({ type: [OrderBundleComponentDto] }) components!: OrderBundleComponentDto[];
+}
+
+export class OrderMultipackHoldDto {
+  @ApiProperty({ description: 'The channel line id' }) lineId!: string;
+  @ApiProperty({ description: 'Units of the product per unit ordered' }) packQuantity!: number;
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'The offer title the channel sent' })
+  lineName!: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'The variant the offer maps to; null when the offer is not mapped to one',
+  })
+  variantId!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) productName!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) sku!: string | null;
+}
+
+export class OrderRefundStateDto {
+  @ApiProperty({ enum: OrderRefundStateValues })
+  state!: OrderRefundState;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Decimal string, or null when unknown.' })
+  refundedAmount!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  currency!: string | null;
+}
 
 export class OrderRecordResponseDto {
   @ApiProperty({ description: 'Internal order ID (e.g. ol_order_...)' })
@@ -222,6 +280,15 @@ export class OrderRecordResponseDto {
   })
   salesDocumentBlockDetail!: string | null;
 
+  @ApiPropertyOptional({
+    type: SalesDocumentBlockParamsDto,
+    nullable: true,
+    description:
+      'The values behind salesDocumentBlockDetail (#3866): ids, counts and codes the ' +
+      'frontend phrases in the operator\'s language. Null when the block has none.',
+  })
+  salesDocumentBlockParams!: SalesDocumentBlockParamsDto | null;
+
   @ApiProperty({
     type: [OrderOmsAttentionEntryDto],
     description:
@@ -275,6 +342,18 @@ export class OrderRecordResponseDto {
       'the projection is best-effort and degrades to absent on failure.',
   })
   reservationShortfalls?: OrderReservationShortfallDto[];
+
+  @ApiPropertyOptional({
+    type: OrderRefundStateDto,
+    description:
+      'Refund state derived on read from the order\'s refund records (#4130): `partial` when ' +
+      'refunds are between zero and the order total, `full` when they reach it, `unknown` when ' +
+      'a currency mismatch, a tax-exclusive total or a missing total makes the comparison ' +
+      'meaningless. A separate fact from the channel-reported payment status, which the next ' +
+      'poll rewrites. Absent means no refund was recorded or the read failed, never a positive ' +
+      '"not refunded" claim.',
+  })
+  refundState?: OrderRefundStateDto;
 
   @ApiPropertyOptional({
     type: OrderOpenReturnDto,
@@ -352,6 +431,13 @@ export class OrderRecordResponseDto {
       '`buyerNote` tells them apart where the text is stored.',
   })
   hasBuyerNote!: boolean;
+
+  @ApiProperty({
+    description:
+      'Whether the order froze at least one bundle definition at ingestion (#3935). On the SHARED ' +
+      'projection so the list can mark bundle orders without the detail-only bundle lines.',
+  })
+  hasBundle!: boolean;
 
   @ApiProperty({
     enum: ['present', 'none', 'unknown'],
@@ -561,7 +647,8 @@ export class OrderRecordResponseDto {
       '(#2396, readable since #3485), or null. A held order is not mirrored to any destination. ' +
       'With the OMS on: `routing-refused` (the plan could not be committed, typically a line out of ' +
       'stock; re-routed automatically), `routing-no-shipping-address` (clears when the source sends ' +
-      'an address), `routing-failed` (re-routed automatically). The others are transient routing ' +
+      'an address), `routing-failed` (re-routed automatically), `routing-awaiting-payment` (the order is ' +
+      'not paid yet; routed when the source reports the payment, #4033). The others are transient routing ' +
       'states. Opposite of `fulfillmentRoutingSkipReason`, which is NOT a hold.',
   })
   fulfillmentBlockReason!: FulfillmentBlockReason | null;
@@ -602,6 +689,29 @@ export class OrderRecordResponseDto {
       'DETAIL READ ONLY, same as activeHold above.',
   })
   holdHistory?: OrderHoldDto[];
+
+  @ApiPropertyOptional({
+    type: () => [OrderBundleLineDto],
+    description:
+      'The bundle lines of this order with the components they were frozen with (#3624). DETAIL READ ONLY. ' +
+      'Absent when the order holds no bundle.',
+  })
+  bundleLines?: OrderBundleLineDto[];
+
+  @ApiPropertyOptional({
+    type: () => OrderMultipackHoldDto,
+    description:
+      'Set while this order is held because a channel line sells several units of one product and no bundle defines them (#3624). ' +
+      'DETAIL READ ONLY. Names the product the offer maps to, which is what a "create bundle N x product" action needs.',
+  })
+  multipackHold?: OrderMultipackHoldDto;
+
+  @ApiPropertyOptional({
+    type: () => [OrderMultipackHoldDto],
+    description:
+      'Every held multipack line (#3520). An order can hold several; each needs its own confirmation. DETAIL READ ONLY.',
+  })
+  multipackHolds?: OrderMultipackHoldDto[];
 
   @ApiPropertyOptional({
     type: SalesDocumentViewResponseDto,

@@ -7,7 +7,7 @@
  *
  * @module libs/core/src/invoicing/application/mappers
  */
-import type { Address, Order, OrderItem } from '@openlinker/core/orders';
+import { addedLineToOrderItem, type Address, type Order, type OrderItem } from '@openlinker/core/orders';
 
 import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
@@ -1018,5 +1018,261 @@ describe('toIssueInvoiceCommand delivery line (#3905, ADR-082)', () => {
   it('should print no zero line when free delivery is omitted', () => {
     const cmd = toIssueInvoiceCommand({ order: mixed(0, 150), connectionId: 'c', deliveryLine: delivery() });
     expect(cmd.lines).toHaveLength(2);
+  });
+});
+
+describe('toIssueInvoiceCommand - gift lines (#3930)', () => {
+  const giftOrder = (): Order =>
+    makeOrder({
+      items: [
+        makeItem({ id: 'i1', price: 100, taxRate: '23' }),
+        makeItem({ id: 'i2', productId: 'prod-2', price: 0, name: 'Spoon', taxRate: '23', gift: { source: 'channel' } }),
+      ],
+    });
+  const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
+    lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
+
+  it('should omit a gift when asked and still equal what was paid', () => {
+    const cmd = toIssueInvoiceCommand({ order: giftOrder(), connectionId: 'c', giftConnectionForm: 'omit' });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Widget']);
+    expect(total(cmd.lines)).toBe(10000);
+    expect(cmd.lines[0]).not.toHaveProperty('isGift');
+  });
+
+  it('should show the gift at 0.01 taken from the same-rate line when the provider refuses zero', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      giftConnectionForm: 'show-zero',
+      acceptsZeroValueLine: false,
+    });
+    expect(cmd.lines).toHaveLength(2);
+    expect(cmd.lines[1].unitPriceGross).toBeCloseTo(0.01);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+
+  it('should keep the gift at 0.00 when the provider accepts zero', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      giftConnectionForm: 'show-zero',
+      acceptsZeroValueLine: true,
+    });
+    expect(cmd.lines[1].unitPriceGross).toBe(0);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+
+  it('should show the gift at the chosen price from the level that names it, total unchanged', () => {
+    const own = toIssueInvoiceCommand({
+      order: makeOrder({
+        items: [
+          makeItem({ id: 'i1', price: 100, taxRate: '23' }),
+          makeItem({
+            id: 'i2', productId: 'prod-2', price: 0, name: 'Spoon', taxRate: '23',
+            gift: { source: 'operator', documentForm: 'custom-price', documentUnitPrice: '4.50' },
+          }),
+        ],
+      }),
+      connectionId: 'c',
+      giftConnectionForm: 'custom-price',
+      giftConnectionUnitPrice: '7',
+    });
+    expect(own.lines[1].unitPriceGross).toBe(4.5);
+    expect(total(own.lines)).toBe(10000);
+
+    const connection = toIssueInvoiceCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      giftConnectionForm: 'custom-price',
+      giftConnectionUnitPrice: '7',
+    });
+    expect(connection.lines[1].unitPriceGross).toBe(7);
+    expect(connection.lines[0].unitPriceGross).toBe(93);
+    expect(connection.lines[1]).not.toHaveProperty('giftUnitPriceGross');
+    expect(total(connection.lines)).toBe(10000);
+  });
+
+  it('should default to a technical cent when no setting is saved', () => {
+    const cmd = toIssueInvoiceCommand({ order: giftOrder(), connectionId: 'c' });
+    expect(cmd.lines).toHaveLength(2);
+    expect(cmd.lines[1].unitPriceGross).toBeCloseTo(0.01);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+
+  it('should let the gift own form win over the connection and the default', () => {
+    const base = giftOrder();
+    const order = {
+      ...base,
+      items: base.items.map((item) =>
+        item.gift ? { ...item, gift: { ...item.gift, documentForm: 'omit' as const } } : item,
+      ),
+    };
+    const cmd = toIssueInvoiceCommand({
+      order,
+      connectionId: 'c',
+      giftConnectionForm: 'priced-in',
+      giftGlobalForm: 'show-zero',
+    });
+    expect(cmd.lines).toHaveLength(1);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+});
+
+describe('toIssueInvoiceCommand - bundle components (#3934)', () => {
+  const bundleOrder = (): Order =>
+    makeOrder({
+      items: [makeItem({ id: 'set', variantId: 'vs', price: 100, taxRate: '23', name: 'Gift set' })],
+    });
+  const bundleDocument = {
+    byLineId: {
+      set: [
+        {
+          taxRate: '8',
+          lineId: 'set~c:a',
+          variantId: 'a',
+          productId: 'pa',
+          name: 'Soap',
+          quantity: 1,
+          unitPriceGross: 80,
+        },
+        {
+          taxRate: '8',
+          lineId: 'set~c:g',
+          variantId: 'g',
+          productId: 'pg',
+          name: 'Candle',
+          quantity: 1,
+          giftSlot: true,
+          unitPriceGross: 20,
+        },
+      ],
+    },
+  };
+  const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
+    lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
+
+  it('should keep the set as one line when every component has the set rate', () => {
+    const sameRate = {
+      byLineId: {
+        set: bundleDocument.byLineId.set.map((c) => ({ ...c, taxRate: '23' })),
+      },
+    };
+    const cmd = toIssueInvoiceCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      bundleDocument: sameRate,
+    });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Gift set']);
+  });
+
+  it('should keep the set as one line when the order carries no bundle data', () => {
+    const cmd = toIssueInvoiceCommand({ order: bundleOrder(), connectionId: 'c' });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Gift set']);
+  });
+
+  it('should present a mixed-rate set as components at their own rates summing to what was paid', () => {
+    const mixed = {
+      byLineId: {
+        set: [
+          { ...bundleDocument.byLineId.set[0], taxRate: '23', unitPriceGross: 60 },
+          {
+            lineId: 'set~c:b',
+            variantId: 'b',
+            productId: 'pb',
+            name: 'Book',
+            quantity: 1,
+            unitPriceGross: 40,
+            taxRate: '5',
+          },
+        ],
+      },
+    };
+    const cmd = toIssueInvoiceCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      bundleDocument: mixed,
+    });
+    expect(cmd.lines.map((l) => [l.name, l.taxRate, l.unitPriceGross])).toEqual([
+      ['Soap', '23', 60],
+      ['Book', '5', 40],
+    ]);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+
+  it('should refuse a set whose component rate is unknown', () => {
+    const unknown = {
+      byLineId: { set: bundleDocument.byLineId.set.map((c) => ({ ...c, taxRate: null })) },
+    };
+    expect(() =>
+      toIssueInvoiceCommand({ order: bundleOrder(), connectionId: 'c', bundleDocument: unknown }),
+    ).toThrow('Bundle line set has a component with no known tax rate');
+  });
+
+  it('should present the components and omit the gift slot, total equal to what was paid', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      bundleDocument,
+      giftConnectionForm: 'omit',
+    });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Soap']);
+    expect(cmd.lines[0].orderLineId).toBe('set~c:a');
+    expect(total(cmd.lines)).toBe(10000);
+  });
+
+  it('should show the gift slot at zero through the gift form', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      bundleDocument,
+      giftConnectionForm: 'show-zero',
+      acceptsZeroValueLine: true,
+    });
+    expect(cmd.lines.map((l) => [l.name, l.unitPriceGross])).toEqual([
+      ['Soap', 100],
+      ['Candle', 0],
+    ]);
+  });
+
+  it('should price the gift slot in by its standalone price and keep the total', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      bundleDocument,
+      giftConnectionForm: 'priced-in',
+    });
+    expect(cmd.lines).toHaveLength(2);
+    expect(cmd.lines[1].unitPriceGross).toBeGreaterThan(0);
+    expect(total(cmd.lines)).toBe(10000);
+  });
+});
+
+describe('toIssueInvoiceCommand - net-priced order with an OpenLinker rule gift', () => {
+  it('should compose without refusal and sum to what was paid', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: makeOrder({
+        items: [
+          makeItem({ id: 'i1', price: 100, unitPriceGross: 123, taxRate: '23' }),
+          addedLineToOrderItem(
+            'ol-gift:rule-1:1',
+            {
+              changeId: 'rule-1',
+              editedAt: '2026-11-02T10:00:00.000Z',
+              editedBy: null,
+              productId: 'prod-2',
+              quantity: 1,
+              name: 'Spoon',
+              taxRate: '23',
+              gift: { source: 'ol-rule', ruleRef: 'rule-1' },
+            }
+          ),
+        ],
+        totals: { subtotal: 100, tax: 23, shipping: 0, total: 123, currency: 'PLN', taxTreatment: 'exclusive' },
+      }),
+      connectionId: 'c',
+      giftConnectionForm: 'omit',
+    });
+    const sum = cmd.lines.reduce((acc, l) => acc + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+    expect(sum).toBe(12300);
   });
 });

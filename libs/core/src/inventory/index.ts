@@ -41,6 +41,8 @@ export {
 // co-located guard. Guard-only - never advertised in a manifest.
 export type { BulkInventoryReader } from './domain/ports/capabilities/bulk-inventory-reader.capability';
 export { isBulkInventoryReader } from './domain/ports/capabilities/bulk-inventory-reader.capability';
+export type { InventoryEventTargetResolver } from './domain/ports/capabilities/inventory-event-target-resolver.capability';
+export { isInventoryEventTargetResolver } from './domain/ports/capabilities/inventory-event-target-resolver.capability';
 
 // Domain Entities
 export { InventoryItem as InventoryItemEntity } from './domain/entities/inventory-item.entity';
@@ -86,6 +88,7 @@ export {
   MasterInventorySyncResult,
   MasterInventoryBatchSyncFailure,
   MasterInventoryBatchSyncResult,
+  MasterInventorySyncOptions,
 } from './application/services/master-inventory-sync.service.interface';
 export { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 export { IInventoryQueryService } from './application/services/inventory-query.service.interface';
@@ -225,6 +228,7 @@ export {
   ProductStockAggregate,
   PruneStaleVariantsResult,
   ProvenanceScope,
+  ReportedLocationSet,
   DuplicatePositionRow,
   DuplicatePositionGroup,
   DuplicatePositionReport,
@@ -350,6 +354,15 @@ export {
   isInventoryMovementAttachment,
   INVENTORY_MOVEMENT_RETENTION_DAYS_DEFAULT,
 } from './domain/types/inventory-movement.types';
+
+// What OpenLinker sent each channel (#4062)
+export {
+  ChannelQuantityPushOutcomeValues,
+  ChannelQuantityPushOutcome,
+  ChannelQuantityPush,
+  AppendChannelQuantityPushInput,
+  LastChannelQuantityPush,
+} from './domain/types/channel-quantity-push.types';
 
 // Offer quantity write-order guard (#2617)
 export {

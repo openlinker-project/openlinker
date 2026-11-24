@@ -71,6 +71,7 @@ export const OrderChangeKindValues = [
   'order.line_quantity_change',
   'order.delivery_method_change',
   'order.discount_change',
+  'order.gift_added',
   'order.discount_refund',
   'order.discount_correction',
   // #3961: the operator accepted that the packing work stays as it is although
@@ -149,6 +150,7 @@ export const OrderOperatorEditKindValues = [
   'order.line_quantity_change',
   'order.delivery_method_change',
   'order.discount_change',
+  'order.gift_added',
 ] as const satisfies readonly OrderChangeKind[];
 
 export type OrderOperatorEditKind = (typeof OrderOperatorEditKindValues)[number];
@@ -172,6 +174,11 @@ export function addressEditTargetRef(internalOrderId: string): string {
 
 export function lineQuantityEditTargetRef(internalOrderId: string): string {
   return `edit:lines:${internalOrderId}`;
+}
+
+/** A gift an operator adds by hand (#3940). Added gifts are confirmed in the same breath, so one open row per order is enough. */
+export function giftEditTargetRef(internalOrderId: string): string {
+  return `edit:gift:${internalOrderId}`;
 }
 
 export function deliveryMethodEditTargetRef(internalOrderId: string): string {

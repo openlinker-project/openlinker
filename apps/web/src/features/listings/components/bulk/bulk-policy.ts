@@ -15,12 +15,14 @@
  */
 import type {
   CategoryParameterLike,
+  OfferRowBundleInput,
   OfferRowValidationInput,
   SuppliedParameterLike,
 } from '../../../../shared/plugins';
 import { getMessages, interpolate } from '../../../../shared/i18n';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
 import type { EanMatchResult, OfferParameter } from '../../api/listings.types';
+import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
 import { collapseToInvalidBarcode } from './bulk-blockers';
 import type {
   BulkRowBlocker,
@@ -181,6 +183,13 @@ export interface ComputeBlockersInput {
    */
   cardInOtherCategory?: boolean;
   /**
+   * The variant's barcode matched a catalogue card in one category and the
+   * operator chose another (#4035). Gates the row: card-linked rows skip the
+   * product-parameter checks, so without it the row reads READY and the
+   * marketplace refuses the offer.
+   */
+  cardCategoryMismatch?: boolean;
+  /**
    * Per-variant category outcome. The Resolve step synthesizes `{ kind: 'no-ean' }`
    * for variant rows without a barcode (no BE call); `undefined` is treated
    * defensively as `no-match`.
@@ -280,6 +289,12 @@ export interface ComputeBlockersInput {
    * this a failed fetch silently cleared the required-parameter blocker.
    */
   categorySchemaUnavailable?: boolean;
+  /**
+   * Set when the row is a bundle published as a product-set offer (#3520). The
+   * single-product category and barcode checks then do not apply: the category
+   * comes from the first component's card and the barcode is not required.
+   */
+  bundle?: OfferRowBundleInput;
 }
 
 /**
@@ -315,7 +330,11 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   );
   if (!hasCategoryOverride && !input.destinationResolvesCategoryAtSubmit) {
     const cat = input.categoryResult;
-    if (!cat || cat.kind === 'no-match') {
+    if (input.bundle) {
+      // A set needs a category, not a catalogue match for its own barcode: the
+      // chip that says "no catalogue match" would be false for it (#3520).
+      if (!input.bundle.suggestedCategoryId) blockers.push('no-match');
+    } else if (!cat || cat.kind === 'no-match') {
       blockers.push('no-match');
     } else if (cat.kind === 'no-ean') {
       blockers.push('no-ean');
@@ -336,8 +355,14 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
   // Advisory, independent of `hasCategoryOverride`: a multi-variant sibling
   // always carries the product-tier category, which would otherwise hide the
   // disagreement on exactly the rows where a card was set aside (#3994).
-  if (input.cardInOtherCategory) {
+  // The gating chip says the same thing louder, so it replaces the advisory one.
+  if (input.cardCategoryMismatch) {
+    blockers.push('card-category-mismatch');
+  } else if (input.cardInOtherCategory) {
     blockers.push('card-category-differs');
+  }
+  if (input.cardCategoryMismatch) {
+    blockers.push('card-category-mismatch');
   }
 
   // Platform-specific blockers (#1096) - declared once per marketplace via its
@@ -350,7 +375,10 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
     blockers.push(
       ...input.platformValidate({
         imageCount: input.imageCount ?? 0,
-        needsProductParameters: computeNeedsProductParameters(input),
+        // A set's products carry their own parameters (#3520); the offer-level
+        // product-section requirement describes a single product and would
+        // demand values nobody can enter for a bundle.
+        needsProductParameters: input.bundle ? false : computeNeedsProductParameters(input),
         willLinkProductCard: input.willLinkProductCard ?? false,
         title: input.effectiveTitle ?? '',
         categoryParameters: input.categoryParameters,
@@ -363,6 +391,7 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
         barcodeMatchedCatalogue: input.barcodeMatchedCatalogue,
         siblingsWithoutCatalogueCard: input.siblingsWithoutCatalogueCard,
         includedSiblingCount: input.includedSiblingCount,
+        ...(input.bundle ? { bundle: input.bundle } : {}),
       }),
     );
   }
@@ -497,6 +526,9 @@ export function recomputeRowBlockers(
   platformValidate?: (input: OfferRowValidationInput) => string[],
   destinationResolvesCategoryAtSubmit = false,
 ): BulkRowBlocker[] {
+  // Row level DROPS the card when its category differs from the submit category
+  // (`rowProductCardIdFor`); the variant path BLOCKS instead
+  // (`isCardInOtherCategoryThanChosen`) because a sibling's card is what groups it.
   if (!row.primaryVariant) return ['no-variant'];
   const submitCategoryId = row.override.overrides?.categoryId ?? row.resolvedCategoryId;
   return computeBlockers({
@@ -536,6 +568,12 @@ export interface PreflightContext {
    * with values computed for the old one.
    */
   projectedByVariant?: ReadonlyMap<string, { categoryId: string; parameters: readonly OfferParameter[] }>;
+  /**
+   * Variants that publish as ONE offer made of several products (#3520), from
+   * the bundle preview. A bundle row's own barcode and catalogue card say
+   * nothing about the offer, so its blockers are computed from the components.
+   */
+  bundleByVariant?: ReadonlyMap<string, BundleOfferPreviewOk>;
 }
 
 /**
@@ -565,9 +603,7 @@ export function siblingCardCoverage(row: BulkWizardRow): {
   for (const variant of row.variants) {
     if (!variant.included) continue;
     included += 1;
-    const hasCard =
-      variant.resolvedProductCardId !== null ||
-      Boolean(variant.override.overrides?.productCardId);
+    const hasCard = variantProductCardIdOf(variant) !== null;
     if (!hasCard) withoutCard += 1;
   }
   return { included, withoutCard };
@@ -648,6 +684,53 @@ export function effectiveVariantEan(variant: BulkVariantRow): string | null {
     variant.variant.gtin ??
     null;
   return raw && raw.trim() !== '' ? raw.trim() : null;
+}
+
+/**
+ * Whether the operator cleared this sibling's barcode on purpose (#4036). An
+ * empty `ean` override is an explicit "list without a barcode", distinct from an
+ * absent one, which inherits the master barcode. The distinction has to survive
+ * because a master that carries an EAN would otherwise win back on every reopen
+ * and the offer would still be sent with it.
+ */
+export function hasExplicitNoBarcode(variant: BulkVariantRow): boolean {
+  const ean = variant.override.overrides?.ean;
+  return ean !== undefined && ean.trim() === '';
+}
+
+/**
+ * The catalogue card a sibling would be linked to (#4036). A card belongs to a
+ * barcode, so a variant listed without one has no card, whatever the resolve
+ * step found for the barcode it used to carry.
+ */
+export function variantProductCardIdOf(variant: BulkVariantRow): string | null {
+  if (hasExplicitNoBarcode(variant)) return null;
+  return variant.override.overrides?.productCardId || variant.resolvedProductCardId || null;
+}
+
+/**
+ * Whether the card the resolve step linked lives in a different category than
+ * the one this sibling will submit under (#4035). A card is only linkable in its
+ * own category, so the link would be refused downstream. An explicit
+ * operator-picked card is exempt: it was chosen together with its own category.
+ * A variant listed without a barcode has no card and cannot mismatch.
+ *
+ * `submitCategoryId` may be the RESOLVED category (a sibling inheriting the
+ * product-tier family pin), not only an operator pick: the marketplace refuses
+ * the link in both cases, so both gate, and the chip copy therefore speaks of
+ * the category "this offer will use". Contrast `recomputeRowBlockers`, whose
+ * single-variant row drops the card instead (`rowProductCardIdFor`) - a sibling
+ * cannot, because its card is what groups it with its siblings (#824).
+ */
+export function isCardInOtherCategoryThanChosen(
+  variant: BulkVariantRow,
+  submitCategoryId: string | null,
+): boolean {
+  if (hasExplicitNoBarcode(variant)) return false;
+  if (variant.override.overrides?.productCardId) return false;
+  if (variant.resolvedProductCardId === null || variant.resolvedCategoryId === null) return false;
+  if (variant.resolutionMethod !== 'auto_detect') return false;
+  return submitCategoryId !== null && submitCategoryId !== variant.resolvedCategoryId;
 }
 
 /**
@@ -741,6 +824,21 @@ export function submitCategoryIdOf(row: BulkWizardRow, variant: BulkVariantRow):
 }
 
 /**
+ * The category to ask the bundle preview about (#3520): everything
+ * `submitCategoryIdOf` would return EXCEPT a category the wizard itself filled in
+ * from that preview, which must not feed back into the question it answers.
+ */
+export function nonDerivedCategoryIdOf(row: BulkWizardRow, variant: BulkVariantRow): string | null {
+  return (
+    variant.override.overrides?.categoryId ??
+    row.override.overrides?.categoryId ??
+    (row.resolutionMethod === 'first_component' ? null : row.resolvedCategoryId) ??
+    (variant.resolutionMethod === 'first_component' ? null : variant.resolvedCategoryId) ??
+    null
+  );
+}
+
+/**
  * Whether the operator picked this variant's category in the wizard (#3994) -
  * on the variant itself or at the product tier. Deliberately NOT
  * `productCategoryIdOf`, which also returns the RESOLVED category: a resolved
@@ -764,6 +862,15 @@ export function projectedFor(
   const entry = context.projectedByVariant?.get(variantId);
   if (!entry || submitCategoryId === null || entry.categoryId !== submitCategoryId) return undefined;
   return entry.parameters;
+}
+
+/**
+ * The stock a bundle row lists at: the whole sets sellable now (#3520), not the
+ * bundle variant's own position. Falls back to the row's stock when the preview
+ * could not tell, so an unknown never becomes 0.
+ */
+export function bundleStock(preview: BundleOfferPreviewOk, variant: BulkVariantRow): number | null {
+  return preview.availableSets ?? variant.masterStock;
 }
 
 /**
@@ -792,21 +899,36 @@ export function recomputeVariantBlockers(
   const productCategoryId = productCategoryIdOf(row);
   const submitCategoryId = submitCategoryIdOf(row, variant);
   const coverage = siblingCardCoverage(row);
+  const bundlePreview = context.bundleByVariant?.get(variant.variantId);
+  const bundle: OfferRowBundleInput | undefined = bundlePreview
+    ? {
+        components: bundlePreview.components.map((component) => ({
+          variantId: component.variantId,
+          productId: component.productId,
+          name: component.name,
+          problems: component.problems,
+          ...(component.cardCategoryId ? { cardCategoryId: component.cardCategoryId } : {}),
+        })),
+        suggestedCategoryId: bundlePreview.suggestedCategoryId,
+        chosenCategoryId: submitCategoryId,
+      }
+    : undefined;
   const blockers = computeBlockers({
+    ...(bundle ? { bundle } : {}),
     hasVariant: true,
     categoryResult: variantCategoryResult(variant, submitCategoryId),
     cardInOtherCategory: variant.overriddenCard !== null && !operatorPickedCategory(row, variant),
+    cardCategoryMismatch: isCardInOtherCategoryThanChosen(variant, submitCategoryId),
     productCategoryId,
     // Per-product policy (on the shared-base override) wins over the batch (#1741).
     pricingPolicy: effectivePricingPolicy(row.override, config.pricingPolicy),
     stockPolicy: effectiveStockPolicy(row.override, config.stockPolicy),
     masterPrice: variant.masterPrice,
-    masterStock: variant.masterStock,
+    masterStock: bundlePreview ? bundleStock(bundlePreview, variant) : variant.masterStock,
     masterCurrency: variant.masterCurrency,
     batchCurrency: config.currency,
     override: variant.override,
-    willLinkProductCard: variant.resolvedProductCardId !== null
-      || Boolean(variant.override.overrides?.productCardId),
+    willLinkProductCard: variantProductCardIdOf(variant) !== null,
     requiredProductParamIds: submitCategoryId
       ? requiredByCategory.get(submitCategoryId)
       : undefined,
@@ -839,6 +961,7 @@ export function recomputeVariantBlockers(
   // where the category is resolved server-side.
   const ean = effectiveVariantEan(variant);
   if (
+    !bundle &&
     ean !== null &&
     !isValidGtin(ean) &&
     !filtered.includes('invalid-barcode') &&

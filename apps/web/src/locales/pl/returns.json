@@ -143,14 +143,6 @@
       "sectionTitle": "Odrzuć ten zwrot",
       "submitting": "Wysyłanie…"
     },
-    "declineError": {
-      "conflictPrefix": "Ten zwrot nie jest powiązany z zamówieniem, więc nie można go odrzucić.",
-      "conflictWithTrigger": "Ten zwrot nie jest powiązany z zamówieniem, więc nie można go odrzucić. Zablokowana akcja: {trigger}",
-      "generic": "Nie udało się wysłać odrzucenia.",
-      "notFound": "Ten zwrot już nie istnieje. Odśwież stronę, aby zobaczyć aktualną listę.",
-      "unsupported": "Nie można poprosić kanału o odrzucenie tego zwrotu.",
-      "unsupportedWithReason": "Nie można poprosić kanału o odrzucenie tego zwrotu. {reason}"
-    },
     "declineOutcome": {
       "already-declined": {
         "body": "Ten zwrot był już odrzucony, więc nic nie zostało wysłane ponownie.",

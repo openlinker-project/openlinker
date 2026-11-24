@@ -269,6 +269,21 @@ describe('spreadDeliveryAcrossLines', () => {
     expect(inc?.reduce((sum, v, i) => sum + v * lines[i].quantity, 0)).toBeCloseTo(0.1, 2);
   });
 
+  it('should leave a gift line out of the allocation (goods 9.99 + gift 0.01 + shipping 15.00)', () => {
+    const lines = [
+      { unitPriceGross: 9.99, quantity: 1 },
+      { unitPriceGross: 0.01, quantity: 1, isGift: true },
+    ];
+    const inc = spreadDeliveryAcrossLines(15, lines, 2);
+    expect(inc).toEqual([15, 0]);
+  });
+
+  it('should return null when only gift lines could take the delivery', () => {
+    expect(
+      spreadDeliveryAcrossLines(15, [{ unitPriceGross: 0.01, quantity: 1, isGift: true }], 2),
+    ).toBeNull();
+  });
+
   it('should return null when no quantity-1 line can take the remainder', () => {
     expect(spreadDeliveryAcrossLines(0.1, [{ unitPriceGross: 10, quantity: 3 }], 2)).toBeNull();
   });

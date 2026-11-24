@@ -19,6 +19,8 @@ import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
 import { captureDemoEvent } from '../../demo';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
 
 interface ConnectionActionsPanelProps {
   connection: Connection;
@@ -50,16 +52,22 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
   async function handleTest(): Promise<void> {
     try {
       const result = await testConnection.mutateAsync(connection.id);
+      if (result.success) {
+        showToast({
+          tone: 'success',
+          description: interpolate(copy.test.ok, { ms: format.number(result.latencyMs) }),
+        });
+        return;
+      }
+      const details = describeConnectionTestFailure(result);
       showToast({
-        tone: result.success ? 'success' : 'error',
-        title: result.success
-          ? interpolate(copy.test.ok, { ms: format.number(result.latencyMs) })
-          : copy.test.failed,
+        tone: 'error',
+        title: copy.test.failed,
         description:
-          result.success || result.status === undefined
-            ? result.message
+          result.status === undefined
+            ? details
             : interpolate(copy.test.failedWithStatus, {
-                message: result.message,
+                message: details,
                 status: result.status,
               }),
       });
@@ -67,7 +75,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
       showToast({
         tone: 'error',
         title: copy.test.failed,
-        description: (error as Error).message,
+        description: describeApiError(error, 'connections'),
       });
     }
   }
@@ -113,7 +121,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
 
       {disableConnection.error ? (
         <Alert tone="error" title={copy.disable.errorTitle}>
-          {disableConnection.error.message}
+          {describeApiError(disableConnection.error, 'connections')}
         </Alert>
       ) : null}
 

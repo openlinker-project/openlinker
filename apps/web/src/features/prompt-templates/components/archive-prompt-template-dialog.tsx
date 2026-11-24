@@ -35,6 +35,7 @@ import type {
   PromptTemplateState,
   PromptTemplateSummary,
 } from '../api/prompt-templates.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface ArchivePromptTemplateDialogProps {
   row: PromptTemplateSummary | null;
@@ -200,7 +201,7 @@ export function ArchivePromptTemplateDialog({
         ) : null}
 
         {mutation.error ? (
-          <Alert tone="error">{mutation.error.message}</Alert>
+          <Alert tone="error">{describeApiError(mutation.error, 'prompt-templates')}</Alert>
         ) : null}
 
         <DialogFooter>

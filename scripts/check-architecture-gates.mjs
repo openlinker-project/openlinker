@@ -101,7 +101,12 @@ const MARKER_CONVENTION_STARTS_AT = 48;
 const KNOWN_CONFIG_KNOBS = new Map([
   [
     'libs/core/src/invoicing/domain/types/invoice-trigger.types.ts',
-    { helper: 'parseTriggerModel', key: 'config.invoicing.triggerModel' },
+    // #3582 widened this knob rather than adding one: the same trigger model,
+    // now per document kind, with the legacy key as its fallback.
+    {
+      helper: 'parseTriggerModel',
+      key: 'config.invoicing.triggerModel + config.salesDocument.triggerModels[kind]',
+    },
   ],
   [
     'libs/core/src/identifier-mapping/domain/types/stock-safety-buffer.types.ts',
@@ -162,6 +167,14 @@ const KNOWN_CONFIG_KNOBS = new Map([
   [
     'libs/core/src/sales-documents/domain/types/delivery-line.types.ts',
     { helper: 'readDeliveryOnDocuments', key: 'config.deliveryOnDocuments' },
+  ],
+  [
+    'libs/core/src/sales-documents/domain/types/gift-lines.types.ts',
+    { helper: 'readGiftConnectionForm', key: 'config.giftOnDocuments' },
+  ],
+  [
+    'libs/core/src/sales-documents/domain/types/batch-schedule.types.ts',
+    { helper: 'readBatchSchedule', key: 'config.salesDocument.batchSchedules[kind]' },
   ],
   [
     // #3963: "when the buyer pays later" - mark the destination order paid, or leave it.
@@ -412,6 +425,14 @@ const NON_KNOBS = new Map([
 //
 // Both landed together, so the threshold is 14: one more for each knob.
 //
+// #3930 (ADR-083) raised it to 15 for `config.giftOnDocuments` - how a gift line
+// appears on receipts and invoices (omit, show at 0.00, priced in, internal
+// record). It sits beside `config.deliveryOnDocuments` on the order-source
+// connection for the same reason: the operator decides it per sales channel,
+// and the document provider's own declaration (`ZeroValueLineSupport`) narrows
+// which forms are offered. The #1032 question still stands; raised by one so the
+// next knob asks again.
+//
 // #3963 raised it to 15 for `config.paymentWriteback` - whether a payment that
 // arrives after a shop got the order is marked paid there, and which shop state
 // "paid" lands on. Per connection by nature: it is a fact about ONE destination
@@ -419,7 +440,17 @@ const NON_KNOBS = new Map([
 // WooCommerce does not), so an install-wide setting could not name the state.
 // Registered rather than excused; the #1032 question still stands, and the
 // number is raised by one so the next knob asks again.
-const KNOB_THRESHOLD = 15;
+//
+// Two knobs landed on separate branches and met here: the gift-line form
+// (#3930) and the batch schedule (#3583), so the registry holds 16 and the
+// threshold is raised to 17: one more for each knob, on the same grounds as
+// their predecessors (a pure-rules file in a leaf, no persistence, consolidation
+// still owned by #2169). The next knob asks again.
+//
+// #3941 narrows the gift-line knob rather than adding one: the key stays, but it
+// is now an optional per-connection OVERRIDE of the OpenLinker-wide default held
+// in the `sales_document_settings` singleton (absent = inherit).
+const KNOB_THRESHOLD = 17;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
@@ -441,6 +472,9 @@ const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
 const NON_RUNGS = new Set([
   'product-tax-rate-reader.capability.ts',
   'bulk-product-reader.capability.ts',
+  // Reads a bundle's composition; says nothing about master freshness (#3932).
+  'bundle-reader.capability.ts',
+  'product-creator.capability.ts',
 ]);
 
 /** ADR-048: "a third rung appearing is the signal to revisit the ladder." */

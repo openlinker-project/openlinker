@@ -78,6 +78,7 @@ import {
   toLocateResult,
   toRegisterTransactionResult,
 } from './eparagony-document.mapper';
+import type { ZeroValueLineSupport } from '@openlinker/core/sales-documents';
 
 /**
  * Default ceiling on the status poll. THIS LANE'S OWN BUDGET - a device needs
@@ -101,7 +102,7 @@ if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_REGISTER_DEADLINE_MS) {
 }
 
 export class EparagonyFiscalizationAdapter
-  implements FiscalizationPort, FiscalRegistrationLocator, ReceiptLineNameBudget
+  implements FiscalizationPort, FiscalRegistrationLocator, ReceiptLineNameBudget, ZeroValueLineSupport
 {
   constructor(
     private readonly connectionId: string,
@@ -112,6 +113,14 @@ export class EparagonyFiscalizationAdapter
 
   getReceiptLineNameMaxLength(): number {
     return EPARAGONY_RECEIPT_LINE_NAME_MAX_LENGTH;
+  }
+
+  /**
+   * The provider does not accept a 0,00 line; a gift shown on its documents takes 0,01 from a paid line of the same rate instead.
+   * Read by the document mappers through `readZeroValueLineSupport` (#3930).
+   */
+  acceptsZeroValueLine(): boolean {
+    return false;
   }
 
   async registerTransaction(
@@ -288,10 +297,11 @@ export class EparagonyFiscalizationAdapter
    * registration of the sale, which is exactly what the neutral definition of
    * `rejected` requires.
    *
-   * Note the operational consequence, recorded honestly: because the vendor
-   * keeps the failed document under the token, a re-attempt after the operator
-   * fixes the device meets that same failed document. A genuine retry needs a
-   * fresh registration key, i.e. an operator action.
+   * The operational consequence: because the vendor keeps the failed document
+   * under the token, a re-attempt under the same registration key meets that
+   * same failed document. Core therefore treats a refusal as final under its
+   * key and asks again as a NEW attempt under a new key (#3960), which this
+   * adapter turns into a new token with no change of its own.
    */
   private toTerminalRejection(
     body: EparagonyDocumentStatusResponse,

@@ -1,0 +1,183 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/expression-samples-template-designer"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Expression Samples: Template Designer</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Expression Samples: Template Designer';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1__1998105961" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+  Expression Samples: Template Designer
+<a href="/articles/documentation/expression-samples-template-designer/a/h1__1998105961" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/expression-samples-template-designer/a/h1__1998105961&#39;,this);"></a></h1>
+<p>
+  Expressions&nbsp;come in different forms depending on where they are being used in T<i>emplate Designer</i>. The 4 main uses for expressions in <i>Template Designer</i> are:
+</p>
+<ul>
+  <li>
+    Printing conditions
+  </li>
+  <li>
+    Visibility conditions for image elements
+  </li>
+  <li>
+    Conditional syles
+  </li>
+  <li>
+    Element expressions
+  </li>
+</ul>
+<p>
+  Whilst these broadly have the same syntax, the variable structure changes, depending on the application. This document will give examples of different forms of expression and where they may be useful.
+</p>
+<h2 id="brackets" style="" data-has-heading-anchor="true">
+  Uses of parentheses and braces
+<a href="/articles/documentation/expression-samples-template-designer/a/brackets" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/expression-samples-template-designer/a/brackets&#39;,this);"></a></h2>
+<p>
+  In most circumstances, variable names such as ShippingVendor should be enclosed by square brackets <span style="font-weight: normal;"><b>[]</b></span> and braces <span style="font-weight: normal;"><b>{}</b>. For example,&nbsp;</span><strong>[{ShippingVendor}]</strong>. In some circumstances, such as printing conditions the braces are not required but recommended.
+</p>
+<h2 id="condexp" data-has-heading-anchor="true">
+  Conditional expressions
+<a href="/articles/documentation/expression-samples-template-designer/a/condexp" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/expression-samples-template-designer/a/condexp&#39;,this);"></a></h2>
+<p>
+  There are several types of conditional expressions:&nbsp;
+</p>
+<ul>
+  <li>
+    Printing conditions
+  </li>
+  <li>
+    Visibility conditions
+  </li>
+  <li>
+    Conditional styles
+  </li>
+</ul>
+<p>
+  These types of expressions are limited in their scope as they require something that can be evaluated as true or false. Therefore they cannot accept any expression that returns a value.
+</p>
+<p>
+  It should be noted that in image visibility conditions and conditional styles, both brackets and braces are required around variables. Otherwise, the condition will not evaluate correctly.
+</p>
+<h3 id="condstyles" data-has-heading-anchor="true">
+  Conditional styles example
+<a href="/articles/documentation/expression-samples-template-designer/a/condstyles" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/expression-samples-template-designer/a/condstyles&#39;,this);"></a></h3>
+<p>
+  Packing lists are often customized so that when the quantity of an item is more than 1, it is highlighted to ensure that the correct amount is sent. This feature is built into the default packing template. To alter this to a higher value:
+</p>
+<ol>
+  <li>
+    Open the <i><span style="font-weight: normal;">Packing List</span></i> template from <i>Settings &gt; Template Designer</i> and double-click on the table.
+  </li>
+  <li>
+    Open the <i>Sub-table</i> tab.
+  <br/><img src="/resources/Storage/documentation/Screenshots/ExpressionSamples/PackingList-Subtable.jpg" alt="Expressions Packing List Sub-table" class="size-75" loading="lazy"/></li>
+  <li>Find the <i>Quantity</i> row.
+  <br/><img src="/resources/Storage/documentation/Screenshots/ExpressionSamples/PackingList-Qty.jpg" alt="Expression Packing List Qty raw" class="leftAlone" loading="lazy"/></li>
+  <li>Double-click the icon in the <i>Style</i> column.
+  </li>
+  <li>Click on the <span class="btn-gray"><span class="fa fa-plus"></span>&nbsp;Add Conditional Style</span> button and add a condition. In our example, it is the following:&nbsp;<span style="color: #0077aa; font-family: Consolas, Monaco, &quot;Andale Mono&quot;, monospace; font-size: 13px; text-decoration-color: initial; font-weight: normal;"><b>[{nQty}]&gt;1</b></span>&nbsp;
+  </li>
+  <li>
+    Click <i>Ok</i>.
+  </li>
+  <li>
+    Click on the button in the <i>Font</i> column to access the font customization.
+  </li>
+  <li>
+    Click the <i>Back Color</i> box to select an appropriate background color.
+  </li>
+  <li>
+    Click the <i>Text Color</i> box to select an appropriate text color.
+  <br/><img src="/resources/Storage/documentation/Screenshots/ExpressionSamples/PackingList-ConditionalStyle.jpg" alt="Expression Packing List Conditional Style" class="size-75" style="" loading="lazy"/></li>
+  <li>The <i>OK</i> column is an indication of whether the syntax is correct for the condition.
+  </li>
+  <li>
+    The bin&nbsp;<span class="fa fa-trash"></span> icon will delete the condition when clicked.
+  </li>
+  <li>
+    Click <i>Ok</i> to save the condition.
+  </li>
+</ol>
+<h2 id="lblEVALS" data-has-heading-anchor="true">
+  Element expressions
+<a href="/articles/documentation/expression-samples-template-designer/a/lblEVALS" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/expression-samples-template-designer/a/lblEVALS&#39;,this);"></a></h2>
+<p>
+  There are a few ways that expressions can be used in elements. For instance, custom columns can be added to tables in invoices so extra information can be displayed based on the order information.
+</p>
+<h3 id="expdeldate" data-has-heading-anchor="true">
+  Expected delivery date
+<a href="/articles/documentation/expression-samples-template-designer/a/expdeldate" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/expression-samples-template-designer/a/expdeldate&#39;,this);"></a></h3>
+<p>
+  If you send PDF invoices to customers when their item is despatched, you may want to add an expected delivery date to the invoice. In a label element, paste the following:
+</p>
+<pre class="line-numbers language-markup" style="color: #07a;">EVAL{BEGIN}ParseDateTime[dateadd[now[],"b",2],"m.dd.yyyy","dd/mm/yy"]{END}
+</pre>
+<p>
+  There are two key parts to this expression. The first is <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">dateadd</span>, which in this case is the current date, <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">now[]</span>, plus an additional 2 business days. The "b" indicates business days (assumed to be Monday to Friday). Other options include "y", "m" or "d" for years, months or days respectively.
+</p>
+<p>
+  The other part of this expression is <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">ParseDateTime</span>. The default output of <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">dateadd</span> is m.dd.yyyy. Using <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">ParseDateTime</span> with the <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">dateadd</span> function specified as the first parameter allows you to change the date from its default to another format, in this case, "dd/mm/yyyy".
+</p>
+<p>
+  This would be most useful if invoices were generated based on the shipping service being used. The expression can then be altered to match the expected delivery time for that type of shipping service.
+</p>
+<p>
+  Please note that the expression above will produce a date 2 days from when it was last generated, so care needs to be taken when re-printing invoices with this information.
+</p>
+<h3 id="ChanSpecMsg" data-has-heading-anchor="true">
+  Channel specific messages
+<a href="/articles/documentation/expression-samples-template-designer/a/ChanSpecMsg" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/expression-samples-template-designer/a/ChanSpecMsg&#39;,this);"></a></h3>
+<p>
+  There are several ways of producing channel-specific messages. The following expression, pasted into a label element, will produce a thank you message on the template:
+</p>
+<pre class="line-numbers language-markup" style="color: #07a;">EVAL{BEGIN}
+concat["Thank you for purchasing from our ", lcase[[{Source}]], " store"]
+{END}
+</pre>
+<p>
+  The above text will produce "Thank you for purchasing from our &lt;<em>Channel</em>&gt; store". Whilst this is fine for marketplaces like Amazon and eBay, it would look out of place for solutions that are built around your own website. In cases like this the following alteration can be made:
+</p>
+<pre class="line-numbers language-markup" style="color: #07a;">EVAL{BEGIN}
+IIF[contains[[{Source}],"MAGENTO", "AMAZON", "SHOPIFY"],"Thank you for visiting our website",concat["Thank you for visiting our ", lcase[[{Source}]], " store"]]
+{END}
+</pre>
+<p>
+  This expression works slightly differently from the previous one. The IIF statement will either print "Thank you for visiting our website" or "Thank you for visiting our &lt;<em>Channel</em>&gt; store". It first checks whether the Source of the order came from a list, which can be expanded if needed, to include other cart-type integrations.
+</p>
+<p>
+  The above expression uses a string function, <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">concat</span>, to stitch the 3 parts of the sentence together. This is done because we need the string to change depending on what channel the order came from. Please note that the <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">concat</span> function will not put spaces between the strings being concatenated, so these have to be included manually. The final function is <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">lcase</span>. This makes the source name lowercase. This could be changed to <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">pcase</span>, proper case, which would capitalize the first letter of the source name if desired.
+</p>
+<h3 id="EvalRecData" data-has-heading-anchor="true">
+  Evaluating received data
+<a href="/articles/documentation/expression-samples-template-designer/a/EvalRecData" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/expression-samples-template-designer/a/EvalRecData&#39;,this);"></a></h3>
+<p>
+  The data received from a channel varies. Whilst it is possible to have invoices that cater to the dataset that is sent by the channel, it is often not convenient to have invoices based on the sales channel. If you wish to have the customer's phone number on the invoice, the following expression could be used to make sure that if no number is given that the invoice specifies this, rather than leaving a blank space:
+</p>
+<pre class="line-numbers language-markup" style="color: #07a;">Tel: EVAL{BEGIN}IIF[IsNullOrEmpty[[{BuyerPhoneNumber}]], "Not Available", [{BuyerPhoneNumber}]] {END}
+</pre>
+<p>
+  The expression checks the phone number field using the <span style="color: #07a; font-family: Consolas, Monaco, &#39;Andale Mono&#39;, monospace;">IsNullOrEmpty</span> function. This will return "Not Available" if the order doesn't contain a phone number, or the actual phone number if it did.
+</p>
+<script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

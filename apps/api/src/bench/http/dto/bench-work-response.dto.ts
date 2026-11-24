@@ -63,6 +63,11 @@ export class BenchWorkResponseDto {
       '`lineCount` above is the honest total, so a surface can say how many more there are.',
   })
   items!: BenchWorkItemResponseDto[];
+
+  @ApiProperty({
+    description: 'Units of this parcel that are gifts (#3935), for the rail\'s "with a gift" line. A count only.',
+  })
+  giftUnits!: number;
   @ApiProperty({
     description:
       'Units to confirm against the box. This is NOT a readiness signal: OpenLinker cannot see a ' +

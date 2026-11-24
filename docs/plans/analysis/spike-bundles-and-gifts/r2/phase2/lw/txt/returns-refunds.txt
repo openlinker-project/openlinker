@@ -1,0 +1,51 @@
+=== returns-refunds | Returns &amp; Refunds
+ 
+ Returns & Refunds 
+ Returns & Refunds
+ All booked RMAs (returns, exchanges, resends) and refunds are registered in the Returns & Refunds screen. Use this screen to view, action, edit or delete previously booked returns , exchanges , resends , and refunds .
+ RMA Bookings (returns, exchanges, resends)
+ Go to Orders > Returns & Refunds  and look for the required returns, exchanges, or resends in the RMA Bookings tab.
+ You can search for RMAs by:
+ RMA Header ID
+ Order ID
+ RMA reference
+ Order reference
+ Order tracking number
+ Item SKU/Title
+ Customer info
+ Click the  View/Action button to view booking details. Here you can update a booking with new details if required and action it.
+ Note:  Updating RMA will save changes but will not action it.
+ Actioning RMA will change the status of any parked RMA orders from parked to open and return or scrap any returned items. A record of the RMA will be added to the History tab. 
+ Deleting an RMA will delete any associated exchange/resend orders. It will not process any returns or scraps.
+ Actionable Refunds
+ Go to Orders > Returns & Refunds  and look for required refunds in the Actionable Refunds tab. 
+ You can search for a required refund by:
+ Refund Header ID
+ Order ID
+ Refund reference
+ Order reference
+ Order tracking number
+ Item SKU/Title
+ Customer info
+ Click the View/Action button to view booking details. Here you can update a booking with new details if required and action it.
+ Note:  Updating a refund will save changes but won't action it. It needs to be actioned separately.
+ Clicking the View on channel button will open a new tab in your browser where you can view a refund directly on the channel. This option is available for particular channels only.
+ History
+ Use the History tab to view all your past RMAs, refunds, or cancellations.
+ You can search for required returns, exchanges, resends, refunds, or cancellations by: 
+ Header Id
+ Order Id
+ Reference
+ Order reference
+ Order tracking number
+ Item SKU/Title
+ Customer info
+  Video tutorial 
+ If you like seeing things explained visually, watch this step-by-step video guide on Refunds, Returns, Resends, and Exchanges in Linnworks.  It  can help you understand how everything works and answer any extra questions.
+ Video - Refunds, Returns, Resends, and Exchanges  
+ Related pages:
+ How to book/action returns 
+ How to book/action exchanges 
+ How to book/action resends 
+ How to book/action refunds 
+ 

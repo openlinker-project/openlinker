@@ -17,9 +17,9 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
 } from '@nestjs/common';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { Logger } from '@openlinker/shared/logging';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -89,7 +89,12 @@ export class DeliveryLineSuggestionsController {
   getSuggestion(@Param('country') country: string): DeliveryLineSuggestionDto {
     const suggestion = getDeliveryLineSuggestion(country);
     if (suggestion === null) {
-      throw new NotFoundException(`No delivery-line suggestion for country '${country}'`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'DELIVERY_LINE_SUGGESTION_NOT_FOUND',
+        `No delivery-line suggestion for country '${country}'`,
+        { country },
+      );
     }
     return toDto(suggestion);
   }

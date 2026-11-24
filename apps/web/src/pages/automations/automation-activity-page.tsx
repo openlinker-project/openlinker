@@ -50,6 +50,7 @@ import {
   useAutomationRunFeedQuery,
   useAutomationSummaryQuery,
 } from '../../features/automation';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 /** Server-side cap; a numbered pager is impossible because the envelope has no `total`. */
 const PAGE_SIZE = 50;
@@ -293,7 +294,7 @@ export function AutomationActivityPage(): ReactElement {
       ) : feedQuery.error ? (
         <ErrorState
           title={copy.errorTitle}
-          message={feedQuery.error.message}
+          message={describeApiError(feedQuery.error, 'automation')}
         />
       ) : (
         <>

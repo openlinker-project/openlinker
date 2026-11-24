@@ -174,6 +174,9 @@ One pointer per section, identical format every time.
 | [ADR-079](./079-inventory-movement-ledger.md) | Inventory movement ledger written at the mirror; sale rows from the sale decrement, reservations not movements | Accepted | 2026-10-26 |
 | [ADR-080](./080-operator-cost-price-snapshotted-at-ingestion.md) | Operator cost price on variants, snapshotted onto order lines at ingestion; margin on net revenue with explicit gaps | Accepted | 2026-10-29 |
 | [ADR-081](./081-frontend-owned-ui-translation.md) | Frontend-owned UI translation in JSON namespaces (Polish and English; Polish default from #3890) | Accepted | 2026-10-29 |
+| [ADR-083](./083-commercial-and-physical-order-lines.md) | An order has a commercial line list and a physical line list; the expansion is frozen at ingestion | Accepted | 2026-11-04 |
+| [ADR-084](./084-promotions-context.md) | Promotions are their own context; a gift is one benefit kind, not an automation rule | Proposed | 2026-11-10 |
+| [ADR-085](./085-connection-archive-hook-port.md) | A plugin may drop its own per-connection state when a connection is archived | Accepted | 2026-11-17 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 

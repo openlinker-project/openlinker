@@ -19,6 +19,7 @@ import type {
   InventoryMovementFilters,
   InventoryMovementPagination,
   InventoryMovementsPage,
+  ChannelQuantityPushes,
 } from './inventory-movements.types';
 import type {
   CorrectionTarget,
@@ -114,6 +115,8 @@ export interface InventoryApi {
   ) => Promise<InventoryMovementsPage>;
   /** GET /inventory/movements/count - the total behind `listMovements` (#3568). */
   countMovements: (filters?: InventoryMovementFilters, init?: RequestInit) => Promise<PaginatedTotal>;
+  /** GET /inventory/movements/:id/pushes - what OpenLinker sent each channel for one movement (#4062). */
+  listMovementPushes: (movementId: string) => Promise<ChannelQuantityPushes>;
   /** GET /inventory/:variantId/correction-target - which master a correction would write to (#3567). */
   getCorrectionTarget: (productVariantId: string) => Promise<CorrectionTarget>;
   /** POST /inventory/:variantId/adjust - a manual stock correction (#3567). */
@@ -238,6 +241,11 @@ export function createInventoryApi(request: ApiRequest): InventoryApi {
     countMovements(filters, init): Promise<PaginatedTotal> {
       // No pagination: the answer depends on the filters alone.
       return request<PaginatedTotal>(`/inventory/movements/count${buildMovementsQuery(filters)}`, init);
+    },
+    listMovementPushes(movementId): Promise<ChannelQuantityPushes> {
+      return request<ChannelQuantityPushes>(
+        `/inventory/movements/${encodeURIComponent(movementId)}/pushes`,
+      );
     },
     getCorrectionTarget(productVariantId): Promise<CorrectionTarget> {
       return request<CorrectionTarget>(

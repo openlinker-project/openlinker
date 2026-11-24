@@ -170,6 +170,8 @@ import {
   stockPolicyEquals,
 } from './bulk-policy';
 import type { BulkOfferOverrides, BulkPerProductOverride } from '../../api/bulk-listings.types';
+import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
+import { BundleComposition } from './bundle-composition';
 
 
 // Grouping-determining category parameters - shared across siblings, edited on
@@ -251,6 +253,12 @@ function resolveBasePrice(
 }
 
 interface BulkEditModalProps {
+  /**
+   * Variants that publish as one product-set offer (#3520), from the bundle
+   * preview. A bundle's editor shows its composition and skips the
+   * single-product requirements that do not apply to a set.
+   */
+  bundles?: ReadonlyMap<string, BundleOfferPreviewOk>;
   /**
    * What the connection's attribute rules fill, per variant id (#3995). The
    * editor shows those values where nothing the operator set replaces them.
@@ -354,6 +362,7 @@ export function BulkEditModal({
   canPickShopAttributes = false,
   demoReadOnly = false,
   projectionSummaries,
+  bundles,
 }: BulkEditModalProps): ReactElement | null {
   const copy = useMessages('listings').bulkEditModal;
   const [dirty, setDirty] = useState(false);
@@ -428,6 +437,7 @@ export function BulkEditModal({
             />
           ) : (
             <BulkEditModalForm
+              bundles={bundles}
               projectionSummaries={projectionSummaries}
               focusField={focusField}
               row={row}
@@ -600,6 +610,7 @@ type ScopeStatusKind = 'base' | 'ok' | 'attn' | 'off';
 
 interface BulkEditModalFormProps {
   projectionSummaries?: ReadonlyMap<string, ProjectionSummary>;
+  bundles?: ReadonlyMap<string, BundleOfferPreviewOk>;
   row: BulkWizardRow;
   connection: Connection;
   canBrowseCategories: boolean;
@@ -630,12 +641,14 @@ function BulkEditModalForm({
   focusField,
   demoReadOnly,
   projectionSummaries,
+  bundles,
   onDirtyChange,
   onRequestClose,
   onSave,
   onClose,
 }: BulkEditModalFormProps): ReactElement {
   const copy = useMessages('listings').bulkEditModal;
+  const bundleCopy = useMessages('listings').bundleOffer;
   const plural = usePlural();
   const { number: formatNumber } = useFormat();
   const connectionId = connection.id;
@@ -1112,6 +1125,7 @@ function BulkEditModalForm({
     // the lone variant's master barcode - a blank or unchanged value inherits.
     const baseEan = values.ean.trim();
     const primaryMasterBarcode = masterBarcodeOf(row.variants[0]);
+    const baseEanCleared = !isMultiVariant && baseEan === '' && primaryMasterBarcode !== '';
     // Simple-product acknowledgement (#3492) - only for a genuine single-variant
     // product; a multi-variant base carries no offer-EAN of its own (see the
     // comment above `baseParameters`).
@@ -1143,8 +1157,15 @@ function BulkEditModalForm({
         title: values.title,
         description: values.description === '' ? null : values.description,
         ...(values.categoryId ? { categoryId: values.categoryId } : {}),
-        ...(values.productCardId ? { productCardId: values.productCardId } : {}),
-        ...(baseEan !== '' && baseEan !== primaryMasterBarcode ? { ean: baseEan } : {}),
+        // A simple product whose barcode the operator cleared lists without one
+        // (#4036): an empty `ean` is stored as that explicit choice, and the card
+        // is bound to the barcode so it goes too.
+        ...(values.productCardId && !baseEanCleared ? { productCardId: values.productCardId } : {}),
+        ...(baseEanCleared
+          ? { ean: '' }
+          : baseEan !== '' && baseEan !== primaryMasterBarcode
+            ? { ean: baseEan }
+            : {}),
         ...(simpleEanAck ? { eanOverrideAcknowledged: true } : {}),
         ...(baseImageUrls !== undefined ? { imageUrls: baseImageUrls } : {}),
         ...(baseParameters.length > 0 ? { parameters: baseParameters } : {}),
@@ -1160,7 +1181,11 @@ function BulkEditModalForm({
         const overrides: BulkOfferOverrides = {};
 
         const eanTrimmed = edit.ean.trim();
-        if (eanTrimmed !== '' && eanTrimmed !== masterBarcodeOf(variant)) overrides.ean = eanTrimmed;
+        // Cleared on purpose (#4036): an empty override is "no barcode", kept
+        // distinct from an absent one, which would inherit the master barcode.
+        const eanCleared = eanTrimmed === '' && masterBarcodeOf(variant) !== '';
+        if (eanCleared) overrides.ean = '';
+        else if (eanTrimmed !== '' && eanTrimmed !== masterBarcodeOf(variant)) overrides.ean = eanTrimmed;
         if (isEanAcknowledged(edit.eanAcknowledgedFor, eanTrimmed)) {
           overrides.eanOverrideAcknowledged = true;
         }
@@ -1170,7 +1195,9 @@ function BulkEditModalForm({
         if (edit.description !== undefined) overrides.description = edit.description;
         if (edit.imageUrls !== undefined) overrides.imageUrls = edit.imageUrls;
         if (edit.categoryId !== undefined) overrides.categoryId = edit.categoryId;
-        if (edit.productCardId !== undefined) overrides.productCardId = edit.productCardId;
+        if (edit.productCardId !== undefined && !eanCleared) {
+          overrides.productCardId = edit.productCardId;
+        }
 
         // Emit the effective parameters array whole (base ∪ per-variant param
         // overrides) so the BE whole-array-replaces (plan §7). The schema is the
@@ -1291,9 +1318,13 @@ function BulkEditModalForm({
       <span className="bulk-editor__cat-missing">{copy.category.notSet}</span>
     );
   const categoryMissing = !effectiveCategoryId && !(displayPathNames && displayPathNames.length > 0);
-  const productTypeLabel = isMultiVariant
-    ? plural(row.variants.length, copy.header.variantCount)
-    : copy.header.simpleProduct;
+  const bundle =
+    !isMultiVariant && row.variants[0] ? bundles?.get(row.variants[0].variantId) : undefined;
+  const productTypeLabel = bundle
+    ? plural(bundle.components.length, bundleCopy.marker)
+    : isMultiVariant
+      ? plural(row.variants.length, copy.header.variantCount)
+      : copy.header.simpleProduct;
 
   const applyCategory = (categoryId: string, pathNames: string[] | null): void => {
     baseFormRef.current?.setValue('categoryId', categoryId, { shouldDirty: true });
@@ -1304,13 +1335,20 @@ function BulkEditModalForm({
   return (
     <>
       <div className="bulk-editor__head">
-        <DialogTitle className="bulk-editor__title">
-          {renderRich(
-            copy.header.titleOffer,
-            { name: (text) => <span>{text}</span> },
-            { name: row.product?.name ?? row.productId },
-          )}
-        </DialogTitle>
+        <div className="bulk-editor__headtext">
+          {bundle ? (
+            <p className="eyebrow" data-testid="bundle-editor-eyebrow">
+              {productTypeLabel}
+            </p>
+          ) : null}
+          <DialogTitle className="bulk-editor__title">
+            {renderRich(
+              copy.header.titleOffer,
+              { name: (text) => <span>{text}</span> },
+              { name: row.product?.name ?? row.productId }
+            )}
+          </DialogTitle>
+        </div>
         <Button
           tone="ghost"
           type="button"
@@ -1365,7 +1403,7 @@ function BulkEditModalForm({
         ) : null}
       </div>
 
-      <div className="bulk-editor__ptype">{productTypeLabel}</div>
+      {bundle ? null : <div className="bulk-editor__ptype">{productTypeLabel}</div>}
 
       <div className={['bulk-editor__body', isMultiVariant ? '' : 'bulk-editor__body--simple'].filter(Boolean).join(' ')}>
         {isMultiVariant ? (
@@ -1426,6 +1464,14 @@ function BulkEditModalForm({
             />
           ) : null}
           <BaseScopeForm
+            bundle={bundle}
+            onUseBundleCategory={
+              bundle?.suggestedCategoryId
+                ? () => {
+                    applyCategory(bundle.suggestedCategoryId ?? '', null);
+                  }
+                : undefined
+            }
             ruleHints={baseRuleHints}
             readOnly={demoReadOnly}
             descriptionFormat={descriptionFormat}
@@ -1556,7 +1602,9 @@ function BulkEditModalForm({
             ? scope === 'base'
               ? copy.footer.editingBase
               : copy.footer.editingVariant
-            : copy.footer.editingSimple}
+            : bundle
+              ? bundleCopy.editingFooter
+              : copy.footer.editingSimple}
         </span>
         <Button tone="ghost" type="button" onClick={onRequestClose}>
           {copy.footer.cancel}
@@ -1897,6 +1945,10 @@ interface BaseScopeFormProps {
   onEanAcknowledgedForChange: (next: string | undefined) => void;
   onReady: (form: UseFormReturn<BulkEditModalValues, undefined, BulkEditModalSubmission>) => void;
   onValuesChange: (values: BulkEditModalValues) => void;
+  /** The row publishes as a product-set offer (#3520). */
+  bundle?: BundleOfferPreviewOk;
+  /** Sets the category to the one of the first component's card. */
+  onUseBundleCategory?: () => void;
 }
 
 function BaseScopeForm({
@@ -1935,8 +1987,11 @@ function BaseScopeForm({
   onReady,
   onValuesChange,
   ruleHints,
+  bundle,
+  onUseBundleCategory,
 }: BaseScopeFormProps): ReactElement {
   const copy = useMessages('listings').bulkEditModal;
+  const bundleCopy = useMessages('listings').bundleOffer;
   const effectiveImages = baseImageUrls ?? masterImages;
   const imagesOverridden = baseImageUrls !== undefined;
   const schema = useMemo(
@@ -1958,7 +2013,9 @@ function BaseScopeForm({
 
   const watchedCategoryId = form.watch('categoryId');
   const watchedEan = form.watch('ean');
-  const eanInvalid = watchedEan.trim() !== '' && !isValidGtin(watchedEan.trim());
+  // A set needs no barcode of its own, so a checksum failure on it is not a
+  // problem to raise (#3520).
+  const eanInvalid = !bundle && watchedEan.trim() !== '' && !isValidGtin(watchedEan.trim());
   const classes = ['bulk-editor__form', active ? 'bulk-editor__form--acc-open' : ''].filter(Boolean).join(' ');
 
   return (
@@ -1998,6 +2055,18 @@ function BaseScopeForm({
             </div>
           )}
         </div>
+
+        {bundle ? (
+          <div className="bulk-editor__field" data-focus-field="bundle">
+            <BundleComposition
+              heading={interpolate(bundleCopy.compositionHeading, { destination: platformName })}
+              preview={bundle}
+              connectionId={connectionId}
+              chosenCategoryId={watchedCategoryId || null}
+              onUseSuggestedCategory={onUseBundleCategory}
+            />
+          </div>
+        ) : null}
 
         <div data-focus-field="title">
         <FormField
@@ -2050,7 +2119,7 @@ function BaseScopeForm({
               </div>
             ) : null}
             <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              {copy.ean.simpleHint}
+              {bundle ? bundleCopy.eanNotNeeded : copy.ean.simpleHint}
             </div>
           </div>
         ) : null}
@@ -2111,6 +2180,7 @@ function BaseScopeForm({
         )}
 
         <BaseDescriptionField
+          componentListHtml={bundle ? componentListHtml(bundle) : undefined}
           productId={row.product?.id ?? ''}
           channel={connection.platformType}
           descriptionFormat={descriptionFormat}
@@ -2280,7 +2350,7 @@ function BaseScopeForm({
           </div>
         </div>
 
-        {canBrowseCategories ? (
+        {canBrowseCategories && !bundle ? (
           <BaseParameterSection
             watchedCategoryId={watchedCategoryId}
             parametersQuery={categoryParametersQuery}
@@ -2341,12 +2411,24 @@ function BaseScopeForm({
   );
 }
 
+/** The components as a plain HTML list, for the description (names are escaped). */
+function componentListHtml(bundle: BundleOfferPreviewOk): string {
+  const escape = (text: string): string =>
+    text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<ul>${bundle.components
+    .map((c) => `<li>${escape(c.name)} x ${String(c.quantity)}</li>`)
+    .join('')}</ul>`;
+}
+
 function BaseDescriptionField({
   productId,
   channel,
   descriptionFormat,
   readOnly,
+  componentListHtml: componentList,
 }: {
+  /** Pre-rendered component list a bundle's description can start from (#3520). */
+  componentListHtml?: string;
   productId: string;
   channel: string;
   /** `null` until the destination's contract arrives (ADR-046). */
@@ -2354,6 +2436,7 @@ function BaseDescriptionField({
   readOnly: boolean;
 }): ReactElement {
   const copy = useMessages('listings').bulkEditModal;
+  const bundleCopy = useMessages('listings').bundleOffer;
   const form = useFormContext<BulkEditModalValues>();
   const error = form.formState.errors.description?.message;
   return (
@@ -2386,6 +2469,20 @@ function BaseDescriptionField({
         aria-label={copy.description.label}
       />
       {error ? <div className="bulk-editor__ean-err">{error}</div> : null}
+      {componentList && !readOnly ? (
+        <button
+          type="button"
+          className="bundle-comp__link"
+          onClick={() => {
+            form.setValue('description', `${form.getValues('description') ?? ''}${componentList}`, {
+              shouldDirty: true,
+              shouldValidate: true,
+            });
+          }}
+        >
+          {bundleCopy.insertComponentList}
+        </button>
+      ) : null}
       <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
         {copy.description.baseHint}
       </div>
@@ -2695,7 +2792,7 @@ function VariantScopeForm({
     [baseValues.parameters, edit.params],
   );
   const visibleParams = useMemo(
-    () => effectiveCategoryParameters.filter((p) => isParameterVisible(p, effectiveParamValues)),
+    () => effectiveCategoryParameters.filter((p) => isParameterVisible(p, effectiveParamValues, effectiveCategoryParameters)),
     [effectiveCategoryParameters, effectiveParamValues],
   );
   const requiredParams = visibleParams.filter((p) => p.required);
@@ -3714,6 +3811,7 @@ function applyEditsToRow(
           overrides: {
             ...v.override.overrides,
             ...(eanTrimmed !== '' ? { ean: eanTrimmed } : {}),
+            ...(eanTrimmed === '' && masterBarcodeOf(v) !== '' ? { ean: '' } : {}),
           },
         },
       };

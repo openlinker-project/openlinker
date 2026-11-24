@@ -19,6 +19,9 @@ import { parseReturnTimeline } from './return-timeline.schema';
 import {
   parseAttestReturnLineStockResult,
   parseConfirmReturnRefundResult,
+  parseBundleRefundHint,
+  parseBundleReturnPreview,
+  parseReturnOrderLineSuggestion,
   parseDisposeReturnLineResult,
   parseMarkNotReturnedResult,
   parseReceiveReturnLineResult,
@@ -30,6 +33,9 @@ import {
 } from './return-write.schema';
 import { RETURNS_MAX_LIMIT } from './returns.types';
 import type {
+  BundleRefundHint,
+  BundleReturnPreview,
+  ReturnOrderLineSuggestion,
   AttestReturnLineStockInput,
   ReturnCorrectionProposalResult,
   AttestReturnLineStockResult,
@@ -146,6 +152,29 @@ export interface ReturnsApi {
     lineId: string,
     input: DisposeReturnLineInput
   ) => Promise<DisposeReturnLineResult>;
+
+  /** `GET .../lines/:lineId/bundle` - price a (partial) bundle return; writes nothing (#3933). */
+  getBundleReturnPreview: (
+    returnId: string,
+    lineId: string,
+    selection: { returnedVariantIds?: string[]; quantity?: number }
+  ) => Promise<BundleReturnPreview>;
+
+  /** `GET /returns/:returnId/bundle-refund-hint` - the Allegro formula as a hint; a read (#3933). */
+  getBundleRefundHint: (returnId: string) => Promise<BundleRefundHint>;
+
+  /** `GET .../lines/:lineId/order-line-suggestion` - candidates and a suggestion; a read (#3933). */
+  getOrderLineSuggestion: (
+    returnId: string,
+    lineId: string
+  ) => Promise<ReturnOrderLineSuggestion>;
+
+  /** `POST .../lines/:lineId/confirm-order-line` - the operator confirms a suggestion (#3933). */
+  confirmOrderLine: (
+    returnId: string,
+    lineId: string,
+    orderLineId: string
+  ) => Promise<{ claimed: boolean }>;
 
   /**
    * `POST /returns/:returnId/lines/:lineId/mark-not-returned` — record that the
@@ -384,9 +413,45 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
           quantity: input.quantity,
           disposition: input.disposition,
           ...noteBody(input.note),
+          ...(input.returnedVariantIds === undefined
+            ? {}
+            : { returnedVariantIds: input.returnedVariantIds }),
         }),
       });
       return parseDisposeReturnLineResult(raw);
+    },
+
+    async getBundleReturnPreview(returnId, lineId, selection): Promise<BundleReturnPreview> {
+      const query = new URLSearchParams();
+      if (selection.returnedVariantIds !== undefined && selection.returnedVariantIds.length > 0) {
+        query.set('returnedVariantIds', selection.returnedVariantIds.join(','));
+      }
+      if (selection.quantity !== undefined) {
+        query.set('quantity', String(selection.quantity));
+      }
+      const suffix = query.toString() === '' ? '' : `?${query.toString()}`;
+      const raw = await request<unknown>(`${linePath(returnId, lineId, 'bundle')}${suffix}`);
+      return parseBundleReturnPreview(raw);
+    },
+
+    async getBundleRefundHint(returnId): Promise<BundleRefundHint> {
+      const raw = await request<unknown>(
+        `/returns/${encodeURIComponent(returnId)}/bundle-refund-hint`
+      );
+      return parseBundleRefundHint(raw);
+    },
+
+    async getOrderLineSuggestion(returnId, lineId): Promise<ReturnOrderLineSuggestion> {
+      const raw = await request<unknown>(linePath(returnId, lineId, 'order-line-suggestion'));
+      return parseReturnOrderLineSuggestion(raw);
+    },
+
+    async confirmOrderLine(returnId, lineId, orderLineId): Promise<{ claimed: boolean }> {
+      const raw = await request<{ claimed?: unknown }>(
+        linePath(returnId, lineId, 'confirm-order-line'),
+        { method: 'POST', body: JSON.stringify({ orderLineId }) }
+      );
+      return { claimed: raw.claimed === true };
     },
 
     async markLineNotReturned(

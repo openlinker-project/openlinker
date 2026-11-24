@@ -39,6 +39,7 @@ import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-s
 import { isPricingDestination, useConnectionQuery } from '../../features/connections';
 import { PricingAndSyncSection } from '../../features/connections/components/pricing-and-sync-section';
 import { SourceConnectionPricingRollup } from '../../features/price-changes/components/source-connection-pricing-rollup';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 export function ConnectionPricingSyncPage(): ReactElement {
   const { connectionId = '' } = useParams();
@@ -65,7 +66,11 @@ export function ConnectionPricingSyncPage(): ReactElement {
       >
         <ErrorState
           title={copy.error.title}
-          message={connectionQuery.error?.message ?? copy.error.unknown}
+          message={
+            connectionQuery.error
+              ? describeApiError(connectionQuery.error, 'connections')
+              : copy.error.unknown
+          }
         />
       </PageLayout>
     );

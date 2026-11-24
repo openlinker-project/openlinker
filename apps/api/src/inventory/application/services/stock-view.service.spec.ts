@@ -10,6 +10,7 @@
  */
 import type {
   IAvailabilityService,
+  IInventoryMovementService,
   IInventoryQueryService,
   ILocationService,
   VariantStockView,
@@ -65,6 +66,7 @@ describe('StockViewService', () => {
   let orderRecords: jest.Mocked<Pick<IOrderRecordService, 'findByIds'>>;
   let connections: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let settings: jest.Mocked<Pick<IOperationalSettingsService, 'resolve'>>;
+  let movements: jest.Mocked<Pick<IInventoryMovementService, 'getLastChannelPushes'>>;
   let service: StockViewService;
 
   const channelEntry = (
@@ -116,6 +118,8 @@ describe('StockViewService', () => {
       }),
     } as never;
 
+    movements = { getLastChannelPushes: jest.fn().mockResolvedValue([]) };
+
     service = new StockViewService(
       inventoryQuery as unknown as IInventoryQueryService,
       availability as unknown as IAvailabilityService,
@@ -126,7 +130,8 @@ describe('StockViewService', () => {
       commercial,
       orderRecords as unknown as IOrderRecordService,
       connections as unknown as ConnectionPort,
-      settings as unknown as IOperationalSettingsService
+      settings as unknown as IOperationalSettingsService,
+      movements as unknown as IInventoryMovementService
     );
   });
 
@@ -186,8 +191,30 @@ describe('StockViewService', () => {
         rule: { stockSafetyBuffer: 1, stockZeroThreshold: 0 },
         willPublish: { quantity: 7, provenance: 'computed' },
         channelShows: { quantity: 6, observedAt: new Date('2026-10-26T09:00:00Z') },
+        lastSent: null,
       },
     ]);
+  });
+
+  it('should report the last quantity sent to each channel beside what it shows (#4062)', async () => {
+    const pushedAt = new Date('2026-11-09T10:00:00Z');
+    movements.getLastChannelPushes.mockResolvedValue([
+      { productVariantId: 'var-a', connectionId: 'conn-allegro', quantity: 7, outcome: 'sent', pushedAt },
+    ]);
+
+    const result = await service.getProductStockView('prod-1');
+
+    expect(movements.getLastChannelPushes).toHaveBeenCalledWith(['var-a']);
+    expect(result.variants[0].channels[0].lastSent).toEqual({ quantity: 7, outcome: 'sent', pushedAt });
+  });
+
+  it('should report "last sent" as null, without failing the view, when the record cannot be read', async () => {
+    movements.getLastChannelPushes.mockRejectedValue(new Error('db down'));
+
+    const result = await service.getProductStockView('prod-1');
+
+    expect(result.channelsStatus).toBe('ok');
+    expect(result.variants[0].channels[0].lastSent).toBeNull();
   });
 
   it('should report "channel shows" as null, not zero, when no snapshot exists', async () => {

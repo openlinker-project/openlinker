@@ -15,6 +15,7 @@ import { useMemo, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useChangePasswordMutation } from '../hooks/use-change-password-mutation';
 import { useSession } from '../../../shared/auth/use-session';
 import { Alert } from '../../../shared/ui/alert';
@@ -51,8 +52,8 @@ export function ChangePasswordForm({ nextPath }: ChangePasswordFormProps): React
     resolver: zodResolver(schema),
   });
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   const handleSignOut = async (): Promise<void> => {
@@ -81,7 +82,7 @@ export function ChangePasswordForm({ nextPath }: ChangePasswordFormProps): React
       {form.formState.submitCount > 0 ? <FormErrorSummary errors={validationMessages} /> : null}
       {mutation.error ? (
         <Alert tone="error" title={copy.failed}>
-          {mutation.error.message}
+          {describeApiError(mutation.error, 'auth')}
         </Alert>
       ) : null}
 

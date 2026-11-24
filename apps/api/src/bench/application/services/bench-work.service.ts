@@ -132,6 +132,24 @@ export const BENCH_WORK_HARD_CAP = 5 * FULFILLMENT_WORKLIST_MAX_LIMIT;
  */
 const RAIL_ITEM_LIMIT = 3;
 
+/** Units of the parcel's lines that are gifts (#3935); cancelled units do not count. */
+function countGiftUnits(work: FulfillmentWorkView, order: OrderRecord | undefined): number {
+  if (order === undefined) {
+    return 0;
+  }
+  const giftLineIds = new Set(order.orderItems.filter((item) => item.gift !== undefined).map((item) => item.id));
+  for (const bundle of order.bundleLines) {
+    for (const component of bundle.components) {
+      if (component.giftSlot === true) {
+        giftLineIds.add(component.lineId);
+      }
+    }
+  }
+  return work.lines
+    .filter((line) => giftLineIds.has(line.orderLineId))
+    .reduce((sum, line) => sum + Math.max(0, line.totalQuantity - line.cancelledQuantity), 0);
+}
+
 @Injectable()
 export class BenchWorkService implements IBenchWorkService {
   private readonly logger = new Logger(BenchWorkService.name);
@@ -508,6 +526,10 @@ export class BenchWorkService implements IBenchWorkService {
         })
         .filter((item) => item.quantity > 0)
         .slice(0, RAIL_ITEM_LIMIT),
+      // Units of this parcel that are gifts (#3935), for the rail's "+N with a
+      // gift" line: a promotion's, the channel's or an operator's gift line, and
+      // the gift slot of a bundle. A count only; the bench never shows a price.
+      giftUnits: countGiftUnits(work, order),
       // Units still to be confirmed against the box. Cancelled units are
       // subtracted because nobody will put them in; `fulfilledQuantity` is
       // deliberately NOT consulted — see the view type's module note on B2.

@@ -50,6 +50,7 @@
  * @module apps/web/src/features/analytics/components
  */
 import { useEffect, useState, type ReactElement } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -150,7 +151,7 @@ export function AnalyticsSettingsDialog({
         });
       },
       onError: (error) => {
-        showToast({ tone: 'error', description: error.message });
+        showToast({ tone: 'error', description: describeApiError(error, 'analytics') });
       },
     });
   }
@@ -196,7 +197,7 @@ export function AnalyticsSettingsDialog({
       },
       {
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message });
+          showToast({ tone: 'error', description: describeApiError(error, 'analytics') });
         },
       }
     );
@@ -223,7 +224,7 @@ export function AnalyticsSettingsDialog({
       },
       {
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message });
+          showToast({ tone: 'error', description: describeApiError(error, 'analytics') });
         },
       }
     );
@@ -248,7 +249,7 @@ export function AnalyticsSettingsDialog({
       },
       {
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message });
+          showToast({ tone: 'error', description: describeApiError(error, 'analytics') });
         },
       }
     );

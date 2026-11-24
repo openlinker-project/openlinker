@@ -11,7 +11,11 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PATH_METADATA } from '@nestjs/common/constants';
 import { ProductImageProxyService } from '../application/services/product-image-proxy.service';
 import { ProductsController, VariantsController } from './products.controller';
-import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN } from '@openlinker/core/products';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+  TAX_RATE_JOURNAL_SERVICE_TOKEN,
+} from '@openlinker/core/products';
 import type {
   IProductsService,
   ITaxRateJournalService,
@@ -173,6 +177,10 @@ function createMockIdentifierMapping(): jest.Mocked<IdentifierMappingPort> {
 }
 
 describe('ProductsController', () => {
+  const mockBundleDefinitions = {
+    findCurrentByVariantIds: jest.fn().mockResolvedValue([]),
+    findCurrentContainingComponents: jest.fn().mockResolvedValue([]),
+  };
   let controller: ProductsController;
   let productsService: jest.Mocked<IProductsService>;
   let identifierMapping: jest.Mocked<IdentifierMappingPort>;
@@ -201,6 +209,10 @@ describe('ProductsController', () => {
         { provide: OFFER_MAPPINGS_SERVICE_TOKEN, useValue: mockOfferMappings },
         { provide: SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN, useValue: mockShopProductMappings },
         { provide: TAX_RATE_JOURNAL_SERVICE_TOKEN, useValue: mockTaxRateJournal },
+        {
+          provide: BUNDLE_DEFINITION_SERVICE_TOKEN,
+          useValue: mockBundleDefinitions,
+        },
         // Stubbed rather than omitted: the controller takes it by CLASS, so an
         // absent provider fails the whole module and with it every test in this
         // file - which is how it went unnoticed, since nothing here exercises
@@ -418,6 +430,39 @@ describe('ProductsController', () => {
       expect(item.externalIds).toEqual([
         { externalId: '42', platformType: 'prestashop', connectionId: 'conn-src' },
       ]);
+    });
+
+    describe('in-bundles count (#3935)', () => {
+      it('should count the distinct live bundles that use each product, from one reverse read', async () => {
+        productsService.listProducts.mockResolvedValue({
+          items: [makeProduct(), makeProduct({ id: 'ol_product_2' })],
+          total: 2,
+        });
+        productsService.getVariantsByProductIds.mockResolvedValue([
+          makeVariant({ id: 'v1', productId: 'ol_product_1' }),
+          makeVariant({ id: 'v2', productId: 'ol_product_2' }),
+        ]);
+        mockBundleDefinitions.findCurrentContainingComponents.mockResolvedValue([
+          { variantId: 'b1', version: 1, components: [{ variantId: 'v1', productId: 'ol_product_1', quantity: 1 }] },
+          { variantId: 'b2', version: 1, components: [{ variantId: 'v1', productId: 'ol_product_1', quantity: 1 }] },
+        ]);
+
+        const result = await controller.listProducts({});
+
+        expect(mockBundleDefinitions.findCurrentContainingComponents).toHaveBeenCalledTimes(1);
+        expect(result.items.map((i) => i.usedInBundlesCount)).toEqual([2, 0]);
+        mockBundleDefinitions.findCurrentContainingComponents.mockResolvedValue([]);
+      });
+
+      it('should omit the count rather than state zero when the read fails', async () => {
+        productsService.listProducts.mockResolvedValue({ items: [makeProduct()], total: 1 });
+        productsService.getVariantsByProductIds.mockResolvedValue([makeVariant({ id: 'v1', productId: 'ol_product_1' })]);
+        mockBundleDefinitions.findCurrentContainingComponents.mockRejectedValueOnce(new Error('db down'));
+
+        const result = await controller.listProducts({});
+
+        expect(result.items[0].usedInBundlesCount).toBeUndefined();
+      });
     });
 
     describe('available-to-promise column (#3621)', () => {
@@ -649,6 +694,18 @@ describe('ProductsController', () => {
       await expect(controller.getProduct('nonexistent')).rejects.toThrow(NotFoundException);
     });
 
+    it('should name the missing product by code and id (#3865)', async () => {
+      productsService.getProduct.mockResolvedValue(null);
+
+      await expect(controller.getProduct('nonexistent')).rejects.toMatchObject({
+        response: {
+          statusCode: 404,
+          code: 'PRODUCT_NOT_FOUND',
+          params: { productId: 'nonexistent' },
+        },
+      });
+    });
+
     it('should expose each variant own images and its resolved default listing images', async () => {
       const gfx = (n: number): string => `https://shop.example/gfx/${n}.jpg`;
       productsService.getProduct.mockResolvedValue(
@@ -833,7 +890,14 @@ describe('ProductsController', () => {
       await expect(controller.getVariantImage('v1', 'x', res as never)).rejects.toThrow(
         NotFoundException
       );
+      await expect(controller.getVariantImage('v1', 'x', res as never)).rejects.toMatchObject({
+        response: {
+          code: 'PRODUCT_VARIANT_IMAGE_NOT_FOUND',
+          params: { variantId: 'v1', index: 'x' },
+        },
+      });
     });
+
   });
 
   describe('listVariantsByProduct', () => {
@@ -1014,6 +1078,7 @@ describe('ProductsController', () => {
         taxRateState: 'missing' as const,
         connectionId: '11111111-1111-4111-8111-111111111111',
         hideFullyStale: true,
+        bundles: 'only' as const,
         unlistedOn: '22222222-2222-4222-8222-222222222222',
       };
 
@@ -1035,6 +1100,8 @@ describe('ProductsController', () => {
         stock: 'low',
         taxRateState: 'missing',
         hideFullyStale: true,
+        bundleFilter: 'only',
+        productId: undefined,
         unlistedOnConnectionIds: ['22222222-2222-4222-8222-222222222222'],
       });
       expect(counted).toEqual({ total: 42 });

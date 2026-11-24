@@ -40,6 +40,7 @@ import {
 } from '../lib/find-sales-document-connection-role-gap';
 import { deriveSalesDocumentRows } from '../lib/derive-sales-document-rows';
 import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface SalesDocumentTemplateScreenProps {
   country: string;
@@ -159,7 +160,9 @@ export function SalesDocumentTemplateScreen({
 
         <Alert tone="warning">{template.disclaimer}</Alert>
 
-        {adopt.error ? <Alert tone="error">{adopt.error.message}</Alert> : null}
+        {adopt.error ? (
+          <Alert tone="error">{describeApiError(adopt.error, 'sales-documents')}</Alert>
+        ) : null}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
           <Button tone="secondary" className="button--sm" onClick={() => setDismissed(true)}>

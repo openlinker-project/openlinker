@@ -20,6 +20,7 @@
  * @module apps/api/src/bench/http/dto
  */
 import { ApiProperty } from '@nestjs/swagger';
+import { FulfillmentProcessorKindValues, type FulfillmentProcessorKind } from '@openlinker/core/mappings';
 import {
   ParcelReopenRefusalValues,
   ParcelUndoRefusalValues,
@@ -34,6 +35,20 @@ import {
   BenchParcelRefusalValues,
   BenchSourceChangeTakenOutRefusalValues,
 } from '../../application/types/bench-parcel.types';
+
+export class BenchLineBundleResponseDto {
+  @ApiProperty({ description: 'The commercial (bundle) line id; components of one bundle share it' })
+  lineId!: string;
+
+  @ApiProperty({ nullable: true, type: String, description: 'The bundle name the buyer saw' })
+  name!: string | null;
+
+  @ApiProperty({
+    description:
+      'This component is the free gift of the set (#3934): the packer is told to include it, and no price or cost is attached',
+  })
+  giftSlot!: boolean;
+}
 
 export class BenchSourceChangeTakeOutResponseDto {
   @ApiProperty({ description: 'The work line the units belong to' })
@@ -54,6 +69,19 @@ export class BenchSourceChangeResponseDto {
 export class BenchParcelLineResponseDto {
   @ApiProperty({ description: 'Id of this line within the work object' })
   workLineId!: string;
+
+  @ApiProperty({
+    nullable: true,
+    type: () => BenchLineBundleResponseDto,
+    description: 'The bundle this line is a component of (#3624); null for an ordinary line',
+  })
+  bundle!: BenchLineBundleResponseDto | null;
+
+  @ApiProperty({
+    description:
+      'The line is itself a gift (#3935): a promotion, the channel or an operator added it. A marker only, no price or cost.',
+  })
+  gift!: boolean;
 
   @ApiProperty({ description: 'Internal product-variant id (ol_variant_*)' })
   productVariantId!: string;
@@ -122,6 +150,48 @@ export class BenchPackerNoteResponseDto {
   @ApiProperty() createdAt!: string;
 }
 
+/**
+ * Who ships this box (#3958). Names, never ids: a packer has no edit action and
+ * cannot read `GET /connections`, so an id would be a handle to nothing.
+ */
+export class BenchParcelRouteResponseDto {
+  @ApiProperty({
+    enum: FulfillmentProcessorKindValues,
+    description:
+      'How the delivery method is routed. `ol_managed_carrier` and `source_brokered` buy a label ' +
+      'through OpenLinker; `omp_fulfilled` means the shop or marketplace ships it.',
+  })
+  processorKind!: FulfillmentProcessorKind;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "The routed connection's operator-given name. Null on the default route, which names no " +
+      'connection, and when the connection could not be read.',
+  })
+  processorName!: string | null;
+
+  @ApiProperty({
+    description:
+      'True when an operator saved a rule for this delivery method; false when no rule exists and ' +
+      'the route is the default (the shop ships it, because nobody chose otherwise).',
+  })
+  fromRule!: boolean;
+
+  @ApiProperty({
+    description:
+      'False when the rule names a connection that is no longer active: a label route through a ' +
+      'switched-off carrier buys nothing.',
+  })
+  processorAvailable!: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    description: "The source's own delivery-method label; null when the source reports none",
+  })
+  methodLabel!: string | null;
+}
+
 export class BenchParcelResponseDto {
   @ApiProperty() workId!: string;
 
@@ -159,6 +229,15 @@ export class BenchParcelResponseDto {
     description: "The source's own delivery-method label; null when the source reports none",
   })
   carrierName!: string | null;
+
+  @ApiProperty({
+    type: BenchParcelRouteResponseDto,
+    nullable: true,
+    description:
+      'Who ships this box, resolved from the order delivery method exactly as the label purchase ' +
+      'resolves it (#3958). Null when it could not be resolved, which is not "the shop ships it".',
+  })
+  route!: BenchParcelRouteResponseDto | null;
 
   @ApiProperty({ nullable: true, description: 'The dispatch deadline' })
   dispatchByAt!: string | null;

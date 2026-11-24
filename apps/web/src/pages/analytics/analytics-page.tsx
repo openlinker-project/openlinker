@@ -14,6 +14,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { useMessages } from '../../shared/i18n';
 import {
   ANALYTICS_DATA_COVERAGE_ANCHOR_ID,
@@ -193,6 +194,7 @@ export function AnalyticsPage(): ReactElement {
   const [marginCoverageReveal, setMarginCoverageReveal] = useState(0);
   const marginVisible = useMarginPanelVisible();
   const copy = useMessages('analytics').analyticsPage;
+  const giftReportCopy = useMessages('gift-report');
 
   return (
     <PageLayout
@@ -204,9 +206,18 @@ export function AnalyticsPage(): ReactElement {
       }
       description={copy.description}
       actions={
-        <Button type="button" tone="secondary" onClick={() => setSettingsDialogOpen(true)}>
-          {copy.settings}
-        </Button>
+        <>
+          <Link
+            className="button button--secondary"
+            to={`/analytics/gifts?from=${from}&to=${to}`}
+            data-testid="analytics-gift-report-link"
+          >
+            {giftReportCopy.title}
+          </Link>
+          <Button type="button" tone="secondary" onClick={() => setSettingsDialogOpen(true)}>
+            {copy.settings}
+          </Button>
+        </>
       }
     >
       <AnalyticsDateRangeToolbar
@@ -245,7 +256,7 @@ export function AnalyticsPage(): ReactElement {
           copy={{
             error: {
               title: copy.trustError.title,
-              message: trustQuery.error.message,
+              message: describeApiError(trustQuery.error, 'analytics'),
               retry: copy.trustError.retry,
             },
             denied: {

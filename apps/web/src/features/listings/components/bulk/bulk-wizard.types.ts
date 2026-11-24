@@ -45,6 +45,11 @@ export const BulkRowBlockerValues = [
   // Unreachable today; it exists so a discriminant added backend-first fails
   // closed instead of producing a ready row with no category.
   'unknown-category-result',
+  // The operator chose a category other than the one the variant's barcode
+  // matched a catalogue card in (#4035). The card link would be refused by the
+  // marketplace, so the row is blocked until the category agrees again or the
+  // barcode is cleared.
+  'card-category-mismatch',
   // Active pricing policy needs a master price and the variant has none.
   'no-master-price',
   // Active stock policy needs a master stock value and the master reports 0.
@@ -129,7 +134,7 @@ export interface BulkVariantRow {
   resolvedCategoryId: string | null;
   /** Catalogue card id from this variant's unique EAN match (#808). */
   resolvedProductCardId: string | null;
-  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | 'first_component' | null;
   /**
    * A catalogue card matched this variant's EAN in a different category than
    * the operator's mapping, so the mapping was used and the card set aside
@@ -169,7 +174,7 @@ export interface BulkWizardRow {
    */
   resolvedProductCardId: string | null;
   /** How the category was resolved (telemetry / UI hint). */
-  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | 'first_component' | null;
   /** Master variant price captured at resolve (`variant.price`). Null if unset. */
   masterPrice: number | null;
   /** Master stock summed across locations (availability endpoint). Null if absent. */

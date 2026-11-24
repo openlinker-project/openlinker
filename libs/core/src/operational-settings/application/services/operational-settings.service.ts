@@ -49,7 +49,7 @@ import {
   INVENTORY_SWEEP_CADENCE_ENV_VAR,
   OPERATIONAL_SETTING_BOUNDS,
   OPERATIONAL_SETTING_KEYS,
-  checkOperationalSettingBound,
+  findOperationalSettingBoundBreach,
   resolveOperationalSetting,
   type OperationalSettingKey,
   type OperationalSettingsInput,
@@ -165,11 +165,15 @@ export class OperationalSettingsService implements IOperationalSettingsService {
         continue;
       }
       if (typeof value !== 'number') {
-        throw new InvalidOperationalSettingError(key, `${key} must be a number or null`);
+        throw new InvalidOperationalSettingError(
+          key,
+          `${key} must be a number or null`,
+          'not-a-number'
+        );
       }
-      const problem = checkOperationalSettingBound(key, value, acknowledged);
-      if (problem !== null) {
-        throw new InvalidOperationalSettingError(key, problem);
+      const breach = findOperationalSettingBoundBreach(key, value, acknowledged);
+      if (breach !== null) {
+        throw new InvalidOperationalSettingError(key, breach.message, breach.rule, breach.limit);
       }
     }
 
@@ -266,7 +270,8 @@ export class OperationalSettingsService implements IOperationalSettingsService {
       // and every alias has a five-field spelling.
       throw new InvalidOperationalSettingError(
         'deletionAuditCadence',
-        'deletionAuditCadence must be a 5- or 6-field cron expression'
+        'deletionAuditCadence must be a 5- or 6-field cron expression',
+        'cadence-format'
       );
     }
 
@@ -276,7 +281,8 @@ export class OperationalSettingsService implements IOperationalSettingsService {
     } catch {
       throw new InvalidOperationalSettingError(
         'deletionAuditCadence',
-        'deletionAuditCadence is not a valid cron expression'
+        'deletionAuditCadence is not a valid cron expression',
+        'cadence-invalid'
       );
     }
 
@@ -303,7 +309,8 @@ export class OperationalSettingsService implements IOperationalSettingsService {
     if (exceedsMaxGap) {
       throw new InvalidOperationalSettingError(
         'deletionAuditCadence',
-        'deletionAuditCadence must fire at least once every 7 days — the deletion audit is the deletion authority and cannot be disabled through this surface'
+        'deletionAuditCadence must fire at least once every 7 days — the deletion audit is the deletion authority and cannot be disabled through this surface',
+        'cadence-too-rare'
       );
     }
   }

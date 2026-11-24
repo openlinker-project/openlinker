@@ -24,6 +24,7 @@
  * @module apps/web/src/features/currency-settings/components
  */
 import { useState, type ReactElement } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { useCurrencySettingsQuery } from '../hooks/use-currency-settings-query';
@@ -67,7 +68,7 @@ export function CurrencySettingsTile(): ReactElement {
 
       {query.isError ? (
         <p className="muted-text" role="alert">
-          {interpolate(copy.loadError, { message: query.error.message })}
+          {copy.loadError} {describeApiError(query.error, 'currency-settings')}
         </p>
       ) : null}
 

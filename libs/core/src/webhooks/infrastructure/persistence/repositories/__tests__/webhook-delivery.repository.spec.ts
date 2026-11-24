@@ -40,6 +40,7 @@ function makeRepo(): { repo: WebhookDeliveryRepository; query: jest.Mock } {
       downstreamJobId: null,
       downstreamJobType: null,
       dlqReason: null,
+      dlqCode: null,
       payload: null,
       createdAt: new Date(),
       updatedAt: new Date(),

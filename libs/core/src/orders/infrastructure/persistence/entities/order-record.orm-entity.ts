@@ -22,6 +22,13 @@ export interface OrderSyncStatusJson {
   externalOrderId?: string;
   externalOrderNumber?: string;
   error?: string;
+  deliveryFingerprint?: string;
+  deliveryUpdate?: {
+    outcome: string;
+    reason?: string;
+    detail?: string;
+    at: string;
+  };
 }
 
 /**
@@ -72,6 +79,26 @@ export interface SyncAttemptJson {
 @Index('IDX_order_records_paymentWritebackProblem', ['paymentWritebackProblem'], {
   where: '"paymentWritebackProblem" = true',
 })
+// #4025: the orders list's "newest first" sort is `placedAt DESC NULLS LAST`.
+// The plain `placedAt` index above is ASC NULLS LAST, whose backward scan yields
+// DESC NULLS FIRST - the wrong null position, so the planner cannot use it for a
+// LIMIT and sorts the whole scope instead. The migration builds this index as
+// `("placedAt" DESC NULLS LAST)`. TypeORM's `@Index` cannot express a sort order
+// and does not compare one, so the declaration here carries only the name and
+// column: it keeps a future `migration:generate` from dropping the index, and
+// gives the `synchronize`-built test schema an index of the same name. That
+// schema's index is therefore ASCENDING under this name: a migration-parity spec
+// on `order_records` must compare this index by name, not by definition.
+@Index('IDX_order_records_placedAt_desc', ['placedAt'])
+// Batch issuing queue (#3583): the orders waiting for one connection's next
+// batch run, keyset-paged by order id. Partial on the one reason that means
+// "queued", so it holds only queued orders. Declared here AND in the migration
+// for the `synchronize`-built integration schema.
+@Index(
+  'IDX_order_records_sales_document_batch_queue',
+  ['salesDocumentBlockConnectionId', 'internalOrderId'],
+  { where: `"salesDocumentBlockReason" = 'trigger-model-batched'` },
+)
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
   internalOrderId!: string;
@@ -214,6 +241,29 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   salesDocumentBlockDetail!: string | null;
+
+  /**
+   * The values behind `salesDocumentBlockDetail` (#3866), for the frontend to
+   * phrase in the operator's language. Same PII rule and single writer as the
+   * detail; coerced on read.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  salesDocumentBlockParams!: Record<string, unknown> | null;
+
+  /**
+   * The connection and document kind the block above is ABOUT (#3583), when
+   * routing named one. Set today only for `trigger-model-batched`, where the
+   * pair is the order's place in that connection's batch queue
+   * (`IDX_order_records_sales_document_batch_queue`). Written exclusively by
+   * `updateSalesDocumentBlock`, in the same statement as the reason, so the
+   * queue can never name a connection the reason has already left; never by
+   * the ingestion upsert (excluded from `toOrm` like its siblings).
+   */
+  @Column({ type: 'text', nullable: true })
+  salesDocumentBlockConnectionId!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  salesDocumentBlockDocumentKind!: string | null;
 
   /**
    * The `sales_document_rules` row that decided this order's document kind
@@ -438,6 +488,18 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   orderEdits!: Record<string, unknown> | null;
+
+  /**
+   * The bundle definitions frozen onto this order at ingestion (#3607, ADR-083
+   * decision 2). `NULL` = no expansion recorded (physical lines = commercial).
+   *
+   * Sole writer `OrderRecordRepository.freezeLineExpansion`, conditional on the
+   * column still being NULL. Named in NEITHER half of the ingestion upsert, so a
+   * re-poll can never replace it - which is what makes a later edit of a
+   * definition leave open orders alone.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  lineExpansion!: Record<string, unknown> | null;
 
   /**
    * Per-order reporting-currency snapshot (#2124, ADR-040) — six columns

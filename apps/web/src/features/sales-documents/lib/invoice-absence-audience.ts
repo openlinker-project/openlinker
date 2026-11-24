@@ -51,17 +51,23 @@ export type InvoiceAbsenceAudience =
   | 'on-office-list'
   /** Nobody is told automatically — this connection issues when asked to. */
   | 'issued-on-request'
+  /** Queued for the connection's next batch run (#3583); it will be issued without anyone asking. */
+  | 'waiting-for-batch'
   /** Nothing recorded a reason, or one this build cannot place. No list holds it. */
   | 'nobody-told';
 
+// Core leaves both trigger-model reasons out of the attention count (#3583
+// added `batched`): each is a configured workflow, not a fault.
 const OFFICE_LIST_REASONS: readonly string[] = SalesDocumentGateBlockReasonValues.filter(
-  (reason): reason is SalesDocumentGateBlockReasonValue => reason !== 'trigger-model-manual'
+  (reason): reason is SalesDocumentGateBlockReasonValue =>
+    reason !== 'trigger-model-manual' && reason !== 'trigger-model-batched'
 );
 
 export function resolveInvoiceAbsenceAudience(
   blockReason: SalesDocumentGateBlockReasonValue | string | null
 ): InvoiceAbsenceAudience {
   if (blockReason === 'trigger-model-manual') return 'issued-on-request';
+  if (blockReason === 'trigger-model-batched') return 'waiting-for-batch';
   if (blockReason !== null && OFFICE_LIST_REASONS.includes(blockReason)) return 'on-office-list';
   return 'nobody-told';
 }

@@ -28,6 +28,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { getMessages, interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert, Button, ErrorState, LoadingState, StatusBadge, TimeDisplay } from '../../../shared/ui';
 import { useToast } from '../../../shared/ui/toast-provider';
@@ -204,7 +205,7 @@ export function AnalyticsDataCoveragePanel({
           setOpenCategory(null);
           return;
         }
-        showToast({ tone: 'error', description: error.message });
+        showToast({ tone: 'error', description: describeApiError(error, 'analytics') });
       },
     });
   }
@@ -219,7 +220,7 @@ export function AnalyticsDataCoveragePanel({
         });
       },
       onError: (error) => {
-        showToast({ tone: 'error', description: error.message });
+        showToast({ tone: 'error', description: describeApiError(error, 'analytics') });
       },
     });
   }
@@ -275,7 +276,7 @@ export function AnalyticsDataCoveragePanel({
           });
         },
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message });
+          showToast({ tone: 'error', description: describeApiError(error, 'analytics') });
         },
       }
     );
@@ -300,7 +301,7 @@ export function AnalyticsDataCoveragePanel({
         </div>
         <ErrorState
           title={copy.error.title}
-          message={coverageQuery.error.message}
+          message={describeApiError(coverageQuery.error, 'analytics')}
           action={
             <Button type="button" onClick={() => void coverageQuery.refetch()}>
               {copy.error.retry}

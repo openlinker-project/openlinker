@@ -369,6 +369,124 @@ describe('ShoperOrderProcessorAdapter', () => {
       },
     );
 
+    describe('a free gift line (#3939)', () => {
+      const gift = (quantity = 1) => ({
+        id: 'g1',
+        productId: 'ol_p3',
+        variantId: 'ol_v3',
+        quantity,
+        price: 0,
+        sku: 'GIFT',
+        taxRate: '23',
+        gift: { source: 'ol-rule' },
+      });
+      const sentLines = (post: jest.Mock) =>
+        post.mock.calls
+          .filter(([path]) => path === '/order-products')
+          .map(([, body]) => body as { price: number; quantity: number; stock_id: number });
+      const total = (lines: { price: number; quantity: number }[]) =>
+        lines.reduce((sum, l) => sum + Math.round(l.price * 100) * l.quantity, 0) / 100;
+
+      it('should send the gift at 0.01 and take the cent from the most expensive paid line, keeping the total', async () => {
+        const { adapter, post } = setup();
+        const o = order({
+          items: [
+            { id: 'l1', productId: 'ol_p1', variantId: 'ol_v1', quantity: 1, price: 50, sku: 'SKU1', taxRate: '23' },
+            { id: 'l2', productId: 'ol_p2', variantId: 'ol_v2', quantity: 1, price: 10, sku: 'SKU2', taxRate: '8' },
+            gift(),
+          ],
+          totals: { subtotal: 60, tax: 0, shipping: 0, total: 60, currency: 'PLN', taxTreatment: 'inclusive' },
+        });
+
+        await adapter.createOrder(o);
+
+        const lines = sentLines(post);
+        expect(lines.map((l) => l.price)).toEqual([49.99, 10, 0.01]);
+        expect(total(lines)).toBe(60);
+      });
+
+      it('should split the most expensive line when the cents do not divide over its units', async () => {
+        const { adapter, post } = setup();
+        const o = order({
+          items: [
+            { id: 'l1', productId: 'ol_p1', variantId: 'ol_v1', quantity: 3, price: 50, sku: 'SKU1', taxRate: '23' },
+            gift(2),
+          ],
+          totals: { subtotal: 150, tax: 0, shipping: 0, total: 150, currency: 'PLN', taxTreatment: 'inclusive' },
+        });
+
+        await adapter.createOrder(o);
+
+        const lines = sentLines(post);
+        // 2 gift cents over 3 units: two units at 49.99, one at 50.00... never a fraction of a cent.
+        expect(lines.map((l) => [l.price, l.quantity])).toEqual([
+          [49.99, 2],
+          [50, 1],
+          [0.01, 2],
+        ]);
+        expect(total(lines)).toBe(150);
+      });
+
+      it('should take the cent from the highest LINE total, not the highest unit price', async () => {
+        const { adapter, post } = setup();
+        const o = order({
+          items: [
+            { id: 'l1', productId: 'ol_p1', variantId: 'ol_v1', quantity: 1, price: 50, sku: 'SKU1', taxRate: '23' },
+            { id: 'l2', productId: 'ol_p2', variantId: 'ol_v2', quantity: 10, price: 10, sku: 'SKU2', taxRate: '8' },
+            gift(),
+          ],
+          totals: { subtotal: 150, tax: 0, shipping: 0, total: 150, currency: 'PLN', taxTreatment: 'inclusive' },
+        });
+
+        await adapter.createOrder(o);
+
+        const lines = sentLines(post);
+        expect(lines.map((l) => [l.price, l.quantity])).toEqual([
+          [50, 1],
+          [9.99, 1],
+          [10, 9],
+          [0.01, 1],
+        ]);
+        expect(total(lines)).toBe(150);
+      });
+
+      it('should fall back to the next candidate when the largest line cannot keep a cent per unit', async () => {
+        const { adapter, post } = setup();
+        const o = order({
+          items: [
+            { id: 'l1', productId: 'ol_p1', variantId: 'ol_v1', quantity: 5, price: 0.01, sku: 'SKU1', taxRate: '23' },
+            { id: 'l2', productId: 'ol_p2', variantId: 'ol_v2', quantity: 1, price: 0.04, sku: 'SKU2', taxRate: '8' },
+            gift(),
+          ],
+          totals: { subtotal: 0.09, tax: 0, shipping: 0, total: 0.09, currency: 'PLN', taxTreatment: 'inclusive' },
+        });
+
+        await adapter.createOrder(o);
+
+        const lines = sentLines(post);
+        expect(lines.map((l) => [l.price, l.quantity])).toEqual([
+          [0.01, 5],
+          [0.03, 1],
+          [0.01, 1],
+        ]);
+        expect(total(lines)).toBe(0.09);
+      });
+
+      it('should refuse before any write when no paid line can give the cent', async () => {
+        const { adapter, post } = setup();
+
+        await expect(
+          adapter.createOrder(
+            order({
+              items: [gift()],
+              totals: { subtotal: 0, tax: 0, shipping: 0, total: 0, currency: 'PLN', taxTreatment: 'inclusive' },
+            }),
+          ),
+        ).rejects.toBeInstanceOf(ShoperOrderUnbuildableException);
+        expect(post).not.toHaveBeenCalled();
+      });
+    });
+
     it('should refuse a net-priced line the source gave no gross price for, before any write', async () => {
       const { adapter, post, resolveOrCreateCustomer } = setup();
       const o = order({
@@ -386,6 +504,7 @@ describe('ShoperOrderProcessorAdapter', () => {
       ['no lines', { items: [] }],
       ['no address', { billingAddress: undefined, shippingAddress: undefined }],
       ['a line without a tax rate', { items: [{ id: 'l', productId: 'p', variantId: 'v', quantity: 1, price: 1 }] }],
+      ['a 0,00 line that is not a gift, which Shoper refuses (#3939)', { items: [{ id: 'l', productId: 'p', variantId: 'v', quantity: 1, price: 0, taxRate: '23' }] }],
       ['a tax rate the shop does not have', { items: [{ id: 'l', productId: 'p', variantId: 'v', quantity: 1, price: 1, taxRate: '5' }] }],
     ])('should refuse %s before any write', async (_label, overrides) => {
       const { adapter, post, resolveOrCreateCustomer } = setup();

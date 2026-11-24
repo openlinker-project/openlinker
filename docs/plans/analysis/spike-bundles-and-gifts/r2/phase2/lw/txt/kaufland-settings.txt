@@ -1,0 +1,39 @@
+=== kaufland-settings | Kaufland: Configure channel settings
+ 
+ Kaufland: Configure channel settings 
+ Kaufland: How to Configure 
+ Linnworks integration has multiple settings that allow precise control of how Linnworks interacts with Kaufland. This guide will help you to configure your Kaufland to make sure Linnworks is doing what is required.
+ Once the channel is added, click on the  pen      icon in the channel integration screen for the required Kaufland integration.
+ Available for the configuration settings 
+ Account 
+ Enabled: Tick this option to allow communication between Linnworks and Kaufland. Without this ticked, no information will be sent to Kaufland or received from Kaufland.
+ Client key: The Client Key from the Kaufland API credentials for this Kaufland account.
+ Secret key: The Secret Key from the Kaufland API credentials for this Kaufland account.
+ Storefront: This is the store that is integrated with Linnworks. Inventory and orders from this store will be synchronized with your Linnworks account.
+ Test: Used to confirm the supplied credentials work correctly, allowing communication between Kaufland and Linnworks.
+ Reauthorize: This button will trigger to reauthorize your tokens if required.
+ Inventory 
+ Update inventory: Allow Linnworks to submit changes in stock levels to Kaufland. Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to your channel via the  Location Mapping  screen accessed from the main  Channel Integration  screen.
+ Price change: Price Change is designed to speed up updating the sales channel once a Linnworks stock item has had its listing price updated and saved. For more details, go to the Price Change  guide.
+ Max listed:   This specifies the maximum level sent to the channel.  
+ For more details, go to the  Max Listed  guide.
+ Stock percentage:  This will send a percentage of the currently available stock level to the sales channel. For more details, go to the  Stock Percentage  guide.
+ End when:   This enables you to force the listing to end when the stock level gets to the specified amount instead of the default value of zero.  
+ For more details, go to the  End When  guide. 
+ Listings 
+ Auto-link by SKU:  If enabled, Linnworks will automatically link unmatched channel SKUs to matching Linnworks SKUs during  order download  or the  mapping sync  (runs ~every 12 hours). Once linked,  inventory sync  is triggered. You can check  this guide  for full details on how this feature works. 
+ Listing download in progress: This tick box will tick itself if a Listing Update has begun.
+ Listing download start time: This will show the date and time when the update has begun.
+ Last manual download: This will show the date and time of when the last manual update was run.
+ Listing download estimated completion: This will give you an estimate of when the listings download will be complete – the time can vary depending on server speeds and the number of listings.
+ Download listings: Click this button to force Linnworks to request an update from the channel for your active listings.
+ Linnworks is designed to update listings on the spamming page once every 12 hours. If for any reason, this has not happened, the Download listings button can be used to force the update manually.
+ Order 
+ Dispatch notes: After processing orders in Linnworks, a dispatch notification, tracking number (if available), and the selected shipping vendor will be submitted to the channel. When the option is disabled, no dispatch information will be submitted to Kaufland.
+ Order sync date [UTC]: This shows the date and time when Linnworks last synchronized with the channel.
+ Next steps:
+ Location Mapping 
+ Inventory Mapping 
+ Payment Mapping 
+ Shipping Mapping 
+ 

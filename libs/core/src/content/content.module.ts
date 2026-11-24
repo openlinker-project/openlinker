@@ -28,16 +28,20 @@
  */
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { ListingsModule } from '@openlinker/core/listings/services';
+import { ProductsModule } from '@openlinker/core/products';
 import { ContentDraftService } from './application/services/content-draft.service';
 import { ContentStateReaderService } from './application/services/content-state-reader.service';
 import { IntegrationsContentPublisher } from './application/services/integrations-content-publisher.service';
+import { ProductMasterResolverService } from './application/services/product-master-resolver.service';
 import {
   CONTENT_DRAFT_SERVICE_TOKEN,
   CONTENT_PUBLISHER_PORT_TOKEN,
   CONTENT_STATE_READER_SERVICE_TOKEN,
   PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN,
+  PRODUCT_MASTER_RESOLVER_SERVICE_TOKEN,
 } from './content.tokens';
 import { ProductContentFieldOrmEntity } from './infrastructure/persistence/entities/product-content-field.orm-entity';
 import { ProductContentFieldRepository } from './infrastructure/persistence/repositories/product-content-field.repository';
@@ -48,6 +52,7 @@ export {
   CONTENT_STATE_READER_SERVICE_TOKEN,
   CONTENT_SUGGESTION_SERVICE_TOKEN,
   PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN,
+  PRODUCT_MASTER_RESOLVER_SERVICE_TOKEN,
 } from './content.tokens';
 
 @Module({
@@ -55,12 +60,21 @@ export {
     TypeOrmModule.forFeature([ProductContentFieldOrmEntity]),
     IntegrationsModule,
     ListingsModule,
+    // The product's own master is found through its identifier mapping, and
+    // the editor reads variant ids from OpenLinker's catalogue (#4068).
+    IdentifierMappingModule,
+    ProductsModule,
   ],
   providers: [
     ProductContentFieldRepository,
     IntegrationsContentPublisher,
     ContentDraftService,
     ContentStateReaderService,
+    ProductMasterResolverService,
+    {
+      provide: PRODUCT_MASTER_RESOLVER_SERVICE_TOKEN,
+      useExisting: ProductMasterResolverService,
+    },
     {
       provide: PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN,
       useExisting: ProductContentFieldRepository,
@@ -83,6 +97,8 @@ export {
     CONTENT_PUBLISHER_PORT_TOKEN,
     CONTENT_DRAFT_SERVICE_TOKEN,
     CONTENT_STATE_READER_SERVICE_TOKEN,
+    // Exported for `ContentSuggestionService`, bound in the api and worker.
+    PRODUCT_MASTER_RESOLVER_SERVICE_TOKEN,
   ],
 })
 export class ContentModule {}

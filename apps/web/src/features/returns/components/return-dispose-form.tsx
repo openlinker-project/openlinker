@@ -24,7 +24,7 @@
  * @module apps/web/src/features/returns/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useMemo, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { z } from 'zod/v4';
 
@@ -35,6 +35,7 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Textarea } from '../../../shared/ui/textarea';
+import { BundleReturnPicker } from './bundle-return-picker';
 import { usePlural, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { outstandingToDispose } from '../lib/return-line-quantities';
 import { describeRestockTarget, isRestockAvailable } from '../lib/restock-target';
@@ -54,7 +55,18 @@ interface ReturnDisposeFormProps {
   restockBlocked: boolean;
   pending: boolean;
   error: string | null;
-  onSubmit: (input: { quantity: number; disposition: ReturnDisposition; note?: string }) => void;
+  /**
+   * Present only where the line may be a bundle (#3933): the picker then asks the
+   * server whether it is and, if so, which components came back. Omitted by
+   * callers that have no return to ask about.
+   */
+  bundleScope?: { returnId: string; currency: string | null };
+  onSubmit: (input: {
+    quantity: number;
+    disposition: ReturnDisposition;
+    note?: string;
+    returnedVariantIds?: string[];
+  }) => void;
   onCancel: () => void;
 }
 
@@ -81,6 +93,7 @@ export function ReturnDisposeForm({
   restockBlocked,
   pending,
   error,
+  bundleScope,
   onSubmit,
   onCancel,
 }: ReturnDisposeFormProps): ReactElement {
@@ -116,6 +129,14 @@ export function ReturnDisposeForm({
   });
 
   const disposition = watch('disposition');
+  const watchedQuantity = watch('quantity');
+  const [returnedVariantIds, setReturnedVariantIds] = useState<string[] | undefined>(undefined);
+  const [bundleBlocked, setBundleBlocked] = useState(false);
+  const onSelectionChange = useCallback(
+    (ids: string[] | undefined) => setReturnedVariantIds(ids),
+    []
+  );
+  const onBlockedChange = useCallback((blocked: boolean) => setBundleBlocked(blocked), []);
 
   useEffect(() => {
     reset({
@@ -126,10 +147,17 @@ export function ReturnDisposeForm({
   }, [outstanding, reset, restockPossible]);
 
   const submit: SubmitHandler<DisposeFormValues> = (values) => {
+    if (values.disposition === 'restock' && bundleBlocked) {
+      return;
+    }
     onSubmit({
       quantity: values.quantity,
       disposition: values.disposition,
       note: values.note,
+      // Only a restock reads the selection; a scrap writes off the whole line.
+      ...(values.disposition === 'restock' && returnedVariantIds !== undefined
+        ? { returnedVariantIds }
+        : {}),
     });
   };
 
@@ -216,6 +244,17 @@ export function ReturnDisposeForm({
             </p>
           ) : null}
 
+          {bundleScope !== undefined && disposition === 'restock' && restockPossible ? (
+            <BundleReturnPicker
+              currency={bundleScope.currency}
+              lineId={line.id}
+              onBlockedChange={onBlockedChange}
+              onSelectionChange={onSelectionChange}
+              quantity={Number.isFinite(watchedQuantity) ? watchedQuantity : 1}
+              returnId={bundleScope.returnId}
+            />
+          ) : null}
+
           {/* Stated up front, not discovered by submitting into a 409. */}
           {isOrphan ? <Alert tone="warning">{copy.orphanBlocked}</Alert> : null}
           {restockBlocked && !isOrphan ? (
@@ -232,7 +271,7 @@ export function ReturnDisposeForm({
         </FormField>
 
         <div className="return-custody-form__actions">
-          <Button type="submit">
+          <Button disabled={disposition === 'restock' && bundleBlocked} type="submit">
             {pending ? copy.pending : copy.submit}
           </Button>
           <Button onClick={onCancel} tone="secondary" type="button">

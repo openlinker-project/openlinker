@@ -43,6 +43,7 @@ import {
   useWarningAcknowledgement,
 } from '../../../features/invoicing';
 import { useEparagonyMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface LineRow {
   originalLineNumber: string;
@@ -187,7 +188,7 @@ export function EparagonyInvoiceCorrectionFlow({
             showToast({
               tone: 'error',
               title: copy.failed,
-              description: error.message,
+              description: describeApiError(error, 'eparagony'),
             });
           },
         },

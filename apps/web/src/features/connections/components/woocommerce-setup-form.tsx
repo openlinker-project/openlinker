@@ -46,6 +46,7 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { captureDemoEvent } from '../../demo';
 import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 // Analytics step names, kept in English so events stay comparable across languages.
 const STEP_EVENT_IDS = [
@@ -112,8 +113,8 @@ export function WoocommerceSetupForm(): ReactElement {
     (CORE_CAPABILITY_VALUES as readonly string[]).includes(capability),
   );
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   async function goNext(): Promise<void> {
@@ -178,7 +179,7 @@ export function WoocommerceSetupForm(): ReactElement {
         ) : null}
         {createConnection.error ? (
           <Alert tone="error" title={copy.createError}>
-            {createConnection.error.message}
+            {describeApiError(createConnection.error, 'connections')}
           </Alert>
         ) : null}
 

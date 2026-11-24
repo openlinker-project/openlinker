@@ -15,6 +15,12 @@ import { OrderItemRefResolverService } from './application/services/order-item-r
 import { OrderRecordService } from './application/services/order-record.service';
 import { SalesDocumentViewService } from './application/services/sales-document-view.service';
 import { OrderDocumentEmailService } from './application/services/order-document-email.service';
+import { SalesDocumentBatchService } from './application/services/sales-document-batch.service';
+import { SalesDocumentBatchRunRepository } from './infrastructure/persistence/repositories/sales-document-batch-run.repository';
+import {
+  SalesDocumentBatchRunItemOrmEntity,
+  SalesDocumentBatchRunOrmEntity,
+} from './infrastructure/persistence/entities/sales-document-batch-run.orm-entity';
 import { OrderFxStampService } from './application/services/order-fx-stamp.service';
 import { OrderFxRestatementService } from './application/services/order-fx-restatement.service';
 import { OrderFxReadService } from './application/services/order-fx-read.service';
@@ -33,6 +39,8 @@ import { OrderRecordRepository } from './infrastructure/persistence/repositories
 import { OrderLineItemRepository } from './infrastructure/persistence/repositories/order-line-item.repository';
 import { OrderRecordOrmEntity } from './infrastructure/persistence/entities/order-record.orm-entity';
 import { OrderRefundService } from './application/services/order-refund.service';
+import { OrderRefundObservationService } from './application/services/order-refund-observation.service';
+import { OrderRefundRelayService } from './application/services/order-refund-relay.service';
 import { RefundRecordRepository } from './infrastructure/persistence/repositories/refund-record.repository';
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
@@ -61,6 +69,9 @@ import { OrderTestFixtureService } from './application/services/order-test-fixtu
 import { MarginAnalyticsService } from './application/services/margin-analytics.service';
 import { CostCoverageService } from './application/services/cost-coverage.service';
 import { OrderLineCostService } from './application/services/order-line-cost.service';
+import { GiftReportService } from './application/services/gift-report.service';
+import { OrderBundleDocumentService } from './application/services/order-bundle-document.service';
+import { OrderGiftService } from './application/services/order-gift.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
 import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
@@ -82,6 +93,8 @@ import {
   ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
   ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
   ORDER_REFUND_SERVICE_TOKEN,
+  ORDER_REFUND_OBSERVATION_SERVICE_TOKEN,
+  ORDER_REFUND_RELAY_SERVICE_TOKEN,
   ORDER_FX_READ_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
@@ -91,9 +104,15 @@ import {
   MARGIN_ANALYTICS_SERVICE_TOKEN,
   COST_COVERAGE_SERVICE_TOKEN,
   ORDER_LINE_COST_SERVICE_TOKEN,
+  ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+  GIFT_REPORT_SERVICE_TOKEN,
+  ORDER_GIFT_REPORT_READER_TOKEN,
+  ORDER_GIFT_SERVICE_TOKEN,
   ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
   BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN,
   BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
+  SALES_DOCUMENT_BATCH_RUN_REPOSITORY_TOKEN,
+  SALES_DOCUMENT_BATCH_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
   ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
@@ -119,6 +138,7 @@ import { MappingsModule } from '@openlinker/core/mappings';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { CustomersModule } from '@openlinker/core/customers';
 import { AutomationModule } from '@openlinker/core/automation';
+import { PromotionsModule } from '@openlinker/core/promotions';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { CurrencyModule } from '@openlinker/core/currency';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
@@ -156,6 +176,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       OrderTagAssignmentOrmEntity,
       OrderExportRunOrmEntity,
       InvoiceMarketplaceUploadOrmEntity,
+      SalesDocumentBatchRunOrmEntity,
+      SalesDocumentBatchRunItemOrmEntity,
     ]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
@@ -175,6 +197,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // its own order read at the worker handler instead, so `automation` imports no
     // sibling context and there is no module cycle to survive (#2100's direction).
     AutomationModule,
+    // #3935: gift promotions applied at ingestion. One-way: promotions imports nothing from orders.
+    PromotionsModule,
     // One-way edge to a LEAF context (#2125): OrderFxStampService injects
     // CURRENCY_RATE_SERVICE_TOKEN + REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN.
     // `currency` imports no sibling core context, so no cycle is possible.
@@ -207,6 +231,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderRecordService,
     SalesDocumentViewService,
     OrderDocumentEmailService,
+    SalesDocumentBatchService,
+    SalesDocumentBatchRunRepository,
     OrderFxStampService,
     OrderFxRestatementService,
     OrderDestinationRetryService,
@@ -219,6 +245,8 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderRecordRepository,
     OrderFxReadService,
     OrderRefundService,
+    OrderRefundObservationService,
+    OrderRefundRelayService,
     RefundRecordRepository,
     OrderLineItemRepository,
     TaxRateBackfillService,
@@ -227,6 +255,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     MarginAnalyticsService,
     CostCoverageService,
     OrderLineCostService,
+    OrderBundleDocumentService,
+    OrderGiftService,
+    { provide: ORDER_GIFT_SERVICE_TOKEN, useExisting: OrderGiftService },
     DisplayCurrencyConversionService,
     OrderCancellationSignalRepository,
     OrderColumnPresetRepository,
@@ -332,6 +363,14 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: OrderRefundService,
     },
     {
+      provide: ORDER_REFUND_OBSERVATION_SERVICE_TOKEN,
+      useExisting: OrderRefundObservationService,
+    },
+    {
+      provide: ORDER_REFUND_RELAY_SERVICE_TOKEN,
+      useExisting: OrderRefundRelayService,
+    },
+    {
       provide: ORDER_FX_READ_SERVICE_TOKEN,
       useExisting: OrderFxReadService,
     },
@@ -373,6 +412,14 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: SalesDocumentViewService,
     },
     {
+      provide: SALES_DOCUMENT_BATCH_RUN_REPOSITORY_TOKEN,
+      useExisting: SalesDocumentBatchRunRepository,
+    },
+    {
+      provide: SALES_DOCUMENT_BATCH_SERVICE_TOKEN,
+      useExisting: SalesDocumentBatchService,
+    },
+    {
       provide: TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
       useExisting: TaxCoverageDetectionService,
     },
@@ -387,6 +434,16 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_LINE_COST_SERVICE_TOKEN,
       useExisting: OrderLineCostService,
+    },
+    {
+      provide: ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+      useExisting: OrderBundleDocumentService,
+    },
+    { provide: ORDER_GIFT_REPORT_READER_TOKEN, useExisting: OrderRecordRepository },
+    GiftReportService,
+    {
+      provide: GIFT_REPORT_SERVICE_TOKEN,
+      useExisting: GiftReportService,
     },
     {
       provide: DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
@@ -455,6 +512,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
     FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
     ORDER_REFUND_SERVICE_TOKEN,
+    ORDER_REFUND_OBSERVATION_SERVICE_TOKEN,
     ORDER_FX_READ_SERVICE_TOKEN,
     // Exported so the worker's `orders.taxRate.backfill` handler can inject
     // the backfill seam (#2440).
@@ -474,6 +532,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN,
     // Read by the automation send-email executor and the order timeline (#3554).
     BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN,
+    // Batch issuing (#3583): the worker's run handler and the API's batch
+    // controller both drive a connection's queue through this seam.
+    SALES_DOCUMENT_BATCH_SERVICE_TOKEN,
     // Exported so the `/analytics/coverage` endpoint (#2466) can inject the
     // tax A/B/C detector seam (#2465).
     TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
@@ -482,6 +543,11 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so `/products/cost-coverage` and the cost work list can inject the cost reads (#3588).
     COST_COVERAGE_SERVICE_TOKEN,
     ORDER_LINE_COST_SERVICE_TOKEN,
+    ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN,
+    // Exported so the `/analytics/gifts*` report reads can inject it (#3943).
+    GIFT_REPORT_SERVICE_TOKEN,
+    // Exported so the gift-rule dry run (apps/api) can preview a rule (#3938).
+    ORDER_GIFT_SERVICE_TOKEN,
     // Exported so the `/analytics` display-currency read surface (a later
     // phase of #2452) can inject this seam (#2458, ADR-064).
     DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,

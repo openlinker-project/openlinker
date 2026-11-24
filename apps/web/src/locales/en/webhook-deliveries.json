@@ -1,4 +1,11 @@
 {
+  "dlqCodes": {
+    "connection-unavailable": "The connection was deleted or disabled",
+    "no-translator": "This connection does not accept webhooks",
+    "translator-threw": "The integration could not read this webhook",
+    "undecodable": "The webhook carried no change OpenLinker handles",
+    "ungated": "The connection lacks the feature this change needs"
+  },
   "statuses": {
     "deadlettered": "deadlettered",
     "failed": "failed",
@@ -52,6 +59,7 @@
     "fields": {
       "connection": "Connection",
       "dedup": "Dedup",
+      "dlqCode": "Dead-letter reason",
       "downstreamJob": "Downstream job",
       "eventId": "Event ID",
       "externalId": "External ID",
@@ -69,7 +77,7 @@
       "title": "Loading delivery"
     },
     "panels": {
-      "dlqReason": "DLQ reason",
+      "dlqReason": "Dead-letter detail (not translated)",
       "payload": "Payload",
       "rejectionReason": "Rejection reason"
     },

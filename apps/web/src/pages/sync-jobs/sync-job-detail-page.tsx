@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { useParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
@@ -117,6 +118,7 @@ export function SyncJobDetailPage(): ReactElement {
   const write = useWriteAccess('sync:write', demoMode);
   const { showToast } = useToast();
   const copy = useMessages('sync-jobs').syncJobDetailPage;
+  const technicalDetails = useMessages('ui').apiError.technicalDetailsWith;
   const plural = usePlural();
 
   if (query.isLoading) {
@@ -132,7 +134,7 @@ export function SyncJobDetailPage(): ReactElement {
       <PageLayout eyebrow={copy.eyebrow} title={copy.fallbackTitle}>
         <ErrorState
           title={copy.error.title}
-          message={query.error?.message ?? copy.error.notFound}
+          message={query.error ? describeApiError(query.error, 'sync-jobs') : copy.error.notFound}
           action={
             <Button onClick={() => { void query.refetch(); }}>{copy.retry}</Button>
           }
@@ -155,7 +157,7 @@ export function SyncJobDetailPage(): ReactElement {
         });
       },
       onError: (error) => {
-        showToast({ tone: 'error', title: copy.toast.retryFailed, description: error.message });
+        showToast({ tone: 'error', title: copy.toast.retryFailed, description: describeApiError(error, 'sync-jobs') });
       },
     });
   }
@@ -183,7 +185,9 @@ export function SyncJobDetailPage(): ReactElement {
         >
           {job.lastError ? (
             <span className="mono-text">
-              {job.lastError.length > 240 ? `${job.lastError.slice(0, 240)}…` : job.lastError}
+              {interpolate(technicalDetails, {
+                details: job.lastError.length > 240 ? `${job.lastError.slice(0, 240)}…` : job.lastError,
+              })}
             </span>
           ) : (
             copy.noError

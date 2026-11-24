@@ -97,6 +97,7 @@
  */
 import { type ReactElement, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
@@ -499,7 +500,7 @@ export function ProductSalesTable({
     return (
       <ErrorState
         title={copy.error.title}
-        message={query.error.message}
+        message={describeApiError(query.error, 'analytics')}
         action={<Button onClick={() => void query.refetch()}>{copy.error.retry}</Button>}
       />
     );

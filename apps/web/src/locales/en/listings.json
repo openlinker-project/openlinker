@@ -9,6 +9,9 @@
   "allegroOfferValidation": {
     "blockers": {
       "addProductParams": "add product params",
+      "bundleCategoryMismatch": "category differs from first component",
+      "bundleComponentGpsrMissing": "component safety data missing",
+      "bundleComponentMissing": "component cannot be listed",
       "eanNotInCatalogue": "EAN not in catalogue",
       "inStoreBarcode": "in-store barcode",
       "noPhoto": "no photo",
@@ -316,6 +319,7 @@
     "chips": {
       "alreadyListed": "Already listed",
       "cardCategoryDiffers": "catalog ≠ mapping",
+      "cardCategoryMismatch": "Card in other category",
       "categoryNotSet": "Category not set",
       "currencyMismatch": "Currency mismatch",
       "invalidBarcode": "Invalid barcode",
@@ -333,9 +337,25 @@
       "unknownCategoryResult": "Unknown result"
     },
     "describe": {
+      "bundleCategoryMismatch": {
+        "detail": "Use the category of the first component, or reorder the components.",
+        "title": "The offer category must match the first component's product card on {destination}."
+      },
+      "bundleComponentGpsrMissing": {
+        "detail": "Add them to that product, or set connection defaults for the marketplace.",
+        "title": "{names} has no responsible producer or safety information."
+      },
+      "bundleComponentMissing": {
+        "detail": "Give that product a barcode that matches a catalogue card, a picture and a category mapping, or publish it on its own first, then come back.",
+        "title": "{names} cannot be listed on {destination}."
+      },
       "cardCategoryDiffers": {
         "detail": "Your mapping is used and the catalog product is not linked. Open it to compare the two.",
         "title": "Barcode {ean} matched a {destination} catalog product in a different category than your category mapping."
+      },
+      "cardCategoryMismatch": {
+        "detail": "Pick that category again, or clear the barcode to list this variant without a catalog product.",
+        "title": "Barcode {ean} is a {destination} catalog product in a different category than the one this offer will use."
       },
       "currencyMismatch": {
         "detail": "Set an explicit {currency} price for this variant, or change the batch currency.",
@@ -611,6 +631,7 @@
       "sandbox": "Sandbox"
     },
     "hideSettings": "Hide settings",
+    "label": "Target channel",
     "settingsChanged": {
       "one": "{n} setting changed",
       "other": "{n} settings changed"
@@ -922,7 +943,6 @@
       "other": "{done} of {n} products done"
     },
     "pullingTitle": "Pulling master price and stock",
-    "resolutionFailed": "Resolution failed.",
     "resolvedSoFar": {
       "one": "{resolved} of {n} variant already resolved. Retrying picks up the remaining ones instead of starting over.",
       "other": "{resolved} of {n} variants already resolved. Retrying picks up the remaining ones instead of starting over."
@@ -954,6 +974,7 @@
     "sourceHint": {
       "card": "Matched by barcode to a catalog product. No category mapping covers this product.",
       "cardAgrees": "Matched by barcode to a catalog product that sits in the category your mapping names.",
+      "firstComponent": "Taken from the product card of the set's first component. The marketplace requires the offer to match it.",
       "mapping": "Resolved from your category mapping.",
       "picked": "You picked this category in this wizard.",
       "shared": "All variants of a product list under one category, so this variant uses the product category."
@@ -961,6 +982,7 @@
     "sourceLabel": {
       "card": "Catalog",
       "cardAgrees": "Catalog + mapping",
+      "firstComponent": "First component",
       "mapping": "Mapping",
       "picked": "Set here",
       "shared": "Shared"
@@ -1067,6 +1089,14 @@
         "other": "{n} variants"
       },
       "zoomImage": "Zoom image of {name}"
+    },
+    "sticky": {
+      "missingLabel": "To fix",
+      "needAttention": {
+        "one": "{count} variant needs attention",
+        "other": "{count} variants need attention"
+      },
+      "ready": "Ready: {count} to create"
     },
     "summary": {
       "excluded": "excluded",
@@ -1263,6 +1293,33 @@
     "keepEditing": "Keep editing",
     "title": "Leave this batch?"
   },
+  "bundleOffer": {
+    "categoryMismatch": "The category differs from the first component's product card, and the marketplace requires the two to match.",
+    "collapse": "Hide set contents of {name}",
+    "compositionHeading": "Set contents on {destination}",
+    "compositionHint": "{n} products · the mode shows how a component enters the offer",
+    "eanNotNeeded": "A set does not need its own barcode. Its products carry theirs.",
+    "editingFooter": "Editing a bundle offer. Changes apply to this batch only.",
+    "expand": "Show set contents of {name}",
+    "gift": "gift",
+    "insertComponentList": "Insert component list",
+    "limitedBy": "limited by {name}",
+    "marker": {
+      "one": "Set · {n} product",
+      "other": "Set · {n} products"
+    },
+    "modes": {
+      "catalogCard": "catalogue card",
+      "missing": "cannot be listed",
+      "newProduct": "new product",
+      "ownOffer": "own offer",
+      "ownOfferWithId": "own offer {id}"
+    },
+    "noOwnEan": "no own EAN",
+    "publishComponent": "List component",
+    "quantity": "×{n}",
+    "useFirstComponentCategory": "Use first component's category"
+  },
   "categoryLookup": {
     "idleTimeout": "No response from the category lookup for {seconds}s."
   },
@@ -1276,10 +1333,6 @@
     "required": "Required",
     "selectPlaceholder": "Select…",
     "showOptional": "Show optional fields ({count})"
-  },
-  "common": {
-    "serverSaid": "The server said: {message}",
-    "unknownError": "Something went wrong. Please try again."
   },
   "duplicateGuardModal": {
     "cancel": "Go back",
@@ -1350,8 +1403,7 @@
     "loading": "Loading delivery price lists…",
     "placeholder": "Choose a delivery price list…",
     "refresh": "Refresh",
-    "retry": "Retry",
-    "tryAgain": "Please try again."
+    "retry": "Retry"
   },
   "erliDeliveryPriceListOverrideField": {
     "batchDefault": "Batch default",
@@ -1368,8 +1420,7 @@
     "placeholder": "Choose a delivery price list…",
     "refresh": "Refresh",
     "resetToBatchDefault": "Reset to batch default",
-    "retry": "Retry",
-    "tryAgain": "Please try again."
+    "retry": "Retry"
   },
   "erliDispatchTimeField": {
     "fromDefault": "connection default",
@@ -1421,8 +1472,7 @@
     "label": "Producer",
     "loadErrorTitle": "Unable to load producers",
     "loading": "Loading producers…",
-    "placeholder": "Choose a producer…",
-    "tryAgain": "Please try again."
+    "placeholder": "Choose a producer…"
   },
   "listingDetailPage": {
     "contextTitle": "Context",
@@ -1516,6 +1566,40 @@
     }
   },
   "listingsListPage": {
+    "attention": {
+      "label": "Needs a look",
+      "priceChanges": {
+        "body": {
+          "one": "{n} price changed in your shop and waits for your review before it goes to the channel.",
+          "other": "{n} prices changed in your shop and wait for your review before they go to the channel."
+        },
+        "bodyUnknown": "Prices that changed in your shop wait here for your review before they go to the channel.",
+        "label": "Price changes",
+        "review": "Review price changes",
+        "short": "price changes"
+      },
+      "sellingDeleted": {
+        "itemDesc": "The product was deleted in your shop, but the channel still sells it. Pause or end the offer.",
+        "itemTitle": "Live offers selling a deleted product",
+        "label": "Selling a deleted product",
+        "short": "selling deleted"
+      },
+      "shopBlocked": {
+        "affected": {
+          "one": "{n} listing is affected.",
+          "other": "{n} listings are affected."
+        },
+        "clear": "Stop showing only blocked listings",
+        "label": "Shop-level block",
+        "none": "No connection reports a shop-level block for these listings.",
+        "openConnection": "Open connection",
+        "scope": "Reported against every listing on the connection, not against any one of them.",
+        "short": "blocked by shop",
+        "show": "Show these listings",
+        "title": "{connection} reports a shop-level block.",
+        "unknownConnection": "A connection"
+      }
+    },
     "card": {
       "channel": "Channel",
       "channelProblems": "Channel problems",
@@ -1550,14 +1634,6 @@
       "quantity": "Quantity",
       "statusRead": "status read",
       "updated": "Updated"
-    },
-    "connectionNotice": {
-      "affectedShown": {
-        "one": "{n} of the listings shown here is affected.",
-        "other": "{n} of the listings shown here are affected."
-      },
-      "summary": "{problems} - this is reported against every listing on the connection, not against any one of them.",
-      "title": "{connection} reports a shop-level block"
     },
     "description": "Everything you sell on connected channels, and what state it is in right now.",
     "empty": {
@@ -1612,6 +1688,34 @@
       "unnamedProduct": "Unnamed product"
     },
     "loading": "Loading listings…",
+    "peek": {
+      "channel": "Channel",
+      "checkStatus": "Check status",
+      "checkingStatus": "Checking…",
+      "description": "Listing details. Use the arrow keys or j and k to move between listings.",
+      "details": "Details",
+      "detailsAria": "Open details for {name}",
+      "ean": "EAN",
+      "editOffer": "Edit offer",
+      "externalId": "External ID",
+      "kicker": "Listing",
+      "lifecycle": "Lifecycle",
+      "onChannel": "on channel",
+      "onChannelRow": "On channel",
+      "openListing": "Open listing",
+      "openProduct": "Open product",
+      "sku": "SKU",
+      "stateAria": "Listing state",
+      "statusRead": "Status read",
+      "whyNotSelling": "Why it is not selling"
+    },
+    "pills": {
+      "channel": "Channel",
+      "needsALook": "Needs a look",
+      "search": "Search",
+      "sellingDeleted": "Selling deleted",
+      "shopBlocked": "Blocked by shop"
+    },
     "publishProducts": "Publish products",
     "retry": "Retry",
     "status": {
@@ -1623,14 +1727,20 @@
     "title": "Listings",
     "toolbar": {
       "allChannels": "All channels",
-      "channelAriaLabel": "Filter by channel",
-      "clear": "Clear",
+      "channel": "Channel",
+      "clearAll": "Clear all",
+      "filterGroupAria": "Filters",
+      "results": {
+        "one": "{total} result",
+        "other": "{total} results"
+      },
       "searchAriaLabel": "Search listings by product name, SKU, EAN or external ID",
       "searchPlaceholder": "Product name, SKU, EAN or external ID"
     },
     "views": {
       "all": "All listings",
       "ariaLabel": "Listings views",
+      "countUnavailable": "Count unavailable",
       "priceChanges": "Price changes"
     }
   },
@@ -1666,7 +1776,7 @@
       "withId": "Offer is live · external id <id>{externalId}</id>.",
       "withoutId": "Offer is live."
     },
-    "loadFailed": "Unable to load status: {message}",
+    "loadFailed": "Unable to load status.",
     "loading": "Loading status…",
     "processing": "Still processing - the status will update automatically.",
     "reused": {
@@ -1808,7 +1918,14 @@
     "notSyncedYet": "Not synced yet"
   },
   "offerPublicationStatusPanel": {
+    "caption": "Offers of this product on marketplaces",
     "checkStatus": "Check status",
+    "columns": {
+      "action": "Action",
+      "offer": "Offer",
+      "status": "Status",
+      "synced": "Last checked"
+    },
     "emptyMessage": "This product isn't listed on any marketplace connection yet.",
     "emptyTitle": "No offers on marketplaces",
     "errorTitle": "Unable to load publication status",
@@ -1817,8 +1934,7 @@
     "neverSynced": "Never synced",
     "refresh": "Refresh",
     "refreshing": "Refreshing…",
-    "retry": "Retry",
-    "synced": "Synced <time></time>"
+    "retry": "Retry"
   },
   "parameterRestrictions": {
     "aboveMax": "{name} must be at most {max}, this value is {value}.",
@@ -1875,6 +1991,85 @@
   },
   "requiredToSell": {
     "outOfStock": "Out of stock - it will publish but cannot be purchased until restocked."
+  },
+  "salesChannels": {
+    "backAtSource": "Back in {source}, not on sale anywhere",
+    "banner": {
+      "body": "OpenLinker could not stop the sale on every channel. Open the product to see where and what to do.",
+      "link": "Show these listings",
+      "loadFailed": "Could not check whether deleted products are still on sale.",
+      "title": {
+        "one": "{n} product deleted at the source is still on sale",
+        "other": "{n} products deleted at the source are still on sale"
+      }
+    },
+    "cannotBeBought": "cannot be bought",
+    "checked": "Checked {time}",
+    "hideChannels": "Hide channels",
+    "inStockAtSource": "Stock comes from {source}.",
+    "kicker": "Sales channels",
+    "loadFailed": {
+      "body": "Do not assume it is off sale. Try again.",
+      "retry": "Try again",
+      "title": "Could not check where this product is on sale"
+    },
+    "needsAction": "Needs action",
+    "noOrdersSince": "No orders since deletion",
+    "offSaleEverywhere": {
+      "one": "Off sale on all {n} channel",
+      "other": "Off sale on all {n} channels"
+    },
+    "offerRef": "Offer {id}",
+    "onSale": {
+      "one": "On sale on {selling} of {n} channel",
+      "other": "On sale on {selling} of {n} channels"
+    },
+    "onSaleSubject": {
+      "one": "{subject} is on sale on {selling} of {n} channel",
+      "other": "{subject} is on sale on {selling} of {n} channels"
+    },
+    "ordersSince": {
+      "one": "{n} order since deletion",
+      "other": "{n} orders since deletion"
+    },
+    "platformRef": "{platform}, {ref}",
+    "productRef": "Product #{id}",
+    "putBack": {
+      "one": "Put back on sale on {n} channel",
+      "other": "Put back on sale on {n} channels"
+    },
+    "putBackBusy": "Putting back on sale...",
+    "putBackFailed": "Could not put it back on sale on {channels}. Try again.",
+    "putBackFailedUnknown": "Some channels could not be put back on sale. Try again.",
+    "putBackPick": "Put back on sale on {channel}",
+    "quantity": "{n} in stock",
+    "reason": {
+      "error": "Could not stop the sale. OpenLinker tries again every hour.",
+      "noStockWrite": "OpenLinker can not change stock in {platform}",
+      "notYet": "Not stopped yet. OpenLinker checks every hour.",
+      "stockSyncOff": "Stock sync is off"
+    },
+    "showChannels": "Show channels",
+    "since": "since {date}",
+    "sizeNote": "A shop can only hide the whole product, so the deleted variant is set to 0",
+    "status": {
+      "activating": "Activating",
+      "active": "Active",
+      "draft": "Draft",
+      "ended": "Ended",
+      "inactivating": "Deactivating",
+      "inactive": "Inactive",
+      "notChecked": "Not checked yet",
+      "onSale": "On sale",
+      "outOfStock": "Out of stock",
+      "published": "On sale",
+      "removed": "Removed",
+      "unpublished": "Turned off"
+    },
+    "stopped": "Stopped",
+    "turnOffIn": "Turn off in {platform}",
+    "turnOnStockSync": "Turn on stock sync",
+    "variantsLabel": "Variants"
   },
   "shopAttributePicker": {
     "add": "Add attribute",
@@ -1982,7 +2177,7 @@
         "one": "{n} failed",
         "other": "{n} failed"
       },
-      "loadError": "Unable to load batch: {message}",
+      "loadError": "Unable to load batch.",
       "loading": "Loading batch…",
       "none": "No batch available.",
       "progress": "{done} / {total}",
@@ -1990,6 +2185,14 @@
         "one": "{n} published",
         "other": "{n} published"
       },
+      "retryDispatchedDescription": {
+        "one": "{n} product queued again.",
+        "other": "{n} products queued again."
+      },
+      "retryDispatchedTitle": "Retry dispatched",
+      "retryFailed": "Retry failed",
+      "retryFailedTitle": "Retry failed",
+      "retrying": "Retrying…",
       "running": {
         "one": "{n} running",
         "other": "{n} running"
@@ -1999,7 +2202,7 @@
     "single": {
       "failedBody": "Publishing failed. No product was created on the shop.",
       "failedTitle": "Publish failed",
-      "loadError": "Unable to load status: {message}",
+      "loadError": "Unable to load status.",
       "loading": "Loading status…",
       "none": "No status available.",
       "product": "Product",
