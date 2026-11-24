@@ -285,6 +285,30 @@ describe('TriggerSyncDialog', () => {
         expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
       });
 
+      it('should flag a last day before the first day as soon as it is entered and keep the button off', async () => {
+        const mockApi = createMockApiClient(adapter(true));
+        renderWithProviders(<TriggerSyncDialog connection={source} open onOpenChange={vi.fn()} />, {
+          apiClient: mockApi,
+        });
+        await screen.findByRole('option', { name: /^sync orders$/i });
+        fireEvent.change(screen.getByRole('combobox', { name: /job type/i }), {
+          target: { value: 'marketplace.orders.poll' },
+        });
+        fireEvent.change(await screen.findByRole('combobox', { name: /what to sync/i }), {
+          target: { value: 'range' },
+        });
+
+        fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-10' } });
+        fireEvent.change(screen.getByLabelText(/^Last day/), { target: { value: '2026-10-01' } });
+
+        expect(screen.getByText('The last day cannot be before the first day')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^trigger$/i })).toBeDisabled();
+
+        fireEvent.change(screen.getByLabelText(/^Last day/), { target: { value: '2026-10-20' } });
+        expect(screen.queryByText('The last day cannot be before the first day')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^trigger$/i })).toBeEnabled();
+      });
+
       it('should require the first day and send the range as one import run', async () => {
         const mockApi = createMockApiClient(adapter(true));
         renderWithProviders(<TriggerSyncDialog connection={source} open onOpenChange={vi.fn()} />, {

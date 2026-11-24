@@ -40432,8 +40432,10 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .order-sync-start__card-header {
   display: flex;
   align-items: center;
-  /* The picker header spreads its children apart; here the dot, title and badge sit together. */
+  /* The picker header spreads its children apart; here the dot, title and badge sit together,
+     and the badge drops under the title on a narrow card instead of squeezing it. */
   justify-content: flex-start;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 

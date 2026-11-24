@@ -233,6 +233,19 @@ export function TriggerSyncDialog({
   const isPeriodEntry = isRangeImport && initialOrderScope === 'range';
   // A range without a first day cannot be submitted, so the button waits for it.
   const missingFirstDay = isRangeImport && orderRange.from === '';
+  // Shown as the operator types, not only after pressing the button: a last day before the
+  // first day or a future date is visible the moment it is entered. An empty first day is
+  // handled by `missingFirstDay`, so it is not repeated as an error here.
+  const liveRangeProblems = isRangeImport ? validateOrderRange(orderRange) : {};
+  const liveFromError =
+    orderRange.from !== '' && liveRangeProblems.from
+      ? copy.orderRange.errors[liveRangeProblems.from]
+      : undefined;
+  const liveToError =
+    orderRange.to !== '' && liveRangeProblems.to
+      ? copy.orderRange.errors[liveRangeProblems.to]
+      : undefined;
+  const hasLiveRangeError = liveFromError !== undefined || liveToError !== undefined;
 
   useEffect(() => {
     if (open) {
@@ -444,7 +457,7 @@ export function TriggerSyncDialog({
             <OrderRangeFields
               value={orderRange}
               onChange={setOrderRange}
-              errors={{ from: fieldErrors.from, to: fieldErrors.to }}
+              errors={{ from: fieldErrors.from ?? liveFromError, to: fieldErrors.to ?? liveToError }}
               disabled={enqueueSyncJob.isPending}
               autoFocusFrom={isPeriodEntry}
             />
@@ -489,7 +502,8 @@ export function TriggerSyncDialog({
                 intentKey === null ||
                 !hasTriggers ||
                 submitDisabled ||
-                missingFirstDay
+                missingFirstDay ||
+                hasLiveRangeError
               }
             >
               {enqueueSyncJob.isPending
