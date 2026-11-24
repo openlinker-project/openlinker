@@ -24,7 +24,7 @@ describe('completedStepItemKeys', () => {
         before: inpost(A, { shipping: { notifyMarketplaceOnLabelPurchase: false } }),
       },
       RELEASE_STEPS,
-      '0.20.0'
+      '0.21.0'
     );
     expect(keys).toEqual([releaseStepItemKey('inpost-notify-buyer', A)]);
     expect(keys).not.toContain(releaseStepItemKey('inpost-notify-buyer', B));
@@ -40,7 +40,7 @@ describe('completedStepItemKeys', () => {
         before: inpost(A, config),
       },
       RELEASE_STEPS,
-      '0.20.0'
+      '0.21.0'
     );
     expect(keys).toEqual([]);
   });
@@ -57,7 +57,7 @@ describe('completedStepItemKeys', () => {
         before: inpost(A, {}),
       },
       RELEASE_STEPS,
-      '0.19.0'
+      '0.20.0'
     );
     expect(keys).toEqual([]);
   });
