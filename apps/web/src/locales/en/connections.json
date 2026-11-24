@@ -917,6 +917,9 @@
         "description": "Your {platform} Shop API key - generated in the {platform} seller panel.",
         "label": "API key"
       },
+      "catalogue": {
+        "linkedHint": "You pick the catalog connection on this connection’s edit page after it is created."
+      },
       "environment": {
         "description": "Choose Sandbox to test against {platform}'s sandbox before switching to production.",
         "label": "Environment",
@@ -932,7 +935,10 @@
     "platformFallback": "the marketplace",
     "review": {
       "deliveryOnDocuments": "Delivery on documents",
-      "name": "Name"
+      "linkedLater": "Linked (pick it after creating)",
+      "name": "Name",
+      "noCatalogue": "No catalog (marketplace only)",
+      "productCatalogue": "Product catalog"
     },
     "steps": {
       "credentials": "Credentials",
@@ -962,7 +968,10 @@
       "production": "Production",
       "sandbox": "Sandbox"
     },
-    "name": "Name"
+    "linkedLater": "Linked",
+    "name": "Name",
+    "noCatalogue": "None (marketplace only)",
+    "productCatalogue": "Product catalog"
   },
   "fulfilmentOwnershipSection": {
     "heading": "Who packs the orders",

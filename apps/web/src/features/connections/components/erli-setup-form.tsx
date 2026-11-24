@@ -7,6 +7,9 @@
  *   - Shop API key (the only credential — sent as a Bearer token by the BE)
  *   - Environment (Production/Sandbox, #1377) — persisted as the neutral
  *     `config.environment` choice; the BE resolves it to a base URL
+ *   - Product catalogue (#4281): Linked / None. None is preselected when the
+ *     installation has no ProductMaster at all, so a marketplace-only install is
+ *     one click; the catalogue itself is picked later on the connection page
  *   2. Sales documents - how delivery appears on receipts and invoices
  *      (`config.deliveryOnDocuments`, #3911)
  *   3. Review & connect
@@ -20,12 +23,14 @@
  *
  * @module features/connections/components
  */
-import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
+import { useProductMasterConnections } from '../hooks/use-product-master-connections';
+import { CatalogueModeFieldset } from './catalogue-mode-fieldset';
 import type { ConnectionTestResult } from '../api/connections.types';
 import {
   ERLI_SETUP_DEFAULT_VALUES,
@@ -95,11 +100,25 @@ export function ErliSetupForm(): ReactElement {
     mode: 'onBlur',
   });
 
+  const { connectionsQuery, productMasterConnections } = useProductMasterConnections();
+  // Set once the operator picks a catalogue mode, so the "no ProductMaster yet"
+  // preselection below never overrides an explicit choice.
+  const catalogueModeTouched = useRef(false);
+
   const suggestionsQuery = useDeliveryLineSuggestionsQuery();
   const suggestions = suggestionsQuery.data?.suggestions ?? [];
 
   const [stepIndex, setStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
+
+  // An installation with no catalogue connection at all is the marketplace-only
+  // case this mode exists for, so it starts on "None" (#4281).
+  useEffect(() => {
+    if (catalogueModeTouched.current) return;
+    if (connectionsQuery.isSuccess && productMasterConnections.length === 0) {
+      form.setValue('catalogueMode', 'none');
+    }
+  }, [connectionsQuery.isSuccess, productMasterConnections.length, form]);
 
   // Abandon-prevention.
   useEffect(() => {
@@ -174,6 +193,7 @@ export function ErliSetupForm(): ReactElement {
   };
 
   const values = form.watch();
+  const catalogueMode = values.catalogueMode ?? 'linked';
   const deliveryValue = values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE;
   const deliverySummary = wizardSummaryRows(wizardRules(deliveryValue, suggestions))
     .map((row) => `${row.label}: ${row.value}`)
@@ -250,6 +270,17 @@ export function ErliSetupForm(): ReactElement {
               <option value="production">{interpolate(copy.fields.environment.option, { name: copy.environments.production, url: PRODUCTION_URL })}</option>
             </Select>
           </FormField>
+
+          <CatalogueModeFieldset
+            value={catalogueMode}
+            disabled={false}
+            onChange={(next) => {
+              catalogueModeTouched.current = true;
+              form.setValue('catalogueMode', next, { shouldDirty: true });
+            }}
+          >
+            <p className="rate-limit-section__help">{copy.fields.catalogue.linkedHint}</p>
+          </CatalogueModeFieldset>
           </>
         ) : null}
 
@@ -269,6 +300,8 @@ export function ErliSetupForm(): ReactElement {
             <dd className="mono-text">{values.apiKey ? maskSecret(values.apiKey) : '-'}</dd>
             <dt>{copy.fields.environment.label}</dt>
             <dd>{values.environment === 'production' ? copy.environments.production : copy.environments.sandbox}</dd>
+            <dt>{copy.review.productCatalogue}</dt>
+            <dd>{catalogueMode === 'none' ? copy.review.noCatalogue : copy.review.linkedLater}</dd>
             <dt>{copy.review.deliveryOnDocuments}</dt>
             <dd>{deliverySummary}</dd>
           </dl>

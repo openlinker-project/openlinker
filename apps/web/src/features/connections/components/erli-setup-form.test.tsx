@@ -133,6 +133,65 @@ describe('ErliSetupForm', () => {
     });
   });
 
+  describe('product catalogue (#4281)', () => {
+    it('preselects None and persists it when the installation has no catalogue connection', async () => {
+      const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+      const apiClient = createMockApiClient({
+        connections: { create, list: vi.fn().mockResolvedValue([]) },
+      });
+
+      renderWithProviders(<ErliSetupForm />, { apiClient });
+
+      await waitFor(() => expect(screen.getByRole('radio', { name: /^None:/ })).toBeChecked());
+      await fillAndReachReview();
+      expect(screen.getByText('No catalog (marketplace only)')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+      await waitFor(() => {
+        expect(create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            config: {
+              environment: 'sandbox',
+              catalogueMode: 'none',
+              deliveryOnDocuments: { countries: {}, default: SHIPPING_DEFAULT },
+            },
+          }),
+        );
+      });
+    });
+
+    it('stays on Linked and writes no key when a catalogue connection exists', async () => {
+      const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+      const apiClient = createMockApiClient({ connections: { create } });
+
+      renderWithProviders(<ErliSetupForm />, { apiClient });
+
+      expect(await screen.findByRole('radio', { name: /^Linked:/ })).toBeChecked();
+      await fillAndReachReview();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(create.mock.calls[0][0].config).not.toHaveProperty('catalogueMode');
+    });
+
+    it('does not override an explicit Linked choice with the no-catalogue preselection', async () => {
+      const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+      const apiClient = createMockApiClient({
+        connections: { create, list: vi.fn().mockResolvedValue([]) },
+      });
+
+      renderWithProviders(<ErliSetupForm />, { apiClient });
+
+      await waitFor(() => expect(screen.getByRole('radio', { name: /^None:/ })).toBeChecked());
+      fireEvent.click(screen.getByRole('radio', { name: /^Linked:/ }));
+      await fillAndReachReview();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(create.mock.calls[0][0].config).not.toHaveProperty('catalogueMode');
+    });
+  });
+
   it('surfaces the test-connection result after a successful create', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
     const test = vi

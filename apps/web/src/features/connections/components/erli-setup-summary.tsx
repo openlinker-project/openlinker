@@ -44,6 +44,10 @@ export function ErliSetupSummary({
         <dl className="wizard-summary__rows">
           <WizardSummaryRow label={copy.name} value={values.name?.trim() ? values.name : null} />
           <WizardSummaryRow label={copy.environment} value={environmentLabel} />
+          <WizardSummaryRow
+            label={copy.productCatalogue}
+            value={values.catalogueMode === 'none' ? copy.noCatalogue : copy.linkedLater}
+          />
         </dl>
       </section>
 

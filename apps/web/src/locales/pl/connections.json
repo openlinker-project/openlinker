@@ -943,6 +943,9 @@
         "description": "Klucz Shop API {platform} - wygenerowany w panelu sprzedawcy {platform}.",
         "label": "Klucz API"
       },
+      "catalogue": {
+        "linkedHint": "Połączenie z katalogiem wybierzesz na stronie edycji tego połączenia, po jego utworzeniu."
+      },
       "environment": {
         "description": "Wybierz Sandbox, aby przetestować połączenie ze środowiskiem testowym {platform} przed przejściem na produkcję.",
         "label": "Środowisko",
@@ -958,7 +961,10 @@
     "platformFallback": "marketplace",
     "review": {
       "deliveryOnDocuments": "Dostawa na dokumentach",
-      "name": "Nazwa"
+      "linkedLater": "Powiązany (wybierzesz po utworzeniu)",
+      "name": "Nazwa",
+      "noCatalogue": "Bez katalogu (tylko marketplace)",
+      "productCatalogue": "Katalog produktów"
     },
     "steps": {
       "credentials": "Dane dostępowe",
@@ -988,7 +994,10 @@
       "production": "Produkcja",
       "sandbox": "Sandbox"
     },
-    "name": "Nazwa"
+    "linkedLater": "Powiązany",
+    "name": "Nazwa",
+    "noCatalogue": "Brak (tylko marketplace)",
+    "productCatalogue": "Katalog produktów"
   },
   "fulfilmentOwnershipSection": {
     "heading": "Kto pakuje zamówienia",
