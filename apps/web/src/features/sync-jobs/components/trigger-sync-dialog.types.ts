@@ -48,4 +48,6 @@ export interface TriggerSyncDialogProps {
   submitDisabled?: boolean;
   /** Job type to preselect when the dialog opens, if the connection offers it. */
   initialJobType?: string;
+  /** Order sync scope to preselect when the dialog opens; honoured only where a period read exists. */
+  initialOrderScope?: 'new' | 'range';
 }

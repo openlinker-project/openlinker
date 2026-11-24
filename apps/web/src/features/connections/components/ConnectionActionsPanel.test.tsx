@@ -205,6 +205,58 @@ describe('ConnectionActionsPanel', () => {
     );
   });
 
+  describe('period sync deep link (#4228)', () => {
+    const windowAdapter = (orderWindowImport: boolean) => ({
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          {
+            adapterKey: sampleConnection.adapterKey,
+            platformType: sampleConnection.platformType,
+            isDefault: true,
+            orderWindowImport,
+          },
+        ]),
+      },
+    });
+    const orderSource = {
+      ...sampleConnection,
+      supportedCapabilities: [...sampleConnection.supportedCapabilities, 'OrderSource' as const],
+    };
+
+    it('opens Sync orders with the period option chosen for ?sync=orders&scope=range', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={orderSource} />, {
+        ...adminSession,
+        apiClient: createMockApiClient(windowAdapter(true)),
+        route: `/connections/${sampleConnection.id}?tab=actions&sync=orders&scope=range`,
+      });
+
+      expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('range');
+    });
+
+    it('keeps "new" when no scope is given', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={orderSource} />, {
+        ...adminSession,
+        apiClient: createMockApiClient(windowAdapter(true)),
+        route: `/connections/${sampleConnection.id}?tab=actions&sync=orders`,
+      });
+
+      expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('new');
+    });
+
+    it('ignores the period when the shop cannot read a window', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={orderSource} />, {
+        ...adminSession,
+        apiClient: createMockApiClient(windowAdapter(false)),
+        route: `/connections/${sampleConnection.id}?tab=actions&sync=orders&scope=range`,
+      });
+
+      expect(await screen.findByRole('combobox', { name: /job type/i })).toHaveValue(
+        'marketplace.orders.poll',
+      );
+      expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
+    });
+  });
+
   describe('demo read-only viewer (#1615)', () => {
     const viewerSession = { sessionAdapter: createAuthenticatedSessionAdapter({
       id: 'u2',

@@ -249,6 +249,36 @@ describe('TriggerSyncDialog', () => {
         expect(screen.getByRole('combobox', { name: /read orders from/i })).toBeInTheDocument();
       });
 
+      it('should preselect the period when asked to and the shop can read one', async () => {
+        renderWithProviders(
+          <TriggerSyncDialog
+            connection={source}
+            open
+            onOpenChange={vi.fn()}
+            initialJobType="marketplace.orders.poll"
+            initialOrderScope="range"
+          />,
+          { apiClient: createMockApiClient(adapter(true)) },
+        );
+        expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('range');
+        expect(screen.getByLabelText('First day')).toBeInTheDocument();
+      });
+
+      it('should ignore a preselected period when the shop cannot read one', async () => {
+        renderWithProviders(
+          <TriggerSyncDialog
+            connection={source}
+            open
+            onOpenChange={vi.fn()}
+            initialJobType="marketplace.orders.poll"
+            initialOrderScope="range"
+          />,
+          { apiClient: createMockApiClient(adapter(false)) },
+        );
+        expect(await screen.findByRole('combobox', { name: /read orders from/i })).toBeInTheDocument();
+        expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
+      });
+
       it('should require the first day and send the range as one import run', async () => {
         const mockApi = createMockApiClient(adapter(true));
         renderWithProviders(<TriggerSyncDialog connection={source} open onOpenChange={vi.fn()} />, {

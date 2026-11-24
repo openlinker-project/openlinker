@@ -4,7 +4,7 @@
  * @module features/connections/components
  */
 import type { ReactElement } from 'react';
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
@@ -373,43 +373,56 @@ describe('OrderSyncPanel', () => {
     expect(screen.queryByText('Import start')).not.toBeInTheDocument();
   });
 
-  describe('import older orders', () => {
-    it('imports a period once as a range run when the shop can read a window', async () => {
+  describe('get orders from a period', () => {
+    const adapterWithWindow = (orderWindowImport: boolean) => ({
+      list: vi.fn().mockResolvedValue([
+        {
+          adapterKey: 'prestashop.webservice.v1',
+          platformType: 'prestashop',
+          orderSyncStartModes: ['now', 'from', 'all'],
+          orderWindowImport,
+        },
+      ]),
+    });
+
+    it('presses the button, then opens Actions with the period option chosen', async () => {
       const user = userEvent.setup();
-      const importOrders = vi.fn().mockResolvedValue({ runId: 'run_1' });
       const apiClient = createMockApiClient({
-        connections: {
-          getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()),
-          importOrders,
-        },
-        adapters: {
-          list: vi.fn().mockResolvedValue([
-            {
-              adapterKey: 'prestashop.webservice.v1',
-              platformType: 'prestashop',
-              orderSyncStartModes: ['now', 'from', 'all'],
-              orderWindowImport: true,
-            },
-          ]),
-        },
+        connections: { getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()) },
+        adapters: adapterWithWindow(true),
+      });
+      renderWithProviders(
+        <>
+          <OrderSyncPanel connection={CONNECTION} />
+          <LocationProbe />
+        </>,
+        { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
+      );
+
+      const button = await screen.findByRole('button', { name: 'Get orders from a period…' });
+      await user.click(button);
+
+      expect(button).toHaveClass('button--pressed');
+      expect(screen.getByTestId('location')).not.toHaveTextContent('tab=actions');
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent(
+          '/connections/conn_1?tab=actions&sync=orders&scope=range'
+        )
+      );
+    });
+
+    it('does not offer the period read when the shop cannot read a window', async () => {
+      const apiClient = createMockApiClient({
+        connections: { getSyncStatus: vi.fn<GetSyncStatus>().mockResolvedValue(makeStatus()) },
+        adapters: adapterWithWindow(false),
       });
       renderWithProviders(<OrderSyncPanel connection={CONNECTION} />, {
         apiClient,
         sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
-      await user.click(await screen.findByRole('button', { name: 'Get orders from a period…' }));
-      await user.click(await screen.findByRole('button', { name: 'Get orders' }));
-      expect(await screen.findByText('Choose the first day')).toBeInTheDocument();
-      expect(importOrders).not.toHaveBeenCalled();
-
-      fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-01' } });
-      await user.click(screen.getByRole('button', { name: 'Get orders' }));
-
-      expect(importOrders).toHaveBeenCalledWith('conn_1', {
-        from: '2026-10-01',
-        direction: 'oldest-first',
-      });
+      expect(await screen.findByRole('button', { name: 'Check for new orders' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Get orders from a period…' })).not.toBeInTheDocument();
     });
   });
 
