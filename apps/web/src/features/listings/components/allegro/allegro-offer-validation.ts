@@ -84,6 +84,27 @@ export const ALLEGRO_PRODUCT_SET_GPSR_MISSING_CODE = 'PRODUCT_SET_COMPONENT_GPSR
 export const ALLEGRO_MISSING_SELLER_DEFAULTS_ISSUE = 'allegro:missing-seller-details';
 
 /**
+ * Codes with which Allegro refuses an offer because of the SELLER ACCOUNT, not
+ * the offer (#4004) - seen in the #3928 spike on a sandbox account under a sales
+ * blockade. No edit to an offer changes the answer, so the batch page reports
+ * them once instead of offering a per-row fix.
+ */
+export const ALLEGRO_ACCOUNT_LEVEL_ERROR_CODES = [
+  'OfferAccessDeniedException',
+  'SellerAccountWithSellBlockadeException',
+] as const;
+
+/** Allegro's Sales Center, where a seller sees and resolves an account block. */
+function allegroSalesCenterUrl(connectionConfig: Record<string, unknown>): string | null {
+  // An absent or unreadable environment is NOT sandbox: sending a production
+  // seller to the sandbox panel to fix a real block is worse than no link.
+  const environment = connectionConfig['environment'];
+  if (environment === 'sandbox') return 'https://salescenter.allegro.com.allegrosandbox.pl';
+  if (environment === 'production' || environment === undefined) return 'https://salescenter.allegro.com';
+  return null;
+}
+
+/**
  * Every `sellerDefaults` path Allegro's own create-time gate can report as
  * missing - a declared mirror of `collectMissingSellerDefaultsFields` in
  * `libs/integrations/allegro/src/infrastructure/adapters/allegro-offer-manager.adapter.ts`,
@@ -410,6 +431,20 @@ export const allegroOfferValidation: OfferValidationContribution = {
       advisory: true,
     },
   ],
+  accountLevelRefusal: {
+    errorCodes: ALLEGRO_ACCOUNT_LEVEL_ERROR_CODES,
+    describe: ({ affected, total, connectionConfig }) => {
+      const copy = getMessages('listings').bulkBatch.allegro.accountRefused;
+      const salesCenterUrl = allegroSalesCenterUrl(connectionConfig);
+      return {
+        title: copy.title,
+        detail: interpolate(formatPlural(affected, copy.detail, getLocale()), {
+          total: total.toLocaleString(getBcp47Locale(getLocale())),
+        }),
+        ...(salesCenterUrl ? { action: { label: copy.action, href: salesCenterUrl } } : {}),
+      };
+    },
+  },
   validateRow: (input) => {
     const blockers: string[] = [];
     if (input.bundle) {

@@ -104,47 +104,23 @@ export function AiProviderTable({ view }: AiProviderTableProps): ReactElement {
 
   return (
     <TooltipProvider>
-    <section
-      className="ai-provider-table-section"
-      aria-labelledby="ai-providers-heading"
-    >
-      <div className="ai-provider-table-section__head">
-        <h2 id="ai-providers-heading" className="section-title">
-          {copy.heading}
-        </h2>
-        <p className="ai-provider-table-section__caption">{copy.caption}</p>
-      </div>
+    <section className="ai-provider-table-section">
+      <p className="ai-provider-table-section__caption">{copy.caption}</p>
 
-      <table className="ai-provider-table">
-        <thead>
-          <tr>
-            <th scope="col">{copy.columns.provider}</th>
-            <th scope="col">{copy.columns.active}</th>
-            <th scope="col">{copy.columns.key}</th>
-            <th scope="col">{copy.columns.source}</th>
-            <th scope="col">{copy.columns.updated}</th>
-            <th
-              scope="col"
-              className="ai-provider-table__th--actions"
-              aria-label={copy.columns.actions}
-            />
-          </tr>
-        </thead>
-        <tbody>
-          {view.providers.map((row) => (
-            <ProviderRow
-              key={row.provider}
-              row={row}
-              isActive={row.provider === view.activeProvider}
-              activeUpdatedAt={row.provider === view.activeProvider ? view.activeUpdatedAt : null}
-              activeUpdatedBy={row.provider === view.activeProvider ? view.activeUpdatedBy : null}
-              onSetKey={() => setKeyDialogProvider(row.provider)}
-              onClearKey={() => setClearProvider(row.provider)}
-              onMakeActive={() => setActivateProvider(row.provider)}
-            />
-          ))}
-        </tbody>
-      </table>
+      <ul className="ai-provider-list">
+        {view.providers.map((row) => (
+          <ProviderRow
+            key={row.provider}
+            row={row}
+            isActive={row.provider === view.activeProvider}
+            activeUpdatedAt={row.provider === view.activeProvider ? view.activeUpdatedAt : null}
+            activeUpdatedBy={row.provider === view.activeProvider ? view.activeUpdatedBy : null}
+            onSetKey={() => setKeyDialogProvider(row.provider)}
+            onClearKey={() => setClearProvider(row.provider)}
+            onMakeActive={() => setActivateProvider(row.provider)}
+          />
+        ))}
+      </ul>
 
       <AiProviderKeyDialog
         provider={keyDialogProvider}
@@ -226,59 +202,53 @@ function ProviderRow({
   const canActivate = !isActive && (!requiresKey || row.configured);
   const activateDisabledReason = !canActivate && !isActive ? copy.addKeyFirst : '';
 
-  const trClass = ['ai-provider-table__row', isActive ? 'ai-provider-table__row--active' : '']
-    .filter(Boolean)
-    .join(' ');
+  const updated =
+    isActive && activeUpdatedAt !== null && !Number.isNaN(Date.parse(activeUpdatedAt))
+      ? format.relativeTime(activeUpdatedAt)
+      : null;
 
   return (
-    <tr className={trClass}>
-      <td>
-        <div className="ai-provider-table__name">{copy.providers[row.provider].label}</div>
-        <div className="ai-provider-table__hint mono-text">{copy.providers[row.provider].hint}</div>
-      </td>
-      <td>
-        {isActive ? (
-          <StatusBadge tone="success" withDot>
-            {copy.activeBadge}
-          </StatusBadge>
-        ) : null}
-      </td>
-      <td>
+    <li className="ai-provider" data-active={isActive || undefined}>
+      <div className="ai-provider__id">
+        <div className="ai-provider__name">
+          <span>{copy.providers[row.provider].label}</span>
+          {isActive ? (
+            <StatusBadge tone="success" withDot>
+              {copy.activeBadge}
+            </StatusBadge>
+          ) : null}
+        </div>
+        <div className="ai-provider__hint mono-text">{copy.providers[row.provider].hint}</div>
+      </div>
+      <div className="ai-provider__key">
         {requiresKey ? (
-          row.configured ? (
-            copy.yes
-          ) : (
-            <span className="text-muted">{copy.no}</span>
-          )
+          <>
+            <span className={row.configured ? undefined : 'text-muted'}>
+              {row.configured ? copy.keySaved : copy.keyMissing}
+            </span>
+            {row.configured ? (
+              <StatusBadge tone={SOURCE_TONE[row.source]} compact>
+                {copy.sources[row.source]}
+              </StatusBadge>
+            ) : null}
+          </>
         ) : (
           <span className="text-muted">{copy.notApplicable}</span>
         )}
-      </td>
-      <td>
-        {requiresKey ? (
-          <StatusBadge tone={SOURCE_TONE[row.source]} compact>
-            {copy.sources[row.source]}
-          </StatusBadge>
-        ) : null}
-      </td>
-      <td className="mono-text">
-        {isActive ? (
+        {updated ? (
           <span
+            className="ai-provider__updated"
             title={
               activeUpdatedBy
                 ? interpolate(copy.updatedBy, { user: activeUpdatedBy })
                 : copy.serverFallback
             }
           >
-            {activeUpdatedAt !== null && !Number.isNaN(Date.parse(activeUpdatedAt))
-              ? format.relativeTime(activeUpdatedAt)
-              : '—'}
+            {updated}
           </span>
-        ) : (
-          '—'
-        )}
-      </td>
-      <td className="ai-provider-table__actions">
+        ) : null}
+      </div>
+      <div className="ai-provider__actions">
         {requiresKey ? (
           <Button tone="secondary" className="button--sm" onClick={onSetKey}>
             {row.configured ? copy.rotate : copy.setKey}
@@ -307,8 +277,8 @@ function ProviderRow({
             </Button>
           )
         ) : null}
-      </td>
-    </tr>
+      </div>
+    </li>
   );
 }
 

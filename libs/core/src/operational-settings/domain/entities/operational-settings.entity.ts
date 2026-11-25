@@ -28,6 +28,7 @@ export class OperationalSettings {
     public readonly inventoryMovementRetentionDays: number | null,
     public readonly stockStaleSyncThresholdHours: number | null,
     public readonly deletionAuditCadence: string | null,
+    public readonly releaseCenterEnabled: boolean | null,
     public readonly updatedAt: Date,
     public readonly updatedBy: string | null
   ) {}

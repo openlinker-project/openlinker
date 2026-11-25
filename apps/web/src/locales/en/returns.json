@@ -313,6 +313,12 @@
       "sourceStatusLabel": "Source status",
       "stageLabel": "Stage"
     },
+    "savedViews": {
+      "orderFields": "OpenLinker order, source order",
+      "returnFields": "Return id",
+      "sourceFields": "Connection, id",
+      "stageFields": "Stage, received count"
+    },
     "segment": {
       "allReturnsLabel": "All returns",
       "stripLabel": "Filter returns by what needs doing"

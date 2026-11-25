@@ -569,6 +569,19 @@ describe('OfferBuilderService', () => {
       expect(result.variantBarcode).toBe('4006381333931');
     });
 
+    it('uses no barcode and no catalogue card when overrides.ean is explicitly empty, even though the variant has one (#4036)', async () => {
+      const result = await service.buildCreateOfferCommand({
+        internalVariantId: VARIANT_ID,
+        connectionId: MARKETPLACE_CONN_ID,
+        stock: 1,
+        overrides: { ean: '', categoryId: 'explicit-cat', productCardId: 'card-1' },
+      });
+
+      expect(result.variantBarcode).toBeNull();
+      expect(result.productCardId).toBeNull();
+      expect(categoryResolution.resolveCategory).not.toHaveBeenCalled();
+    });
+
     it('throws OfferBuilderValidationException when no barcode and no override', async () => {
       productsService.getVariant.mockResolvedValue({
         ...(defaultVariant as unknown as Record<string, unknown>),

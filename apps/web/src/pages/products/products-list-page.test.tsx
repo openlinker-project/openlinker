@@ -489,8 +489,8 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await screen.findByText('Test Product');
-    const tab = screen.getByRole('tab', { name: /Out of stock/ });
-    expect(tab).toHaveAttribute('aria-selected', 'false');
+    const tab = screen.getByRole('button', { name: /^Out of stock/ });
+    expect(tab).not.toHaveAttribute('aria-current');
     await user.click(tab);
 
     // URL state is asserted through its observable effect: the refetch with
@@ -502,10 +502,10 @@ describe('ProductsListPage', () => {
         expect.anything(),
       );
     });
-    expect(screen.getByRole('tab', { name: /Out of stock/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: /^Out of stock/ })).toHaveAttribute('aria-current', 'true');
   });
 
-  it('renders the four stock tabs with probe counts, Oversold included', async () => {
+  it('renders the stock views and the tax-rate view with probe counts, Oversold included', async () => {
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },
     });
@@ -513,15 +513,16 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await screen.findByText('Test Product');
-    const tabs = screen.getAllByRole('tab');
+    const tabs = within(screen.getByRole('group', { name: 'Views' })).getAllByRole('button');
     expect(tabs.map((t) => t.textContent?.replace(/\d+/g, '').trim())).toEqual([
       'All products',
       'Out of stock',
       'Low stock',
       'Oversold',
+      'No tax rate',
     ]);
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: /Oversold/ })).toHaveTextContent('2');
+      expect(screen.getByRole('button', { name: /^Oversold/ })).toHaveTextContent('2');
     });
   });
 
@@ -536,7 +537,7 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await waitFor(() => {
-      expect(screen.getByRole('tab', { name: /Oversold/ })).toHaveTextContent('2');
+      expect(screen.getByRole('button', { name: /^Oversold/ })).toHaveTextContent('2');
     });
     expect(count).toHaveBeenCalledWith(
       expect.objectContaining({ stock: 'oversold' }),
@@ -725,10 +726,10 @@ describe('ProductsListPage', () => {
       expect(last?.hideFullyStale).toBeUndefined();
     });
     expect(screen.queryByText('Deleted at source')).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /Low stock/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: /^Low stock/ })).toHaveAttribute('aria-current', 'true');
   });
 
-  it('the Sort menu offers SKU and writes sort=sku asc', async () => {
+  it('has no Sort menu: the Product header SKU button writes sort=sku asc', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const list = vi.fn().mockResolvedValue(sampleProducts);
     const mockApi = createMockApiClient({ products: { list } });
@@ -736,13 +737,8 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await screen.findByText('Test Product');
-    await user.click(screen.getByRole('button', { name: 'Sort products' }));
-    // The Product column's header also has a "SKU" sort button; take the menu's.
-    const option = (await screen.findAllByRole('button', { name: 'SKU' })).find((b) =>
-      b.classList.contains('choice-pop__opt'),
-    );
-    expect(option).toBeDefined();
-    await user.click(option!);
+    expect(screen.queryByRole('button', { name: 'Sort products' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /^SKU/ }));
 
     await waitFor(() => {
       expect(list).toHaveBeenCalledWith(expect.anything(), PAGE, { field: 'sku', dir: 'asc' });
@@ -1551,8 +1547,93 @@ describe('ProductsListPage', () => {
 
       renderWithProviders(<ProductsListPage />, { apiClient: mockApi, route: '/products?offset=100' });
 
-      expect(await screen.findByRole('tab', { name: /All products/ })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /^All products/ })).toBeInTheDocument();
       expect(screen.queryByText(/100\+/)).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Saved views (#4241) ──────────────────────────────────────────────
+
+  describe('saved views', () => {
+    it('opens on the All products view', async () => {
+      const mockApi = createMockApiClient({
+        products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      });
+
+      renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Test Product');
+      expect(screen.getByRole('button', { name: /^All products/ })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+    });
+
+    it('reads the sort a link written in the old two-param spelling, and keeps it', async () => {
+      const list = vi.fn().mockResolvedValue(sampleProducts);
+      const mockApi = createMockApiClient({ products: { list } });
+
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: mockApi,
+        route: '/products?sort=name&dir=desc',
+      });
+
+      await screen.findByText('Test Product');
+      await waitFor(() => {
+        const sorted = list.mock.calls.filter((call) => call[2] !== undefined);
+        expect(sorted.at(-1)?.[2]).toEqual({ field: 'name', dir: 'desc' });
+      });
+    });
+
+    it('reads the sort in the engine spelling', async () => {
+      const list = vi.fn().mockResolvedValue(sampleProducts);
+      const mockApi = createMockApiClient({ products: { list } });
+
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: mockApi,
+        route: '/products?sort=price:asc',
+      });
+
+      await screen.findByText('Test Product');
+      expect(list).toHaveBeenCalledWith(expect.anything(), PAGE, { field: 'price', dir: 'asc' });
+    });
+
+    it('hides a column that the view drops', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const mockApi = createMockApiClient({
+        products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      });
+
+      renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Test Product');
+      expect(screen.getByRole('columnheader', { name: 'Listings' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /Columns & sort/ }));
+      await user.click(await screen.findByRole('checkbox', { name: /Listings/ }));
+      await user.click(screen.getAllByRole('button', { name: 'Done' })[0]);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('columnheader', { name: 'Listings' })).not.toBeInTheDocument();
+      });
+    });
+
+    it('clears the selection when another view is opened', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const mockApi = createMockApiClient({
+        products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      });
+
+      renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Test Product');
+      await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
+      expect(screen.getByRole('checkbox', { name: 'Unselect Test Product' })).toBeChecked();
+
+      await user.click(screen.getByRole('button', { name: /^Low stock/ }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox', { name: 'Select Test Product' })).not.toBeChecked();
+      });
     });
   });
 

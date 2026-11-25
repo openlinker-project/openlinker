@@ -687,9 +687,9 @@
       "description": "Locker size template - required for a locker shipment.",
       "label": "Locker size",
       "options": {
-        "large": "large",
-        "medium": "medium",
-        "small": "small"
+        "large": "Large",
+        "medium": "Medium",
+        "small": "Small"
       }
     },
     "missing": {
@@ -2988,6 +2988,18 @@
       "whyThisKind": "Why this kind?"
     }
   },
+  "savedViews": {
+    "channelDestination": "Destination",
+    "channelSource": "Source",
+    "customerCity": "City",
+    "customerName": "Name",
+    "customerNote": "Buyer note",
+    "document": "Document",
+    "orderFields": "Number, item, channel, retry",
+    "shipmentCarrier": "Carrier",
+    "shipmentState": "Status and ship-by",
+    "statusFields": "Health, badges, reason"
+  },
   "sendDocumentEmail": {
     "language": "Email language",
     "lastSentVia": "{when} · {via}",
@@ -3038,7 +3050,7 @@
       "cancel": "Cancel",
       "confirm": "Mark dispatched",
       "confirming": "Notifying…",
-      "description": "This fires the source-marketplace notification and updates the destination fulfilment state. Use this only when the automatic dispatch flow has stalled - the normal path is automatic via the carrier's status sync.",
+      "description": "Tells the marketplace the parcel has shipped and updates the fulfilment state. Use it once the parcel has been handed to the carrier, or if the automatic update stalled.",
       "title": "Manually mark as dispatched?"
     }
   },

@@ -631,7 +631,8 @@ describe('ShipmentsPage — row accordion + Order/Provider columns (#1826)', () 
 
     const table = await screen.findByRole('table');
     expect(table.querySelector('.connection-cell [aria-busy="true"]')).not.toBeNull();
-    expect(within(table).queryByText('Unknown')).toBeNull();
+    // Scoped to the connection cell: the customer cell legitimately reads "Unknown" while ITS own lookup settles.
+    expect(table.querySelector('.connection-cell')?.textContent ?? '').not.toContain('Unknown');
   });
 
   it('should issue one connections request for the whole page, never one per row', async () => {

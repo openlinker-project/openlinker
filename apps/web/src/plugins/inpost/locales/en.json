@@ -66,10 +66,24 @@
       "sandbox": "Sandbox",
       "unset": "- not set -"
     },
+    "notifyMarketplace": {
+      "hintLabel": "How marketplace notification works",
+      "infoOffTerm": "Off (default):",
+      "infoOffText": "Told when you click Mark dispatched.",
+      "infoOnTerm": "On:",
+      "infoOnText": "Told shortly after the label is bought; the tracking number follows. Cannot be recalled.",
+      "infoSummary": "A label is often bought hours before the courier collects the parcel.",
+      "infoTitle": "When the marketplace is told \"shipped\"",
+      "infoWhyText": "Off by default.",
+      "label": "Tell the marketplace \"shipped\" as soon as a label is bought",
+      "scope": "Applies to labels OpenLinker buys on the InPost account \"{account}\", for orders from any sales channel. Orders the marketplace ships itself are not affected.",
+      "title": "Marketplace shipment notification"
+    },
     "organizationId": {
       "description": "ShipX organization id - a URL path parameter on every shipment endpoint.",
       "label": "Organization ID"
     },
+    "sectionTitle": "InPost settings",
     "sender": {
       "buildingNumber": {
         "label": "Building number"

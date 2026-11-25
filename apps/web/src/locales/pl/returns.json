@@ -22,7 +22,7 @@
     "cancel": "Jeszcze nie",
     "confirm": "Zatwierdź",
     "confirming": "Zatwierdzanie…",
-    "description": "Ten zwrot został zapisany przez Ciebie. Zatwierdzenie to znacznik audytowy potwierdzający, że naprawdę się wydarzył - nie wstrzymuje przyjęcia na stan ani zwrotu pieniędzy, które działają na zwrocie niezależnie.",
+    "description": "Ten zwrot został zapisany przez Ciebie. Zatwierdzenie to ślad do audytu: potwierdza, że zwrot naprawdę był. Nie blokuje przyjęcia na stan ani zwrotu pieniędzy, które działają niezależnie.",
     "genericError": "Nie udało się zatwierdzić. Spróbuj ponownie.",
     "refusedAcknowledge": "Rozumiem",
     "refusedBody": "Ten zwrot przyszedł ze źródła, które już o nim zdecydowało. OpenLinker zatwierdza tylko zwroty zapisane tutaj przez operatora.",
@@ -114,11 +114,11 @@
     "restockTarget": {
       "adapter-unresolved": "OpenLinker nie może teraz połączyć się z systemem, który zarządza Twoim stanem magazynowym, więc nie wie, gdzie trafiłyby te sztuki.",
       "ambiguous-inventory-master": "{n} połączeń zarządza Twoim stanem magazynowym, więc OpenLinker nie będzie zgadywać, do którego zapisać - przyjęcie na stan będzie odrzucane, dopóki nie zostanie skonfigurowane dokładnie jedno.",
-      "ambiguous-owner": "{n} systemów głównych produktów przechowuje stan tego produktu, więc OpenLinker nie będzie zgadywać, do którego przywrócić sztuki.",
+      "ambiguous-owner": "Stan tego produktu przechowują główne sklepy ({n}), więc OpenLinker nie będzie zgadywać, do którego przywrócić sztuki.",
       "no-inventory-master": "Żadne połączenie nie zarządza Twoim stanem magazynowym, więc przyjęcie na stan nie może nigdzie dodać sztuk. Utylizacja nadal działa.",
-      "no-position": "OpenLinker nie ma stanu tego produktu w żadnym podłączonym systemie głównym produktów, więc nie wie, gdzie trafiłyby te sztuki.",
+      "no-position": "OpenLinker nie ma stanu tego produktu w żadnym podłączonym głównym sklepie, więc nie wie, gdzie trafiłyby te sztuki.",
       "resolved": "Towar zostanie dodany na stan w {name}.",
-      "unattributed-owner": "Stan tego produktu nie ma jeszcze znanego właściciela - uruchom synchronizację stanów z systemu głównego produktów, a potem przyjmij na stan."
+      "unattributed-owner": "Stan tego produktu nie ma jeszcze znanego właściciela - uruchom synchronizację stanów z głównego sklepu, a potem przyjmij na stan."
     }
   },
   "detail": {
@@ -290,7 +290,7 @@
       "short": "Brak pasującego zamówienia"
     },
     "page": {
-      "description": "Zwroty zgłoszone przez podłączone kanały, od najnowszych. OpenLinker zapisuje to, co podaje kanał, i tego nie reinterpretuje.",
+      "description": "Zwroty zgłoszone przez podłączone kanały, od najnowszych. OpenLinker zapisuje dane z kanału bez zmian.",
       "eyebrow": "Operacje",
       "recordActionReadOnly": "Nie masz uprawnień do zapisywania zwrotów.",
       "tableCaption": "Zwroty, od najnowszych",
@@ -316,6 +316,12 @@
       "sourceLabel": "Źródło",
       "sourceStatusLabel": "Status w źródle",
       "stageLabel": "Etap"
+    },
+    "savedViews": {
+      "orderFields": "Zamówienie OpenLinker, zamówienie źródłowe",
+      "returnFields": "Numer zwrotu",
+      "sourceFields": "Połączenie, id",
+      "stageFields": "Etap, liczba przyjętych"
     },
     "segment": {
       "allReturnsLabel": "Wszystkie zwroty",
@@ -410,7 +416,7 @@
     "loading": "Sprawdzanie…",
     "loadingMessage": "Odczytywanie listy zwrotów.",
     "needsApprovalAction": "Przejrzyj i zatwierdź",
-    "needsApprovalDescription": "Te zwroty zostały zapisane przez Ciebie. Zatwierdzenie to znacznik audytowy potwierdzający, że naprawdę się wydarzyły - nie wstrzymuje przyjęcia na stan ani zwrotu pieniędzy.",
+    "needsApprovalDescription": "Te zwroty zostały zapisane przez Ciebie. Zatwierdzenie to ślad do audytu: potwierdza, że zwroty naprawdę były. Nie blokuje przyjęcia na stan ani zwrotu pieniędzy.",
     "needsApprovalEmpty": "Nic nie czeka na Twoje zatwierdzenie.",
     "needsApprovalTitle": "Czeka na Twoje zatwierdzenie",
     "needsOrderAction": "Powiąż z zamówieniem",
@@ -575,7 +581,7 @@
   "returnSegments": {
     "label": {
       "all_open": "Otwarte",
-      "money_pending": "Pieniądze w toku",
+      "money_pending": "Zwrot pieniędzy w toku",
       "needs_disposition": "Do rozdysponowania",
       "needs_receiving": "Do przyjęcia",
       "orphans": "Niepowiązane"

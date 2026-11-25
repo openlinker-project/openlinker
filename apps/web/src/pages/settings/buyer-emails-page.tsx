@@ -14,7 +14,7 @@
 import { useId, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { describeApiError } from '../../shared/api/describe-api-error';
-import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { Alert } from '../../shared/ui/alert';
 import { FormField } from '../../shared/ui/form-field';
 import { Select } from '../../shared/ui/select';
@@ -150,6 +150,7 @@ function ConnectionSettings({
 
 export function BuyerEmailsPage(): ReactElement {
   const COPY = useMessages('buyer-emails').page;
+  const tpl = useMessages('settings').template.buyerEmails;
   const [searchParams, setSearchParams] = useSearchParams();
   const connectionsQuery = useConnectionsQuery();
   // A template with no seeded rule never sends, so the list must not call it "On".
@@ -161,12 +162,20 @@ export function BuyerEmailsPage(): ReactElement {
   const selected = connections.find((connection) => connection.id === selectedId) ?? null;
 
   return (
-    <PageLayout
+    <SettingsPageFrame
+      wide
       backTo={{ to: '/settings', label: COPY.settings }}
       eyebrow={COPY.settings}
       title={COPY.title}
+      short={tpl.short}
       description={COPY.description}
-    >
+      sections={[
+        {
+          id: 'emails',
+          label: tpl.short,
+          title: tpl.title,
+          hint: tpl.hint,
+          children: (
       <AccessGate require="connections:write" fallback={<AccessDeniedState message={COPY.adminOnly} />}>
         {connectionsQuery.isLoading ? (
           <div data-mk-state="list-loading" data-testid="buyer-emails-loading">
@@ -195,6 +204,9 @@ export function BuyerEmailsPage(): ReactElement {
           </>
         )}
       </AccessGate>
-    </PageLayout>
+          ),
+        },
+      ]}
+    />
   );
 }

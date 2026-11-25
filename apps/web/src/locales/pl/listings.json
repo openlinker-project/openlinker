@@ -133,6 +133,45 @@
       "overProductCap": "Popraw i wyślij ponownie obsługuje do {max} produktów naraz. Ponowienie działa bez zmian."
     }
   },
+  "bulkBatch": {
+    "accountRefused": {
+      "providerSaid": "Odpowiedź {name}:",
+      "rowPointer": "Konto nie może sprzedawać - zobacz wyżej"
+    },
+    "allegro": {
+      "accountRefused": {
+        "action": "Otwórz Sales Center Allegro",
+        "detail": {
+          "few": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
+          "many": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
+          "one": "Z tego powodu nie przeszedł {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian.",
+          "other": "Z tego powodu nie przeszło {n} z {total} wariantów. Nic w ofertach tego nie naprawi. Odblokuj konto w Allegro, potem ponów partię bez zmian."
+        },
+        "title": "Allegro odrzuciło te oferty, bo konto sprzedawcy nie może sprzedawać."
+      }
+    },
+    "recovery": {
+      "accountOnly": "Ponów partię dokładnie tak, jak została zapisana, gdy konto znów będzie mogło sprzedawać."
+    },
+    "triage": {
+      "failedSoFar": {
+        "few": "Do tej pory nie przeszły {n} warianty.",
+        "many": "Do tej pory nie przeszło {n} wariantów.",
+        "one": "Do tej pory nie przeszedł {n} wariant.",
+        "other": "Do tej pory nie przeszło {n} wariantu."
+      },
+      "offerCause": {
+        "few": "{n} warianty odrzucono z powodu danych oferty",
+        "many": "{n} wariantów odrzucono z powodu danych oferty",
+        "one": "{n} wariant odrzucono z powodu danych oferty",
+        "other": "{n} wariantu odrzucono z powodu danych oferty"
+      },
+      "offerDetail": "Otwórz je w kreatorze z zaznaczonymi wariantami, popraw dane i wyślij ponownie.",
+      "opensInNewTab": "(otwiera się w nowej karcie)",
+      "retryCause": "Ponów bez zmian",
+      "retryDetail": "Uruchamia ponownie każdy nieudany wariant dokładnie tak, jak go zapisano. Dla błędów, które mogą przejść za drugim razem."
+    }
+  },
   "bulkBatchProgressPage": {
     "demoLock": "Demo tylko do odczytu - działania naprawcze są wyłączone.",
     "errorTitle": "Nie udało się wczytać partii",
@@ -1819,7 +1858,7 @@
         "itemDesc": "Produkt usunięto w sklepie, ale kanał nadal go sprzedaje. Wstrzymaj albo zakończ ofertę.",
         "itemTitle": "Aktywne oferty usuniętego produktu",
         "label": "Sprzedaż usuniętego produktu",
-        "short": "sprzedaje usunięte"
+        "short": "oferty usuniętych produktów"
       },
       "shopBlocked": {
         "affected": {
@@ -1877,7 +1916,7 @@
       "statusRead": "odczyt statusu",
       "updated": "Zmieniono"
     },
-    "description": "Wszystko, co sprzedajesz w połączonych kanałach, i w jakim stanie jest teraz.",
+    "description": "Wszystkie oferty z połączonych kanałów i ich aktualny stan.",
     "empty": {
       "clearFilters": "Wyczyść filtry",
       "connectChannel": "Połącz kanał",
@@ -1965,12 +2004,18 @@
       "channel": "Kanał",
       "needsALook": "Do przejrzenia",
       "search": "Szukaj",
-      "sellingDeleted": "Sprzedaje usunięte",
+      "sellingDeleted": "Oferty usuniętych produktów",
       "shopBlocked": "Zablokowane przez sklep"
     },
     "publishProducts": "Opublikuj produkty",
     "relist": "Wystaw ponownie",
     "retry": "Ponów",
+    "savedViews": {
+      "listingFields": "Produkt, wariant, id oferty, SKU, EAN",
+      "price": "Cena w kanale",
+      "quantity": "Ilość w kanale",
+      "updated": "Zmieniono, odczyt statusu"
+    },
     "status": {
       "countsLoaded": "Wczytano liczby ofert.",
       "countsLoading": "Wczytywanie liczby ofert…",

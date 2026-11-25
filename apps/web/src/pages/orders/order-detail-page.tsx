@@ -831,7 +831,7 @@ export function OrderDetailPage(): ReactElement {
       ) : null}
 
       {/* Detail grid: left = summary + sync status, right = delivery + shipment + customer */}
-      <div className="order-detail__primary-grid order-detail__primary-grid--split">
+      <div className="order-detail__primary-grid order-detail__primary-grid--split" data-tour="order-detail">
         <div className="order-detail__stack">
           <section className="detail-section">
             <h3 className="detail-section__title">{summary.title}</h3>

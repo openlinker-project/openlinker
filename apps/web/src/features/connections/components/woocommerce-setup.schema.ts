@@ -13,6 +13,12 @@ import { z } from 'zod';
 import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
 import { hasCapabilityConflict } from '../lib/capability-metadata';
 import { schemaMessage } from '../lib/schema-message';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  readsOrders,
+  toOrderSyncStart,
+} from '../lib/order-sync-start';
 
 const msg = schemaMessage('woocommerceSetupSchema');
 
@@ -64,6 +70,7 @@ export const woocommerceSetupSchema = z.object({
       (capabilities) => !hasCapabilityConflict(capabilities),
       msg('capabilityConflict'),
     ),
+  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
 });
 
 export type WoocommerceSetupFormValues = z.input<typeof woocommerceSetupSchema>;
@@ -75,6 +82,7 @@ export const WOOCOMMERCE_SETUP_DEFAULT_VALUES: WoocommerceSetupFormValues = {
   consumerKey: '',
   consumerSecret: '',
   enabledCapabilities: WOOCOMMERCE_FALLBACK_CAPABILITIES,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toCreateConnectionInput(
@@ -87,5 +95,8 @@ export function toCreateConnectionInput(
     credentials: { consumerKey: values.consumerKey, consumerSecret: values.consumerSecret },
     config: { siteUrl: values.siteUrl },
     enabledCapabilities: values.enabledCapabilities,
+    orderSyncStart: readsOrders(values.enabledCapabilities)
+      ? toOrderSyncStart(values.orderSyncStart)
+      : undefined,
   };
 }

@@ -1695,6 +1695,87 @@ describe('InvoiceService', () => {
       );
     });
 
+    it('scales the component counts and values of a set line when its quantity is corrected, so a correction of a correction starts from the right base', async () => {
+      const setLines: InvoiceLine[] = [
+        {
+          name: 'Coffee set',
+          quantity: 3,
+          unitPriceGross: 90,
+          taxRate: '23',
+          stockComponents: [
+            { productId: 'p1', variantId: 'v1', quantity: 3, totalGross: 180 },
+            { productId: 'p2', variantId: 'v2', quantity: 3, totalGross: 90 },
+          ],
+        },
+        { name: 'Gadget', quantity: 1, unitPriceGross: 50, taxRate: '23' },
+      ];
+      const originalDocument = { ...makeOriginalDocument(), lines: setLines };
+
+      // First correction: 3 -> 2.
+      await service.issueCorrection(
+        makeCorrectionCmd({ originalDocument, lines: [{ originalLineNumber: 1, newQuantity: 2 }] }),
+      );
+      const firstSnapshot = (
+        repo.updateOutcome.mock.calls[repo.updateOutcome.mock.calls.length - 1]![1] as {
+          issuedLineSnapshot: { lines: InvoiceLine[] };
+        }
+      ).issuedLineSnapshot;
+      expect(firstSnapshot.lines[0]).toMatchObject({
+        quantity: 2,
+        stockComponents: [
+          { variantId: 'v1', quantity: 2, totalGross: 120 },
+          { variantId: 'v2', quantity: 2, totalGross: 60 },
+        ],
+      });
+
+      // Correcting the correction: 2 -> 1 scales from the corrected counts, not the original ones.
+      await service.issueCorrection(
+        makeCorrectionCmd({
+          originalDocument: { ...originalDocument, lines: firstSnapshot.lines },
+          lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+          idempotencyKey: 'corr-key-2',
+        }),
+      );
+      const secondSnapshot = (
+        repo.updateOutcome.mock.calls[repo.updateOutcome.mock.calls.length - 1]![1] as {
+          issuedLineSnapshot: { lines: InvoiceLine[] };
+        }
+      ).issuedLineSnapshot;
+      expect(secondSnapshot.lines[0]).toMatchObject({
+        quantity: 1,
+        stockComponents: [
+          { variantId: 'v1', quantity: 1, totalGross: 60 },
+          { variantId: 'v2', quantity: 1, totalGross: 30 },
+        ],
+      });
+      // The second line has no components and is untouched.
+      expect(secondSnapshot.lines[1]).toEqual(setLines[1]);
+    });
+
+    it('leaves the components of a set line alone when only its price is corrected', async () => {
+      const setLine: InvoiceLine = {
+        name: 'Coffee set',
+        quantity: 2,
+        unitPriceGross: 90,
+        taxRate: '23',
+        stockComponents: [{ productId: 'p1', variantId: 'v1', quantity: 2, totalGross: 180 }],
+      };
+
+      await service.issueCorrection(
+        makeCorrectionCmd({
+          originalDocument: { ...makeOriginalDocument(), lines: [setLine] },
+          lines: [{ originalLineNumber: 1, newUnitPriceGross: 80 }],
+        }),
+      );
+
+      const snapshot = (
+        repo.updateOutcome.mock.calls[repo.updateOutcome.mock.calls.length - 1]![1] as {
+          issuedLineSnapshot: { lines: InvoiceLine[] };
+        }
+      ).issuedLineSnapshot;
+      expect(snapshot.lines[0]).toEqual({ ...setLine, unitPriceGross: 80 });
+    });
+
     it('ignores a delta whose originalLineNumber is out of range (never throws)', async () => {
       await service.issueCorrection(
         makeCorrectionCmd({ lines: [{ originalLineNumber: 99, newQuantity: 3 }] }),

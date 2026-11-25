@@ -46,6 +46,9 @@ COPY apps/web/package.json ./apps/web/
 RUN pnpm install --no-frozen-lockfile --ignore-scripts
 
 COPY apps/web ./apps/web
+# The release center is built from release-please's changelog (#4144); the
+# build fails loudly when this file is missing.
+COPY CHANGELOG.md ./CHANGELOG.md
 
 ARG VITE_API_BASE_URL=http://localhost:3000
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL

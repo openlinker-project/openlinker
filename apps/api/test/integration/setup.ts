@@ -254,8 +254,15 @@ const harness = createIntegrationTestHarness({
     'promotion_state',
     'promotion_grants',
     'promotion_applications',
+    // release center (#4141): sync-built schema has no FK to users, so explicit.
+    'release_item_states',
+    'user_release_state',
     'return_gift_decisions',
     'automation_rules',
+    // saved_views (#4241): no FK exists in the synchronize-built schema, so the
+    // users truncate cannot cascade into them - truncate explicitly.
+    'saved_view_defaults',
+    'saved_views',
     // destination_categories (#1979) — the taxonomy projection. Marketplace
     // rows are owner-keyed with NO connectionId, so nothing cascades from
     // connections; truncate explicitly or an owner tree leaks between cases.

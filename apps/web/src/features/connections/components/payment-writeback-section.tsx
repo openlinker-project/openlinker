@@ -63,6 +63,7 @@ export function PaymentWritebackSection({
   return (
     <section className="rate-limit-section payment-writeback-section" data-testid="payment-writeback-section">
       <h3 className="rate-limit-section__title">{copy.heading}</h3>
+      <p className="muted-text">{copy.description}</p>
       <fieldset className="payment-writeback-section__options" disabled={!configIsParseable}>
         <legend className="sr-only">{copy.heading}</legend>
         <label className={`payment-writeback-section__option${value.mode === 'mark-paid' ? ' payment-writeback-section__option--on' : ''}`}>

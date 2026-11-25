@@ -49,6 +49,15 @@ interface BulkBatchProgressTableProps {
   buildFixUrl?: (record: BulkBatchRecordSummary) => string | null;
   /** Variants of this batch that are sets or multipacks, with their composition (#3520). */
   bundles?: ReadonlyMap<string, BundleOfferPreviewOk>;
+  /**
+   * Failed records the marketplace refused because of the seller account
+   * (#4004). Their cell points at the batch notice instead of repeating the
+   * same refusal on every row, and they get no "Fix this one": nothing in the
+   * offer can change the answer. The full error stays in Details.
+   */
+  accountLevelRecordIds?: ReadonlySet<string>;
+  /** Short pointer shown in place of the error on such a row. */
+  accountLevelRowLabel?: string;
 }
 
 /** Statuses that count as a live offer for the per-product rollup (#1741). */
@@ -67,6 +76,8 @@ export function BulkBatchProgressTable({
   buildExternalOfferUrl,
   buildFixUrl,
   bundles,
+  accountLevelRecordIds,
+  accountLevelRowLabel,
 }: BulkBatchProgressTableProps): ReactElement {
   const copy = useMessages('listings').bulkBatchProgressTable;
   const bundleCopy = useMessages('listings').bundleOffer;
@@ -77,6 +88,11 @@ export function BulkBatchProgressTable({
     [records, copy.productFallback],
   );
   const hasFailedGroup = groups.some((g) => g.failedLabel !== null);
+  // The hint explains "Fix and resubmit", which the page withholds when every
+  // failure is account-level, so it must not point at a button that is absent.
+  const hasOfferLevelFailure = records.some(
+    (r) => r.status === 'failed' && accountLevelRecordIds?.has(r.id) !== true,
+  );
 
   const columns: DataTableColumn<BulkBatchRecordSummary>[] = useMemo(
     () => [
@@ -136,11 +152,16 @@ export function BulkBatchProgressTable({
             const firstMessage = emptyComponent
               ? interpolate(bundleCopy.failedNoStock, { name: emptyComponent.name })
               : record.errors?.[0]?.message;
-            const fixUrl = buildFixUrl?.(record);
+            const accountLevel = accountLevelRecordIds?.has(record.id) === true;
+            const fixUrl = accountLevel ? null : buildFixUrl?.(record);
+            const shown = accountLevel && accountLevelRowLabel ? accountLevelRowLabel : (firstMessage ?? copy.failed);
             return (
               <span className="bulk-batch__err-cell">
-                <span className="bulk-batch__err" title={firstMessage ?? copy.failed}>
-                  {firstMessage ?? copy.failed}
+                <span
+                  className={`bulk-batch__err${accountLevel ? ' bulk-batch__err--account' : ''}`}
+                  title={firstMessage ?? copy.failed}
+                >
+                  {shown}
                 </span>
                 <Button
                   tone="ghost"
@@ -192,7 +213,15 @@ export function BulkBatchProgressTable({
         hideBelow: 768,
       },
     ],
-    [buildExternalOfferUrl, buildFixUrl, bundles, bundleCopy, copy],
+    [
+      buildExternalOfferUrl,
+      buildFixUrl,
+      bundles,
+      bundleCopy,
+      copy,
+      accountLevelRecordIds,
+      accountLevelRowLabel,
+    ],
   );
 
   return (
@@ -204,7 +233,7 @@ export function BulkBatchProgressTable({
               <ProductRollupRow key={group.key} group={group} />
             ))}
           </ul>
-          {hasFailedGroup ? (
+          {hasFailedGroup && hasOfferLevelFailure ? (
             <p className="dim" style={{ marginTop: 'var(--space-3)', fontSize: 12 }}>
               {copy.retryHint}
             </p>

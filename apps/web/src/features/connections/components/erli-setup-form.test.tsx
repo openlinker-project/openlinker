@@ -53,6 +53,8 @@ async function fillAndReachReview(
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await screen.findByText('How should delivery appear on receipts and invoices?');
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('Which orders should OpenLinker import?');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await screen.findByRole('button', { name: 'Connect Erli' });
 }
 
@@ -113,6 +115,33 @@ describe('ErliSetupForm', () => {
       );
     });
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
+  });
+
+  it('should keep the date card disabled with its reason on the orders step for an Erli-shaped manifest', async () => {
+    renderWithProviders(<ErliSetupForm />, { apiClient: createMockApiClient({}) });
+    fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'E' } });
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('How should delivery appear on receipts and invoices?');
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Which orders should OpenLinker import?');
+
+    const card = screen.getByRole('radio', { name: /Orders since a date/ });
+    expect(card).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText(/not available for this connection yet/)).toBeInTheDocument();
+  });
+
+  it('should leave the order start out of the payload when the operator does not choose one', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+    renderWithProviders(<ErliSetupForm />, {
+      apiClient: createMockApiClient({ connections: { create } }),
+    });
+
+    await fillAndReachReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create.mock.calls[0][0].orderSyncStart).toBeUndefined();
   });
 
   it('submits the neutral sandbox environment in config when Sandbox is selected', async () => {

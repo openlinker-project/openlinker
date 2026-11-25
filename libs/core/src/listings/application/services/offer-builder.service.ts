@@ -170,7 +170,14 @@ export class OfferBuilderService implements IOfferBuilderService {
     // own barcode at BOTH catalog sites (category-resolution-by-barcode below and
     // the `variantBarcode` self-link), so a corrected/rescued EAN actually links
     // the card and groups instead of reaching the builder as null.
-    const effectiveBarcode = input.overrides?.ean ?? variant.ean ?? variant.gtin ?? null;
+    // An empty override is the operator's explicit "no barcode" (#4036): it must
+    // not fall back to the master barcode, or the offer is still category-matched
+    // and card-linked by a barcode the operator removed.
+    const overrideEan = input.overrides?.ean;
+    const explicitlyNoBarcode = overrideEan !== undefined && overrideEan.trim() === '';
+    const effectiveBarcode = explicitlyNoBarcode
+      ? null
+      : (overrideEan ?? variant.ean ?? variant.gtin ?? null);
 
     const categoryId = await this.resolveCategory(
       input,
@@ -331,7 +338,8 @@ export class OfferBuilderService implements IOfferBuilderService {
       // through so the adapter links it (and inherits its required product
       // parameters) instead of re-resolving — kept off `overrides` so the
       // adapter sees it as a top-level hint alongside `variantBarcode`.
-      productCardId: input.overrides?.productCardId ?? null,
+      // A catalogue card belongs to a barcode, so none survives an explicit clear.
+      productCardId: explicitlyNoBarcode ? null : (input.overrides?.productCardId ?? null),
     };
 
     // #2249 (ADR-063) — propagate the shop's rate onto the offer, in the same

@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
+import { useLocation } from 'react-router-dom';
 import type * as ReactRouterDom from 'react-router-dom';
 import { renderWithProviders, createMockApiClient, createAuthenticatedSessionAdapter } from '../../test/test-utils';
 import { mockMobileViewport } from '../../test/viewport';
@@ -12,6 +13,7 @@ import type {
   PaginatedOfferMappings,
 } from '../../features/listings/api/listings.types';
 import { getMessages } from '../../shared/i18n';
+import type { SavedView } from '../../features/saved-views';
 
 const ZERO_LIFECYCLE_COUNTS: OfferLifecycleCounts = {
   Active: 0,
@@ -192,6 +194,18 @@ const MISMATCHED_PLATFORM_CONNECTION = {
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 };
+
+/** The views strip: the lifecycle tabs are its built-in views (#4241). */
+function tabStrip(): ReturnType<typeof within> {
+  return within(screen.getByRole('group', { name: 'Views' }));
+}
+
+/** Five lifecycle tabs, none of them claiming a number it does not know. */
+function expectNoCountsOnTabs(): void {
+  const tabs = tabStrip().getAllByRole('button');
+  expect(tabs).toHaveLength(5);
+  for (const tab of tabs) expect(tab.textContent).not.toMatch(/\d/);
+}
 
 /** The list's pagination bar, which carries the total the two-stage tests assert. */
 function paginationNav(): HTMLElement {
@@ -913,7 +927,7 @@ describe('ListingsListPage', () => {
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
-      expect(screen.getByRole('tab', { name: /^Active/ })).toHaveAttribute('aria-selected', 'true');
+      expect(tabStrip().getByRole('button', { name: /^Active/ })).toHaveAttribute('aria-current', 'true');
       const calledWithActive = list.mock.calls.some(
         ([filters]) => (filters as { lifecycle?: string } | undefined)?.lifecycle === 'Active'
       );
@@ -930,7 +944,7 @@ describe('ListingsListPage', () => {
       });
 
       expect(await screen.findByText('No ended listings')).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: /^Ended/ })).toHaveAttribute('aria-selected', 'true');
+      expect(tabStrip().getByRole('button', { name: /^Ended/ })).toHaveAttribute('aria-current', 'true');
       const calledWithEnded = list.mock.calls.some(
         ([filters]) => (filters as { lifecycle?: string } | undefined)?.lifecycle === 'Ended'
       );
@@ -983,7 +997,7 @@ describe('ListingsListPage', () => {
       await screen.findByText('Doniczka ceramiczna Terra');
       expect(document.querySelector('.listings-refetch-indicator')).toBeNull();
 
-      await user.click(screen.getByRole('tab', { name: /^Draft/ }));
+      await user.click(tabStrip().getByRole('button', { name: /^Draft/ }));
 
       // `keepPreviousData` keeps the Active tab's rows on screen while the
       // Draft tab's fetch is in flight - the indicator is the only signal
@@ -1011,7 +1025,7 @@ describe('ListingsListPage', () => {
       });
 
       expect(await screen.findByText('No active listings')).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: /^Active/ })).toHaveAttribute('aria-selected', 'true');
+      expect(tabStrip().getByRole('button', { name: /^Active/ })).toHaveAttribute('aria-current', 'true');
     });
 
     it('updates the ?tab URL param and resets pagination to page 1 when a tab is clicked', async () => {
@@ -1025,7 +1039,7 @@ describe('ListingsListPage', () => {
       });
 
       await screen.findByText('No active listings');
-      await user.click(screen.getByRole('tab', { name: /^Draft/ }));
+      await user.click(tabStrip().getByRole('button', { name: /^Draft/ }));
 
       expect(await screen.findByText('No draft listings')).toBeInTheDocument();
       await vi.waitFor(() => {
@@ -1050,12 +1064,12 @@ describe('ListingsListPage', () => {
       // The counts are a SECOND stage (#2947), so they land after the rows -
       // `findBy` rather than `getBy` is the difference, and it is the point.
       await screen.findByText('Doniczka ceramiczna Terra');
-      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: /^Active/ })).toHaveTextContent('7');
-      expect(screen.getByRole('tab', { name: /^Invalid/ })).toHaveTextContent('3');
-      expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveTextContent('2');
-      expect(screen.getByRole('tab', { name: /^Ended/ })).toHaveTextContent('1');
-      expect(screen.getByRole('tab', { name: /^Unsynced/ })).toHaveTextContent('0');
+      expect(await tabStrip().findByRole('button', { name: 'Active, 7' })).toBeInTheDocument();
+      expect(tabStrip().getByRole('button', { name: /^Active/ })).toHaveTextContent('7');
+      expect(tabStrip().getByRole('button', { name: /^Invalid/ })).toHaveTextContent('3');
+      expect(tabStrip().getByRole('button', { name: /^Draft/ })).toHaveTextContent('2');
+      expect(tabStrip().getByRole('button', { name: /^Ended/ })).toHaveTextContent('1');
+      expect(tabStrip().getByRole('button', { name: /^Unsynced/ })).toHaveTextContent('0');
     });
 
     it('renders tab counts as unknown while loading, never as a placeholder zero', () => {
@@ -1068,15 +1082,9 @@ describe('ListingsListPage', () => {
 
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
-      // Scoped to the lifecycle tablist (#3164 review) — the page also
-      // renders a second, top-level "All listings"/"Price changes" `Tabs`
-      // (#3147), so an unscoped query now finds 7, not 5.
-      // One tab row since #4046 (the view switch moved to the page head). An
-      // unknown count reads as a dash on the shared tabs - never as 0.
-      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
-      expect(within(lifecycleTablist).getAllByRole('tab')).toHaveLength(5);
-      expect(within(lifecycleTablist).getAllByText('-')).toHaveLength(5);
-      expect(within(lifecycleTablist).queryByText('0')).toBeNull();
+      // The lifecycle tabs are the views strip's built-in views (#4241). An
+      // unknown count renders no number at all - never a 0.
+      expectNoCountsOnTabs();
     });
 
     it("keeps every tab's already-known count visible - no skeleton reappears - while a switched-to tab is still loading its own rows", async () => {
@@ -1095,9 +1103,9 @@ describe('ListingsListPage', () => {
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
-      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(await tabStrip().findByRole('button', { name: 'Active, 7' })).toBeInTheDocument();
 
-      await user.click(screen.getByRole('tab', { name: /^Draft/ }));
+      await user.click(tabStrip().getByRole('button', { name: /^Draft/ }));
 
       // The counts query is keyed WITHOUT `lifecycle` (#2947), so a tab switch
       // is a cache hit and issues no second request at all - which is what now
@@ -1108,13 +1116,11 @@ describe('ListingsListPage', () => {
       expect(
         count.mock.calls.filter(([filters]) => (filters as { includeLifecycleCounts?: boolean }).includeLifecycleCounts),
       ).toHaveLength(1);
-      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
-      expect(within(lifecycleTablist).queryAllByText('-')).toHaveLength(0);
-      expect(screen.getByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Invalid 3' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Draft 2' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Ended 1' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Unsynced 0' })).toBeInTheDocument();
+      expect(tabStrip().getByRole('button', { name: 'Active, 7' })).toBeInTheDocument();
+      expect(tabStrip().getByRole('button', { name: 'Invalid, 3' })).toBeInTheDocument();
+      expect(tabStrip().getByRole('button', { name: 'Draft, 2' })).toBeInTheDocument();
+      expect(tabStrip().getByRole('button', { name: 'Ended, 1' })).toBeInTheDocument();
+      expect(tabStrip().getByRole('button', { name: 'Unsynced, 0' })).toBeInTheDocument();
     });
 
     it("falls back to unknown counts - not the pre-search counts - once the search term changes and the new query has not resolved (#2029 round 2 review)", async () => {
@@ -1138,7 +1144,7 @@ describe('ListingsListPage', () => {
       renderWithProviders(<ListingsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Doniczka ceramiczna Terra');
-      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
+      expect(await tabStrip().findByRole('button', { name: 'Active, 7' })).toBeInTheDocument();
 
       fireEvent.change(
         screen.getByLabelText('Search listings by product name, SKU, EAN or external ID'),
@@ -1153,9 +1159,8 @@ describe('ListingsListPage', () => {
       // The stale count must not survive the filter change - it falls
       // through to the skeleton, the honest state while the real count for
       // the new search term is unknown.
-      expect(screen.queryByRole('tab', { name: 'Active 7' })).not.toBeInTheDocument();
-      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
-      expect(within(lifecycleTablist).getAllByText('-')).toHaveLength(5);
+      expect(tabStrip().queryByRole('button', { name: 'Active, 7' })).not.toBeInTheDocument();
+      expectNoCountsOnTabs();
     });
 
     it("separates a tab's label from its count badge in the accessible name", async () => {
@@ -1171,8 +1176,8 @@ describe('ListingsListPage', () => {
       await screen.findByText('Doniczka ceramiczna Terra');
       // A missing separator collapses the JSX whitespace entirely, so the
       // accessible name would read the run-on "Active7" instead of "Active 7".
-      expect(await screen.findByRole('tab', { name: 'Active 7' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Invalid 3' })).toBeInTheDocument();
+      expect(await tabStrip().findByRole('button', { name: 'Active, 7' })).toBeInTheDocument();
+      expect(tabStrip().getByRole('button', { name: 'Invalid, 3' })).toBeInTheDocument();
     });
 
     it('announces via a live region once the tab counts resolve from skeleton to real numbers', async () => {
@@ -1333,7 +1338,7 @@ describe('ListingsListPage', () => {
 
       renderWithProviders(<ListingsListPage />, {
         apiClient: mockApi,
-        route: '/listings?search=terra&connectionId=conn_allegro_1&tab=draft',
+        route: '/listings?search=terra&connectionId=conn_allegro_1&tab=draft&savedView=draft',
       });
 
       await screen.findByText('Doniczka ceramiczna Terra');
@@ -1341,7 +1346,7 @@ describe('ListingsListPage', () => {
         screen.getByLabelText('Search listings by product name, SKU, EAN or external ID'),
       ).toHaveValue('terra');
       expect(document.querySelectorAll('.filter-chip')).toHaveLength(2);
-      expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveAttribute('aria-selected', 'true');
+      expect(tabStrip().getByRole('button', { name: /^Draft/ })).toHaveAttribute('aria-current', 'true');
 
       // A plain URL-state reset (react-router `setSearchParams`), never a full
       // page reload. The tab is not a pill, so Clear all leaves it selected.
@@ -1353,7 +1358,7 @@ describe('ListingsListPage', () => {
         ).toHaveValue('');
       });
       expect(document.querySelectorAll('.filter-chip')).toHaveLength(0);
-      expect(screen.getByRole('tab', { name: /^Draft/ })).toHaveAttribute('aria-selected', 'true');
+      expect(tabStrip().getByRole('button', { name: /^Draft/ })).toHaveAttribute('aria-current', 'true');
     });
   });
 
@@ -1385,9 +1390,8 @@ describe('ListingsListPage', () => {
 
       expect(await screen.findByText('Doniczka ceramiczna Terra')).toBeInTheDocument();
       expect(screen.getByText('1+')).toBeInTheDocument();
-      // The tab bar is unknown, not empty: five dashes, never five zeroes.
-      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
-      expect(within(lifecycleTablist).getAllByText('-')).toHaveLength(5);
+      // The tab bar is unknown, not empty: no numbers, never five zeroes.
+      expectNoCountsOnTabs();
     });
 
     it('renders neither placeholder as 0 when the count FAILS on a FULL page', async () => {
@@ -1404,8 +1408,8 @@ describe('ListingsListPage', () => {
       expect(await screen.findByText(/count unavailable/i)).toBeInTheDocument();
       expect(screen.getByText('1+')).toBeInTheDocument();
       await screen.findByText('Listing counts unavailable.');
-      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
-      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+      expect(tabStrip().queryByText('0')).toBeNull();
+      expect(document.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
     });
 
     it('STOPS loading the tab bar when the count fails and the page implies its own total', async () => {
@@ -1432,8 +1436,8 @@ describe('ListingsListPage', () => {
       // a short page makes `state` `'known'`, and a tab bar reading `state`
       // therefore renders skeletons here while passing every other test.
       await screen.findByText('Listing counts unavailable.');
-      const lifecycleTablist = screen.getByRole('tablist', { name: 'Listing lifecycle' });
-      expect(lifecycleTablist.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
+      expect(tabStrip().queryByText('0')).toBeNull();
+      expect(document.querySelectorAll('.tabs__count-skeleton')).toHaveLength(0);
     });
 
     it('SUPPRESSES the total while the rows still belong to the previous tab', async () => {
@@ -1469,7 +1473,7 @@ describe('ListingsListPage', () => {
       // The lifecycle tab count shows the same number (format.number), so the
       // assertion is scoped to the pagination total it is about.
       await waitFor(() => expect(within(paginationNav()).getByText('1,234')).toBeInTheDocument());
-      await user.click(screen.getByRole('tab', { name: /draft/i }));
+      await user.click(tabStrip().getByRole('button', { name: /draft/i }));
       await waitFor(() => expect(listRows).toHaveBeenCalledTimes(2));
 
       // Draft's bucket is 3 and is already in hand - but the twenty rows on
@@ -1540,14 +1544,16 @@ describe('ListingsListPage one filter system (#4046)', () => {
     });
 
     await screen.findByText('Doniczka ceramiczna Terra');
-    expect(screen.getAllByRole('tablist')).toHaveLength(1);
+    // The lifecycle tabs are the views strip now (#4241): the page has no tablist of its own.
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Views' })).toBeInTheDocument();
     const views = screen.getByRole('radiogroup', { name: 'Listings views' });
     expect(within(views).getByRole('radio', { name: /All listings/ })).toHaveAttribute('aria-checked', 'true');
 
     await user.click(within(views).getByRole('radio', { name: /Price changes/ }));
 
     await waitFor(() => {
-      expect(screen.queryByRole('tablist', { name: 'Listing lifecycle' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: 'Views' })).not.toBeInTheDocument();
     });
   });
 
@@ -1601,7 +1607,7 @@ describe('ListingsListPage one filter system (#4046)', () => {
     await user.click(await screen.findByRole('button', { name: 'Review price changes' }));
 
     await waitFor(() => {
-      expect(screen.queryByRole('tablist', { name: 'Listing lifecycle' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('group', { name: 'Views' })).not.toBeInTheDocument();
     });
   });
 
@@ -1673,5 +1679,129 @@ describe('ListingsListPage one filter system (#4046)', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /^Allegro/ })).toHaveTextContent('17');
     });
+  });
+});
+
+describe('ListingsListPage saved views (#4241)', () => {
+  afterEach(cleanup);
+
+  function LocationProbe(): React.ReactElement {
+    const location = useLocation();
+    return <output data-testid="location">{location.search}</output>;
+  }
+  const params = (): URLSearchParams =>
+    new URLSearchParams(screen.getByTestId('location').textContent ?? '');
+
+  const personalDefault: SavedView = {
+    id: 'sv-draft-narrow',
+    pageKey: 'listings',
+    name: 'My drafts',
+    scope: 'personal',
+    definition: { v: 1, query: 'tab=draft', sort: null, columns: ['channel', 'price'], parts: {} },
+    revision: 1,
+    isDefault: true,
+    ownerUserId: 'u1',
+    createdAt: '2026-11-01T00:00:00.000Z',
+    updatedAt: '2026-11-01T00:00:00.000Z',
+  } as unknown as SavedView;
+
+  it('applies the built-in Active view to the address when it carries no state, with no sort', async () => {
+    const mockApi = createListingsMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+    });
+
+    renderWithProviders(
+      <>
+        <ListingsListPage />
+        <LocationProbe />
+      </>,
+      { apiClient: mockApi },
+    );
+
+    await screen.findByText('Doniczka ceramiczna Terra');
+    await waitFor(() => expect(params().get('savedView')).toBe('active'));
+    expect(params().has('sort')).toBe(false);
+    expect(params().has('tab')).toBe(false);
+    expect(tabStrip().getByRole('button', { name: /^Active/ })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('applies the personal default view: its filters drive the request and its columns drive the table', async () => {
+    const list = vi.fn().mockResolvedValue(emptyPage());
+    const mockApi = createListingsMockApiClient({
+      listings: { list },
+      savedViews: { list: vi.fn().mockResolvedValue([personalDefault]) },
+    });
+
+    renderWithProviders(
+      <>
+        <ListingsListPage />
+        <LocationProbe />
+      </>,
+      { apiClient: mockApi },
+    );
+
+    await waitFor(() => expect(params().get('savedView')).toBe('sv-draft-narrow'));
+    expect(params().get('tab')).toBe('draft');
+    await waitFor(() => {
+      expect(
+        list.mock.calls.some(([filters]) => (filters as { lifecycle?: string } | undefined)?.lifecycle === 'Draft'),
+      ).toBe(true);
+    });
+  });
+
+  it('writes the tab and the applied view to the address when a view is picked', async () => {
+    const user = userEvent.setup();
+    const mockApi = createListingsMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+    });
+
+    renderWithProviders(
+      <>
+        <ListingsListPage />
+        <LocationProbe />
+      </>,
+      { apiClient: mockApi },
+    );
+
+    await screen.findByText('Doniczka ceramiczna Terra');
+    await user.click(tabStrip().getByRole('button', { name: /^Invalid/ }));
+
+    await waitFor(() => expect(params().get('tab')).toBe('invalid'));
+    expect(params().get('savedView')).toBe('invalid');
+    expect(params().has('sort')).toBe(false);
+  });
+
+  it('leaves the price-changes mode untouched: the mode param survives and never becomes a filter', async () => {
+    const mockApi = createListingsMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+    });
+
+    renderWithProviders(
+      <>
+        <ListingsListPage />
+        <LocationProbe />
+      </>,
+      { apiClient: mockApi, route: '/listings?view=queue' },
+    );
+
+    expect(screen.queryByRole('group', { name: 'Views' })).not.toBeInTheDocument();
+    await waitFor(() => expect(params().get('savedView')).toBe('active'));
+    expect(params().get('view')).toBe('queue');
+    expect(params().has('tab')).toBe(false);
+  });
+
+  it('reports a filter the applied view does not carry as an edit of it', async () => {
+    const mockApi = createListingsMockApiClient({
+      listings: { list: vi.fn().mockResolvedValue(sampleMappings) },
+    });
+
+    renderWithProviders(<ListingsListPage />, {
+      apiClient: mockApi,
+      route: '/listings?savedView=active&connectionId=conn_allegro_1',
+    });
+
+    await screen.findByText('Doniczka ceramiczna Terra');
+    // A built-in view is never overwritten, so its edit bar offers only to save the list as a view.
+    expect(await screen.findByRole('button', { name: 'Save as view…' })).toBeInTheDocument();
   });
 });

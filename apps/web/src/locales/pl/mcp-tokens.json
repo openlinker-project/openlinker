@@ -83,6 +83,12 @@
     "revokedToastTitle": "Token unieważniony"
   },
   "mcpTokensTile": {
+    "activeCount": {
+      "few": "{n} aktywne tokeny",
+      "many": "{n} aktywnych tokenów",
+      "one": "{n} aktywny token",
+      "other": "{n} aktywnego tokena"
+    },
     "activeTokens": "Aktywne tokeny",
     "adminOnly": "Tylko administratorzy",
     "description": "Osobiste tokeny dostępu, które pozwalają klientowi MCP uwierzytelnić się w tej instancji OpenLinker.",
