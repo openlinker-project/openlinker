@@ -738,15 +738,15 @@
       "caption": "Stan połączeń",
       "columns": {
         "connection": "Połączenie",
-        "failedJobs": "Nieudane zadania w tle",
+        "failedJobs": "Nieudane zadania",
         "platform": "Platforma",
         "status": "Status"
       },
       "failedJobs": {
-        "few": "{n} nieudane zadania w tle",
-        "many": "{n} nieudanych zadań w tle",
-        "one": "{n} nieudane zadanie w tle",
-        "other": "{n} nieudanego zadania w tle"
+        "few": "{n} nieudane zadania",
+        "many": "{n} nieudanych zadań",
+        "one": "{n} nieudane zadanie",
+        "other": "{n} nieudanego zadania"
       },
       "failedJobsOn": {
         "few": "{n} nieudane zadania w tle w połączeniu {name}",
@@ -1229,6 +1229,14 @@
       "units": "Wg sztuk"
     },
     "title": "Najlepsze produkty",
+    "unmatchedDetail": "Ta pozycja nie ma produktu w katalogu, więc nie ma wariantów do rozbicia. Identyfikuje ją numer oferty z marketplace'u.",
+    "unmatchedFootnote": {
+      "few": "{n} pozycje na tej stronie pochodzą z ofert marketplace'u niepowiązanych z produktem w katalogu.",
+      "many": "{n} pozycji na tej stronie pochodzi z ofert marketplace'u niepowiązanych z produktem w katalogu.",
+      "one": "{n} pozycja na tej stronie pochodzi z oferty marketplace'u niepowiązanej z produktem w katalogu.",
+      "other": "{n} pozycji na tej stronie pochodzi z ofert marketplace'u niepowiązanych z produktem w katalogu."
+    },
+    "unmatchedName": "Oferta bez katalogu",
     "unresolved": {
       "few": "{n} produktów na tej stronie nie udało się powiązać z pozycją katalogu.",
       "many": "{n} produktów na tej stronie nie udało się powiązać z pozycją katalogu.",

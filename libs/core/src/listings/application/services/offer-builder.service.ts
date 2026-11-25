@@ -387,6 +387,18 @@ export class OfferBuilderService implements IOfferBuilderService {
     });
     if (productSet) {
       command.productSet = productSet;
+      // A bundle made in OpenLinker has no photos of its own, and an offer
+      // without any is refused by the marketplace: list it with the pictures of
+      // its components unless the operator or the master supplied some.
+      if (!command.overrides?.imageUrls?.length) {
+        const fromComponents = productSet
+          .flatMap((entry) => entry.imageUrls ?? [])
+          .filter((url) => typeof url === 'string' && url.trim() !== '')
+          .slice(0, 8);
+        if (fromComponents.length > 0) {
+          command.overrides = { ...command.overrides, imageUrls: fromComponents };
+        }
+      }
     }
 
     this.logger.debug(

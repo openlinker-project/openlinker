@@ -16,6 +16,7 @@ import {
   ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER,
   ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER,
   ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER,
+  ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER,
   describeNeedsProductParameters,
   ALLEGRO_EAN_UNVERIFIED_BLOCKER,
   ALLEGRO_IN_STORE_BARCODE_BLOCKER,
@@ -345,6 +346,13 @@ describe('allegroOfferValidation', () => {
         describe: expect.any(Function),
       },
       {
+        id: ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER,
+        field: 'parameters',
+        tone: 'error',
+        label: 'fill in offer parameters',
+        describe: expect.any(Function),
+      },
+      {
         id: ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER,
         field: 'bundle',
         tone: 'error',
@@ -541,6 +549,35 @@ describe('allegroOfferValidation', () => {
       catalogueConsulted: true,
       needsProductParameters: true,
       bundle: { components, suggestedCategoryId: suggested, chosenCategoryId: chosen },
+    });
+
+    const offerParam = (id: string, required = true, section = 'offer') => ({
+      id,
+      name: id,
+      type: 'string' as const,
+      required,
+      section,
+      restrictions: {},
+    });
+
+    it('should block a bundle row missing a required offer parameter other than Stan', () => {
+      const row = {
+        ...bundleRow([component()]),
+        categoryParameters: [offerParam('11323'), offerParam('p-color')],
+        suppliedParameters: [],
+      };
+      expect(allegroOfferValidation.validateRow(row)).toEqual([
+        ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER,
+      ]);
+    });
+
+    it('should not block once the required offer parameter has a value, or for product-section ones', () => {
+      const row = {
+        ...bundleRow([component()]),
+        categoryParameters: [offerParam('p-color'), offerParam('p-brand', true, 'product')],
+        suppliedParameters: [{ id: 'p-color', values: ['red'] }],
+      };
+      expect(allegroOfferValidation.validateRow(row)).toEqual([]);
     });
 
     it('should raise nothing for a bundle whose components are all listable', () => {

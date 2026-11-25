@@ -1103,6 +1103,12 @@
       "units": "By units"
     },
     "title": "Top products",
+    "unmatchedDetail": "This line has no catalogue product, so there are no variants to break down. It is identified by the marketplace offer id.",
+    "unmatchedFootnote": {
+      "one": "{n} line on this page comes from a marketplace offer that is not linked to a catalogue product.",
+      "other": "{n} lines on this page come from marketplace offers that are not linked to a catalogue product."
+    },
+    "unmatchedName": "Unmatched offer",
     "unresolved": {
       "one": "{n} product on this page could not be resolved to a catalogue entry.",
       "other": "{n} products on this page could not be resolved to a catalogue entry."

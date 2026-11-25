@@ -41,6 +41,7 @@ import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
 import { PaymentWritebackSection } from './payment-writeback-section';
 import { ChannelShippingSummarySection } from './channel-shipping-summary-section';
 import { LabelPurchaseNotificationSection } from './label-purchase-notification-section';
+import { BuyerDataSection, readBuyerDataSettings } from '../../buyer-data';
 import { readNotifyOnLabelPurchase } from '../lib/label-purchase-notification';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
 import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
@@ -68,6 +69,8 @@ import {
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { resolveTriggerModelForKind } from '../lib/resolve-trigger-model-for-kind';
 import { isPricingDestination } from '../lib/pricing-destination';
+import { readCatalogueMode } from '../lib/catalogue-mode';
+import { CatalogueModeFieldset } from './catalogue-mode-fieldset';
 import { ApiError } from '../../../shared/api/api-error';
 import { isStockLocationOverrideValidationError } from '../lib/stock-location-override-error';
 import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
@@ -110,6 +113,7 @@ const HOST_STRUCTURED_FIELDS = [
   'openlinkerCallbackBaseUrl',
   'callbackBaseUrl',
   'masterCatalogConnectionId',
+  'catalogueMode',
   'defaultCarrierId',
   'unmanagedStockQuantity',
   'inpostPsModuleType',
@@ -503,6 +507,7 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
         plugin?.getCallbackUrlDefault?.() ||
         '',
       masterCatalogConnectionId: readConfigString(connection.config, 'masterCatalogConnectionId'),
+      catalogueMode: readCatalogueMode(connection.config),
       // PS `defaultCarrierId` is persisted as a number; the form keeps it
       // as a string so the same `<Select>` primitive serves both this
       // field and the per-method mapping dropdown (#517).
@@ -549,6 +554,8 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
       paymentWriteback: readPaymentWritebackForm(connection.config),
       // "Tell the shop when a label is bought" (#4097) — carrier connections.
       notifyOnLabelPurchase: readNotifyOnLabelPurchase(connection.config),
+      // Per-connection buyer data rules (#4289) - `null` inherits the general rules.
+      buyerDataRetention: readBuyerDataSettings(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -616,6 +623,7 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
   const localAutoSelectId = candidates.length === 1 ? candidates[0].id : undefined;
 
   const masterCatalogValue = form.watch('masterCatalogConnectionId') ?? '';
+  const catalogueModeValue = form.watch('catalogueMode') === 'none' ? 'none' : 'linked';
   const storedMasterRaw = connection.config.masterCatalogConnectionId;
   const hasStoredMaster = typeof storedMasterRaw === 'string';
   const isStaleMaster =
@@ -816,6 +824,9 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
   useEffect(() => {
     if (autoSelectFiredRef.current) return;
     if (!needsMasterCatalog) return;
+    // #4281: a connection that declares it has no catalog must not get one picked
+    // for it behind the operator's back.
+    if (catalogueModeValue === 'none') return;
     if (hasStoredMaster) return;
     if (!localAutoSelectId) return;
     if (connectionsQuery.isLoading) return;
@@ -1001,17 +1012,23 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
           ) : null}
 
           {needsMasterCatalog ? (
-            <MarketplaceCatalogPicker
-              value={masterCatalogValue}
-              candidates={candidates}
-              isLoading={connectionsQuery.isLoading}
-              loadError={connectionsQuery.error}
-              isStale={isStaleMaster}
-              errorMessage={form.formState.errors.masterCatalogConnectionId?.message}
+            <CatalogueModeFieldset
+              value={catalogueModeValue}
               disabled={!configIsParseable}
-              onChange={(value) => syncStructuredToJson('masterCatalogConnectionId', value)}
-              onRetry={() => void connectionsQuery.refetch()}
-            />
+              onChange={(value) => syncStructuredToJson('catalogueMode', value)}
+            >
+              <MarketplaceCatalogPicker
+                value={masterCatalogValue}
+                candidates={candidates}
+                isLoading={connectionsQuery.isLoading}
+                loadError={connectionsQuery.error}
+                isStale={isStaleMaster}
+                errorMessage={form.formState.errors.masterCatalogConnectionId?.message}
+                disabled={!configIsParseable}
+                onChange={(value) => syncStructuredToJson('masterCatalogConnectionId', value)}
+                onRetry={() => void connectionsQuery.refetch()}
+              />
+            </CatalogueModeFieldset>
           ) : null}
 
           {ExtraSection ? (
@@ -1133,6 +1150,16 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
           syncLabelPurchaseNotificationToJson={syncLabelPurchaseNotificationToJson}
         />
       ),
+    });
+  }
+
+  // #4289 - buyer data rules: read for any connection that takes orders. `null` inherits
+  // the general rules from the settings page.
+  if (connection.enabledCapabilities.includes('OrderSource')) {
+    sections.push({
+      id: 'buyer-data',
+      label: copy.sections.buyerData,
+      children: <BuyerDataSection connectionId={connection.id} form={form} />,
     });
   }
 

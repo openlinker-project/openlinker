@@ -815,6 +815,15 @@
       "staleBody": "This connection points to a deleted or disabled catalog connection. Pick a new one below or clear the link.",
       "staleTitle": "Linked catalog is missing"
     },
+    "catalogueMode": {
+      "help": "Orders and offers work without a catalog. Barcode linking and product mapping are off while no catalog is used.",
+      "legend": "Product catalog",
+      "linkedBody": "Match orders and offers to products by barcode.",
+      "linkedTitle": "Linked to a catalog",
+      "noneBody": "Orders arrive with the marketplace's own lines (offer, SKU, name, price) and are not matched to products. Stock, catalog offers and per-product reports do not apply to these orders.",
+      "noneHint": "Only this marketplace. Order lines stay as the marketplace sent them.",
+      "noneTitle": "No catalog"
+    },
     "errorTitle": "Unable to update connection",
     "eyebrow": "Edit connection",
     "fields": {
@@ -856,6 +865,7 @@
     "saving": "Saving...",
     "sections": {
       "advanced": "Advanced",
+      "buyerData": "Buyer data",
       "fulfilment": "Packing",
       "general": "General",
       "labelPurchase": "Shipping notification",
@@ -951,6 +961,9 @@
         "description": "Your {platform} Shop API key - generated in the {platform} seller panel.",
         "label": "API key"
       },
+      "catalogue": {
+        "linkedHint": "You pick the catalog connection on this connection’s edit page after it is created."
+      },
       "environment": {
         "description": "Choose Sandbox to test against {platform}'s sandbox before switching to production.",
         "label": "Environment",
@@ -966,11 +979,15 @@
     "platformFallback": "the marketplace",
     "review": {
       "deliveryOnDocuments": "Delivery on documents",
-      "name": "Name"
+      "linkedLater": "Linked (pick it after creating)",
+      "name": "Name",
+      "noCatalogue": "No catalog (marketplace only)",
+      "productCatalogue": "Product catalog"
     },
     "steps": {
       "credentials": "Credentials",
       "orders": "Order history",
+      "productCatalogue": "Product catalogue",
       "review": "Review & connect",
       "salesDocuments": "Sales documents"
     },
@@ -997,7 +1014,10 @@
       "production": "Production",
       "sandbox": "Sandbox"
     },
-    "name": "Name"
+    "linkedLater": "Linked",
+    "name": "Name",
+    "noCatalogue": "None (marketplace only)",
+    "productCatalogue": "Product catalog"
   },
   "fulfilmentOwnershipSection": {
     "description": "Decides whether OpenLinker shows its own packing controls for orders that go to this system. It does not choose a carrier or generate labels.",

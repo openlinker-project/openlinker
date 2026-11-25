@@ -62,6 +62,20 @@ function onlyVariant(outcome: StubVariant['outcome'], ean: string | null): StubV
 }
 
 /**
+ * Every sibling resolves its own card. A multi-variant product where only SOME
+ * siblings have a card is blocked by design (siblings would share one card), so
+ * a test about reaching READY needs a product whose siblings agree.
+ */
+const ALL_MATCHED: StubVariant[] = [
+  { id: 'ol_variant_2240a', size: '20 cm', ean: '5900000000152', outcome: 'matched' },
+  { id: 'ol_variant_2240b', size: '12 cm', ean: '5900000000138', outcome: 'matched' },
+  { id: 'ol_variant_2240c', size: '16 cm', ean: '5900000000145', outcome: 'matched' },
+];
+
+/** No sibling has a card: each variant lists standalone, which is not a blocker. */
+const ALL_NO_MATCH: StubVariant[] = ALL_MATCHED.map((v) => ({ ...v, outcome: 'no-match' }));
+
+/**
  * Screenshot one state, written under a readable name in the test's own output
  * directory and attached to the report. A named file rather than a `body`
  * attachment, so the evidence for a copy change is reviewable straight off disk.
@@ -112,7 +126,7 @@ async function expandProductRow(page: Page): Promise<void> {
 
 /** Every chip button in Review whose blocker label matches. */
 function chips(page: Page, label: string): Locator {
-  return page.getByRole('button', { name: new RegExp(`Fix: ${label} - `) });
+  return page.getByRole('button', { name: new RegExp(`Fix: ${label} - `, 'i') });
 }
 
 /** Open the per-product editor from a blocked variant's chip. */
@@ -285,7 +299,7 @@ test.describe('bulk wizard category blockers (#2240)', () => {
   test('setting the product category clears the blocker on every inheriting sibling', async ({
     page,
   }, testInfo) => {
-    await openReview(page, READY_CONNECTION);
+    await openReview(page, { ...READY_CONNECTION, variants: ALL_NO_MATCH });
     await openEditorFromChip(page, 'no catalog match');
 
     await page
@@ -421,7 +435,7 @@ test.describe('bulk wizard category blockers (#2240)', () => {
   }, testInfo) => {
     // Erli-shaped: no matcher, no browser, so the resolve pass consulted no
     // catalogue and every `no-match` says nothing about the operator's barcodes.
-    await openReview(page, { ...READY_CONNECTION, destination: 'borrowing' });
+    await openReview(page, { ...READY_CONNECTION, destination: 'borrowing', variants: ALL_NO_MATCH });
 
     await expect(chips(page, 'no catalog match')).toHaveCount(0);
     await expect(page.getByText('category not set', { exact: true })).toHaveCount(0);
@@ -475,7 +489,7 @@ test.describe('bulk wizard category blockers (#2240)', () => {
 
     await expect(page.getByText(/This connection is missing/)).toHaveCount(1);
     await expect(page.getByText(/a ship-from location/)).toBeVisible();
-    await expect(page.getByText(/Allegro requires them on every offer/)).toBeVisible();
+    await expect(page.getByText(/This marketplace requires them on every offer/)).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open connection settings' })).toHaveAttribute(
       'href',
       new RegExp(CONNECTION_ID)
@@ -510,7 +524,7 @@ test.describe('bulk wizard category blockers (#2240)', () => {
   test('a complete connection carries no batch banner and can submit', async ({
     page,
   }, testInfo) => {
-    await openReview(page, READY_CONNECTION);
+    await openReview(page, { ...READY_CONNECTION, variants: ALL_MATCHED });
 
     await expect(page.getByText(/This connection is missing/)).toHaveCount(0);
     await expect(page.getByRole('button', { name: /Create offers/ }).first()).toBeEnabled();
@@ -562,16 +576,15 @@ test.describe('bulk wizard category blockers (#2240)', () => {
   test('the confirmation names variants already listed on the destination', async ({
     page,
   }, testInfo) => {
-    // The matched sibling is already there, so the backend excludes it at intake
+    // One sibling is already there, so the backend excludes it at intake
     // (#1837/#1933) - counting it as an offer would promise work that will not
-    // happen. The other two are switched off to get past the readiness gate.
-    await openReview(page, { ...READY_CONNECTION, publishedVariantIds: ['ol_variant_2240c'] });
+    // happen. The review counts only what will be created (2 of 3).
+    await openReview(page, {
+      ...READY_CONNECTION,
+      variants: ALL_MATCHED,
+      publishedVariantIds: ['ol_variant_2240c'],
+    });
 
-    for (const variant of VARIANTS.filter((v) => v.outcome === 'no-match')) {
-      await page
-        .getByRole('checkbox', { name: new RegExp(`Include Rozmiar: ${variant.size}`) })
-        .uncheck();
-    }
     await new BulkOfferWizard(page).createOffersButton.click();
 
     // The duplicate guard fires first (#1837), then the confirmation.
@@ -600,7 +613,7 @@ test.describe('bulk wizard category blockers (#2240)', () => {
 
     const wizard = new BulkOfferWizard(page);
     await expect(wizard.createOffersButton).toBeDisabled();
-    await expect(page.getByText(/2 variants need attention/)).toBeVisible();
+    await expect(page.getByText(/3 variants need attention/).first()).toBeVisible();
 
     await captureState(page, testInfo, 'confirm-gate-holds-on-blocked', true);
   });
@@ -709,5 +722,55 @@ test.describe('bulk wizard category blockers (#2240)', () => {
     expect(body.perVariantOverrides?.['ol_variant_2240a']?.overrides?.eanOverrideAcknowledged).toBe(
       true
     );
+  });
+  // ── A cleared barcode (#4112) ───────────────────────────────────────────────
+
+  test('a barcode cleared in the editor lists the offer with no barcode and no catalogue card', async ({
+    page,
+  }, testInfo) => {
+    await openReview(page, {
+      ...READY_CONNECTION,
+      variants: onlyVariant('matched', '5900000000152'),
+    });
+    const submit = await stubBulkOfferSubmit(page);
+
+    // The 20 cm variant's own Edit button: the product's is the first one.
+    await page.getByRole('button', { name: 'Edit', exact: true }).nth(1).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    const ean = dialog.getByRole('textbox', { name: 'EAN for Rozmiar: 20 cm' });
+    await expect(ean).toHaveValue('5900000000152');
+    await ean.fill('');
+    await captureState(page, testInfo, 'cleared-barcode-editor');
+    await dialog.getByRole('button', { name: 'Save all' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await captureState(page, testInfo, 'cleared-barcode-review', true);
+
+    // The cleared variant survives Save all as "no EAN" and now has no card,
+    // so its siblings (which still carry a card) are told they cannot share one:
+    // list this variant alone.
+    await expect(page.getByText('no EAN', { exact: true })).toBeVisible();
+    for (const size of ['12 cm', '16 cm']) {
+      await page.getByRole('checkbox', { name: new RegExp(`Include Rozmiar: ${size}`) }).uncheck();
+    }
+
+    const create = page.getByRole('button', { name: 'Create offers (1)', exact: true }).last();
+    await expect(create).toBeEnabled({ timeout: 15_000 });
+    await captureState(page, testInfo, 'cleared-barcode-ready-alone', true);
+    await create.click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Create offers' }).click();
+    await expect(page).toHaveURL(/\/listings\/bulk-batches\//, { timeout: 15_000 });
+
+    const body = submit.body as {
+      perVariantOverrides?: Record<
+        string,
+        { overrides?: { ean?: string; productCardId?: string } }
+      >;
+    };
+    const sent = body.perVariantOverrides?.['ol_variant_2240a']?.overrides;
+    // An explicit empty string, not an absent field: absent would inherit the
+    // master barcode and bring the catalogue card back.
+    expect(sent?.ean).toBe('');
+    expect(sent?.productCardId).toBeUndefined();
   });
 });

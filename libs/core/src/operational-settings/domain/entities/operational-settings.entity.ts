@@ -15,6 +15,8 @@
  * @module libs/core/src/operational-settings/domain/entities
  */
 
+import type { BuyerDataEraseMode } from '../types/operational-settings.types';
+
 export const OPERATIONAL_SETTINGS_SINGLETON_ID = 'singleton';
 
 export class OperationalSettings {
@@ -30,6 +32,11 @@ export class OperationalSettings {
     public readonly deletionAuditCadence: string | null,
     public readonly releaseCenterEnabled: boolean | null,
     public readonly updatedAt: Date,
-    public readonly updatedBy: string | null
+    public readonly updatedBy: string | null,
+    /** Buyer data retention (#4289), appended LAST: positional constructor. */
+    public readonly buyerDataRetentionEnabled: boolean | null = null,
+    public readonly buyerDataHideAfterDays: number | null = null,
+    public readonly buyerDataEraseAfterDays: number | null = null,
+    public readonly buyerDataEraseMode: BuyerDataEraseMode | null = null
   ) {}
 }

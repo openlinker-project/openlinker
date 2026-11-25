@@ -25,7 +25,10 @@ import {
   type FulfillmentRoutingSkipReason,
   type PaymentMethod,
 } from '@openlinker/core/orders';
-import { DestinationRoutingBlockReasonValues, GiftDocumentFormValues } from '@openlinker/core/orders';
+import {
+  DestinationRoutingBlockReasonValues,
+  GiftDocumentFormValues,
+} from '@openlinker/core/orders';
 import type { DestinationRoutingBlockReason } from '@openlinker/core/orders';
 import { GiftDocumentForm } from '@openlinker/core/orders';
 import {
@@ -62,7 +65,6 @@ import { OrderDeliveryRiderDto } from './order-delivery-rider.dto';
 import { SalesDocumentViewResponseDto } from './sales-document-view-response.dto';
 import { SalesDocumentBlockParamsDto } from './sales-document-block-params.dto';
 
-
 export class OrderBundleComponentDto {
   @ApiProperty({ description: 'Physical line id of the component' }) lineId!: string;
   @ApiProperty() variantId!: string;
@@ -73,7 +75,7 @@ export class OrderBundleComponentDto {
   @ApiProperty({ description: 'Units in ONE bundle unit' }) perUnit!: number;
   @ApiPropertyOptional() giftSlot?: boolean;
   @ApiPropertyOptional({
-    description: 'The gift slot\'s own document form (#3940); absent means as in settings',
+    description: "The gift slot's own document form (#3940); absent means as in settings",
     enum: GiftDocumentFormValues,
   })
   giftDocumentForm?: GiftDocumentForm;
@@ -94,7 +96,11 @@ export class OrderBundleLineDto {
 export class OrderMultipackHoldDto {
   @ApiProperty({ description: 'The channel line id' }) lineId!: string;
   @ApiProperty({ description: 'Units of the product per unit ordered' }) packQuantity!: number;
-  @ApiPropertyOptional({ type: String, nullable: true, description: 'The offer title the channel sent' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'The offer title the channel sent',
+  })
   lineName!: string | null;
   @ApiPropertyOptional({
     type: String,
@@ -110,7 +116,11 @@ export class OrderRefundStateDto {
   @ApiProperty({ enum: OrderRefundStateValues })
   state!: OrderRefundState;
 
-  @ApiProperty({ type: String, nullable: true, description: 'Decimal string, or null when unknown.' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Decimal string, or null when unknown.',
+  })
   refundedAmount!: string | null;
 
   @ApiProperty({ type: String, nullable: true })
@@ -221,7 +231,7 @@ export class OrderRecordResponseDto {
     type: OrderEditsViewDto,
     nullable: true,
     description:
-      'The order beside the channel\'s own record of it: every edited figure given twice (channel ' +
+      "The order beside the channel's own record of it: every edited figure given twice (channel " +
       'original and after the edit), plus the edit history. DETAIL READ ONLY (it reads the change ' +
       'history, one query); null on an order nobody edited.',
   })
@@ -242,7 +252,7 @@ export class OrderRecordResponseDto {
     enum: DestinationRoutingBlockReasonValues,
     nullable: true,
     description:
-      'How a fulfilment routing decision narrowed this order\'s destination fan-out (#2703/#2704). ' +
+      "How a fulfilment routing decision narrowed this order's destination fan-out (#2703/#2704). " +
       'null when routing narrowed nothing and at least one destination was reached. ' +
       '"routed-to-no-destination" is a working router making a DECISION and is rendered neutrally. ' +
       '"no-destination-configured" (#3959) means no connection other than the source can create ' +
@@ -285,7 +295,7 @@ export class OrderRecordResponseDto {
     nullable: true,
     description:
       'The values behind salesDocumentBlockDetail (#3866): ids, counts and codes the ' +
-      'frontend phrases in the operator\'s language. Null when the block has none.',
+      "frontend phrases in the operator's language. Null when the block has none.",
   })
   salesDocumentBlockParams!: SalesDocumentBlockParamsDto | null;
 
@@ -346,7 +356,7 @@ export class OrderRecordResponseDto {
   @ApiPropertyOptional({
     type: OrderRefundStateDto,
     description:
-      'Refund state derived on read from the order\'s refund records (#4130): `partial` when ' +
+      "Refund state derived on read from the order's refund records (#4130): `partial` when " +
       'refunds are between zero and the order total, `full` when they reach it, `unknown` when ' +
       'a currency mismatch, a tax-exclusive total or a missing total makes the comparison ' +
       'meaningless. A separate fact from the channel-reported payment status, which the next ' +
@@ -405,6 +415,22 @@ export class OrderRecordResponseDto {
       'Set once and never cleared — a later re-poll of a cancelled order cannot change this timestamp.',
   })
   cancelledAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Instant the buyer data retention rule hid this order from the default lists (ISO 8601, #4289). ' +
+      'null = visible. The order is never deleted and still opens by id.',
+  })
+  hiddenAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Instant the buyer personal data of this order was erased (ISO 8601, #4289). null = not erased. ' +
+      'Once set, the buyer shows as a placeholder code and the data cannot return through re-ingestion.',
+  })
+  personalDataErasedAt!: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
@@ -485,7 +511,7 @@ export class OrderRecordResponseDto {
     nullable: true,
     type: String,
     description:
-      'The buyer\'s checkout note to the seller (#3538). THREE states: a string is the note verbatim; null means the ' +
+      "The buyer's checkout note to the seller (#3538). THREE states: a string is the note verbatim; null means the " +
       'source asserted the buyer left none; the key is ABSENT when the source could not say - and also when the deployment ' +
       'runs with `OL_STORE_PII=false`, which stores no note text (see `hasBuyerNote`, which is still written). ' +
       'DETAIL READ ONLY - GET /orders/:id sets it; the paged list never does. Free text may carry a phone number or ' +
@@ -503,7 +529,8 @@ export class OrderRecordResponseDto {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: 'OL user id of whoever first marked the note read (#3538). Moves with `buyerNoteReadAt`.',
+    description:
+      'OL user id of whoever first marked the note read (#3538). Moves with `buyerNoteReadAt`.',
   })
   buyerNoteReadByUserId?: string | null;
 
@@ -548,7 +575,7 @@ export class OrderRecordResponseDto {
   @ApiProperty({
     description:
       'True when `dispatchByAt` is an OL-side ESTIMATE rather than a marketplace-authoritative ' +
-      'commitment (#1776). Derived from the snapshot dispatch window\'s `estimated` flag: Erli derives ' +
+      "commitment (#1776). Derived from the snapshot dispatch window's `estimated` flag: Erli derives " +
       'its ship-by from per-offer (falling back to connection-default) handling time and marks it estimated; ' +
       'Allegro carries the platform-authoritative dispatch time and leaves it false. The FE renders a subtle ' +
       '"~" qualifier next to the ship-by badge when true.',
@@ -584,7 +611,7 @@ export class OrderRecordResponseDto {
   @ApiPropertyOptional({
     type: OrderDeliveryResolutionDto,
     description:
-      'Read-only projection (#1791) of how fulfillment routing resolved for this order\'s delivery ' +
+      "Read-only projection (#1791) of how fulfillment routing resolved for this order's delivery " +
       'method — the outcome IFulfillmentRoutingService.resolve computes. Present on both the list and ' +
       'detail reads when the order carries a source delivery method; absent otherwise. Never changes ' +
       'routing behaviour — a pure derived read.',
@@ -619,9 +646,9 @@ export class OrderRecordResponseDto {
     description:
       'Why this order is currently held, or null (#2340/#2341). On the SHARED projection, so it ' +
       'reaches the list and the detail read from one place at no query cost — the column is ' +
-      'already loaded. It is #2340\'s DISPLAY CACHE with an hourly repair window: a badge may ' +
+      "already loaded. It is #2340's DISPLAY CACHE with an hourly repair window: a badge may " +
       'render it, and no GATE may read it. Whether an order is held is decided through ' +
-      'IOrderHoldService.getOpenHold against order_holds (the epic\'s L4 exit criterion).',
+      "IOrderHoldService.getOpenHold against order_holds (the epic's L4 exit criterion).",
   })
   activeHoldReason!: HoldReason | null;
 
@@ -630,12 +657,12 @@ export class OrderRecordResponseDto {
     nullable: true,
     description:
       'Why OpenLinker deliberately did NOT route this order to the pack bench while the OMS is on ' +
-      '(#3455): `own-shop-order` (placed in the operator\'s own shop), `shipped-by-other-system` (a ' +
+      "(#3455): `own-shop-order` (placed in the operator's own shop), `shipped-by-other-system` (a " +
       'fulfilment routing rule sends its delivery method to another system), `mirrored-before-routing` ' +
       '(the product master already had it before routing was switched on), `source-fulfilled` (the ' +
       'marketplace asserts it ships the order itself). null when the order was ' +
       'routed, has not been decided yet, or no connection claims sourcing (the OMS is off). NOT a hold: ' +
-      'a skipped order follows today\'s path and is mirrored to its destinations as usual.',
+      "a skipped order follows today's path and is mirrored to its destinations as usual.",
   })
   fulfillmentRoutingSkipReason!: FulfillmentRoutingSkipReason | null;
 

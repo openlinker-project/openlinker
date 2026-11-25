@@ -90,3 +90,18 @@ export function useIsAdmin(): boolean {
  * `features` may not import `app/`, and `shared` may not either.
  */
 const ADMIN_ROLE = 'admin';
+
+/**
+ * The one place the packer role name is spelled (#4286).
+ *
+ * `packer` holds an intentionally empty permission grant (ADR-071), so no
+ * permission can express "this session works on the pack bench". The order
+ * detail page uses this to send such a session to `/bench`. It grants nothing:
+ * the API refuses the order routes either way.
+ */
+export function useIsPackerSession(): boolean {
+  const { session } = useSession();
+  return session.status === 'authenticated' && session.user?.role === PACKER_ROLE;
+}
+
+const PACKER_ROLE = 'packer';

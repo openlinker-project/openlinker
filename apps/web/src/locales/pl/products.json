@@ -383,6 +383,8 @@
   "productsListPage": {
     "availabilityUnknownLink": "Kto o czym decyduje",
     "bulk": {
+      "bundleDisabledMixed": "Zestaw można złożyć tylko z produktów z jednym wariantem, które same nie są zestawami.",
+      "bundleDisabledTooMany": "Zestaw może mieć maks. {max} składników (zaznaczono {n}).",
       "clear": "Wyczyść",
       "hint": "Maks. {max} na partię · dostępne jeszcze {remaining}",
       "hintAtCap": "Maks. {max} na partię",
@@ -584,6 +586,13 @@
       "updatedAt": "Zmieniono"
     },
     "stock": {
+      "bundleNone": "brak",
+      "bundleSets": {
+        "few": "{n} zestawy",
+        "many": "{n} zestawów",
+        "one": "{n} zestaw",
+        "other": "{n} zestawu"
+      },
       "master": "główny {n}",
       "notKnown": "Nieznany",
       "notKnownTitle": "OpenLinker nie zna tej wartości. To nie jest zero.",

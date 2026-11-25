@@ -51,6 +51,8 @@ type LineItemsCopy = ResolvedCopy<Messages['orders']>['orderLineItems'];
 
 interface OrderLineItemsPanelProps {
   items: ParsedOrderItem[];
+  /** Opens a product's peek from its line (#4286). */
+  onOpenProduct?: (productId: string) => void;
   /**
    * Only used for per-line price formatting. Totals are rendered separately
    * by `OrderTotalsPanel`.
@@ -76,6 +78,8 @@ interface OrderLineItemsPanelProps {
   bundleLines?: readonly OrderBundleLine[];
   /** The connection issuing the order's sales document, once there is one (#3940): the gift tag names where a gift's form came from. */
   documentConnectionId?: string | null;
+  /** The issued document's number, once there is one, for the "on the document" line. */
+  documentNumber?: string | null;
 }
 
 type DisplayRow =
@@ -92,6 +96,8 @@ export function OrderLineItemsPanel({
   channelQuantities,
   bundleLines,
   documentConnectionId = null,
+  onOpenProduct,
+  documentNumber = null,
 }: OrderLineItemsPanelProps): ReactElement {
   const bundleCopy = useMessages('bundles');
   const currency = totals?.currency;
@@ -139,14 +145,31 @@ export function OrderLineItemsPanel({
       cell: (item) => (
         <OrderLineItemIdentity
           name={item.name}
-          code={item.sku ?? item.productId ?? item.id}
+          code={
+            item.sku
+              ? // A bare channel offer number on a bundle line reads like a SKU or a tax id.
+                bundleByLine.has(item.id) && /^\d+$/.test(item.sku)
+                ? `${copy.offerPrefix} ${item.sku}`
+                : item.sku
+              : `${copy.idPrefix} ${item.productId ?? item.id}`
+          }
           codeIsFallback={!item.sku}
           imageSrc={item.imageUrl}
           placeholderName={item.name ?? item.sku ?? item.productId ?? item.id}
+          onOpen={
+            item.productId && onOpenProduct
+              ? () => {
+                  onOpenProduct(item.productId as string);
+                }
+              : undefined
+          }
           extra={
             <>
               {bundleByLine.has(item.id) ? (
-                <BundleLineNotes bundle={bundleByLine.get(item.id) as OrderBundleLine} />
+                <BundleLineNotes
+                  bundle={bundleByLine.get(item.id) as OrderBundleLine}
+                  name={item.name ?? item.sku ?? item.id}
+                />
               ) : null}
               {item.gift ? (
                 <GiftLineTag
@@ -214,7 +237,7 @@ export function OrderLineItemsPanel({
         <span className="mono-text">{format.money(item.price * item.quantity, currency)}</span>
       ),
     },
-    ...(costs.enabled ? buildCostColumns(items, costs, copy) : []),
+    ...(costs.enabled ? buildCostColumns(items, costs, copy, new Set(bundleByLine.keys())) : []),
   ];
 
   // Components sit under their bundle line and carry only what is theirs: a
@@ -236,6 +259,9 @@ export function OrderLineItemsPanel({
               codeIsFallback={!row.component.sku}
               placeholderName={row.component.name ?? row.component.sku ?? row.component.variantId}
             />
+            <span className="cx-tag cx-tag--quiet" data-testid={`order-bundle-deducts-${row.component.sku ?? row.component.variantId}`}>
+              {bundleCopy.order.deductsStock}
+            </span>
             {row.component.giftSlot === true ? (
               <GiftSlotNote
                 component={row.component}
@@ -252,7 +278,18 @@ export function OrderLineItemsPanel({
           </div>
         );
       }
-      if (column.id === 'qty') return row.component.quantity;
+      if (column.id === 'qty') {
+        return (
+          <span>
+            {row.component.quantity}
+            {row.component.perUnit > 0 && row.component.perUnit !== row.component.quantity ? (
+              <span className="text-muted" data-testid={`order-bundle-per-unit-${row.component.sku ?? row.component.variantId}`}>
+                {` ${interpolate(bundleCopy.order.perBundleUnit, { n: row.component.perUnit })}`}
+              </span>
+            ) : null}
+          </span>
+        );
+      }
       if (column.id === 'unitPrice') {
         // The gift slot is shown at what the buyer pays for it, not as part of the set price.
         return row.component.giftSlot === true ? (
@@ -314,7 +351,14 @@ export function OrderLineItemsPanel({
           }}
         />
       </div>
-      {costs.enabled && costs.status === 'loaded' ? <CostFootnote lines={costs.lines} /> : null}
+      {bundleByLine.size > 0 ? (
+        <BundleShipStrip items={items} bundleByLine={bundleByLine} documentNumber={documentNumber} />
+      ) : null}
+      {costs.enabled && costs.status === 'loaded' ? (
+        <CostFootnote
+          lines={costs.lines.filter((line) => !bundleLineNumbers(items, bundleByLine).has(line.lineNumber))}
+        />
+      ) : null}
     </div>
   );
 }
@@ -356,19 +400,76 @@ function GiftSlotNote({
  * order keeps the composition it was frozen with. No version numbers: the
  * operator decides nothing by them.
  */
-function BundleLineNotes({ bundle }: { bundle: OrderBundleLine }): ReactElement {
+function BundleLineNotes({ bundle, name }: { bundle: OrderBundleLine; name: string }): ReactElement {
   const copy = useMessages('bundles');
+  const components = bundle.components
+    .map((component) => `${component.name ?? component.sku ?? component.variantId} x${component.quantity}`)
+    .join(' + ');
   return (
     <>
-      <StatusBadge tone="info" compact>
-        {copy.order.bundleMark}
-      </StatusBadge>
+      <Link
+        to={`/products/bundles/${encodeURIComponent(bundle.bundleVariantId)}`}
+        className="ux-bundle-chip"
+        title={`${copy.order.bundleTooltip}\n${components}`}
+        aria-label={interpolate(copy.order.openBundle, { name })}
+        data-testid="order-bundle-link"
+      >
+        <StatusBadge tone="info" compact>
+          {copy.order.bundleMark}
+        </StatusBadge>
+      </Link>
+      <span className="ux-bundle-note" data-testid="order-bundle-note">
+        {copy.order.bundleNote}
+      </span>
       {bundle.olderComposition ? (
         <span className="text-muted" data-testid="order-bundle-old-composition-note">
           {copy.order.oldComposition}
         </span>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Reconciles pick list, parcel and document in two lines: what the packer puts
+ * in the box (the physical components) and what the sales document carries
+ * (the bundle as one line). Without it the operator has to infer both from the
+ * indented rows above.
+ */
+function BundleShipStrip({
+  items,
+  bundleByLine,
+  documentNumber,
+}: {
+  items: ParsedOrderItem[];
+  bundleByLine: ReadonlyMap<string, OrderBundleLine>;
+  documentNumber: string | null;
+}): ReactElement {
+  const copy = useMessages('bundles');
+  const shipLine = [...bundleByLine.values()]
+    .flatMap((bundle) => bundle.components)
+    .map((component) => `${component.quantity} x ${component.name ?? component.sku ?? component.variantId}`)
+    .join(', ');
+  const documentLine = items
+    .filter((item) => bundleByLine.has(item.id))
+    .map((item) => `${item.quantity} x ${item.name ?? item.sku ?? item.id}`)
+    .join(', ');
+  return (
+    <div className="ux-pack-strip" data-testid="order-bundle-ship-strip">
+      <p className="ux-pack-strip__row">
+        <span className="ux-pack-strip__label">{copy.order.shipLabel}</span>
+        <strong>{shipLine}</strong>
+      </p>
+      {documentNumber !== null ? (
+        <p className="ux-pack-strip__row" data-testid="order-bundle-document-line">
+          <span className="ux-pack-strip__label">
+            {interpolate(copy.order.documentLabel, { number: documentNumber })}
+          </span>
+          <strong>{documentLine}</strong>
+        </p>
+      ) : null}
+      <p className="ux-pack-strip__hint">{copy.order.shipHint}</p>
+    </div>
   );
 }
 
@@ -473,6 +574,7 @@ function buildCostColumns(
   items: ParsedOrderItem[],
   costs: OrderLineCostsState,
   copy: LineItemsCopy,
+  bundleLineIds: ReadonlySet<string>,
 ): DataTableColumn<ParsedOrderItem>[] {
   return [
     {
@@ -480,20 +582,40 @@ function buildCostColumns(
       header: copy.columns.costAtOrderTime,
       align: 'right',
       hideBelow: 768,
-      cell: (item) => <CostCell line={costForItem(items, costs, item)} />,
+      cell: (item) => (
+        <CostCell line={costForItem(items, costs, item)} fromComponents={bundleLineIds.has(item.id)} />
+      ),
     },
     {
       id: 'lineMargin',
       header: copy.columns.margin,
       align: 'right',
-      cell: (item) => <MarginCell line={costForItem(items, costs, item)} currency={costs.currency} />,
+      cell: (item) => (
+        <MarginCell
+          line={costForItem(items, costs, item)}
+          currency={costs.currency}
+          fromComponents={bundleLineIds.has(item.id)}
+        />
+      ),
     },
   ];
 }
 
-function CostCell({ line }: { line: OrderLineCost | null }): ReactElement {
+function CostCell({
+  line,
+  fromComponents = false,
+}: {
+  line: OrderLineCost | null;
+  fromComponents?: boolean;
+}): ReactElement {
   const copy = useMessages('orders').orderLineItems.cost;
   const format = useFormat();
+  // A bundle has no cost of its own: it is the sum of its components, so "not
+  // recorded" on the bundle line would send the operator to a product that
+  // cannot carry one.
+  if (fromComponents && (!line || line.costOfGoods === null)) {
+    return <span className="text-muted" data-testid="order-bundle-cost-from-components">{copy.fromComponents}</span>;
+  }
   if (!line) return <AbsentValue label={copy.notAvailable} />;
   if (line.costOfGoods !== null) {
     return <span className="mono-text">{format.money(line.costOfGoods, line.unitCostCurrency ?? undefined)}</span>;
@@ -530,12 +652,19 @@ function CostCell({ line }: { line: OrderLineCost | null }): ReactElement {
 function MarginCell({
   line,
   currency,
+  fromComponents = false,
 }: {
   line: OrderLineCost | null;
   currency: string | null;
+  fromComponents?: boolean;
 }): ReactElement {
   const copy = useMessages('orders').orderLineItems.cost;
   const format = useFormat();
+  // Same reasoning as the cost cell: the bundle's cost comes from its
+  // components, so "out of margin" would contradict it on the same row.
+  if (fromComponents && (!line || line.margin === null)) {
+    return <span className="text-muted">{copy.marginFromComponents}</span>;
+  }
   if (!line) return <AbsentValue label={copy.marginNotAvailable} />;
   if (line.margin !== null) {
     return <span className="mono-text">{format.money(line.margin, currency ?? undefined)}</span>;
@@ -546,11 +675,15 @@ function MarginCell({
 function CostFootnote({ lines }: { lines: OrderLineCost[] }): ReactElement {
   const copy = useMessages('orders').orderLineItems.cost;
   const plural = usePlural();
-  const missing = new Set(
-    lines
-      .filter((line) => line.gapReason === 'no-cost' && line.variantId !== null)
-      .map((line) => line.variantId),
-  ).size;
+  const missingLines = lines.filter((line) => line.gapReason === 'no-cost' && line.variantId !== null);
+  const missing = new Set(missingLines.map((line) => line.variantId)).size;
+  // Naming the product is what makes the link actionable: "for 1 variant" does
+  // not say which of the order's lines (or bundle components) lacks a cost.
+  const missingSkus = [...new Set(missingLines.map((line) => line.sku).filter((sku): sku is string => !!sku))];
+  const addCostLabel =
+    missingSkus.length > 0 && missingSkus.length === missing
+      ? interpolate(copy.addCostFor, { names: missingSkus.slice(0, 3).join(', ') + (missingSkus.length > 3 ? '...' : '') })
+      : plural(missing, copy.addCost);
   return (
     <p className="data-table__footnote" data-testid="order-line-cost-note">
       {copy.footnoteFrozen} {copy.footnoteNextOrder}
@@ -558,10 +691,22 @@ function CostFootnote({ lines }: { lines: OrderLineCost[] }): ReactElement {
         <>
           {' '}
           <Link to="/products/cost-prices" data-testid="order-line-add-cost">
-            {plural(missing, copy.addCost)}
+            {addCostLabel}
           </Link>
         </>
       ) : null}
     </p>
   );
+}
+
+/** Cost-line numbers (the line's position in the order) that belong to a bundle line. */
+function bundleLineNumbers(
+  items: readonly ParsedOrderItem[],
+  bundleByLine: ReadonlyMap<string, OrderBundleLine>,
+): Set<number> {
+  const numbers = new Set<number>();
+  items.forEach((item, index) => {
+    if (bundleByLine.has(item.id)) numbers.add(index);
+  });
+  return numbers;
 }

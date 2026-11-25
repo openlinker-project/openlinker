@@ -2689,16 +2689,14 @@ export class AllegroOfferManagerAdapter
       ? await this.readProductCardFromOffer(component.existingOfferExternalId)
       : null;
     const cardFromOffer = fromOffer?.cardId ?? null;
-    const card = cardFromOffer
-      ? ({ kind: 'unique', productId: cardFromOffer } as const)
-      : component.barcode && categoryId
-        ? await resolveAllegroProductCardByEan(this.httpClient, this.cache, {
-            ean: component.barcode,
-            categoryId,
-          })
-        : ({ kind: 'no_match' } as const);
+    const lookup = cardFromOffer
+      ? ({ card: { kind: 'unique', productId: cardFromOffer }, inOfferCategory: false } as const)
+      : component.barcode
+        ? await this.resolveComponentCardByEan(component.barcode, categoryId)
+        : ({ card: { kind: 'no_match' }, inOfferCategory: false } as const);
+    const card = lookup.card;
     const cardCategoryId =
-      fromOffer?.categoryId ?? (card.kind === 'unique' ? categoryId : undefined);
+      fromOffer?.categoryId ?? (card.kind === 'unique' && lookup.inOfferCategory ? categoryId : undefined);
     const withCategory = cardCategoryId ? { cardCategoryId } : {};
 
     const declaration = await this.resolveProductGpsrDeclaration({
@@ -2784,6 +2782,29 @@ export class AllegroOfferManagerAdapter
         },
       },
     };
+  }
+
+  /**
+   * A bundle component's catalogue card by barcode. The offer's category is tried
+   * first; when it has no card, the lookup is repeated without a category filter,
+   * because a set mixes products from different categories (a mug and a mouse pad
+   * sit under different categories than the set's own) and a GTIN identifies one
+   * product catalogue-wide. Without the second step such a component fell through
+   * to an inline product, which Allegro holds for review.
+   */
+  private async resolveComponentCardByEan(
+    ean: string,
+    offerCategoryId: string | undefined
+  ): Promise<{ card: ResolveProductCardResult; inOfferCategory: boolean }> {
+    if (offerCategoryId) {
+      const inCategory = await resolveAllegroProductCardByEan(this.httpClient, this.cache, {
+        ean,
+        categoryId: offerCategoryId,
+      });
+      if (inCategory.kind !== 'no_match') return { card: inCategory, inOfferCategory: true };
+    }
+    const anywhere = await resolveAllegroProductCardByEan(this.httpClient, this.cache, { ean });
+    return { card: anywhere, inOfferCategory: false };
   }
 
   /** The product card id and category of a component's own offer, or null when unreadable. */

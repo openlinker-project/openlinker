@@ -103,6 +103,37 @@ function rateKey(rate: string): string {
   return /^\d+(\.\d+)?$/.test(trimmed) ? String(Number(trimmed)) : trimmed.toLowerCase();
 }
 
+/** Cut a paid total (minor units) over weights; the remainder lands on the heaviest part so the parts add up exactly. */
+function splitPaidTotal(totalMinor: number, weights: readonly number[]): number[] {
+  const weightSum = weights.reduce((a, b) => a + b, 0);
+  const shares = weights.map((w) => Math.floor((totalMinor * w) / weightSum));
+  const largest = weights.indexOf(Math.max(...weights));
+  shares[largest] += totalMinor - shares.reduce((a, b) => a + b, 0);
+  return shares;
+}
+
+/**
+ * The gross share each component of a bundle line carries, in major units and in
+ * the order of `components` (a gift slot is 0). `null` when nothing can weight
+ * the split. This is the ONE place a paid set total is divided: documents and
+ * destination orders read it instead of re-deriving a split of their own.
+ */
+export function splitBundleLineTotal(
+  lineTotalGross: number,
+  components: readonly DocumentBundleComponent[],
+  currency?: string | null,
+): number[] | null {
+  const factor = 10 ** minorUnitExponentFor(currency);
+  const toMinor = (value: number): number => Math.round(value * factor);
+  const paid = components.filter((c) => c.giftSlot !== true);
+  const weights = weightsFor(paid, toMinor);
+  if (paid.length === 0 || weights === null || !(lineTotalGross >= 0)) return null;
+  const shares = splitPaidTotal(toMinor(lineTotalGross), weights);
+  return components.map((component) =>
+    component.giftSlot === true ? 0 : shares[paid.indexOf(component)] / factor,
+  );
+}
+
 /**
  * Present each bundle line as one line or as its components, by the automatic
  * rule above. `makeLine` builds the document line type of the caller from the
@@ -145,10 +176,7 @@ export function presentBundleComponents<T extends GiftPresentationLine>(
       throw new BundleSplitUnknownError(lineId, 'component-value-unknown');
     }
     const total = Math.round(line.quantity * toMinor(line.unitPriceGross));
-    const weightSum = weights.reduce((a, b) => a + b, 0);
-    const shares = weights.map((w) => Math.floor((total * w) / weightSum));
-    const largest = weights.indexOf(Math.max(...weights));
-    shares[largest] += total - shares.reduce((a, b) => a + b, 0);
+    const shares = splitPaidTotal(total, weights);
 
     components.forEach((component, index) => {
       const taxRate = rates[index];

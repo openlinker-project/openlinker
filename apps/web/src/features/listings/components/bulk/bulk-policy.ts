@@ -295,7 +295,17 @@ export interface ComputeBlockersInput {
    * comes from the first component's card and the barcode is not required.
    */
   bundle?: OfferRowBundleInput;
+  /**
+   * The bundle's catalogue-card component has no category on its card, so the
+   * set cannot take one from it. Reported with its own blocker: the composition
+   * panel says the component comes from the catalogue, so "not in the catalogue"
+   * would contradict it.
+   */
+  bundleCardWithoutCategory?: boolean;
 }
+
+/** The set's catalogue card names no category to list it under. */
+export const BUNDLE_CARD_NO_CATEGORY = 'bundle-card-no-category';
 
 /**
  * Whether the row would 422 on missing required product params (#810). The
@@ -333,7 +343,9 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
     if (input.bundle) {
       // A set needs a category, not a catalogue match for its own barcode: the
       // chip that says "no catalogue match" would be false for it (#3520).
-      if (!input.bundle.suggestedCategoryId) blockers.push('no-match');
+      if (!input.bundle.suggestedCategoryId) {
+        blockers.push(input.bundleCardWithoutCategory ? BUNDLE_CARD_NO_CATEGORY : 'no-match');
+      }
     } else if (!cat || cat.kind === 'no-match') {
       blockers.push('no-match');
     } else if (cat.kind === 'no-ean') {
@@ -915,6 +927,11 @@ export function recomputeVariantBlockers(
     : undefined;
   const blockers = computeBlockers({
     ...(bundle ? { bundle } : {}),
+    ...(bundlePreview?.components.some(
+      (component) => component.mode === 'catalog-card' && !component.cardCategoryId,
+    )
+      ? { bundleCardWithoutCategory: true }
+      : {}),
     hasVariant: true,
     categoryResult: variantCategoryResult(variant, submitCategoryId),
     cardInOtherCategory: variant.overriddenCard !== null && !operatorPickedCategory(row, variant),
@@ -932,7 +949,14 @@ export function recomputeVariantBlockers(
     requiredProductParamIds: submitCategoryId
       ? requiredByCategory.get(submitCategoryId)
       : undefined,
-    imageCount: imageCountForVariant(row, variant),
+    // A bundle created in OpenLinker has no photos of its own: the offer builder
+    // lists it with its components' pictures, so those count unless the operator
+    // set the images explicitly (an emptied override stays a missing photo).
+    imageCount:
+      bundlePreview && !Array.isArray(variant.override.overrides?.imageUrls)
+        ? imageCountForVariant(row, variant) ||
+          bundlePreview.components.filter((component) => component.imageUrl).length
+        : imageCountForVariant(row, variant),
     effectiveTitle: titleForVariant(row, variant),
     platformValidate,
     destinationResolvesCategoryAtSubmit,

@@ -53,6 +53,9 @@ import {
   ConnectionNotFoundException,
   FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
   isPresentButInvalidFulfilmentOwnedByDestination,
+  CATALOGUE_MODE_CONFIG_KEY,
+  CatalogueModeValues,
+  isPresentButInvalidCatalogueMode,
   describeInvalidPaymentWritebackConfig,
   PaymentWritebackModeValues,
   ConnectionInUseException,
@@ -62,6 +65,7 @@ import {
   isBuyerEmailTemplate,
   isSingleEmailAddress,
   readBuyerEmailsConfig,
+  findBuyerDataRetentionConfigIssue,
 } from '@openlinker/core/identifier-mapping';
 import type {
   AdapterMetadata,
@@ -638,6 +642,26 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
+   * Refuse an unrecognised `config.catalogueMode` (#4280).
+   *
+   * Neutral like `validateRateLimitConfig`: the key is read by core's order
+   * ingestion for every marketplace, so no per-plugin shape validator needs to
+   * know it. A mistyped value (`"None"`, `true`) reads back as the default
+   * `'linked'`, i.e. it would silently fail to turn the mode on, so it is refused
+   * rather than coerced. Absent and `null` (what the form writes for a cleared
+   * value, #2016) are accepted.
+   */
+  private validateCatalogueModeConfig(config: Record<string, unknown>): void {
+    if (!isPresentButInvalidCatalogueMode(config)) return;
+    throw connectionConfigInvalid(
+      `config.${CATALOGUE_MODE_CONFIG_KEY}`,
+      'one-of',
+      `config.${CATALOGUE_MODE_CONFIG_KEY} must be one of: ${CatalogueModeValues.join(', ')}`,
+      { allowed: allowedValues(CatalogueModeValues) }
+    );
+  }
+
+  /**
    * Core-owned bounds check for the four platform-neutral stock, pricing and
    * price-sync keys (#2610, widened by #3142/ADR-072): `config.stockSafetyBuffer`,
    * `config.stockZeroThreshold`, `config.pricingRule` and `config.priceSyncMode`.
@@ -690,6 +714,19 @@ export class ConnectionService implements IConnectionService {
 
     this.validatePricingRuleConfig(config.pricingRule);
     this.validatePriceSyncModeConfig(config.priceSyncMode);
+  }
+
+  /**
+   * Core-owned shape check for `config.buyerDataRetention` (#4289): the
+   * per-connection override of the global buyer data retention defaults. The
+   * rules live in `findBuyerDataRetentionConfigIssue` beside the reader, so the
+   * write path and the sweep agree on what a usable value is. Absent or `null`
+   * stays absent - it means "inherit the global defaults".
+   */
+  private validateBuyerDataRetentionConfig(config: Record<string, unknown>): void {
+    const issue = findBuyerDataRetentionConfigIssue(config);
+    if (issue === null) return;
+    throw connectionConfigInvalid(issue.field, issue.rule, issue.message, issue.bounds);
   }
 
   /**
@@ -1574,8 +1611,10 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        this.validateBuyerDataRetentionConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validatePaymentWritebackConfig(rest.config);
+        this.validateCatalogueModeConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
         await this.validateDeliveryOnDocumentsConfig(rest.config);
         this.validateGiftOnDocumentsConfig(rest.config);
@@ -1902,8 +1941,10 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        this.validateBuyerDataRetentionConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validatePaymentWritebackConfig(patch.config);
+        this.validateCatalogueModeConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
         await this.validateDeliveryOnDocumentsConfig(patch.config);
         this.validateGiftOnDocumentsConfig(patch.config);

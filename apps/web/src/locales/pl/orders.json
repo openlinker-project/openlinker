@@ -748,6 +748,12 @@
       "hint": "Otwórz to zamówienie na platformie źródłowej, popraw dane kupującego, a potem pobierz zamówienie ponownie.",
       "title": "Brakuje danych odbiorcy - nie można wygenerować etykiety:"
     },
+    "packPieces": {
+      "few": "{n} szt.",
+      "many": "{n} szt.",
+      "one": "{n} szt.",
+      "other": "{n} szt."
+    },
     "pickup": {
       "buyerSelected": "Wybrane przez kupującego - tylko do odczytu.",
       "buyerSelectedVia": "Wybrane przez kupującego w {provider} - tylko do odczytu.",
@@ -792,7 +798,8 @@
       "weight": "Waga musi być dodatnią liczbą całkowitą",
       "width": "Szerokość musi być dodatnią liczbą całkowitą"
     },
-    "weight": "Waga (g)"
+    "weight": "Waga (g)",
+    "weightFromRule": "Waga z reguły dostawy - sprawdź przed zakupem etykiety."
   },
   "handledInOpenLinker": {
     "assignedUnknown": "Przypisane",
@@ -857,6 +864,11 @@
     "noShippingDestination": "Brak celu wysyłki",
     "sync": "Synchro.",
     "total": "Razem"
+  },
+  "hiddenBadge": {
+    "label": "Ukryte",
+    "title": "Ukryte przez zasady danych kupujących. Zamówienie zostaje w OpenLinkerze.",
+    "titleErased": "Ukryte przez zasady danych kupujących. Dane osobowe kupującego zostały usunięte."
   },
   "holds": {
     "onHold": "Wstrzymane - {reason}",
@@ -1094,6 +1106,7 @@
     },
     "checks": {
       "buyerNote": "Z notatką kupującego",
+      "hidden": "Ukryte zamówienia",
       "omsStopped": "Zatrzymane przez OpenLinker",
       "openReturn": "Otwarty zwrot",
       "packBench": "Na stanowisku pakowania",
@@ -1116,6 +1129,8 @@
       "dueValue": "≤ 24 godz. lub po terminie",
       "fulfilment": "Realizacja",
       "health": "Status",
+      "hidden": "Widoczność",
+      "hiddenValue": "Tylko ukryte",
       "hold": "Wstrzym.",
       "oms": "OpenLinker",
       "open": "Otwarty",
@@ -1629,6 +1644,9 @@
     "title": "Dostawa"
   },
   "orderDetailHeader": {
+    "allIssues": "Wszystkie problemy ({count})",
+    "copiedId": "Skopiowano",
+    "copyId": "Kopiuj id",
     "items": {
       "few": "{n} pozycje",
       "many": "{n} pozycji",
@@ -1636,17 +1654,15 @@
       "other": "{n} pozycji"
     },
     "moreItems": "jeszcze {count}",
-    "noDestination": "brak kanału docelowego",
+    "paidOn": "Opłacone w {channel}",
     "payment": {
       "awaiting": "Czeka na płatność",
       "cod": "Za pobraniem",
       "paid": "Opłacone",
       "refunded": "Zwrócono pieniądze"
     },
-    "placed": "Złożone",
     "received": "Otrzymane",
-    "routeDestination": "kanał docelowy",
-    "routeSource": "źródło",
+    "shipBy": "Wyślij do",
     "title": "Zamówienie {number}",
     "units": {
       "few": "{n} sztuki",
@@ -1666,9 +1682,36 @@
       "one": "{n} kanał docelowy z błędem",
       "other": "{n} kanału docelowego z błędem"
     },
+    "generateLabel": "Wygeneruj etykietę",
     "loadErrorTitle": "Nie udało się wczytać zamówienia",
     "loadingMessage": "Pobieranie szczegółów zamówienia…",
     "loadingTitle": "Wczytywanie zamówienia",
+    "nextStep": {
+      "also": "Dodatkowo:",
+      "documentBlocked": "Dokument sprzedaży wymaga uwagi",
+      "failedDestinations": {
+        "few": "{n} miejsca docelowe nie przyjęły zamówienia",
+        "many": "{n} miejsc docelowych nie przyjęło zamówienia",
+        "one": "{n} miejsce docelowe nie przyjęło zamówienia",
+        "other": "{n} miejsca docelowego nie przyjęło zamówienia"
+      },
+      "hideAll": "Ukryj",
+      "label": "Następny krok",
+      "onHold": "Wstrzymane: {reason}",
+      "open": "Otwórz: {tab}",
+      "readyToShip": "Gotowe do wysyłki",
+      "shipByOverdue": "Minął termin wysyłki",
+      "shipmentFailed": "Przesyłka się nie udała",
+      "short": {
+        "document-blocked": "Dokument wymaga uwagi",
+        "failed-destinations": "Miejsce docelowe nie przyjęło",
+        "on-hold": "Wstrzymane",
+        "ready-to-ship": "Gotowe do wysyłki",
+        "ship-by-overdue": "Minął termin wysyłki",
+        "shipment-failed": "Przesyłka nieudana"
+      },
+      "showAll": "Pokaż wszystkie"
+    },
     "notFound": "Nie znaleziono zamówienia",
     "parseWarnings": {
       "label": {
@@ -1680,6 +1723,16 @@
       "title": "Niektórych pól nie udało się odczytać - zobacz surowe dane"
     },
     "pricingTitle": "Ceny i podatek",
+    "progress": {
+      "delivered": "Dostarczone",
+      "label": "Postęp zamówienia",
+      "packed": "Spakowane",
+      "paid": "Opłacone",
+      "placed": "Złożone",
+      "sent": "Wysłane do sklepów",
+      "sentCount": "{done} z {total} wysłano",
+      "shipped": "Wysłane"
+    },
     "rawSnapshotTitle": "Surowe dane zamówienia",
     "retry": "Spróbuj ponownie",
     "retryFailedTitle": "Ponowienie nie powiodło się",
@@ -1687,6 +1740,10 @@
     "retryQueuedTitle": "Ponowienie w kolejce",
     "retrying": "Ponawianie…",
     "routedNote": "To zamówienie obsługuje routing OMS, więc nie jest kopiowane do miejsc docelowych i nie można go tu ponowić.",
+    "shipTo": {
+      "pickupPoint": "Punkt odbioru",
+      "title": "Dostawa do"
+    },
     "summary": {
       "buyerTaxId": "NIP kupującego",
       "orderNumber": "Nr zamówienia",
@@ -1698,6 +1755,14 @@
       "status": "Status",
       "statusAtChannel": "Status w {channel}",
       "statusAtUnknownChannel": "Status w kanale",
+      "statusValues": {
+        "cancelled": "Anulowane",
+        "delivered": "Dostarczone",
+        "pending": "Oczekuje",
+        "processing": "W realizacji",
+        "refunded": "Zwrócone",
+        "shipped": "Wysłane"
+      },
       "title": "Podsumowanie",
       "updatedOl": "Zaktualizowane (OL)"
     },
@@ -1714,6 +1779,19 @@
       },
       "title": "Status synchronizacji",
       "titleWithCount": "Status synchronizacji ({count})"
+    },
+    "tabs": {
+      "ariaLabel": "Sekcje zamówienia",
+      "documents": "Dokumenty sprzedaży",
+      "history": "Historia",
+      "needsAttention": "Wymaga uwagi",
+      "notes": "Notatki",
+      "overview": "Przegląd",
+      "packing": "Pakowanie",
+      "returns": "Zwroty",
+      "seeMore": "Więcej",
+      "shipping": "Wysyłka",
+      "technical": "Dane techniczne"
     },
     "title": "Szczegóły zamówienia",
     "viewFailedOrders": "Pokaż nieudane zamówienia",
@@ -1913,7 +1991,7 @@
   },
   "orderEditAction": {
     "amendingTitle": "Zmiana tego zamówienia już czeka na kanał.",
-    "button": "Edytuj zamów."
+    "button": "Edytuj zamówienie"
   },
   "orderEditDialog": {
     "ack": {
@@ -2308,10 +2386,13 @@
         "one": "Dodaj koszt dla {n} wariantu",
         "other": "Dodaj koszt dla {n} wariantu"
       },
+      "addCostFor": "Dodaj koszt dla: {names}",
       "currencyMismatchTitle": "Koszt jest w innej walucie niż zamówienie, więc nie jest uwzględniany w marży.",
       "enteredAfterSaleTitle": "Zamówione przed wpisaniem kosztu",
       "footnoteFrozen": "Koszt jest pobierany z produktu w chwili otrzymania zamówienia i później się nie zmienia.",
       "footnoteNextOrder": "Dodanie kosztu teraz nie zmieni tego zamówienia; będzie liczony od następnego.",
+      "fromComponents": "liczony ze składników",
+      "marginFromComponents": "nie liczona dla zestawu",
       "marginNotAvailable": "marża niedostępna",
       "noVariant": "brak wariantu",
       "notAvailable": "koszt niedostępny",
@@ -2320,7 +2401,9 @@
     },
     "emptyMessage": "Dane zamówienia nie zawierają szczegółów pozycji.",
     "emptyTitle": "Brak pozycji",
+    "idPrefix": "ID:",
     "jumpToNextFlagged": "Przejdź do następnej oznaczonej",
+    "offerPrefix": "Oferta:",
     "onlyFlagged": "Tylko oznaczone",
     "qtyWas": "było {quantity}",
     "taxRate": {

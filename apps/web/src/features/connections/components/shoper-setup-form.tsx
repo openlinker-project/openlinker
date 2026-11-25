@@ -52,6 +52,11 @@ import { Input } from '../../../shared/ui/input';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
+import {
+  BuyerDataWizardReviewRows,
+  BuyerDataWizardStep,
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+} from '../../buyer-data';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
 import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
@@ -216,6 +221,9 @@ export function ShoperSetupForm(): ReactElement {
       // surfaced via testConnection.error
     }
   };
+
+  const buyerDataValue = values.buyerDataRetention ?? DEFAULT_BUYER_DATA_WIZARD_VALUE;
+  const takesOrders = selectedCapabilities.includes('OrderSource');
 
   if (createdConnectionId) {
     return (
@@ -415,6 +423,12 @@ export function ShoperSetupForm(): ReactElement {
 
         {stepId === 'review' ? (
           <>
+            {takesOrders ? (
+              <BuyerDataWizardStep
+                value={buyerDataValue}
+                onChange={(next) => form.setValue('buyerDataRetention', next, { shouldDirty: true })}
+              />
+            ) : null}
             <dl className="wizard-review-list">
               <dt>{copy.review.name}</dt>
               <dd>{values.name || '—'}</dd>
@@ -436,6 +450,7 @@ export function ShoperSetupForm(): ReactElement {
                   </dd>
                 </>
               ) : null}
+              {takesOrders ? <BuyerDataWizardReviewRows value={buyerDataValue} /> : null}
             </dl>
             {selectedCapabilities.includes('OrderProcessorManager') ? (
               <Alert tone="info" title={copy.review.orderDefaults.title}>

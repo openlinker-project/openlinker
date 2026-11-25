@@ -64,7 +64,7 @@ test.describe('G06 golden paths (#3556)', () => {
       });
     }
 
-    await page.goto(`/orders/${encodeURIComponent(orderId)}`);
+    await page.goto(`/orders/${encodeURIComponent(orderId)}?tab=documents`);
     await page.getByRole('button', { name: /^view$/i }).first().click();
     await expect(page.getByRole('img', { name: 'KSeF invoice verification QR code' })).toBeVisible();
     await shot(page, testInfo, 'gp1-ksef-kod1', FOLDER);
@@ -118,7 +118,7 @@ test.describe('G06 golden paths (#3556)', () => {
       const email = await waitForBuyerEmail(api, poll, order.internalOrderId, 'shipped');
       expect(email.outcome, 'the masked Allegro address received the email').toBe('sent');
 
-      await page.goto(`/orders/${encodeURIComponent(order.internalOrderId)}`);
+      await page.goto(`/orders/${encodeURIComponent(order.internalOrderId)}?tab=documents`);
       await expect(page.getByTestId('order-buyer-email-row').first()).toHaveAttribute(
         'data-outcome',
         'sent'
@@ -165,7 +165,7 @@ test.describe('G06 golden paths (#3556)', () => {
       expect(email.outcome).toBe('suppressed');
       expect(email.suppressionReason).toBe('emails-off-for-connection');
 
-      await page.goto(`/orders/${encodeURIComponent(order.internalOrderId)}`);
+      await page.goto(`/orders/${encodeURIComponent(order.internalOrderId)}?tab=documents`);
       const panel = page.getByTestId('order-buyer-emails');
       await expect(panel).toHaveAttribute('data-mk-state', 'order-suppressed');
       // Every template is off on this connection, so each one that fired shows

@@ -56,7 +56,7 @@ test.describe('release center: notification center', () => {
       await openBell(page);
       const row = page.locator('.msg', { hasText: message.title });
       await row.locator('.msg__action').click();
-      await expect(page).toHaveURL(new RegExp(`${message.action.to}$`));
+      await expect(page).toHaveURL(new RegExp(`${message.action.to}(\\?.*)?$`));
       await expect(page.getByText('Unexpected Application Error')).toHaveCount(0);
     }
   });

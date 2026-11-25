@@ -696,6 +696,10 @@
       "hint": "Open this order in the source platform to fix the buyer record, then re-poll.",
       "title": "Missing recipient data - cannot generate label:"
     },
+    "packPieces": {
+      "one": "{n} pc",
+      "other": "{n} pcs"
+    },
     "pickup": {
       "buyerSelected": "Buyer-selected - read-only.",
       "buyerSelectedVia": "Buyer-selected via {provider} - read-only.",
@@ -740,7 +744,8 @@
       "weight": "Weight must be a positive integer",
       "width": "Width must be a positive integer"
     },
-    "weight": "Weight (g)"
+    "weight": "Weight (g)",
+    "weightFromRule": "Weight comes from the delivery rule - check it before buying the label."
   },
   "handledInOpenLinker": {
     "assignedUnknown": "Assigned",
@@ -803,6 +808,11 @@
     "noShippingDestination": "No shipping destination",
     "sync": "Sync",
     "total": "Total"
+  },
+  "hiddenBadge": {
+    "label": "Hidden",
+    "title": "Hidden by your buyer data rule. The order is kept in OpenLinker.",
+    "titleErased": "Hidden by your buyer data rule. The buyer's personal data was erased."
   },
   "holds": {
     "onHold": "On hold - {reason}",
@@ -1032,6 +1042,7 @@
     },
     "checks": {
       "buyerNote": "With buyer note",
+      "hidden": "Hidden orders",
       "omsStopped": "OpenLinker stopped",
       "openReturn": "Open return",
       "packBench": "On pack bench",
@@ -1054,6 +1065,8 @@
       "dueValue": "≤ 24h or overdue",
       "fulfilment": "Fulfilment",
       "health": "Status",
+      "hidden": "Visibility",
+      "hiddenValue": "Hidden only",
       "hold": "Hold",
       "oms": "OpenLinker",
       "open": "Open",
@@ -1547,22 +1560,23 @@
     "title": "Delivery"
   },
   "orderDetailHeader": {
+    "allIssues": "All issues ({count})",
+    "copiedId": "Copied",
+    "copyId": "Copy id",
     "items": {
       "one": "{n} item",
       "other": "{n} items"
     },
     "moreItems": "+{count} more",
-    "noDestination": "no destination",
+    "paidOn": "Paid on {channel}",
     "payment": {
       "awaiting": "Awaiting payment",
       "cod": "Cash on delivery",
       "paid": "Paid",
       "refunded": "Refunded"
     },
-    "placed": "Placed",
     "received": "Received",
-    "routeDestination": "destination",
-    "routeSource": "source",
+    "shipBy": "Ship by",
     "title": "Order {number}",
     "units": {
       "one": "{n} unit",
@@ -1578,9 +1592,34 @@
       "one": "{n} destination failed",
       "other": "{n} destinations failed"
     },
+    "generateLabel": "Generate label",
     "loadErrorTitle": "Unable to load order",
     "loadingMessage": "Fetching order details…",
     "loadingTitle": "Loading order",
+    "nextStep": {
+      "also": "Also:",
+      "documentBlocked": "The sales document needs attention",
+      "failedDestinations": {
+        "one": "{n} destination did not accept this order",
+        "other": "{n} destinations did not accept this order"
+      },
+      "hideAll": "Hide",
+      "label": "Next step",
+      "onHold": "On hold: {reason}",
+      "open": "Open {tab}",
+      "readyToShip": "Ready to ship",
+      "shipByOverdue": "The ship-by date has passed",
+      "shipmentFailed": "The shipment failed",
+      "short": {
+        "document-blocked": "Document needs attention",
+        "failed-destinations": "Destination failed",
+        "on-hold": "On hold",
+        "ready-to-ship": "Ready to ship",
+        "ship-by-overdue": "Past ship-by date",
+        "shipment-failed": "Shipment failed"
+      },
+      "showAll": "Show all"
+    },
     "notFound": "Order not found",
     "parseWarnings": {
       "label": {
@@ -1590,6 +1629,16 @@
       "title": "Some fields couldn't be parsed - see raw snapshot"
     },
     "pricingTitle": "Pricing & tax",
+    "progress": {
+      "delivered": "Delivered",
+      "label": "Order progress",
+      "packed": "Packed",
+      "paid": "Paid",
+      "placed": "Placed",
+      "sent": "Sent to shops",
+      "sentCount": "{done} of {total} sent",
+      "shipped": "Shipped"
+    },
     "rawSnapshotTitle": "Order Snapshot",
     "retry": "Retry",
     "retryFailedTitle": "Retry failed",
@@ -1597,6 +1646,10 @@
     "retryQueuedTitle": "Retry queued",
     "retrying": "Retrying…",
     "routedNote": "This order is handled by OMS routing, so it is not copied to destinations and cannot be retried here.",
+    "shipTo": {
+      "pickupPoint": "Pickup point",
+      "title": "Ship to"
+    },
     "summary": {
       "buyerTaxId": "Buyer tax ID",
       "orderNumber": "Order #",
@@ -1608,6 +1661,14 @@
       "status": "Status",
       "statusAtChannel": "Status at {channel}",
       "statusAtUnknownChannel": "Status at channel",
+      "statusValues": {
+        "cancelled": "Cancelled",
+        "delivered": "Delivered",
+        "pending": "Pending",
+        "processing": "Processing",
+        "refunded": "Refunded",
+        "shipped": "Shipped"
+      },
       "title": "Summary",
       "updatedOl": "Updated (OL)"
     },
@@ -1624,6 +1685,19 @@
       },
       "title": "Sync status",
       "titleWithCount": "Sync status ({count})"
+    },
+    "tabs": {
+      "ariaLabel": "Order sections",
+      "documents": "Sales documents",
+      "history": "History",
+      "needsAttention": "Needs attention",
+      "notes": "Notes",
+      "overview": "Overview",
+      "packing": "Packing",
+      "returns": "Returns",
+      "seeMore": "See more",
+      "shipping": "Shipping",
+      "technical": "Technical"
     },
     "title": "Order detail",
     "viewFailedOrders": "View failed orders",
@@ -2184,10 +2258,13 @@
         "one": "Add cost for {n} variant",
         "other": "Add cost for {n} variants"
       },
+      "addCostFor": "Add cost for: {names}",
       "currencyMismatchTitle": "The cost is in a different currency than the order, so it is not used in margin.",
       "enteredAfterSaleTitle": "Ordered before the cost was entered",
       "footnoteFrozen": "Cost is taken from the product when the order arrives and never changes afterwards.",
       "footnoteNextOrder": "Adding a cost now will not change this order; it counts from the next one.",
+      "fromComponents": "calculated from components",
+      "marginFromComponents": "not calculated for a bundle",
       "marginNotAvailable": "margin not available",
       "noVariant": "no variant",
       "notAvailable": "cost not available",
@@ -2196,7 +2273,9 @@
     },
     "emptyMessage": "The order snapshot does not contain item details.",
     "emptyTitle": "No line items",
+    "idPrefix": "ID:",
     "jumpToNextFlagged": "Jump to next flagged",
+    "offerPrefix": "Offer:",
     "onlyFlagged": "Only flagged",
     "qtyWas": "was {quantity}",
     "taxRate": {

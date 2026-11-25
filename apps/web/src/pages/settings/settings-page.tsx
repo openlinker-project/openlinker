@@ -12,6 +12,7 @@ import { SourcingRulesTile } from '../../features/oms';
 import { ReleaseCenterRow, SyncPacingTile } from '../../features/settings';
 import { InventoryLocationsTile } from '../../features/inventory';
 import { OrderTagsSettingsTile } from '../../features/orders/components/order-tags-settings-tile';
+import { BuyerDataTile } from '../../features/buyer-data';
 import { BuyerEmailsTile } from '../../features/buyer-emails';
 import { LoginPageSettingsTile } from '../../features/login-page-settings';
 import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
@@ -115,6 +116,7 @@ export function SettingsPage(): ReactElement {
       <WhoDecidesTile key="who" />,
       <OrderTagsSettingsTile key="tags" locked={locked} />,
       <BuyerEmailsTile key="emails" locked={locked} />,
+      <BuyerDataTile key="buyer-data" locked={locked} />,
       <MailerSettingsTile key="mailer" locked={locked} />,
     ]),
     group(

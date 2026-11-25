@@ -9,6 +9,7 @@
  *
  * @module features/release-center/components
  */
+import { walkableSteps } from '../tour/tour-stop';
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import changelog from 'virtual:openlinker-changelog';
 import { generatePath, useNavigate } from 'react-router-dom';
@@ -119,12 +120,14 @@ export function ReleaseDialogHost(): ReactElement | null {
       }}
       onStartGuide={(openRows, skip) => {
         close(skip);
-        if (openRows.length === 0) {
+        // Without the right to change settings the rows still list every step, but the walk skips the ones whose page is closed.
+        const steps = walkableSteps(rowsToTourSteps(openRows), canWriteSteps);
+        if (steps.length === 0) {
           void navigate(WHATS_NEW_PATH);
           return;
         }
         // The tour navigates to each step's screen itself.
-        tour.start(rowsToTourSteps(openRows));
+        tour.start(steps);
       }}
     />
   );

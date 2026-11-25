@@ -58,3 +58,10 @@ export function popoverEntrance(
     transition: SNAPPY_SPRING,
   };
 }
+
+/**
+ * The out-curve and panel duration the bundle wizard uses for steps, row add/remove and the
+ * summary count-up. Mirrors the CSS token --ux-ease (styles/bundle-ux.css); change both together.
+ */
+export const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+export const DURATION_PANEL = 0.24;

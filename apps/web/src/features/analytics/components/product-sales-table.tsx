@@ -260,6 +260,16 @@ function ProductExclusionNotes({
   );
 }
 
+/**
+ * What a row is called. An unmatched marketplace offer (#4280) has no catalogue
+ * name and a synthetic `productId` that must never reach the operator, so it is
+ * named for what it is and the offer id (its `sku`) sits in the SKU column.
+ */
+function productRowLabel(row: TopProductRow, unmatchedName: string): string {
+  if (row.unmatchedOfferId) return unmatchedName;
+  return row.name ?? row.productId;
+}
+
 function ProductCell({
   row,
   product,
@@ -271,11 +281,13 @@ function ProductCell({
   exclusions: ProductExclusionMap;
   onOpenCategory?: (category: CoverageCategory) => void;
 }): ReactElement {
+  const copy = useMessages('analytics').productSalesTable;
+  const label = productRowLabel(row, copy.unmatchedName);
   return (
     <span className="product-row">
-      <ProductThumbnail src={product?.images?.[0]} name={row.name ?? row.productId} />
+      <ProductThumbnail src={product?.images?.[0]} name={label} />
       <span className="data-table__stack">
-        <span>{row.name ?? row.productId}</span>
+        <span>{label}</span>
         <ProductExclusionNotes row={row} exclusions={exclusions} onOpenCategory={onOpenCategory} />
       </span>
     </span>
@@ -312,7 +324,9 @@ function ChannelCell({
   // `missingFromConnectionIds` is an unreliable `[]` on EVERY row, not
   // evidence of being listed everywhere, so trusting it would render "Not
   // listed" as a false claim (#2172 review, IMPORTANT 1).
-  if (!coverageGapAvailable || !isMissingFrom(row, connectionId)) {
+  // An unmatched marketplace offer (#4280) is not a catalogue product, so there
+  // is nothing to publish to another channel: it never offers "Not listed".
+  if (row.unmatchedOfferId || !coverageGapAvailable || !isMissingFrom(row, connectionId)) {
     return <>{intFormat.format(0)}</>;
   }
 
@@ -481,7 +495,9 @@ export function ProductSalesTable({
   });
 
   const items = query.data?.items ?? [];
-  const productIds = items.map((item) => item.productId);
+  // An unmatched offer's synthetic id is not a catalogue product: asking the
+  // catalogue about it would only produce a 404 per row.
+  const productIds = items.filter((item) => !item.unmatchedOfferId).map((item) => item.productId);
   const productQueries = useProductsBatchQuery(productIds, { enabled: productIds.length > 0 });
   const productsById = new Map(productIds.map((id, index) => [id, productQueries[index]?.data]));
   const connectionsById = new Map((connectionsQuery.data ?? []).map((c: Connection) => [c.id, c]));
@@ -509,6 +525,7 @@ export function ProductSalesTable({
   const channelColumns = deriveChannelColumns(items);
   const coverageGapAvailable = query.data?.coverageGapAvailable ?? true;
   const unresolvedProductCount = query.data?.unresolvedProductCount ?? 0;
+  const unmatchedOfferCount = query.data?.unmatchedOfferCount ?? 0;
 
   const columns: DataTableColumn<TopProductRow>[] = [
     {
@@ -605,25 +622,28 @@ export function ProductSalesTable({
         columns={columns}
         rowKey={(row) => row.productId}
         expandable={{
-          renderDetail: (row) => (
-            <ProductSalesRowDetail
-              row={row}
-              product={productsById.get(row.productId)}
-              filters={filters}
-              channelColumns={channelColumns}
-              connectionsById={connectionsById}
-              notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
-              demoMode={demoMode}
-            />
-          ),
+          renderDetail: (row) =>
+            row.unmatchedOfferId ? (
+              <p className="data-table__footnote">{copy.unmatchedDetail}</p>
+            ) : (
+              <ProductSalesRowDetail
+                row={row}
+                product={productsById.get(row.productId)}
+                filters={filters}
+                channelColumns={channelColumns}
+                connectionsById={connectionsById}
+                notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
+                demoMode={demoMode}
+              />
+            ),
           toggleLabel: (row, expanded) =>
             interpolate(expanded ? copy.collapse : copy.expand, {
-              product: row.name ?? row.productId,
+              product: productRowLabel(row, copy.unmatchedName),
             }),
         }}
         stickyLeftColumns={1}
         cardView={{
-          title: (row) => row.name ?? row.productId,
+          title: (row) => productRowLabel(row, copy.unmatchedName),
           subtitle: (row) => row.sku ?? undefined,
           summary: (row) => (
             <>
@@ -632,17 +652,22 @@ export function ProductSalesTable({
               {plural(row.units, copy.cardUnits)}
             </>
           ),
-          detail: (row) => (
-            <VariantChannelMatrix
-              productId={row.productId}
-              productName={row.name ?? row.productId}
-              filters={filters}
-              channelColumns={channelColumns}
-              connectionsById={connectionsById}
-              notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
-              demoMode={demoMode}
-            />
-          ),
+          // Same rule as the desktop detail above: an unmatched offer has no
+          // variants to ask for, and its synthetic id must never be shown.
+          detail: (row) =>
+            row.unmatchedOfferId ? (
+              <p className="data-table__footnote">{copy.unmatchedDetail}</p>
+            ) : (
+              <VariantChannelMatrix
+                productId={row.productId}
+                productName={productRowLabel(row, copy.unmatchedName)}
+                filters={filters}
+                channelColumns={channelColumns}
+                connectionsById={connectionsById}
+                notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
+                demoMode={demoMode}
+              />
+            ),
           collapsibleDetail: true,
         }}
         emptyState={<EmptyValue label={copy.empty} />}
@@ -655,6 +680,11 @@ export function ProductSalesTable({
       {unresolvedProductCount > 0 ? (
         <p className="data-table__footnote">
           {plural(unresolvedProductCount, copy.unresolved)}
+        </p>
+      ) : null}
+      {unmatchedOfferCount > 0 ? (
+        <p className="data-table__footnote">
+          {plural(unmatchedOfferCount, copy.unmatchedFootnote)}
         </p>
       ) : null}
     </article>

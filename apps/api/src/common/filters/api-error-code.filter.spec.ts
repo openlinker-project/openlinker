@@ -145,6 +145,34 @@ describe('ApiErrorCodeFilter', () => {
     });
   });
 
+  it.each([401, 403])(
+    'should not let a downstream %s pose as an OpenLinker session error',
+    (statusCode) => {
+      const { host, status, json } = createHost();
+      const refused = Object.assign(new Error('Erli GET delivery/priceLists failed (401)'), {
+        statusCode,
+      });
+
+      filter.catch(refused, host);
+
+      expect(status).toHaveBeenCalledWith(502);
+      expect(json).toHaveBeenCalledWith({
+        statusCode: 502,
+        code: 'PROVIDER_REJECTED',
+        message: 'Erli GET delivery/priceLists failed (401)',
+        providerMessage: 'Erli GET delivery/priceLists failed (401)',
+      });
+    }
+  );
+
+  it('should keep a real Nest 401 as it is', () => {
+    const { host, status } = createHost();
+
+    filter.catch(new HttpException('Unauthorized', 401), host);
+
+    expect(status).toHaveBeenCalledWith(401);
+  });
+
   it('should read the status field when statusCode is absent', () => {
     const { host, status, json } = createHost();
 

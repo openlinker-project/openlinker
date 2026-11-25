@@ -26,10 +26,11 @@ export type CoverageCategory = 'currency' | 'tax-a' | 'tax-b' | 'tax-c' | 'produ
  * literal copy (not imported — the e2e package does not depend on
  * `apps/web`) rather than a full-sentence match, since the count varies.
  */
-const COVERAGE_ROW_TEXT: Record<CoverageCategory, string> = {
+// A RegExp where the copy pluralises ("has"/"have"): one affected order reads singular.
+const COVERAGE_ROW_TEXT: Record<CoverageCategory, string | RegExp> = {
   currency: 'counted in an outdated currency',
-  'tax-a': 'have an unconfirmed tax rate',
-  'tax-b': 'have no tax rate at all',
+  'tax-a': /ha(s|ve) an unconfirmed tax rate/,
+  'tax-b': /ha(s|ve) no tax rate at all/,
   'tax-c': 'rate not yet resolved',
   'product-matching': 'with a product-matching error',
 };
@@ -37,8 +38,8 @@ const COVERAGE_ROW_TEXT: Record<CoverageCategory, string> = {
 /** Modal title substring per category, from the same copy table's `modalTitle`. */
 const COVERAGE_MODAL_TEXT: Record<CoverageCategory, string> = {
   currency: 'counted in an outdated currency',
-  'tax-a': 'have an unconfirmed tax rate',
-  'tax-b': 'have no tax rate at all',
+  'tax-a': 'ha(s|ve) an unconfirmed tax rate',
+  'tax-b': 'ha(s|ve) no tax rate at all',
   'tax-c': 'rate still unresolved',
   'product-matching': 'with a product-matching error',
 };
@@ -96,7 +97,7 @@ export class AnalyticsPage {
     // Analytics owns `/` since #2740 — that is the real route with the
     // search-param-reading logic, so navigate there directly.
     await this.page.goto(`/${query ? `?${query}` : ''}`);
-    await expect(this.page.getByRole('heading', { name: 'Analytics', exact: true })).toBeVisible();
+    await expect(this.page.getByRole('heading', { name: /^Analytics\b/ })).toBeVisible();
   }
 
   get convertNote(): Locator {

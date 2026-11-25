@@ -118,11 +118,11 @@ export function createProductsListRegistry(input: ProductsListConfigInput): List
       header: input.lockedHeader,
       sortKeys: ['name', 'sku'],
       render: cells.product,
-      width: '31%',
+      width: '29%',
     },
     columns: withColumnLayout([
       { id: 'source', label: labels.source, description: labels.sourceFields, defaultVisible: true, width: '14%', header: labels.source, render: cells.source },
-      { id: 'stock', label: labels.stock, defaultVisible: true, width: '14%', header: labels.stock, sortKey: 'stock', render: cells.stock },
+      { id: 'stock', label: labels.stock, defaultVisible: true, width: '16%', header: labels.stock, sortKey: 'stock', render: cells.stock },
       { id: 'listings', label: labels.listings, defaultVisible: true, width: '19%', header: labels.listings, render: cells.listings },
       {
         id: 'money',

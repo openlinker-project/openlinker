@@ -238,7 +238,7 @@
     "backToEnv": "Back to the server setting",
     "field": {
       "ariaLabel": "Update news on or off",
-      "description": "When off, no what-changed window appears after an update, and the bell loses its news card with the steps to set up and the guides to new features. The bell and every other notification stay. The list of changes is still on the \"What's new\" page.",
+      "description": "When off, no what-changed window appears after an update, and the bell loses its news card with the steps to set up and the guides to new features. The bell and every other notification stay. The list of changes is still on the \"News and notifications\" page.",
       "label": "Show news after an update"
     },
     "lead": "Applies to every user of this installation.",

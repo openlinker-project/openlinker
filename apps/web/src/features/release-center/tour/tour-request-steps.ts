@@ -49,7 +49,11 @@ export function tourStepsForRequest(
   if (request.replaySteps) {
     const ids = new Set(request.replayShowcaseIds ?? []);
     const steps: TourStepInput[] = [
-      ...request.replaySteps.map((r) => ({ stepId: r.stepId, connectionId: r.connectionId, importance: r.importance })),
+      // The same rule as the open list below: a replay started from a card or the walk-all row carries every
+      // step the card lists, so the view tour must drop the ones whose page needs the right to change settings.
+      ...request.replaySteps
+        .filter((r) => canConfig || stepViewable(r.stepId))
+        .map((r) => ({ stepId: r.stepId, connectionId: r.connectionId, importance: r.importance })),
       ...showcases.filter((s) => ids.has(s.showcase.id)).flatMap(expandShowcase),
     ];
     return { steps, startIndex: 0 };

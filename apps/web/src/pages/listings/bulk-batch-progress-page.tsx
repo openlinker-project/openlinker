@@ -10,7 +10,7 @@
  * @module apps/web/src/pages/listings
  */
 import { useCallback, useMemo, type ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -41,6 +41,8 @@ import {
   selectFailedRecords,
 } from '../../features/listings/lib/batch-recovery';
 import { useBulkBatchQuery } from '../../features/listings/hooks/use-bulk-batch-query';
+import { useBundleOfferPreview } from '../../features/listings/hooks/use-bundle-offer-preview';
+import type { BundleOfferPreviewItem } from '../../features/listings/api/listings.types';
 import { useBulkRetryFailedMutation } from '../../features/listings/hooks/use-bulk-retry-failed-mutation';
 import { useConnectionsQuery } from '../../features/connections';
 import { splitAccountLevelFailures } from '../../features/listings/lib/account-level-failures';
@@ -52,6 +54,8 @@ import {
 } from '../../features/listings/api/bulk-listings.types';
 import { describeApiError } from '../../shared/api/describe-api-error';
 
+const NO_BUNDLE_ITEMS: BundleOfferPreviewItem[] = [];
+
 type BulkBatchProgressCopy = ResolvedCopy<Messages['listings']>['bulkBatchProgressPage'];
 
 export function BulkBatchProgressPage(): ReactElement {
@@ -61,6 +65,18 @@ export function BulkBatchProgressPage(): ReactElement {
   const plural = usePlural();
   const query = useBulkBatchQuery(batchId);
   const retryMutation = useBulkRetryFailedMutation();
+  const location = useLocation();
+  const skippedAlreadyListed = readSkippedCount(location.state);
+  // Which records are sets or multipacks, and what they were made of. Asked only
+  // for the batch's own variants; a bundle with no answer simply reads as a row.
+  const bundleItems = useMemo<BundleOfferPreviewItem[]>(
+    () =>
+      query.data
+        ? query.data.records.map((record) => ({ variantId: record.internalVariantId }))
+        : NO_BUNDLE_ITEMS,
+    [query.data],
+  );
+  const bundlePreview = useBundleOfferPreview(query.data?.connectionId, bundleItems);
   const connectionsQuery = useConnectionsQuery();
   const { showToast } = useToast();
   const demoMode = useDemoMode();
@@ -393,6 +409,7 @@ export function BulkBatchProgressPage(): ReactElement {
       <BulkBatchProgressTable
         records={batch.records}
         buildFixUrl={write.canWrite ? buildRowFixUrl : undefined}
+        bundles={bundlePreview.bundles}
         accountLevelRecordIds={accountLevelRecordIds}
         accountLevelRowLabel={batchCopy.accountRefused.rowPointer}
       />
@@ -406,10 +423,24 @@ export function BulkBatchProgressPage(): ReactElement {
                 { elapsed }
               )}
             </strong>{' '}
-            <span aria-hidden="true">·</span> {plural(batch.succeededCount, copy.summary.created)}{' '}
-            <span aria-hidden="true">·</span> {plural(batch.failedCount, copy.summary.failed)}
+            <span aria-hidden="true">·</span>{' '}
+            {plural(batch.succeededCount, copy.summary.created)}{' '}
+            <span aria-hidden="true">·</span>{' '}
+            {plural(batch.failedCount, copy.summary.failed)}
+            {skippedAlreadyListed > 0 ? (
+              <>
+                {' '}
+                <span aria-hidden="true">·</span>{' '}
+                {plural(skippedAlreadyListed, copy.summary.skipped)}
+              </>
+            ) : null}
           </div>
           <div className="bulk-batch__summary-links">
+            {bundlePreview.bundles.size > 0 ? (
+              <Link to="/products?bundles=only">
+                {copy.summary.openBundles} <span aria-hidden="true">→</span>
+              </Link>
+            ) : null}
             <Link to="/listings">
               {copy.openListings} <span aria-hidden="true">→</span>
             </Link>
@@ -468,6 +499,13 @@ function elapsedMs(startIso: string, endIso: string): number | null {
   const end = new Date(endIso).getTime();
   if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
   return end - start;
+}
+
+/** The submit step hands the skip count over in navigation state; anything else reads as none. */
+function readSkippedCount(state: unknown): number {
+  if (typeof state !== 'object' || state === null) return 0;
+  const value = (state as { skippedAlreadyListedCount?: unknown }).skippedAlreadyListedCount;
+  return typeof value === 'number' && value > 0 ? value : 0;
 }
 
 function isValidIso(iso: string): boolean {

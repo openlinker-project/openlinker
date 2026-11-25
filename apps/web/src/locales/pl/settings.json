@@ -244,7 +244,7 @@
     "backToEnv": "Wróć do ustawienia serwera",
     "field": {
       "ariaLabel": "Nowości po aktualizacji włączone lub wyłączone",
-      "description": "Po wyłączeniu po aktualizacji nie pojawi się okno ze zmianami, a w dzwonku zniknie karta nowości z krokami do ustawienia i przewodnikami po nowych funkcjach. Dzwonek i pozostałe powiadomienia zostają. Lista zmian nadal jest na stronie „Co nowego”.",
+      "description": "Po wyłączeniu po aktualizacji nie pojawi się okno ze zmianami, a w dzwonku zniknie karta nowości z krokami do ustawienia i przewodnikami po nowych funkcjach. Dzwonek i pozostałe powiadomienia zostają. Lista zmian nadal jest na stronie „Nowości i powiadomienia”.",
       "label": "Pokazuj nowości po aktualizacji"
     },
     "lead": "Dotyczy wszystkich użytkowników instalacji.",

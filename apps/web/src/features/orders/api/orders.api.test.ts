@@ -198,6 +198,20 @@ describe('orders api — lifecycle phase (#2310)', () => {
     expect(paths[0]).toContain('/orders/lifecycle-summary');
     expect(paths[0]).toContain('sourceConnectionId=conn-1');
   });
+
+  it('sends hidden=true to the summaries so the KPI cards match the hidden list (#4289)', async () => {
+    const { api, paths } = recordingApi();
+
+    await api.statusSummary({ hidden: true });
+    await api.slaSummary({ hidden: true });
+    await api.lifecycleSummary({ hidden: true });
+    await api.statusSummary({});
+
+    expect(paths[0]).toContain('hidden=true');
+    expect(paths[1]).toContain('hidden=true');
+    expect(paths[2]).toContain('hidden=true');
+    expect(paths[3]).not.toContain('hidden');
+  });
 });
 
 describe('orders api — retryRouting (#3558)', () => {

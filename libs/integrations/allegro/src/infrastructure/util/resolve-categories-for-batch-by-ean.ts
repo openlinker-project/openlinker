@@ -53,6 +53,7 @@ import type {
   AllegroProductsSearchResponse,
 } from '../../domain/types/allegro-api.types';
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
+import { hasExactGtin } from './allegro-card-gtin';
 import type {
   ResolveCategoriesForBatchByEanOptions,
   StreamCategoriesForBatchByEanOptions,
@@ -380,27 +381,6 @@ async function fetchSearchResults(
     // (non-2xx) and ad-hoc network errors land here.
     return null;
   }
-}
-
-/**
- * True when the card carries an EAN-bearing parameter (`options.isGTIN === true`)
- * whose value matches `input.ean` exactly. Defensive against Allegro's fuzzy
- * matcher — even with `mode=GTIN` we re-filter on the GTIN parameter to be sure.
- *
- * Implementation note: the swagger documents the EAN as living inside the
- * `parameters[]` array under the GTIN-marked entry, NOT as a top-level field.
- * The `AllegroProductCardSummary.ean` field that the legacy #431 primitive
- * filters on is undocumented and may always be absent — we don't trust it here.
- */
-function hasExactGtin(card: AllegroProductCardSummary, ean: string): boolean {
-  if (!Array.isArray(card.parameters)) return false;
-  for (const param of card.parameters) {
-    if (param.options?.isGTIN !== true) continue;
-    if (Array.isArray(param.values) && param.values.some((v) => v === ean)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /**

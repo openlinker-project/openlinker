@@ -32,10 +32,10 @@ describe('MultipackHoldBanner (#3624)', () => {
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
     expect(screen.getByTestId('order-multipack-banner')).toHaveTextContent(
-      'Held: the offer is 3 units of one product',
+      'Order waiting: the offer sells 3 units of this product',
     );
     expect(screen.getByTestId('order-multipack-confirm-text')).toHaveTextContent(
-      'One sale of this offer = 3 x Kawa ziarnista Etiopia 250 g. Every order waiting for it will continue.',
+      'Confirm that one sale of this offer = 3 x Kawa ziarnista Etiopia 250 g. The order continues and stock drops by 3.',
     );
     await waitFor(() => {
       expect(screen.getByTestId('order-multipack-create-bundle')).toBeEnabled();
@@ -43,6 +43,24 @@ describe('MultipackHoldBanner (#3624)', () => {
     await user.click(screen.getByTestId('order-multipack-create-bundle'));
     expect(apiClient.bundles.confirmMultipack).toHaveBeenCalledWith('v-coffee', 3);
     expect(await screen.findByTestId('order-multipack-created')).toHaveTextContent('2 orders continue.');
+    expect(screen.getByTestId('order-multipack-rule-link')).toHaveAttribute(
+      'href',
+      '/products?search=KAW-250-ETI',
+    );
+  });
+
+  it('should say plainly what confirming does before the click', () => {
+    renderWithProviders(<MultipackHoldBanner hold={hold} />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    expect(screen.getByTestId('order-multipack-preview')).toHaveTextContent(
+      /1 sale.*3 x Kawa ziarnista Etiopia 250 g/,
+    );
+    expect(screen.getByTestId('order-multipack-effects').querySelectorAll('li')).toHaveLength(3);
+    expect(screen.getByTestId('order-multipack-make-bundle')).toHaveAttribute(
+      'href',
+      '/products/bundles/new?component=v-coffee&quantity=3',
+    );
   });
 
   it('should enable the action for an operator, who holds bundles:write but not products:write', async () => {

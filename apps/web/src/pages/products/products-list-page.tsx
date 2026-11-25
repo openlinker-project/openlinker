@@ -35,6 +35,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { resolveSelectionBundle } from './selection-bundle';
 import { BundleGuide } from '../../features/bundles/components/bundle-guide';
 import { GuideButton } from '../../shared/ui/guide-drawer';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -108,6 +109,10 @@ import {
 import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
+/** The bundle wizard refuses more components than this, so the selection action says so. */
+const BUNDLE_COMPONENT_LIMIT = 20;
+// The bulk multipack creator fetches at most this many products (MAX_BULK_ROWS in features/bundles/lib/bundle-bulk-model.ts).
+const BULK_MULTIPACK_LIMIT = 50;
 /** Opens the product peek on arrival: `/products?peek=<productId>`. */
 const PEEK_PARAM = 'peek';
 /** Maximum products an operator can bulk-list in one batch (BE-enforced ceiling). */
@@ -143,6 +148,7 @@ function ProductsListPageBody(): ReactElement {
     searchInput,
     filters,
     anyFilterActive,
+    otherFilterActive,
     handleSearchChange,
     setFilterParam,
     setOffset,
@@ -170,6 +176,8 @@ function ProductsListPageBody(): ReactElement {
   // link"). On submit click, the variant IDs are serialised into the wizard
   // route so the destination has the full list.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Page-scoped: lists the loaded bundles whose derived stock is 0 (#6 lane C).
+  const [restockOnly, setRestockOnly] = useState(false);
   // The product the peek shows (#4027); local UI state like the selection.
   // `?peek=<id>` opens it on arrival - an order line links here (#4026).
   const [peekId, setPeekId] = useState<string | null>(() => searchParams.get(PEEK_PARAM));
@@ -321,6 +329,26 @@ function ProductsListPageBody(): ReactElement {
       return next;
     });
   }, []);
+
+  // Link for the selection-bar bundle action. Product ids, not variant ids:
+  // the list selects products, and the wizard resolves a single-variant
+  // product to its variant itself. Bundles cannot be components, and a
+  // multi-variant product has no single component to seed, so both are
+  // excluded rather than silently dropped by the wizard.
+  const selectionBundle = useMemo(
+    () => resolveSelectionBundle(items, selectedIds, BUNDLE_COMPONENT_LIMIT),
+    [items, selectedIds]
+  );
+  const selectionBundleLink = selectionBundle.link;
+  const restockItems = useMemo(
+    () => items.filter((p) => p.bundle && p.availableToPromise === 0),
+    [items],
+  );
+  const limitedByText = useCallback(
+    (ref: { name: string | null; sku: string | null }): string =>
+      interpolate(bundleCopy.list.limitedBy, { name: ref.name ?? ref.sku ?? '' }),
+    [bundleCopy],
+  );
 
   const visibleIds = useMemo(() => items.map((p) => p.id), [items]);
   const visibleSelectedCount = useMemo(
@@ -521,7 +549,7 @@ function ProductsListPageBody(): ReactElement {
                   <ProductThumbnail src={product.images?.[0]} name={product.name} />
                 )}
                 <span className="products-cell-stack">
-                  <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
+                  <span className="ds-row products-name-row">
                     <Link
                       to={product.id}
                       className="product-row__name product-row__name--link"
@@ -579,14 +607,17 @@ function ProductsListPageBody(): ReactElement {
                       with the row (ProductRowDetail). */}
                   {product.bundle?.limitedBy ? (
                     <span
-                      className="products-cell-sub"
+                      className="products-cell-sub products-limit-line"
+                      title={limitedByText(product.bundle.limitedBy)}
                       data-testid={`bundle-list-row-${product.sku ?? product.id}`}
                     >
-                      <span data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}>
-                        {interpolate(bundleCopy.list.limitedBy, {
-                          name: product.bundle.limitedBy.name ?? product.bundle.limitedBy.sku ?? '',
-                        })}
-                      </span>
+                      <StatusBadge
+                        tone="warning"
+                        compact
+                        data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}
+                      >
+                        {limitedByText(product.bundle.limitedBy)}
+                      </StatusBadge>
                     </span>
                   ) : null}
                   {/* The Source column is `hideBelow: 1024`, so below that width the
@@ -671,6 +702,7 @@ function ProductsListPageBody(): ReactElement {
     [
       hasProductMaster,
       bundleCopy,
+      limitedByText,
       renderStockCell,
       renderCoveragePills,
       renderStalenessBadge,
@@ -972,6 +1004,22 @@ function ProductsListPageBody(): ReactElement {
           message={describeApiError(query.error, 'products')}
           action={<Button onClick={() => { void query.refetch(); }}>{copy.error.retry}</Button>}
         />
+      ) : items.length === 0 && bundleView === 'only' && !otherFilterActive ? (
+        <EmptyState
+          liveRegion="off"
+          title={bundleCopy.list.emptyTitle}
+          message={bundleCopy.list.emptyMessage}
+          action={
+            <span className="button-group" data-testid="bundle-list-empty">
+              {bundleWrite.canWrite ? (
+                <Link className="button button--primary" to="/products/bundles/new" data-testid="bundle-list-empty-create">
+                  {bundleCopy.list.emptyCreate}
+                </Link>
+              ) : null}
+              <GuideButton label={bundleCopy.list.emptyGuide} />
+            </span>
+          }
+        />
       ) : items.length === 0 ? (
         <EmptyState
           liveRegion="off"
@@ -999,13 +1047,27 @@ function ProductsListPageBody(): ReactElement {
         />
       ) : (
         <>
+          {bundleView === 'only' && restockItems.length > 0 ? (
+            <button
+              type="button"
+              className="ux-restock-chip"
+              aria-pressed={restockOnly}
+              title={bundleCopy.list.restockChipHint}
+              data-testid="bundle-list-restock-chip"
+              onClick={() => {
+                setRestockOnly((v) => !v);
+              }}
+            >
+              {interpolate(bundleCopy.list.restockChip, { n: restockItems.length })}
+            </button>
+          ) : null}
           <DataTable
             caption={copy.tableCaption}
             className="products-table list-table--fixed list-table--peek"
             tableTestId="stock-list-table"
             rowAttributes={(product) => ({ 'data-testid': `stock-list-row-${product.sku ?? product.id}` })}
             columns={columns}
-            rows={items}
+            rows={restockOnly && bundleView === 'only' ? restockItems : items}
             rowKey={(product) => product.id}
             stickyLeftColumns={2}
             stickyRightColumns={1}
@@ -1030,6 +1092,56 @@ function ProductsListPageBody(): ReactElement {
                     <Button tone="ghost" className="button--sm" onClick={clearSelection}>
                       {copy.bulk.clear}
                     </Button>
+                    {bundleWrite.canWrite && selectionBundleLink !== null ? (
+                      <Link
+                        to={selectionBundleLink}
+                        className="button button--ghost button--sm"
+                        data-testid="selection-make-bundle"
+                      >
+                        {selectedIds.size === 1
+                          ? bundleCopy.list.multipackFromSelected
+                          : bundleCopy.list.bundleFromSelected}
+                      </Link>
+                    ) : bundleWrite.canWrite && selectionBundle.disabledReason !== null ? (
+                      <Button
+                        tone="ghost"
+                        className="button--sm"
+                        disabled
+                        title={
+                          selectionBundle.disabledReason === 'tooMany'
+                            ? interpolate(copy.bulk.bundleDisabledTooMany, {
+                                max: format.number(BUNDLE_COMPONENT_LIMIT),
+                                n: format.number(selectedIds.size),
+                              })
+                            : copy.bulk.bundleDisabledMixed
+                        }
+                        data-testid="selection-make-bundle-disabled"
+                      >
+                        {bundleCopy.list.bundleFromSelected}
+                      </Button>
+                    ) : null}
+                    {bundleWrite.canWrite && selectedIds.size > BULK_MULTIPACK_LIMIT ? (
+                      <Button
+                        tone="ghost"
+                        disabled
+                        title={interpolate(bundleCopy.list.bulkMultipackTooMany, {
+                          max: format.number(BULK_MULTIPACK_LIMIT),
+                          n: format.number(selectedIds.size),
+                        })}
+                        data-testid="selection-bulk-multipack-disabled"
+                      >
+                        {interpolate(bundleCopy.list.bulkMultipackFromSelected, { n: format.number(selectedIds.size) })}
+                      </Button>
+                    ) : null}
+                    {bundleWrite.canWrite && selectedIds.size >= 2 && selectedIds.size <= BULK_MULTIPACK_LIMIT ? (
+                      <Link
+                        to={`/products/bundles/bulk?products=${[...selectedIds].map(encodeURIComponent).join(',')}`}
+                        className="button button--ghost button--sm"
+                        data-testid="selection-bulk-multipack"
+                      >
+                        {interpolate(bundleCopy.list.bulkMultipackFromSelected, { n: format.number(selectedIds.size) })}
+                      </Link>
+                    ) : null}
                     {/* Capability-gated (#1096/#1828): hidden with 0 publish destinations. */}
                     {publishDestinations.length > 0 && write.visible ? (
                       <Button tone="primary" onClick={handleCreateOffers}>

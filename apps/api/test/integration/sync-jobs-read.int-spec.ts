@@ -28,6 +28,10 @@ describe('Sync Jobs Read API Integration', () => {
 
   beforeAll(async () => {
     harness = await getTestHarness();
+    // A worker's database outlives the previous spec file it ran, and some
+    // specs reset in beforeEach only, so they leave their last test's rows
+    // behind. The first test here asserts an empty list.
+    await resetTestHarness();
   });
 
   afterEach(async () => {

@@ -184,6 +184,7 @@ dashboard checkpoints).
 | `invoicing` | inFakt run, payment marking, bulk issue/resend/e-mail, KOR corrections, FA(3) parity + preview, Transfer bank accounts (#1573). | Yes (issues/corrects invoices, synthesizes orders) | No |
 | `lifecycle` | Order-lifecycle idempotency, cross-channel stock propagation + oversell safety, stale-variant pruning (#1574). | Yes (real PS stock; pruning is destructive, opt-in) | No |
 | `access-control` | Demo mode, registration, RBAC, and UI-reflection checks. | Yes - registers real accounts (deleted on teardown) | No |
+| `buyer-data` | Buyer data retention rules (#4289): general settings, new-connection wizard, connection edit. | Yes (turns the global setting on, then off) | No |
 | `analytics` | `/analytics` mockup-parity: real page vs. the repo-committed mockup, state by state (#2482). | Yes (seeds orders, temporarily flips the reporting currency) | No |
 
 > ⚠️ **Every project except `smoke`/`setup` mutates the stack** (publishes
@@ -276,6 +277,7 @@ annotated list.
 | `shipping` | `E2E_ORDER_ID` (or a golden-path `ready` order); `E2E_TEST_INPOST_WEBHOOK=true` (opt-in inbound ShipX webhook); `E2E_PACZKOMAT_ID`; skips without an InPost connection |
 | `invoicing` | `OL_PS_WEBSERVICE_KEY` (order synthesis); skips without an invoicing (inFakt) connection |
 | `lifecycle` | `OL_PS_WEBSERVICE_KEY` (stock/pruning); **`E2E_ALLOW_DESTRUCTIVE_PRUNE=true`** (opt-in irreversible pruning spec) |
+| `buyer-data` | `E2E_DATABASE_URL` (connection cleanup); the global buyer data setting must be **off** before the run |
 | `access-control` | `E2E_VIEWER_USER`/`E2E_VIEWER_PASS` (pre-seeded active viewer — see below); `E2E_TEST_RATE_LIMIT=true` (opt-in destructive register-429 assertion, demo mode only) |
 
 #### Choosing where the operator buys (`E2E_PURCHASE_PLATFORMS`)
