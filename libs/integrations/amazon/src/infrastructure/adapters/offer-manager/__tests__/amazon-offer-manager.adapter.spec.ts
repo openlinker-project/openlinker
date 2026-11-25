@@ -497,6 +497,20 @@ describe('AmazonOfferManagerAdapter.createOffer', () => {
     });
   });
 
+  it('should refuse a bundle before any call, even when a listing exists under the SKU', async () => {
+    const { adapter, get, put } = createSetup();
+    get.mockResolvedValue({ status: 200, data: fbmListing({ sku: 'OL-abc' }), requestId: 'r' });
+
+    await expect(
+      adapter.createOffer({
+        ...cmd,
+        productSet: [{ product: { id: 'B0MUG00001' }, quantity: { value: 2 } }],
+      } as never),
+    ).rejects.toThrow(/bundle/);
+    expect(get).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+  });
+
   it('should not overwrite a listing that already exists under the SKU', async () => {
     const { adapter, get, put } = createSetup();
     get.mockResolvedValue({ status: 200, data: fbmListing({ sku: 'OL-abc' }), requestId: 'r' });
