@@ -194,11 +194,13 @@ describe('ShopifyOrderSourceAdapter', () => {
       expect((query.mock.calls[0] as unknown[])[0]).toContain('OlOrderSourceScopes');
     });
 
-    it('should refuse a cursor-less read when the scopes cannot be read', async () => {
+    it('should fail a cursor-less poll with a retryable error when the scopes cannot be read', async () => {
       const query = jest.fn().mockRejectedValue(new Error('boom'));
-      await expect(build(query).listOrderFeed({ fromCursor: null, limit: 10 })).rejects.toBeInstanceOf(
-        OrderSyncStartUnavailableError,
-      );
+      const failure = await build(query)
+        .listOrderFeed({ fromCursor: null, limit: 10 })
+        .catch((e: unknown) => e);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).not.toBeInstanceOf(OrderSyncStartUnavailableError);
     });
 
     it('should not check the scope on the live feed', async () => {

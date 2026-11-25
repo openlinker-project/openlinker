@@ -489,9 +489,12 @@ export class ShopifyOrderSourceAdapter
     this.canReadAllOrders ??= this.readsAllOrders();
     const allowed = await this.canReadAllOrders;
     if (allowed === null) {
-      // Unknown scope is refused rather than read on blind. The typed error ends the poll as
-      // a business failure (no retry); the next scheduled poll asks again.
-      await this.assertOldOrdersReadable(null);
+      // A plain Error, not the typed refusal: nothing here is the operator's to fix, so the
+      // poll is retried instead of ending as a business failure.
+      this.canReadAllOrders = null;
+      throw new Error(
+        `Could not check the ${READ_ALL_ORDERS_SCOPE} scope for the order feed (connection: ${this.connection.id})`,
+      );
     }
     if (allowed === false && !this.warnedOldOrdersHidden) {
       this.warnedOldOrdersHidden = true;
