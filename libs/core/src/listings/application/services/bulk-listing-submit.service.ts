@@ -659,7 +659,11 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
           );
           continue;
         }
-        const hasBarcode = Boolean(sibling.ean ?? sibling.gtin ?? overrideEan(sibling.id));
+        const overridden = overrideEan(sibling.id);
+        const hasBarcode =
+          overridden !== undefined
+            ? overridden.trim() !== ''
+            : Boolean(sibling.ean ?? sibling.gtin);
         if (!hasBarcode && !isSelected && dropBarcodelessSiblings) {
           this.logger.warn(
             `Bulk submit: skipping variant ${sibling.id} of product ${productId} — ` +
@@ -801,7 +805,8 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       const variant = variantsById.get(job.variantId) ?? null;
       const override = input.perVariantOverrides?.[job.variantId];
       const ean = override?.overrides?.ean ?? variant?.ean ?? variant?.gtin ?? null;
-      if (ean == null) {
+      // '' is the explicit no-barcode choice (#4036): nothing to validate.
+      if (ean == null || ean === '') {
         kept.push(job);
         continue;
       }

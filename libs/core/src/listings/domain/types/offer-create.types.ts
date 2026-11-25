@@ -95,6 +95,9 @@ export interface CreateOfferOverrides {
    * (catalog self-link/GTIN parameter AND category-resolution-by-barcode).
    * GS1-checksum validity and batch-wide effective-identifier uniqueness are
    * to be enforced in `BulkListingSubmitService` (#1741 AC D; pending), not here.
+   *
+   * An empty string is the explicit "list without a barcode" choice (#4036): the
+   * builder then uses no barcode at all instead of falling back to the master's.
    */
   ean?: string;
   /**
