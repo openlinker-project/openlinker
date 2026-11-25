@@ -63,7 +63,7 @@
     "promptTemplate": "Prompt template",
     "promptTemplates": "Prompt templates",
     "providerSettings": "Provider settings",
-    "releaseCenter": "News and notifications",
+    "releaseCenter": "Update news",
     "return": "Return",
     "returns": "Returns",
     "runLog": "Run log",
@@ -78,7 +78,7 @@
     "users": "Users",
     "webhook": "Webhook",
     "webhooks": "Webhooks",
-    "whatsNew": "What's new",
+    "whatsNew": "News and notifications",
     "whoDecides": "Who decides what"
   },
   "palette": {

@@ -163,10 +163,10 @@
         },
         "1": {
           "body": "The full list of changes for every release lives here, with the steps to set up and their progress beside it.",
-          "title": "What's new"
+          "title": "News and notifications"
         }
       },
-      "title": "Notifications and What's new",
+      "title": "News and notifications",
       "why": "See where each release's changes and things to set up live."
     }
   },
@@ -205,7 +205,7 @@
     },
     "close": "Close the tour",
     "collapse": "Fold to the steps only",
-    "doneToastBody": "That is all. You can return to it from What's new.",
+    "doneToastBody": "That is all. You can return to it from News and notifications.",
     "doneToastTitle": "Guide finished",
     "expand": "Show the text",
     "finish": "Done",
@@ -269,6 +269,6 @@
     "setupTitle": "Still to set up",
     "setupTitleView": "What changed",
     "showWhere": "Show me where",
-    "title": "What's new in OpenLinker"
+    "title": "News and notifications"
   }
 }
