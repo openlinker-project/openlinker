@@ -9900,13 +9900,14 @@ a.kpi-card:focus-visible {
 
 /* Wide screens (>= 1920px): the panel opens as a centred modal (#4026 follow-up).
    Centred with auto margins rather than a translate, because Motion owns the
-   transform for the open/close scale. `fit-content` lets the auto margins
-   centre it vertically while the body still scrolls inside the cap. */
+   transform for the open/close scale. The height is definite, not `fit-content`:
+   a short or still-loading body must not shrink the modal to a squeezed card
+   (#4269); the body scrolls inside it. */
 .side-panel.side-panel--modal {
   inset: 0;
   margin: auto;
   width: min(calc(var(--side-panel-width, 480px) + 120px), calc(calc(100 * var(--ui-vw)) - 64px));
-  height: fit-content;
+  height: min(880px, calc(calc(100 * var(--ui-vh)) - 96px));
   max-height: min(880px, calc(calc(100 * var(--ui-vh)) - 96px));
   padding: 0;
   border: 1px solid var(--border-default);
