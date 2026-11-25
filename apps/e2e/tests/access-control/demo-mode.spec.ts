@@ -68,7 +68,7 @@ test.describe('access-control: demo mode', () => {
       // wait for the SPA to be interactive before asserting (issue #1513).
       // Since #4029 the login card owns the heading ("Sign in" / "Sign in to the
       // demo") and registration is a tab beside it, not a trailing link.
-      const heading = page.locator('.auth-card__title');
+      const heading = page.locator('.auth-card__title').first();
       await gotoWhenAppMounted(page, '/login', { readyLocator: heading });
       await expect(heading).toBeVisible();
 
