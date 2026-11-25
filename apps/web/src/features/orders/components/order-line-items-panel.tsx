@@ -51,6 +51,8 @@ type LineItemsCopy = ResolvedCopy<Messages['orders']>['orderLineItems'];
 
 interface OrderLineItemsPanelProps {
   items: ParsedOrderItem[];
+  /** Opens a product's peek from its line (#4286). */
+  onOpenProduct?: (productId: string) => void;
   /**
    * Only used for per-line price formatting. Totals are rendered separately
    * by `OrderTotalsPanel`.
@@ -94,6 +96,7 @@ export function OrderLineItemsPanel({
   channelQuantities,
   bundleLines,
   documentConnectionId = null,
+  onOpenProduct,
   documentNumber = null,
 }: OrderLineItemsPanelProps): ReactElement {
   const bundleCopy = useMessages('bundles');
@@ -153,6 +156,13 @@ export function OrderLineItemsPanel({
           codeIsFallback={!item.sku}
           imageSrc={item.imageUrl}
           placeholderName={item.name ?? item.sku ?? item.productId ?? item.id}
+          onOpen={
+            item.productId && onOpenProduct
+              ? () => {
+                  onOpenProduct(item.productId as string);
+                }
+              : undefined
+          }
           extra={
             <>
               {bundleByLine.has(item.id) ? (

@@ -1636,6 +1636,9 @@
     "title": "Dostawa"
   },
   "orderDetailHeader": {
+    "allIssues": "Wszystkie problemy ({count})",
+    "copiedId": "Skopiowano",
+    "copyId": "Kopiuj id",
     "items": {
       "few": "{n} pozycje",
       "many": "{n} pozycji",
@@ -1643,17 +1646,15 @@
       "other": "{n} pozycji"
     },
     "moreItems": "jeszcze {count}",
-    "noDestination": "brak kanału docelowego",
+    "paidOn": "Opłacone w {channel}",
     "payment": {
       "awaiting": "Czeka na płatność",
       "cod": "Za pobraniem",
       "paid": "Opłacone",
       "refunded": "Zwrócono pieniądze"
     },
-    "placed": "Złożone",
     "received": "Otrzymane",
-    "routeDestination": "kanał docelowy",
-    "routeSource": "źródło",
+    "shipBy": "Wyślij do",
     "title": "Zamówienie {number}",
     "units": {
       "few": "{n} sztuki",
@@ -1673,9 +1674,36 @@
       "one": "{n} kanał docelowy z błędem",
       "other": "{n} kanału docelowego z błędem"
     },
+    "generateLabel": "Wygeneruj etykietę",
     "loadErrorTitle": "Nie udało się wczytać zamówienia",
     "loadingMessage": "Pobieranie szczegółów zamówienia…",
     "loadingTitle": "Wczytywanie zamówienia",
+    "nextStep": {
+      "also": "Dodatkowo:",
+      "documentBlocked": "Dokument sprzedaży wymaga uwagi",
+      "failedDestinations": {
+        "few": "{n} miejsca docelowe nie przyjęły zamówienia",
+        "many": "{n} miejsc docelowych nie przyjęło zamówienia",
+        "one": "{n} miejsce docelowe nie przyjęło zamówienia",
+        "other": "{n} miejsca docelowego nie przyjęło zamówienia"
+      },
+      "hideAll": "Ukryj",
+      "label": "Następny krok",
+      "onHold": "Wstrzymane: {reason}",
+      "open": "Otwórz: {tab}",
+      "readyToShip": "Gotowe do wysyłki",
+      "shipByOverdue": "Minął termin wysyłki",
+      "shipmentFailed": "Przesyłka się nie udała",
+      "short": {
+        "document-blocked": "Dokument wymaga uwagi",
+        "failed-destinations": "Miejsce docelowe nie przyjęło",
+        "on-hold": "Wstrzymane",
+        "ready-to-ship": "Gotowe do wysyłki",
+        "ship-by-overdue": "Minął termin wysyłki",
+        "shipment-failed": "Przesyłka nieudana"
+      },
+      "showAll": "Pokaż wszystkie"
+    },
     "notFound": "Nie znaleziono zamówienia",
     "parseWarnings": {
       "label": {
@@ -1687,6 +1715,16 @@
       "title": "Niektórych pól nie udało się odczytać - zobacz surowe dane"
     },
     "pricingTitle": "Ceny i podatek",
+    "progress": {
+      "delivered": "Dostarczone",
+      "label": "Postęp zamówienia",
+      "packed": "Spakowane",
+      "paid": "Opłacone",
+      "placed": "Złożone",
+      "sent": "Wysłane do sklepów",
+      "sentCount": "{done} z {total} wysłano",
+      "shipped": "Wysłane"
+    },
     "rawSnapshotTitle": "Surowe dane zamówienia",
     "retry": "Spróbuj ponownie",
     "retryFailedTitle": "Ponowienie nie powiodło się",
@@ -1694,6 +1732,10 @@
     "retryQueuedTitle": "Ponowienie w kolejce",
     "retrying": "Ponawianie…",
     "routedNote": "To zamówienie obsługuje routing OMS, więc nie jest kopiowane do miejsc docelowych i nie można go tu ponowić.",
+    "shipTo": {
+      "pickupPoint": "Punkt odbioru",
+      "title": "Dostawa do"
+    },
     "summary": {
       "buyerTaxId": "NIP kupującego",
       "orderNumber": "Nr zamówienia",
@@ -1729,6 +1771,19 @@
       },
       "title": "Status synchronizacji",
       "titleWithCount": "Status synchronizacji ({count})"
+    },
+    "tabs": {
+      "ariaLabel": "Sekcje zamówienia",
+      "documents": "Dokumenty sprzedaży",
+      "history": "Historia",
+      "needsAttention": "Wymaga uwagi",
+      "notes": "Notatki",
+      "overview": "Przegląd",
+      "packing": "Pakowanie",
+      "returns": "Zwroty",
+      "seeMore": "Więcej",
+      "shipping": "Wysyłka",
+      "technical": "Dane techniczne"
     },
     "title": "Szczegóły zamówienia",
     "viewFailedOrders": "Pokaż nieudane zamówienia",

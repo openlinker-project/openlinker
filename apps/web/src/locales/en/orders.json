@@ -1552,22 +1552,23 @@
     "title": "Delivery"
   },
   "orderDetailHeader": {
+    "allIssues": "All issues ({count})",
+    "copiedId": "Copied",
+    "copyId": "Copy id",
     "items": {
       "one": "{n} item",
       "other": "{n} items"
     },
     "moreItems": "+{count} more",
-    "noDestination": "no destination",
+    "paidOn": "Paid on {channel}",
     "payment": {
       "awaiting": "Awaiting payment",
       "cod": "Cash on delivery",
       "paid": "Paid",
       "refunded": "Refunded"
     },
-    "placed": "Placed",
     "received": "Received",
-    "routeDestination": "destination",
-    "routeSource": "source",
+    "shipBy": "Ship by",
     "title": "Order {number}",
     "units": {
       "one": "{n} unit",
@@ -1583,9 +1584,34 @@
       "one": "{n} destination failed",
       "other": "{n} destinations failed"
     },
+    "generateLabel": "Generate label",
     "loadErrorTitle": "Unable to load order",
     "loadingMessage": "Fetching order details…",
     "loadingTitle": "Loading order",
+    "nextStep": {
+      "also": "Also:",
+      "documentBlocked": "The sales document needs attention",
+      "failedDestinations": {
+        "one": "{n} destination did not accept this order",
+        "other": "{n} destinations did not accept this order"
+      },
+      "hideAll": "Hide",
+      "label": "Next step",
+      "onHold": "On hold: {reason}",
+      "open": "Open {tab}",
+      "readyToShip": "Ready to ship",
+      "shipByOverdue": "The ship-by date has passed",
+      "shipmentFailed": "The shipment failed",
+      "short": {
+        "document-blocked": "Document needs attention",
+        "failed-destinations": "Destination failed",
+        "on-hold": "On hold",
+        "ready-to-ship": "Ready to ship",
+        "ship-by-overdue": "Past ship-by date",
+        "shipment-failed": "Shipment failed"
+      },
+      "showAll": "Show all"
+    },
     "notFound": "Order not found",
     "parseWarnings": {
       "label": {
@@ -1595,6 +1621,16 @@
       "title": "Some fields couldn't be parsed - see raw snapshot"
     },
     "pricingTitle": "Pricing & tax",
+    "progress": {
+      "delivered": "Delivered",
+      "label": "Order progress",
+      "packed": "Packed",
+      "paid": "Paid",
+      "placed": "Placed",
+      "sent": "Sent to shops",
+      "sentCount": "{done} of {total} sent",
+      "shipped": "Shipped"
+    },
     "rawSnapshotTitle": "Order Snapshot",
     "retry": "Retry",
     "retryFailedTitle": "Retry failed",
@@ -1602,6 +1638,10 @@
     "retryQueuedTitle": "Retry queued",
     "retrying": "Retrying…",
     "routedNote": "This order is handled by OMS routing, so it is not copied to destinations and cannot be retried here.",
+    "shipTo": {
+      "pickupPoint": "Pickup point",
+      "title": "Ship to"
+    },
     "summary": {
       "buyerTaxId": "Buyer tax ID",
       "orderNumber": "Order #",
@@ -1637,6 +1677,19 @@
       },
       "title": "Sync status",
       "titleWithCount": "Sync status ({count})"
+    },
+    "tabs": {
+      "ariaLabel": "Order sections",
+      "documents": "Sales documents",
+      "history": "History",
+      "needsAttention": "Needs attention",
+      "notes": "Notes",
+      "overview": "Overview",
+      "packing": "Packing",
+      "returns": "Returns",
+      "seeMore": "See more",
+      "shipping": "Shipping",
+      "technical": "Technical"
     },
     "title": "Order detail",
     "viewFailedOrders": "View failed orders",
