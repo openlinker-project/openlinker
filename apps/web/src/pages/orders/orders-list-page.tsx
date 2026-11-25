@@ -1649,10 +1649,12 @@ function OrdersListPageBody({ savedViews }: { savedViews: boolean }): ReactEleme
           {/* The control hides itself on a phone — cards ignore columns. With
               saved views the Columns panel in the filter row replaces it. */}
           {view ? null : (
-            <OrderColumnVisibilityControl
-              visibleColumnIds={visibleColumnIds}
-              onVisibleColumnIdsChange={setVisibleColumnIds}
-            />
+            <span className="tour-anchor" data-tour="orders-columns">
+              <OrderColumnVisibilityControl
+                visibleColumnIds={visibleColumnIds}
+                onVisibleColumnIdsChange={setVisibleColumnIds}
+              />
+            </span>
           )}
           <Button tone="ghost" className="button--sm" onClick={refreshAll}>
             {copy.refresh}
@@ -1870,6 +1872,7 @@ function OrdersListPageBody({ savedViews }: { savedViews: boolean }): ReactEleme
               internalOrderIds={(query.data?.items ?? []).map((order) => order.internalOrderId)}
             />
           ) : null}
+          <div data-tour="orders-table">
           <DataTable
             caption={copy.tableCaption}
             columns={tableColumns}
@@ -2304,6 +2307,7 @@ function OrdersListPageBody({ savedViews }: { savedViews: boolean }): ReactEleme
               },
             }}
           />
+          </div>
 
           <ListPagination
             offset={offset}

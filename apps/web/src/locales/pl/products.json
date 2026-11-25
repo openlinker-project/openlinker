@@ -404,7 +404,7 @@
       "unselectAll": "Odznacz wszystkie widoczne produkty"
     },
     "costPrices": "Ceny zakupu",
-    "description": "Centrum katalogu - wyszukiwanie, kondycja stanów i pokrycie ofertami w każdym kanale. Zaznacz do {max} produktów, aby zbiorczo utworzyć oferty.",
+    "description": "Wyszukuj produkty, sprawdzaj stany i oferty w każdym kanale. Zaznacz do {max} produktów, aby utworzyć dla nich oferty naraz.",
     "empty": {
       "filtered": "Żaden produkt nie pasuje do bieżących filtrów.",
       "manageConnections": "Zarządzaj połączeniami",

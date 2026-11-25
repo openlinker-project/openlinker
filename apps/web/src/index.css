@@ -396,6 +396,7 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
+  --ease-spring: linear(0, 0.009, 0.035 2.1%, 0.141, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017, 1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%, 1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%, 0.997 69.8%, 1.003 76.9%, 1); /* @kind other */
 
   /* ── Tracking (letter-spacing) ────────────────────────────────────── */
   --tracking-tight: -0.012em;
@@ -1300,7 +1301,8 @@ textarea,
     grid-template-columns: var(--shell-side) minmax(0, 1fr);
   }
 
-  .shell .page-layout {
+  .shell .page-layout,
+  .shell .shell-content:not(.shell-content--flush):not(.login-backdrop__scenes) > * {
     margin-inline: 0 auto;
   }
 
@@ -1940,6 +1942,9 @@ textarea,
   flex: 1;
   padding: 20px 16px 32px;
   overflow-x: hidden;
+  /* `clip` does not make this a scroll container, so `position: sticky`
+     descendants (the settings contents rail) pin to the viewport. */
+  overflow-x: clip;
   /* Cross-fade + tiny upward translate on route change (#775). Keyed
      by location.pathname on the <main> element. Respects
      prefers-reduced-motion. */
@@ -3136,7 +3141,6 @@ textarea,
   margin-top: var(--space-3);
 }
 
-
 /* ── Source connection pricing rollup (#3150, ADR-072) ──────────────
  * The read-only "how your prices get adjusted" list on a SOURCE
  * connection's page, pointing at each destination that adjusts its prices.
@@ -3204,7 +3208,6 @@ textarea,
   font-size: 0.75rem;
   color: var(--text-secondary);
 }
-
 
 .alert {
   display: flex;
@@ -3515,9 +3518,13 @@ textarea,
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* A page's own content on a very wide screen (#4026 follow-up): capped so an
-   ultrawide monitor does not stretch a list edge to edge. The cap is the
-   layout block minus the sidebar box (240px) and the content padding (32px). */
+/* Content width, once for every screen (#4026 follow-up): whatever a route
+   renders into the shell is capped, so an ultrawide monitor does not stretch it
+   edge to edge and a new page cannot forget to opt in. The cap is the layout
+   block minus the sidebar box (240px) and the content padding (32px). The
+   flush layout (pack bench) and the login scenes are full-bleed on purpose.
+   `.page-layout` stays as the same rule for markup rendered outside a shell. */
+.shell-content:not(.shell-content--flush):not(.login-backdrop__scenes) > *,
 .page-layout {
   width: 100%;
   max-width: calc(var(--layout-max-width) - 272px);
@@ -5218,7 +5225,6 @@ a.delivery-rider-banner__button:focus-visible {
   flex-wrap: wrap;
 }
 
-
 .duplicate-positions-remediation-steps__sql-hint {
   font-size: 0.6875rem;
   color: var(--text-muted);
@@ -6044,7 +6050,7 @@ a.delivery-rider-banner__button:focus-visible {
   display: grid;
   gap: 0.75rem;
   width: min(24rem, calc(100vw - 2rem));
-  z-index: 60;
+  z-index: 70;
 }
 
 /* ── Toast (#775) ───────────────────────────────────────────────────
@@ -6053,7 +6059,7 @@ a.delivery-rider-banner__button:focus-visible {
  */
 .toast {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
   border: 1px solid var(--border-subtle);
@@ -6093,27 +6099,103 @@ a.delivery-rider-banner__button:focus-visible {
   min-width: 0;
 }
 
-.toast__dismiss {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
+.toast__controls {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--space-1);
+  align-self: center;
 }
 
-/* Inline toast action, e.g. "Undo" (#3148). */
-.toast__action {
+/* Quiet by design: the message is the content, the controls only answer it.
+   Selectors carry `.toast` so the global `button` rules cannot turn them into
+   filled buttons. */
+.toast .toast__dismiss {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  min-height: 0;
   border: 0;
+  border-radius: var(--radius-md);
   padding: 0;
   background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.toast .toast__dismiss:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+.toast .toast__dismiss:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+/* Inline toast action, e.g. "Undo" (#3148). */
+.toast .toast__action {
+  min-height: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0.3rem 0.6rem;
+  background: transparent;
+  box-shadow: none;
   color: var(--accent-primary);
+  font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
+.toast .toast__action:hover { background: color-mix(in oklab, var(--accent-primary) 14%, transparent); }
+.toast .toast__action:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 
 .toast[data-state='open'] {
   animation: toast-slide-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Release center confirmation toast (ADR-086): the mockup's dark pill under the
+   topbar. It is fixed to the screen rather than stacked in the corner region. */
+.toast.toast--inverse {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--shell-topbar-height) + 12px);
+  transform: translateX(-50%);
+  max-width: calc(100vw - 24px);
+  z-index: 60;
+  align-items: center;
+  justify-content: normal;
+  gap: 12px;
+  padding: 9px 12px 9px 14px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  box-shadow: var(--shadow-overlay);
+}
+.toast.toast--inverse .toast__content { display: block; flex: 0 1 auto; }
+.toast.toast--inverse .toast__description { color: inherit; font-size: inherit; }
+.toast.toast--inverse .toast__action {
+  display: block;
+  height: auto;
+  padding: 1px 6px;
+  border-radius: 0;
+  box-shadow: none;
+  gap: normal;
+  align-items: normal;
+  justify-content: normal;
+  font-size: inherit;
+  line-height: normal;
+}
+.toast.toast--inverse[data-state='open'] {
+  animation: toast-in-inverse 380ms var(--ease-spring) both;
+}
+.toast.toast--inverse[data-state='closed'] { animation: toast-fade-out 120ms ease-in both; }
+.toast.toast--inverse[data-swipe='move'],
+.toast.toast--inverse[data-swipe='cancel'] { transform: translateX(-50%); }
+@keyframes toast-in-inverse {
+  from { opacity: 0; transform: translate(-50%, -12px) scale(0.96); }
 }
 
 .toast[data-state='closed'] {
@@ -6208,8 +6290,9 @@ a.delivery-rider-banner__button:focus-visible {
     width: 100%;
   }
 
-  .alert,
-  .toast {
+  /* The toast keeps its row on narrow screens: its controls are compact now, and
+     stacking them under the message made a short confirmation tall. */
+  .alert {
     flex-direction: column;
   }
 
@@ -8576,6 +8659,12 @@ html:has(.login-stage) {
   gap: var(--space-1);
 }
 
+.setup-lane__toggle--inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .setup-lane__toggle-label {
   display: flex;
   align-items: flex-start;
@@ -8587,6 +8676,44 @@ html:has(.login-stage) {
 
 .setup-lane__toggle-label input {
   margin-top: 0.2rem;
+}
+
+/* A native <fieldset> grouping one setting (a toggle plus its explanation).
+ * Keeps the semantics - a screen reader announces the legend with the control -
+ * and drops the browser's etched border, so it reads as the same quiet card
+ * the rest of the app uses. The legend sits inside the card (floated, since a
+ * legend otherwise straddles the border). A turned-on setting picks up a thin
+ * accent edge, the one thing that changes. */
+.setting-card {
+  min-inline-size: 0;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.setting-card__legend {
+  float: left;
+  width: 100%;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.setting-card__legend + * { clear: both; }
+.setting-card > :not(legend) + * { margin-top: var(--space-2); }
+.setting-card .form-field__description { max-width: 60ch; }
+.setting-card:has(input:checked) {
+  border-color: color-mix(in oklab, var(--accent-primary) 45%, var(--border-subtle));
+  background: color-mix(in oklab, var(--accent-primary) 5%, var(--bg-surface-muted));
+}
+.setting-card:disabled { opacity: 0.6; }
+@media (prefers-reduced-motion: reduce) {
+  .setting-card { transition: none; }
 }
 
 .next-steps {
@@ -13860,97 +13987,54 @@ a.kpi-card:focus-visible {
    AI Provider Settings — multi-provider table (#451 / #452)
    ============================================================ */
 
-.ai-provider-table-section {
-  margin-top: 1.5rem;
-}
-
-.ai-provider-table-section__head {
-  margin-bottom: 0.75rem;
-}
-
+.ai-provider-table-section { display: grid; gap: var(--space-3); }
 .ai-provider-table-section__caption {
-  margin: 0.25rem 0 0;
-  color: var(--text-secondary);
-  font-size: 0.8125rem;
-}
-
-.ai-provider-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.ai-provider-table thead th {
-  text-align: left;
-  padding: 8px 12px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  margin: 0;
   color: var(--text-muted);
-  background: var(--bg-surface-elevated);
+  font-size: 0.8125rem;
+  max-width: 64ch;
+}
+.ai-provider-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.ai-provider {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 15rem;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
+  box-shadow: inset 2px 0 0 transparent;
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
-
-.ai-provider-table__th--actions {
-  width: 1%;
-  white-space: nowrap;
-}
-
-.ai-provider-table tbody td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  vertical-align: middle;
-  font-size: 0.875rem;
-}
-
-.ai-provider-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.ai-provider-table__row:hover td {
-  background: var(--bg-surface-muted);
-}
-
-.ai-provider-table__row--active td {
-  box-shadow: inset 2px 0 0 var(--accent-primary);
-}
-
-.ai-provider-table__name {
+.ai-provider:hover { background: var(--bg-surface-muted); }
+.ai-provider[data-active] { box-shadow: inset 2px 0 0 var(--accent-primary); }
+.ai-provider__name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   font-weight: 600;
   color: var(--text-primary);
 }
-
-.ai-provider-table__hint {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.ai-provider-table__actions {
+.ai-provider__hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+.ai-provider__key {
   display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-  flex-wrap: nowrap;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
 }
-
-/* Local utility — operator-cockpit "n/a" / muted inline labels for the
-   table cells. Scoped to the table to avoid creating a global utility
-   that drifts. */
-.ai-provider-table .text-muted {
-  color: var(--text-muted);
-}
-
-/* Compact button modifier for table-row actions. Per the FE-002 density
-   table (28 px small / 32 px medium); kept local to this scope until
-   another surface needs the same compact size. */
-.ai-provider-table__actions .button.button--sm {
-  height: 28px;
-  padding: 0 0.625rem;
-  font-size: 0.8125rem;
+.ai-provider__key .text-muted { color: var(--text-muted); }
+.ai-provider__updated { font-size: 0.75rem; color: var(--text-muted); }
+.ai-provider__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+@media (max-width: 767px) {
+  .ai-provider { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); padding-inline: 0; }
+  .ai-provider__actions { justify-content: flex-start; }
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -15738,6 +15822,23 @@ a.kpi-card:focus-visible {
   outline: none;
 }
 
+/* Floating slide-out (`floatReveal`): fixed to the viewport so a clipping
+ * ancestor cannot cut it, with the side chosen in script from the free room. */
+.connection-chip--float .connection-chip__reveal {
+  position: fixed;
+  top: var(--reveal-y, 0);
+  left: var(--reveal-x, 0);
+}
+.connection-chip--float[data-side='left'] .connection-chip__reveal {
+  padding: 0 calc(var(--chip-overlap) + 7px) 0 8px;
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+  clip-path: inset(-12px 0 -12px 100%);
+}
+.connection-chip--float[data-side='left']:hover .connection-chip__reveal,
+.connection-chip--float[data-side='left']:focus-visible .connection-chip__reveal {
+  clip-path: inset(-12px 0 -12px -12px);
+}
+
 .connection-chip--link:focus-visible .connection-chip__face {
   box-shadow: var(--shadow-focus);
 }
@@ -15832,6 +15933,20 @@ a.kpi-card:focus-visible {
     opacity: 1;
     transform: none;
   }
+
+  /* The floating variant is placed in script on hover, which never happens here: without this it stays
+     fixed at the screen corner. A touch screen shows the name inline instead. */
+  .connection-chip--float .connection-chip__reveal,
+  .connection-chip--float[data-side='left'] .connection-chip__reveal {
+    position: relative;
+    top: auto;
+    left: auto;
+    border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+    padding: 0 8px 0 calc(var(--chip-overlap) + 7px);
+  }
+
+  /* Inside the narrow notification panel the extra label has no room: the name on the face is enough. */
+  :is(.release-panel, .whats-new__setup) .connection-chip--float .connection-chip__reveal { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -17433,7 +17548,6 @@ input.bulk-dispatch__num--wide {
 .bulk-destbar__panel[hidden] {
   display: none;
 }
-
 
 /* KeyValueList owns its own responsive dt/dd grid - only the width is ours. */
 .bulk-destbar__panel .key-value-list {
@@ -20025,66 +20139,111 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   font-weight: 600;
 }
 
-/* Segmented control — shared SegmentedControl primitive (shared/ui). */
+/* Segmented control — shared SegmentedControl primitive (shared/ui).
+ * A quiet track with a thumb that slides to the chosen option (the thumb is a Motion layout element in
+ * the active option). No dividers and no per-option borders: the track is the only edge, so the
+ * control reads as one piece and the selection is the only thing that moves. */
 .segmented-control {
   display: inline-flex;
   align-self: flex-start;
+  position: relative;
+  isolation: isolate;
+  gap: 2px;
+  padding: 3px;
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
 }
 
 .segmented-control__option {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
   position: relative;
-  padding: var(--space-2) var(--space-3);
+  z-index: 1;
+  padding: 6px var(--space-3);
   border: none;
-  border-right: 1px solid var(--border-default);
-  background: var(--bg-surface);
+  border-radius: calc(var(--radius-lg) - 3px);
+  background: transparent;
   color: var(--text-secondary);
   font-family: var(--font-sans);
   font-size: 0.8125rem;
-  text-transform: capitalize;
+  font-weight: 500;
+  line-height: 1.3;
+  /* Labels are authored in their final case; `capitalize` title-cased every word of a phrase ("Nie Drukuj"). */
+  text-transform: none;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-standard);
+  /* The label changes colour while the thumb is travelling, a beat after it leaves, so white never
+     sits on the grey track. */
+  transition:
+    color 120ms var(--ease-standard) 40ms,
+    background-color var(--duration-fast) var(--ease-standard);
 }
 
-.segmented-control__option:first-child {
-  border-top-left-radius: var(--radius-md);
-  border-bottom-left-radius: var(--radius-md);
+/* The global `button` rules paint every button orange with a raised shadow, and `button:hover` /
+   `:active` repaint it on press. An option is only text on the track; the thumb is the fill. These win
+   by specificity (a class on a class, then the state) so no state ever fills the option itself. */
+.segmented-control .segmented-control__option,
+.segmented-control .segmented-control__option:hover,
+.segmented-control .segmented-control__option:active {
+  height: auto;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
-
-.segmented-control__option:last-child {
-  border-right: none;
-  border-top-right-radius: var(--radius-md);
-  border-bottom-right-radius: var(--radius-md);
+.segmented-control .segmented-control__option:hover:not(.segmented-control__option--active),
+.segmented-control .segmented-control__option:active:not(.segmented-control__option--active) {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
+.segmented-control .segmented-control__option--active,
+.segmented-control .segmented-control__option--active:hover,
+.segmented-control .segmented-control__option--active:active {
+  color: var(--text-on-primary);
+}
+.segmented-control .segmented-control__option:focus-visible { box-shadow: var(--shadow-focus); }
 
-.segmented-control__option:hover {
-  background: var(--bg-surface-hover);
+.segmented-control__thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: calc(var(--radius-lg) - 3px);
+  pointer-events: none;
+  background: var(--accent-primary);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent-primary) 40%, transparent);
 }
 
 .segmented-control__option--active {
-  background: var(--accent-primary);
   color: var(--text-on-primary);
-  font-weight: 600;
-}
-
-.segmented-control__option--active:hover {
-  background: var(--accent-primary-hover);
 }
 
 .segmented-control__option:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
-  z-index: 1;
 }
 
 .segmented-control__hint {
   font-family: var(--font-mono);
   font-size: 0.625rem;
-  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.segmented-control__option--active .segmented-control__hint {
+  color: inherit;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-on-primary) 16%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .segmented-control .segmented-control__option { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .segmented-control__thumb { background: Highlight; }
+  .segmented-control__option--active { color: HighlightText; }
 }
 
 /* COD reveal (#1425) — checkbox toggle; the amount row mounts only when on. */
@@ -25615,7 +25774,6 @@ a.sales-channels__offer:hover { color: var(--text-link); text-decoration: underl
   font-variant-numeric: tabular-nums;
 }
 
-
 /* ── inFakt webhook config modal (#1770) ── */
 .infakt-webhook {
   display: flex;
@@ -30091,7 +30249,6 @@ legend.analytics-settings-dialog__label {
   color: var(--status-warning-fg);
   font-weight: 600;}
 
-
 /* --------------------------------------------------------------------------
    Fulfilment tasks panel (#2411)
 
@@ -31669,7 +31826,6 @@ legend.analytics-settings-dialog__label {
   font-size: 0.75rem;
 }
 
-
 .bench-rail__search input:focus-visible {
   outline: none;
   border-color: var(--accent-primary);
@@ -32178,7 +32334,6 @@ legend.analytics-settings-dialog__label {
   margin-top: 6px;
 }
 
-
 /* Small enough for a 340 px column, and still over the 44 px touch floor the
    section header insists on — height comes from `min-height`, not from type.
    Light, because the row itself is now the primary target. */
@@ -32259,7 +32414,6 @@ legend.analytics-settings-dialog__label {
   font-size: 0.875rem;
   color: var(--text-muted);
 }
-
 
 /* One column below the tablet breakpoint: the row's four columns cannot hold
    their meaning at a narrow width, and reflowing keeps every part visible
@@ -32801,7 +32955,6 @@ legend.analytics-settings-dialog__label {
    on a phone the two pieces that are merely orientation give way: the
    breadcrumb (the bench is the only screen a packer has) and the name beside
    the avatar (the identity bar under it already says who is signed in). */
-
 
 /* ══ THE COMPACT BENCH (mobile-first rebuild, epic #3401) ═══════════════════
  *
@@ -36320,7 +36473,6 @@ legend.analytics-settings-dialog__label {
   display: block;
 }
 
-
 .peek-button__chevron {
   width: 10px;
   height: 10px;
@@ -36394,8 +36546,6 @@ legend.analytics-settings-dialog__label {
   background: var(--bg-surface-muted);
 }
 
-
-
 /* Positioned behind the row's content and outside the grid flow, so the
    flag and name sit in the same place on every row. */
 .option-list__selected {
@@ -36426,7 +36576,6 @@ legend.analytics-settings-dialog__label {
   font-size: 10.5px;
   color: var(--text-muted);
 }
-
 
 /* SegmentedSwitch: icons in a track, a raised thumb springing to the chosen
  * one (motion layoutId). The names sit in a row under the icons, one under
@@ -36609,7 +36758,6 @@ legend.analytics-settings-dialog__label {
   transform-origin: 50% 100%;
   pointer-events: none;
 }
-
 
 /* Long labels truncate with the full text on hover instead of breaking the
    240 px sidebar once Polish copy is longer than English. */
@@ -37001,6 +37149,10 @@ legend.analytics-settings-dialog__label {
 .buyer-emails-table th {
   vertical-align: top;
 }
+/* The sender cell names a mail setup ("Mail settings default"); an ellipsis
+   there hid the one word that tells the rows apart. */
+.buyer-emails-table td { max-width: none; overflow: visible; text-overflow: clip; }
+.buyer-emails-table td .mono-text { white-space: normal; overflow-wrap: anywhere; }
 .buyer-email-editor {
   display: grid;
   gap: var(--space-4);
@@ -37334,6 +37486,13 @@ legend.analytics-settings-dialog__label {
 .source-shipping p { margin: 0; }
 .source-shipping__coverage { font-size: 15px; color: var(--text-secondary); }
 .source-shipping__coverage strong { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* ── Channel shipping summary (#4135) ── */
+.channel-shipping { display: grid; gap: var(--space-3); }
+.channel-shipping p { margin: 0; }
+.channel-shipping__list { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.channel-shipping__list--scroll { max-height: 28rem; overflow-y: auto; }
+.channel-shipping__item { display: grid; gap: var(--space-2); }
+.source-shipping__rest { color: var(--text-primary); }
 .ships-for { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
 .ships-for__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); }
 .ships-for__row + .ships-for__row { border-top: 1px solid var(--border-subtle); }
@@ -39821,7 +39980,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .stock-page {
   display: grid;
   gap: var(--space-4);
-  max-width: 1040px;
 }
 
 .stock-problems {
@@ -40608,3 +40766,2718 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .button:active:not(:disabled) { transform: none; }
 }
 /* ===== end saved views ===== */
+
+/* ── Release dialog and What's new (#4147) ── */
+.dialog__content.release-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(30rem, calc(100vw - 48px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 0.75rem;
+  /* The dialog sets its own text size: the approved mockup renders it at the
+     app's 14px body size, not the 16px a portalled dialog would inherit. */
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+/* The mockup's scrim is a plain wash: no blur behind this dialog. */
+.dialog__overlay.release-dialog__overlay {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.release-dialog__head,
+.release-dialog__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+}
+.release-dialog__head { border-bottom: 1px solid var(--border-subtle); }
+.release-dialog__foot {
+  /* The shared .dialog__footer bleeds out with negative margins to cancel the
+     content padding; this dialog has no padding, so reset them or the footer
+     is clipped on the right and bottom. */
+  margin: 0;
+  border-radius: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-elevated);
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  gap: 10px;
+}
+.release-dialog__foot-right { display: flex; gap: 8px; flex-wrap: nowrap; margin-left: auto; }
+@media (max-width: 520px) {
+  .release-dialog__foot-right .button { padding-inline: 10px; }
+  /* The approved mockup clips its footer at phone width (nowrap, wider than the
+     card); here the footer wraps instead so no action is cut off. */
+  .release-dialog__foot,
+  .release-dialog__foot-right { flex-wrap: wrap; }
+  /* The shared footer stretches every button at this width; the icon-only Back
+     must stay a compact square at the start edge, not a centred full-width bar. */
+  .release-dialog__foot .button--icon { width: auto; align-self: flex-start; }
+}
+.release-dialog__steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.release-dialog__dots { display: flex; gap: 5px; }
+.release-dialog__dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--border-strong);
+  transition: width 280ms var(--ease-out), background 280ms var(--ease-out);
+}
+.release-dialog__dots i[data-on='true'] { width: 18px; background: var(--accent-primary); }
+.release-dialog__body {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.release-dialog__pane {
+  min-width: 0;
+  align-self: start;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+.release-dialog__hero { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+.release-dialog__version { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 600; }
+.release-dialog__date { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+.release-dialog__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.release-dialog__lead { margin: 0; color: var(--text-secondary); max-width: 52ch; font-size: 0.875rem; }
+.release-dialog__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.release-dialog__group { display: grid; gap: 6px; }
+.release-dialog__group h4 { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+.release-dialog__changes { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.release-dialog__change {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+.release-dialog__change:first-child { border-top: 0; }
+.release-dialog__change b { font-family: var(--font-mono); }
+.release-dialog__hash { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
+.release-dialog__more { margin: 0; max-width: 52ch; color: var(--text-secondary); font-size: 0.75rem; }
+.release-dialog__skip { display: flex; align-items: flex-start; gap: 10px; font-size: 0.8125rem; cursor: pointer; }
+.release-dialog__steplist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.release-dialog__step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+.release-dialog__mark {
+  margin-top: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent-primary);
+  display: grid;
+  place-items: center;
+}
+.release-dialog__step--required {
+  border-color: var(--accent-primary);
+  box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+.release-dialog__step--optional { border-style: dashed; background: transparent; }
+.release-dialog__step--optional .release-dialog__mark { border-style: dashed; border-color: var(--border-strong); }
+.release-dialog__step--optional .release-dialog__step-title { font-weight: 500; color: var(--text-secondary); }
+.release-dialog__step-title { font-weight: 600; font-size: 0.875rem; overflow-wrap: anywhere; }
+.release-dialog__step-conn { font-weight: 400; color: var(--text-secondary); }
+.release-dialog__step-why { grid-column: 2 / 4; margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+
+/* Static pill shared by the release surfaces (the shared Chip is a button). */
+.release-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.375rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.release-chip--accent {
+  background: var(--accent-primary-soft);
+  border-color: var(--accent-primary-border);
+  color: var(--accent-primary-soft-strong);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dialog__overlay.release-dialog__overlay { animation: release-fade-in 220ms var(--ease-out) both; }
+  .dialog__content.release-dialog { animation: release-dialog-in 420ms var(--ease-spring) both; }
+  .release-dialog__pane { animation: release-pane-in 380ms var(--ease-out) both; }
+  .release-dialog__pane[data-dir='back'] { animation-name: release-pane-in-back; }
+  .release-dialog__step { animation: release-fade-up 420ms var(--ease-out) both; }
+}
+@keyframes release-fade-in { from { opacity: 0; } }
+/* The shared dialog is centred with translate(-50% -50%), so the entrance has to
+   carry that translate or it would jump while it plays. */
+@keyframes release-dialog-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 14px)) scale(0.95); }
+}
+@keyframes release-pane-in {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes release-pane-in-back {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes release-fade-up-b {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes release-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog__content.release-dialog { animation: none; }
+}
+
+.whats-new { display: grid; gap: 20px 32px; max-width: none; align-items: start; }
+.whats-new__intro { grid-column: 1 / -1; max-width: 64ch; font-size: 0.9375rem; line-height: 1.55; }
+.whats-new__main { display: grid; gap: 18px; min-width: 0; }
+.whats-new__rail { display: grid; gap: 16px; min-width: 0; }
+@media (min-width: 1024px) {
+  /* The rail grows with the screen (a third of it, between 25 and 40rem) instead of staying a narrow strip. */
+  .whats-new { grid-template-columns: minmax(0, 1fr) clamp(25rem, 32%, 40rem); }
+  .whats-new__rail { grid-column: 2; grid-row: 2; position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow: auto; padding: 2px; margin: -2px; }
+  .whats-new__main { grid-column: 1; grid-row: 2; }
+}
+.whats-new__setup { background: linear-gradient(180deg, color-mix(in srgb, var(--accent-primary) 6%, var(--bg-surface)), var(--bg-surface) 70%); }
+.whats-new__meter { height: 6px; border-radius: 999px; background: var(--border-subtle); overflow: hidden; }
+.whats-new__meter::after { content: ''; display: block; height: 100%; width: var(--done, 0%); border-radius: inherit; background: var(--accent-primary); transform-origin: left; }
+.whats-new__index h3 { margin: 0 0 4px; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+.whats-new__index ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 15rem; overflow: auto; }
+.whats-new__index a {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 10px; border-radius: var(--radius-md); color: var(--text-secondary);
+  text-decoration: none; font-size: 0.8125rem; transition: background-color 140ms ease, color 140ms ease;
+}
+.whats-new__index a:hover { background: var(--bg-hover, var(--border-subtle)); color: var(--text-primary); }
+.whats-new__index a[aria-current='true'] { background: color-mix(in srgb, var(--accent-primary) 10%, transparent); color: var(--text-primary); font-weight: 600; }
+.whats-new__index a:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.whats-new__head--release h3 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; font-family: var(--font-mono); }
+.whats-new__changelog .whats-new__card { padding: 22px 24px; gap: 18px; transition: border-color 160ms ease, box-shadow 160ms ease; }
+.whats-new__changelog .whats-new__card:hover { border-color: var(--border-strong, var(--border-default)); }
+.whats-new__group h4 { font-size: 0.75rem; letter-spacing: 0.02em; }
+.whats-new__change { font-size: 0.875rem; line-height: 1.5; padding: 10px 0; }
+.whats-new__change:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--accent-primary) 4%, transparent), transparent); }
+@media (prefers-reduced-motion: no-preference) {
+  .whats-new__main .whats-new__card { animation: whats-new-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .whats-new__main .whats-new__card:nth-child(2) { animation-delay: 50ms; }
+  .whats-new__main .whats-new__card:nth-child(3) { animation-delay: 100ms; }
+  .whats-new__meter::after { animation: whats-new-meter 700ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both; }
+}
+@keyframes whats-new-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes whats-new-meter { from { transform: scaleX(0); } }
+.whats-new__intro,
+.whats-new__lang { margin: 0; color: var(--text-secondary); font-size: 0.875rem; max-width: 52ch; }
+.whats-new__changelog { display: grid; gap: 18px; }
+.whats-new__card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xs);
+}
+.whats-new__card { scroll-margin-top: 16px; }
+.whats-new__card--target { border-color: var(--accent-primary); box-shadow: var(--shadow-focus); }
+.whats-new__lang:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm); }
+.whats-new__head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.whats-new__head h3 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+.whats-new__date {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.whats-new__rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.whats-new__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+.whats-new__row-title { overflow-wrap: anywhere; }
+.whats-new__group { display: grid; gap: 6px; }
+.whats-new__group h4 { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+.whats-new__group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.whats-new__change {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+}
+.whats-new__change:first-child { border-top: 0; }
+.whats-new__baseline { display: grid; gap: var(--space-2); overflow-wrap: anywhere; }
+.whats-new__baseline h4,
+.whats-new__baseline p { margin: 0; }
+
+/* Buttons on the release surfaces keep the browser's own line height, as the
+   approved mockup's do: a 1.5 inherited from the surface shifts the label by half
+   a pixel inside the fixed-height button. */
+.release-dialog button,
+.release-panel button,
+.tour-card button { line-height: normal; }
+
+/* ── Release center: bell and panel (#4148) ── */
+.release-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: normal;
+  justify-content: normal;
+  box-shadow: none;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.release-bell:hover,
+.release-bell[aria-expanded='true'] {
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.release-bell:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.release-bell[data-ringing='true'] svg {
+  animation: release-bell-ring 900ms var(--ease-out);
+  transform-origin: 50% 0;
+}
+.release-bell__badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  display: inline-grid;
+  place-items: center;
+  animation: release-badge-pop 520ms var(--ease-spring) both;
+}
+.release-bell__badge[data-zero='true'] {
+  background: var(--bg-strong);
+  color: var(--text-muted);
+  animation: none;
+}
+.release-bell__dot {
+  width: 7px;
+  height: 7px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+@keyframes release-bell-ring {
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(14deg); }
+  40% { transform: rotate(-11deg); }
+  60% { transform: rotate(7deg); }
+  80% { transform: rotate(-4deg); }
+}
+@keyframes release-badge-pop {
+  0% { transform: scale(0.4); }
+  100% { transform: scale(1); }
+}
+@media (max-width: 900px) {
+  /* Visually hidden, not display:none, so the button keeps its accessible name. */
+  .release-bell__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+.release-panel {
+  width: min(460px, calc(100vw - 28px));
+  max-height: calc(100dvh - var(--shell-topbar-height) - 20px);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+  /* The panel renders at the app's 14px body size, as in the approved mockup;
+     a portalled popover would otherwise inherit 16px. */
+  font-size: 0.875rem;
+  line-height: 1.5;
+  transform-origin: 92% 0;
+}
+.release-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 8px 16px;
+}
+.release-panel__title { font-size: 1rem; font-weight: 600; margin: 0; }
+.release-panel__head-actions { display: flex; gap: 4px; }
+.release-panel__tabs { padding: 0 16px 10px; }
+.release-panel__tabs .segmented-control { background: var(--bg-surface); max-width: 100%; overflow-x: auto; }
+.release-panel__tabs .segmented-control__option {
+  text-transform: none;
+  white-space: nowrap;
+  gap: var(--space-2);
+  border-radius: 0;
+  box-shadow: none;
+  font-weight: 400;
+  justify-content: normal;
+  height: auto;
+  line-height: normal;
+  transition: background var(--duration-fast) var(--ease-standard);
+}
+.release-panel__tabs .segmented-control__option:first-child {
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+.release-panel__tabs .segmented-control__option:last-child {
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+.release-panel__tabs .segmented-control__option--active { font-weight: 600; }
+.release-panel__tabs .segmented-control__option:focus-visible { box-shadow: inset var(--shadow-focus); }
+.release-panel__tabs .segmented-control__hint { font-size: 0.6875rem; opacity: 0.85; }
+.release-panel__list {
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 12px 12px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  /* A focused control scrolls clear of the pinned card actions (about 3.9rem tall). */
+  scroll-padding-bottom: 4.5rem;
+}
+.release-panel__empty {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.release-panel__empty strong { color: var(--text-primary); font-size: 0.9375rem; }
+.release-panel__foot {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  background: var(--bg-surface-elevated);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.release-panel__link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--text-link);
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  cursor: pointer;
+  text-align: left;
+}
+.release-panel__link,
+.release-panel__link:hover,
+.release-panel__link:active {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  height: auto;
+  color: var(--text-link);
+  border-radius: 0;
+  font-weight: 400;
+  line-height: normal;
+  display: block;
+  justify-content: normal;
+}
+.release-panel__link:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.release-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  position: relative;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .release-panel { animation: release-panel-in 360ms var(--ease-out) both; }
+  .release-card { animation: release-fade-up 360ms var(--ease-out) both; }
+}
+@keyframes release-panel-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+}
+.release-card[data-unread='true'] {
+  border-color: var(--accent-primary-border);
+  box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+.release-card[data-archived='true'] { background: var(--bg-surface-elevated); }
+.release-card__top { display: flex; align-items: flex-start; gap: 10px; justify-content: space-between; }
+/* A long title wraps; it must not squeeze the actions button. */
+.release-card__top > div { min-width: 0; }
+.release-card__top > button { flex-shrink: 0; }
+.release-card__title { margin: 0; font-size: 0.875rem; font-weight: 600; line-height: 1.35; }
+.release-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.release-card__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  height: auto;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: normal;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.release-card__toggle:hover,
+.release-card__toggle:active {
+  background: var(--bg-surface-muted);
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+.release-card__toggle:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* The 44px target is a touch concern, so it follows the pointer rather than the width. */
+@media (hover: none) and (pointer: coarse) {
+  .release-card__toggle { min-height: 44px; }
+}
+
+/* Pinned to the bottom of the panel list while the card is on screen. It inherits the card's own
+   background so nothing shows through, and stretches over the card padding to its edges. */
+.release-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  position: sticky;
+  /* The list pads its bottom by 12px; without this the next card's title shows under the bar. */
+  bottom: -12px;
+  z-index: 2;
+  margin: 0 -14px -12px;
+  padding: 10px 14px 12px;
+  background: inherit;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+/* The item menu of the approved mockup: a compact card with icon rows. */
+.dropdown-menu__content.release-card__menu {
+  /* Above the bell panel (62); Radix copies this onto its positioning wrapper,
+     so the default 50 would paint the menu under the panel that opened it. */
+  z-index: 63;
+  width: 224px;
+  min-width: 224px;
+  padding: 4px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.release-card__menu .dropdown-menu__item { gap: 8px; padding: 7px 9px; line-height: normal; }
+.release-card__menu .release-card__menu-danger { color: var(--status-error-fg); }
+.release-card__menu .release-card__menu-danger[data-highlighted] { color: var(--status-error-fg); }
+.release-card__menu svg { flex-shrink: 0; }
+.release-card__menu .dropdown-menu__separator {
+  height: 0;
+  margin: 4px 0;
+  background: none;
+  border-top: 1px solid var(--border-subtle);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dropdown-menu__content.release-card__menu {
+    animation: release-menu-in 180ms var(--ease-out) both;
+    transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+  }
+}
+@keyframes release-menu-in {
+  from { opacity: 0; transform: scale(0.96); }
+}
+.release-progress { display: grid; gap: 6px; }
+
+.release-progress__text {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+/* Vertical stepper: a numbered rail that fills as steps are done. */
+.release-steps { list-style: none; margin: 0; padding: 0; display: grid; }
+.release-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 0 12px;
+  padding-bottom: 16px;
+}
+.release-step:last-child { padding-bottom: 0; }
+.release-step::before,
+.release-step::after {
+  content: '';
+  position: absolute;
+  left: 11.5px;
+  top: 26px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--border-default);
+}
+.release-step::after {
+  background: var(--accent-primary);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 520ms var(--ease-out);
+}
+.release-step[data-status='done']::after,
+.release-step[data-status='not_applicable']::after { transform: scaleY(1); }
+.release-step:last-child::before,
+.release-step:last-child::after { display: none; }
+.release-step__ind {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent-primary);
+  background: var(--bg-surface);
+  display: grid;
+  place-items: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  transition:
+    background 260ms var(--ease-out),
+    border-color 260ms var(--ease-out),
+    transform 420ms var(--ease-spring);
+}
+.release-step__check path {
+  stroke-dasharray: 16;
+  stroke-dashoffset: 16;
+  transition: stroke-dashoffset 360ms var(--ease-out) 120ms;
+}
+.release-step[data-status='done'] .release-step__check path,
+.release-step[data-status='not_applicable'] .release-step__check path { stroke-dashoffset: 0; }
+.release-step[data-importance='optional'] .release-step__ind {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+.release-step[data-status='done'] .release-step__ind,
+.release-step[data-status='not_applicable'] .release-step__ind {
+  background: var(--accent-primary);
+  border-style: solid;
+  border-color: transparent;
+  color: var(--text-on-primary);
+  transform: scale(1.06);
+}
+.release-step__body { display: grid; gap: 6px; min-width: 0; }
+.release-step__title { margin: 0; font-size: 0.8125rem; font-weight: 600; line-height: 1.35; transition: color 200ms; }
+.release-step__conn { font-weight: 400; color: var(--text-secondary); }
+.release-step[data-status='done'] .release-step__title,
+.release-step[data-status='not_applicable'] .release-step__title {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+.release-step__why { margin: 0; font-size: 0.75rem; color: var(--text-secondary); max-width: 52ch; }
+.release-step__hint { margin: 0; font-size: 0.75rem; color: var(--text-muted); max-width: 52ch; }
+.release-step__chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.release-step__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.release-chip--success {
+  background: var(--status-success-soft);
+  border-color: var(--status-success-border);
+  color: var(--status-success-strong);
+}
+.release-chip--info {
+  background: var(--status-info-soft);
+  border-color: var(--status-info-border);
+  color: var(--status-info-strong);
+}
+@media (prefers-reduced-motion: reduce) {
+  .release-bell[data-ringing='true'] svg,
+  .release-bell__badge { animation: none; }
+  .release-step::after { transition: none; }
+}
+
+/* SettingsPageFrame (#4136): back link and header extras above the template. */
+.settings-frame__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.settings-frame__extra { display: flex; align-items: center; gap: var(--space-2); }
+
+/* ── Guided tour (#4149) ── */
+.popover__content.release-panel { z-index: 62; }
+/* Release center layers, low to high: tour ring 9 (below the sticky topbar, z 10, so the
+   highlight never paints over chrome), popover 50, tour card 61, bell panel 62
+   (stays readable and clickable above the highlight), toast 70. The topbar is dimmed by
+   its own ::after while a tour runs, so chrome is dimmed exactly once (#4154). */
+/* Document coordinates (#4154): the ring scrolls with the content and is never re-measured per scroll event. */
+.tour-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 9;
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 0 0 1.5px var(--accent-primary),
+    0 0 0 9999px var(--overlay-scrim);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tour-ring { transition: top 240ms var(--ease-out), left 240ms var(--ease-out), width 240ms var(--ease-out), height 240ms var(--ease-out), opacity 150ms; }
+  .tour-card { animation: release-fade-up 380ms var(--ease-out) both; }
+  /* Same keyframes under a second name: the card is not remounted between steps, and a changed animation-name is what plays the entrance again. */
+  .tour-card[data-parity='1'] { animation-name: release-fade-up-b; }
+}
+
+/* While a tour card is up the page gains room under its last row, so every
+   target can scroll clear of the card. The value is set from the card height. */
+.shell-content::after { content: ""; display: block; height: var(--tour-card-space, 0px); }
+.tour-active .shell-topbar::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 -1px 0;
+  background: var(--overlay-scrim);
+  pointer-events: none;
+}
+/* Ultrawide: the brand sits in a strip the bar extends over the sidebar column
+   (see `.shell-topbar::before`), outside the bar's own box, so the dim reaches
+   across it too and the logo does not stay lit while the rest is dimmed. */
+@media (min-width: 2560px) {
+  .tour-active .shell .shell-topbar::after {
+    left: calc(-1 * var(--shell-side));
+    /* Above the brand copy, which is lifted with z-index: 1. */
+    z-index: 2;
+  }
+}
+.tour-card {
+  position: fixed;
+  z-index: 61;
+  left: 0;
+  right: 0;
+  bottom: 16px;
+  margin-inline: auto;
+  width: min(430px, calc(100% - 24px));
+  box-sizing: border-box;
+  display: grid;
+  /* A grid track defaults to min-content, so one unbreakable row (the footer) used to
+     stretch the whole card past its box; the explicit track keeps it inside (#4154). */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  overflow-wrap: anywhere;
+  padding: 14px 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+/* The status region stays mounted so a screen reader announces what lands in it,
+   which makes it a grid row; while empty it leaves the flow so no gap is left behind. */
+.tour-card__live:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+@media (min-width: 1180px) {
+  .tour-card { right: 16px; left: auto; margin-inline: 0; width: 340px; }
+}
+/* Free side: the card moves beside a target that leaves room, so it never covers it (#4154). */
+@media (min-width: 640px) {
+  .tour-card[data-dock='right'] { top: var(--tour-card-top, 72px); bottom: auto; right: 16px; left: auto; margin-inline: 0; width: 340px; }
+}
+/* Phone: a full-width sheet flush with the bottom edge; the lit area shrinks to what remains above it. */
+@media (max-width: 639px) {
+  .tour-card { left: 0; right: 0; bottom: 0; width: 100%; margin-inline: 0; border-radius: var(--radius-xl) var(--radius-xl) 0 0; border-bottom: 0; padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+}
+.tour-card:focus-visible { outline: none; box-shadow: var(--shadow-overlay), var(--shadow-focus); }
+
+.tour-card__rail { display: flex; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.tour-card__seg { flex: 1; display: flex; min-width: 0; }
+/* The bar stays thin; the button around it is a tall, easy target. */
+
+/* Skipped: a solid grey bar with a diagonal hatch, so it differs from the dashed unvisited segments without relying on colour alone. */
+
+.tour-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.tour-card__top-end { display: inline-flex; align-items: center; gap: 6px; }
+.tour-card__close {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 140ms var(--ease-out), color 140ms var(--ease-out), transform 140ms var(--ease-out);
+}
+.tour-card__close:hover { background: var(--bg-strong); color: var(--text-primary); }
+.tour-card__close:active { transform: scale(0.92); }
+.tour-card__close:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.tour-card__text { display: grid; gap: 4px; }
+.tour-card__title { margin: 0; font-size: 0.9375rem; font-weight: 600; line-height: 1.35; }
+.tour-card__body { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.tour-card__hint,
+.tour-card__reason { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+
+.tour-card__choices { display: grid; gap: 6px; }
+.tour-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  justify-content: normal;
+  padding: 9px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: normal;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+.tour-choice { box-shadow: none; height: auto; }
+.tour-choice:active { border-color: var(--border-strong); background: var(--bg-surface-muted); color: var(--text-primary); }
+@media (hover: hover) {
+  .tour-choice:hover { border-color: var(--border-strong); background: var(--bg-surface-muted); color: var(--text-primary); }
+}
+.tour-choice:active { transform: translateY(1px); }
+.tour-choice:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.tour-choice:disabled { opacity: 0.6; cursor: not-allowed; }
+.tour-choice__dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  flex-shrink: 0;
+  transition: border-color 200ms, box-shadow 200ms;
+}
+.tour-choice[aria-pressed='true'],
+.tour-choice[aria-pressed='true']:hover {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+}
+.tour-choice[aria-pressed='true'] .tour-choice__dot {
+  border-color: var(--accent-primary);
+  box-shadow: inset 0 0 0 3px var(--bg-surface), inset 0 0 0 9px var(--accent-primary);
+}
+
+.tour-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--status-success-soft);
+  border: 1px solid var(--status-success-border);
+  color: var(--status-success-fg);
+  font-size: 0.8125rem;
+}
+.tour-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+/* Quiet action left, Back as an icon, primary right, on one row. Where even that does not fit
+   (a very narrow phone in a long language) the row wraps and the actions stay right-aligned; nothing clips. */
+.tour-card__footer { flex-wrap: wrap; }
+.tour-card > *, .tour-card__top > *, .tour-card__nav { min-width: 0; }
+.tour-card__footer .button { white-space: nowrap; max-width: 100%; }
+.tour-card__footer > .button { padding-inline: 8px; }
+.tour-card__nav { display: flex; gap: 6px; flex: 1 1 auto; justify-content: flex-end; }
+.tour-card__back { padding-inline: 8px; }
+.tour-card .button[aria-disabled='true'] { opacity: 0.55; cursor: not-allowed; }
+
+/* ── SettingsPageTemplate (#4132) ───────────────────────────────────────
+   One layout for every settings screen. The sticky contents keep a
+   --space-5 gap below the sticky topbar so they never touch the navbar.
+   Stickiness needs `.shell-content` to clip rather than scroll (overflow-x:
+   clip), otherwise it becomes the rail's scroll container and nothing pins. */
+.settings-page__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.settings-page__heading { display: grid; gap: var(--space-1); min-width: 0; }
+.settings-page__heading > *,
+.settings-page__section-head > *,
+.settings-page__section-head h3 { margin: 0; }
+.settings-page__slots { display: grid; gap: var(--space-4); min-width: 0; }
+.settings-page__slots:empty { display: none; }
+.settings-page__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.settings-page__description {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+.settings-page__mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-md);
+  background: var(--mark-hue, var(--bg-surface-muted));
+  color: var(--mark-ink, var(--text-primary));
+  font-weight: 700;
+  font-size: 1.0625rem;
+  letter-spacing: 0.02em;
+}
+.settings-page__layout {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: var(--space-6, 2rem);
+  align-items: start;
+}
+.settings-page__toc {
+  position: sticky;
+  top: calc(var(--shell-topbar-height) + var(--space-5));
+  align-self: start;
+  display: grid;
+  justify-items: stretch;
+  gap: 2px;
+  font-size: 0.8125rem;
+  text-align: left;
+}
+.settings-page__toc-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0 var(--space-3) var(--space-2);
+}
+.settings-page__toc-list {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  border-left: 1px solid var(--border-subtle);
+}
+.settings-page__toc-mark {
+  position: absolute;
+  left: -1px;
+  top: 0;
+  width: 2px;
+  height: 0;
+  background: var(--accent-primary);
+  /* Driven per frame from scroll; any easing here would lag the page. */
+  opacity: 0;
+  will-change: transform;
+}
+.settings-page__toc-link {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  box-shadow: none;
+  appearance: none;
+  background: transparent;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: inherit;
+  line-height: 1.4;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.settings-page__toc-link:hover:not(:focus-visible) { color: var(--text-primary); background: var(--bg-surface-muted); box-shadow: none; }
+.settings-page__toc-link:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.settings-page__toc-link[data-visible='true'] {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.settings-page__toc-page {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(var(--space-2));
+  transform-origin: left top;
+  transition:
+    grid-template-rows var(--duration-slow) var(--ease-spring),
+    opacity var(--duration-normal) var(--ease-out),
+    transform var(--duration-slow) var(--ease-spring);
+}
+.settings-page__toc-page[data-on='true'] { grid-template-rows: 1fr; opacity: 1; transform: none; }
+.settings-page__toc-page > div { overflow: hidden; min-height: 0; }
+/* The rail heading is a button, so the global `button` rules (orange fill,
+   centred label, orange hover) would apply; the doubled selector outranks
+   `button:hover` and `button:active` in every state. It reads as the rail's
+   heading, aligned with the links below it, not as a call to action. */
+.settings-page__toc .settings-page__toc-page-btn {
+  display: grid;
+  justify-items: start;
+  justify-content: stretch;
+  gap: 1px;
+  width: 100%;
+  height: auto;
+  margin: 0 0 var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-2) calc(var(--space-3) + 1px);
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-primary);
+  text-align: left;
+  white-space: normal;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.settings-page__toc .settings-page__toc-page-btn:hover {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+.settings-page__toc .settings-page__toc-page-btn:active {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-subtle);
+}
+/* Inset: the slide-in wrapper clips anything drawn outside the button. */
+.settings-page__toc .settings-page__toc-page-btn:focus-visible {
+  outline: none;
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--accent-primary);
+}
+.settings-page__toc-page-btn strong {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.settings-page__toc-page-btn span { font-size: 0.75rem; font-weight: 400; color: var(--text-muted); }
+.settings-page__card {
+  max-width: 40rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+/* `wide` fills the main column up to 90rem: tables, two-column editors and
+   rails need room, and a reading-width card clipped them (#4154). */
+.settings-page__card[data-wide] { max-width: none; }
+/* Prose keeps a reading measure whatever the card width, so wide pages do not
+   turn explanations into full-width walls. */
+.settings-page__section > p,
+.settings-page__section .page-section > p,
+.settings-page__section .muted-text:is(p) { max-width: 70ch; }
+/* A control in a table cell must keep a usable width: a table that is squeezed
+   shrinks a bare select to its arrow and the cell reads as empty. */
+.settings-page__section .data-table select,
+.settings-page__section .data-table .control { min-width: 10rem; }
+/* A table on a settings page is a bordered scroller of last resort: tighter
+   cells keep most tables whole, and a fade on the clipped edge says there is
+   more to scroll to instead of letting a column look cut off. */
+.settings-page__section .data-table__container {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(to right, var(--bg-surface) 30%, transparent) 0 0 / 2rem 100% no-repeat local,
+    linear-gradient(to left, var(--bg-surface) 30%, transparent) 100% 0 / 2rem 100% no-repeat local,
+    linear-gradient(to right, var(--border-default), transparent) 0 0 / 0.5rem 100% no-repeat scroll,
+    linear-gradient(to left, var(--border-default), transparent) 100% 0 / 0.5rem 100% no-repeat scroll;
+}
+.settings-page__section .data-table :is(th, td) { padding-inline: var(--space-3); }
+.settings-page__fields { display: grid; min-width: 0; margin: 0; padding: 0; border: 0; }
+.settings-page__readonly {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-4) var(--space-5) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+.settings-page__section {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  scroll-margin-top: calc(var(--shell-topbar-height) + var(--space-5));
+}
+.settings-page__section-head { display: grid; gap: 2px; }
+.settings-page__section-head h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.settings-page__section-head p { font-size: 0.8125rem; color: var(--text-muted); max-width: 56ch; }
+.settings-page__actions {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-surface-elevated);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.settings-page__fields > .settings-page__section:last-child { border-bottom: 0; }
+@media (max-width: 767px) {
+  .settings-page__layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+  /* The contents become a pinned strip of links under the topbar. */
+  .settings-page__toc {
+    top: var(--shell-topbar-height);
+    z-index: 5;
+    margin-inline: calc(var(--space-4) * -1);
+    padding: var(--space-1) var(--space-4);
+    background: var(--bg-canvas, var(--bg-surface));
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .settings-page__toc-title,
+  .settings-page__toc-page { display: none; }
+  .settings-page__toc-list {
+    display: flex;
+    gap: var(--space-1);
+    overflow-x: auto;
+    border-left: 0;
+    scrollbar-width: none;
+  }
+  .settings-page__toc-link { width: auto; flex: none; white-space: nowrap; border-radius: var(--radius-sm); }
+  .settings-page__toc-mark {
+    left: 0;
+    top: auto;
+    bottom: 0;
+    width: 0;
+    height: 2px;
+  }
+  .settings-page__section {
+    scroll-margin-top: calc(var(--shell-topbar-height) + 3.25rem);
+    padding: var(--space-4);
+  }
+  .settings-page__head { align-items: flex-start; }
+}
+@media (hover: none) and (pointer: coarse) {
+  .settings-page__toc-link { min-height: 44px; display: flex; align-items: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-page__toc-page,
+  .settings-page__toc-link { transition: none; }
+}
+
+/* ── Settings hub and platform mark (#4154) ── */
+.settings-page__mark[data-channel='allegro'] { --mark-hue: var(--channel-allegro); --mark-ink: oklch(18% 0.02 270); }
+.settings-page__mark[data-channel='prestashop'] { --mark-hue: var(--channel-prestashop); --mark-ink: oklch(98% 0.01 270); }
+.settings-page__mark[data-channel='erli'] { --mark-hue: var(--channel-erli); --mark-ink: oklch(18% 0.02 270); }
+.settings-page__mark[data-channel='woocommerce'],
+.settings-page__mark[data-channel='shopify'] { --mark-hue: var(--channel-woocommerce); --mark-ink: oklch(18% 0.02 270); }
+.settings-page__mark[data-channel='amazon'] { --mark-hue: var(--channel-amazon); --mark-ink: oklch(18% 0.02 270); }
+/* ── Settings index (#4154) ──
+   The hub drops the template card (`data-plain`). Each group is a heading with
+   its purpose and area count above ONE surface of rows; the installation facts
+   sit in a bar above them. Hairlines separate rows, surfaces separate groups.
+   Boldness is spent once: the status chips. On wide screens the groups sit in
+   two columns (a container query, so the sidebar and rail are already counted). */
+.settings-page__card[data-plain] {
+  max-width: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  container-type: inline-size;
+}
+.settings-page__card[data-plain] .settings-page__fields {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  row-gap: var(--space-6);
+  column-gap: var(--space-6);
+}
+.settings-page__card[data-plain] .settings-page__section {
+  padding: 0;
+  gap: var(--space-3);
+  border: 0;
+}
+.settings-page__card[data-plain] .settings-page__section-head h3 {
+  font-size: 1.0625rem;
+  letter-spacing: var(--tracking-tight);
+}
+.settings-page__card[data-plain] .settings-page__section-head p { max-width: 62ch; }
+/* Two columns only when each column keeps at least ~40rem: below that the value chip squeezes the
+   title into a few characters per line (worse in Polish, whose labels run longer). */
+@container (min-width: 84rem) {
+  .settings-page__card[data-plain] .settings-page__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto auto 1fr;
+  }
+  .settings-page__card[data-plain] .settings-page__section:first-child { grid-column: 1 / -1; }
+  /* Two columns: the long Orders group runs down the right while the two
+     shorter groups stack on the left, so neither column ends in a gap. This
+     index is the only plain-variant page; its group order is part of its design. */
+  .settings-page__card[data-plain] .settings-page__section:nth-child(3) { grid-column: 2; grid-row: 2 / span 2; }
+  .settings-page__card[data-plain] .settings-page__section:nth-child(2) { grid-column: 1; grid-row: 2; }
+  .settings-page__card[data-plain] .settings-page__section:nth-child(4) { grid-column: 1; grid-row: 3; }
+}
+.settings-index__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.375rem;
+  height: 1.375rem;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Installation facts */
+.settings-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin: 0;
+  background: var(--border-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+/* Hairlines are the 1px grid gap showing the bar's background, so they stay
+   right however the cells wrap. */
+.settings-facts__cell {
+  flex: 1 1 8.25rem;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  min-height: 4.5rem;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+}
+.settings-facts dt { font-size: 0.75rem; color: var(--text-muted); }
+.settings-facts dd { margin: 0; font-size: 0.9375rem; font-weight: 600; line-height: 1.35; color: var(--text-primary); overflow-wrap: anywhere; }
+.settings-facts dd[data-mono] { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 500; overflow-wrap: normal; white-space: nowrap; }
+.settings-facts__cell[data-wide] { flex: 2 1 13rem; }
+.settings-facts .settings-facts__note { font-size: 0.75rem; font-weight: 400; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Rows */
+.settings-index {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+.settings-index[data-pending] .settings-row__lock { visibility: hidden; }
+.settings-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(1.75rem, auto);
+  align-items: center;
+  column-gap: var(--space-4);
+  min-height: 4.5rem;
+  padding: var(--space-3) var(--space-4);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.settings-row[data-has-icon] { grid-template-columns: 2.25rem minmax(0, 1fr) minmax(0, auto) minmax(1.75rem, auto); }
+.settings-row + .settings-row { border-top: 1px solid var(--border-subtle); }
+.settings-row:hover:not([data-locked]),
+.settings-row:has(.settings-row__link:focus-visible) { background: var(--bg-surface-muted); }
+.settings-row:active:not([data-locked]) { background: var(--bg-surface-hover); }
+.settings-glyph__node { fill: var(--settings-glyph-accent, var(--accent-primary)); }
+.settings-row[data-locked] .settings-glyph__node { fill: currentColor; }
+.settings-row__icon {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  box-shadow: var(--shadow-inset-top);
+  color: var(--text-secondary);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.settings-row:hover:not([data-locked]) .settings-row__icon {
+  background: var(--accent-primary-soft);
+  border-color: var(--accent-primary-border);
+  color: var(--text-primary);
+}
+.settings-row[data-locked] .settings-row__icon { color: var(--text-muted); }
+.settings-row__text { display: grid; gap: 2px; min-width: 0; }
+.settings-row__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+.settings-row[data-locked] .settings-row__title { color: var(--text-secondary); }
+.settings-row__description {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.settings-row__value {
+  display: grid;
+  justify-items: end;
+  align-content: center;
+  gap: 3px;
+  width: 13rem;
+  min-width: 0;
+  text-align: right;
+}
+.settings-row__caption { font-size: 0.75rem; line-height: 1.3; color: var(--text-muted); }
+.settings-row__reading {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+.settings-row__suffix { font-size: 0.75rem; line-height: 1.3; color: var(--text-muted); }
+.settings-row__figure {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.settings-row__figure[data-mono] { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 500; }
+.settings-row__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--status-warning-fg);
+}
+.settings-row__notice svg { flex: none; margin-top: 2px; }
+.settings-row__line { display: block; }
+.settings-row__warning { color: var(--status-warning-fg); }
+.settings-row__value--error { font-size: 0.75rem; color: var(--status-error-fg); }
+.settings-row__skeleton {
+  display: block;
+  width: 4.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+}
+.settings-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  max-width: 100%;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.settings-chip[data-tone='success'] { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.settings-chip[data-tone='warning'] { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.settings-chip[data-tone='info'] { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.settings-chip[data-dot]::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin-right: var(--space-1);
+  border-radius: 50%;
+  background: currentColor;
+}
+.settings-chip[data-tone='muted'] { background: transparent; border-style: dashed; color: var(--text-muted); font-weight: 500; }
+.settings-row__action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.settings-row__secondary {
+  position: relative;
+  z-index: 1;
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-subtle);
+}
+.settings-row__link {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: none;
+}
+/* The link covers the whole row so the row is one target, not a link plus
+   dead space; the focus ring is drawn on the row for the same reason. These
+   selectors outrank the global `button` / `a:hover` rules. */
+.settings-row .settings-row__link:hover { background: transparent; border: 0; color: var(--text-primary); }
+.settings-row .settings-row__link:active { background: transparent; border: 0; }
+.settings-row__link::after { content: ''; position: absolute; inset: 0; }
+.settings-row .settings-row__link:focus-visible { outline: none; box-shadow: none; }
+.settings-row .settings-row__link:focus-visible::after { box-shadow: inset 0 0 0 2px var(--accent-ring); }
+.settings-row__chevron { transition: transform var(--duration-fast) var(--ease-out); }
+.settings-row:hover .settings-row__link { color: var(--text-primary); }
+.settings-row:hover .settings-row__chevron { transform: translateX(2px); }
+.settings-row:active .settings-row__chevron { transform: translateX(4px); }
+.settings-row__lock {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: default;
+}
+.settings-row__lock:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.settings-index__soon { margin: var(--space-1) 0 0; font-size: 0.8125rem; color: var(--text-muted); max-width: 62ch; }
+@media (max-width: 767px) {
+  .settings-row,
+  .settings-row[data-has-icon] {
+    grid-template-columns: 2.25rem minmax(0, 1fr) minmax(1.75rem, auto);
+    row-gap: var(--space-2);
+    padding: var(--space-3);
+  }
+  .settings-row:not([data-has-icon]) { grid-template-columns: minmax(0, 1fr) minmax(1.75rem, auto); }
+  .settings-row__value { grid-column: 2; grid-row: 2; justify-items: start; text-align: left; width: auto; }
+  .settings-row__reading { justify-content: flex-start; }
+  .settings-row__secondary { padding-left: 0; border-left: 0; }
+  .settings-row:not([data-has-icon]) .settings-row__value { grid-column: 1; }
+  .settings-row__action { grid-column: 3; grid-row: 1 / span 2; }
+  .settings-row:not([data-has-icon]) .settings-row__action { grid-column: 2; }
+  .settings-chip { text-align: left; }
+}
+@media (hover: none) and (pointer: coarse) {
+  .settings-row { min-height: 44px; }
+  .settings-row__link,
+  .settings-row__lock { min-width: 44px; min-height: 44px; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .settings-row__skeleton { animation: settings-row-pulse 1.4s ease-in-out infinite; }
+}
+@keyframes settings-row-pulse { 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+  .settings-row,
+  .settings-row__icon,
+  .settings-row__chevron { transition: none; }
+  .settings-row:hover .settings-row__chevron,
+  .settings-row:active .settings-row__chevron { transform: none; }
+}
+
+/* One restrained reveal on load: the groups settle in order. Nothing else on the
+   page moves unprompted, and nothing at all under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .settings-page__card[data-plain] .settings-page__section {
+    animation: settings-group-in 160ms var(--ease-out) both;
+  }
+  .settings-page__card[data-plain] .settings-page__section:nth-child(2) { animation-delay: 30ms; }
+  .settings-page__card[data-plain] .settings-page__section:nth-child(3) { animation-delay: 60ms; }
+  .settings-page__card[data-plain] .settings-page__section:nth-child(4) { animation-delay: 90ms; }
+}
+@keyframes settings-group-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+/* ── Release center settings section (#4143) ── */
+.release-settings { gap: 16px; padding: 22px 24px; font-size: 0.875rem; line-height: 1.5; }
+.release-settings__head { display: grid; gap: 2px; }
+.release-settings__title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1rem; font-weight: 600; }
+.release-settings__lead { margin: 0; color: var(--text-muted); font-size: 0.8125rem; max-width: 56ch; }
+.release-settings__check { display: flex; align-items: flex-start; gap: 10px; font-size: 0.8125rem; cursor: pointer; }
+.release-settings__check small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 0.75rem; }
+.release-settings__source { margin: 0; color: var(--text-muted); font-size: 0.75rem; }
+.release-settings__actions { display: flex; gap: var(--space-2); }
+
+/* Mapping panel: staged rows, unsaved bar, saved confirmation (#4154). */
+.mapping-row--staged td {
+  background: var(--accent-primary-soft);
+}
+
+.mapping-row__chip {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 1px var(--space-2);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--accent-primary-soft-strong);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mapping-panel__add-hint {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+}
+
+.mapping-panel__saved {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--status-success-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--status-success-soft);
+  color: var(--status-success-fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.mapping-panel__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.mapping-panel__bar--dirty {
+  position: sticky;
+  bottom: 0;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-surface-elevated);
+  box-shadow: 0 -4px 12px oklch(0% 0 0 / 0.08);
+  z-index: 2;
+}
+
+.mapping-panel__bar-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.875rem;
+}
+
+.mapping-panel__bar-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.tabs__unsaved-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: var(--space-2);
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+
+/* What's new: the setup block reuses the notification card, so it only needs a heading. */
+.whats-new__setup { display: grid; gap: 12px; padding: 0; background: none; border: 0; box-shadow: none; }
+.whats-new__setup-title { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+.whats-new__setup .release-card { box-shadow: var(--shadow-xs); }
+@media (min-width: 1024px) {
+  .whats-new__rail { grid-row: 2; top: 76px; }
+  .whats-new__lang { margin-top: -4px; }
+}
+
+/* What's new has the whole page to scroll, so the setup card does not add scrollbars of its own:
+   the rail flows with the page and the step list shows in full. */
+@media (min-width: 1024px) {
+  .whats-new__rail { position: static; max-height: none; overflow: visible; padding: 0; margin: 0; }
+}
+
+.whats-new__setup .release-card__actions { position: static; }
+
+/* Only the release index stays in view: the rail stretches to the full height of the changelog so
+   the index has room to travel while the setup card scrolls away with the page. */
+@media (min-width: 1024px) {
+  .whats-new__rail { align-self: stretch; align-content: start; }
+  .whats-new__index { position: sticky; top: 76px; }
+  .whats-new__index ul { max-height: min(24rem, calc(100dvh - 190px)); }
+}
+
+/* Step list (What's new and the bell): one quiet note instead of a hint under every step. */
+.release-steps__note { margin: 10px 0 0; font-size: 0.75rem; color: var(--text-muted); max-width: 52ch; }
+.release-step__chips .connection-chip { flex: none; }
+/* A control wrapped only to carry a tour target keeps its own box. */
+.tour-anchor { display: inline-flex; }
+/* Showcase (tour-only) items: info hue, so they never read as a task to do. */
+.release-chip--muted {
+  background: var(--bg-surface-elevated);
+  border-color: var(--border-default);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.release-showcase {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.release-showcase--page { border-top: 0; padding-top: 0; margin-top: 0; }
+
+.release-showcase__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.release-showcase__title { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+.release-showcase__tally { font-size: 0.75rem; color: var(--text-muted); }
+.release-showcase__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.release-show {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 0 12px;
+  padding: 10px 8px;
+  margin-inline: -8px;
+  border-radius: var(--radius-md);
+  transition: background 160ms var(--ease-out);
+}
+.release-show:hover,
+.release-show:focus-within { background: color-mix(in srgb, var(--status-info) 5%, transparent); }
+.release-show__dot {
+  margin-top: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--status-info);
+  transition: background 220ms var(--ease-out);
+}
+.release-show[data-viewed='true'] .release-show__dot { background: var(--status-info); }
+.release-show__body { display: grid; gap: 6px; min-width: 0; }
+.release-show__title { margin: 0; font-size: 0.8125rem; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.release-show[data-viewed='true'] .release-show__title { color: var(--text-secondary); }
+.release-show__why { margin: 0; font-size: 0.75rem; color: var(--text-secondary); max-width: 52ch; }
+.release-show__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.release-show__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.release-show__undo {
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.release-show__undo:hover { color: var(--text-primary); text-decoration: underline; }
+.release-show__undo:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+@media (hover: none) and (pointer: coarse) {
+  .release-show .button,
+  .release-show__undo { min-height: 44px; }
+  .release-show__undo { padding-inline: 10px; }
+}
+@media (max-width: 480px) {
+  .release-show { margin-inline: -4px; padding-inline: 4px; }
+  .release-showcase__head { flex-direction: column; align-items: flex-start; gap: 2px; }
+}
+/* In the tour: a showcase segment is info-toned and shows its stops as pips over the bar. */
+.tour-card__seg { position: relative; }
+
+/* Every stop is a whole segment: reached ones are tinted, the one on screen is solid. Never a half fill. */
+
+.tour-card__stop { margin: 0; font-size: 0.75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: no-preference) {
+  .tour-card__stop { animation: release-fade-up 180ms var(--ease-out) both; }
+}
+/* The close button is a plain icon: a global button style used to give it a white disc and a shadow. */
+.tour-card .tour-card__close {
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-right: -6px;
+  background: transparent;
+  background-image: none;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-muted);
+}
+.tour-card .tour-card__close:hover { background: var(--bg-strong); box-shadow: none; color: var(--text-primary); }
+.tour-card .tour-card__close:focus-visible { box-shadow: var(--shadow-focus); }
+/* One progress bar. Every step is a flush segment of a single track; a release is one capsule of it, named by a
+   label above, with a small gap to the next. Three tones only: accent (tour: reached tinted, on screen solid),
+   info (tour-only items), grey (not reached; optional is the lighter grey). */
+.tour-card__rail { display: flex; gap: 6px; margin: 0; padding: 0; align-items: flex-end; }
+.tour-card__release { display: grid; gap: 3px; min-width: 26px; }
+.tour-card__release + .tour-card__release { margin-left: 0; padding-left: 0; border-left: 0; }
+
+.tour-card__release-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  transition: color 200ms var(--ease-out);
+}
+.tour-card__release-label::after { content: none; }
+.tour-card__release[data-active='true'] .tour-card__release-label { color: var(--text-primary); font-weight: 700; }
+.tour-card__seg { flex: 1; min-width: 0; }
+
+/* The ends of a release capsule are round, the joins between its steps are flush. */
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-card__release-label { transition: none; }
+}
+/* One shared bar: the whole run is a single capsule. Steps are 1px apart, a release boundary is a slightly
+   wider 3px notch, and only the two outer ends of the whole bar are round. */
+.tour-card__rail { gap: 3px; }
+
+.tour-card__release-label { cursor: default; border-radius: 3px; }
+.tour-card__release-label:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+/* The release tooltip sits above the tour card and never leaves the screen (collision padding in the component). */
+.tooltip__content.tour-card__tip { z-index: 75; display: grid; gap: 2px; }
+.tour-card__tip strong { font-weight: 600; }
+.tour-card__tip span { opacity: 0.8; font-size: 0.75rem; }
+/* Contrast pass: the unreached part of the bar must read as a track, not disappear into the card. */
+
+/* Polish pass: one grey for everything not reached (the card header already says required or optional),
+   and a small tick above each release boundary that ties its label to its part of the bar. */
+
+.tour-card__release { position: relative; min-width: 34px; }
+.tour-card__release + .tour-card__release::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 1px;
+  height: 11px;
+  width: 1px;
+  background: var(--border-strong);
+}
+.tour-card__release + .tour-card__release .tour-card__release-label { padding-left: 4px; }
+/* The ring tracks its target in viewport coordinates (see tour-card): a target that is sticky or in a
+   scroller of its own would drift away from a ring pinned to the document. */
+.tour-ring { position: fixed; }
+/* A target inside the topbar: the ring sits above the bar and dims it itself, so the bar's own dimming steps aside. */
+.tour-ring[data-chrome='true'] { z-index: 11; }
+.tour-chrome-target .shell-topbar::after { display: none; }
+/* Badge row under the title in the tour card, matching the steps list. */
+.tour-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 2px; }
+.tour-card__text { gap: 6px; }
+.tour-card__stop { font-size: 0.75rem; color: var(--text-muted); }
+/* The pinned actions bar: while it floats over the steps (not yet at the card's bottom edge) its lower
+   corners must be rounder than the card's, and on an unread card it leaves the 3px accent stripe
+   uncovered, so no stub of the stripe pokes out at the corner. */
+.release-card__actions { border-radius: 0 0 var(--radius-xl) var(--radius-xl); }
+.release-card[data-unread='true'] .release-card__actions { margin-left: -11px; padding-left: 11px; }
+/* Message notifications: a flat row, not a card. Severity = shape (icon) + word + a thin accent. */
+.msg {
+  --msg-accent: var(--text-muted);
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 32px;
+  gap: 10px;
+  padding: 10px 8px 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+.msg::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--msg-accent);
+}
+.msg--info { --msg-accent: var(--status-info); }
+.msg--warning { --msg-accent: var(--status-warning); }
+.msg--error { --msg-accent: var(--status-error); }
+.msg--success { --msg-accent: var(--status-success); }
+.msg[data-archived='true'] { background: var(--bg-surface-elevated); }
+.msg__icon { color: var(--msg-accent); margin-top: 1px; }
+.msg__main { min-width: 0; display: grid; gap: 2px; }
+.msg__title { margin: 0; font-size: 0.875rem; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+.msg[data-unread='true'] .msg__title { font-weight: 600; }
+.msg__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  vertical-align: 1px;
+}
+.msg__body {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.msg__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin-top: 4px; font-size: 0.75rem; color: var(--text-muted); }
+.msg__sev { font-weight: 600; color: var(--text-secondary); }
+.msg__action {
+  margin-left: auto;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.msg__action:hover { text-decoration-thickness: 2px; }
+.msg__action:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+@media (hover: none) and (pointer: coarse) {
+  .msg { grid-template-columns: 20px minmax(0, 1fr) 44px; }
+  .msg__action { min-height: 44px; padding-inline: 4px; }
+}
+@media (max-width: 400px) { .msg__action { margin-left: 0; flex-basis: 100%; text-align: left; } }
+@media (forced-colors: active) { .msg::before { background: CanvasText; } }
+/* The popup that drops from the bell when a message arrives. */
+.bell-nudge {
+  --msg-accent: var(--status-info);
+  position: fixed;
+  z-index: 62;
+  width: min(340px, calc(100vw - 16px));
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 28px;
+  gap: 10px;
+  padding: 12px 10px 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-overlay);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  transform-origin: calc(100% - 6px) -8px;
+}
+.bell-nudge[data-severity='warning'] { --msg-accent: var(--status-warning); }
+.bell-nudge[data-severity='error'] { --msg-accent: var(--status-error); }
+.bell-nudge[data-severity='success'] { --msg-accent: var(--status-success); }
+/* The tail points at the bell's centre. */
+.bell-nudge::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: clamp(18px, calc(var(--nudge-tail, 280px) - 5px), calc(100% - 28px));
+  width: 10px;
+  height: 10px;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-default);
+  border-top: 1px solid var(--border-default);
+  transform: rotate(45deg);
+}
+.bell-nudge__icon { color: var(--msg-accent); margin-top: 1px; }
+.bell-nudge__main { min-width: 0; display: grid; gap: 2px; }
+.bell-nudge__title { margin: 0; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.bell-nudge__body { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bell-nudge__foot { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: 0.75rem; }
+.bell-nudge__more { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.bell-nudge__close {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.bell-nudge__close:hover { background: var(--bg-strong); color: var(--text-primary); }
+.bell-nudge__close:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+@media (hover: none) and (pointer: coarse) { .bell-nudge__close { width: 44px; height: 44px; } }
+/* Time left, as a hairline along the bottom; it stops while the pointer or focus is on the card. */
+.bell-nudge__timer {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--msg-accent);
+  opacity: 0.55;
+  transform-origin: left;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bell-nudge { animation: bell-nudge-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .bell-nudge[data-leaving='true'] { animation: bell-nudge-out 150ms ease-in both; }
+  .bell-nudge__timer { animation: bell-nudge-timer var(--nudge-ms, 6000ms) linear both; }
+  .bell-nudge:hover .bell-nudge__timer,
+  .bell-nudge:focus-within .bell-nudge__timer { animation-play-state: paused; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bell-nudge { animation: bell-nudge-fade 120ms linear both; }
+  .bell-nudge__timer { display: none; }
+}
+@keyframes bell-nudge-in { from { opacity: 0; transform: translateY(-6px) scale(0.94); } }
+@keyframes bell-nudge-out { to { opacity: 0; transform: translateY(-4px) scale(0.96); } }
+@keyframes bell-nudge-fade { from { opacity: 0; } }
+@keyframes bell-nudge-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+/* The message action is a small text button with real padding. A global button style used to fill it
+   with the accent on hover and left it without side padding, so it is set explicitly here. */
+.msg .msg__action,
+.bell-nudge .msg__action {
+  appearance: none;
+  margin-left: auto;
+  margin-right: -6px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent-primary);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 140ms var(--ease-out);
+}
+.msg .msg__action:hover,
+.bell-nudge .msg__action:hover {
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+  color: var(--accent-primary);
+  box-shadow: none;
+}
+.msg .msg__action:active,
+.bell-nudge .msg__action:active { background: color-mix(in srgb, var(--accent-primary) 16%, transparent); }
+.msg .msg__action:focus-visible,
+.bell-nudge .msg__action:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+@media (max-width: 400px) { .msg .msg__action { margin-left: -10px; } }
+/* Archive sits next to the item menu: one click, and it reads the item too. */
+.release-card__top-actions,
+.msg__tools { display: flex; align-items: flex-start; gap: 2px; flex-shrink: 0; }
+.msg { grid-template-columns: 20px minmax(0, 1fr) auto; }
+@media (hover: none) and (pointer: coarse) { .msg { grid-template-columns: 20px minmax(0, 1fr) auto; } }
+/* The card in the bell: one row of equal segments. Optional is the lighter grey, done is the accent. */
+
+/* The card in the bell uses the same bar as the tour: flush segments in one capsule, one grey for what is
+   not done, the accent for what is, info blue for tour-only items, a small notch between the groups. */
+
+/* One list for the whole release: steps and tour-only items share the marker column, title, chips and actions. */
+.release-step[data-status='done'] .release-step__title,
+.release-step[data-status='not_applicable'] .release-step__title { text-decoration: none; color: var(--text-secondary); }
+.release-showcase { gap: 12px; margin-top: 18px; padding-top: 14px; }
+.release-steps--showcase .release-step { padding-bottom: 14px; }
+.release-steps--showcase .release-step::before,
+.release-steps--showcase .release-step::after { display: none; }
+.release-step[data-kind='showcase'] .release-step__ind {
+  border-style: solid;
+  border-color: var(--status-info);
+  color: var(--status-info);
+  background: var(--bg-surface);
+}
+.release-step[data-kind='showcase'][data-status='done'] .release-step__ind {
+  background: var(--status-info);
+  border-color: transparent;
+  color: var(--text-on-primary);
+  transform: none;
+}
+/* Old standalone-row styles are no longer used. */
+.release-show { display: none; }
+/* One step for several accounts: a title, one explanation, then a quiet row per account. */
+.release-step__targets { display: grid; gap: 10px; margin-top: 2px; }
+.release-step__target { display: grid; gap: 6px; }
+.release-step__target[data-several='true'] {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+.release-step__single { display: grid; gap: 6px; }
+/* Steps disclosure: a light text control, not a second button bar. Open and close are different motions:
+   it unfolds with an expo-out, its content fades and rises a beat later and the rows arrive one by one;
+   closing is quicker and leads with the fade, so it never feels like it is dragging. */
+.release-card__toggle {
+  width: auto;
+  align-self: start;
+  justify-self: start;
+  gap: 6px;
+  margin-left: -8px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+}
+.release-card__toggle:hover,
+.release-card__toggle:active { background: color-mix(in srgb, var(--accent-primary) 8%, transparent); border-color: transparent; }
+.release-card__toggle-label { font-variant-numeric: tabular-nums; }
+
+@keyframes release-row-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* Steps disclosure as an accordion row: label and count on the left, a round chevron on the right, no rule
+   above. It spans the card, so the target is large and the row reads as a section, not a stray button. */
+.release-card__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  align-self: stretch;
+  margin: 2px 0 0;
+  padding: 6px 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.release-card__toggle:hover,
+.release-card__toggle:active { background: transparent; border-color: transparent; color: var(--text-primary); }
+.release-card__toggle-label { display: inline-flex; align-items: center; gap: 8px; }
+.release-card__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-strong);
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.release-card__toggle:hover .release-card__count { background: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-strong)); }
+@media (hover: none) and (pointer: coarse) { .release-card__toggle { min-height: 44px; } }
+/* The steps row keeps its full-width target, but label and count sit right, next to the chevron. */
+.release-card__toggle { justify-content: flex-end; gap: 8px; }
+/* A message's severity accent follows the card's rounded border, like the unread release card, instead of a
+   short bar that stops short of the corners. */
+.msg::before { content: none; }
+.msg {
+  border-color: color-mix(in srgb, var(--msg-accent) 40%, var(--border-subtle));
+  box-shadow: inset 3px 0 0 var(--msg-accent);
+  padding-left: 16px;
+}
+.msg[data-archived='true'] { border-color: var(--border-subtle); box-shadow: inset 3px 0 0 color-mix(in srgb, var(--msg-accent) 50%, transparent); }
+@media (forced-colors: active) { .msg { box-shadow: inset 3px 0 0 CanvasText; } }
+
+/* In the bell panel messages are flat rows, not cards. A card per message put a coloured outline, a
+   coloured bar and a coloured icon on every row, so six identical successes read as six green alarm
+   boxes. Now: a hairline between rows, a tinted icon chip for severity, an accent wash plus a dot in
+   the gutter for unread, and the archive/more tools only on hover or focus. The popup that announces a
+   message keeps the card look; only rows inside the panel are flattened. */
+.release-panel .msg,
+.release-panel .msg[data-archived='true'] {
+  margin-inline: -12px;
+  padding: 12px 14px 12px 20px;
+  gap: 12px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  transition: background-color 120ms var(--ease-out);
+}
+/* Consecutive rows form one list: cancel the panel's card gap between them. */
+.release-panel .msg + .msg { margin-top: -10px; }
+.release-panel .msg:focus-within { background: color-mix(in srgb, var(--text-primary) 3%, transparent); }
+@media (hover: hover) { .release-panel .msg:hover { background: color-mix(in srgb, var(--text-primary) 3%, transparent); } }
+.release-panel .msg[data-unread='true'] { background: color-mix(in srgb, var(--accent-primary) 2.5%, transparent); }
+.release-panel .msg[data-unread='true']:focus-within {
+  background: color-mix(in srgb, var(--accent-primary) 5%, transparent);
+}
+@media (hover: hover) {
+  .release-panel .msg[data-unread='true']:hover { background: color-mix(in srgb, var(--accent-primary) 5%, transparent); }
+}
+.release-panel .msg[data-archived='true'] .msg__main { opacity: 0.75; }
+.release-panel .msg__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--msg-accent) 14%, transparent);
+}
+/* The dot lives in its own gutter so read and unread titles line up. */
+.release-panel .msg__dot { position: absolute; left: 8px; top: 21px; width: 7px; height: 7px; margin: 0; }
+/* Severity is the icon's job; the word stays for screen readers. */
+.release-panel .msg__sev {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.release-panel .msg__foot { margin-top: 2px; }
+.release-panel .msg .msg__action { margin-left: auto; }
+.release-panel .msg__tools { opacity: 0; transition: opacity 120ms var(--ease-out); }
+.release-panel .msg:hover .msg__tools,
+.release-panel .msg:focus-within .msg__tools,
+.release-panel .msg__tools:has([aria-expanded='true']) { opacity: 1; }
+@media (hover: none) { .release-panel .msg__tools { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .release-panel .msg,
+  .release-panel .msg__tools { transition: none; }
+}
+@media (forced-colors: active) {
+  .release-panel .msg { border-bottom-color: CanvasText; }
+  .release-panel .msg__icon { background: transparent; border: 1px solid CanvasText; }
+}
+
+/* Release cards in the panel are rows too, so a message and a release read as one list: same hairline,
+   same unread wash and gutter dot, no outline. Solid fills (not transparent) because the pinned actions
+   bar inherits the card's background. */
+:is(.release-panel, .whats-new__setup) .release-card {
+  margin-inline: -12px;
+  padding: 14px 14px 14px 20px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--bg-surface);
+  transition: background-color 120ms var(--ease-out);
+}
+@media (hover: hover) { :is(.release-panel, .whats-new__setup) .release-card:hover { background: color-mix(in srgb, var(--text-primary) 3%, var(--bg-surface)); } }
+:is(.release-panel, .whats-new__setup) .release-card[data-unread='true'] {
+  border-color: var(--border-subtle);
+  box-shadow: none;
+  background: color-mix(in srgb, var(--accent-primary) 2.5%, var(--bg-surface));
+}
+:is(.release-panel, .whats-new__setup) .release-card[data-unread='true']::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 21px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+@media (hover: hover) {
+  :is(.release-panel, .whats-new__setup) .release-card[data-unread='true']:hover {
+    background: color-mix(in srgb, var(--accent-primary) 2.5%, color-mix(in srgb, var(--text-primary) 3%, var(--bg-surface)));
+  }
+}
+:is(.release-panel, .whats-new__setup) .release-card + .release-card,
+:is(.release-panel, .whats-new__setup) .release-card + .msg,
+:is(.release-panel, .whats-new__setup) .msg + .release-card { margin-top: -10px; }
+.release-panel .msg:has(+ .release-card),
+:is(.release-panel, .whats-new__setup) .release-card:last-child { border-bottom: 1px solid var(--border-subtle); }
+/* Spacing: the card's content hangs from the title column (icon 28 + gap 12), like a message's text,
+   with more air between its parts. */
+:is(.release-panel, .whats-new__setup) .release-card { padding: 16px 16px 16px 20px; gap: 12px; }
+:is(.release-panel, .whats-new__setup) .release-card > :not(.release-card__top):not(.release-card__actions) { margin-left: 40px; }
+/* The toggle is as wide as the card, so its 40px indent must come out of its width, not push it past the card edge. */
+:is(.release-panel, .whats-new__setup) .release-card > .release-card__toggle { max-width: calc(100% - 40px); }
+/* The step list scrolls on its own, so the card is never taller than the panel and its buttons no longer
+   need to float over the content; pinned, they stacked up at the bottom of the panel and left a blank band
+   above them. They sit at the end of the card, in the content column. */
+:is(.release-panel, .whats-new__setup) .release-card__actions,
+:is(.release-panel, .whats-new__setup) .release-card[data-unread='true'] .release-card__actions {
+  position: static;
+  margin: 0 0 0 40px;
+  padding: 0;
+  background: none;
+  border-top: 0;
+  border-radius: 0;
+}
+/* The step list takes the height it needs: the panel is the only scroller, so the wheel never gets caught
+   inside a card. A static heading replaces the old disclosure button. */
+.release-card__list { display: grid; gap: 0; min-width: 0; }
+:is(.release-panel, .whats-new__setup) .release-card__toggle--static {
+  margin: 0;
+  cursor: default;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  padding: 4px 0 0;
+}
+/* Same icon chip as a message, so the two read as one family; info blue because a release is information. */
+:is(.release-panel, .whats-new__setup) .release-card__top { gap: 12px; }
+:is(.release-panel, .whats-new__setup) .release-card__top > div:not(.release-card__top-actions) { flex: 1; }
+:is(.release-panel, .whats-new__setup) .release-card__top-actions { margin-left: auto; flex: none; }
+.release-card__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--status-info);
+  background: color-mix(in srgb, var(--status-info) 14%, transparent);
+}
+/* A message's tools sit over the row's corner instead of reserving a column, so the text uses the full width. */
+.release-panel .msg,
+.release-panel .msg[data-archived='true'] { grid-template-columns: 28px minmax(0, 1fr); }
+.release-panel .msg__tools {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-hover);
+}
+.release-panel .msg[data-unread='true'] .msg__tools { background: color-mix(in srgb, var(--accent-primary) 5%, var(--bg-surface-elevated)); }
+@media (prefers-reduced-motion: reduce) { :is(.release-panel, .whats-new__setup) .release-card { transition: none; } }
+@media (forced-colors: active) { :is(.release-panel, .whats-new__setup) .release-card { border-bottom-color: CanvasText; } }
+/* A page can ask for one column: the sections alone, with no rail beside them. */
+.settings-page[data-single] .settings-page__layout { grid-template-columns: minmax(0, 1fr); }
+.settings-page[data-single] .settings-page__toc { display: none; }
+
+/* ── Icon popover tooltips (#4228) ──────────────────────────────────────── */
+/* An icon button that explains itself: `IconWithOnHoverPopoverTooltip` and its
+   Warning variant, on top of `PopoverOnHover`. */
+.icon-tip.button--bare.button--bare {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.icon-tip--warning.button--bare.button--bare {
+  color: var(--status-warning-strong);
+}
+.icon-tip--error.button--bare.button--bare {
+  color: var(--status-error-fg);
+}
+.icon-tip--info.button--bare.button--bare {
+  color: var(--accent-primary);
+}
+.icon-tip--warning.button--bare.button--bare:hover,
+.icon-tip--warning.button--bare.button--bare[aria-expanded='true'] {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-strong);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .icon-tip:hover svg,
+  .icon-tip[aria-expanded='true'] svg {
+    animation: icon-tip-nudge 420ms ease-out;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Once, when the card is chosen: the mark says "there is something to read here"
+     without opening a panel over the confirm button. */
+  .order-sync-start__option:has(.order-sync-start__card--checked) .icon-tip svg {
+    animation: icon-tip-nudge 600ms ease-out 120ms;
+  }
+}
+@keyframes icon-tip-nudge {
+  0% { transform: rotate(0); }
+  25% { transform: rotate(-9deg); }
+  55% { transform: rotate(7deg); }
+  100% { transform: rotate(0); }
+}
+
+.motion-popover.popover-on-hover {
+  padding: 0;
+  max-width: calc(100vw - 16px);
+  /* Above the elevated dialog tier (101): the mark usually sits INSIDE a dialog,
+     and a panel behind its own dialog cannot be read. */
+  z-index: 120;
+}
+.motion-popover.popover-on-hover--warning {
+  border-color: var(--status-warning-border);
+}
+.popover-on-hover__body {
+  margin: -6px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.motion-popover.popover-on-hover {
+  overflow: hidden;
+}
+
+/* ── Popover card (#4228) ── */
+.popover-card {
+  display: grid;
+}
+.popover-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) 0;
+}
+.popover-card__tile {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-hover);
+  color: var(--text-secondary);
+}
+.popover-card__tile svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.popover-card--warning .popover-card__tile {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-strong);
+}
+.popover-card--error .popover-card__tile {
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+.popover-card--info .popover-card__tile {
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary);
+}
+.popover-card__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+.popover-card__summary {
+  margin: var(--space-3) 0 0;
+  padding: 0 var(--space-4);
+  color: var(--text-primary);
+}
+.popover-card__list {
+  margin: var(--space-3) 0 0;
+  padding: 0 var(--space-4);
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+.popover-card__list li {
+  position: relative;
+  padding-left: var(--space-4);
+}
+.popover-card__list li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.6em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.popover-card--warning .popover-card__list li::before {
+  background: var(--status-warning);
+}
+.popover-card--info .popover-card__list li::before {
+  background: var(--accent-primary);
+}
+.popover-card__footer {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-hover);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.popover-card:not(:has(.popover-card__footer)) {
+  padding-bottom: var(--space-4);
+}
+
+/* Notification centre accessibility (audit): a solid focus ring instead of the 30% halo, which is not
+   3:1 against the panel; the action link darkened toward the text colour so 12px bold text clears 4.5:1
+   in the light theme (the same mix lightens it in the dark theme); and outlines that survive forced
+   colours, where box-shadow rings and the tour ring are dropped. */
+.release-panel :focus-visible,
+.tour-card :focus-visible,
+.bell-nudge :focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.msg .msg__action,
+.bell-nudge .msg__action {
+  color: color-mix(in srgb, var(--accent-primary) 62%, var(--text-primary));
+}
+@media (forced-colors: active) {
+  .release-panel :focus-visible,
+  .tour-card :focus-visible,
+  .bell-nudge :focus-visible { outline: 2px solid Highlight; }
+  .tour-ring { outline: 2px solid Highlight; box-shadow: none; }
+}
+
+/* What's new: the setup rail is the same ReleaseCard as the bell, so it reads as the same kind of object.
+   One surface holds the rows; hairlines (not outlines) separate them. */
+.whats-new__setup {
+  gap: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.whats-new__setup-title { padding: 14px 20px 6px; }
+.whats-new__setup .release-card,
+.whats-new__setup .release-card:last-child { margin: 0; box-shadow: none; }
+.whats-new__setup .release-card + .release-card { margin-top: 0; }
+.whats-new__setup .release-card:last-child { border-bottom: 0; }
+
+/* Pointer back to the tour target when the operator has scrolled it off screen: a pill on the edge it
+   left through, with a chevron toward it. Clicking scrolls the target to the middle of the screen. */
+.tour-pointer {
+  position: fixed;
+  left: 50%;
+  z-index: 62;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: auto;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-overlay);
+  transform: translateX(-50%);
+  animation: tour-pointer-in 180ms var(--ease-out) both;
+}
+.tour-pointer[data-side='above'] { top: calc(var(--shell-topbar-height, 52px) + 12px); }
+.tour-pointer[data-side='below'] { bottom: calc(var(--tour-card-space, 0px) + 16px); }
+.tour-pointer[data-side='above'] svg { transform: rotate(180deg); }
+.tour-pointer:hover { background: var(--accent-primary-hover); }
+@keyframes tour-pointer-in { from { opacity: 0; transform: translateX(-50%) translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .tour-pointer { animation: none; } }
+@media (forced-colors: active) { .tour-pointer { border: 1px solid ButtonText; } }
+
+/* While a tour target is being looked for: a quiet loader line, and the controls wait. */
+.tour-card__searching { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.8125rem; color: var(--text-muted); }
+.tour-card__spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-primary);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tour-card__spinner { animation: tour-spin 700ms linear infinite; }
+}
+@keyframes tour-spin { to { transform: rotate(360deg); } }
+.tour-card__footer[inert], .tour-card__choices[inert] { opacity: 0.5; }
+
+/* Progress capsules (shared): the tour rail, the bell card and the What's new rail draw the same segment.
+   Kind is the shape (solid = required, striped = optional, blue = a guide to look at); state is the fill. */
+.pseg-strip, .tour-card__segs, .tour-card__stops { display: flex; gap: 1px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.tour-card__stops { flex: 1; }
+.pseg-strip__gap { flex: 0 0 8px; }
+.pseg {
+  --pseg-base: color-mix(in srgb, var(--text-muted) 34%, var(--bg-surface));
+  --pseg-fill: var(--accent-primary);
+  position: relative;
+  display: block;
+  flex: 1;
+  min-width: 0;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--pseg-base);
+  transition: background-color 240ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.pseg[data-kind='showcase'] {
+  --pseg-base: color-mix(in srgb, var(--status-info) 24%, var(--bg-surface));
+  --pseg-fill: var(--status-info);
+}
+.pseg[data-kind='optional'] {
+  --pseg-base: color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface));
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--bg-surface) 55%, transparent) 3px 5px);
+}
+.pseg[data-state='done'] { background-color: var(--pseg-fill); }
+.pseg[data-state='current'] { background-color: var(--pseg-fill); transform: scaleY(1.5); z-index: 1; }
+/* Finished is a full colour; what is still to do stays a quiet grey, so the two never read alike. */
+.pseg[data-state='done'][data-kind='optional'],
+.pseg[data-state='current'][data-kind='optional'] { background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgb(255 255 255 / 0.34) 3px 5px); }
+.pseg[data-state='skipped'] { background-color: color-mix(in srgb, var(--text-muted) 14%, var(--bg-surface)); background-image: none; }
+/* What is still to do is a solid mid-grey; what is finished takes the kind's full colour. Optional keeps its stripes. */
+.pseg[data-state='todo'] { background-color: color-mix(in srgb, var(--text-muted) 40%, var(--bg-surface)); }
+.pseg[data-state='todo'][data-kind='showcase'] { background-color: color-mix(in srgb, var(--status-info) 30%, color-mix(in srgb, var(--text-muted) 30%, var(--bg-surface))); }
+.pseg[data-state='todo'][data-kind='optional'] {
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--bg-surface) 60%, transparent) 3px 5px);
+}
+.pseg--button { cursor: pointer; }
+/* The touch-target rule makes every button 44px tall; a segment is 8px and takes its hit area from the pseudo-element. */
+.pseg.pseg--button { min-height: 0; min-width: 0; height: 8px; }
+.pseg--button::before { content: ''; position: absolute; inset: -14px -2px; }
+@media (hover: hover) { .pseg--button:hover { transform: scaleY(1.7); } }
+.pseg--button:active { transform: scaleY(1.2); }
+.pseg--button:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.pseg--button[aria-disabled='true'] { cursor: default; }
+.pseg--button[aria-disabled='true']:hover, .pseg--button[aria-disabled='true']:active { transform: none; }
+/* Round only the two outer ends of a strip; joins stay flush. */
+.pseg-strip > .pseg:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.pseg-strip > .pseg:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.pseg-strip > .pseg-strip__gap + .pseg { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.pseg-strip > .pseg:has(+ .pseg-strip__gap) { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.tour-card__rail > .tour-card__release:first-child .tour-card__segs > .tour-card__seg:first-child .pseg,
+.tour-card__rail > .tour-card__release:first-child .tour-card__segs > .tour-card__seg:first-child .tour-card__stops .pseg:first-child { border-top-left-radius: 4px; border-bottom-left-radius: 4px; }
+.tour-card__rail > .tour-card__release:last-child .tour-card__segs > .tour-card__seg:last-child .pseg,
+.tour-card__rail > .tour-card__release:last-child .tour-card__segs > .tour-card__seg:last-child .tour-card__stops .pseg:last-child { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+.tour-card__rail .pseg { margin-block: 5px; }
+.pseg-tally { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0; padding: 0; list-style: none; font-size: 0.75rem; color: var(--text-muted); }
+.pseg-tally__item { display: inline-flex; align-items: center; gap: 6px; }
+.pseg-tally__mark .pseg { display: block; width: 16px; flex: none; border-radius: 4px; }
+.release-progress__note { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+@media (prefers-reduced-motion: reduce) { .pseg { transition: none; } }
+@media (forced-colors: active) {
+  .pseg { forced-color-adjust: none; border: 1px solid ButtonText; }
+  .pseg[data-state='done'], .pseg[data-state='current'] { background-color: Highlight; }
+}
+
+.release-step__body { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.release-step__chips .connection-chip { max-width: 100%; }
+
+/* Phone: a tour card that takes half the screen hides what it points at, so it is tighter. */
+@media (max-width: 480px) {
+  .tour-card { gap: 8px; padding-block: 10px 12px; }
+  .tour-card__title { font-size: 1rem; }
+  .tour-card__body, .tour-card__hint, .tour-card__live { font-size: 0.8125rem; line-height: 1.4; }
+  .tour-card .tour-choice { min-height: 40px; padding-block: 6px; }
+  .tour-card__rail .pseg { margin-block: 3px; }
+}
+
+/* The fold button is for phones and small tablets: it drops the text and the choices and leaves the steps and the buttons. */
+.tour-card__fold { display: none; }
+@media (max-width: 768px) {
+  .tour-card__fold {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+  }
+  .tour-card .tour-card__fold { box-shadow: none; background: transparent; border: 0; }
+  .tour-card__fold svg { transition: transform 220ms var(--ease-out); }
+  .tour-card[data-collapsed='true'] .tour-card__fold svg { transform: rotate(180deg); }
+  .tour-card[data-collapsed='true'] .tour-card__text,
+  .tour-card[data-collapsed='true'] .tour-card__choices,
+  .tour-card[data-collapsed='true'] .tour-card__live,
+  .tour-card[data-collapsed='true'] .tour-card__reason { display: none; }
+}
+/* Unfolding brings the text and choices back with a short rise; display:none to block restarts the animation each time. */
+@keyframes tour-unfold { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (max-width: 768px) and (prefers-reduced-motion: no-preference) {
+  .tour-card[data-collapsed='false'] .tour-card__text,
+  .tour-card[data-collapsed='false'] .tour-card__choices { animation: tour-unfold 280ms var(--ease-out) both; }
+  .tour-card[data-collapsed='false'] .tour-card__choices { animation-delay: 50ms; }
+}
+@media (prefers-reduced-motion: reduce) { .tour-card__fold svg { transition: none; } }
+
+/* Phone: the step list uses the width it has instead of an indent plus a clipped edge. */
+@media (max-width: 480px) {
+  :is(.release-panel, .whats-new__setup) .release-card { padding: 14px 12px 14px 14px; }
+  :is(.release-panel, .whats-new__setup) .release-card > :not(.release-card__top):not(.release-card__actions) { margin-left: 0; }
+  .release-step__actions { flex-wrap: wrap; }
+}
+
+.release-panel .msg--clickable { cursor: pointer; }
+@media (max-width: 768px) {
+  /* Fold and close are thumb targets; the glyph stays small, the hit area does not. */
+  .tour-card .tour-card__fold,
+  .tour-card .tour-card__close { width: 44px; height: 44px; margin-block: -6px; }
+  .tour-card__top-end { gap: 4px; }
+}
+
+/* The grab handle is for phones: swipe it down to fold the card, up to open it, tap to toggle. */
+.tour-card__handle { display: none; }
+@media (max-width: 768px) {
+  .tour-card__handle {
+    display: grid;
+    place-items: center;
+    height: 22px;
+    margin-block: -6px 0;
+    touch-action: none;
+    cursor: grab;
+  }
+  .tour-card__grip { width: 36px; height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text-muted) 55%, transparent); }
+}
+
+/* Order peek on a phone: the header, the actions and the fact grid are laid out for a narrow column
+   instead of squeezed from the desktop drawer. */
+.peek-panel .peek-panel__copy { min-height: 28px; height: 28px; padding: 0 6px; box-shadow: none; }
+.peek-panel .peek-panel__copy:focus:not(:focus-visible) { box-shadow: none; }
+.peek-panel .sales-doc-trigger { min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; }
+@media (hover: none) {
+  /* The integration label would sit on top of the environment tag in these narrow cells. */
+  .peek-panel .connection-chip__reveal { display: none; }
+}
+@media (max-width: 480px) {
+  .peek-panel .side-panel__title-row--with-close { flex-wrap: wrap; row-gap: var(--space-2); }
+  .peek-panel .side-panel__title-row--with-close .side-panel__title-main { order: 1; flex: 1 1 0; min-width: 0; }
+  .peek-panel .side-panel__close { order: 2; flex: none; align-self: flex-start; }
+  .peek-panel .side-panel__aside {
+    order: 3;
+    flex: 1 0 100%;
+    display: flex;
+    justify-items: normal;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .peek-panel .peek-panel__total { font-size: 1.125rem; }
+  .peek-panel .side-panel__body { padding: var(--space-3) var(--space-4); }
+  .peek-panel__body { gap: var(--space-3); }
+  .peek-panel__actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  .peek-panel__actions > :first-child { grid-column: 1 / -1; justify-content: center; }
+  .peek-panel__actions > .button { justify-content: center; min-height: 44px; }
+  .peek-panel__state-row { grid-template-columns: 4.25rem minmax(0, 1fr); gap: var(--space-2); }
+  .peek-glance { gap: var(--space-3) var(--space-4); }
+  .peek-glance dd { overflow-wrap: anywhere; }
+}
+
+/* Optional steps and guides fold under one row; its count and the strip above stay visible. The panel is still the only scroller. */
+.release-card__chevron { display: inline-grid; transition: transform 240ms var(--ease-out); }
+.release-card__chevron[data-open='true'] { transform: rotate(180deg); }
+.release-card__fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 280ms var(--ease-out); }
+.release-card__fold[data-open='true'] { grid-template-rows: 1fr; }
+/* overflow:hidden, not clip: where clip is unsupported the folded content would still extend the scroll area. The inline padding/margin pair keeps focus rings from being cut. */
+.release-card__fold-inner { min-height: 0; overflow: hidden; display: grid; gap: 12px; padding: 0 8px; margin-inline: -8px; }
+.release-card__fold[data-open='false'] .release-card__fold-inner { visibility: hidden; transition: visibility 0s linear 280ms; }
+:is(.release-panel, .whats-new__setup) .release-card .release-card__toggle:not(.release-card__toggle--static) { cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .release-card__fold, .release-card__chevron { transition: none; } }

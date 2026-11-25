@@ -803,7 +803,7 @@ Not a bounded context - a cross-cutting READ convention, recorded here because #
 - **API**: `/promotions` (list, `PUT /order`, `POST /evaluate`, get, create, replace, `POST /:id/resume`, delete). Reads are admin, operator and viewer; writes are admin and operator. `/gift-rules` no longer exists.
 - **Migration**: `1939500000000-create-promotions` copies each gift rule (ids kept, `doNotCombine` becomes `combinable`, definition hash recomputed), its state, grants and run history, then removes them from the automation tables and drops `automation_rules.position`. `down()` rebuilds them.
 
-### 31. Saved Views
+### 32. Saved Views
 
 *Design of record: `docs/plans/mockups/saved-views/` (#4241).*
 
@@ -816,6 +816,22 @@ Not a bounded context - a cross-cutting READ convention, recorded here because #
 - **Tolerant read, strict write**: `readSavedViewDefinition` coerces whatever a stored row holds and never throws - a view written by another build, or edited by hand, is returned flagged `stale: true` so its owner can repair or delete it; a 500 there would hide the very row that needs fixing. `checkSavedViewDefinition` is the strict write-side check. The definition is otherwise opaque to the backend: unknown column or part ids are reconciled by the frontend on load, not refused on write.
 - **`pageKey` is validated in the API, not in core**: format `^[a-z][a-z0-9-]{1,63}$` and membership in `SAVED_VIEW_PAGE_KEYS` (`apps/api/src/saved-views/saved-view-page-keys.ts`). Adding a list page is one line there.
 - **Orders column presets migrated (#3633)**: the same migration copies `order_column_presets` into `saved_views` (`page_key = 'orders'`) - a user's presets become personal views, the workspace-default row becomes a shared view flagged as the workspace default - narrowed to the orders LIST column ids, skipping presets with none left and presets whose author no longer exists. Idempotent (`ON CONFLICT DO NOTHING`). The preset endpoints and table stay: the export dialog still reads them. On the frontend the Orders list adopts views behind `VITE_OL_ORDERS_SAVED_VIEWS_ENABLED` (on by default; only the literal `false` restores the pre-views list with its column presets). Frontend design and the page-adoption contract are in `docs/frontend-architecture.md` § Saved list views.
+
+### 31. Release center
+
+*See [ADR-086](./architecture/adrs/086-release-center.md) for the decision rationale. Planned (epic #4131); described as designed, not yet shipped.*
+
+- **Responsibility**: tell an operator what changed after an update and which setup steps need a decision: a post-update dialog with the English changelog, a notification center replacing the static "Alerts" button, a guided tour, and a catalog of required and optional steps with automatic or manual completion, archive, delete and undo.
+- **Location**: `libs/core/src/release-center/` (a **zero-sibling-edge leaf**, registered in `ZERO_SIBLING_EDGE_LEAVES` with an empty allow-set, not in the root barrel); HTTP in `apps/api/src/release-center/` under `release-state`; UI in `apps/web/src/features/release-center/`.
+- **State lives in the database only.** `user_release_state` (version cursor as text plus `major/minor/patch/rank`, and `skipDialog`) and `release_item_states` (scope `installation | user`, two partial unique indexes). No browser storage for release state, which an ESLint rule and a test enforce (message notification content is the one documented exception, see below).
+- **Roles.** Everyone with read access reads state; only an admin completes installation steps; a packer has no access. The user id comes only from the token.
+- **The catalog is code, the text is locale files.** Each step declares `introducedIn` by hand (the next minor), guarded by `scripts/check-release-center-catalog.mjs`. The dialog opens only on a minor or major increase.
+- **Completion is observed.** A keyed `useUpdateConnectionMutation` is watched through the `MutationCache`, so `features/connections` never imports the release center.
+- **Kill switch.** A nullable boolean on `operational_settings`: setting, then `OL_RELEASE_CENTER_ENABLED`, then default on, reported with its source. The leaf does not import `operational-settings`; the API layer composes `enabled`.
+- **A step points at an existing screen and never edits for you.** Carrier assignment stays in the Mappings panel; the release center only links to it.
+- **Guides and release-less items (#4243).** A *showcase* is a tour-only item: 1 to 3 stops (route plus `data-tour` target), no importance or completion rule by construction, seen when its last stop is reached or the guide is skipped (the caller's own archived user row `showcase-<id>`, no migration). It has its own tally and never counts toward the setup progress or the bell badge. `introducedIn` is optional on showcases and on setup steps: without it the item belongs to no release (a standalone guide started with `requestReleaseTour({ showcaseId })`; a step on the "Recommended steps" card and under "General" in the tour).
+- **Message notifications (#4244).** Features publish plain messages with `publishNotification` and actions create them through `registerNotificationRule`; the bell lists them next to release cards and a `BellNudge` popup drops from the bell when one arrives. Their content is kept per signed-in user in the browser (the one documented exception to "no browser storage", confined to `lib/notification-store.ts`); read, archived and deleted are the user's own release-state rows. There is no server-side delivery yet: a message exists only on the device that published it.
+- **What the switch governs (#4245).** Off hides what an update brings (the post-update window, release cards with steps, release guides); the bell, message notifications and release-less guides stay, so `GET /release-state` still returns the caller's own item states.
 
 ---
 

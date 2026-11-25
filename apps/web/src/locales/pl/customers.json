@@ -82,7 +82,7 @@
       "copy": "Kopiuj ID klienta",
       "copyFor": "Kopiuj ID klienta {name}"
     },
-    "description": "Tożsamości klientów - przeglądaj rozpoznanych klientów i historię adresów.",
+    "description": "Przeglądaj rozpoznanych klientów i historię ich adresów.",
     "empty": {
       "browseOrders": "Przeglądaj zamówienia",
       "clearFilters": "Wyczyść filtry",

@@ -130,8 +130,7 @@ describe('PosthogSettingsTile', () => {
     renderWithProviders(<PosthogSettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
 
     expect(await screen.findByText('Overrides env')).toBeInTheDocument();
-    expect(screen.getByText('Saved settings')).toBeInTheDocument();
-    expect(screen.getByText('Configured')).toBeInTheDocument();
+    expect(screen.queryByText(/API key/)).not.toBeInTheDocument();
   });
 
   it('opens the edit dialog when Edit is clicked', async () => {

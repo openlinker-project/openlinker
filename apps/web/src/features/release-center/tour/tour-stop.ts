@@ -1,0 +1,66 @@
+/**
+ * Where a tour entry points
+ *
+ * A setup step resolves from the step catalog (route params may need the
+ * connection); a showcase stop resolves from its own stop list. One function so
+ * the provider (which navigates) and the card (which highlights) cannot disagree.
+ *
+ * @module features/release-center/tour
+ */
+import { generatePath } from 'react-router-dom';
+import { RELEASE_SHOWCASES } from '../catalog/release-showcases';
+import { RELEASE_STEPS } from '../catalog/release-steps';
+import type { TourStepInput } from './tour-context';
+
+export interface TourStop {
+  path: string;
+  target: string;
+  /** The page a link in the step leads to, and what to highlight there. */
+  follow?: { path: string; targets: readonly string[]; prefix?: boolean };
+}
+
+export function resolveTourStop(step: TourStepInput): TourStop | null {
+  if (step.showcase) {
+    const showcase = RELEASE_SHOWCASES.find((candidate) => candidate.id === step.stepId);
+    const stop = showcase?.stops[step.showcase.stopIndex];
+    return stop
+      ? {
+          path: generatePath(`/${stop.routePattern}`),
+          target: stop.target,
+          follow: stop.follow ? { path: `/${stop.follow.pathPrefix}`, targets: [stop.follow.target], prefix: true } : undefined,
+        }
+      : null;
+  }
+  const entry = RELEASE_STEPS.find((candidate) => candidate.id === step.stepId);
+  if (!entry) return null;
+  const params = entry.routeParams({
+    connection: step.connectionId
+      ? { id: step.connectionId, platformType: '', capabilities: [], config: {} }
+      : null,
+    unassignedCarrierMethods: null,
+  });
+  return {
+    path: generatePath(`/${entry.routePattern}`, params),
+    target: entry.target,
+    follow: entry.follow ? { path: generatePath(`/${entry.follow.routePattern}`), targets: entry.follow.targets } : undefined,
+  };
+}
+
+/** Whether a person without the right to change settings can open this step's page (the view tour skips the rest). */
+export function stepViewable(stepId: string): boolean {
+  return RELEASE_STEPS.find((candidate) => candidate.id === stepId)?.viewable !== false;
+}
+
+/** `major.minor` of the release that ships this entry, or null for an unknown id. */
+export function tourItemMinor(step: TourStepInput): string | null {
+  const introducedIn = step.showcase
+    ? RELEASE_SHOWCASES.find((candidate) => candidate.id === step.stepId)?.introducedIn
+    : RELEASE_STEPS.find((candidate) => candidate.id === step.stepId)?.introducedIn;
+  const match = introducedIn ? /^(\d+)\.(\d+)\./.exec(introducedIn) : null;
+  return match ? `${match[1]}.${match[2]}` : null;
+}
+
+/** Identity of the item a tour entry belongs to: all stops of one showcase share it. */
+export function tourItemKey(step: TourStepInput): string {
+  return `${step.stepId}:${step.connectionId ?? ''}`;
+}

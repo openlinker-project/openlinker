@@ -30,6 +30,14 @@ describe('InpostConnectionConfigShapeValidatorAdapter', () => {
     await expect(validator.validate(validConfig)).resolves.toBeUndefined();
   });
 
+  it('should accept the shipping namespace the notify-on-label setting lives in', async () => {
+    const config = {
+      ...validConfig,
+      shipping: { notifyMarketplaceOnLabelPurchase: false },
+    };
+    await expect(validator.validate(config)).resolves.toBeUndefined();
+  });
+
   it('should throw when organizationId is missing', async () => {
     const config = { environment: validConfig.environment, senderAddress: validConfig.senderAddress };
     await expect(validator.validate(config)).rejects.toBeInstanceOf(

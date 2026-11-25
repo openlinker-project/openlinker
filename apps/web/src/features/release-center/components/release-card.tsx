@@ -1,0 +1,306 @@
+/**
+ * Release card (#4148)
+ *
+ * One release notification: version badge, a segmented progress bar (one
+ * segment per step, optional ones hatched), a collapsible step list, and the
+ * call to action. The steps are collapsed by default; the toggle is a labelled
+ * chevron with a 44px target. A release without steps offers the changelog only.
+ *
+ * @module features/release-center/components
+ */
+import { useId, useState, type ReactElement } from 'react';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import { Button } from '../../../shared/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../../../shared/ui/dropdown-menu';
+import { StatusBadge } from '../../../shared/ui/status-badge';
+import { useReleaseActions } from '../hooks/use-release-actions';
+import { useReleaseCenterAccess } from '../hooks/use-release-center-access';
+import { requestReleaseTour, requestWhatsNew } from '../lib/release-center-requests';
+import {
+  GENERAL_MINOR,
+  notificationStatusOf,
+  showcaseSeenOf,
+  showcaseTally,
+  stepStatusOf,
+  type ReleaseNotification,
+  type StepInstance,
+} from '../lib/release-notifications';
+import { useReleaseCenterView } from './release-center-provider';
+import { ReleaseShowcaseList } from './release-showcase-list';
+import { ReleaseIcon } from './release-icon';
+import { ProgressSegment } from './progress-segment';
+import { ProgressTally } from './progress-tally';
+import { addToProgressCounts, emptyProgressCounts } from '../lib/progress-counts';
+import { ReleaseStepList } from './release-step-list';
+
+export function ReleaseCard({
+  notification,
+  instances,
+  onNavigate,
+  hideChangelogLink = false,
+}: {
+  notification: ReleaseNotification;
+  instances: readonly StepInstance[];
+  /** Closes the panel when the card hands the viewer to another surface. */
+  onNavigate: () => void;
+  /** On the What's new page itself the changelog is already in view. */
+  hideChangelogLink?: boolean;
+}): ReactElement | null {
+  const view = useReleaseCenterView();
+  const copy = useMessages('release-center').panel;
+  const actions = useReleaseActions();
+  const { canWriteSteps } = useReleaseCenterAccess();
+  // The step list is always open and takes the height it needs: the panel scrolls once, a card never has a scroller of its own.
+  const regionId = useId();
+  // Required steps are always on show; the optional ones and the guides fold away, while the strip and tally above stay.
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  if (!view) return null;
+
+  const mine = instances.filter((instance) => notification.stepKeys.includes(instance.itemKey));
+  const statuses = mine.map((instance) => stepStatusOf(view.state, instance.itemKey, view.now));
+  const done = statuses.filter(
+    (entry) => entry.status === 'done' || entry.status === 'not_applicable'
+  ).length;
+  const open_ = mine.filter((_, index) => statuses[index].status === 'open');
+  const { status, unread } = notificationStatusOf(view.state, notification.itemKey);
+  const archived = status === 'archived';
+  const myShowcases = view.showcases.filter((s) => notification.showcaseKeys.includes(s.itemKey));
+  const showcaseOnly = mine.length === 0 && myShowcases.length > 0;
+  const tally = showcaseTally(myShowcases, view.state);
+  const allSeen = myShowcases.every((s) => showcaseSeenOf(view.state, s.itemKey));
+  const hasSteps = mine.length > 0 || myShowcases.length > 0;
+  const left = mine.length - done;
+  const requiredSteps = mine.filter((instance) => instance.importance === 'required');
+  const optionalSteps = mine.filter((instance) => instance.importance !== 'required');
+  const counts = emptyProgressCounts();
+  mine.forEach((instance, index) =>
+    addToProgressCounts(
+      counts,
+      instance.importance,
+      statuses[index].status === 'done' || statuses[index].status === 'not_applicable'
+    )
+  );
+  myShowcases.forEach((instance) => {
+    const stops = instance.showcase.stops.length;
+    for (let i = 0; i < stops; i += 1) addToProgressCounts(counts, 'showcase', showcaseSeenOf(view.state, instance.itemKey));
+  });
+
+  const cta = showcaseOnly
+    ? allSeen
+      ? copy.ctaTourAgain
+      : copy.ctaTour
+    : !canWriteSteps
+    ? copy.ctaShowWhere
+    : done === 0
+      ? copy.ctaGuide
+      : left === 0
+        ? copy.ctaAgain
+        : copy.ctaContinue;
+
+  return (
+    <article className="release-card" data-unread={unread && !archived} data-archived={archived}>
+      <div className="release-card__top">
+        <span className="release-card__icon" aria-hidden="true">
+          <ReleaseIcon name={showcaseOnly ? 'play' : 'sparkle'} size={16} />
+        </span>
+        <div>
+          <p className="release-card__title">
+            {notification.minor === GENERAL_MINOR
+              ? copy.generalTitle
+              : copy.releaseTitle}
+          </p>
+          <div className="release-card__meta">
+            {notification.minor === GENERAL_MINOR ? null : (
+              <StatusBadge compact withDot tone="info">
+                {interpolate(copy.versionBadge, { version: notification.version })}
+              </StatusBadge>
+            )}
+            {archived ? <span>{copy.archivedLabel}</span> : null}
+          </div>
+        </div>
+        <div className="release-card__top-actions">
+          {archived ? (
+            <Button
+              tone="ghost"
+              className="button--icon button--sm"
+              aria-label={copy.menuRestore}
+              title={copy.menuRestore}
+              onClick={() => actions.restore(notification.itemKey)}
+            >
+              <ReleaseIcon name="undo" />
+            </Button>
+          ) : (
+            // Archiving also reads it, so there is no separate "mark as read" to hunt for in a menu.
+            <Button
+              tone="ghost"
+              className="button--icon button--sm"
+              aria-label={copy.menuArchive}
+              title={copy.menuArchive}
+              onClick={() => actions.archive(notification.itemKey)}
+            >
+              <ReleaseIcon name="archive" />
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button tone="ghost" className="button--icon button--sm" aria-label={copy.itemActions}>
+                <ReleaseIcon name="dots" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="release-card__menu">
+              {hasSteps && !archived && canWriteSteps && left > 0 ? (
+                <>
+                  <DropdownMenuItem onSelect={() => actions.markAllDone(open_)}>
+                    <ReleaseIcon name="check" />
+                    {copy.menuMarkAllDone}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              ) : null}
+              <DropdownMenuItem
+                className="release-card__menu-danger"
+                onSelect={() => actions.remove(notification.itemKey)}
+              >
+                <ReleaseIcon name="trash" />
+                {copy.menuDelete}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* Archived cards keep their progress and steps: archiving files the notice away, it does not
+          take away the way back to a step or the view of what is done. */}
+      {hasSteps ? (
+        <>
+          <div className="release-progress">
+            <div
+              className="pseg-strip"
+              role="img"
+              aria-label={showcaseOnly ? copy.progressShowcase : copy.progressLabel}
+            >
+              {mine.map((instance, index) => (
+                <ProgressSegment
+                  key={instance.itemKey}
+                  kind={instance.importance}
+                  state={
+                    statuses[index].status === 'done' || statuses[index].status === 'not_applicable'
+                      ? 'done'
+                      : 'todo'
+                  }
+                />
+              ))}
+              {mine.length > 0 && myShowcases.length > 0 ? <i className="pseg-strip__gap" aria-hidden="true" /> : null}
+              {myShowcases.flatMap((instance) =>
+                instance.showcase.stops.map((_, stop) => (
+                  <ProgressSegment
+                    key={`${instance.itemKey}:${stop}`}
+                    kind="showcase"
+                    state={showcaseSeenOf(view.state, instance.itemKey) ? 'done' : 'todo'}
+                  />
+                ))
+              )}
+            </div>
+            <ProgressTally counts={counts} />
+            {mine.length > 0 && !canWriteSteps ? <p className="release-progress__note">{copy.adminCompletes}</p> : null}
+          </div>
+          {requiredSteps.length > 0 ? (
+            <>
+              <h3 className="release-card__toggle release-card__toggle--static" id={`${regionId}-label`}>
+                <span className="release-card__toggle-label">
+                  {copy.requiredStepsLabel}
+                  <span className="release-card__count">{requiredSteps.length}</span>
+                </span>
+              </h3>
+              <div className="release-card__list" aria-labelledby={`${regionId}-label`} role="group">
+                <ReleaseStepList instances={requiredSteps} onNavigate={onNavigate} />
+              </div>
+            </>
+          ) : null}
+          {optionalSteps.length + myShowcases.length > 0 ? (
+            <>
+              <button
+                type="button"
+                className="release-card__toggle"
+                aria-expanded={moreOpen}
+                aria-controls={`${regionId}-more`}
+                onClick={() => setMoreOpen((value) => !value)}
+              >
+                <span className="release-card__toggle-label">
+                  {requiredSteps.length > 0 ? copy.moreLabel : showcaseOnly ? copy.stopsLabel : copy.optionalAndViewLabel}
+                  <span className="release-card__count">{optionalSteps.length + (showcaseOnly ? tally.total : myShowcases.length)}</span>
+                </span>
+                <span className="release-card__chevron" aria-hidden="true" data-open={moreOpen}>
+                  <ReleaseIcon name="chevron" />
+                </span>
+              </button>
+              <div id={`${regionId}-more`} className="release-card__fold" data-open={moreOpen}>
+                <div className="release-card__fold-inner" inert={moreOpen ? undefined : true}>
+                  {optionalSteps.length > 0 ? <ReleaseStepList instances={optionalSteps} onNavigate={onNavigate} /> : null}
+                  <ReleaseShowcaseList instances={myShowcases} onNavigate={onNavigate} />
+                </div>
+              </div>
+            </>
+          ) : null}
+          <div className="release-card__actions">
+            <Button
+              className="button--sm"
+              onClick={() => {
+                requestReleaseTour(
+                  showcaseOnly
+                    ? { showcaseMinor: notification.minor }
+                    : left === 0 && mine.length > 0
+                      ? {
+                          replaySteps: mine.map((i) => ({
+                            stepId: i.step.id,
+                            connectionId: i.connectionId,
+                            importance: i.importance,
+                          })),
+                          replayShowcaseIds: myShowcases.map((s) => s.showcase.id),
+                        }
+                      : {}
+                );
+                onNavigate();
+              }}
+            >
+              {cta} <ReleaseIcon name="arrow-right" size={14} />
+            </Button>
+            {hideChangelogLink || notification.minor === GENERAL_MINOR ? null : (
+              <Button
+                className="button--sm"
+                tone="secondary"
+                onClick={() => {
+                  requestWhatsNew({ minor: notification.minor });
+                  onNavigate();
+                }}
+              >
+                {copy.ctaChangelog}
+              </Button>
+            )}
+          </div>
+        </>
+      ) : null}
+      {!hasSteps ? (
+        <div className="release-card__actions">
+          <Button
+            className="button--sm"
+            tone="secondary"
+            onClick={() => {
+              requestWhatsNew({ minor: notification.minor });
+              onNavigate();
+            }}
+          >
+            {copy.ctaChangelog}
+          </Button>
+        </div>
+      ) : null}
+    </article>
+  );
+}

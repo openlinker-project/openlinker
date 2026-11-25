@@ -1,8 +1,8 @@
 /**
  * Step 3 — See what changes (#3457)
  *
- * Read before turning on. Every sentence is in `oms-onboarding.copy.ts`,
- * which records the issue that makes each one true. The acknowledgement is
+ * Read before turning on. Every sentence is in the `oms-onboarding` locale files;
+ * `use-oms-onboarding-copy.ts` records the issue that makes each one true. The acknowledgement is
  * deliberately local state: it is a confirmation, not configuration, so a
  * reload asks for it again.
  *
@@ -13,7 +13,7 @@
 import type { ReactElement } from 'react';
 
 import { Button } from '../../../shared/ui/button';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { WIZARD_STEPS } from '../lib/onboarding-state';
 import { StepPanel } from './step-panel';
 
@@ -40,6 +40,7 @@ function Arrow(): ReactElement {
 }
 
 export function StepWhatChanges(props: StepWhatChangesProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const { masterCount, masterNames, acknowledged } = props;
   const two = masterCount > 1;
 

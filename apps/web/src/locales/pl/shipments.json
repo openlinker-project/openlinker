@@ -107,7 +107,7 @@
     "notifyDialog": {
       "cancelLabel": "Anuluj",
       "confirm": "Oznacz jako nadane",
-      "description": "Wysyła powiadomienie do marketplace'u źródłowego i aktualizuje stan realizacji w kanale docelowym. Używaj tylko wtedy, gdy automatyczne nadanie utknęło - zwykle dzieje się to automatycznie przez synchronizację statusu przewoźnika.",
+      "description": "Informuje marketplace, że paczka została wysłana, i aktualizuje stan realizacji. Użyj po oddaniu paczki przewoźnikowi albo gdy automatyczna aktualizacja utknęła.",
       "notifying": "Powiadamianie…",
       "title": "Ręcznie oznaczyć jako nadane?"
     },
@@ -206,7 +206,7 @@
       "processor": "Realizacja",
       "status": "Status"
     },
-    "description": "Zestawienie wszystkich przesyłek ze wszystkich zamówień - filtruj według statusu, metody, połączenia lub daty.",
+    "description": "Przesyłki ze wszystkich zamówień. Filtruj je według statusu, metody, połączenia lub daty.",
     "empty": {
       "clearFilters": "Wyczyść filtry",
       "filtered": "Żadna przesyłka nie pasuje do bieżących filtrów.",
@@ -283,7 +283,7 @@
     "pagination": {
       "next": "Dalej",
       "previous": "Wstecz",
-      "showing": "Wyświetlanie {from}-{to} z {total}"
+      "showing": "Wyświetlono {from}-{to} z {total}"
     },
     "peek": {
       "created": "Utworzono",
