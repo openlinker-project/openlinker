@@ -436,7 +436,7 @@ Until those conditions are met, prefer Query, URL, form state, or local componen
 
 ## Saved list views (#4241)
 
-Named, restorable arrangements of a list page: filter query, sort, visible columns and the field order inside stacked columns. Feature: `features/saved-views` (public barrel `index.ts`); backend in `libs/core/src/saved-views` and `apps/api/src/saved-views` (see `docs/architecture-overview.md` § 31). Design of record: `docs/plans/mockups/saved-views/`.
+Named, restorable arrangements of a list page: filter query, sort, visible columns and the field order inside stacked columns. Feature: `features/saved-views` (public barrel `index.ts`); backend in `libs/core/src/saved-views` and `apps/api/src/saved-views` (see `docs/architecture-overview.md` § 32). Design of record: `docs/plans/mockups/saved-views/`.
 
 ### State ownership
 
