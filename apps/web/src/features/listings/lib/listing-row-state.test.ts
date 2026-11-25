@@ -118,7 +118,7 @@ describe('listingRowBadges', () => {
         )[0],
     );
 
-    expect(soft.map((b) => b?.label)).toEqual(['Draft', 'Ended', 'Not synced']);
+    expect(soft.map((b) => b?.label)).toEqual(['Draft', 'Sale ended', 'Not synced']);
     expect(soft.every((b) => b?.tone === 'neutral' && !b?.solid)).toBe(true);
   });
 

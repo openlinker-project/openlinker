@@ -748,6 +748,12 @@
       "hint": "Otwórz to zamówienie na platformie źródłowej, popraw dane kupującego, a potem pobierz zamówienie ponownie.",
       "title": "Brakuje danych odbiorcy - nie można wygenerować etykiety:"
     },
+    "packPieces": {
+      "few": "{n} szt.",
+      "many": "{n} szt.",
+      "one": "{n} szt.",
+      "other": "{n} szt."
+    },
     "pickup": {
       "buyerSelected": "Wybrane przez kupującego - tylko do odczytu.",
       "buyerSelectedVia": "Wybrane przez kupującego w {provider} - tylko do odczytu.",
@@ -792,7 +798,8 @@
       "weight": "Waga musi być dodatnią liczbą całkowitą",
       "width": "Szerokość musi być dodatnią liczbą całkowitą"
     },
-    "weight": "Waga (g)"
+    "weight": "Waga (g)",
+    "weightFromRule": "Waga z reguły dostawy - sprawdź przed zakupem etykiety."
   },
   "handledInOpenLinker": {
     "assignedUnknown": "Przypisane",
@@ -1698,6 +1705,14 @@
       "status": "Status",
       "statusAtChannel": "Status w {channel}",
       "statusAtUnknownChannel": "Status w kanale",
+      "statusValues": {
+        "cancelled": "Anulowane",
+        "delivered": "Dostarczone",
+        "pending": "Oczekuje",
+        "processing": "W realizacji",
+        "refunded": "Zwrócone",
+        "shipped": "Wysłane"
+      },
       "title": "Podsumowanie",
       "updatedOl": "Zaktualizowane (OL)"
     },
@@ -1913,7 +1928,7 @@
   },
   "orderEditAction": {
     "amendingTitle": "Zmiana tego zamówienia już czeka na kanał.",
-    "button": "Edytuj zamów."
+    "button": "Edytuj zamówienie"
   },
   "orderEditDialog": {
     "ack": {
@@ -2308,10 +2323,13 @@
         "one": "Dodaj koszt dla {n} wariantu",
         "other": "Dodaj koszt dla {n} wariantu"
       },
+      "addCostFor": "Dodaj koszt dla: {names}",
       "currencyMismatchTitle": "Koszt jest w innej walucie niż zamówienie, więc nie jest uwzględniany w marży.",
       "enteredAfterSaleTitle": "Zamówione przed wpisaniem kosztu",
       "footnoteFrozen": "Koszt jest pobierany z produktu w chwili otrzymania zamówienia i później się nie zmienia.",
       "footnoteNextOrder": "Dodanie kosztu teraz nie zmieni tego zamówienia; będzie liczony od następnego.",
+      "fromComponents": "liczony ze składników",
+      "marginFromComponents": "nie liczona dla zestawu",
       "marginNotAvailable": "marża niedostępna",
       "noVariant": "brak wariantu",
       "notAvailable": "koszt niedostępny",
@@ -2320,7 +2338,9 @@
     },
     "emptyMessage": "Dane zamówienia nie zawierają szczegółów pozycji.",
     "emptyTitle": "Brak pozycji",
+    "idPrefix": "ID:",
     "jumpToNextFlagged": "Przejdź do następnej oznaczonej",
+    "offerPrefix": "Oferta:",
     "onlyFlagged": "Tylko oznaczone",
     "qtyWas": "było {quantity}",
     "taxRate": {

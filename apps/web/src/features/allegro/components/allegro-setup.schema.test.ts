@@ -14,6 +14,7 @@ const baseValues: AllegroSetupFormSubmission = {
   clientId: 'client-id',
   clientSecret: 'client-secret',
   masterCatalogConnectionId: undefined,
+  orderSyncStart: { mode: 'now' },
 };
 
 const REDIRECT_URI = 'https://app.example.com/integrations/allegro/connect/callback';

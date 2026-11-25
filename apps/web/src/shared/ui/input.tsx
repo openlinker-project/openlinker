@@ -10,5 +10,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 ): ReactElement {
   const classes = ['control', invalid ? 'control--invalid' : '', className].filter(Boolean).join(' ');
 
-  return <input ref={ref} className={classes} {...props} />;
+  return (
+    <input
+      ref={ref}
+      className={classes}
+      {...(invalid ? { 'aria-invalid': true } : {})}
+      {...props}
+    />
+  );
 });

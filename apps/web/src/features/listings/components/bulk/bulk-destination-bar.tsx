@@ -18,6 +18,7 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
+import { displayConnectionName } from '../../../../shared/lib/display-connection-name';
 import { useId, type ReactElement } from 'react';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { KeyValueList, StatusBadge, shortenId, type StatusBadgeTone } from '../../../../shared/ui';
@@ -108,7 +109,7 @@ export function BulkDestinationBar({
             <ConnectionDot name={connection.name} platformType={connection.platformType} size={26} />
           </span>
           <span className="bulk-destbar__name" title={connection.name}>
-            {connection.name}
+            {displayConnectionName(connection.name)}
           </span>
         </span>
 

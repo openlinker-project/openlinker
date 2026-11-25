@@ -99,7 +99,8 @@ export class BundleOfferPreviewService implements IBundleOfferPreviewService {
       );
       const skuByVariant = new Map(variants.map((variant) => [variant.id, variant.sku ?? null]));
 
-      const result: BundleOfferPreviewComponent[] = components.map((component) => {
+      const sets = await this.availableSets(connectionId, components);
+      const result: BundleOfferPreviewComponent[] = components.map((component, index) => {
         const plan = planByVariant.get(component.variantId);
         return {
           variantId: component.variantId,
@@ -112,10 +113,10 @@ export class BundleOfferPreviewService implements IBundleOfferPreviewService {
           mode: plan?.mode ?? 'missing',
           ...(plan?.externalOfferId ? { externalOfferId: plan.externalOfferId } : {}),
           ...(plan?.cardCategoryId ? { cardCategoryId: plan.cardCategoryId } : {}),
+          availableUnits: sets.units[index] ?? null,
           problems: plan?.problems ?? [],
         };
       });
-      const sets = await this.availableSets(connectionId, components);
       return {
         ...base,
         status: 'ok',
@@ -142,17 +143,26 @@ export class BundleOfferPreviewService implements IBundleOfferPreviewService {
   private async availableSets(
     connectionId: string,
     components: readonly OfferProductSetComponent[]
-  ): Promise<{ availableSets: number | null; limitingComponentVariantId: string | null }> {
+  ): Promise<{
+    availableSets: number | null;
+    limitingComponentVariantId: string | null;
+    units: Array<number | null>;
+  }> {
     const answers = await this.availability.getPromisableQuantities({
       variantIds: components.map((component) => component.variantId),
       scope: { kind: 'channel', connectionId },
     });
+    const units: Array<number | null> = answers.map((answer) =>
+      !answer || answer.provenance === 'unknown' || answer.quantity === null
+        ? null
+        : answer.quantity
+    );
     let sets: number | null = null;
     let limiting: string | null = null;
     for (const [index, component] of components.entries()) {
       const answer = answers[index];
       if (!answer || answer.provenance === 'unknown' || answer.quantity === null) {
-        return { availableSets: null, limitingComponentVariantId: null };
+        return { availableSets: null, limitingComponentVariantId: null, units };
       }
       const whole = Math.floor(answer.quantity / Math.max(1, component.quantity));
       if (sets === null || whole < sets) {
@@ -160,6 +170,6 @@ export class BundleOfferPreviewService implements IBundleOfferPreviewService {
         limiting = component.variantId;
       }
     }
-    return { availableSets: sets, limitingComponentVariantId: limiting };
+    return { availableSets: sets, limitingComponentVariantId: limiting, units };
   }
 }

@@ -39,6 +39,7 @@ import type { Connection, OrderRecord } from '../../src/api/api.types';
 import { buildWooCommerceClient } from '../../src/support/woocommerce-client';
 import { externalIdFor } from '../../src/support/external-ids';
 import { waitForOrderByExternalId } from '../../src/support/orders';
+import { ensureOrderFeedSeeded } from '../../src/support/order-feed-seed';
 import { toMinorUnits } from '../../src/support/parity';
 import type { WooCommerceAddressInput } from '../../src/api/woocommerce-rest';
 import type { SyncJobs } from '../../src/support/jobs';
@@ -100,6 +101,9 @@ test.describe('WooCommerce as order destination', () => {
     );
     const { wcProductId } = mapped!;
     const quantity = 1;
+
+    // The feed starts from "now" (#4228): seed it before the order exists.
+    await ensureOrderFeedSeeded(api, jobs, wcSource.id);
 
     const email = `e2e-${randomUUID().slice(0, 8)}@example-e2e.invalid`;
     const sourceOrder = await wc.createOrder({
@@ -414,6 +418,8 @@ async function createAndSyncWcOrder(
   wcSourceConnectionId: string,
   input: { billing: WooCommerceAddressInput; lineItems: Array<{ productId: number; variationId?: number; quantity: number }> },
 ): Promise<{ externalOrderId: string | null }> {
+  // The feed starts from "now" (#4228): seed it before the order exists.
+  await ensureOrderFeedSeeded(api, jobs, wcSourceConnectionId);
   const sourceOrder = await wc.createOrder({
     status: 'processing',
     billing: input.billing,

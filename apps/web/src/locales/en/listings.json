@@ -14,6 +14,7 @@
       "bundleComponentMissing": "component cannot be listed",
       "eanNotInCatalogue": "EAN not in catalogue",
       "inStoreBarcode": "in-store barcode",
+      "needsOfferParameters": "fill in offer parameters",
       "noPhoto": "no photo",
       "paramValueRejected": "parameter value rejected",
       "siblingsShareOneCard": "siblings share one card",
@@ -118,6 +119,39 @@
       "overProductCap": "Fix and resubmit handles up to {max} products at a time. Retry is unaffected."
     }
   },
+  "bulkBatch": {
+    "accountRefused": {
+      "providerSaid": "{name} said:",
+      "rowPointer": "Account cannot sell - see above"
+    },
+    "allegro": {
+      "accountRefused": {
+        "action": "Open Allegro Sales Center",
+        "detail": {
+          "one": "{n} of {total} variants failed for this reason. Nothing in the offers can fix it. Unblock the account in Allegro, then retry the batch unchanged.",
+          "other": "{n} of {total} variants failed for this reason. Nothing in the offers can fix it. Unblock the account in Allegro, then retry the batch unchanged."
+        },
+        "title": "Allegro refused these offers because the seller account cannot sell."
+      }
+    },
+    "recovery": {
+      "accountOnly": "Re-run the batch exactly as saved once the account can sell again."
+    },
+    "triage": {
+      "failedSoFar": {
+        "one": "{n} variant has failed so far.",
+        "other": "{n} variants have failed so far."
+      },
+      "offerCause": {
+        "one": "{n} variant was refused for its offer data",
+        "other": "{n} variants were refused for their offer data"
+      },
+      "offerDetail": "Open them in the wizard with those variants selected, fix the data and submit again.",
+      "opensInNewTab": "(opens in a new tab)",
+      "retryCause": "Retry without changes",
+      "retryDetail": "Re-runs every failed variant exactly as saved. Use it for errors that may pass on a second try."
+    }
+  },
   "bulkBatchProgressPage": {
     "demoLock": "Read-only demo - recovery actions are disabled.",
     "errorTitle": "Could not load batch",
@@ -183,6 +217,11 @@
       "failed": {
         "one": "{n} failed",
         "other": "{n} failed"
+      },
+      "openBundles": "View sets",
+      "skipped": {
+        "one": "skipped: {n} (already listed)",
+        "other": "skipped: {n} (already listed)"
       }
     },
     "title": "Bulk batch <id>{batchId}</id>",
@@ -249,6 +288,10 @@
         "detail": "Codes like this are meant for use inside one shop. You can publish anyway.",
         "title": "This barcode looks like an in-store code, not a product barcode."
       },
+      "needsOfferParameters": {
+        "detail": "Open the offer editor and fill in the parameters marked as required. Without them Allegro rejects the offer.",
+        "title": "Required offer parameters are missing for this Allegro category."
+      },
       "needsProductParameters": {
         "allFilledDetail": "Save to clear this blocker.",
         "allFilledTitle": "Every required product parameter now has a value.",
@@ -285,6 +328,7 @@
     },
     "chips": {
       "alreadyListed": "Already listed",
+      "bundleCardNoCategory": "Card has no category",
       "cardCategoryDiffers": "catalog ≠ mapping",
       "cardCategoryMismatch": "Card in other category",
       "categoryNotSet": "Category not set",
@@ -304,6 +348,10 @@
       "unknownCategoryResult": "Unknown result"
     },
     "describe": {
+      "bundleCardNoCategory": {
+        "detail": "Pick a category manually. The set will attach to the catalogue card, but that card does not state a category.",
+        "title": "The component's catalogue card does not state a category."
+      },
       "bundleCategoryMismatch": {
         "detail": "Use the category of the first component, or reorder the components.",
         "title": "The offer category must match the first component's product card on {destination}."
@@ -441,6 +489,12 @@
     "title": "Choose category <muted>- {product}</muted>"
   },
   "bulkConfigStep": {
+    "blocked": {
+      "catalogue": "To continue, set the master catalogue in the connection settings.",
+      "destination": "To continue, choose a destination connection.",
+      "section": "To continue, complete the channel settings above, for example the shipping rates.",
+      "sharedSlice": "To continue, fix the price or stock settings above."
+    },
     "cancel": "Cancel",
     "destinationLabel": "Destination connection",
     "generateDescription": {
@@ -530,6 +584,19 @@
     }
   },
   "bulkConfirmModal": {
+    "bundles": {
+      "consequence": "Selling a set reduces the stock of its components.",
+      "line": "That includes {parts}.",
+      "packs": {
+        "one": "{n} multipack",
+        "other": "{n} multipacks"
+      },
+      "sets": {
+        "one": "{n} set",
+        "other": "{n} sets"
+      },
+      "stockRule": "The quantity on the offer is how many whole sets can be assembled from the components right now. It changes when the components' stock changes."
+    },
     "cancel": "Cancel",
     "idempotency": "<strong>Idempotency protected.</strong> If you accidentally double-submit, OpenLinker returns the existing batch rather than creating a duplicate.",
     "jobsNote": "Each offer is a separate job; you can follow per-product progress on the next page.",
@@ -559,10 +626,15 @@
     },
     "reasons": {
       "alreadyListed": "{n} already on {connection}",
+      "bundleCount": {
+        "one": "{n} set",
+        "other": "{n} sets"
+      },
       "needsAttention": {
         "one": "{n} still needs attention",
         "other": "{n} still need attention"
       },
+      "ofWhichBundles": "(including {bundles})",
       "switchedOff": "{n} switched off"
     },
     "submit": "Create offers",
@@ -698,6 +770,8 @@
     },
     "loading": "Loading…",
     "parameters": {
+      "bundleNote": "Component product parameters come from their Allegro cards. An empty \"Condition\" means \"New\".",
+      "conditionLabel": "Condition (new/used)",
       "eyebrow": "Category parameters",
       "inheritHint": "Everything inherits from base. Override only the parameters that differ for this variant.",
       "loadFailed": "Could not load category parameters. You can still save - it may be rejected in the background if required parameters are missing.",
@@ -1205,10 +1279,16 @@
       "title": "Change destination?"
     },
     "description": {
+      "includingSets": "(including {sets})",
       "marketplace": "Creating offers for {products} · {variants}.",
+      "marketplaceSets": "Creating offers for {sets}.",
       "productCount": {
         "one": "{n} product",
         "other": "{n} products"
+      },
+      "setCount": {
+        "one": "{n} bundle",
+        "other": "{n} bundles"
       },
       "shop": "Publishing {products} · {variants} to a shop.",
       "variantCount": {
@@ -1261,30 +1341,86 @@
     "title": "Leave this batch?"
   },
   "bundleOffer": {
+    "batchLine": "{contents} · {stock}",
+    "cardNoCategory": "The component's catalogue card does not state a category - pick one manually.",
     "categoryMismatch": "The category differs from the first component's product card, and the marketplace requires the two to match.",
+    "checking": "Checking the set composition...",
+    "checkingBanner": "Checking the composition of your sets. The buttons unlock when this is done.",
     "collapse": "Hide set contents of {name}",
     "compositionHeading": "Set contents on {destination}",
-    "compositionHint": "{n} products · the mode shows how a component enters the offer",
+    "compositionHint": {
+      "one": "{n} product · the badge shows where the set takes each component's data from",
+      "other": "{n} products · the badge shows where the set takes each component's data from"
+    },
     "eanNotNeeded": "A set does not need its own barcode. Its products carry theirs.",
+    "eanNotNeededPack": "A multipack does not need its own barcode. Its product carries one.",
     "editingFooter": "Editing a bundle offer. Changes apply to this batch only.",
     "expand": "Show set contents of {name}",
+    "failedNoStock": "The set cannot be listed: component \"{name}\" is out of stock.",
+    "firstProductNote": "Allegro assesses the offer by its first product: {name}.",
+    "galleryAdvisory": "The main photo should show the whole set",
     "gift": "gift",
     "insertComponentList": "Insert component list",
     "limitedBy": "limited by {name}",
+    "limitedByUnits": "limited by: {name} ({units} pcs)",
+    "limitsSet": "limits the set",
+    "mainProductHint": "The first product is the main one: it decides the offer category and condition.",
     "marker": {
       "one": "Set · {n} product",
       "other": "Set · {n} products"
     },
-    "modes": {
-      "catalogCard": "catalogue card",
-      "missing": "cannot be listed",
-      "newProduct": "new product",
-      "ownOffer": "own offer",
-      "ownOfferWithId": "own offer {id}"
+    "markerHintPack": "Multipack: the same product in a pack of several. Click for details.",
+    "markerHintSet": "Set: different products sold together as one offer. Click to see what is inside.",
+    "missingHint": "List the component in a new tab. Then come back here and refresh the preview.",
+    "modeHints": {
+      "catalogCard": "The set attaches to the catalogue product card.",
+      "missing": "The component has no offer or product card. List it first.",
+      "newProduct": "The component is created together with the offer.",
+      "ownOffer": "This component already has your offer, the set reuses its data."
     },
-    "noOwnEan": "no own EAN",
+    "modes": {
+      "catalogCard": "from catalogue",
+      "missing": "component has no offer",
+      "newProduct": "new product",
+      "ownOffer": "your offer",
+      "ownOfferWithId": "your offer {id}"
+    },
+    "packBuyerPreview": "The buyer will see: {name} ×{n}",
+    "packCategoryChip": "We cannot check in advance whether this Allegro category accepts multipacks",
+    "packCompositionHint": "One product, pack of {n} · the badge shows where the offer takes the product's data from",
+    "packFinalTitle": "{title} - Set of {n} pcs",
+    "packHint": "One product sold as a pack of {n}. {destination} lists it as a single product with quantity {n}.",
+    "packHintAllegro": "In the Allegro panel this is \"Multiple items as a set\", and the buyer sees a \"Set of {n} items\" label next to the name. Allegro shows the per-item price based on the price of the whole multipack.",
+    "packHowOnAllegro": "How does this look on Allegro?",
+    "packMarker": "Pack · ×{n}",
+    "perPiecePrice": "That is {price} per piece.",
+    "previewFailedBanner": "Could not check the composition of your sets, so they cannot be listed yet. Please try again.",
+    "previewRetry": "Try again",
+    "priceWholePack": "The price is for the whole pack ({n} items), not for one item.",
+    "priceWholeSet": {
+      "one": "The price is for the whole set ({n} product), not for one item.",
+      "other": "The price is for the whole set ({n} products), not for one item."
+    },
     "publishComponent": "List component",
     "quantity": "×{n}",
+    "sets": {
+      "one": "{n} set",
+      "other": "{n} sets"
+    },
+    "setsExplain": "That many whole sets can be assembled from the components right now.",
+    "setsSummary": "Sets available: {n}",
+    "setsSummaryLimit": "limited by: {name}",
+    "setsSummaryTooltip": "The set stock is counted from its components. Selling a component separately lowers the number of sets and the other way round.",
+    "setsSummaryUnknown": "Sets available: no data",
+    "setsUnknown": "no data",
+    "setsUnknownHint": "The stock of one of the components is unknown, so the number of sets cannot be counted.",
+    "stockAsSets": "stock: {sets}",
+    "stockLine": "{units} in stock · enough for {sets} sets",
+    "sublinePack": "{n} pcs per pack",
+    "sublineSet": "Set of: {names}",
+    "titleCounter": "{n}/{max} characters",
+    "titleLimitReached": "Limit of {max} characters reached.",
+    "tooManyProductsAdvisory": "Allegro usually allows at most 10 different products in a set, and this one has {n}. This is a hint from Allegro help, not a block.",
     "useFirstComponentCategory": "Use first component's category"
   },
   "categoryLookup": {
@@ -1507,6 +1643,7 @@
     },
     "badgeTitles": {
       "draft": "On the channel but not live.",
+      "ended": "The offer ended on the channel. You can list it again.",
       "invalid": "Not live on the channel, with validator errors outstanding.",
       "notSynced": "No channel status has ever been read for this offer."
     },
@@ -1514,7 +1651,7 @@
       "activating": "Activating",
       "deactivating": "Deactivating",
       "draft": "Draft",
-      "ended": "Ended",
+      "ended": "Sale ended",
       "invalid": "Invalid",
       "notSynced": "Not synced",
       "productDeleted": "Product deleted",
@@ -1583,6 +1720,8 @@
       "variantId": "Variant ID"
     },
     "cells": {
+      "endedNoQuantity": "Offer ended, no quantity",
+      "limitedBy": "limited by: {name}",
       "noReadingYet": "No channel reading yet",
       "outOfStock": "Out of stock",
       "priceNotReported": "Price not reported by the channel",
@@ -1599,6 +1738,7 @@
       "onChannel": "on channel",
       "price": "Price",
       "quantity": "Quantity",
+      "relist": "List again",
       "statusRead": "status read",
       "updated": "Updated"
     },
@@ -1647,6 +1787,12 @@
       }
     },
     "listingCell": {
+      "bundlePack": "Multipack",
+      "bundleSet": {
+        "one": "Set · {n} component",
+        "other": "Set · {n} components"
+      },
+      "bundleTitle": "A set or multipack: several products sold as one offer.",
       "eanLabel": "EAN:",
       "eanTitle": "EAN: {ean}",
       "noLinkedVariant": "No linked variant",
@@ -1684,6 +1830,7 @@
       "shopBlocked": "Blocked by shop"
     },
     "publishProducts": "Publish products",
+    "relist": "List again",
     "retry": "Retry",
     "savedViews": {
       "listingFields": "Product, variant, offer id, SKU, EAN",
@@ -1767,6 +1914,12 @@
     "ariaLabel": "Offer description"
   },
   "offerProductPickerModal": {
+    "bundleFilter": {
+      "all": "All",
+      "ariaLabel": "Kind of products",
+      "exclude": "Without sets",
+      "only": "Sets"
+    },
     "capReached": "Maximum {max} products per batch reached - clear a product to add another.",
     "closeAria": "Close",
     "description": "Pick whole products or individual variants, mix across products, then choose a marketplace or shop to publish to - it all becomes one batch.",
@@ -1777,6 +1930,8 @@
       "title": "Discard changes?"
     },
     "empty": {
+      "createBundle": "Create your first set",
+      "noBundles": "No sets yet.",
       "noMatch": "No products match \"{query}\".",
       "noProducts": "No products yet."
     },
@@ -1825,6 +1980,8 @@
     "backAria": "Back to products",
     "cancel": "Cancel",
     "chips": {
+      "bundle": "set",
+      "bundleTitle": "A set does not need its own EAN.",
       "needEan": {
         "one": "{n} needs EAN",
         "other": "{n} need EAN"
@@ -1843,6 +2000,7 @@
       "noSelection": "Select at least one product, then choose a destination."
     },
     "counts": {
+      "bundles": "sets",
       "listings": "listings",
       "needEan": "need EAN",
       "offers": "offers",
@@ -1864,6 +2022,13 @@
     }
   },
   "offerProductPickerRow": {
+    "bundlePack": "Multipack",
+    "bundleSet": {
+      "one": "Set · {n} component",
+      "other": "Set · {n} components"
+    },
+    "bundleTitle": "You sell the components together as one offer.",
+    "bundleVariantNote": "EANs belong to the set's components",
     "capReached": "Maximum {max} products per batch reached",
     "collapseAria": "Collapse {name}",
     "expandAria": "Expand {name}",

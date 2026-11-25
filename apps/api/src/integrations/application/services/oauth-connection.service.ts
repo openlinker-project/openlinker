@@ -79,6 +79,7 @@ export class OAuthConnectionService implements IOAuthConnectionService {
       connectionName: input.connectionName,
       connectionId: input.connectionId,
       initialConfig: input.initialConfig,
+      orderSyncStart: input.orderSyncStart,
       enabledCapabilities: input.enabledCapabilities,
     };
     await this.redisClient.setEx(
@@ -280,6 +281,7 @@ export class OAuthConnectionService implements IOAuthConnectionService {
       config: config as ConnectionConfig,
       credentialsRef: `db:${credentialRef}`, // db: prefix selects the database credentials backend
       adapterKey: stateData.adapterKey,
+      ...(stateData.orderSyncStart ? { orderSyncStart: stateData.orderSyncStart } : {}),
       ...(stateData.enabledCapabilities
         ? { enabledCapabilities: stateData.enabledCapabilities as CoreCapability[] }
         : {}),

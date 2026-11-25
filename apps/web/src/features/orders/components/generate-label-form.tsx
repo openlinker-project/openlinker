@@ -28,7 +28,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useConnectionsQuery } from '../../connections';
 import { captureDemoEvent } from '../../demo';
-import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
+import { interpolate, useMessages, usePlural, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -145,6 +145,9 @@ export function GenerateLabelForm({
   const schema = useMemo(() => createGenerateLabelSchema(copy.validation), [copy]);
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
   const recipient = buildRecipientPreview(snapshot, copy.recipient);
+  const bundleCopy = useMessages('bundles');
+  const plural = usePlural();
+  const packComponents = (order.bundleLines ?? []).flatMap((bundle) => bundle.components);
   const hasPickupPoint = snapshot.pickupPoint !== undefined;
   // Locker-vs-courier is driven by the actual delivery method (#954), not by
   // `pickupPoint` presence alone (which was circular). A resolved pickup point
@@ -589,6 +592,38 @@ export function GenerateLabelForm({
           <KeyValueList items={recipient} />
         </div>
 
+        {/* What goes in the box. A bundle order ships its components, not the
+            bundle line, so the operator sizing the parcel sees them here. */}
+        {packComponents.length > 0 ? (
+          <div className="ux-pack-list" data-testid="label-pack-list">
+            <p className="generate-label-form__section-label">{bundleCopy.order.packTitle}</p>
+            {(order.bundleLines ?? []).map((bundle) => {
+              const soldLine = snapshot.items.find((item) => item.id === bundle.lineId);
+              return (
+                <div key={bundle.lineId} className="ux-pack-list__group">
+                  {soldLine ? (
+                    <p className="ux-pack-list__bundle">
+                      {interpolate(bundleCopy.order.packBundle, {
+                        name: soldLine.name ?? bundle.bundleVariantId,
+                        qty: soldLine.quantity,
+                      })}
+                    </p>
+                  ) : null}
+                  <ul>
+                    {bundle.components.map((component) => (
+                      <li key={component.lineId}>
+                        <span>{component.name ?? component.sku ?? component.variantId}</span>
+                        <strong>{plural(component.quantity, ordersCopy.generateLabelForm.packPieces)}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+            <p className="ux-pack-list__hint">{bundleCopy.order.packHint}</p>
+          </div>
+        ) : null}
+
         {/* Dimensions composite (3 inputs in one labeled row). FormField only
             accepts a single control child, so render the composite directly
             against the same `.form-field` / `.form-field__label` markup the
@@ -657,6 +692,11 @@ export function GenerateLabelForm({
             invalid={Boolean(form.formState.errors.weightGrams)}
           />
         </FormField>
+        {routedParcel?.weightGrams !== undefined && !form.formState.dirtyFields.weightGrams ? (
+          <p className="form-field__description" data-testid="label-weight-from-rule">
+            {copy.weightFromRule}
+          </p>
+        ) : null}
 
         {shippingMethod === 'paczkomat' ? (
           <FormField

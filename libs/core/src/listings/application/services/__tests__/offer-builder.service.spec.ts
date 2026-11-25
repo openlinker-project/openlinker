@@ -402,6 +402,42 @@ describe('OfferBuilderService', () => {
       expect(b.parameters).toEqual([{ id: '248811', values: ['Acme'], section: 'product' }]);
     });
 
+    it('lists a bundle that has no photos of its own with its components pictures', async () => {
+      bundleDefinitions.get.mockResolvedValue({
+        variantId: VARIANT_ID,
+        version: 1,
+        components: [
+          { variantId: 'v-a', productId: 'p-a', quantity: 1 },
+          { variantId: 'v-b', productId: 'p-b', quantity: 1 },
+        ],
+      });
+      const byId: Record<string, unknown> = {
+        'v-a': { id: 'v-a', productId: 'p-a', ean: '111', gtin: null, images: null },
+        'v-b': { id: 'v-b', productId: 'p-b', ean: null, gtin: '222', images: null },
+      };
+      productsService.getVariant.mockImplementation((id: string) =>
+        Promise.resolve((byId[id] ?? defaultVariant) as ProductVariant)
+      );
+      productsService.getVariantsByIds.mockResolvedValue(Object.values(byId) as ProductVariant[]);
+      productsService.getVariantsByProductIds.mockResolvedValue(Object.values(byId) as ProductVariant[]);
+      productsService.getProduct.mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Name ${id}`, images: id.startsWith('p-') ? [`https://x/${id}.jpg`] : [] } as never)
+      );
+
+      productMaster.getProduct.mockResolvedValue({
+        id: 'ol_product_456',
+        name: 'Test Product',
+        sku: 'SKU-1',
+        description: 'A test product description.',
+        price: 49.99,
+        currency: 'PLN',
+        images: [],
+      });
+      const result = await service.buildCreateOfferCommand({ ...input, overrides: undefined });
+
+      expect(result.overrides?.imageUrls).toEqual(['https://x/p-a.jpg', 'https://x/p-b.jpg']);
+    });
+
     it('refuses a bundle whose component no longer exists', async () => {
       bundleDefinitions.get.mockResolvedValue({
         variantId: VARIANT_ID,

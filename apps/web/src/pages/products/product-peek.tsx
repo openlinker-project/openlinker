@@ -15,6 +15,8 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { renderRich, useMessages } from '../../shared/i18n';
+import { useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
 import { PeekPanel, PeekStateCard } from '../../shared/ui/peek-panel';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { ProductGallery } from '../../features/products/components/product-gallery';
@@ -64,6 +66,8 @@ export function ProductPeek({
 }: ProductPeekProps): ReactElement {
   const page = useMessages('products').productsListPage;
   const copy = page.peek;
+  const bundleCopy = useMessages('bundles');
+  const bundleWrite = useWriteAccess('bundles:write', useDemoMode());
   const product = view?.product;
   return (
     <PeekPanel
@@ -125,6 +129,15 @@ export function ProductPeek({
             <Link className="button button--secondary button--sm" to={`/products/${product.id}?view=content`}>
               {copy.editContent}
             </Link>
+            {!product.bundle && bundleWrite.canWrite ? (
+              <Link
+                className="button button--ghost button--sm"
+                to={`/products/bundles/new?componentProduct=${encodeURIComponent(product.id)}`}
+                data-testid="peek-make-bundle"
+              >
+                {bundleCopy.list.makeBundle}
+              </Link>
+            ) : null}
             {view.onPublish ? (
               <button type="button" className="button button--secondary button--sm" onClick={view.onPublish}>
                 {page.row.publish}

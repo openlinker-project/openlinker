@@ -73,7 +73,8 @@ async function advanceToReview(
   await advanceOneStep(container);
   fillCredentialsStep(container, { key: values.key, secret: values.secret });
   await advanceOneStep(container);
-  await advanceOneStep(container); // capabilities → review
+  await advanceOneStep(container); // capabilities → order history
+  await advanceOneStep(container); // order history → review
 }
 
 describe('WoocommerceSetupForm', () => {

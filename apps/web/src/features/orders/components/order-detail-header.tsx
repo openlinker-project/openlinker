@@ -20,6 +20,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import type { OrderRecord } from '../api/orders.types';
+import { orderStatusLabel } from '../lib/order-status-label';
 import { paymentMethodChipLabel } from '../lib/payment-method';
 import { OrderRefundStateBadge } from './order-refund-state-badge';
 import type { ParsedOrderSnapshot, PaymentStatus } from '../api/order-snapshot.schema';
@@ -61,6 +62,7 @@ export function isChannelStatusStale(phase: string | null | undefined, channelSt
 
 export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderProps): ReactElement {
   const copy = useMessages('orders').orderDetailHeader;
+  const summaryCopy = useMessages('orders').orderDetailPage.summary;
   const paymentLabels: Record<PaymentStatus, string> = copy.payment;
   const format = useFormat();
   const plural = usePlural();
@@ -68,7 +70,15 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
   const healthLevel = deriveHealthLevel(rollup);
   const methodLabel = paymentMethodChipLabel(snapshot.paymentMethod, snapshot.paymentStatus);
 
-  const title = interpolate(copy.title, { number: snapshot.orderNumber ?? order.internalOrderId });
+  // Without a channel order number the title would be the raw internal id, which
+  // pushes the title block down; the full id stays on the element's title.
+  const rawNumber = snapshot.orderNumber ?? order.internalOrderId;
+  const displayNumber =
+    snapshot.orderNumber || rawNumber.length <= 18
+      ? rawNumber
+      : `${rawNumber.slice(0, 8)}…${rawNumber.slice(-6)}`;
+  const title = interpolate(copy.title, { number: displayNumber });
+  const fullTitle = interpolate(copy.title, { number: rawNumber });
 
   const firstItem = snapshot.items[0];
   const itemCount = snapshot.items.length;
@@ -78,7 +88,9 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
   return (
     <header className="order-header">
       <div className="order-header__top">
-        <h1 className="order-header__title">{title}</h1>
+        <h1 className="order-header__title" title={fullTitle}>
+          {title}
+        </h1>
         <StatusBadge tone={HEALTH_TONE[healthLevel]} withDot pulse={healthLevel === 'pending'}>
           {healthLabel(healthLevel, order.handledInOpenLinker)}
         </StatusBadge>
@@ -94,7 +106,7 @@ export function OrderDetailHeader({ order, snapshot, tags }: OrderDetailHeaderPr
             status. The summary row carries it, labelled as the channel's own. */}
         {snapshot.status && !isChannelStatusStale(order.lifecyclePhase, snapshot.status) ? (
           <StatusBadge tone="neutral" withDot>
-            {snapshot.status}
+            {orderStatusLabel(snapshot.status, summaryCopy.statusValues)}
           </StatusBadge>
         ) : null}
         {snapshot.paymentStatus ? (

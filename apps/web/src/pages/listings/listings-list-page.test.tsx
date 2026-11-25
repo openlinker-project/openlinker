@@ -951,6 +951,29 @@ describe('ListingsListPage', () => {
       expect(calledWithEnded).toBe(true);
     });
 
+    it('marks an ended offer as ended, drops its stale quantity and offers to list it again', async () => {
+      const ended = {
+        ...sampleMappings.items[0],
+        channelStatus: {
+          ...sampleMappings.items[0].channelStatus!,
+          publicationStatus: 'ended' as const,
+          lifecycle: 'Ended' as const,
+        },
+      };
+      const list = vi.fn().mockResolvedValue({ ...sampleMappings, items: [ended], total: 1 });
+      const mockApi = createListingsMockApiClient({ listings: { list } });
+
+      renderWithProviders(<ListingsListPage />, { apiClient: mockApi, route: '/listings?tab=ended' });
+
+      await screen.findByText('Doniczka ceramiczna Terra');
+      expect(screen.getAllByText('Sale ended').length).toBeGreaterThan(0);
+      expect(screen.queryByText('41')).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'List again' })).toHaveAttribute(
+        'href',
+        '/listings/bulk-create/wizard?productIds=ol_product_1&variantIds=ol_variant_abc123&connectionId=conn_allegro_1',
+      );
+    });
+
     it('shows a refetch indicator while a tab switch is in flight, and clears it once it resolves (#2032 review round 2, finding 2)', async () => {
       const user = userEvent.setup();
       type Rows = ReturnType<typeof rowsOf>;

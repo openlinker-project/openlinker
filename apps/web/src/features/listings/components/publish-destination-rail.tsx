@@ -20,6 +20,7 @@
 import { useRef, type KeyboardEvent, type ReactElement } from 'react';
 
 import { useMessages } from '../../../shared/i18n';
+import { displayConnectionName } from '../../../shared/lib/display-connection-name';
 import {
   PUBLISH_DESTINATION_KIND_ORDER,
   publishDestinationGroupLabel,
@@ -127,8 +128,14 @@ export function PublishDestinationRail({
                   onClick={() => onSelect(d.connection.id)}
                   onKeyDown={(event) => handleKeyDown(event, index)}
                 >
-                  <span className="publish-dest-rail__meta">
-                    <span className="publish-dest-rail__name">{d.connection.name}</span>
+                  <span className="publish-dest-rail__meta" style={{ minWidth: 0, paddingRight: 36 }}>
+                    <span
+                      className="publish-dest-rail__name"
+                      title={d.connection.name}
+                      style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {displayConnectionName(d.connection.name)}
+                    </span>
                     <span className="publish-dest-rail__kind-hint">
                       {publishDestinationKindHint(d.kind, copy)}
                     </span>

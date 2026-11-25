@@ -75,6 +75,8 @@ import type {
   ProductVariant,
   ProductTaxRateReader,
   ProductCreator,
+  BundleReader,
+  ExternalBundleComposition,
   ReadProductTaxRateInput,
   TaxRateResolution,
 } from '@openlinker/core/products';
@@ -87,10 +89,15 @@ import type {
   ExternalIdMapping,
 } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
-import { resolveTowarVariantId } from './subiekt-variant-identity';
+import {
+  canonicalVariantExternalId,
+  findTowarVariantExternalId,
+  resolveTowarVariantId,
+} from './subiekt-variant-identity';
 import { looksLikeSubiektNotFound } from './subiekt-not-found';
 import type {
   BridgeCreateProductRequest,
+  BridgeKomplet,
   BridgeListCategoriesResponse,
   BridgeListModelsResponse,
   BridgeListProductSymbolsResponse,
@@ -107,6 +114,7 @@ import {
 } from '../../bridge/subiekt-transport-retryability';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
+import { SubiektKompletUnreadableException } from '../../domain/exceptions/subiekt-komplet-unreadable.exception';
 import { SubiektProductNotSupportedException } from '../../domain/exceptions/subiekt-product-not-supported.exception';
 import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
 import type { SubiektTransportRetryability } from '../../domain/types/subiekt-transport-retryability.types';
@@ -267,7 +275,7 @@ function grossSalePrice(
   return undefined;
 }
 
-export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader, ProductCreator {
+export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader, ProductCreator, BundleReader {
   private readonly logger: LoggerPort;
   private readonly baseUrl: string;
   private readonly token?: string;
@@ -450,6 +458,77 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
 
   deleteProduct(_productId: string): Promise<void> {
     return Promise.reject(new SubiektProductNotSupportedException('deleteProduct'));
+  }
+
+  /**
+   * Read a Subiekt komplet's components (`BundleReader`). `null` for a towar
+   * that is not a kit.
+   *
+   * `externalProductId` is the product's external key, so a model key
+   * (`model:{id}`) answers `null`: a model is a grouping of towary, never a
+   * komplet itself.
+   *
+   * Each component's `externalVariantId` is the key its variant identifier
+   * mapping already lives under, resolved through the same legacy-first rule
+   * `getProductVariants` mints with (`findTowarVariantExternalId`): the bare
+   * `{symbol}` when an older install carries that mapping, otherwise the
+   * canonical `{symbol}::variant`. A component not synced yet falls back to the
+   * canonical key, which simply does not resolve in core, and core then reports
+   * it as an unsynced component. A component that sits in a model is still keyed
+   * by its own towar symbol, exactly as `readModelVariants` keys it.
+   *
+   * Read-only SQL on the bridge (`/api/products/{symbol}/komplet`); the read goes
+   * through the per-instance GET memo like every other read here.
+   */
+  async readBundleComposition(
+    externalProductId: string,
+  ): Promise<ExternalBundleComposition | null> {
+    if (modelIdFromProductKey(externalProductId) !== null) {
+      return null;
+    }
+    let komplet: BridgeKomplet;
+    try {
+      komplet = await this.getJson<BridgeKomplet>(
+        `/api/products/${encodeURIComponent(externalProductId)}/komplet`,
+      );
+    } catch (error: unknown) {
+      if (error instanceof SubiektRejectedError && looksLikeSubiektNotFound(error)) {
+        throw new MasterProductNotFoundError(externalProductId, this.connection.id, error);
+      }
+      throw this.translateBridgeError(error);
+    }
+    if (!komplet.jestKompletem) {
+      return null;
+    }
+
+    const components: ExternalBundleComposition['components'] = [];
+    for (const row of komplet.skladniki) {
+      const symbol = row.symbol;
+      if (symbol === null || symbol === '' || row.usuniety) {
+        throw new SubiektKompletUnreadableException(
+          externalProductId,
+          `component ${symbol ?? '(missing towar)'} is deleted or missing`,
+        );
+      }
+      if (!Number.isInteger(row.ilosc) || row.ilosc <= 0) {
+        throw new SubiektKompletUnreadableException(
+          externalProductId,
+          `component ${symbol} has quantity ${row.ilosc}, expected a positive whole number`,
+        );
+      }
+      const mappedVariantId = await findTowarVariantExternalId(
+        this.identifierMapping,
+        this.connection.id,
+        symbol,
+      );
+      const modelId = await this.readModelIdForSymbol(symbol);
+      components.push({
+        externalProductId: modelId !== null ? modelProductKey(modelId) : symbol,
+        externalVariantId: mappedVariantId ?? canonicalVariantExternalId(symbol),
+        quantity: row.ilosc,
+      });
+    }
+    return { components };
   }
 
   async getProductVariants(productId: string): Promise<ProductVariant[]> {

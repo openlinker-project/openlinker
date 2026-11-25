@@ -54,6 +54,7 @@ import {
   type ConnectionCellFacts,
 } from '../../features/connections';
 import { resolvePlatformLabel } from '../../features/mappings';
+import { useProductsQuery, type Product } from '../../features/products';
 import { useListingRowsQuery } from '../../features/listings/hooks/use-listings-query';
 import { useListingsTotal } from '../../features/listings/hooks/use-listings-total';
 import { ListPagination } from '../../shared/ui/list-pagination';
@@ -93,6 +94,10 @@ import type {
   OfferMapping,
 } from '../../features/listings/api/listings.types';
 import { describeApiError } from '../../shared/api/describe-api-error';
+
+
+/** The bundle mark a product list row carries; the feature barrel does not export it by name. */
+type ProductBundleMark = NonNullable<Product['bundle']>;
 
 type ListingsListCopy = ResolvedCopy<Messages['listings']>['listingsListPage'];
 
@@ -168,12 +173,15 @@ function ListingCell({
   row,
   shape = 'row',
   activeLifecycle,
+  bundle = null,
 }: {
   row: OfferMapping;
   shape?: 'row' | 'card';
   activeLifecycle?: OfferLifecycle;
+  bundle?: ProductBundleMark | null;
 }): ReactElement {
   const copy = useMessages('listings').listingsListPage.listingCell;
+  const plural = usePlural();
   const identity = row.identity ?? null;
   const badges = listingRowBadges(row, activeLifecycle);
   const alert = listingRowAlert(row);
@@ -196,6 +204,17 @@ function ListingCell({
           )}
           {!isCard && identity?.variantLabel ? (
             <span className="listing-cell__variant">{identity.variantLabel}</span>
+          ) : null}
+          {bundle ? (
+            <span
+              className={`listing-cell__bundle${bundle.componentCount === 1 ? ' listing-cell__bundle--pack' : ''}`}
+              title={copy.bundleTitle}
+              data-testid="listing-bundle-badge"
+            >
+              {bundle.componentCount === 1
+                ? copy.bundlePack
+                : plural(bundle.componentCount, copy.bundleSet)}
+            </span>
           ) : null}
           {badges.map((badge) => (
             <RowBadge key={badge.id} badge={badge} />
@@ -310,10 +329,19 @@ function PriceCell({ row }: { row: OfferMapping }): ReactElement {
   );
 }
 
-function QuantityCell({ row }: { row: OfferMapping }): ReactElement {
+function QuantityCell({
+  row,
+  bundle = null,
+}: {
+  row: OfferMapping;
+  bundle?: ProductBundleMark | null;
+}): ReactElement {
   const copy = useMessages('listings').listingsListPage.cells;
   const format = useFormat();
   const commercial = row.commercial ?? null;
+  // An ended offer sells nothing whatever number the last read left behind, so
+  // showing that number beside an "ended" badge contradicts it.
+  if (row.channelStatus?.lifecycle === 'Ended') return <AbsentValue label={copy.endedNoQuantity} />;
   // Nothing was ever persisted for this offer, so no reading was taken - which
   // is a different fact from a channel that answered and withheld the number.
   // On a connection whose status-sync task is off this is every row.
@@ -325,8 +353,20 @@ function QuantityCell({ row }: { row: OfferMapping }): ReactElement {
   if (quantity == null) return <AbsentValue label={copy.quantityNotReported} />;
 
   return (
-    <span className="qty-cell">
+    <span
+      className="qty-cell"
+      title={
+        bundle?.limitedBy?.name
+          ? interpolate(copy.limitedBy, { name: bundle.limitedBy.name })
+          : undefined
+      }
+    >
       <span className="qty-cell__value">{format.number(quantity)}</span>
+      {bundle?.limitedBy?.name ? (
+        <small className="qty-cell__limit">
+          {interpolate(copy.limitedBy, { name: bundle.limitedBy.name })}
+        </small>
+      ) : null}
       {quantity === 0 ? (
         <StatusBadge tone="error" compact withDot>
           {copy.outOfStock}
@@ -458,6 +498,23 @@ export function ListingsListPage(): ReactElement {
   const [editTarget, setEditTarget] = useState<OfferMapping | null>(null);
   const refreshStatus = useRefreshListingStatusMutation();
 
+  // Which listed products are sets or multipacks. The listings payload carries no
+  // bundle mark, so ask the catalogue once for its bundles (a short list) and
+  // look rows up by product; past the cap a row simply shows no badge.
+  const bundlesQuery = useProductsQuery({ bundles: 'only' }, { limit: 200, offset: 0 });
+  const bundleByProduct = useMemo(() => {
+    const map = new Map<string, ProductBundleMark>();
+    for (const product of bundlesQuery.data?.items ?? []) {
+      if (product.bundle) map.set(product.id, product.bundle);
+    }
+    return map;
+  }, [bundlesQuery.data]);
+  const bundleOf = useCallback(
+    (row: OfferMapping): ProductBundleMark | null =>
+      row.identity ? (bundleByProduct.get(row.identity.productId) ?? null) : null,
+    [bundleByProduct],
+  );
+
   const channelLabel = useCallback(
     (row: OfferMapping): string => resolvePlatformLabel(platforms, row),
     [platforms],
@@ -499,7 +556,9 @@ export function ListingsListPage(): ReactElement {
           updated: <ColumnHead label={copy.columns.updated} note={copy.columns.statusRead} />,
         },
         cells: {
-          listing: (row): ReactNode => <ListingCell row={row} activeLifecycle={activeTabDef.lifecycle} />,
+          listing: (row): ReactNode => (
+            <ListingCell row={row} activeLifecycle={activeTabDef.lifecycle} bundle={bundleOf(row)} />
+          ),
           channel: (row): ReactNode => <ChannelPill row={row} label={channelLabel(row)} />,
           // `.get()` returns undefined on a miss, which ConnectionCell reads as
           // "resolve it yourself" and would turn back into a per-row fetch -
@@ -512,11 +571,11 @@ export function ListingsListPage(): ReactElement {
             />
           ),
           price: (row): ReactNode => <PriceCell row={row} />,
-          quantity: (row): ReactNode => <QuantityCell row={row} />,
+          quantity: (row): ReactNode => <QuantityCell row={row} bundle={bundleOf(row)} />,
           updated: (row): ReactNode => <UpdatedCell row={row} />,
         },
       }),
-    [channelLabel, connectionsById, connectionsQuery.isLoading, activeTabDef.lifecycle, copy],
+    [channelLabel, connectionsById, connectionsQuery.isLoading, activeTabDef.lifecycle, bundleOf, copy],
   );
 
   const viewCounts = useMemo<Record<string, number | undefined>>(() => {
@@ -534,6 +593,31 @@ export function ListingsListPage(): ReactElement {
   const columns = useMemo<DataTableColumn<OfferMapping>[]>(
     () => [
       ...toColumns(),
+      ...(activeTabDef.lifecycle === 'Ended'
+        ? [
+            {
+              id: 'relist',
+              width: '9rem',
+              header: <span className="sr-only">{copy.columns.relist}</span>,
+              cell: (row: OfferMapping): ReactNode =>
+                row.identity ? (
+                  <Link
+                    className="button button--secondary button--sm listing-relist"
+                    to={`/listings/bulk-create/wizard?${new URLSearchParams({
+                      productIds: row.identity.productId,
+                      variantIds: row.internalId,
+                      connectionId: row.connectionId,
+                    }).toString()}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
+                    {copy.relist}
+                  </Link>
+                ) : null,
+            } satisfies DataTableColumn<OfferMapping>,
+          ]
+        : []),
       {
         id: 'peek',
         width: '3rem',
@@ -551,7 +635,7 @@ export function ListingsListPage(): ReactElement {
         ),
       },
     ],
-    [toColumns, copy.peek],
+    [toColumns, copy.peek, copy.columns.relist, copy.relist, activeTabDef.lifecycle],
   );
 
   /** A lifecycle tab is a built-in view whose id is the tab token. */
@@ -949,7 +1033,14 @@ export function ListingsListPage(): ReactElement {
                 }}
                 rowClassName={(m) => (m.id === peekId ? 'list-row--peek' : undefined)}
                 cardView={{
-                  title: (m) => <ListingCell row={m} shape="card" activeLifecycle={activeTabDef.lifecycle} />,
+                  title: (m) => (
+                    <ListingCell
+                      row={m}
+                      shape="card"
+                      activeLifecycle={activeTabDef.lifecycle}
+                      bundle={bundleOf(m)}
+                    />
+                  ),
                   // Channel / Connection / Price / Quantity as a two-column fact
                   // list — the four columns the fold drops (#1965 frame 05).
                   summary: (m) => (

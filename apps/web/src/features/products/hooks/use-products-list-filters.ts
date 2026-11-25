@@ -75,6 +75,8 @@ export interface UseProductsListFiltersResult {
   /** The query filters: URL state plus the debounced search. */
   filters: ProductFilters;
   anyFilterActive: boolean;
+  /** Every filter except the bundle view, for an empty state that names the bundles tab itself. */
+  otherFilterActive: boolean;
   handleSearchChange: (value: string) => void;
   /** Set/clear one filter param and reset paging. */
   setFilterParam: (key: string, value: string) => void;
@@ -207,6 +209,9 @@ export function useProductsListFilters(): UseProductsListFiltersResult {
     [setSearchParams],
   );
 
+  const otherFilterActive = Boolean(
+    debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale || taxRateState,
+  );
   const anyFilterActive = Boolean(
     debouncedSearch ||
       stock ||
@@ -251,6 +256,7 @@ export function useProductsListFilters(): UseProductsListFiltersResult {
     debouncedSearch,
     filters,
     anyFilterActive,
+    otherFilterActive,
     handleSearchChange,
     setFilterParam,
     setOffset,

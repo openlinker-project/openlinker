@@ -47,7 +47,7 @@ import {
 } from '../../domain/types/order-delivery-update.types';
 import type { OrderSyncStatus } from '../../domain/types/order-sync.types';
 import type { OrderCreate, OrderRef } from '../../domain/types/order-processor.types';
-import { OrderStatusValues } from '../../domain/types/order.types';
+import { OrderStatusValues, type OrderItem } from '../../domain/types/order.types';
 import { IIntegrationsService } from '@openlinker/core/integrations';
 import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { IMappingConfigService, MAPPING_CONFIG_SERVICE_TOKEN } from '@openlinker/core/mappings';
@@ -327,6 +327,25 @@ export class OrderSyncService implements IOrderSyncService {
       ? this.validateOrderStatus(resolvedStatus)
       : this.validateOrderStatus(order.status);
 
+    // This projection is an ALLOWLIST and the one that actually feeds the
+    // destination adapter: a field missing here is invisible to every
+    // destination while being present on the order. Shared by the commercial
+    // lines and the physical (bundle component) lines so the two cannot drift.
+    const mapItem = (item: OrderItem): OrderItem => ({
+        id: item.id,
+        productId: item.productId,
+        variantId: item.variantId,
+        quantity: item.quantity,
+        price: item.price,
+        sku: item.sku,
+        ...(item.name !== undefined ? { name: item.name } : {}),
+        ...(item.taxRate !== undefined ? { taxRate: item.taxRate } : {}),
+        ...(item.taxRateCountry !== undefined ? { taxRateCountry: item.taxRateCountry } : {}),
+        ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
+        ...(item.gift !== undefined ? { gift: item.gift } : {}),
+        ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
+    });
+
     const orderCreate: OrderCreate = {
       orderNumber: order.orderNumber,
       // Always present, unlike `orderNumber` - see the field's own docblock for
@@ -341,35 +360,19 @@ export class OrderSyncService implements IOrderSyncService {
       // is invisible to every destination while being perfectly present on the
       // order, which is the hardest of the three to diagnose: the data is
       // visibly there and the adapter still says it is not.
-      items: order.items.map((item) => ({
-        id: item.id,
-        productId: item.productId,
-        variantId: item.variantId,
-        quantity: item.quantity,
-        price: item.price,
-        sku: item.sku,
-        // #3710 - the source-reported display label. Without it WooCommerce
-        // creates every line unnamed and Shoper falls back to the SKU or the
-        // raw internal line id: a wrong product name on a merchant's sales
-        // order, with no error anywhere. Spread conditionally so absence stays
-        // absence and the adapters' own fallbacks still apply.
-        ...(item.name !== undefined ? { name: item.name } : {}),
-        // Destinations that settle tax per line need the rate from ingestion:
-        // WooCommerce to convert a gross-priced line to net, Shoper because it
-        // writes a per-line tax and refuses the order without one. Absence must
-        // stay absence so they refuse rather than guess.
-        ...(item.taxRate !== undefined ? { taxRate: item.taxRate } : {}),
-        ...(item.taxRateCountry !== undefined ? { taxRateCountry: item.taxRateCountry } : {}),
-        // #3365 - the source-reported gross unit price. A destination whose
-        // document is gross-priced reads this when `price` is net; without it
-        // the order is refused for not reporting a figure the source DID
-        // report. Spread conditionally so absence stays absence.
-        ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
-        // #3929 - a destination may read `gift` to set a native flag; the mirror
-        // sends the line as it is. Absence stays absence.
-        ...(item.gift !== undefined ? { gift: item.gift } : {}),
-        ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
-      })),
+      items: order.items.map(mapItem),
+      // #3607: the components a bundle expanded to, for a destination that
+      // moves stock off its own document. Only present when something expanded.
+      ...(request.physicalItems !== undefined && request.physicalItems.length > 0
+        ? {
+            physicalItems: request.physicalItems.map((item) => ({
+              ...mapItem(item),
+              ...(item.parentLineId !== undefined ? { parentLineId: item.parentLineId } : {}),
+              ...(item.giftSlot === true ? { giftSlot: true } : {}),
+              ...(item.shareGross !== undefined ? { shareGross: item.shareGross } : {}),
+            })),
+          }
+        : {}),
       totals: {
         subtotal: order.totals.subtotal,
         tax: order.totals.tax,

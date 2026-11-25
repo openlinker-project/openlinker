@@ -94,8 +94,9 @@ describe('BundleOfferPreviewService', () => {
       externalOfferId: '778',
       giftSlot: false,
       imageUrl: 'https://img/k.jpg',
+      availableUnits: 50,
     });
-    expect(entry.components[1]).toMatchObject({ mode: 'missing', giftSlot: true });
+    expect(entry.components[1]).toMatchObject({ mode: 'missing', giftSlot: true, availableUnits: 7 });
     expect(entry.components[1].problems[0].code).toBe('PRODUCT_SET_COMPONENT_UNPUBLISHABLE');
   });
 
@@ -134,6 +135,9 @@ describe('BundleOfferPreviewService', () => {
       availableSets: null,
       limitingComponentVariantId: null,
     });
+    if (entries[0].status !== 'ok') throw new Error('unreachable');
+    // A known component keeps its figure; the unknown one is null, never 0.
+    expect(entries[0].components.map((c) => c.availableUnits)).toEqual([5, null]);
   });
 
   it('should report a failure per entry and keep the rest of the batch', async () => {
