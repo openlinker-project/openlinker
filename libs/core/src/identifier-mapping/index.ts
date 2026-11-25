@@ -14,6 +14,8 @@ export * from './domain/ports/connection.port';
 export * from './domain/types/identifier-mapping.types';
 export * from './domain/types/connection.types';
 export * from './domain/types/stock-safety-buffer.types';
+export * from './domain/types/catalogue-mode.types';
+export * from './domain/types/unmatched-product-id.types';
 export * from './domain/types/payment-writeback-config.types';
 export * from './domain/types/buyer-emails-config.types';
 export * from './domain/types/fulfilment-ownership.types';

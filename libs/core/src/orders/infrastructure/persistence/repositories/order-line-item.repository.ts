@@ -13,6 +13,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { ObjectLiteral, SelectQueryBuilder } from 'typeorm';
 import { In, Repository } from 'typeorm';
+import { UNMATCHED_PRODUCT_ID_PREFIX } from '@openlinker/core/identifier-mapping';
 import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import { OrderRecordOrmEntity } from '../entities/order-record.orm-entity';
 import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
@@ -1241,6 +1242,12 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
       .where('li."taxRate" IS NULL')
       .andWhere('li."sourceConnectionId" = :sourceConnectionId', {
         sourceConnectionId: input.sourceConnectionId,
+      })
+      // #4280: a line accepted without a catalogue match has no product whose
+      // catalogue rate this sweep could ever read, so selecting it would retry
+      // the same hopeless lookup on every run. The prefix holds no LIKE wildcard.
+      .andWhere('li."productId" NOT LIKE :unmatchedPrefix', {
+        unmatchedPrefix: `${UNMATCHED_PRODUCT_ID_PREFIX}%`,
       })
       .orderBy('li."id"', 'ASC')
       .take(input.limit);

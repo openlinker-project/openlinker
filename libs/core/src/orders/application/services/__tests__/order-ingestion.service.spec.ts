@@ -24,6 +24,7 @@ import type {
 import type { IOrderSyncService } from '../../interfaces/order-sync.service.interface';
 import type { IOrderRecordService } from '../../interfaces/order-record.service.interface';
 import type { IOrderItemRefResolverService } from '../../interfaces/order-item-ref-resolver.service.interface';
+import type { ItemResolutionResult } from '../order-item-ref-resolver.types';
 import type { IOrderLifecycleRelayService } from '../../interfaces/order-lifecycle-relay.service.interface';
 import type { IAutoIssueTriggerService } from '@openlinker/core/invoicing';
 import type { IProductsService, ITaxRateJournalService } from '@openlinker/core/products';
@@ -90,7 +91,7 @@ describe('OrderIngestionService', () => {
   let orderChanges: jest.Mocked<
     Pick<IOrderChangeService, 'findOpenByOrder' | 'confirm' | 'claimApplied' | 'findLatestByTarget'>
   >;
-  let connections: jest.Mocked<Pick<ConnectionPort, 'list'>>;
+  let connections: jest.Mocked<Pick<ConnectionPort, 'list' | 'get'>>;
   let cancellationEffects: { applyEffects: jest.Mock };
   let sourceAmendmentEffects: { reconcile: jest.Mock; accept: jest.Mock };
   let paymentWriteback: { planAfterSync: jest.Mock };
@@ -237,7 +238,7 @@ describe('OrderIngestionService', () => {
     routingCommit = {
       route: jest.fn(),
     } as unknown as jest.Mocked<IRoutingCommitService>;
-    connections = { list: jest.fn().mockResolvedValue([]) };
+    connections = { list: jest.fn().mockResolvedValue([]), get: jest.fn() };
 
     orderChanges = {
       findOpenByOrder: jest.fn().mockResolvedValue([]),
@@ -3000,6 +3001,187 @@ describe('OrderIngestionService', () => {
           reason: 'no mapping a',
         }
       );
+    });
+
+    describe('catalogueMode none (#4280)', () => {
+      const missing = (externalId: string): ItemResolutionResult => ({
+        resolved: false,
+        productRef: { type: 'offer', externalId },
+        reason: `no mapping ${externalId}`,
+        kind: 'missing_mapping' as const,
+      });
+      const sourceWith = (config: Record<string, unknown>): void => {
+        connections.get.mockResolvedValue({ id: connectionId, config } as never);
+      };
+
+      it('accepts every unmapped line as an unmatched one, so the order is persisted ready', async () => {
+        sourceWith({ catalogueMode: 'none' });
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce(missing('offer-a'))
+          .mockResolvedValueOnce(missing('offer-b'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(orderRecordService.markItemResolutionFailure).not.toHaveBeenCalled();
+        expect(orderRecordService.persistOrder).toHaveBeenCalledTimes(1);
+        const persisted = orderRecordService.persistOrder.mock.calls[0][0];
+        expect(persisted.items).toEqual([
+          expect.objectContaining({
+            id: 'item-1',
+            productId: `unmatched:${connectionId}:offer-a`,
+            quantity: 1,
+            name: 'Offer A',
+          }),
+          expect.objectContaining({
+            id: 'item-2',
+            productId: `unmatched:${connectionId}:offer-b`,
+            quantity: 2,
+          }),
+        ]);
+        expect('variantId' in persisted.items[0]).toBe(false);
+      });
+
+      it('falls back to the line id when the adapter reports a blank external id', async () => {
+        sourceWith({ catalogueMode: 'none' });
+        orderSource.getOrder.mockResolvedValue({
+          ...incomingWithItems,
+          items: [
+            { ...incomingWithItems.items[0], productRef: { type: 'offer' as const, externalId: '  ' } },
+            incomingWithItems.items[1],
+          ],
+        });
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce(missing('  '))
+          .mockResolvedValueOnce(missing('offer-b'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const items = orderRecordService.persistOrder.mock.calls[0][0].items;
+        expect(items[0].productId).toBe(`unmatched:${connectionId}:item-1`);
+      });
+
+      it('keeps the channel tax rate and never reads or journals the catalogue rate', async () => {
+        sourceWith({ catalogueMode: 'none' });
+        orderSource.getOrder.mockResolvedValue({
+          ...incomingWithItems,
+          items: [{ ...incomingWithItems.items[0], taxRate: '23', taxRateCountry: 'PL' }],
+        });
+        orderItemRefResolver.tryResolve.mockResolvedValueOnce(missing('offer-a'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const line = orderRecordService.persistOrder.mock.calls[0][0].items[0];
+        expect(line).toEqual(
+          expect.objectContaining({ taxRate: '23', taxRateCountry: 'PL', taxSource: 'channel' })
+        );
+        expect(productsService.getEffectiveTaxRate).not.toHaveBeenCalled();
+        expect(taxRateJournal.record).not.toHaveBeenCalled();
+      });
+
+      it('mixes a resolved line with an unmatched one', async () => {
+        sourceWith({ catalogueMode: 'none' });
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce({
+            resolved: true,
+            internalProductId: 'p-1',
+            internalVariantId: 'v-1',
+          })
+          .mockResolvedValueOnce(missing('offer-b'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const items = orderRecordService.persistOrder.mock.calls[0][0].items;
+        expect(items[0]).toEqual(expect.objectContaining({ productId: 'p-1', variantId: 'v-1' }));
+        expect(items[1]).toEqual(
+          expect.objectContaining({ productId: `unmatched:${connectionId}:offer-b` })
+        );
+      });
+
+      it('reads the connection once however many lines are unmatched', async () => {
+        sourceWith({ catalogueMode: 'none' });
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce(missing('offer-a'))
+          .mockResolvedValueOnce(missing('offer-b'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(connections.get).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not read the connection at all when every line resolves (no cost on a default install)', async () => {
+        sourceWith({ catalogueMode: 'none' });
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-1', internalVariantId: 'v-1' })
+          .mockResolvedValueOnce({ resolved: true, internalProductId: 'p-2', internalVariantId: 'v-2' });
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(connections.get).not.toHaveBeenCalled();
+      });
+
+      it('still holds a source-deleted line: a variant removed at its master is not a catalogue gap', async () => {
+        sourceWith({ catalogueMode: 'none' });
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce({
+            resolved: false,
+            productRef: { type: 'offer', externalId: 'offer-a' },
+            reason: 'variant deleted at the master',
+            kind: 'source_deleted' as const,
+          })
+          .mockResolvedValueOnce({
+            resolved: true,
+            internalProductId: 'p-2',
+            internalVariantId: 'v-2',
+          });
+
+        await expect(
+          service.syncOrderFromSource(connectionId, externalOrderId)
+        ).rejects.toBeInstanceOf(MissingOrderItemMappingError);
+        expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+          'ol_order_item_test',
+          { status: 'source_deleted', reason: 'variant deleted at the master' }
+        );
+        expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['absent', {}],
+        ['linked', { catalogueMode: 'linked' }],
+        ['a cleared null', { catalogueMode: null }],
+        ['an unrecognised value', { catalogueMode: 'None' }],
+      ])('keeps today\'s awaiting_mapping behaviour when the mode is %s', async (_label, config) => {
+        sourceWith(config);
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce(missing('offer-a'))
+          .mockResolvedValueOnce(missing('offer-b'));
+
+        await expect(
+          service.syncOrderFromSource(connectionId, externalOrderId)
+        ).resolves.toEqual([]);
+
+        expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+          'ol_order_item_test',
+          { status: 'awaiting_mapping', reason: 'no mapping offer-a' }
+        );
+        expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      });
+
+      it('fails safe to awaiting_mapping when the connection cannot be read', async () => {
+        connections.get.mockRejectedValue(new Error('connection gone'));
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce(missing('offer-a'))
+          .mockResolvedValueOnce(missing('offer-b'));
+
+        await expect(
+          service.syncOrderFromSource(connectionId, externalOrderId)
+        ).resolves.toEqual([]);
+
+        expect(orderRecordService.markItemResolutionFailure).toHaveBeenCalledWith(
+          'ol_order_item_test',
+          { status: 'awaiting_mapping', reason: 'no mapping offer-a' }
+        );
+        expect(orderRecordService.persistOrder).not.toHaveBeenCalled();
+      });
     });
 
     it('should still throw for a missing mapping on a non-offer ref so the job retries (#4040)', async () => {

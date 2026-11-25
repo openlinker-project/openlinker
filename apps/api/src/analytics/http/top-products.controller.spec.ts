@@ -13,6 +13,7 @@ describe('TopProductsController', () => {
     items: [],
     total: 0,
     unresolvedProductCount: 0,
+    unmatchedOfferCount: 0,
     coverageGapAvailable: true,
   };
 
