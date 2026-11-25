@@ -100,6 +100,12 @@ export function PromotionSentence({
       })}
       {period !== null ? <> {period}</> : null}
       {cap !== null ? <> {cap}</> : null} <span data-testid="promotion-sentence-stack">{stack}</span>
+      {values.gift !== null ? (
+        <>
+          {' '}
+          <span data-testid="promotion-sentence-effect">{copy.effect}</span>
+        </>
+      ) : null}
     </>
   );
 }

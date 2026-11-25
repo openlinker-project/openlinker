@@ -80,7 +80,12 @@ import {
 } from '../mappers/subiekt-document-type.mapper';
 import { toBridgeBuyer } from '../mappers/subiekt-buyer.mapper';
 import { toBridgeUpsertCustomerRequest } from '../mappers/subiekt-customer.mapper';
-import { toBridgeKorektaLine, toBridgeLines } from '../mappers/subiekt-line.mapper';
+import {
+  expandStockComponents,
+  remapCorrectionLinesToExpandedDocument,
+  toBridgeKorektaLine,
+  toBridgeLines,
+} from '../mappers/subiekt-line.mapper';
 import { toNeutralRegulatoryStatus } from '../mappers/subiekt-regulatory-status.mapper';
 import type { ZeroValueLineSupport } from '@openlinker/core/sales-documents';
 
@@ -202,7 +207,9 @@ export class SubiektInvoicingAdapter
     // Resolve each line's Subiekt catalogue symbol so the document carries real
     // catalogue positions instead of free-text service lines — see
     // `resolveTowarSymbols` and the line mapper's header.
-    const { symbolByProductId, unmappedCatalogueKeys } = await this.resolveTowarSymbols(cmd.lines);
+    // A bundle line is sold as its components: the set's own towar has no stock.
+    const documentLines = expandStockComponents(cmd.lines, cmd.currency);
+    const { symbolByProductId, unmappedCatalogueKeys } = await this.resolveTowarSymbols(documentLines);
     // Count LINES, not products: two lines of the same unmapped product are two
     // lines the warehouse will not see, and the operator is looking at a
     // document whose lines are what they can count.
@@ -215,7 +222,7 @@ export class SubiektInvoicingAdapter
     // it is the whole point - the alternative reports it as linked while the
     // warehouse never sees it. Everything else is counted iff the lookup came
     // back with no catalogue symbol.
-    const unlinkedCatalogueLines = cmd.lines.filter((line) => {
+    const unlinkedCatalogueLines = documentLines.filter((line) => {
       if (line.productId === undefined) return false;
       if (line.productId === '') return true;
       // Keyed the way the resolver keys it - by variant where there is one
@@ -245,7 +252,7 @@ export class SubiektInvoicingAdapter
         buyer: toBridgeBuyer(cmd.buyer),
         // #2260 review: the era travels with the lines so a pre-rollout order
         // is exempt here exactly as it is on the other two invoicing routes.
-        lines: toBridgeLines(cmd.lines, cmd.taxRateEra, symbolByProductId),
+        lines: toBridgeLines(documentLines, cmd.taxRateEra, symbolByProductId),
         // Connection-level payment + cash-register selection (#1324). Both
         // helpers return `{}` when unset (or when a combination the bridge would
         // 422 is only half-configured), so an unconfigured connection produces a
@@ -400,7 +407,11 @@ export class SubiektInvoicingAdapter
         // Place idempotencyKey on the request BEFORE the call so fiscal dedup
         // holds: a retried correction returns the SAME document.
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
-        lines: cmd.lines.map(toBridgeKorektaLine),
+        // The document holds a set as its components, the snapshot as one line:
+        // address the correction to the positions Subiekt actually has.
+        lines: remapCorrectionLinesToExpandedDocument(cmd.lines, cmd.originalDocument?.lines).map(
+          toBridgeKorektaLine,
+        ),
       });
 
       if (response.state === 'failed') {

@@ -38,6 +38,7 @@ import {
   resolveGiftPresentationFields,
   type GiftLineForm,
   type ResolvedDeliveryLine,
+  splitBundleLineTotal,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -199,8 +200,33 @@ export function toIssueInvoiceCommand(
     }),
     { currency: order.totals.currency },
   );
+  // A bundle that stayed ONE document line (same tax rate on every component)
+  // still has physical goods behind it; carry them so a provider that moves
+  // stock off the document can sell the components (see InvoiceLine.stockComponents).
+  const itemLinesWithStock = itemLines.lines.map((line) => {
+    const components =
+      line.orderLineId === undefined ? undefined : input.bundleDocument?.byLineId[line.orderLineId];
+    if (components === undefined || components.length === 0) return line;
+    // One split, owned by core: the provider books these values instead of dividing the set itself.
+    const shares = splitBundleLineTotal(
+      line.unitPriceGross * line.quantity,
+      components,
+      order.totals.currency,
+    );
+    return {
+      ...line,
+      stockComponents: components.map((component, index) => ({
+        productId: component.productId,
+        variantId: component.variantId,
+        quantity: component.quantity,
+        name: component.name ?? component.sku ?? null,
+        ...(component.giftSlot === true ? { giftSlot: true } : {}),
+        ...(shares !== null ? { totalGross: shares[index] } : {}),
+      })),
+    };
+  });
   const presentedGifts = presentGiftLines(
-    itemLines.lines,
+    itemLinesWithStock,
     resolveGiftDocumentForm(undefined, input.giftConnectionForm, input.giftGlobalForm, {
       connection: input.giftConnectionUnitPrice,
       global: input.giftGlobalUnitPrice,

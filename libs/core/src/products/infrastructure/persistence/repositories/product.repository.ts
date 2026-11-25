@@ -18,6 +18,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type { SelectQueryBuilder } from 'typeorm';
 import { In, Repository } from 'typeorm';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { foldSqlExpr, toSearchTerms } from './product-search';
 import { ProductOrmEntity } from '../entities/product.orm-entity';
 import type { ProductRepositoryPort } from '../../../domain/ports/product-repository.port';
 import type { Product } from '../../../domain/entities/product.entity';
@@ -130,9 +131,17 @@ export class ProductRepository implements ProductRepositoryPort {
     const qb = this.repository.createQueryBuilder('product');
 
     if (filters.search) {
-      const escapedSearch = filters.search.replace(/[%_]/g, '\\$&');
-      qb.andWhere('(product.name ILIKE :search OR product.sku ILIKE :search)', {
-        search: `%${escapedSearch}%`,
+      // Every term must match the product name/sku or ANY variant sku/ean/gtin
+      // (EXISTS, so no join fan-out and the count stays row-per-product).
+      // Diacritics and case are folded on both sides (see product-search.ts).
+      toSearchTerms(filters.search).forEach((term, i) => {
+        const p = `search${i}`;
+        qb.andWhere(
+          `(${foldSqlExpr('product.name')} ILIKE :${p} OR ${foldSqlExpr('product.sku')} ILIKE :${p}` +
+            ` OR EXISTS (SELECT 1 FROM product_variants psv WHERE psv."productId" = product.id AND (` +
+            `${foldSqlExpr('psv.sku')} ILIKE :${p} OR psv.ean ILIKE :${p} OR psv.gtin ILIKE :${p})))`,
+          { [p]: `%${term}%` }
+        );
       });
     }
 

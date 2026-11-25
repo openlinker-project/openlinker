@@ -90,8 +90,8 @@ describe('OrderLineItemsPanel', () => {
     ];
     renderWithProviders(<OrderLineItemsPanel items={itemsMissingSku} />);
 
-    expect(screen.getByText('ol_product_x')).toBeInTheDocument();
-    expect(screen.getByText('ol_orderitem_noProduct')).toBeInTheDocument();
+    expect(screen.getByText('ID: ol_product_x')).toBeInTheDocument();
+    expect(screen.getByText('ID: ol_orderitem_noProduct')).toBeInTheDocument();
   });
 
   it('renders a backfilled rate as estimated from catalogue, never as a live shop/channel read (#2440)', () => {
@@ -145,6 +145,38 @@ describe('OrderLineItemsPanel', () => {
       expect(screen.getByTestId('order-bundle-line-ZES-PORANNY')).toHaveTextContent('Bundle');
       expect(screen.getByTestId('order-bundle-line-KUB-350-BI')).toHaveTextContent('in the bundle price');
       expect(screen.queryByTestId('order-bundle-old-composition-note')).toBeNull();
+    });
+
+    it('should link the bundle chip back to the bundle and explain it', () => {
+      renderWithProviders(
+        <OrderLineItemsPanel items={[bundleLine]} totals={totals} bundleLines={bundleLines} />,
+      );
+      expect(screen.getByTestId('order-bundle-link')).toHaveAttribute('href', '/products/bundles/v-set');
+      expect(screen.getByTestId('order-bundle-link')).toHaveAttribute(
+        'title',
+        expect.stringContaining('Kubek x1 + Kawa x1'),
+      );
+      expect(screen.getByTestId('order-bundle-note')).toBeInTheDocument();
+    });
+
+    it('should say what ships and, once there is a document, what is on it', () => {
+      const { rerender } = renderWithProviders(
+        <OrderLineItemsPanel items={[bundleLine]} totals={totals} bundleLines={bundleLines} />,
+      );
+      expect(screen.getByTestId('order-bundle-ship-strip')).toHaveTextContent('1 x Kubek, 1 x Kawa');
+      expect(screen.queryByTestId('order-bundle-document-line')).toBeNull();
+      rerender(
+        <OrderLineItemsPanel
+          items={[bundleLine]}
+          totals={totals}
+          bundleLines={bundleLines}
+          documentNumber="PA 18/2026"
+        />,
+      );
+      expect(screen.getByTestId('order-bundle-document-line')).toHaveTextContent(
+        'On document PA 18/2026',
+      );
+      expect(screen.getByTestId('order-bundle-document-line')).toHaveTextContent('1 x Zestaw poranny');
     });
 
     describe('gift slot (#3934)', () => {

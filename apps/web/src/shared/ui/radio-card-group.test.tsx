@@ -52,3 +52,24 @@ describe('RadioCardGroup', () => {
     expect(screen.getByText('Not offered here')).toBeInTheDocument();
   });
 });
+
+describe('RadioCardGroup selection outline (#3935)', () => {
+  it('should draw the outline on the selected card only', () => {
+    const { container } = render(
+      <RadioCardGroup
+        name="g"
+        aria-label="Choice"
+        value="b"
+        onChange={vi.fn()}
+        options={[
+          { value: 'a', title: 'Alpha' },
+          { value: 'b', title: 'Beta' },
+        ]}
+      />
+    );
+
+    const outlines = container.querySelectorAll('.rcg__outline');
+    expect(outlines).toHaveLength(1);
+    expect(outlines[0]?.closest('label')).toHaveTextContent('Beta');
+  });
+});

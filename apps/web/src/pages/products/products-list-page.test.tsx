@@ -1722,10 +1722,12 @@ describe('ProductsListPage', () => {
 
     it('should mark a bundle, show its availability and name the component that limits it', async () => {
       mountBundles();
-      expect(await screen.findByTestId('bundle-list-available-ZES-PORANNY')).toHaveTextContent('1');
+      expect(await screen.findByTestId('bundle-list-available-ZES-PORANNY')).toHaveTextContent('1 set');
       expect(screen.getByTestId('bundle-list-limiting-ZES-PORANNY')).toHaveTextContent(
         'limited by: Lyzeczka do kawy',
       );
+      // The repeated "calculated from components" tag moved out of the name cell.
+      expect(screen.queryByTestId('bundle-list-derived-ZES-PORANNY')).toBeNull();
       // The make-a-bundle action lives on the product page, not on the row.
       expect(screen.queryByTestId('bundle-list-make-bundle-KAW-250-ETI')).toBeNull();
       expect(screen.queryByTestId('bundle-list-show-composition-ZES-PORANNY')).toBeNull();
@@ -1745,7 +1747,7 @@ describe('ProductsListPage', () => {
     it('should ask for bundles only when the Bundles filter is chosen', async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const mockApi = mountBundles();
-      await user.click(await screen.findByRole('button', { name: 'Show' }));
+      await user.click(await screen.findByRole('button', { name: 'Product type' }));
       await user.click(await screen.findByRole('button', { name: 'Bundles' }));
       await waitFor(() => {
         expect(mockApi.products.listRows).toHaveBeenCalledWith(
@@ -1759,7 +1761,7 @@ describe('ProductsListPage', () => {
     it('should ask for everything except bundles when Without bundles is chosen', async () => {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const mockApi = mountBundles();
-      await user.click(await screen.findByRole('button', { name: 'Show' }));
+      await user.click(await screen.findByRole('button', { name: 'Product type' }));
       await user.click(await screen.findByRole('button', { name: 'Without bundles' }));
       await waitFor(() => {
         expect(mockApi.products.listRows).toHaveBeenCalledWith(
@@ -1768,6 +1770,23 @@ describe('ProductsListPage', () => {
           expect.anything(),
         );
       });
+    });
+
+    it('should explain bundles and offer a first one when the bundle view is empty', async () => {
+      const mockApi = createMockApiClient({
+        products: {
+          list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+          listRows: vi.fn().mockResolvedValue({ items: [], limit: 20, offset: 0 }),
+          count: vi.fn().mockResolvedValue({ total: 0 }),
+        },
+      });
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: mockApi,
+        route: '/products?bundles=only',
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+      expect(await screen.findByText('You have no bundles yet')).toBeInTheDocument();
+      expect(screen.getByTestId('bundle-list-empty-create')).toHaveAttribute('href', '/products/bundles/new');
     });
 
     it('should read the legacy bundles=true link as the Bundles view', async () => {

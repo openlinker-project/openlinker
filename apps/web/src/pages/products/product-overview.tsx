@@ -208,7 +208,6 @@ export function ProductOverview(props: ProductOverviewProps): ReactElement {
 
         <ProductUsedInBundles
           card
-          title={copy.overview.bundlesTitle}
           variantIds={usedInVariantIds}
           action={props.makeBundleAction}
         />

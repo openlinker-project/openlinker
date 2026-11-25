@@ -20,7 +20,7 @@
  */
 import { useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import { interpolate, renderRich, useFormat, useMessages } from '../../../../shared/i18n';
+import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Button, DataTable, StatusBadge, TimeDisplay } from '../../../../shared/ui';
 import type { DataTableColumn } from '../../../../shared/ui';
 import {
@@ -33,6 +33,8 @@ import {
 } from '../../../../shared/ui/dialog';
 import type { BulkBatchRecordSummary } from '../../api/bulk-listings.types';
 import type { OfferCreationStatus } from '../../api/listings.types';
+import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
+import { packSizeOf } from './bundle-kind';
 
 interface BulkBatchProgressTableProps {
   records: BulkBatchRecordSummary[];
@@ -45,6 +47,8 @@ interface BulkBatchProgressTableProps {
    * cannot write.
    */
   buildFixUrl?: (record: BulkBatchRecordSummary) => string | null;
+  /** Variants of this batch that are sets or multipacks, with their composition (#3520). */
+  bundles?: ReadonlyMap<string, BundleOfferPreviewOk>;
   /**
    * Failed records the marketplace refused because of the seller account
    * (#4004). Their cell points at the batch notice instead of repeating the
@@ -71,10 +75,12 @@ export function BulkBatchProgressTable({
   records,
   buildExternalOfferUrl,
   buildFixUrl,
+  bundles,
   accountLevelRecordIds,
   accountLevelRowLabel,
 }: BulkBatchProgressTableProps): ReactElement {
   const copy = useMessages('listings').bulkBatchProgressTable;
+  const bundleCopy = useMessages('listings').bundleOffer;
   const [detailRecord, setDetailRecord] = useState<BulkBatchRecordSummary | null>(null);
 
   const groups = useMemo(
@@ -93,14 +99,21 @@ export function BulkBatchProgressTable({
       {
         id: 'variant',
         header: copy.columns.variant,
-        cell: (record) =>
-          record.variantLabel ? (
-            <span title={record.internalVariantId}>{record.variantLabel}</span>
-          ) : (
-            <span className="mono-text" title={record.internalVariantId}>
-              {record.internalVariantId}
+        cell: (record) => {
+          const bundle = bundles?.get(record.internalVariantId);
+          return (
+            <span className="bulk-batch__variant">
+              {record.variantLabel ? (
+                <span title={record.internalVariantId}>{record.variantLabel}</span>
+              ) : (
+                <span className="mono-text" title={record.internalVariantId}>
+                  {record.internalVariantId}
+                </span>
+              )}
+              {bundle ? <BundleRecordInfo bundle={bundle} /> : null}
             </span>
-          ),
+          );
+        },
       },
       {
         id: 'status',
@@ -129,7 +142,16 @@ export function BulkBatchProgressTable({
             );
           }
           if (record.status === 'failed') {
-            const firstMessage = record.errors?.[0]?.message;
+            const bundle = bundles?.get(record.internalVariantId);
+            const emptyComponent =
+              bundle && bundle.availableSets === 0
+                ? bundle.components.find(
+                    (component) => component.variantId === bundle.limitingComponentVariantId,
+                  )
+                : undefined;
+            const firstMessage = emptyComponent
+              ? interpolate(bundleCopy.failedNoStock, { name: emptyComponent.name })
+              : record.errors?.[0]?.message;
             const accountLevel = accountLevelRecordIds?.has(record.id) === true;
             const fixUrl = accountLevel ? null : buildFixUrl?.(record);
             const shown = accountLevel && accountLevelRowLabel ? accountLevelRowLabel : (firstMessage ?? copy.failed);
@@ -191,7 +213,15 @@ export function BulkBatchProgressTable({
         hideBelow: 768,
       },
     ],
-    [buildExternalOfferUrl, buildFixUrl, copy, accountLevelRecordIds, accountLevelRowLabel],
+    [
+      buildExternalOfferUrl,
+      buildFixUrl,
+      bundles,
+      bundleCopy,
+      copy,
+      accountLevelRecordIds,
+      accountLevelRowLabel,
+    ],
   );
 
   return (
@@ -285,6 +315,30 @@ function groupByProduct(
       failedLabel,
     };
   });
+}
+
+/** Kind chip, contents and the stock a bundle record was published with. */
+function BundleRecordInfo({ bundle }: { bundle: BundleOfferPreviewOk }): ReactElement {
+  const copy = useMessages('listings').bundleOffer;
+  const plural = usePlural();
+  const packSize = packSizeOf(bundle);
+  const contents = bundle.components
+    .map((component) => `${component.quantity} × ${component.name}`)
+    .join(' + ');
+  const stock =
+    bundle.availableSets === null
+      ? copy.setsUnknown
+      : interpolate(copy.stockAsSets, { sets: plural(bundle.availableSets, copy.sets) });
+  return (
+    <span className="bulk-batch__bundle" data-testid="batch-bundle-info">
+      <span className={`cx-tag bundle-row-tag${packSize !== null ? ' bundle-row-tag--pack' : ''}`}>
+        {packSize !== null
+          ? interpolate(copy.packMarker, { n: packSize })
+          : plural(bundle.components.length, copy.marker)}
+      </span>
+      <small>{interpolate(copy.batchLine, { contents, stock })}</small>
+    </span>
+  );
 }
 
 function ProductRollupRow({ group }: { group: ProductGroup }): ReactElement {

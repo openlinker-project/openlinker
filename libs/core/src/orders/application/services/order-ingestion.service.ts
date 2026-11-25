@@ -154,6 +154,7 @@ import {
   type FulfillmentRoutingSkipReason,
 } from '../../domain/types/fulfillment-routing-eligibility.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
+import { splitBundleLineTotal } from '@openlinker/core/sales-documents';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
@@ -1357,7 +1358,10 @@ export class OrderIngestionService implements IOrderIngestionService {
           ...(physicalItems.some(
             (item) => 'parentLineId' in item && item.parentLineId !== undefined
           )
-            ? { physicalProductIds: physicalItems.map((item) => item.productId) }
+            ? {
+                physicalProductIds: physicalItems.map((item) => item.productId),
+                physicalItems: await this.withBundleShares(order, physicalItems, connectionId),
+              }
             : {}),
         });
       } catch (error) {
@@ -1586,7 +1590,14 @@ export class OrderIngestionService implements IOrderIngestionService {
         // `persisted`; reading `existing` here would silently answer
         // "not asserted" for every order's first ingestion.
         persisted.buyerTaxId,
-        await this.bundleDocuments.resolveForDocuments(persisted, connectionId)
+        // The bundle lines come from the FROZEN expansion, which is written
+        // after `persistOrder` returned: `persisted` of a first-seen order
+        // still has none, so the document would be composed as if no bundle
+        // existed (the set's own towar sold, with no stock behind it). Re-read.
+        await this.bundleDocuments.resolveForDocuments(
+          (await this.orderRecordService.getOrderRecord(order.id)) ?? persisted,
+          connectionId
+        )
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
       // the outcome and this service — which owns the order record — writes it,
@@ -1709,6 +1720,48 @@ export class OrderIngestionService implements IOrderIngestionService {
           `error=${errorName} orderId=${orderId}`
       );
       return { kind: 'indeterminate' };
+    }
+  }
+
+  /**
+   * Attach to each expanded component the gross share core assigned it out of its
+   * set line, so a destination that books the components prices them from the same
+   * split the documents use instead of dividing the set itself. Best-effort: a
+   * component with no computable share is left without one.
+   */
+  private async withBundleShares(
+    order: Order,
+    physicalItems: readonly Order['items'][number][],
+    connectionId: string
+  ): Promise<Array<Order['items'][number] & { shareGross?: number }>> {
+    try {
+      const record = await this.orderRecordService.getOrderRecord(order.id);
+      const presentation =
+        record === null || record === undefined
+          ? undefined
+          : await this.bundleDocuments.resolveForDocuments(record, connectionId);
+      if (presentation === undefined) return [...physicalItems];
+      const shareByLineId = new Map<string, number>();
+      for (const parent of order.items) {
+        const components = presentation.byLineId[parent.id];
+        if (components === undefined || components.length === 0) continue;
+        const shares = splitBundleLineTotal(
+          (parent.unitPriceGross ?? parent.price) * parent.quantity,
+          components,
+          order.totals.currency
+        );
+        if (shares === null) continue;
+        components.forEach((component, index) => shareByLineId.set(component.lineId, shares[index]));
+      }
+      return physicalItems.map((item) => {
+        const share = shareByLineId.get(item.id);
+        return share === undefined ? item : { ...item, shareGross: share };
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Bundle shares not computed for order ${order.id}: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return [...physicalItems];
     }
   }
 

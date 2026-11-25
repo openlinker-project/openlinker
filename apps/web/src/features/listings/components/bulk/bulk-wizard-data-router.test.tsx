@@ -92,6 +92,7 @@ async function renderWizardInDataRouter(): Promise<void> {
     },
     listings: {
       checkPublishedVariants: vi.fn().mockResolvedValue({ publishedVariantIds: [] }),
+      previewBundleOffers: vi.fn().mockResolvedValue({ entries: [] }),
       bulkCreate,
     },
   });

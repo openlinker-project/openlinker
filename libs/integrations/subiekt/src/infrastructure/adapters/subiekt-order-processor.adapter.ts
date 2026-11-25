@@ -63,6 +63,7 @@ import type {
   OrderWritebackResult,
 } from '@openlinker/core/orders';
 import { describeNetPricedOrderRefusal, minorUnitExponentFor } from '@openlinker/core/sales-documents';
+import { splitTotalByUnits } from '../mappers/subiekt-line.mapper';
 import { distributeOrderDiscount } from '@openlinker/core/orders';
 import type { OrderFulfillmentUpdater, OrderStatusWriteback } from '@openlinker/core/orders';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
@@ -214,9 +215,78 @@ export class SubiektOrderProcessorAdapter
     throw new SubiektOrderProductMappingException(item.productId, this.connectionId);
   }
 
+  /**
+   * The lines to sell, and the gross total each carries (#3607, ADR-083).
+   *
+   * Subiekt moves stock off the document, so a bundle or multipack must be sold
+   * as its COMPONENTS: the placeholder towar of a set has no stock of its own
+   * and a receipt for it fails. When ingestion expanded a line
+   * (`order.physicalItems`), each component carries `parentLineId` and the
+   * commercial line's gross total is divided over its paid components by unit
+   * share, the remainder going to the last one so the parts add up to exactly
+   * what the buyer paid. A gift slot is sold at 0. A line nothing expanded is
+   * priced exactly as before.
+   */
+  private physicalLinePrices(order: OrderCreate): Array<{
+    item: OrderCreate['items'][number];
+    gross: number;
+  }> {
+    const physical = order.physicalItems;
+    if (physical === undefined || physical.length === 0) {
+      return order.items.map((item) => ({
+        item,
+        gross: (item.unitPriceGross ?? item.price) * item.quantity,
+      }));
+    }
+    const exponent = minorUnitExponentFor(order.totals.currency);
+    const factor = 10 ** exponent;
+    const round = (value: number): number => Math.round(value * factor) / factor;
+    const parentTotals = new Map<string, number>();
+    for (const item of order.items) {
+      parentTotals.set(item.id, round((item.unitPriceGross ?? item.price) * item.quantity));
+    }
+    const paidUnitsByParent = new Map<string, number>();
+    for (const line of physical) {
+      if (line.parentLineId !== undefined && line.giftSlot !== true) {
+        paidUnitsByParent.set(
+          line.parentLineId,
+          (paidUnitsByParent.get(line.parentLineId) ?? 0) + line.quantity,
+        );
+      }
+    }
+    // Per parent, the paid components that carry no core-computed share are
+    // divided by unit count through the one shared helper.
+    const fallbackByIndex = new Map<number, number>();
+    for (const parentId of paidUnitsByParent.keys()) {
+      const indexes: number[] = [];
+      physical.forEach((line, index) => {
+        if (line.parentLineId === parentId && line.giftSlot !== true) indexes.push(index);
+      });
+      if (indexes.every((i) => physical[i].shareGross !== undefined)) continue;
+      const shares = splitTotalByUnits(
+        parentTotals.get(parentId) ?? 0,
+        indexes.map((i) => physical[i].quantity),
+        order.totals.currency,
+      );
+      indexes.forEach((i, n) => fallbackByIndex.set(i, shares[n]));
+    }
+    return physical.map((item, index) => {
+      if (item.parentLineId === undefined) {
+        return { item, gross: (item.unitPriceGross ?? item.price) * item.quantity };
+      }
+      if (item.giftSlot === true) {
+        return { item, gross: 0 };
+      }
+      if (item.shareGross !== undefined) {
+        return { item, gross: item.shareGross };
+      }
+      return { item, gross: fallbackByIndex.get(index) ?? 0 };
+    });
+  }
+
   private async resolveLines(order: OrderCreate): Promise<BridgeOrderLine[]> {
     const lines: BridgeOrderLine[] = [];
-    for (const item of order.items) {
+    for (const { item, gross } of this.physicalLinePrices(order)) {
       const symbol = await this.resolveTowarSymbol(item);
       lines.push({
         symbol,
@@ -229,7 +299,7 @@ export class SubiektOrderProcessorAdapter
         // the gross unit price. The guard in `createOrder` has refused the order
         // unless one of the two is genuinely gross, so this multiplication scales
         // a gross figure by a count - it never applies a tax rate.
-        wartoscBrutto: (item.unitPriceGross ?? item.price) * item.quantity,
+        wartoscBrutto: gross,
       });
     }
     // #3347: the item loop above never carried shipping — every ZK silently
