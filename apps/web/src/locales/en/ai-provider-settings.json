@@ -60,6 +60,8 @@
       "updated": "Updated"
     },
     "heading": "Providers",
+    "keyMissing": "No key yet",
+    "keySaved": "Key saved",
     "makeActive": "Make active",
     "no": "No",
     "notApplicable": "n/a",

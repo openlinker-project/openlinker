@@ -48,6 +48,7 @@
   "currencySettingsTile": {
     "actions": {
       "coverage": "Coverage",
+      "coverageHint": "See which currencies on your orders have exchange rates.",
       "edit": "Edit"
     },
     "adminOnly": "Admin only",
@@ -57,7 +58,14 @@
     "loading": "Loading currency settings…",
     "notConfigured": "Not configured",
     "rateDateRule": "Rate date rule",
+    "rateDateRules": {
+      "prev-business-day": "Previous business day"
+    },
     "rateSource": "Rate source",
+    "rateSources": {
+      "ecb": "ECB",
+      "nbp": "NBP"
+    },
     "reportingIn": "Reporting in",
     "reportingValue": "{currency} ({qualifier})",
     "sourceQualifier": {

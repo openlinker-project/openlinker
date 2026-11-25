@@ -32,7 +32,7 @@
  *
  * @module apps/web/src/pages/invoicing
  */
-import { useState, useCallback, useMemo, type ReactElement } from 'react';
+import { useState, useCallback, useEffect, useMemo, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -70,6 +70,17 @@ import {
 } from '../../features/invoicing';
 import { ConnectionCell, ConnectionFold, useConnectionsQuery } from '../../features/connections';
 import { OrderBuyerTaxIdValue, OrderIdentityCell, formatOrderRef } from '../../features/orders';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+} from '../../features/saved-views';
+import {
+  createInvoicesListRegistry,
+} from '../../features/invoicing/lib/invoices.list-config';
 import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
@@ -170,15 +181,18 @@ export function InvoicesListPage(): ReactElement {
   // (`documentTypeLabel`) and the order-number shortening (`formatOrderRef`,
   // exported from `features/orders` for exactly this reason). Those are the two
   // places the desktop and card renderings could silently disagree.
-  const documentTypeLabel = (r: InvoiceRecord): string =>
-    r.documentType
-      ? (DOCUMENT_TYPE_LABEL_FALLBACK[r.documentType] ?? r.documentType)
-      : // `''` is what `InvoiceService` writes on the pending row, and the failure
-        // patch never backfills it - so a raw render left the merged cell's only
-        // text blank on exactly the rows a triage filter selects.
-        copy.documentType.unknown;
+  const documentTypeLabel = useCallback(
+    (r: InvoiceRecord): string =>
+      r.documentType
+        ? (DOCUMENT_TYPE_LABEL_FALLBACK[r.documentType] ?? r.documentType)
+        : // `''` is what `InvoiceService` writes on the pending row, and the failure
+          // patch never backfills it - so a raw render left the merged cell's only
+          // text blank on exactly the rows a triage filter selects.
+          copy.documentType.unknown,
+    [copy.documentType.unknown],
+  );
 
-  const renderDocumentCell = (r: InvoiceRecord): ReactElement => {
+  const renderDocumentCell = useCallback((r: InvoiceRecord): ReactElement => {
     const label = documentTypeLabel(r);
     return (
       <span className="invoice-document-cell">
@@ -218,7 +232,7 @@ export function InvoicesListPage(): ReactElement {
         />
       </span>
     );
-  };
+  }, [copy.copyNumber, documentTypeLabel, connectionsById, connectionsQuery.isLoading]);
 
   // `DataTableCard` wraps `title` + `subtitle` in the row's `<Link>` whenever
   // `rowHref` is set (`data-table.tsx`), and this page always sets it. So the CARD
@@ -251,14 +265,17 @@ export function InvoicesListPage(): ReactElement {
     return item ? `${identity} · ${item}` : identity;
   };
 
-  const renderOrderCell = (r: InvoiceRecord): ReactElement => (
-    <OrderIdentityCell
-      orderId={r.orderId}
-      orderNumber={r.orderSummary?.orderNumber}
-      firstItemName={r.orderSummary?.firstItemName}
-      firstItemImageUrl={r.orderSummary?.firstItemImageUrl}
-      itemCount={r.orderSummary?.itemCount}
-    />
+  const renderOrderCell = useCallback(
+    (r: InvoiceRecord): ReactElement => (
+      <OrderIdentityCell
+        orderId={r.orderId}
+        orderNumber={r.orderSummary?.orderNumber}
+        firstItemName={r.orderSummary?.firstItemName}
+        firstItemImageUrl={r.orderSummary?.firstItemImageUrl}
+        itemCount={r.orderSummary?.itemCount}
+      />
+    ),
+    [],
   );
 
   // Batch retry state
@@ -384,12 +401,126 @@ export function InvoicesListPage(): ReactElement {
   // assert on the page as loaded, and a hook silently renumbering itself under a
   // sort would be worse than one that plainly does not follow it. A row missing
   // from the map emits NO hook rather than a duplicate `-0`.
-  const rowIndexById = new Map<string, number>(
-    (query.data?.items ?? []).map((row, index) => [row.id, index]),
+  const rowIndexById = useMemo(
+    () =>
+      new Map<string, number>((query.data?.items ?? []).map((row, index) => [row.id, index])),
+    [query.data?.items],
   );
 
-  const columns: DataTableColumn<InvoiceRecord>[] = [
-    {
+  const registry = useMemo(
+    () =>
+      createInvoicesListRegistry({
+        labels: {
+          order: copy.column.orderId,
+          orderFields: copy.savedViews.orderFields,
+          documentType: copy.column.documentType,
+          documentFields: copy.savedViews.documentFields,
+          status: copy.column.status,
+          regulatory: copy.column.regulatory,
+          clearanceRef: copy.column.clearanceRef,
+          buyerTaxId: copy.column.buyerTaxId,
+          connection: copy.column.connection,
+          connectionFields: copy.savedViews.connectionFields,
+          issuedAt: copy.column.issuedAt,
+        },
+        viewNames: {
+          all: copy.savedViews.views.all,
+          failed: copy.savedViews.views.failed,
+          rejected: copy.savedViews.views.rejected,
+          awaiting: copy.savedViews.views.awaiting,
+          noTaxId: copy.savedViews.views.noTaxId,
+        },
+        headers: {
+          order: copy.column.orderId,
+          documentType: copy.column.documentType,
+          status: copy.column.status,
+          regulatory: copy.column.regulatory,
+          clearanceRef: copy.column.clearanceRef,
+          buyerTaxId: copy.column.buyerTaxId,
+          connection: copy.column.connection,
+          issuedAt: copy.column.issuedAt,
+        },
+        cells: {
+          // Was the raw 41-character `orderId` in a `mono-text` span: no truncation,
+          // no Copy, no link. `orderSummary` has been on this response since #1995 /
+          // PR #2012 and was typed-but-unconsumed until now (#2090).
+          order: renderOrderCell,
+          // `invoiceNumber` and `documentType` were two columns answering one
+          // question - *what document is this?* - in a nine-column budget (#2090).
+          // Merged: the number over the type, the number still a working PDF link.
+          // Deliberately NOT hidden at a breakpoint: the merged column hosts #2094's
+          // tablet fold of the Connection cell.
+          documentType: renderDocumentCell,
+          // Derive display status (surfaces in-doubt vs failed split)
+          status: (r) => <InvoiceStatusBadge status={deriveInvoiceDisplayStatus(r)} />,
+          regulatory: (r) => <RegulatoryStatusBadge status={r.regulatoryStatus} />,
+          clearanceRef: (r) =>
+            r.clearanceReference ? (
+              <span className="mono-text" title={r.clearanceReference}>
+                {r.clearanceReference}
+              </span>
+            ) : (
+              <span className="text-muted">—</span>
+            ),
+          // #3188: the value the `taxId=with|without` filter was already asking
+          // about. Renders the ORDER DETAIL's own component rather than a second
+          // copy of the three-state vocabulary - there is no second render to drift.
+          // The record's value is frozen at issue, so this states what the
+          // document carries, not what the order asserts today. The positional
+          // test id is the mockup's declared hook (`invoice-row-tax-id-{i}`),
+          // resolved from the fetched page; a row missing from the map emits NO
+          // hook rather than a duplicate `-0`.
+          buyerTaxId: (r) => (
+            <span
+              data-testid={
+                rowIndexById.has(r.id) ? `invoice-row-tax-id-${rowIndexById.get(r.id)}` : undefined
+              }
+            >
+              <OrderBuyerTaxIdValue buyerTaxId={r.buyerTaxId} />
+            </span>
+          ),
+          // The id used to live in a `title` attribute - invisible, unselectable and
+          // unreachable on touch. No adornment: an invoice's connection IS its
+          // issuing provider and the column header already says so (#2090).
+          connection: (r) => (
+            <ConnectionCell
+              connectionId={r.connectionId}
+              connection={connectionsById.get(r.connectionId) ?? null}
+              loading={connectionsQuery.isLoading}
+            />
+          ),
+          // The mockup's `invoice-row-waiting-{i}` names a "With provider for"
+          // column carrying an elapsed duration. This page has no such column and
+          // this change does not invent one (#3196) - it hooks the nearest real
+          // fact, the `Issued` instant, and emits the hook ONLY on a row that is
+          // genuinely awaiting submission.
+          issuedAt: (r): ReactElement => {
+            const waitingTestId =
+              r.regulatoryStatus === 'pending-submission' && rowIndexById.has(r.id)
+                ? `invoice-row-waiting-${rowIndexById.get(r.id)}`
+                : undefined;
+            return r.issuedAt ? (
+              <TimeDisplay data-testid={waitingTestId} iso={r.issuedAt} format="date" />
+            ) : (
+              <span data-testid={waitingTestId} className="text-muted">
+                —
+              </span>
+            );
+          },
+        },
+      }),
+    [copy.column, copy.savedViews, renderOrderCell, renderDocumentCell, rowIndexById, connectionsById, connectionsQuery.isLoading],
+  );
+  const view = useListView<InvoiceRecord>({ registry, pageTitle: copy.list.title });
+
+  // A selection belongs to the rows of one view: switching view swaps the rows underneath it.
+  const activeViewId = view.activeView.id;
+  useEffect(() => {
+    setSelected((previous) => (previous.size === 0 ? previous : new Set()));
+  }, [activeViewId]);
+
+  const selectColumn = useMemo<DataTableColumn<InvoiceRecord>>(
+    () => ({
       id: 'select',
       header: '',
       cell: (r) => (
@@ -401,122 +532,17 @@ export function InvoicesListPage(): ReactElement {
           onClick={(e) => e.stopPropagation()}
         />
       ),
-    },
-    {
-      id: 'orderId',
-      // #2538 - OrderIdentityCell stacks the order number over a meta line.
-      lines: 2,
-      header: copy.column.orderId,
-      // Was the raw 41-character `orderId` in a `mono-text` span: no truncation,
-      // no Copy, no link. `orderSummary` has been on this response since #1995 /
-      // PR #2012 and was typed-but-unconsumed until now (#2090).
-      cell: renderOrderCell,
-      accessor: (r) => r.orderSummary?.orderNumber ?? r.orderId,
-    },
-    {
-      // `invoiceNumber` and `documentType` were two columns answering one
-      // question - *what document is this?* - in a nine-column budget (#2090).
-      // Merged: the number over the type, the number still a working PDF link.
-      //
-      // Deliberately NOT `hideBelow: 768` (which `documentType` carried): the
-      // merged column is the host for #2094's tablet fold of the Connection
-      // cell, so it cannot be the thing that disappears at that width.
-      id: 'documentType',
-      header: copy.column.documentType,
-      cell: renderDocumentCell,
-      accessor: (r) => r.documentType,
-    },
-    {
-      id: 'status',
-      header: copy.column.status,
-      // Derive display status (surfaces in-doubt vs failed split)
-      cell: (r) => <InvoiceStatusBadge status={deriveInvoiceDisplayStatus(r)} />,
-      accessor: (r) => deriveInvoiceDisplayStatus(r),
-    },
-    {
-      id: 'regulatoryStatus',
-      header: copy.column.regulatory,
-      cell: (r) => <RegulatoryStatusBadge status={r.regulatoryStatus} />,
-      hideBelow: 1024,
-    },
-    {
-      id: 'clearanceRef',
-      header: copy.column.clearanceRef,
-      cell: (r) =>
-        r.clearanceReference ? (
-          <span className="mono-text" title={r.clearanceReference}>
-            {r.clearanceReference}
-          </span>
-        ) : (
-          <span className="text-muted">—</span>
-        ),
-      accessor: (r) => r.clearanceReference ?? '',
-      hideBelow: 1024,
-    },
-    {
-      id: 'buyerTaxId',
-      header: copy.column.buyerTaxId,
-      // #3188: the value the `taxId=with|without` filter was already asking
-      // about. Renders the ORDER DETAIL's own component rather than a second
-      // copy of the three-state vocabulary - there is no second render to drift.
-      // The record's value is frozen at issue, so this states what the document
-      // carries, not what the order asserts today.
-      cell: (r) => (
-        <span
-          data-testid={
-            rowIndexById.has(r.id) ? `invoice-row-tax-id-${rowIndexById.get(r.id)}` : undefined
-          }
-        >
-          <OrderBuyerTaxIdValue buyerTaxId={r.buyerTaxId} />
-        </span>
-      ),
-      // Sorts on the VALUE only. The two absences sort together, which is
-      // honest: neither is a tax id, and inventing an ordering between "has
-      // none" and "we were not told" would assert a difference the sort cannot
-      // support.
-      accessor: (r) => r.buyerTaxId ?? '',
-      hideBelow: 1024,
-    },
-    {
-      id: 'connection',
-      header: copy.column.connection,
-      // The id used to live in a `title` attribute - invisible, unselectable and
-      // unreachable on touch. No adornment: an invoice's connection IS its
-      // issuing provider and the column header already says so (#2090).
-      cell: (r) => (
-        <ConnectionCell
-          connectionId={r.connectionId}
-          connection={connectionsById.get(r.connectionId) ?? null}
-          loading={connectionsQuery.isLoading}
-        />
-      ),
-      hideBelow: 1024,
-    },
-    {
-      id: 'issuedAt',
-      header: copy.column.issuedAt,
-      // The mockup's `invoice-row-waiting-{i}` names a "With provider for"
-      // column carrying an elapsed duration. This page has no such column and
-      // this change does not invent one (#3196) — it hooks the nearest real
-      // fact, the `Issued` instant, and emits the hook ONLY on a row that is
-      // genuinely awaiting submission, so its presence still means what the
-      // mockup's does: this row is the one waiting, and here is since when.
-      cell: (r): ReactElement => {
-        const waitingTestId =
-          r.regulatoryStatus === 'pending-submission' && rowIndexById.has(r.id)
-            ? `invoice-row-waiting-${rowIndexById.get(r.id)}`
-            : undefined;
-        return r.issuedAt ? (
-          <TimeDisplay data-testid={waitingTestId} iso={r.issuedAt} format="date" />
-        ) : (
-          <span data-testid={waitingTestId} className="text-muted">
-            —
-          </span>
-        );
-      },
-      accessor: (r) => r.issuedAt ?? '',
-    },
-  ];
+    }),
+    [copy.column.select, selected, toggleRow],
+  );
+  const { toColumns } = view;
+  const columns = useMemo<DataTableColumn<InvoiceRecord>[]>(
+    () => [
+      selectColumn,
+      ...toColumns(),
+    ],
+    [selectColumn, toColumns],
+  );
 
   const total = query.data?.total ?? 0;
   const hasPrev = offset > 0;
@@ -548,6 +574,8 @@ export function InvoicesListPage(): ReactElement {
       title={copy.list.title}
       description={copy.list.description}
     >
+      <ViewsBar {...view.viewsBar} />
+
       {retryMutation.error ? (
         <Alert tone="error" className="invoice-list__retry-error">
           {interpolate(copy.bulk.retryError, {
@@ -735,9 +763,18 @@ export function InvoicesListPage(): ReactElement {
           value={issuedTo ?? ''}
           onChange={(e) => setFilter('issuedTo', e.target.value)}
         />
+
+        <ColumnsPanel {...view.columnsPanel} />
       </div>
 
-      {query.isLoading ? (
+      {view.editedBar ? (
+        <div className="sv-applied">
+          <EditedBar {...view.editedBar} />
+        </div>
+      ) : null}
+      {view.repairBanner ? <RepairBanner {...view.repairBanner} /> : null}
+
+      {query.isLoading || !view.isReady ? (
         <DataTableSkeleton columns={columns} label={copy.list.loading} />
       ) : query.error ? (
         <ErrorState
@@ -869,6 +906,8 @@ export function InvoicesListPage(): ReactElement {
         isConfirming={bulkIssueMutation.isPending}
         onConfirm={() => void handleIssueConfirm()}
       />
+
+      <ViewDialogs {...view.dialogs} />
     </PageLayout>
   );
 }

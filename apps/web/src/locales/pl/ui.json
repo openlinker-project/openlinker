@@ -204,6 +204,13 @@
     "uploading": "Przesyłanie…",
     "wrongType": "Typ pliku „{type}” nie jest akceptowany. Dozwolone: {accept}."
   },
+  "fontSize": {
+    "default": "Domyślny",
+    "extraLarge": "Największy",
+    "group": "Rozmiar tekstu",
+    "large": "Duży",
+    "small": "Mały"
+  },
   "formErrorSummary": {
     "title": "Popraw zaznaczone pola."
   },
@@ -293,6 +300,18 @@
   },
   "richTextView": {
     "empty": "Brak opisu"
+  },
+  "settingsIndex": {
+    "loading": "Wczytywanie…",
+    "lockedHint": "Tylko administratorzy mogą to otworzyć. Poproś administratora, jeśli potrzebujesz zmiany.",
+    "lockedLabel": "Tylko administratorzy",
+    "unavailable": "Niedostępne"
+  },
+  "settingsTemplate": {
+    "newBadge": "Nowe",
+    "onThisPage": "Na tej stronie",
+    "readOnly": "Masz dostęp tylko do odczytu. Zmiany zapisuje administrator.",
+    "sections": "Sekcje strony"
   },
   "setupStepper": {
     "label": "Postęp konfiguracji",

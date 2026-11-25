@@ -6,6 +6,7 @@ import { defineConfig } from 'vitest/config';
 import { loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
+import { createChangelogPlugin } from './src/build-time/changelog-plugin';
 import { createOgMetaPlugin } from './src/build-time/og-meta';
 
 // Anchored on the config file itself, not `process.cwd()`: the build is
@@ -22,6 +23,10 @@ const ROOT_PACKAGE_JSON_PATH = fileURLToPath(new URL('../../package.json', impor
 const APP_VERSION = (
   JSON.parse(readFileSync(ROOT_PACKAGE_JSON_PATH, 'utf-8')) as { version: string }
 ).version;
+
+// release-please writes the English changelog at the repo root; the plugin reads
+// it lazily in buildStart (#4144).
+const CHANGELOG_PATH = fileURLToPath(new URL('../../CHANGELOG.md', import.meta.url));
 
 /**
  * The measured departure from the shared unit-tier count, for this package.
@@ -57,7 +62,7 @@ const WEB_CI_WORKERS = 8;
  */
 function unitTestWorkers(): number {
   const { resolveUnitTestWorkers } = createRequire(import.meta.url)(
-    '../../jest.unit-workers.cjs',
+    '../../jest.unit-workers.cjs'
   ) as { resolveUnitTestWorkers: (measuredCiDefault?: number) => number };
   return resolveUnitTestWorkers(WEB_CI_WORKERS);
 }
@@ -80,7 +85,11 @@ export default defineConfig(({ mode }) => {
     // #2174: token resolution lives in `src/build-time/og-meta.ts` so it can be
     // unit-tested (this module reads `import.meta.url`, which is not a `file:`
     // URL under the test environment, so a spec cannot import it).
-    plugins: [react(), createOgMetaPlugin(env)],
+    plugins: [
+      react(),
+      createOgMetaPlugin(env),
+      createChangelogPlugin({ changelogPath: CHANGELOG_PATH, mode }),
+    ],
     define: {
       __APP_VERSION__: JSON.stringify(APP_VERSION),
     },

@@ -54,9 +54,11 @@ import priceChanges from './price-changes.json';
 import products from './products.json';
 import promotions from './promotions.json';
 import promptTemplates from './prompt-templates.json';
+import releaseCenter from './release-center.json';
 import returnGifts from './return-gifts.json';
 import returns from './returns.json';
 import salesDocuments from './sales-documents.json';
+import savedViews from './saved-views.json';
 import settings from './settings.json';
 import shipments from './shipments.json';
 import shopify from './shopify.json';
@@ -109,9 +111,11 @@ export const en = {
   'price-changes': priceChanges,
   products,
   'prompt-templates': promptTemplates,
+  'release-center': releaseCenter,
   'return-gifts': returnGifts,
   returns,
   'sales-documents': salesDocuments,
+  'saved-views': savedViews,
   settings,
   shipments,
   shopify,

@@ -106,6 +106,16 @@
       "label": "No name recorded",
       "srPrefix": "Customer,"
     },
-    "title": "Customers"
+    "title": "Customers",
+    "views": {
+      "lockedDescription": "Name or hash",
+      "sorts": {
+        "lastSeenDesc": "Last seen, newest first",
+        "nameAsc": "Customer, A to Z"
+      },
+      "systemViews": {
+        "all": "All customers"
+      }
+    }
   }
 }

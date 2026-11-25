@@ -8,7 +8,7 @@
  * snapshot, the all-clear empty state, and the inline per-row Retry. Preserves
  * the canonical async states (loading / error / empty / data).
  */
-import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
@@ -25,6 +25,16 @@ import type {
   SalesDocumentView,
 } from '../../features/orders/api/orders.types';
 import type { Connection } from '../../features/connections';
+
+/**
+ * Lets the engine's first write of the default view to the address land. A click
+ * made in the same tick as the first paint hits a node that re-render replaced.
+ */
+async function settleSavedViews(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+}
 
 /** Base `SalesDocumentView` fixture (#2552) — override per scenario. */
 function baseSalesDocumentView(over: Partial<SalesDocumentView> = {}): SalesDocumentView {
@@ -162,6 +172,9 @@ async function pickAttention(
 }
 
 describe('OrdersListPage', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
   beforeEach(() => {
     captureDemoEvent.mockClear();
   });
@@ -211,6 +224,8 @@ describe('OrdersListPage', () => {
   });
 
   it('captures demo_orders_filtered with filter=health when a health segment is clicked (#1788)', async () => {
+    // The health tabs belong to the pre-views list; the views build replaces them.
+    vi.stubEnv('VITE_OL_ORDERS_SAVED_VIEWS_ENABLED', 'false');
     const user = userEvent.setup();
     const mockApi = createMockApiClient({
       orders: { list: vi.fn().mockResolvedValue(paginated([syncedOrder])) },
@@ -428,6 +443,8 @@ describe('OrdersListPage', () => {
   });
 
   it('should render status segments with counts from the summary endpoint (#929)', async () => {
+    // The health tabs belong to the pre-views list; the views build replaces them.
+    vi.stubEnv('VITE_OL_ORDERS_SAVED_VIEWS_ENABLED', 'false');
     const statusSummary = vi.fn().mockResolvedValue({
       total: 11,
       sourceDeleted: 0,
@@ -454,6 +471,8 @@ describe('OrdersListPage', () => {
   });
 
   it('should filter the list by health when a status segment is clicked (#929)', async () => {
+    // The health tabs belong to the pre-views list; the views build replaces them.
+    vi.stubEnv('VITE_OL_ORDERS_SAVED_VIEWS_ENABLED', 'false');
     const user = userEvent.setup();
     const list = vi.fn().mockResolvedValue(paginated([syncedOrder]));
     const mockApi = createMockApiClient({
@@ -855,7 +874,8 @@ describe('OrdersListPage', () => {
     await screen.findByText('ALG-882414');
     // Total's first-click default direction is descending (biggest first).
     // The sort button's accessible name now carries its sorted state (#1713).
-    await user.click(screen.getByRole('button', { name: /^Total,/ }));
+    await settleSavedViews();
+    await user.click(await screen.findByRole('button', { name: /^Total,/ }));
 
     await vi.waitFor(() => {
       const called = list.mock.calls.some(([filters]) => {
@@ -878,7 +898,10 @@ describe('OrdersListPage', () => {
     renderWithProviders(<OrdersListPage />, { apiClient: mockApi, route: '/orders?offset=20' });
 
     await screen.findByText('ALG-882414');
-    await user.click(screen.getByRole('button', { name: /^Payment/ }));
+    // The first paint is followed by the saved-views engine writing the default view to the address.
+    await settleSavedViews();
+    // Dropping the offset on load refetches page one, so the table is briefly replaced.
+    await user.click(await screen.findByRole('button', { name: /^Payment/ }));
 
     await vi.waitFor(() => {
       const called = list.mock.calls.some(([filters, pagination]) => {
@@ -2286,7 +2309,8 @@ describe('OrdersListPage — shared Order identity cell (#2091)', () => {
       container.querySelectorAll('.connection-chip[data-channel="erli"] .connection-chip__reveal')
     ).find((pill) => pill.closest('.orders-order-channel') === null);
     expect(columnPill?.textContent).toBe('Erli');
-    expect(columnPill?.closest('.connection-chip')?.parentElement?.textContent).toContain('→ WooCommerce');
+    // The chip and the destination are separate fields of the stacked column since saved views.
+    expect(columnPill?.closest('td')?.textContent).toContain('→ WooCommerce');
   });
 
   it('resolves the mobile-card subtitle channel label from the registry', async () => {

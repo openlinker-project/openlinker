@@ -1699,7 +1699,7 @@
         "itemDesc": "Produkt usunięto w sklepie, ale kanał nadal go sprzedaje. Wstrzymaj albo zakończ ofertę.",
         "itemTitle": "Aktywne oferty usuniętego produktu",
         "label": "Sprzedaż usuniętego produktu",
-        "short": "sprzedaje usunięte"
+        "short": "oferty usuniętych produktów"
       },
       "shopBlocked": {
         "affected": {
@@ -1754,7 +1754,7 @@
       "statusRead": "odczyt statusu",
       "updated": "Zmieniono"
     },
-    "description": "Wszystko, co sprzedajesz w połączonych kanałach, i w jakim stanie jest teraz.",
+    "description": "Wszystkie oferty z połączonych kanałów i ich aktualny stan.",
     "empty": {
       "clearFilters": "Wyczyść filtry",
       "connectChannel": "Połącz kanał",
@@ -1834,11 +1834,17 @@
       "channel": "Kanał",
       "needsALook": "Do przejrzenia",
       "search": "Szukaj",
-      "sellingDeleted": "Sprzedaje usunięte",
+      "sellingDeleted": "Oferty usuniętych produktów",
       "shopBlocked": "Zablokowane przez sklep"
     },
     "publishProducts": "Opublikuj produkty",
     "retry": "Ponów",
+    "savedViews": {
+      "listingFields": "Produkt, wariant, id oferty, SKU, EAN",
+      "price": "Cena w kanale",
+      "quantity": "Ilość w kanale",
+      "updated": "Zmieniono, odczyt statusu"
+    },
     "status": {
       "countsLoaded": "Wczytano liczby ofert.",
       "countsLoading": "Wczytywanie liczby ofert…",

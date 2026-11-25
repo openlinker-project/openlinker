@@ -1,30 +1,23 @@
 /**
- * Buyer Emails Settings Tile (#3555)
+ * Buyer Emails Tile
  *
- * The `SettingsPage` entry point for `/settings/buyer-emails`, a link-out card
- * like `OrderTagsSettingsTile`. Admin only: every write behind the page
- * (connection config, automation rules, test send) is `@Roles('admin')`.
+ * The settings-index row that opens the buyer emails page.
  *
  * @module apps/web/src/features/buyer-emails/components
  */
 import type { ReactElement } from 'react';
-import { Link } from 'react-router-dom';
 import { useMessages } from '../../../shared/i18n';
+import { SettingsIndexRow } from '../../../shared/ui/settings-index-row';
 
-export function BuyerEmailsTile(): ReactElement {
-  const COPY = useMessages('buyer-emails').tile;
+export function BuyerEmailsTile({ locked = false }: { locked?: boolean }): ReactElement {
+  const copy = useMessages('buyer-emails').tile;
   return (
-    <article className="panel panel--dense">
-      <div className="panel__header">
-        <div>
-          <p className="eyebrow">{COPY.eyebrow}</p>
-          <h3 className="section-title">{COPY.title}</h3>
-        </div>
-      </div>
-      <p className="muted-text">{COPY.description}</p>
-      <Link className="button button--secondary button--sm" to="/settings/buyer-emails">
-        {COPY.link}
-      </Link>
-    </article>
+    <SettingsIndexRow
+      icon="mail"
+      locked={locked}
+      title={copy.title}
+      description={copy.description}
+      action={{ label: copy.link, to: '/settings/buyer-emails' }}
+    />
   );
 }

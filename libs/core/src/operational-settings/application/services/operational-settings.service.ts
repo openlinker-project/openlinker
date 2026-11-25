@@ -50,7 +50,9 @@ import {
   OPERATIONAL_SETTING_BOUNDS,
   OPERATIONAL_SETTING_KEYS,
   findOperationalSettingBoundBreach,
+  RELEASE_CENTER_ENABLED_ENV_VAR,
   resolveOperationalSetting,
+  resolveReleaseCenterEnabled,
   type OperationalSettingKey,
   type OperationalSettingsInput,
   type OperationalSettingsView,
@@ -133,6 +135,10 @@ export class OperationalSettingsService implements IOperationalSettingsService {
       inventoryMovementRetentionDays: numeric('inventoryMovementRetentionDays'),
       stockStaleSyncThresholdHours: numeric('stockStaleSyncThresholdHours'),
       deletionAuditCadence: this.resolveCadence(stored?.deletionAuditCadence ?? null),
+      releaseCenterEnabled: resolveReleaseCenterEnabled(
+        stored?.releaseCenterEnabled ?? null,
+        this.configService.get<string>(RELEASE_CENTER_ENABLED_ENV_VAR)
+      ),
       // Read-only, and never `source: 'setting'` - there is no column for
       // either. Reported so a consumer computing a full-pass length uses the
       // cadence actually in force (#2660 review): both are settable through the
@@ -177,6 +183,16 @@ export class OperationalSettingsService implements IOperationalSettingsService {
       }
     }
 
+    if (input.releaseCenterEnabled !== undefined && input.releaseCenterEnabled !== null) {
+      if (typeof input.releaseCenterEnabled !== 'boolean') {
+        throw new InvalidOperationalSettingError(
+          'releaseCenterEnabled',
+          'releaseCenterEnabled must be a boolean or null',
+          'not-a-number'
+        );
+      }
+    }
+
     if (input.deletionAuditCadence !== undefined && input.deletionAuditCadence !== null) {
       this.assertUsableCadence(input.deletionAuditCadence);
     }
@@ -213,6 +229,9 @@ export class OperationalSettingsService implements IOperationalSettingsService {
         }),
         ...(input.deletionAuditCadence !== undefined && {
           deletionAuditCadence: input.deletionAuditCadence,
+        }),
+        ...(input.releaseCenterEnabled !== undefined && {
+          releaseCenterEnabled: input.releaseCenterEnabled,
         }),
       },
       updatedBy
