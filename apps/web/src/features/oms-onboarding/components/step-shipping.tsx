@@ -468,7 +468,7 @@ export function StepShipping(props: StepShippingProps): ReactElement {
         onOpenChange={(next) => {
           setLeaving(next);
           // "Go back and save" closes the dialog with the unsaved editor open,
-          // so the Save routing button it asks for is in view.
+          // so the Save assignment button it asks for is in view.
           if (!next && dirtySource !== undefined) {
             const id = dirtySource.id;
             setOpen((previous) => new Set(previous).add(id));

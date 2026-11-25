@@ -45,6 +45,7 @@ const CONTEXT_BARRELS = [
   'order-lifecycle',
   'orders',
   'products',
+  'release-center',
   'returns',
   'sales-documents',
   'sync',
@@ -210,6 +211,8 @@ describe('@openlinker/core/<context> barrel purity (#598)', () => {
       ],
     },
     { context: 'fulfillment-authority', authorizedTypeOnlySpecifiers: [] },
+    // #4140 (ADR-086): empty allow-set - the user id arrives as an argument.
+    { context: 'release-center', authorizedTypeOnlySpecifiers: [] },
     { context: 'order-lifecycle', authorizedTypeOnlySpecifiers: ['@openlinker/core/orders/types'] },
     {
       context: 'fulfillment',

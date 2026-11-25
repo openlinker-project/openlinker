@@ -48,6 +48,7 @@
   "currencySettingsTile": {
     "actions": {
       "coverage": "Coverage",
+      "coverageHint": "See which currencies on your orders have exchange rates.",
       "edit": "Edit"
     },
     "adminOnly": "Admin only",

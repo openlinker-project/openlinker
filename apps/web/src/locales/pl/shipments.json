@@ -107,7 +107,7 @@
     "notifyDialog": {
       "cancelLabel": "Anuluj",
       "confirm": "Oznacz jako nadane",
-      "description": "Wysyła powiadomienie do marketplace'u źródłowego i aktualizuje stan realizacji w kanale docelowym. Używaj tylko wtedy, gdy automatyczne nadanie utknęło - zwykle dzieje się to automatycznie przez synchronizację statusu przewoźnika.",
+      "description": "Informuje marketplace, że paczka została wysłana, i aktualizuje stan realizacji. Użyj po oddaniu paczki przewoźnikowi albo gdy automatyczna aktualizacja utknęła.",
       "notifying": "Powiadamianie…",
       "title": "Ręcznie oznaczyć jako nadane?"
     },

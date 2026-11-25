@@ -1285,6 +1285,13 @@ export function createMockApiClient(
       getGiftBundleReport: vi.fn().mockResolvedValue({ bundles: [], demand: [] }),
       ...overrides.giftReport,
     } as ApiClient['giftReport'],
+    releaseState: {
+      getState: vi.fn().mockResolvedValue({ enabled: false, cursor: null, user: [], installation: [] }),
+      updateCursor: vi.fn(),
+      updateItems: vi.fn().mockResolvedValue([]),
+      updateSteps: vi.fn().mockResolvedValue([]),
+      ...overrides.releaseState,
+    } as ApiClient['releaseState'],
     returnGifts: {
       getReturnGifts: vi.fn().mockResolvedValue({ gifts: [], currency: null, refundDeductionGross: 0 }),
       decideReturnGift: vi.fn(),

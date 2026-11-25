@@ -35,6 +35,7 @@ import {
   type AnalyticsExportApi,
 } from '../../features/analytics/api/analytics-export.api';
 import { createGiftReportApi, type GiftReportApi } from '../../features/gift-report/api/gift-report.api';
+import { createReleaseStateApi, type ReleaseStateApi } from '../../features/release-center/api/release-state.api';
 import { createReturnGiftsApi, type ReturnGiftsApi } from '../../features/returns/api/return-gifts.api';
 import { createAnalyticsApi, type AnalyticsApi } from '../../features/analytics/api/sales-analytics.api';
 import {
@@ -274,6 +275,7 @@ export interface CoreApiClient {
     AnalyticsExportApi;
   analyticsSettings: AnalyticsSettingsApi;
   giftReport: GiftReportApi;
+  releaseState: ReleaseStateApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
   connections: ConnectionsApi;
@@ -543,6 +545,7 @@ export function createApiClient({
     },
     analyticsSettings: createAnalyticsSettingsApi(request),
     giftReport: createGiftReportApi(request),
+    releaseState: createReleaseStateApi(request),
     analyticsTrust: createAnalyticsTrustApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),

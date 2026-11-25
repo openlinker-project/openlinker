@@ -24,7 +24,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { describeApiError } from '../../shared/api/describe-api-error';
-import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { FormField } from '../../shared/ui/form-field';
@@ -331,6 +331,7 @@ function EditorForm({
 export function BuyerEmailEditorPage(): ReactElement {
   const messages = useMessages('buyer-emails');
   const COPY = messages.editor;
+  const tpl = useMessages('settings').template.buyerEmailEditor;
   const { connectionId = '', template = '' } = useParams();
   const connectionQuery = useConnectionQuery(connectionId, { enabled: connectionId !== '' });
   const known = isBuyerEmailTemplate(template);
@@ -377,14 +378,28 @@ export function BuyerEmailEditorPage(): ReactElement {
   }
 
   return (
-    <PageLayout backTo={backTo} eyebrow={connectionQuery.data?.name ?? COPY.eyebrow} title={title}>
-      {/* Same gate as the list page: only an administrator holds `connections:write`. */}
-      <AccessGate
-        require="connections:write"
-        fallback={<AccessDeniedState message={messages.page.adminOnly} />}
-      >
-        {content}
-      </AccessGate>
-    </PageLayout>
+    <SettingsPageFrame
+      backTo={backTo}
+      eyebrow={connectionQuery.data?.name ?? COPY.eyebrow}
+      title={title}
+      short={tpl.short}
+      sections={[
+        {
+          id: 'email',
+          label: tpl.short,
+          title: tpl.title,
+          hint: tpl.hint,
+          children: (
+            // Same gate as the list page: only an administrator holds `connections:write`.
+            <AccessGate
+              require="connections:write"
+              fallback={<AccessDeniedState message={messages.page.adminOnly} />}
+            >
+              {content}
+            </AccessGate>
+          ),
+        },
+      ]}
+    />
   );
 }

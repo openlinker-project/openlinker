@@ -3180,7 +3180,7 @@
       "cancel": "Anuluj",
       "confirm": "Oznacz jako nadane",
       "confirming": "Powiadamianie…",
-      "description": "Wysyła powiadomienie do marketplace źródłowego i aktualizuje stan realizacji w kanale docelowym. Używaj tylko wtedy, gdy automatyczne nadanie się zatrzymało - zwykle dzieje się to automatycznie dzięki synchronizacji statusu przewoźnika.",
+      "description": "Informuje marketplace, że paczka została wysłana, i aktualizuje stan realizacji. Użyj po oddaniu paczki przewoźnikowi albo gdy automatyczna aktualizacja utknęła.",
       "title": "Ręcznie oznaczyć jako nadane?"
     }
   },

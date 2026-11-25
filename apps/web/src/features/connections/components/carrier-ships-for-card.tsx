@@ -5,27 +5,26 @@
  * source routes to it, and those routes are stored on the SOURCE. So a carrier
  * page could not say what it ships for. This card reads every active source's
  * rules (no new endpoint) and lists, per source, the delivery methods routed
- * here, each with a way to change it in the same routing editor the mappings
- * page uses.
+ * here. It is read-only (#4137): assignment is edited on the sales channel, so
+ * each row only links there and the card never becomes a second editor.
  *
  * `CarrierCreatedNotice` is what a carrier wizard lands on: a new carrier
  * ships nothing until a route points at it, which is easy to miss, so the page
- * says so and opens the editor for the first source that does not use it yet.
+ * says so and links to the first source that does not use it yet.
  *
  * @module features/connections/components
  */
-import { useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 
 import {
-  RoutingDialog,
+  DELIVERY_MAPPING_DEEP_LINK_PARAMS,
   useMappingOptions,
   useRoutingRulesForConnections,
   useRoutingRulesQuery,
 } from '../../mappings';
-import { useDemoMode } from '../../system';
-import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Alert } from '../../../shared/ui/alert';
-import { Button } from '../../../shared/ui/button';
+import { EmptyState } from '../../../shared/ui/feedback-state';
 import type { Connection } from '../api/connections.types';
 import { useConnectionsQuery } from '../hooks/use-connections-query';
 import { useConnectionShippingCopy } from '../hooks/use-connection-shipping-copy';
@@ -35,19 +34,17 @@ import {
   rulesRoutedTo,
 } from './connection-shipping-routes';
 
+/** The sales channel's fulfillment routing tab, where assignment is edited. */
+export function channelAssignmentPath(sourceId: string): string {
+  return `/connections/${sourceId}/mappings?${DELIVERY_MAPPING_DEEP_LINK_PARAMS.tab}=fulfillment`;
+}
+
 interface CarrierSourceRowProps {
   readonly source: Connection;
   readonly carrier: Connection;
-  readonly canChange: boolean;
-  readonly onOpen: (source: Connection) => void;
 }
 
-function CarrierSourceRow({
-  source,
-  carrier,
-  canChange,
-  onOpen,
-}: CarrierSourceRowProps): ReactElement {
+function CarrierSourceRow({ source, carrier }: CarrierSourceRowProps): ReactElement {
   const copy = useConnectionShippingCopy();
   const rulesQuery = useRoutingRulesQuery(source.id);
   const { options } = useMappingOptions(source.id, DELIVERY_METHOD_OPTION_KEYS);
@@ -80,11 +77,9 @@ function CarrierSourceRow({
         <span className="ships-for__source">{source.name}</span>
         {body}
       </div>
-      {canChange ? (
-        <Button tone="secondary" className="button--sm" onClick={() => onOpen(source)}>
-          {routed.length > 0 ? copy.rowChange : copy.rowChoose}
-        </Button>
-      ) : null}
+      <Link className="button button--secondary button--sm" to={channelAssignmentPath(source.id)}>
+        {copy.rowOpenChannel}
+      </Link>
     </li>
   );
 }
@@ -98,9 +93,13 @@ export function CarrierShipsForCard({ connection }: CarrierShipsForCardProps): R
   const copy = useConnectionShippingCopy();
   const connectionsQuery = useConnectionsQuery();
   const sources = activeOrderSources(connectionsQuery.data, connection.id);
-  const demoMode = useDemoMode();
-  const write = useWriteAccess('connections:write', demoMode);
-  const [dialogSource, setDialogSource] = useState<Connection | null>(null);
+  const rulesBySource = useRoutingRulesForConnections(sources.map((s) => s.id));
+  // An unassigned account is a state worth saying outright; until every
+  // source's rules have loaded, a missing entry must not read as "unused".
+  const unused =
+    sources.length > 0 &&
+    sources.every((s) => rulesBySource.has(s.id)) &&
+    sources.every((s) => rulesRoutedTo(rulesBySource.get(s.id), connection.id).length === 0);
 
   return (
     <section className="panel panel--dense" aria-labelledby="carrier-ships-for-title">
@@ -113,6 +112,11 @@ export function CarrierShipsForCard({ connection }: CarrierShipsForCardProps): R
         </div>
       </div>
       <p className="muted-text">{copy.shipsForIntro(connection.name)}</p>
+      {unused ? (
+        <Alert tone="info" title={copy.shipsForUnusedTitle(connection.name)}>
+          {copy.shipsForUnusedBody}
+        </Alert>
+      ) : null}
       {connectionsQuery.isLoading ? (
         <p className="muted-text">{copy.rowLoading}</p>
       ) : sources.length === 0 ? (
@@ -120,26 +124,10 @@ export function CarrierShipsForCard({ connection }: CarrierShipsForCardProps): R
       ) : (
         <ul className="ships-for">
           {sources.map((source) => (
-            <CarrierSourceRow
-              key={source.id}
-              source={source}
-              carrier={connection}
-              canChange={write.visible}
-              onOpen={setDialogSource}
-            />
+            <CarrierSourceRow key={source.id} source={source} carrier={connection} />
           ))}
         </ul>
       )}
-      {dialogSource ? (
-        <RoutingDialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setDialogSource(null);
-          }}
-          sourceConnectionId={dialogSource.id}
-          sourceName={dialogSource.name}
-        />
-      ) : null}
     </section>
   );
 }
@@ -149,8 +137,8 @@ export interface CarrierCreatedNoticeProps {
 }
 
 /**
- * The success landing after a carrier wizard. The action opens the routing
- * editor for the first active source that routes nothing to this carrier yet,
+ * The success landing after a carrier wizard. The action links to the
+ * routing tab of the first active source that routes nothing to this carrier yet,
  * because that is the one the operator still has to decide about; with no such
  * source there is nothing left to choose, so the notice carries no action.
  */
@@ -159,11 +147,6 @@ export function CarrierCreatedNotice({ connection }: CarrierCreatedNoticeProps):
   const connectionsQuery = useConnectionsQuery();
   const sources = activeOrderSources(connectionsQuery.data, connection.id);
   const rulesBySource = useRoutingRulesForConnections(sources.map((s) => s.id));
-  const demoMode = useDemoMode();
-  const write = useWriteAccess('connections:write', demoMode);
-  // Pinned on open: saving a route can change which source is "first without
-  // one", and the dialog must not switch sources under the operator.
-  const [dialogSource, setDialogSource] = useState<Connection | null>(null);
 
   // Until every source's rules have loaded, a missing entry would read as "no
   // route yet" and point the action at the wrong source, so it waits.
@@ -173,30 +156,56 @@ export function CarrierCreatedNotice({ connection }: CarrierCreatedNoticeProps):
     : undefined;
 
   return (
-    <>
-      <Alert
+    <Alert
         tone="success"
         title={copy.createdTitle(connection.name)}
         action={
-          target && write.visible ? (
-            <Button tone="secondary" className="button--sm" onClick={() => setDialogSource(target)}>
+          target ? (
+            <Link className="button button--secondary button--sm" to={channelAssignmentPath(target.id)}>
               {copy.createdAction}
-            </Button>
+            </Link>
           ) : undefined
         }
       >
         {copy.createdBody(connection.name)}
       </Alert>
-      {dialogSource ? (
-        <RoutingDialog
-          open
-          onOpenChange={(next) => {
-            if (!next) setDialogSource(null);
-          }}
-          sourceConnectionId={dialogSource.id}
-          sourceName={dialogSource.name}
-        />
-      ) : null}
-    </>
+  );
+}
+
+export interface CarrierMappingsNoticeProps {
+  readonly connection: Connection;
+}
+
+/**
+ * What the Mappings page says for a carrier account (#4137). A carrier is not
+ * paired to a marketplace, so the pairing resolver reports no source; saying
+ * "no marketplace is paired" there reads as a fault. The truth is that its
+ * assignment lives on each sales channel, so this points there.
+ */
+export function CarrierMappingsNotice({ connection }: CarrierMappingsNoticeProps): ReactElement {
+  const copy = useConnectionShippingCopy();
+  const connectionsQuery = useConnectionsQuery();
+  const sources = activeOrderSources(connectionsQuery.data, connection.id);
+
+  return (
+    <EmptyState
+      title={copy.carrierMappingsTitle(connection.name)}
+      message={sources.length === 0 ? copy.carrierMappingsNoChannels : copy.carrierMappingsMessage}
+      action={
+        sources.length > 0 ? (
+          <div className="ships-for__methods">
+            {sources.map((source) => (
+              <Link
+                key={source.id}
+                className="button button--secondary"
+                to={channelAssignmentPath(source.id)}
+              >
+                {copy.carrierMappingsOpenChannel(source.name)}
+              </Link>
+            ))}
+          </div>
+        ) : undefined
+      }
+    />
   );
 }
