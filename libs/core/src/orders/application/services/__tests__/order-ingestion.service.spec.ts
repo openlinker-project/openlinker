@@ -3097,6 +3097,39 @@ describe('OrderIngestionService', () => {
         );
       });
 
+      it('keeps an unmatched line out of physicalProductIds and physicalItems beside an expanded bundle (#4283)', async () => {
+        sourceWith({ catalogueMode: 'none' });
+        orderItemRefResolver.tryResolve
+          .mockResolvedValueOnce({
+            resolved: true,
+            internalProductId: 'p-1',
+            internalVariantId: 'ol_variant_1',
+          })
+          .mockResolvedValueOnce(missing('offer-b'));
+        bundleDefinitions.findCurrentByVariantIds.mockResolvedValue([
+          {
+            variantId: 'ol_variant_1',
+            version: 1,
+            components: [
+              { variantId: 'ol_variant_a', productId: 'ol_product_a', quantity: 1 },
+              { variantId: 'ol_variant_b', productId: 'ol_product_b', quantity: 1 },
+            ],
+          },
+        ]);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        const request = orderSyncService.syncOrder.mock.calls[0][0];
+        expect(request.physicalProductIds).toEqual(['ol_product_a', 'ol_product_b']);
+        expect(request.physicalItems?.map((item) => item.productId)).toEqual([
+          'ol_product_a',
+          'ol_product_b',
+        ]);
+        expect(
+          request.physicalItems?.some((item) => item.productId.startsWith('unmatched:'))
+        ).toBe(false);
+      });
+
       it('reads the connection once however many lines are unmatched', async () => {
         sourceWith({ catalogueMode: 'none' });
         orderItemRefResolver.tryResolve
