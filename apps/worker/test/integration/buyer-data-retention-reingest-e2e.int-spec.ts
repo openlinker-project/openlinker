@@ -135,8 +135,8 @@ describe('Buyer data retention: re-ingestion of an erased order (#4289)', () => 
   it('should keep the projection cleared, record no amendment and refresh only non-personal fields', async () => {
     const connectionId = await seedSourceWithVariant();
     const ingestion = harness.get(ORDER_INGESTION_SERVICE_TOKEN);
-    const orders = harness.get(ORDER_RECORD_REPOSITORY_TOKEN);
-    const customers = harness.get(CUSTOMER_PROJECTION_SERVICE_TOKEN);
+    const orders = harness.get(ORDER_RECORD_REPOSITORY_TOKEN) as ErasePass;
+    const customers = harness.get(CUSTOMER_PROJECTION_SERVICE_TOKEN) as ICustomerProjectionService;
     const base = await source.getOrder({ externalOrderId: 'ret-1' });
 
     (source.getOrder as jest.Mock).mockResolvedValue(buyerOrder(base, 'Old Street 1', 'pending'));
