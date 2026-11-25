@@ -21,7 +21,8 @@ connection does. For a local test store and its seed data see
   old order is reported as not found). `read_all_orders` is only granted to an app approved for
   **protected customer data** in the Partner dashboard (order data carries the buyer's name,
   address and email): request that access before expecting the scope on a Partner app. Without it
-  an order-source connection sees the last 60 days only.
+  an order-source connection sees the last 60 days only, whichever start you choose ("From a date" and "All
+  orders" cannot reach further back than that without the scope).
 
 ## 1. Choose how to connect
 

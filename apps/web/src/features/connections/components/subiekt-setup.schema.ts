@@ -20,6 +20,11 @@ import { getMessages, interpolate, type Messages, type ResolvedCopy } from '../.
 import { schemaMessage } from '../lib/schema-message';
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../api/connections.types';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  toOrderSyncStart,
+} from '../lib/order-sync-start';
 
 /**
  * Which Subiekt product a connection is being created for.
@@ -160,6 +165,7 @@ export function buildSubiektSetupSchema(identity: SubiektProductIdentity) {
       // is meaningless for a connection that issues the document rather than
       // shipping the parcel.
       triggerModel: z.enum(['manual', 'auto-on-paid']),
+      orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
     })
     // Always attached, branching INSIDE, so the return type does not depend on
     // `tokenRequired` and the exported form types stay single.
@@ -193,11 +199,13 @@ export const SUBIEKT_SETUP_DEFAULT_VALUES: SubiektSetupFormValues = {
   // asked for on the very first paid order. The control is rendered, not
   // assumed.
   triggerModel: 'manual',
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toCreateConnectionInput(
   values: SubiektSetupFormSubmission,
   identity: SubiektProductIdentity,
+  readsOrders = false,
 ): CreateConnectionInput {
   const config: Record<string, unknown> = {
     bridgeBaseUrl: values.bridgeBaseUrl,
@@ -239,6 +247,13 @@ export function toCreateConnectionInput(
     // needs a NARROWER default (eparagony's dual invoicing/fiscalization
     // wizard) declares one.
   };
+
+  // `enabledCapabilities` is omitted, so whether the connection will read orders
+  // is the adapter's own answer (GT has OrderSource, nexo does not).
+  if (readsOrders) {
+    const orderSyncStart = toOrderSyncStart(values.orderSyncStart);
+    if (orderSyncStart) input.orderSyncStart = orderSyncStart;
+  }
 
   // Optional shared bridge token — only sent when the operator provides one
   // (the common unauthenticated-LAN-bridge path carries no credentials).

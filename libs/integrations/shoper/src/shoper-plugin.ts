@@ -99,6 +99,9 @@ export const shoperAdapterManifest: AdapterMetadata = {
   // catalogue / stock master would start receiving orders. An operator who wants
   // Shoper as an order destination enables it explicitly (#3350 mechanism).
   defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
+  // Order sync start (#4265): the adapter can seed at the head, at a date, and import a range.
+  orderSyncStartModes: ['now', 'from', 'all'],
+  orderWindowImport: true,
   defaultRateLimit: SHOPER_DEFAULT_RATE_LIMIT,
   // Shoper's limit is per shop, so connections to one shop share one bucket.
   resolveRateLimitBucketKey: resolveShoperRateLimitBucketKey,

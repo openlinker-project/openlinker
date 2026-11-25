@@ -68,7 +68,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 69 job types 20/37/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 72 job types 20/40/5/7 per ADR-050 decision 1', () => {
     // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -163,7 +163,9 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // #3583's `salesDocument.batch.tick` and `salesDocument.batch.run` are the
     // thirty-eighth and thirty-ninth: cron-paced orchestration whose documents
     // are the `fiscal`-lane jobs a run enqueues.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(39);
+    // #4228's `marketplace.orders.import` is the fortieth: a paced history walk
+    // nobody waits on, which must never take a `realtime` slot from a buyer's order.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(40);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     // #4179's `marketplace.notifications.drain` is the eighth: like the orders
     // poll it shortens, one cron-paced read that enqueues `realtime` children.

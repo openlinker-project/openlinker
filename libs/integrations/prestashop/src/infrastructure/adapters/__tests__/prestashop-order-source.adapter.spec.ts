@@ -7,7 +7,11 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
-import { checkPaymentFactsConsistency, diffOrderAmendment } from '@openlinker/core/orders';
+import {
+  checkPaymentFactsConsistency,
+  diffOrderAmendment,
+  OrderSyncStartUnavailableError,
+} from '@openlinker/core/orders';
 import { PrestashopOrderSourceAdapter } from '../prestashop-order-source.adapter';
 import { DEFAULT_INSTALL_ORDER_STATES } from '../../../__tests__/fixtures/prestashop-order-states.fixture';
 import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.factory';
@@ -30,7 +34,7 @@ import { PrestashopOrderFeedCapabilityCache } from '../../provisioners/prestasho
 
 /**
  * Stub order-currency resolver (#2277). The adapter's own contract is "ask the
- * resolver, put the answer on `totals`" — the resolution CHAIN is the
+ * resolver, put the answer on `totals`" - the resolution CHAIN is the
  * resolver's own contract and is covered in its dedicated spec. Stubbing it
  * here also keeps the WebService call counts these tests assert on describing
  * hydration only.
@@ -290,10 +294,17 @@ describe('PrestashopOrderSourceAdapter', () => {
         expect(result.nextCursor).toBe('2024-05-02 08:00:00|9');
       });
 
-      it('should restart from the beginning on an unreadable cursor instead of from now', async () => {
+      it('should throw on an unreadable non-empty cursor instead of restarting from the beginning', async () => {
         mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
 
-        await adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 });
+        await expect(adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 })).rejects.toThrow(RangeError);
+        expect(mockHttpClient.listResources).not.toHaveBeenCalled();
+      });
+
+      it('should read from the beginning when the cursor is empty or blank', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+
+        await adapter.listOrderFeed({ fromCursor: '  ', limit: 10 });
 
         expect(mockHttpClient.listResources).toHaveBeenCalledWith(
           'orders',
@@ -317,15 +328,6 @@ describe('PrestashopOrderSourceAdapter', () => {
 
         expect(result.items).toEqual([]);
         expect(result.nextCursor).toBe('2024-05-01 08:00:00|0');
-      });
-
-      it('should answer no cursor at all when the caller cursor was unreadable', async () => {
-        // Echoing it back would keep an unreadable value in place for ever.
-        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
-
-        const result = await adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 });
-
-        expect(result.nextCursor).toBeNull();
       });
 
       it('should skip a row with no usable date_upd rather than stamping the worker clock', async () => {
@@ -504,7 +506,130 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('listOrderFeed — date_upd sort/filter fallback (#2877)', () => {
+  describe('headCursor (#4228)', () => {
+    it('should return the newest order itself as the cursor, with no lookback', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([
+          { id: '42', date_add: '2024-06-01 08:00:00', date_upd: '2024-06-01 08:10:00' },
+        ]);
+
+      const head = await adapter.headCursor();
+
+      expect(head).toBe('2024-06-01 08:10:00|42');
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'orders',
+        { sort: ['date_upd_DESC', 'id_DESC'] },
+        1,
+        0
+      );
+    });
+
+    it('should return null when the shop has no orders', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      await expect(adapter.headCursor()).resolves.toBeNull();
+    });
+
+    it('should fall back to id ordering when the shop refuses date_upd sorting', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(
+          new PrestashopApiException(
+            'PrestaShop API server error (500): /api/orders',
+            500,
+            JSON.stringify({ errors: [{ code: 38, message: 'Unable to filter by this field.' }] })
+          )
+        )
+        .mockResolvedValueOnce([
+          { id: '7', date_add: '2024-06-01 08:00:00', date_upd: '2024-06-01 08:00:00' },
+        ]);
+
+      const head = await adapter.headCursor();
+
+      expect(head).toBe('2024-06-01 08:00:00|7');
+      expect(mockHttpClient.listResources).toHaveBeenLastCalledWith(
+        'orders',
+        { sort: ['id_DESC'] },
+        1,
+        0
+      );
+    });
+
+    it('should throw when the newest row is unreadable', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: '9', date_add: 'x', date_upd: 'garbage' }]);
+
+      await expect(adapter.headCursor()).rejects.toThrow('unreadable');
+    });
+
+    it('should propagate a read failure', async () => {
+      mockHttpClient.listResources = jest.fn().mockRejectedValueOnce(new Error('boom'));
+
+      await expect(adapter.headCursor()).rejects.toThrow('boom');
+    });
+  });
+
+  describe('cursorForDate (#4228)', () => {
+    it('should return a cursor at the start of the date after probing the date filter', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const cursor = await adapter.cursorForDate('2026-10-01');
+
+      expect(cursor).toBe('2026-10-01 00:00:00|0');
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'orders',
+        expect.objectContaining({ updatedAfter: '2026-10-01 00:00:00' }),
+        1,
+        0
+      );
+    });
+
+    it('should use the date part of a full instant', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      await expect(adapter.cursorForDate('2026-10-01T22:30:00Z')).resolves.toBe(
+        '2026-10-01 00:00:00|0'
+      );
+    });
+
+    it('should refuse, never falling back to the whole history, when the shop will not filter by date_upd', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(
+          new PrestashopApiException(
+            'PrestaShop API server error (500): /api/orders',
+            500,
+            JSON.stringify({ errors: [{ code: 38, message: 'Unable to filter by this field.' }] })
+          )
+        );
+
+      const refusal = adapter.cursorForDate('2026-10-01');
+      await expect(refusal).rejects.toThrow(/cannot start from a date/);
+      await expect(refusal).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+
+      // The refusal is remembered, so the next attempt fails without a request.
+      mockHttpClient.listResources = jest.fn();
+      await expect(adapter.cursorForDate('2026-10-01')).rejects.toThrow(/cannot start from a date/);
+      expect(mockHttpClient.listResources).not.toHaveBeenCalled();
+    });
+
+    it('should propagate a read failure', async () => {
+      mockHttpClient.listResources = jest.fn().mockRejectedValueOnce(new Error('boom'));
+
+      await expect(adapter.cursorForDate('2026-10-01')).rejects.toThrow('boom');
+    });
+
+    it('should refuse an unreadable date', async () => {
+      await expect(adapter.cursorForDate('soon')).rejects.toBeInstanceOf(
+        OrderSyncStartUnavailableError
+      );
+      await expect(adapter.cursorForDate('soon')).rejects.toThrow('expected an ISO date');
+    });
+  });
+
+  describe('listOrderFeed - date_upd sort/filter fallback (#2877)', () => {
     /**
      * PrestaShop's own refusal, verified live on 9.0.2: `date_upd` is not on
      * this shop's allowed sort/filter field list for `orders`.
@@ -1190,7 +1315,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — pickupPoint resolution', () => {
+  describe('getOrder - pickupPoint resolution', () => {
     const baseOrder: PrestashopOrder = {
       id: '42',
       reference: 'ORDER-042',
@@ -1205,7 +1330,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
     // Resource-keyed getResource mock. Since #<issue> the adapter also hydrates
     // the buyer address (and its country) inside getOrder, so the call sequence
-    // is no longer "order then address" — these tests dispatch by (resource,id)
+    // is no longer "order then address" - these tests dispatch by (resource,id)
     // instead of relying on call order.
     const keyedGetResource = (address: Record<string, unknown> | Error): void => {
       mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
@@ -1369,7 +1494,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — order line items (PS9 order_details rename)', () => {
+  describe('getOrder - order line items (PS9 order_details rename)', () => {
     it('should fetch order rows from the order_details resource (renamed from order_rows in PS9)', async () => {
       const prestashopOrder: PrestashopOrder = {
         id: '42',
@@ -1448,7 +1573,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — buyer address hydration', () => {
+  describe('getOrder - buyer address hydration', () => {
     const orderWithAddresses: PrestashopOrder = {
       id: '42',
       reference: 'ORDER-042',
@@ -1539,7 +1664,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       expect(incoming.billingAddress).toBeUndefined();
       expect(incoming.shippingAddress).toBeUndefined();
-      // No address/country round-trips — the order plus the buyer e-mail read
+      // No address/country round-trips - the order plus the buyer e-mail read
       // (#1928) are the only calls.
       expect(mockHttpClient.getResource).toHaveBeenCalledTimes(2);
       expect(mockHttpClient.getResource).toHaveBeenCalledWith('orders', '42');
@@ -1648,7 +1773,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — buyer e-mail hydration (#1928)', () => {
+  describe('getOrder - buyer e-mail hydration (#1928)', () => {
     const baseOrder: PrestashopOrder = {
       id: '42',
       reference: 'ORDER-042',

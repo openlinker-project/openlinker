@@ -39,6 +39,9 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { validateDeliveryOnDocumentsShape } from '@openlinker/core/sales-documents';
+import { resolveOrderSyncStartModes } from '@openlinker/core/sync';
+import { allowedValues, connectionConfigInvalid } from '../application/services/connection-errors';
+import { toOrderSyncStart } from './dto/order-sync-start.dto';
 import { resolveReceiptLineNameLimit } from '../application/services/resolve-receipt-line-name-limit';
 import { Public } from '../../auth/decorators/public.decorator';
 import {
@@ -150,6 +153,24 @@ export class AllegroController {
         );
       }
     }
+    const orderSyncStart = dto.connectionId ? undefined : toOrderSyncStart(dto.orderSyncStart);
+    if (orderSyncStart) {
+      // Fail now rather than after the operator authorised on Allegro: the same
+      // check runs again in ConnectionService.create at callback time (#4228).
+      const metadata = await this.integrationsService.resolveAdapterMetadata({
+        platformType: 'allegro',
+        adapterKey: ALLEGRO_ADAPTER_KEY,
+      });
+      const modes = resolveOrderSyncStartModes(metadata.orderSyncStartModes);
+      if (!modes.includes(orderSyncStart.mode)) {
+        throw connectionConfigInvalid(
+          'orderSyncStart.mode',
+          'one-of',
+          `orderSyncStart.mode "${orderSyncStart.mode}" is not supported by this adapter. Supported: ${modes.join(', ')}`,
+          { allowed: allowedValues(modes) }
+        );
+      }
+    }
     this.logger.log(`Initiating OAuth flow for Allegro (environment: ${environment})`);
 
     // The neutral OAuthConnectionService owns the flow; the Allegro controller
@@ -166,6 +187,7 @@ export class AllegroController {
       connectionName:
         dto.connectionName || `Allegro ${environment} (${new Date().toISOString()})`,
       connectionId: dto.connectionId, // present when re-authenticating in place (#819)
+      ...(orderSyncStart ? { orderSyncStart } : {}),
       initialConfig: {
         environment,
         ...(dto.masterCatalogConnectionId

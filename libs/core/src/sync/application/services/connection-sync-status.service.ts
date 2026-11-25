@@ -26,12 +26,27 @@ import { Logger } from '@openlinker/shared/logging';
 import { SYNC_CURSORS_SERVICE_TOKEN, SYNC_JOB_REPOSITORY_TOKEN } from '../../sync.tokens';
 import { SyncJobRepositoryPort } from '../../domain/ports/sync-job-repository.port';
 import { ISyncCursorsService } from './sync-cursors.service.interface';
-import type { ConnectionSyncStatus } from '../../domain/types/connection-sync-status.types';
+import type {
+  ConnectionSyncStatus,
+  OrderImportStatus,
+  OrderStartStatus,
+} from '../../domain/types/connection-sync-status.types';
+import {
+  ORDER_SYNC_START_CURSOR_KEY,
+  ORDER_SYNC_STARTED_CURSOR_KEY,
+  parseOrderSyncStart,
+  parseOrderSyncStarted,
+  type OrderSyncStart,
+} from '../../domain/types/order-sync-start.types';
+
+const ORDER_IMPORT_RECENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const ORDER_IMPORT_HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 import {
   BACKLOG_ALERT_HORIZON_MS,
   BACKLOG_HISTORY_WINDOW_MS,
   BACKLOG_OBSERVATION_WINDOW_MS,
 } from '../../domain/types/connection-sync-status.types';
+import { ORDER_FEED_SEEDED_AT_SUFFIX } from '../../domain/types/order-feed-seed-cursor.types';
 import { deriveBacklogSignal } from '../../domain/domain-services/connection-backlog.domain-service';
 import type { IConnectionSyncStatusService } from './connection-sync-status.service.interface';
 
@@ -51,9 +66,12 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
     const windowStart = new Date(now.getTime() - BACKLOG_OBSERVATION_WINDOW_MS);
     const historyStart = new Date(now.getTime() - BACKLOG_HISTORY_WINDOW_MS);
 
-    const [stats, lastCursorAdvanceAt] = await Promise.all([
+    const [stats, lastCursorAdvanceAt, orderSyncStartedAt, orderImport, orderStart] = await Promise.all([
       this.readStatsSafely(connectionId, windowStart, historyStart, now),
       this.readCursorSafely(connectionId),
+      this.readOrderSyncStartSafely(connectionId),
+      this.readOrderImportSafely(connectionId, now),
+      this.readOrderStartSafely(connectionId),
     ]);
 
     if (stats === null) {
@@ -79,6 +97,9 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
         averageAttemptDurationMs: null,
         attemptDurationSampleSize: 0,
         lastCursorAdvanceAt,
+        orderSyncStartedAt,
+        orderImport,
+        orderStart,
         observationWindowMs: BACKLOG_OBSERVATION_WINDOW_MS,
         alertHorizonMs: BACKLOG_ALERT_HORIZON_MS,
         historyWindowMs: BACKLOG_HISTORY_WINDOW_MS,
@@ -111,6 +132,9 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
       averageAttemptDurationMs: stats.averageAttemptDurationMs,
       attemptDurationSampleSize: stats.attemptDurationSampleSize,
       lastCursorAdvanceAt,
+      orderSyncStartedAt,
+      orderImport,
+      orderStart,
       observationWindowMs: BACKLOG_OBSERVATION_WINDOW_MS,
       alertHorizonMs: BACKLOG_ALERT_HORIZON_MS,
       historyWindowMs: BACKLOG_HISTORY_WINDOW_MS,
@@ -154,4 +178,87 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
       return null;
     }
   }
+
+  private async readOrderSyncStartSafely(connectionId: string): Promise<Date | null> {
+    // Supplementary like the cursor recency: a failed or malformed read yields
+    // an honest absence rather than breaking the panel.
+    try {
+      const values = await this.cursors.getCursorValuesByKeySuffix(
+        connectionId,
+        ORDER_FEED_SEEDED_AT_SUFFIX
+      );
+      const instants = values
+        .map((value) => new Date(value))
+        .filter((date) => !Number.isNaN(date.getTime()))
+        .sort((a, b) => a.getTime() - b.getTime());
+      return instants[0] ?? null;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read order sync start for connection ${connectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return null;
+    }
+  }
+
+  private async readOrderImportSafely(
+    connectionId: string,
+    now: Date
+  ): Promise<OrderImportStatus | null> {
+    // Supplementary like the cursor recency: a failed read is reported as unknown
+    // (null), never as zero orders, so the panel can say it could not tell.
+    try {
+      return await this.jobRepository.getOrderImportStats(
+        connectionId,
+        new Date(now.getTime() - ORDER_IMPORT_RECENT_WINDOW_MS),
+        new Date(now.getTime() - ORDER_IMPORT_HISTORY_WINDOW_MS)
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not read order import figures for connection ${connectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return null;
+    }
+  }
+
+  private async readOrderStartSafely(connectionId: string): Promise<OrderStartStatus | null> {
+    // A choice still waiting for the next check wins over the one already applied:
+    // it is what the operator last asked for, and the applied one is about to change.
+    try {
+      const [pendingRaw, appliedRaw] = await Promise.all([
+        this.cursors.getCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY),
+        this.cursors.getCursor(connectionId, ORDER_SYNC_STARTED_CURSOR_KEY),
+      ]);
+      const pending = parseOrderSyncStart(pendingRaw);
+      if (pending !== null) {
+        return toOrderStartStatus(pending, null, true);
+      }
+      const applied = parseOrderSyncStarted(appliedRaw);
+      return applied === null ? null : toOrderStartStatus(applied.start, applied.at, false);
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the order sync start for connection ${connectionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return null;
+    }
+  }
+}
+
+function toOrderStartStatus(
+  start: OrderSyncStart,
+  appliedAt: Date | null,
+  pending: boolean
+): OrderStartStatus {
+  return {
+    mode: start.mode,
+    from: start.mode === 'from' ? start.from : null,
+    order: start.mode !== 'now' && start.order === 'newest-first' ? 'newest-first' : 'oldest-first',
+    appliedAt,
+    pending,
+  };
 }

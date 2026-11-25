@@ -6069,6 +6069,12 @@ a.delivery-rider-banner__button:focus-visible {
   margin: 0;
 }
 
+/* Manual order check: where to read from (#4228 follow-up) */
+.order-position { display: grid; gap: var(--space-4); }
+.order-position__custom { animation: order-position-in 0.22s var(--ease-out, ease-out); }
+@keyframes order-position-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .order-position__custom { animation: none; } }
+
 .toast-region {
   position: fixed;
   right: 1rem;
@@ -7813,6 +7819,34 @@ html:has(.login-stage) {
   color: var(--text-muted);
 }
 
+/* ── Order sync panel (#4228) ── */
+.dialog__content.order-sync-restart-dialog {
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
+
+/* Why Apply is unavailable, written beside the button instead of leaving it dead. */
+.order-sync-restart-dialog__hint,
+.trigger-sync-dialog__hint {
+  align-self: center;
+  margin: 0 auto 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+/* A standing fact about the connection, quieter than the notes inside the form body. */
+.order-sync-restart-dialog__notice {
+  margin: var(--space-3) 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.trigger-sync-dialog__intro {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 /* ── Connection sync-status panel (#2615) ── */
 .connection-sync-status__headline {
   margin: var(--space-2) 0 0;
@@ -8535,6 +8569,23 @@ html:has(.login-stage) {
   cursor: pointer;
 }
 
+/* ── Capabilities: where order reading starts (#4228) ── */
+.capability-list__order-start {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.capability-list__order-start-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 /* ── RateLimitSection (#1810) ── */
 .rate-limit-section {
   display: flex;
@@ -8721,6 +8772,17 @@ html:has(.login-stage) {
   margin: 0;
   font-size: 0.8125rem;
   padding-left: 1.5rem;
+}
+
+.capability-list__hint {
+  color: var(--accent-primary);
+}
+
+/* The code name is for support and docs; the plain label carries the choice. */
+.capability-list__code {
+  margin-left: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .capability-fieldset {
@@ -10937,6 +10999,18 @@ a.kpi-card:focus-visible {
 
 .setup-stepper__dot--done {
   background: var(--accent-primary);
+}
+
+@keyframes setup-stepper-new-step {
+  0% { background: var(--accent-primary-soft); transform: scale(1.06); }
+  100% { background: transparent; transform: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .setup-stepper__step--new {
+    border-radius: var(--radius-md);
+    animation: setup-stepper-new-step 900ms ease-out;
+  }
 }
 
 .setup-stepper__dot--current {
@@ -40347,4 +40421,841 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .amazon-checkbox-row__description {
   display: block;
   margin-top: var(--space-1);
+}
+
+/* ── Order sync start (#4228) ───────────────────────────────────────────── */
+.order-sync-start {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.order-sync-start__title {
+  margin: 0 0 var(--space-1);
+  font-size: 1.125rem;
+  color: var(--text-primary);
+}
+
+.order-sync-start__intro p {
+  margin: 0;
+}
+
+/* Helper text, not body copy: the cards below are what the operator reads. */
+.order-sync-start__helper {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* One-page forms: the section follows credential fields and needs its own start. */
+.order-sync-start--separated {
+  margin-top: var(--space-4);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border-default);
+}
+
+.order-sync-start__cards {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.order-sync-start__card {
+  cursor: pointer;
+  outline: none;
+}
+
+.order-sync-start__card:focus-visible {
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* A tint alone is easy to miss: a heavier border and a filled radio dot say "chosen". */
+.order-sync-start__card--checked {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-primary);
+}
+
+.order-sync-start__card-header {
+  display: flex;
+  align-items: center;
+  /* The picker header spreads its children apart; here the dot, title and badge sit together,
+     and the badge drops under the title on a narrow card instead of squeezing it. */
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.order-sync-start__card-header .platform-picker__card-title {
+  /* A small basis keeps a long title beside the dot; only the badge wraps below. */
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.order-sync-start__dot {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-surface);
+}
+
+.order-sync-start__card--checked .order-sync-start__dot {
+  border-color: var(--accent-primary);
+  background: radial-gradient(circle, var(--accent-primary) 0 40%, var(--bg-surface) 45%);
+}
+
+.order-sync-start__badge {
+  padding: 0 var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  border-radius: 999px;
+}
+
+.order-sync-start__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  color: var(--status-warning-strong);
+}
+
+.order-sync-start__warning svg {
+  flex: none;
+  margin-top: 0.125rem;
+}
+
+.subiekt-advanced {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.subiekt-advanced__summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.order-sync-start__card--disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.order-sync-start__card--disabled:hover {
+  border-color: var(--border-default);
+  box-shadow: none;
+}
+
+.order-sync-start__reason {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+}
+
+.order-sync-start__reveal {
+  display: grid;
+  gap: var(--space-3);
+  animation: order-sync-start-reveal 160ms ease-out;
+}
+
+@keyframes order-sync-start-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-sync-start__reveal {
+    animation: none;
+  }
+}
+
+
+/* ── Icon popover tooltips (#4228) ──────────────────────────────────────── */
+/* An icon button that explains itself: `IconWithOnHoverPopoverTooltip` and its
+   Warning variant, on top of `PopoverOnHover`. */
+.icon-tip.button--bare.button--bare {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.icon-tip--warning.button--bare.button--bare {
+  color: var(--status-warning-strong);
+}
+.icon-tip--error.button--bare.button--bare {
+  color: var(--status-error-fg);
+}
+.icon-tip--info.button--bare.button--bare {
+  color: var(--accent-primary);
+}
+.icon-tip--warning.button--bare.button--bare:hover,
+.icon-tip--warning.button--bare.button--bare[aria-expanded='true'] {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-strong);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .icon-tip:hover svg,
+  .icon-tip[aria-expanded='true'] svg {
+    animation: icon-tip-nudge 420ms ease-out;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Once, when the card is chosen: the mark says "there is something to read here"
+     without opening a panel over the confirm button. */
+  .order-sync-start__option:has(.order-sync-start__card--checked) .icon-tip svg {
+    animation: icon-tip-nudge 600ms ease-out 120ms;
+  }
+}
+@keyframes icon-tip-nudge {
+  0% { transform: rotate(0); }
+  25% { transform: rotate(-9deg); }
+  55% { transform: rotate(7deg); }
+  100% { transform: rotate(0); }
+}
+
+.motion-popover.popover-on-hover {
+  padding: 0;
+  max-width: calc(100vw - 16px);
+  /* Above the elevated dialog tier (101): the mark usually sits INSIDE a dialog,
+     and a panel behind its own dialog cannot be read. */
+  z-index: 120;
+}
+.motion-popover.popover-on-hover--warning {
+  border-color: var(--status-warning-border);
+}
+.popover-on-hover__body {
+  margin: -6px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.motion-popover.popover-on-hover {
+  overflow: hidden;
+}
+
+/* ── Popover card (#4228) ── */
+.popover-card {
+  display: grid;
+}
+.popover-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) 0;
+}
+.popover-card__tile {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-hover);
+  color: var(--text-secondary);
+}
+.popover-card__tile svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+.popover-card--warning .popover-card__tile {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-strong);
+}
+.popover-card--error .popover-card__tile {
+  background: var(--status-error-soft);
+  color: var(--status-error-fg);
+}
+.popover-card--info .popover-card__tile {
+  background: var(--accent-primary-soft);
+  color: var(--accent-primary);
+}
+.popover-card__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+.popover-card__summary {
+  margin: var(--space-3) 0 0;
+  padding: 0 var(--space-4);
+  color: var(--text-primary);
+}
+.popover-card__list {
+  margin: var(--space-3) 0 0;
+  padding: 0 var(--space-4);
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+.popover-card__list li {
+  position: relative;
+  padding-left: var(--space-4);
+}
+.popover-card__list li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.6em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.popover-card--warning .popover-card__list li::before {
+  background: var(--status-warning);
+}
+.popover-card--info .popover-card__list li::before {
+  background: var(--accent-primary);
+}
+.popover-card__footer {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-hover);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+.popover-card:not(:has(.popover-card__footer)) {
+  padding-bottom: var(--space-4);
+}
+
+.order-sync-start__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.order-sync-start__option {
+  position: relative;
+  display: grid;
+}
+.order-sync-start__option > .order-sync-start__card {
+  padding-right: var(--space-8);
+}
+.order-sync-start__tip {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+}
+
+/* The second step of the start choice: which end of the history comes first. */
+.order-sync-start__order {
+  display: grid;
+  gap: var(--space-2);
+}
+.order-sync-start__order-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-sync-start__order-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+@media (max-width: 520px) {
+  .order-sync-start__order-options {
+    grid-template-columns: 1fr;
+  }
+}
+.order-sync-start__order-option {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition:
+    border-color 120ms var(--ease-out),
+    background-color 120ms var(--ease-out);
+}
+.order-sync-start__order-option:hover:not(.order-sync-start__order-option--disabled) {
+  border-color: var(--accent-primary);
+}
+.order-sync-start__order-option:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.order-sync-start__order-option--checked {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+}
+.order-sync-start__order-option--disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.order-sync-start__order-label {
+  font-weight: 600;
+}
+.order-sync-start__order-text {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* ── Manual order range import (#4228) ── */
+.order-range {
+  display: grid;
+  gap: var(--space-3);
+}
+.order-range__hint {
+  margin: calc(var(--space-1) * -1) 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.order-range__dates {
+  align-items: start;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+@media (max-width: 520px) {
+  .order-range__dates {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Order import health detail (#4228) ── */
+.order-import-health {
+  display: grid;
+  gap: var(--space-6, 2rem);
+  margin-top: var(--space-5, 1.5rem);
+}
+.order-import-health__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-4) var(--space-6, 2rem);
+  margin: 0;
+}
+.order-import-health__stat {
+  display: grid;
+  align-content: start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+@media (min-width: 640px) {
+  .order-import-health__stat + .order-import-health__stat {
+    padding-left: var(--space-6, 2rem);
+    border-left: 1px solid var(--border-subtle);
+  }
+}
+.order-import-health__stat dt {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.order-import-health__stat dd {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.order-import-health__stat--attention dd {
+  color: var(--status-warning-fg);
+}
+.order-import-health__run {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--accent-primary-soft);
+}
+.order-import-health__run-bar {
+  flex: none;
+  width: 4px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: var(--accent-primary);
+}
+.order-import-health__run-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-import-health__run-detail {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .order-import-health__run-bar {
+    animation: order-import-run-pulse 1.8s ease-in-out infinite;
+  }
+}
+@keyframes order-import-run-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Two classes: `.order-import-health__stat dd` would otherwise win and render the note as a stat value. */
+.order-import-health__stat dd.order-import-health__stat-note {
+  margin: var(--space-1) 0 0;
+  line-height: 1.4;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.order-import-health__alert {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.order-import-health__alert-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-warning);
+}
+.order-import-health__alert-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-import-health__panel-meta {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+.order-import-health__failure-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+}
+.order-import-health__failure {
+  margin: 0;
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--border-subtle);
+  overflow-wrap: anywhere;
+}
+.order-import-health__failure:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.order-import-health__failure p {
+  margin: 0;
+}
+.order-import-health__failure-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.order-import-health__failure-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-warning);
+}
+.order-import-health__failure-inner {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding-left: calc(8px + var(--space-3));
+}
+.order-import-health__failure-text {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+.order-import-health__failure-meta,
+.order-import-health__failure-original {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.order-import-health__failure-fix {
+  margin: var(--space-2) 0 0;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+.order-import-health__failure-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
+  font-size: 0.875rem;
+}
+.order-import-health__failure-original span {
+  font-weight: 600;
+}
+
+.order-sync-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.order-sync-panel__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6, 2rem);
+  margin: 0;
+}
+.order-sync-panel__fact {
+  display: grid;
+  gap: var(--space-1);
+}
+.order-sync-panel__fact dt {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.order-sync-panel__fact dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.order-sync-panel__verdict {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.order-sync-panel__verdict-text,
+.order-sync-panel__start {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+.order-sync-panel__start-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.order-sync-panel__start-main {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.order-sync-panel__start-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.order-sync-panel__start {
+  color: var(--text-primary);
+}
+
+.order-sync-panel__start-row .button--ghost {
+  /* The quietest of the three actions, but still readable as a link: not the muted
+     ghost grey, which on this card reads as a disabled control. */
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.order-sync-panel__next {
+  margin: var(--space-2) 0 0;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+/* ── Order import motion (#4228): one orchestrated entrance, nothing looping ── */
+@keyframes order-import-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .order-sync-panel > * {
+    animation: order-import-rise 420ms var(--ease-out) both;
+  }
+  .order-sync-panel > :nth-child(2) {
+    animation-delay: 40ms;
+  }
+  .order-sync-panel > :nth-child(3) {
+    animation-delay: 80ms;
+  }
+  .order-sync-panel > :nth-child(4) {
+    animation-delay: 120ms;
+  }
+  .order-sync-panel > :nth-child(5) {
+    animation-delay: 160ms;
+  }
+  .order-sync-panel > :nth-child(n + 6) {
+    animation-delay: 200ms;
+  }
+  .order-import-health__failure {
+    animation: order-import-rise 480ms var(--ease-out) 240ms both;
+  }
+  .order-import-health__stat dd {
+    transition: color 200ms var(--ease-out);
+  }
+}
+
+/* ── Guided jump to a period sync (#4228) ──
+   One sequence in which a single signal travels: the button presses and ripples, the tab
+   underline travels from the origin tab to Actions, the panel slides in from that side, the
+   dialog lands, and the chosen option draws an outline. Motion only under no-preference, and
+   never the only signal: the Actions tab is active and the period option is selected whether
+   or not any of this plays. Transform and opacity only. */
+@media (prefers-reduced-motion: no-preference) {
+  /* The press: compress, then spring back past rest by a hair. */
+  .guided-press {
+    position: relative;
+    overflow: hidden; /* clips the ripple to the button */
+    animation: guided-press 260ms var(--ease-out);
+  }
+  /* One radial ink ripple from the pointer, sized (in JS) to cover the button from there. */
+  .guided-ripple {
+    position: absolute;
+    left: var(--ripple-x);
+    top: var(--ripple-y);
+    width: var(--ripple-size);
+    height: var(--ripple-size);
+    margin: calc(var(--ripple-size) / -2) 0 0 calc(var(--ripple-size) / -2);
+    border-radius: 50%;
+    background: var(--accent-ring);
+    pointer-events: none;
+    animation: guided-ripple 450ms var(--ease-out) both;
+  }
+  /* The incoming panel enters from the side its tab lies on (--guided-dir is set from tab order). */
+  .tabs--guided > .tabs__content[data-state='active'] {
+    animation: guided-panel-in 420ms var(--ease-out) both;
+  }
+  /* Its first four children follow one after another, 40 ms apart. */
+  .tabs--guided > .tabs__content[data-state='active'] > :nth-child(-n + 4) {
+    animation: guided-child-in 360ms var(--ease-out) 80ms both;
+  }
+  .tabs--guided > .tabs__content[data-state='active'] > :nth-child(2) { animation-delay: 120ms; }
+  .tabs--guided > .tabs__content[data-state='active'] > :nth-child(3) { animation-delay: 160ms; }
+  .tabs--guided > .tabs__content[data-state='active'] > :nth-child(4) { animation-delay: 200ms; }
+  /* The dialog lands with a small overshoot; ordinary opens keep the shared fade. */
+  .dialog__content.trigger-sync-dialog--guided {
+    animation: guided-dialog-in 340ms cubic-bezier(0.34, 1.45, 0.64, 1) both;
+  }
+  /* "Chosen for you": a soft halo and an accent line drawn left to right, held, then gone. */
+  .trigger-sync-dialog__scope--preselected {
+    position: relative;
+    isolation: isolate; /* keeps the halo behind the field but above the dialog surface */
+  }
+  .trigger-sync-dialog__scope--preselected::before,
+  .trigger-sync-dialog__scope--preselected::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+  }
+  .trigger-sync-dialog__scope--preselected::before {
+    inset: calc(var(--space-2) * -1);
+    z-index: -1;
+    border-radius: var(--radius-md);
+    background: var(--accent-primary-soft);
+    animation: guided-halo 1400ms var(--ease-standard) 200ms both;
+  }
+  .trigger-sync-dialog__scope--preselected::after {
+    left: 0;
+    right: 0;
+    bottom: calc(var(--space-2) * -1);
+    height: 2px;
+    background: var(--accent-primary);
+    transform-origin: 0 50%;
+    animation: guided-draw 1400ms var(--ease-out) 200ms both;
+  }
+}
+/* Without motion the chosen option just wears a static outline for a moment (the dialog drops it). */
+@media (prefers-reduced-motion: reduce) {
+  .trigger-sync-dialog__scope--preselected {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: var(--space-2);
+    border-radius: var(--radius-md);
+  }
+}
+
+/* The travelling underline: a 1 px wide, 2 px high line placed and stretched with transform, so
+   it never relayouts. It sits where a trigger's own underline sits (bottom -1px) and scrolls
+   with the list. */
+.tabs--guided .tabs__list {
+  position: relative;
+}
+.tabs__ink {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 1px;
+  height: 2px;
+  background: var(--accent-primary);
+  transform-origin: 0 50%;
+  pointer-events: none;
+  will-change: transform;
+}
+/* While the ink travels the target's own underline waits (hidden) and its label has not yet
+   switched; removing this class on landing is the hand-off, in the same commit as the ink. */
+.tabs--guided-travel .tabs__trigger[data-state='active'] {
+  border-bottom-color: transparent;
+  color: var(--text-secondary);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+@keyframes guided-press {
+  0% { transform: scale(1); }
+  45% { transform: scale(0.965); }
+  75% { transform: scale(1.012); }
+  100% { transform: scale(1); }
+}
+@keyframes guided-ripple {
+  from { transform: scale(0); opacity: 0.9; }
+  to { transform: scale(1); opacity: 0; }
+}
+/* Starts part-visible: the outgoing panel unmounts at once, so a panel that began at
+   opacity 0 left the page blank for a beat between the two. */
+@keyframes guided-panel-in {
+  from { opacity: 0.35; transform: translateX(calc(var(--guided-dir, 0) * 24px)); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes guided-child-in {
+  from { opacity: 0.2; transform: translateY(var(--space-2)); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes guided-dialog-in {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes guided-halo {
+  0% { opacity: 0; }
+  20%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes guided-draw {
+  0% { transform: scaleX(0); opacity: 1; }
+  25%, 75% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
 }

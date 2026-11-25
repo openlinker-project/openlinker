@@ -15,6 +15,53 @@ Both paths converge on the same idempotent ingestion logic — an order arriving
 
 ---
 
+## Where order sync starts
+
+When you connect a shop or marketplace, you choose which orders OpenLinker brings in. Every order it imports is copied to your other connected shops and systems, so start where you do not re-handle old sales.
+
+- **Only new orders** (the default). Orders placed from the moment of the first check on. Older orders stay where they are.
+- **From a date.** Orders placed on or after the day you pick, and every new order after that.
+- **All orders.** Every order the shop has, however old. Old orders are handled like new ones, so use this only on purpose.
+
+You can change this later on the connection's **Orders** tab (**Order import** panel):
+
+- **Check for new orders** runs a check right now.
+- **Get orders from a period...** takes you to **Actions**, **Trigger sync**, **Sync orders** with the period option chosen. It reads the orders placed between two days, once. New orders keep syncing as before, and orders OpenLinker already has are updated, never created twice. Only shops that can read a period offer it.
+- **Change where syncing starts...** (next to "Import start") is a setting: it changes where OpenLinker starts reading orders from now on. Orders already imported stay. If a check is running at that moment, wait a moment and try again.
+
+What each platform offers:
+
+| Platform | Only new orders | From a date | Get orders from a period |
+|---|---|---|---|
+| PrestaShop | yes | yes (not on a shop that cannot filter by date; you will be told) | yes |
+| WooCommerce | yes | yes (the day is read in UTC) | no |
+| Shopify | yes | yes (the day is read in the shop's own time zone) | yes |
+| Shoper | yes | yes (the day is read in the shop's time) | yes |
+| Subiekt GT | yes | yes (by the date the order was issued) | no |
+| Allegro | yes | no | yes |
+| Erli | yes | no | no |
+
+Good to know:
+
+- **Shopify** only shows orders from the last 60 days unless the app has the `read_all_orders` permission. Without it, "From a date" or "All orders" cannot reach further back.
+- **Subiekt GT** needs an up-to-date bridge. An older one still works but must read through the whole order list first, and refuses on a very large list with a message asking you to update the bridge.
+- An empty shop has no "newest order" yet, so "Only new orders" there means every order: the first orders are imported as they arrive.
+- **Platform limits:**
+
+| Platform | Limit |
+|---|---|
+| Erli | "All orders" means only the unread inbox, at most 500 messages. Orders already acknowledged are never read. |
+| Shopify | `read_all_orders` cannot be granted to custom apps in the permission picker and needs Shopify approval, so such a shop may never import older than about 60 days. |
+| WooCommerce | "From a date" filters by last modified time, so it also brings older orders changed since. The day is read in UTC. |
+| Shoper | "From a date" assumes order numbers rise with dates, so an order with a higher number but an older date is imported. A later status change on an order older than the start brings it in. |
+| PrestaShop | Oldest-first reads use the last-update date, newest-first and period reads use the creation date. |
+| Subiekt GT | The date is date-only: a back-dated or later-edited order is never re-read. A bridge without the "feed head" call is walked for up to about 3 minutes, then OpenLinker refuses and asks you to update the bridge. |
+| Allegro | A period import pages by offset and Allegro documents no maximum, so a very large import may stop at an API ceiling. Narrow the range and retry. |
+
+- If a choice cannot be applied, OpenLinker says so and keeps your choice, so you can pick another one. It never silently imports everything instead.
+
+---
+
 ## Orders list
 
 Open **Orders** in the sidebar (under **Operations**).

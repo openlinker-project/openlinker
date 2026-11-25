@@ -51,6 +51,238 @@ describe('ShopifySetupForm', () => {
     expect(test).toHaveBeenCalledWith('conn_shopify_1');
   });
 
+  it('should default the start to new orders only and send nothing for it', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn_shopify_3', name: 'Shopify my-shop' });
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({ connections: { create } }),
+    });
+
+    expect(await screen.findByRole('radio', { name: /New orders only/ })).toBeChecked();
+    fillCommon();
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 's' } });
+    fireEvent.click(screen.getByRole('button', { name: copy.submitCreate }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect((create.mock.calls[0][0] as { orderSyncStart?: unknown }).orderSyncStart).toBeUndefined();
+  });
+
+  it('should send the chosen start date for a store that reads orders', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn_shopify_4', name: 'Shopify my-shop' });
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({ connections: { create } }),
+    });
+
+    fillCommon();
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 's' } });
+    fireEvent.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
+    fireEvent.click(screen.getByRole('button', { name: copy.submitCreate }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ orderSyncStart: { mode: 'all' } })),
+    );
+  });
+
+  it('should send a date and newest-first when the shop declares the date start and window import', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn_shopify_5', name: 'Shopify my-shop' });
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({
+        connections: { create },
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'shopify.admin.v1',
+              platformType: 'shopify',
+              supportedCapabilities: ['OrderSource'],
+              orderSyncStartModes: ['now', 'from', 'all'],
+              orderWindowImport: true,
+            },
+          ]),
+        },
+      }),
+    });
+
+    fillCommon();
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 's' } });
+    const fromCard = await screen.findByRole('radio', { name: /Orders since a date/ });
+    await waitFor(() => expect(fromCard).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(fromCard);
+    fireEvent.change(await screen.findByLabelText('First day to import'), { target: { value: '2024-03-01' } });
+    fireEvent.click(screen.getByRole('radio', { name: /Newest first/ }));
+    fireEvent.click(screen.getByRole('button', { name: copy.submitCreate }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ orderSyncStart: { mode: 'from', from: '2024-03-01', order: 'newest-first' } }),
+      ),
+    );
+  });
+
+  it('should not offer modes the adapter does not declare', async () => {
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'shopify.admin.v1',
+              platformType: 'shopify',
+              supportedCapabilities: ['OrderSource'],
+              orderSyncStartModes: ['now'],
+            },
+          ]),
+        },
+      }),
+    });
+
+    const fromCard = await screen.findByRole('radio', { name: /Orders since a date/ });
+    const allCard = screen.getByRole('radio', { name: /Every order the shop has/ });
+    expect(fromCard).toHaveAttribute('aria-disabled', 'true');
+    expect(allCard).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('radio', { name: /New orders only/ })).toBeChecked();
+  });
+
+  it('should not show a disabled "from" card while the adapter list is still loading', () => {
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({
+        adapters: { list: vi.fn().mockReturnValue(new Promise(() => undefined)) },
+      }),
+    });
+
+    expect(screen.queryByRole('radio', { name: /Orders since a date/ })).toBeNull();
+    expect(screen.getByText(getMessages('connections').orderSyncStart.loading)).toBeInTheDocument();
+  });
+
+  it('should say the start will be new orders only when the adapter list cannot be read', async () => {
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({
+        adapters: { list: vi.fn().mockRejectedValue(new Error('network')) },
+      }),
+    });
+
+    expect(await screen.findByText(getMessages('connections').orderSyncStart.loadFailed)).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Orders since a date/ })).toBeNull();
+  });
+
+  it('should carry the start through the OAuth install so the callback can store it', async () => {
+    const startOAuth = vi.fn().mockResolvedValue({ authorizationUrl: `${ORIGIN}/done`, state: 's' });
+    vi.stubGlobal('location', { ...window.location, origin: ORIGIN, assign: vi.fn() });
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({ shopify: { startOAuth } }),
+    });
+
+    fillCommon();
+    chooseMode(copy.modeOauth);
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 's' } });
+    fireEvent.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
+    fireEvent.click(screen.getByRole('button', { name: copy.submitOauth }));
+
+    await waitFor(() =>
+      expect(startOAuth).toHaveBeenCalledWith(expect.objectContaining({ orderSyncStart: { mode: 'all' } })),
+    );
+  });
+
+  it('should not block a publisher submit over a start date nobody can see', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn_shopify_6', name: 'Shopify my-shop' });
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({
+        connections: { create },
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'shopify.admin.v1',
+              platformType: 'shopify',
+              supportedCapabilities: ['OrderSource'],
+              orderSyncStartModes: ['now', 'from', 'all'],
+            },
+          ]),
+        },
+      }),
+    });
+
+    fillCommon();
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 's' } });
+    // Pick "from" without a day, then switch to a role that never asks.
+    fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+    fireEvent.click(screen.getByRole('radio', { name: copy.rolePublisher }));
+    fireEvent.click(screen.getByRole('button', { name: copy.submitCreate }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect((create.mock.calls[0][0] as { orderSyncStart?: unknown }).orderSyncStart).toBeUndefined();
+  });
+
+  it('should explain a refused start date in the error summary, not leave the submit silent', async () => {
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({
+        connections: { create: vi.fn() },
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'shopify.admin.v1',
+              platformType: 'shopify',
+              supportedCapabilities: ['OrderSource'],
+              orderSyncStartModes: ['now', 'from', 'all'],
+            },
+          ]),
+        },
+      }),
+    });
+
+    fillCommon();
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 's' } });
+    fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+    fireEvent.click(screen.getByRole('button', { name: copy.submitCreate }));
+
+    const summary = await screen.findByText(/Please correct the highlighted fields/);
+    expect(summary).toBeInTheDocument();
+    expect(screen.getAllByText(getMessages('connections').orderSyncStartSchema.dateRequired).length).toBeGreaterThan(1);
+  });
+
+  it('should refuse a start date in the future', async () => {
+    const create = vi.fn();
+    renderWithProviders(<ShopifySetupForm />, {
+      apiClient: createMockApiClient({
+        connections: { create },
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'shopify.admin.v1',
+              platformType: 'shopify',
+              supportedCapabilities: ['OrderSource'],
+              orderSyncStartModes: ['now', 'from', 'all'],
+            },
+          ]),
+        },
+      }),
+    });
+
+    fillCommon();
+    fireEvent.change(screen.getByLabelText(copy.clientId), { target: { value: 'client-id' } });
+    fireEvent.change(screen.getByLabelText(copy.clientSecret), { target: { value: 's' } });
+    const fromCard = await screen.findByRole('radio', { name: /Orders since a date/ });
+    await waitFor(() => expect(fromCard).toBeEnabled());
+    fireEvent.click(fromCard);
+    fireEvent.change(await screen.findByLabelText('First day to import'), { target: { value: '2999-01-01' } });
+    fireEvent.click(screen.getByRole('button', { name: copy.submitCreate }));
+
+    await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(0));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('should ask for a start in every connect mode for a store that reads orders, and never for a publisher', async () => {
+    renderWithProviders(<ShopifySetupForm />);
+
+    expect(await screen.findByRole('radio', { name: /New orders only/ })).toBeInTheDocument();
+    chooseMode(copy.modeOauth);
+    expect(screen.getByRole('radio', { name: /New orders only/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: copy.rolePublisher }));
+    expect(screen.queryByRole('radio', { name: /New orders only/ })).toBeNull();
+  });
+
   it('should send only the access token in access-token mode', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn_shopify_2', name: 'Shopify my-shop' });
     renderWithProviders(<ShopifySetupForm />, {

@@ -39,6 +39,8 @@ describe('createShopifyPlugin', () => {
       // OrderSource and OrderProcessorManager are opt-in: one sends the store's
       // orders to every destination, the other brings every marketplace order in.
       defaultEnabledCapabilities: ['ProductMaster', 'InventoryMaster'],
+      orderSyncStartModes: ['now', 'from', 'all'],
+      orderWindowImport: true,
     });
     expect(createShopifyPlugin().manifest).toBe(shopifyAdapterManifest);
   });

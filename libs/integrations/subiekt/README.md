@@ -47,7 +47,7 @@ adapter ships **five** capabilities, not one.
 |---|---|
 | `ProductMaster` | catalogue read, including models-as-variants |
 | `InventoryMaster` | stock read, plus PW/RW stock adjustment |
-| `OrderSource` | order feed + hydrate, poll-only (see *Ingestion latency* below) |
+| `OrderSource` | order feed + hydrate, poll-only (see *Ingestion latency* below); start choice `now` / `from` / `all` (`OrderFeedBootstrap`, `OrderFeedDateBootstrap`; no window import) |
 | `OrderProcessorManager` | order push as a ZK |
 | `Invoicing` | `RegulatoryStatusReader` (read the bridge-reported KSeF regulatory status), `CorrectionIssuer` (issue corrections of an already-issued document, #1229), `BankAccountsReader` / `BankAccountDefaultSetter` (list and default the seller's payable bank accounts, #1303), `RegulatoryRecordLocator` (crash-recovery - locate a document by its original idempotency key when a prior issuance's outcome is unknown, #3389), `PaymentStatusReader` (read whether a document is settled, `dok_Rozliczony`, #3390) |
 
@@ -98,6 +98,18 @@ researched and confirmed live, not assumed — see #3392 / #3393 for the full ev
 Both gaps are structural to the exposed Sfera automation surface, not something this
 adapter's implementation could route around safely. If InsERT exposes a broader
 finance/reporting manager in a future Sfera license tier, both should be revisited.
+
+## Where order sync starts (#4228, #4265)
+
+Only customer orders (ZK documents) are read. `headCursor` ("only new orders") and `cursorForDate` ("from a date")
+are implemented; `listOrdersInWindow` is not, so "import older orders" is unavailable. A date, given as `YYYY-MM-DD`
+or as an ISO instant, is read as the ZK **issue date** (the calendar-day prefix is used).
+
+`headCursor` needs a bridge with `GET /api/orders/feed/head` (commit `4e0d21b` of the bridge repo, branch
+`4265-orders-feed-head`, until a release exists). A bridge without
+that route still works: the adapter walks the feed within a time budget (about 3 minutes) to find its end, logging
+that the bridge should be upgraded, and past the budget refuses with a message asking for an upgrade. The date
+column is date-only, so a back-dated or later-edited ZK is never re-read. See the [runbook](./docs/runbook.md#version-support-matrix-v1).
 
 ## Ingestion latency (#3396)
 

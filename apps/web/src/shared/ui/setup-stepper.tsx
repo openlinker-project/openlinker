@@ -37,6 +37,8 @@ export interface SetupStepperProps {
   orientation?: 'horizontal' | 'vertical';
   /** A short line under each step's label, shown in the vertical layout. Same order as `steps`. */
   stepMeta?: readonly string[];
+  /** 0-based. A step that has just appeared gets a short colour pulse (not under reduced motion). */
+  highlightStep?: number;
 }
 
 function testIdFor(testId: string | undefined, part: string): string | undefined {
@@ -53,6 +55,7 @@ export function SetupStepper({
   testId,
   orientation = 'horizontal',
   stepMeta,
+  highlightStep,
 }: SetupStepperProps): ReactElement {
   const reached = maxReachedStep ?? currentStep;
   const copy = useMessages('ui').setupStepper;
@@ -108,7 +111,9 @@ export function SetupStepper({
           return (
             <li
               key={label}
-              className={`setup-stepper__step setup-stepper__step--${modifier}`}
+              className={`setup-stepper__step setup-stepper__step--${modifier}${
+                index === highlightStep ? ' setup-stepper__step--new' : ''
+              }`}
               aria-current={isCurrent && onSelectStep === undefined ? 'step' : undefined}
               data-testid={testIdFor(testId, `step-${index + 1}`)}
             >

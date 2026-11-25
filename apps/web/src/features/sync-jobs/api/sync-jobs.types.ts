@@ -78,6 +78,7 @@ export type JobOutcomeReason = (typeof JOB_OUTCOME_REASON_VALUES)[number];
  */
 export const JOB_TYPE_VALUES = [
   'marketplace.orders.poll',
+  'marketplace.orders.import',
   'marketplace.order.sync',
   'marketplace.notifications.drain', // Pull-based inbound notifications (#4179) — drains the connection's queue into order syncs.
   'marketplace.order.fxStamp', // Internal job — the bounded per-order reporting-currency stamp retry (#2125).

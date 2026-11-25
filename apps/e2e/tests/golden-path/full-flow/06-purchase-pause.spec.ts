@@ -16,18 +16,25 @@
  */
 import { test } from '../../../src/fixtures/test';
 import { snapshotOrderIds } from '../../../src/support/orders';
+import { ensureOrderFeedSeeded } from '../../../src/support/order-feed-seed';
 import { manualCheckpoint } from '../../../src/support/manual-checkpoint';
 import { state, SOLD_QTY } from './flow-state';
 import { fullFlowSegment } from './segment';
 import { requireProduct, skipWhenResuming, resolvePurchaseSources } from './helpers';
 
 fullFlowSegment(() => {
-  test('PAUSE — operator buys the named offer (one stop per purchase platform)', async ({ api, world, env }) => {
+  test('PAUSE — operator buys the named offer (one stop per purchase platform)', async ({ api, world, jobs, env }) => {
     skipWhenResuming(env);
     const testInfo = test.info();
     requireProduct();
     const sources = resolvePurchaseSources(world, env.purchasePlatforms);
     test.skip(sources.length === 0, 'no marketplace source connection to buy from');
+
+    // The feed starts from "now" (#4228): poll once BEFORE the purchase so the
+    // order the operator is about to place is not consumed by a first, seeding poll.
+    for (const source of sources) {
+      await ensureOrderFeedSeeded(api, jobs, source.id);
+    }
 
     // Snapshot BEFORE the first purchase so each source's "new order"
     // detection is clean regardless of when the operator checks out.

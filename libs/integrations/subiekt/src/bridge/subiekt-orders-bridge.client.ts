@@ -3,7 +3,7 @@
  *
  * A small, self-contained HTTP transport for the bridge's `/api/orders*`
  * surface. Deliberately NOT built on `SubiektBridgeHttpClient` (the invoicing
- * transport) — that client's public methods are tied 1:1 to
+ * transport) - that client's public methods are tied 1:1 to
  * `SubiektBridgeClient`'s invoicing-shaped interface, and extending it there
  * would widen an interface owned by a sibling capability. This client owns its
  * own construction, auth header, and envelope unwrapping, following the exact
@@ -26,6 +26,7 @@ import type {
   BridgeCreateOrderRequest,
   BridgeCreateOrderResponse,
   BridgeOrderDetailResponse,
+  BridgeOrderFeedHeadResponse,
   BridgeOrderFeedResponse,
   BridgeWriteShippingRequest,
   BridgeWriteShippingResponse,
@@ -72,6 +73,18 @@ export class SubiektOrdersBridgeClient {
     return this.getJson<BridgeOrderFeedResponse>(`/api/orders/feed?${params.toString()}`);
   }
 
+  /**
+   * Cursor of the newest ZK. Resolves `null` when the bridge answers 404, i.e.
+   * a bridge that predates `GET /api/orders/feed/head`; the caller decides on a
+   * fallback. Every other failure throws.
+   */
+  async getOrderFeedHead(): Promise<BridgeOrderFeedHeadResponse | null> {
+    return this.request<BridgeOrderFeedHeadResponse>('/api/orders/feed/head', {
+      method: 'GET',
+      notFoundAsNull: true,
+    });
+  }
+
   async getOrder(id: string): Promise<BridgeOrderDetailResponse> {
     return this.getJson<BridgeOrderDetailResponse>(`/api/orders/${encodeURIComponent(id)}`);
   }
@@ -87,18 +100,21 @@ export class SubiektOrdersBridgeClient {
   }
 
   private async postJson<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>(path, { method: 'POST', body: JSON.stringify(body) });
+    return this.request<T>(path, { method: 'POST', body: JSON.stringify(body) }) as Promise<T>;
   }
 
   private async putJson<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+    return this.request<T>(path, { method: 'PUT', body: JSON.stringify(body) }) as Promise<T>;
   }
 
   private async getJson<T>(path: string): Promise<T> {
-    return this.request<T>(path, { method: 'GET' });
+    return this.request<T>(path, { method: 'GET' }) as Promise<T>;
   }
 
-  private async request<T>(path: string, init: { method: string; body?: string }): Promise<T> {
+  private async request<T>(
+    path: string,
+    init: { method: string; body?: string; notFoundAsNull?: boolean },
+  ): Promise<T | null> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (this.token !== undefined && this.token.length > 0) {
       headers.authorization = `Bearer ${this.token}`;
@@ -107,85 +123,93 @@ export class SubiektOrdersBridgeClient {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    let response: Response;
+    // The timer also covers reading the body: a bridge that answers headers and then
+    // stalls would otherwise hang the call past its timeout.
     try {
-      response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-        method: init.method,
-        headers,
-        body: init.body,
-        signal: controller.signal,
-        redirect: 'manual',
-      });
-    } catch (error) {
-      // Transport-level failure — classify retryability (#2348 audit B2) so a
-      // transient blip enters the normal retry ladder instead of dying on
-      // attempt 1, same fix as the sibling Inventory bridge client.
-      const code = extractErrorCode(error);
-      throw new SubiektBridgeUnreachableWithPhaseError(
-        `Subiekt orders bridge unreachable (${code ?? 'unknown'})`,
-        classifyRetryability(code),
-      );
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      // #3365 review: carry WHAT the bridge said, redacted. Three clients in
-      // this package can be handed a 401 and only the invoicing one read the
-      // body, so one rotated token produced a named cause on one path and a bare
-      // status on the other two.
-      throw new SubiektBridgeAuthError(
-        response.status,
-        await readBridgeAuthReason(response, this.token),
-      );
-    }
-
-    let envelope: { success: boolean; data: T | null; error: { code: string; reason: string } | null };
-    try {
-      envelope = (await response.json()) as typeof envelope;
-    } catch {
-      // Response received but unparseable — the write may or may not have
-      // landed, so this stays 'indeterminate'.
-      throw new SubiektBridgeUnreachableWithPhaseError(
-        `Subiekt orders bridge returned a non-JSON response (status ${response.status})`,
-        'indeterminate',
-      );
-    }
-
-    if (!response.ok || !envelope.success) {
-      if (response.status >= 500) {
-        // A SERVER fault, even when it arrives wearing the business envelope.
-        // The invoicing, catalogue and inventory transports all draw this line;
-        // this one did not, and the consequence is worse here than anywhere
-        // else. `SubiektRejectedError` passes through `translateBridgeError`
-        // unchanged and no retry classifier recognises it, so it is RETRYABLE -
-        // the runner re-POSTs `createOrder`, and if Subiekt created the ZK
-        // before the 500 that is a SECOND zamówienie and a second kontrahent
-        // for one sale. `'indeterminate'` is what routes it to the fiscal-safe
-        // ladder instead, which is the exact guarantee the order processor's
-        // own docblock was written to give for `SubiektBridgeUnreachableError`.
-        //
-        // It also stops the operator being told "Subiekt rejected the request:
-        // HTTP 500" - that sentence blames the shop for its own bridge being
-        // down.
+      let response: Response;
+      try {
+        response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+          method: init.method,
+          headers,
+          body: init.body,
+          signal: controller.signal,
+          redirect: 'manual',
+        });
+      } catch (error) {
+        // Transport-level failure - classify retryability (#2348 audit B2) so a
+        // transient blip enters the normal retry ladder instead of dying on
+        // attempt 1, same fix as the sibling Inventory bridge client.
+        const code = extractErrorCode(error);
         throw new SubiektBridgeUnreachableWithPhaseError(
-          `Subiekt orders bridge answered HTTP ${response.status}: ` +
-            `${envelope.error?.reason ?? 'no reason given'}`,
+          `Subiekt orders bridge unreachable (${code ?? 'unknown'})`,
+          classifyRetryability(code),
+        );
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        // #3365 review: carry WHAT the bridge said, redacted. Three clients in
+        // this package can be handed a 401 and only the invoicing one read the
+        // body, so one rotated token produced a named cause on one path and a bare
+        // status on the other two.
+        throw new SubiektBridgeAuthError(
+          response.status,
+          await readBridgeAuthReason(response, this.token),
+        );
+      }
+
+      if (response.status === 404 && init.notFoundAsNull === true) {
+        return null;
+      }
+
+      let envelope: { success: boolean; data: T | null; error: { code: string; reason: string } | null };
+      try {
+        envelope = (await response.json()) as typeof envelope;
+      } catch {
+        // Response received but unparseable - the write may or may not have
+        // landed, so this stays 'indeterminate'.
+        throw new SubiektBridgeUnreachableWithPhaseError(
+          `Subiekt orders bridge returned a non-JSON response (status ${response.status})`,
           'indeterminate',
         );
       }
-      const reason = envelope.error?.reason ?? `HTTP ${response.status}`;
-      // The machine-readable code travels with it (#3365): this transport had
-      // already typed `error.code` on the envelope and then dropped it, so no
-      // caller here could tell a not-found from a refusal the way the catalogue
-      // and inventory paths now can.
-      throw new SubiektRejectedError(reason, envelope.error?.code);
-    }
 
-    if (envelope.data === null) {
-      throw new SubiektRejectedError('Subiekt orders bridge returned an empty success payload');
-    }
+      if (!response.ok || !envelope.success) {
+        if (response.status >= 500) {
+          // A SERVER fault, even when it arrives wearing the business envelope.
+          // The invoicing, catalogue and inventory transports all draw this line;
+          // this one did not, and the consequence is worse here than anywhere
+          // else. `SubiektRejectedError` passes through `translateBridgeError`
+          // unchanged and no retry classifier recognises it, so it is RETRYABLE -
+          // the runner re-POSTs `createOrder`, and if Subiekt created the ZK
+          // before the 500 that is a SECOND zamówienie and a second kontrahent
+          // for one sale. `'indeterminate'` is what routes it to the fiscal-safe
+          // ladder instead, which is the exact guarantee the order processor's
+          // own docblock was written to give for `SubiektBridgeUnreachableError`.
+          //
+          // It also stops the operator being told "Subiekt rejected the request:
+          // HTTP 500" - that sentence blames the shop for its own bridge being
+          // down.
+          throw new SubiektBridgeUnreachableWithPhaseError(
+            `Subiekt orders bridge answered HTTP ${response.status}: ` +
+              `${envelope.error?.reason ?? 'no reason given'}`,
+            'indeterminate',
+          );
+        }
+        const reason = envelope.error?.reason ?? `HTTP ${response.status}`;
+        // The machine-readable code travels with it (#3365): this transport had
+        // already typed `error.code` on the envelope and then dropped it, so no
+        // caller here could tell a not-found from a refusal the way the catalogue
+        // and inventory paths now can.
+        throw new SubiektRejectedError(reason, envelope.error?.code);
+      }
 
-    return envelope.data;
+      if (envelope.data === null) {
+        throw new SubiektRejectedError('Subiekt orders bridge returned an empty success payload');
+      }
+
+      return envelope.data;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

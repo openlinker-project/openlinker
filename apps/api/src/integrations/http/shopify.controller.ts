@@ -43,7 +43,12 @@ import {
   type IShopifyLocationReader,
   type ShopifyLocationSummary,
 } from '@openlinker/integrations-shopify';
-import { InvalidConnectionConfigException } from '@openlinker/core/integrations';
+import {
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+  InvalidConnectionConfigException,
+} from '@openlinker/core/integrations';
+import { resolveOrderSyncStartModes } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 import { Public } from '../../auth/decorators/public.decorator';
@@ -62,6 +67,8 @@ import {
   hasMasterAndPublisher,
   masterPublisherConflictError,
 } from '../application/services/connection-capability-rules';
+import { allowedValues, connectionConfigInvalid } from '../application/services/connection-errors';
+import { toOrderSyncStart } from './dto/order-sync-start.dto';
 import { ShopifyOAuthCallbackDto } from './dto/shopify-oauth-callback.dto';
 import { ShopifyOAuthConnectDto } from './dto/shopify-oauth-connect.dto';
 
@@ -83,6 +90,8 @@ export class ShopifyController {
     private readonly locationReader: IShopifyLocationReader,
     @Inject(CONNECTION_SERVICE_TOKEN)
     private readonly connections: IConnectionService,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService,
   ) {}
 
   @Roles('admin', 'operator')
@@ -157,6 +166,26 @@ export class ShopifyController {
     if (dto.enabledCapabilities && hasMasterAndPublisher(dto.enabledCapabilities)) {
       throw masterPublisherConflictError();
     }
+    // A reauth rotates credentials only, so a start choice has nothing to apply to.
+    const orderSyncStart = dto.connectionId ? undefined : toOrderSyncStart(dto.orderSyncStart);
+    if (orderSyncStart) {
+      // Fail now rather than after the merchant approved the app: the same check
+      // runs again in ConnectionService.create when the callback creates the
+      // connection (#4265).
+      const metadata = await this.integrationsService.resolveAdapterMetadata({
+        platformType: SHOPIFY_PLATFORM_TYPE,
+        adapterKey: SHOPIFY_ADAPTER_KEY,
+      });
+      const modes = resolveOrderSyncStartModes(metadata.orderSyncStartModes);
+      if (!modes.includes(orderSyncStart.mode)) {
+        throw connectionConfigInvalid(
+          'orderSyncStart.mode',
+          'one-of',
+          `orderSyncStart.mode "${orderSyncStart.mode}" is not supported by this adapter. Supported: ${modes.join(', ')}`,
+          { allowed: allowedValues(modes) },
+        );
+      }
+    }
     const storeDomain = parsed.config.storeDomain;
     return this.oauthService.generateAuthorizationUrl({
       adapterKey: SHOPIFY_ADAPTER_KEY,
@@ -167,6 +196,7 @@ export class ShopifyController {
       connectionName: dto.connectionName || `Shopify ${storeDomain}`,
       connectionId: dto.connectionId,
       ...(dto.enabledCapabilities ? { enabledCapabilities: dto.enabledCapabilities } : {}),
+      ...(orderSyncStart ? { orderSyncStart } : {}),
       // A reauth rotates credentials only, so the config seed is used to reach
       // the store and is not written over the connection's config (#3911).
       initialConfig: { ...seed, storeDomain },

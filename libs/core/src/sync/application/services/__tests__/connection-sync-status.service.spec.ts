@@ -31,21 +31,54 @@ function stats(overrides: Partial<ConnectionBacklogStats> = {}): ConnectionBackl
 describe('ConnectionSyncStatusService', () => {
   let service: ConnectionSyncStatusService;
   let getConnectionBacklogStats: jest.Mock;
+  let getOrderImportStats: jest.Mock;
   let getMostRecentCursorUpdate: jest.Mock;
+  let getCursorValuesByKeySuffix: jest.Mock;
+  let getCursor: jest.Mock;
 
   beforeEach(async () => {
     getConnectionBacklogStats = jest.fn().mockResolvedValue(stats());
+    getOrderImportStats = jest.fn().mockResolvedValue({
+      importedLast24h: 0,
+      lastPolledAt: null,
+      failedLast7d: 0,
+      failures: [],
+      waiting: 0,
+      lastImportedAt: null,
+      activeImport: null,
+    });
     getMostRecentCursorUpdate = jest.fn().mockResolvedValue(null);
+    getCursorValuesByKeySuffix = jest.fn().mockResolvedValue([]);
+    getCursor = jest.fn().mockResolvedValue(null);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionSyncStatusService,
-        { provide: SYNC_JOB_REPOSITORY_TOKEN, useValue: { getConnectionBacklogStats } },
-        { provide: SYNC_CURSORS_SERVICE_TOKEN, useValue: { getMostRecentCursorUpdate } },
+        { provide: SYNC_JOB_REPOSITORY_TOKEN, useValue: { getConnectionBacklogStats, getOrderImportStats } },
+        { provide: SYNC_CURSORS_SERVICE_TOKEN, useValue: { getMostRecentCursorUpdate, getCursorValuesByKeySuffix, getCursor }, },
       ],
     }).compile();
 
     service = module.get(ConnectionSyncStatusService);
+  });
+
+  it('should report the order sync start from the seed marker', async () => {
+    getCursorValuesByKeySuffix.mockResolvedValue(['2026-11-18T08:00:00.000Z']);
+
+    const result = await service.getConnectionSyncStatus(CONNECTION_ID);
+
+    expect(getCursorValuesByKeySuffix).toHaveBeenCalledWith(CONNECTION_ID, '.seededAt');
+    expect(result.orderSyncStartedAt).toEqual(new Date('2026-11-18T08:00:00.000Z'));
+  });
+
+  it('should report no order sync start when there is no marker, an unparseable one, or the read fails', async () => {
+    expect((await service.getConnectionSyncStatus(CONNECTION_ID)).orderSyncStartedAt).toBeNull();
+
+    getCursorValuesByKeySuffix.mockResolvedValue(['not-a-date']);
+    expect((await service.getConnectionSyncStatus(CONNECTION_ID)).orderSyncStartedAt).toBeNull();
+
+    getCursorValuesByKeySuffix.mockRejectedValue(new Error('boom'));
+    expect((await service.getConnectionSyncStatus(CONNECTION_ID)).orderSyncStartedAt).toBeNull();
   });
 
   it('should report idle with no alert when the connection has no queued jobs', async () => {
@@ -166,5 +199,75 @@ describe('ConnectionSyncStatusService', () => {
     const result = await service.getConnectionSyncStatus(CONNECTION_ID);
 
     expect(result.alerting).toBe(false);
+  });
+
+  it('should report the order import figures read from the job rows', async () => {
+    const figures = {
+      importedLast24h: 40,
+      lastPolledAt: null,
+      failedLast7d: 2,
+      failures: [],
+      waiting: 5,
+      lastImportedAt: new Date('2026-11-18T09:00:00.000Z'),
+      activeImport: null,
+    };
+    getOrderImportStats.mockResolvedValue(figures);
+
+    const result = await service.getConnectionSyncStatus(CONNECTION_ID);
+
+    expect(result.orderImport).toEqual(figures);
+  });
+
+  it('should report an unreadable order import as null, never as zero orders', async () => {
+    getOrderImportStats.mockRejectedValue(new Error('db down'));
+
+    const result = await service.getConnectionSyncStatus(CONNECTION_ID);
+
+    expect(result.orderImport).toBeNull();
+    expect(result.status).not.toBe('unknown');
+  });
+
+  describe('order start (#4228)', () => {
+    const cursors = (values: Record<string, string>): void => {
+      getCursor.mockImplementation((_c: string, key: string) => Promise.resolve(values[key] ?? null));
+    };
+
+    it('should report the applied start with its mode, date and order', async () => {
+      cursors({
+        'orders.syncStarted':
+          '{"mode":"from","from":"2026-10-01","order":"newest-first","at":"2026-11-18T08:00:00.000Z"}',
+      });
+
+      const { orderStart } = await service.getConnectionSyncStatus(CONNECTION_ID);
+
+      expect(orderStart).toEqual({
+        mode: 'from',
+        from: '2026-10-01',
+        order: 'newest-first',
+        appliedAt: new Date('2026-11-18T08:00:00.000Z'),
+        pending: false,
+      });
+    });
+
+    it('should report a choice still waiting for the next check ahead of the applied one', async () => {
+      cursors({
+        'orders.syncStart': '{"mode":"all"}',
+        'orders.syncStarted': '{"mode":"now","at":"2026-11-18T08:00:00.000Z"}',
+      });
+
+      const { orderStart } = await service.getConnectionSyncStatus(CONNECTION_ID);
+
+      expect(orderStart).toMatchObject({ mode: 'all', appliedAt: null, pending: true });
+    });
+
+    it('should report no start for a connection that never recorded one', async () => {
+      expect((await service.getConnectionSyncStatus(CONNECTION_ID)).orderStart).toBeNull();
+    });
+
+    it('should report no start, not a guess, when the stored record is unreadable', async () => {
+      cursors({ 'orders.syncStarted': 'garbage' });
+
+      expect((await service.getConnectionSyncStatus(CONNECTION_ID)).orderStart).toBeNull();
+    });
   });
 });

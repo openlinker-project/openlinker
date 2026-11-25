@@ -11,6 +11,12 @@
 import { z } from 'zod';
 import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
 import { schemaMessage } from '../lib/schema-message';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  readsOrders,
+  toOrderSyncStart,
+} from '../lib/order-sync-start';
 
 const msg = schemaMessage('prestashopSetupSchema');
 
@@ -82,6 +88,7 @@ export const prestashopSetupSchema = z.object({
   enabledCapabilities: z
     .array(z.enum(CORE_CAPABILITY_VALUES))
     .default(PRESTASHOP_FALLBACK_CAPABILITIES),
+  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
 });
 
 export type PrestashopSetupFormValues = z.input<typeof prestashopSetupSchema>;
@@ -95,6 +102,7 @@ export const PRESTASHOP_SETUP_DEFAULT_VALUES: PrestashopSetupFormValues = {
   storefrontBaseUrl: '',
   currency: '',
   enabledCapabilities: PRESTASHOP_FALLBACK_CAPABILITIES,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toCreateConnectionInput(
@@ -117,5 +125,8 @@ export function toCreateConnectionInput(
     credentials: { webserviceApiKey: values.webserviceKey },
     config,
     enabledCapabilities: values.enabledCapabilities,
+    orderSyncStart: readsOrders(values.enabledCapabilities)
+      ? toOrderSyncStart(values.orderSyncStart)
+      : undefined,
   };
 }

@@ -89,7 +89,7 @@ describe('PrestashopSetupForm', () => {
       url: 'https://shop.example.com',
       key: 'WSKEY123',
     });
-    await advanceToStep(view.container, 2);
+    await advanceToStep(view.container, 3);
 
     const form = view.container.querySelector('form');
     if (!form) throw new Error('wizard form not found');
@@ -118,7 +118,7 @@ describe('PrestashopSetupForm', () => {
       key: 'WSKEY123',
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -168,6 +168,73 @@ describe('PrestashopSetupForm', () => {
     );
   });
 
+  it('sends the chosen order sync start and states it on the review step (#4228)', async () => {
+    const create = vi.fn().mockResolvedValue(sampleConnection);
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
+
+    fillCredentialsStep(view.container, {
+      name: 'Main store',
+      url: 'https://shop.example.com',
+      key: 'WSKEY123',
+    });
+    await advanceToStep(view.container, 3);
+
+    fireEvent.click(within(view.container).getByRole('radio', { name: /Every order the shop has/ }));
+    await advanceOneStep(view.container);
+
+    expect(within(view.container).getAllByText('Every order').length).toBeGreaterThan(0);
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await findToastTitle('Connection created');
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ orderSyncStart: { mode: 'all' } }),
+    );
+  });
+
+  it('sends a start date and newest-first when the shop declares them (#4265)', async () => {
+    const create = vi.fn().mockResolvedValue(sampleConnection);
+    const apiClient = createMockApiClient({
+      connections: { create },
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          {
+            adapterKey: 'prestashop.webservice.v1',
+            platformType: 'prestashop',
+            supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource'],
+            orderSyncStartModes: ['now', 'from', 'all'],
+            orderWindowImport: true,
+          },
+        ]),
+      },
+    });
+    const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
+
+    fillCredentialsStep(view.container, {
+      name: 'Main store',
+      url: 'https://shop.example.com',
+      key: 'WSKEY123',
+    });
+    await advanceToStep(view.container, 3);
+
+    const fromCard = await within(view.container).findByRole('radio', { name: /Orders since a date/ });
+    await waitFor(() => expect(fromCard).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(fromCard);
+    fireEvent.change(within(view.container).getByLabelText('First day to import'), {
+      target: { value: '2024-03-01' },
+    });
+    fireEvent.click(within(view.container).getByRole('radio', { name: /Newest first/ }));
+    await advanceOneStep(view.container);
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await findToastTitle('Connection created');
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderSyncStart: { mode: 'from', from: '2024-03-01', order: 'newest-first' },
+      }),
+    );
+  });
+
   it('includes shopId in config when provided', async () => {
     const create = vi.fn().mockResolvedValue(sampleConnection);
     const apiClient = createMockApiClient({ connections: { create } });
@@ -180,7 +247,7 @@ describe('PrestashopSetupForm', () => {
       shopId: '2',
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -206,7 +273,7 @@ describe('PrestashopSetupForm', () => {
       target: { value: 'https://shop.example.com' },
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -232,7 +299,7 @@ describe('PrestashopSetupForm', () => {
       key: 'WSKEY',
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -282,7 +349,7 @@ describe('PrestashopSetupForm', () => {
       key: 'WSKEY',
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -304,7 +371,7 @@ describe('PrestashopSetupForm', () => {
       target: { value: 'PLN' },
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -327,7 +394,7 @@ describe('PrestashopSetupForm', () => {
       key: 'WSKEY',
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 

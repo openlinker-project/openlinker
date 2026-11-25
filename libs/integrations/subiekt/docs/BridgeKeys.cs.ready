@@ -11,8 +11,6 @@
 //
 using System.Globalization;
 
-using System.Globalization;
-
 /// <summary>
 /// The bridge's pure decision functions, in one file with NO COM and NO SQL.
 ///
@@ -56,9 +54,29 @@ public static class BridgeKeys
             && int.TryParse(cursor[(bar + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out lastId);
     }
 
+    public const int FeedLimitDefault = 50;
+    public const int FeedLimitMax = 1000;
+
+    /// <summary>Validate the feed page size. Absent means the default. A value
+    /// below 1 reached SQL as `TOP (-1)` and answered a raw 500, and an unbounded
+    /// one let a caller ask for the whole table in a single response.</summary>
+    public static bool TryValidateFeedLimit(int? requested, out int limit, out string? error)
+    {
+        limit = requested ?? FeedLimitDefault;
+        error = null;
+        if (limit >= 1 && limit <= FeedLimitMax) return true;
+        error = $"'limit' must be between 1 and {FeedLimitMax}.";
+        return false;
+    }
+
     /// <summary>Render the pair. Round-trips through TryParseCursor.</summary>
     public static string FormatCursor(DateTime watermark, int lastId) =>
         watermark.ToString("o", CultureInfo.InvariantCulture) + "|" + lastId.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Cursor for the newest ZK, or null when there is none. Same format as the feed's
+    /// nextCursor, so a feed read from it starts strictly after that row.</summary>
+    public static string? FormatHeadCursor(DateTime? watermark, int lastId) =>
+        watermark is null ? null : FormatCursor(watermark.Value, lastId);
 
     /// <summary>The address truth table: at least one field CONFIRMED equal on
     /// both sides, and no field CONTRADICTED. A false negative mints a duplicate

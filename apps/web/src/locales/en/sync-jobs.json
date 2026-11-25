@@ -216,7 +216,6 @@
     "enqueuing": "Enqueuing…",
     "fieldRequired": "{field} is required",
     "fields": {
-      "cursorKey": "Cursor key",
       "externalId": "External ID",
       "maxInvoices": "Max invoices",
       "objectType": "Object type",
@@ -230,8 +229,8 @@
         "label": "Auto-match variants"
       },
       "pollOrders": {
-        "description": "Fetch new orders from the marketplace event stream.",
-        "label": "Poll marketplace orders"
+        "description": "Reads orders from the shop into OpenLinker.",
+        "label": "Sync orders"
       },
       "propagateInventory": {
         "description": "Push current inventory levels to all connected marketplaces.",
@@ -263,11 +262,52 @@
       }
     },
     "noTriggers": "No sync triggers available for this connection.",
+    "orderPosition": {
+      "customHelp": "Use this only if support gave you a key.",
+      "customLabel": "Position key",
+      "customRequired": "Enter the position key, or pick another option above.",
+      "limitHelp": "OpenLinker reads up to this many orders in one go. The default is 100.",
+      "limitLabel": "Most orders to read",
+      "positionCustom": "Another position (own key)…",
+      "positionDefault": "Where the last check stopped (recommended)",
+      "positionDefaultHint": "OpenLinker remembers how far it has read the shop's order list. Leave this as it is unless support told you otherwise.",
+      "positionDefaultHintSaved": "Saved at {key}, last moved {when}.",
+      "positionLabel": "Read orders from",
+      "positionSaved": "Saved position {key}, moved {when}"
+    },
+    "orderRange": {
+      "directionLabel": "Import order",
+      "errors": {
+        "fromInvalid": "Enter a valid date",
+        "fromRequired": "Choose the first day",
+        "fromTooOld": "Choose a day within the last 5 years",
+        "future": "Choose a day that is not in the future",
+        "toBeforeFrom": "The last day cannot be before the first day",
+        "toInvalid": "Enter a valid date"
+      },
+      "firstDayNeeded": "Choose the first day to continue.",
+      "fromLabel": "First day",
+      "newestFirst": "Newest first",
+      "oldestFirst": "Oldest first",
+      "toHelp": "The last day is included. Leave empty to read up to the newest order.",
+      "toLabel": "Last day (optional)"
+    },
+    "orderScope": {
+      "label": "What to sync",
+      "new": "From the saved position (cursor)",
+      "newHint": "Reads orders newer than the saved position, so only orders OpenLinker has not imported yet. The import start does not move.",
+      "range": "Between two dates",
+      "rangeHint": "Reads the orders placed between two days, once. Orders OpenLinker already has are updated, not copied twice."
+    },
+    "periodConfirm": "Get orders",
+    "periodIntro": "Set up from “Get orders from a period”. Pick your dates below.",
+    "periodTitle": "Get orders from a period",
     "requiredField": "{field} *",
     "title": "Trigger sync",
     "toast": {
       "description": "\"{job}\" started for \"{connection}\". Job ID: {jobId}",
-      "title": "Sync job enqueued"
+      "title": "Sync job enqueued",
+      "viewJob": "View job"
     },
     "trigger": "Trigger",
     "viewAllJobs": "View all jobs"

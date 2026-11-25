@@ -16,6 +16,7 @@
 export const JobTypeValues = [
   // Generic (Option B)
   'marketplace.orders.poll',
+  'marketplace.orders.import', // One page of a date-window order import, newest-first history or a manual range (#4228).
   'marketplace.order.sync',
   // Pull-based inbound notifications (#4179): drains a queue the operator owns
   // (Amazon SQS) through the same routing a webhook takes. The routed child

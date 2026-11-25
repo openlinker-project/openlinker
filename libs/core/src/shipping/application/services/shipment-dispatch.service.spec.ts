@@ -165,7 +165,7 @@ describe('ShipmentDispatchService', () => {
     summarizeWorkForOrders: jest.Mock;
     listBuyerNoteAcknowledgements: jest.Mock;
   };
-  let jobQueue: { enqueue: jest.Mock; enqueueBulk: jest.Mock };
+  let jobQueue: { enqueue: jest.Mock; enqueueBulk: jest.Mock; enqueueDetailed: jest.Mock };
   let service: ShipmentDispatchService;
 
   beforeEach(() => {
@@ -289,6 +289,7 @@ describe('ShipmentDispatchService', () => {
     jobQueue = {
       enqueue: jest.fn().mockResolvedValue('job-1'),
       enqueueBulk: jest.fn().mockResolvedValue([]),
+      enqueueDetailed: jest.fn(),
     };
     service = new ShipmentDispatchService(
       repository,

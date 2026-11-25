@@ -443,6 +443,12 @@ work a delivery triggers. Enabling `OrderSource` on a connection still opts it i
 - **Feed (`listOrderFeed`)**: an `order_id` keyset - `order=order_id ASC` plus `filters[order_id][>]=<cursor>`
   (both live-verified). The cursor is the highest id seen, so no date, time zone or same-second edge is involved.
   `limit` is capped at 50: Shoper silently answers 10 for anything larger.
+- **Where it starts (#4228, #4265)**: `headCursor` seeds at the highest `order_id`; `cursorForDate` and
+  `listOrdersInWindow` (history newest-first, manual date range) filter by order date. Shoper stores naive shop-local
+  timestamps, so a bare date means that day in the shop's time. Pages are capped at 50 rows. "From a date" assumes order ids rise with dates, so an order with a higher id but an older date is imported, and a later status change on an order older than the start brings it in. Orders OpenLinker created
+  in the shop carry a `notes_priv` marker and are skipped, but the cursor advances over them. Only HTTP 400 and 422
+  from the date filter become a start refusal (`OrderSyncStartUnavailableError`); auth and other errors keep their
+  usual handling.
 - **Order (`getOrder`)**: `GET /orders/:id` plus `GET /order-products?filters[order_id]=:id` - the order row carries
   no lines. A line of another order in the answer proves the filter was ignored and the read is refused.
 - **Status**: `GET /statuses` `type` (1 new, 2 processing, 3 shipped, 4 terminal) becomes
