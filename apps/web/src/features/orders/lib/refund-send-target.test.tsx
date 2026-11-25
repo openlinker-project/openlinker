@@ -5,30 +5,47 @@ import type { Connection } from '../../connections';
 import { createMockApiClient, sampleConnection } from '../../../test/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiClientProvider } from '../../../app/api/api-client-provider';
-import { useRefundSentToShopify } from './refund-sent-to-shopify';
+import { useRefundSendTarget } from './refund-send-target';
 
 function shopify(publicConfig: Record<string, boolean>): Connection {
   return { ...sampleConnection, platformType: 'shopify', config: {}, publicConfig };
 }
 
-describe('useRefundSentToShopify', () => {
+function amazon(publicConfig: Record<string, boolean>): Connection {
+  return { ...sampleConnection, platformType: 'amazon', config: {}, publicConfig };
+}
+
+describe('useRefundSendTarget', () => {
   it('should be false without a connection id', () => {
-    const { result } = renderHook(() => useRefundSentToShopify(null), { wrapper: wrap(sampleConnection) });
-    expect(result.current).toBe(false);
+    const { result } = renderHook(() => useRefundSendTarget(null), { wrapper: wrap(sampleConnection) });
+    expect(result.current).toBeNull();
   });
 
   it('should be true when the adapter reports the opt-in in publicConfig, even with an empty config', async () => {
-    const { result } = renderHook(() => useRefundSentToShopify('c1'), {
+    const { result } = renderHook(() => useRefundSendTarget('c1'), {
       wrapper: wrap(shopify({ refundsThroughShopify: true })),
     });
-    await waitFor(() => expect(result.current).toBe(true));
+    await waitFor(() => expect(result.current).toBe('shopify'));
+  });
+
+  it('should name Amazon when its connection opted in to refunds, and not on a platform that has no such key', async () => {
+    const opted = renderHook(() => useRefundSendTarget('c1'), {
+      wrapper: wrap(amazon({ refundsEnabled: true })),
+    });
+    await waitFor(() => expect(opted.result.current).toBe('amazon'));
+
+    const other = renderHook(() => useRefundSendTarget('c1'), {
+      wrapper: wrap({ ...shopify({}), platformType: 'prestashop', publicConfig: { refundsEnabled: true } }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(other.result.current).toBeNull();
   });
 
   it('should stay false when publicConfig does not report the opt-in', async () => {
     const getById = vi.fn<(connectionId: string) => Promise<Connection>>().mockResolvedValue(shopify({}));
-    const { result } = renderHook(() => useRefundSentToShopify('c1'), { wrapper: wrapWith(getById) });
+    const { result } = renderHook(() => useRefundSendTarget('c1'), { wrapper: wrapWith(getById) });
     await waitFor(() => expect(getById).toHaveBeenCalled());
-    expect(result.current).toBe(false);
+    expect(result.current).toBeNull();
   });
 });
 

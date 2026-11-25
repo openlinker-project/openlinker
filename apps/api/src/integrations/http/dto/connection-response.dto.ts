@@ -109,7 +109,7 @@ export class ConnectionResponseDto {
     type: 'object',
     additionalProperties: true,
   })
-  publicConfig!: Record<string, string | number | boolean>;
+  publicConfig!: Record<string, string | number | boolean | string[]>;
 
   @ApiPropertyOptional({
     description:
@@ -169,16 +169,23 @@ export class ConnectionResponseDto {
   }
 }
 
-/** The declared keys whose values are scalars; anything structured is left out. */
+/**
+ * The declared keys whose values are scalars or a list of strings; anything
+ * structured is left out. A list is admitted for an id list such as Amazon's
+ * marketplaces, which the bulk wizard needs under a role that cannot read the
+ * config. A list holding anything but strings is dropped whole, never filtered.
+ */
 function pickPublicConfig(
   config: Record<string, unknown> | undefined,
   keys: readonly string[],
-): Record<string, string | number | boolean> {
-  const out: Record<string, string | number | boolean> = {};
+): Record<string, string | number | boolean | string[]> {
+  const out: Record<string, string | number | boolean | string[]> = {};
   for (const key of keys) {
     const value = config?.[key];
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
       out[key] = value;
+    } else if (Array.isArray(value) && value.every((item): item is string => typeof item === 'string')) {
+      out[key] = [...value];
     }
   }
   return out;

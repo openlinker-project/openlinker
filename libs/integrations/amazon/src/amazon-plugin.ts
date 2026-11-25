@@ -87,6 +87,11 @@ export const amazonAdapterManifest: AdapterMetadata = {
   // import backs "newest first" and a manual date-range run.
   orderSyncStartModes: ['now', 'from', 'all'],
   orderWindowImport: true,
+  // Non-secret keys the UI may read under any role: the bulk offer wizard
+  // needs the marketplaces and merchant token, and the refund dialogs need to
+  // know whether a confirmed refund is sent to Amazon. The notification queue
+  // URL is deliberately absent.
+  publicConfigKeys: ['sellerId', 'refundsEnabled', 'marketplaceIds'],
   displayName: 'Amazon Selling Partner API',
   version: '0.1.0',
   isDefault: true,
