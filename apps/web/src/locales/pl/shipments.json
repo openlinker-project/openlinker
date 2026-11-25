@@ -206,7 +206,7 @@
       "processor": "Realizacja",
       "status": "Status"
     },
-    "description": "Zestawienie wszystkich przesyłek ze wszystkich zamówień - filtruj według statusu, metody, połączenia lub daty.",
+    "description": "Przesyłki ze wszystkich zamówień. Filtruj je według statusu, metody, połączenia lub daty.",
     "empty": {
       "clearFilters": "Wyczyść filtry",
       "filtered": "Żadna przesyłka nie pasuje do bieżących filtrów.",
@@ -283,7 +283,7 @@
     "pagination": {
       "next": "Dalej",
       "previous": "Wstecz",
-      "showing": "Wyświetlanie {from}-{to} z {total}"
+      "showing": "Wyświetlono {from}-{to} z {total}"
     },
     "peek": {
       "created": "Utworzono",

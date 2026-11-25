@@ -20067,7 +20067,6 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   color: var(--text-secondary);
   font-family: var(--font-sans);
   font-size: 0.8125rem;
-  text-transform: capitalize;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-standard);
 }

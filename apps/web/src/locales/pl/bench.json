@@ -521,7 +521,7 @@
       "retryAction": "Ponów próbę"
     },
     "footer": {
-      "honesty": "OpenLinker nie widzi Twoich półek - to jest to, co musi wyjść, i kiedy.",
+      "honesty": "OpenLinker nie widzi Twoich półek. Tu widać, co i kiedy musi wyjść.",
       "liveness": "Aktualizuje się automatycznie"
     },
     "header": {
