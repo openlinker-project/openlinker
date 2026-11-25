@@ -1735,7 +1735,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
    * Retention candidates (#4178), see the port. The anchor is
    * `COALESCE(dispatchByAt, placedAt, createdAt)`: the ship-by deadline and the
    * placement both precede delivery, so a deletion counted from them is never
-   * later than one counted from delivery.
+   * later than one counted from delivery. `createdAt` is a `timestamp` (no zone)
+   * while the other two are `timestamptz`; reading it as UTC keeps the
+   * expression IMMUTABLE so the partial index can be built on exactly this text.
    */
   async findBuyerDataRetentionCandidates(input: {
     sourceConnectionId: string;
@@ -1750,10 +1752,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
         sourceConnectionId: input.sourceConnectionId,
       })
       .andWhere('rec."buyerDataRedactedAt" IS NULL')
-      .andWhere('COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt") < :anchorBefore', {
+      .andWhere('COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt" AT TIME ZONE 'UTC') < :anchorBefore', {
         anchorBefore: input.anchorBefore,
       })
-      .orderBy('COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt")', 'ASC')
+      .orderBy('COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt" AT TIME ZONE 'UTC')', 'ASC')
       .addOrderBy('rec."internalOrderId"', 'ASC')
       .limit(input.limit)
       .getRawMany<{ internal_order_id: string; order_snapshot: unknown }>();

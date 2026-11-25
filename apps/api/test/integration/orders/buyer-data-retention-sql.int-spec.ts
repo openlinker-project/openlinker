@@ -3,7 +3,7 @@
  *
  * Proves against real Postgres the statements the retention pass relies on,
  * which unit tests only mock: the candidate read (per source, by the
- * `COALESCE(dispatchByAt, placedAt, createdAt)` anchor, unredacted only), the
+ * `COALESCE(dispatchByAt, placedAt, createdAt AT TIME ZONE 'UTC')` anchor, unredacted only), the
  * one-shot order redaction (snapshot, columns, the operator's address edit),
  * the recipient clears on both email delivery tables, and the two-table
  * customer projection redaction with its batch and stop condition.

@@ -6,7 +6,10 @@
  *
  * The partial index serves the retention pass, which reads per source the
  * not-yet-redacted orders by their anchor (`COALESCE(dispatchByAt, placedAt,
- * createdAt)`); a redacted row leaves it, so it stays as small as the backlog.
+ * createdAt AT TIME ZONE 'UTC')`: `createdAt` is a zone-less `timestamp`, and the
+ * implicit cast to `timestamptz` depends on the session time zone, which an
+ * index expression may not); a redacted row leaves it, so it stays as small as
+ * the backlog.
  * Declared on the ORM entity as well (column only: TypeORM's `@Index` cannot
  * express an expression index), because the integration harness builds schema
  * by `synchronize`.
@@ -24,7 +27,7 @@ export class AddOrderBuyerDataRedactedAt1940400000000 implements MigrationInterf
     );
     await queryRunner.query(
       `CREATE INDEX "IDX_order_records_buyer_data_retention" ON "order_records" ` +
-        `("sourceConnectionId", (COALESCE("dispatchByAt", "placedAt", "createdAt"))) ` +
+        `("sourceConnectionId", (COALESCE("dispatchByAt", "placedAt", "createdAt" AT TIME ZONE 'UTC'))) ` +
         `WHERE "buyerDataRedactedAt" IS NULL`
     );
   }
