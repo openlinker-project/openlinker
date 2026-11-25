@@ -148,8 +148,7 @@ describe('ErliSetupForm', () => {
       }),
     });
 
-    fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'My Erli Store' } });
-    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk_test_123' } });
+    await fillCredentialsAndReachCatalogue({ name: 'My Erli Store', apiKey: 'sk_test_123' });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await screen.findByText('How should delivery appear on receipts and invoices?');
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
