@@ -87,6 +87,11 @@ jobs:
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check-release-center-catalog.mjs proves each release highlight hash
+          # with `git cat-file`, and the hash may be any commit on main, so a
+          # one-commit clone would report every older hash as missing.
+          fetch-depth: 0
       # actions/checkout@v4 shallow-fetches only the triggering ref, so
       # `refs/remotes/origin/main` is absent on pull_request builds. The
       # migration-ordering invariant (#1013) in check-migration-timestamps.mjs

@@ -70,6 +70,15 @@ A guide (a "showcase" in the catalog) is a tour with no setup step behind it: on
 - **The update switch (decision 9) governs update content only.** Release cards, the What's new dialog and setup steps go away when it is off. The bell, message notifications and guides stay, because they are not about an update. The API therefore returns the caller's user rows when the switch is off (`enabled: false`, `cursor: null`, empty installation list) instead of an empty snapshot, so read state survives turning it off and on.
 - **Consequence.** A deployment that wants no news at all still sees messages and guides. Hiding those is a separate decision and is not covered by this switch.
 
+## Amendment: highlight hashes are proven against git history, not the changelog
+
+The catalog check required every commit hash in `RELEASE_HIGHLIGHTS` to appear in `CHANGELOG.md` as `/commit/<hash>`. A minor's changelog section is only written by the release-please PR, so the list for a new minor could not exist earlier: every release PR started red (Lint through `check:invariants`, and the `release-center-catalog` workflow) and needed a hand-made commit on the bot's branch, which release-please may overwrite at the next merge.
+
+The proof is now the repository itself: a hash must be 7 or more hex characters and `git cat-file -e <hash>^{commit}` must succeed (`execFileSync`, no shell, only a hex string reaches git). The list for a minor is written on main as soon as its changes are merged, and the release PR then passes without a manual step. Everything else is unchanged: a non-empty list per minor from `HIGHLIGHTS_REQUIRED_FROM`, the `## [<version>]` heading, and `--release` bounding `introducedIn`.
+
+- **Consequence for CI.** The jobs that run the check need full history. The `Lint` job and the `release-center-catalog` workflow check out with `fetch-depth: 0`; in a one-commit clone every older hash would read as missing.
+- **Runtime is untouched.** The dialog still reads the changelog, matches each curated hash against its entries and falls back to the release's own entries when none matches, so a typo that survives the check (a real commit that is not in that changelog) degrades to a generic dialog and never to an empty one.
+
 ## References
 
 - Related issues: epic #4131, #4242, #4243, #4244, #4245, #4140, #4141, #4142, #4143, #4145, #4146
