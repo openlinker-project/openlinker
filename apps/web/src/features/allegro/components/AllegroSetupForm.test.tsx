@@ -216,6 +216,7 @@ describe('AllegroSetupForm', () => {
       await advanceOneStep(container, 'Product catalogue');
       fireEvent.click(within(container).getByRole('radio', { name: /^Linked to a catalog/ }));
       await advanceOneStep(container, 'Sales documents');
+      await advanceOneStep(container, 'Order history');
       await advanceOneStep(container, 'Review & connect');
       fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -244,6 +245,7 @@ describe('AllegroSetupForm', () => {
       await advanceOneStep(container, 'Environment');
       await advanceOneStep(container, 'Product catalogue');
       await advanceOneStep(container, 'Sales documents');
+      await advanceOneStep(container, 'Order history');
       await advanceOneStep(container, 'Review & connect');
 
       expect(container.textContent).toContain('No catalog (marketplace only)');
