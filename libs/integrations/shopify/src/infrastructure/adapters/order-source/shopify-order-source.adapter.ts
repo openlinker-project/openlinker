@@ -489,7 +489,8 @@ export class ShopifyOrderSourceAdapter
     this.canReadAllOrders ??= this.readsAllOrders();
     const allowed = await this.canReadAllOrders;
     if (allowed === null) {
-      // Unknown is transient, so retry rather than read on blind.
+      // Unknown scope is refused rather than read on blind. The typed error ends the poll as
+      // a business failure (no retry); the next scheduled poll asks again.
       await this.assertOldOrdersReadable(null);
     }
     if (allowed === false && !this.warnedOldOrdersHidden) {
