@@ -209,6 +209,54 @@
     "suggestedMax": "suggested ≤ {max}",
     "valueWithSource": "{value} ({source})"
   },
+  "releaseCenterPage": {
+    "adminOnly": {
+      "message": "An administrator changes these settings.",
+      "title": "Administrator role required"
+    },
+    "back": "Back to settings",
+    "description": "Decide whether people see the what-changed window, the news cards in the bell and the guides to new features after an update.",
+    "error": {
+      "retry": "Try again",
+      "title": "Could not load the settings"
+    },
+    "eyebrow": "Access and look",
+    "loading": {
+      "message": "This takes a moment.",
+      "title": "Loading settings"
+    },
+    "title": "Update news"
+  },
+  "releaseCenterRow": {
+    "description": "The window with what changed after an update, the release cards in the bell and the guides to new features.",
+    "off": "Off",
+    "on": "On",
+    "open": "Open the update news settings",
+    "title": "Update news"
+  },
+  "releaseCenterSection": {
+    "backToEnv": "Back to the server setting",
+    "field": {
+      "ariaLabel": "Update news on or off",
+      "description": "When off, no what-changed window appears after an update, and the bell loses its news card with the steps to set up and the guides to new features. The bell and every other notification stay. The list of changes is still on the \"News and notifications\" page.",
+      "label": "Show news after an update"
+    },
+    "lead": "Applies to every user of this installation.",
+    "newChip": "New",
+    "reset": "Reset",
+    "save": "Save changes",
+    "saveFailed": "Could not save the setting.",
+    "savedToast": {
+      "description": "It applies to you at once, and to everyone else after they reload the page.",
+      "title": "Setting saved"
+    },
+    "sourceLine": {
+      "default": "The default is in force: on.",
+      "env": "The server setting is in force. Save here to replace it.",
+      "setting": "Set here."
+    },
+    "title": "Update news"
+  },
   "salesDocumentsPage": {
     "adminOnly": {
       "description": "Admin-only access.",
@@ -230,52 +278,27 @@
     "account": {
       "anonymous": "No active session.",
       "email": "Email",
-      "eyebrow": "Session",
       "loading": "Loading session…",
-      "meta": "Read-only",
       "role": "Role",
+      "signedInAs": "Signed in as",
       "title": "Account",
       "username": "Username"
     },
-    "chips": {
-      "account": "Account",
-      "buyerEmails": "Buyer emails",
-      "currency": "Currency",
-      "environment": "Environment",
-      "inventoryLocations": "Inventory locations",
-      "mailer": "Mailer",
-      "mcpTokens": "MCP tokens",
-      "orderTags": "Order tags",
-      "posthog": "PostHog",
-      "salesDocuments": "Sales documents routing",
-      "sourcingRules": "Sourcing rules",
-      "syncPacing": "Sync pacing",
-      "upcoming": "Upcoming",
-      "whoDecides": "Who decides what"
-    },
-    "comingSoon": "Coming soon",
-    "description": "Platform configuration, session context, and upcoming operator preferences.",
+    "description": "Every area you can configure, grouped by what it does.",
     "environment": {
       "apiBaseUrl": "API base URL",
       "environment": "Environment",
-      "eyebrow": "Runtime",
-      "meta": "Build-time config",
-      "title": "Environment"
+      "title": "Environment",
+      "version": "App version"
     },
-    "eyebrow": "Settings",
     "notifications": {
-      "body": "Sync failure alerts, manual-review triggers, and threshold notifications will be configurable here.",
-      "eyebrow": "Alerts",
       "title": "Notifications"
     },
     "organization": {
-      "body": "Team members, roles, and workspace-level settings will be managed here.",
-      "eyebrow": "Workspace",
       "title": "Organization"
     },
+    "plannedLine": "Also planned: {items}.",
     "preferences": {
-      "body": "Timezone, date format, and display density options will be available here.",
-      "eyebrow": "Display",
       "title": "Preferences"
     },
     "title": "Settings"
@@ -435,6 +458,105 @@
     "sourceSetting": "you set this",
     "title": "Sync pacing",
     "valueWithSource": "{value} ({source})"
+  },
+  "template": {
+    "aiProvider": {
+      "hint": "Keys per provider and which provider is active.",
+      "short": "AI provider",
+      "title": "AI providers"
+    },
+    "batch": {
+      "hint": "When and how documents are issued together for this connection.",
+      "short": "Batch issuing",
+      "title": "Batch issuing"
+    },
+    "buyerEmailEditor": {
+      "hint": "Sender, subject and body of this email.",
+      "short": "Buyer email",
+      "title": "Email wording"
+    },
+    "buyerEmails": {
+      "hint": "Choose a connection and set which emails buyers receive.",
+      "short": "Buyer emails",
+      "title": "Buyer emails by connection"
+    },
+    "inventoryLocations": {
+      "hint": "Warehouses and other places your stock sits in.",
+      "short": "Locations",
+      "title": "Stock locations"
+    },
+    "loginPage": {
+      "hint": "What visitors read on the sign-in screen of this installation.",
+      "short": "Login page",
+      "title": "Login page copy"
+    },
+    "mcpTokens": {
+      "hint": "Credentials an MCP client uses to reach this installation.",
+      "short": "MCP tokens",
+      "title": "Access tokens"
+    },
+    "orderTags": {
+      "hint": "Labels your team puts on orders.",
+      "short": "Order tags",
+      "title": "Order tags"
+    },
+    "salesGifts": {
+      "hint": "How free gifts appear on issued documents.",
+      "short": "Gifts",
+      "title": "Gifts on documents"
+    },
+    "salesMarkets": {
+      "hint": "Which document each delivery country gets.",
+      "short": "Markets",
+      "title": "Markets"
+    },
+    "salesProviders": {
+      "hint": "Connections that issue documents and when they do it.",
+      "short": "Providers",
+      "title": "Document providers"
+    },
+    "settingsEnv": {
+      "hint": "The installation you are signed in to.",
+      "short": "Environment",
+      "title": "Environment and account"
+    },
+    "settingsGroups": {
+      "access": {
+        "hint": "Who can connect to this installation and what visitors see.",
+        "short": "Access",
+        "title": "Access and branding"
+      },
+      "data": {
+        "hint": "How often catalogue and stock are read, and in which currency.",
+        "short": "Data",
+        "title": "Data and sync"
+      },
+      "orders": {
+        "hint": "How orders are decided, documented and communicated.",
+        "short": "Orders",
+        "title": "Orders and documents"
+      }
+    },
+    "settingsHome": {
+      "hint": "Every area you can configure.",
+      "short": "Settings",
+      "title": "Settings areas"
+    },
+    "sourcingRules": {
+      "hint": "The ordered rules that pick where an order is fulfilled from.",
+      "short": "Sourcing rules",
+      "title": "Sourcing rules"
+    },
+    "syncPacing": {
+      "hint": "How hard OpenLinker works your shop catalogue.",
+      "short": "Sync pacing",
+      "title": "Sync pacing"
+    },
+    "whoDecides": {
+      "hint": "Which system is in charge of stock, orders, returns, refunds and documents.",
+      "short": "Who decides",
+      "title": "Who decides what"
+    }
   },
   "tickBudgetBar": {
     "ariaHostLimit": "Your host stops processes at {limit}.",

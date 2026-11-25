@@ -11,6 +11,7 @@ import { Link } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { ComposerSection } from '../../../shared/ui/composer-section';
+import { useGuide } from '../../../shared/ui/guide-drawer';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { bundlesQueryKeys } from '../api/bundles.query-keys';
 import type { BundleDetail } from '../api/bundles.types';
@@ -40,9 +41,9 @@ function readLimit(detail: BundleDetail | undefined): BundleLimit | null {
     }
   }
   if (best === null) return null;
-  return detail.componentAvailability.length > 1
-    ? { available: best.sets, limitingVariantId: best.variantId, limitingName: best.name }
-    : { available: best.sets, limitingVariantId: null, limitingName: null };
+  // A single-component pack (a multipack) is capped by that one component too,
+  // so it is named like any other bundle this product limits.
+  return { available: best.sets, limitingVariantId: best.variantId, limitingName: best.name };
 }
 
 export function ProductUsedInBundles({
@@ -64,6 +65,13 @@ export function ProductUsedInBundles({
   const apiClient = useApiClient();
   const result = useBundleUsedInManyQuery(variantIds);
   const entries = result.data ?? [];
+  const openGuide = useGuide();
+  const guideAction =
+    openGuide === null ? null : (
+      <button type="button" className="button button--ghost button--sm" onClick={() => { openGuide('g-what'); }}>
+        {copy.guide.trigger}
+      </button>
+    );
   // Card mode only: each bundle's own availability says whether THIS product is
   // what limits it, which is the question an operator opens the card to answer.
   const bundleIds = card ? [...new Set(entries.map((entry) => entry.bundleVariantId))] : [];
@@ -79,12 +87,24 @@ export function ProductUsedInBundles({
     bundleIds.map((id, index) => [id, readLimit(details[index]?.data)])
   );
   if (entries.length === 0) {
-    return null;
+    // A failed or still-loading read is indistinguishable from "in no bundle",
+    // so only a settled, successful empty answer renders the discovery card.
+    if (!card || !result.isSuccess) return null;
+    return (
+      <ComposerSection title={title ?? copy.list.usedInTitle} riseIndex={3}>
+        <p className="pm-help" data-testid="bundle-list-used-in-empty">
+          {copy.list.usedInEmpty}
+        </p>
+        {action ? <div className="cx-note__a">{action}</div> : null}
+        {guideAction}
+      </ComposerSection>
+    );
   }
   const list = (
     <ul className="cx-comp cx-comp--compact" data-testid="bundle-list-used-in">
       {entries.map((entry) => (
         <li
+          className="ux-row-hover"
           key={`${entry.bundleVariantId}:${entry.componentVariantId ?? ''}`}
           data-testid={`bundle-list-used-in-${entry.bundle.sku ?? entry.bundleVariantId}`}
         >
@@ -106,7 +126,9 @@ export function ProductUsedInBundles({
             </span>
           </span>
           <span className="cx-comp__q">
-            <span className="mono tabular">×{entry.quantity}</span>
+            <span className="mono tabular" title={copy.view.perBundleTitle}>
+              {interpolate(copy.view.perBundle, { n: entry.quantity })}
+            </span>
             {entry.giftSlot === true ? (
               <span className="cx-tag cx-tag--gift">{copy.view.gift}</span>
             ) : null}
@@ -166,7 +188,7 @@ export function ProductUsedInBundles({
     }
     return (
       <ComposerSection
-        title={title ?? copy.list.usedInTitle}
+        title={title ?? copy.view.usedInCardTitle}
         aside={String(entries.length)}
         riseIndex={3}
       >

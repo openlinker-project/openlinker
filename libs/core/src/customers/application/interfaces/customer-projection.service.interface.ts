@@ -33,6 +33,12 @@ export interface ICustomerProjectionService {
   ): Promise<ReadonlyMap<string, CustomerProjection>>;
 
   /**
+   * Null the personal fields of these customers' projections (#4289), keeping
+   * the email hash. Idempotent. Returns how many projections were cleared.
+   */
+  clearPersonalData(internalCustomerIds: readonly string[]): Promise<number>;
+
+  /**
    * Upsert customer projection
    * Updates lastSeenAt and other fields if projection exists
    */

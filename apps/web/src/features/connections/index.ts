@@ -71,7 +71,10 @@ export { useRateLimitStatusQuery } from './hooks/use-rate-limit-status-query';
 // #2118 - which connections the operator declared as packing and shipping by themselves.
 export { readFulfilmentOwnedByDestination } from './lib/fulfilment-ownership';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
-export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
+export {
+  useUpdateConnectionMutation,
+  UPDATE_CONNECTION_MUTATION_KEY,
+} from './hooks/use-update-connection-mutation';
 export { useTestConnectionMutation } from './hooks/use-test-connection-mutation';
 export { describeConnectionTestFailure } from './lib/describe-connection-test-failure';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
@@ -131,6 +134,10 @@ export type { ConnectionCellProps, ConnectionCellFacts } from './components/Conn
 export { PrestashopRateLimitReadout } from './components/prestashop-rate-limit-readout';
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
+// #4281 - the setup wizards of marketplace plugins ask the same catalogue question as the edit page.
+export { CatalogueModeFieldset } from './components/catalogue-mode-fieldset';
+export { CatalogueModeValues } from './lib/catalogue-mode';
+export type { CatalogueMode } from './lib/catalogue-mode';
 export type { CapabilityTogglesSectionProps } from './components/CapabilityTogglesSection';
 export {
   hasPricingSyncPage,

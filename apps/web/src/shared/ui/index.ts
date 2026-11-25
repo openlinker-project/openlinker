@@ -37,6 +37,8 @@ export type { BareIconButtonProps, BareIconButtonSize } from './bare-icon-button
 export { Input } from './input';
 export { Textarea } from './textarea';
 export { Select } from './select';
+export { Switch } from './switch';
+export type { SwitchProps } from './switch';
 export { Combobox } from './combobox';
 export type { ComboboxOption, ComboboxValue } from './combobox';
 export { SegmentedControl } from './segmented-control';
@@ -126,6 +128,8 @@ export { ProductThumbnail } from './product-thumbnail';
 export { CopyableId } from './copyable-id';
 export { DensityToggle, useDensity } from './density-toggle';
 export type { Density } from './density-toggle';
+export { FontSizeToggle, useFontSize } from './font-size-toggle';
+export type { FontSize } from './font-size-toggle';
 
 // ── Bulk-selection (#739, #1109) ────────────────────────────────────
 export { BulkActionBar } from './bulk-action-bar';
@@ -191,3 +195,14 @@ export type {
   SegmentedSwitchProps,
 } from './segmented-switch';
 export { SNAPPY_SPRING, THUMB_SPRING, ENTRANCE_GROUP, ENTRANCE_ITEM } from './motion-presets';
+
+export { SettingsPageTemplate } from './settings-page-template';
+export type { SettingsPageSection, SettingsPageTemplateProps } from './settings-page-template';
+export { SettingsIndexList, SettingsIndexRow } from './settings-index-row';
+export { SettingsFactsBar } from './settings-facts-bar';
+export type { SettingsFact } from './settings-facts-bar';
+export { SettingsGlyph } from './settings-glyph';
+export type { SettingsGlyphName } from './settings-glyph';
+export type { SettingsIndexRowProps, SettingsRowAction } from './settings-index-row';
+export { SettingsPageFrame } from './settings-page-frame';
+export type { SettingsPageFrameProps } from './settings-page-frame';

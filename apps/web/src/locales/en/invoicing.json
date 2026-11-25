@@ -256,6 +256,18 @@
       "rejected": "Rejected",
       "submitted": "Submitted"
     },
+    "savedViews": {
+      "connectionFields": "Name, id",
+      "documentFields": "Number, type",
+      "orderFields": "Order id, product",
+      "views": {
+        "all": "All invoices",
+        "awaiting": "Awaiting submission",
+        "failed": "Failed",
+        "noTaxId": "Without tax ID",
+        "rejected": "Rejected by regulator"
+      }
+    },
     "status": {
       "failed": "Failed",
       "in-doubt": "Needs review",

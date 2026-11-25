@@ -205,12 +205,43 @@ function applyCorrectionDeltas(
     if (!delta) {
       return line;
     }
+    const quantity = delta.newQuantity ?? line.quantity;
     return {
       ...line,
-      quantity: delta.newQuantity ?? line.quantity,
+      quantity,
       unitPriceGross: delta.newUnitPriceGross ?? line.unitPriceGross,
+      ...scaleStockComponents(line, quantity),
     };
   });
+}
+
+/**
+ * A set line that stays one line carries `stockComponents` for the WHOLE line, so
+ * a quantity change has to move them with it. Without this, the snapshot of a
+ * correction keeps the ORIGINAL component counts and correcting that correction
+ * scales from the wrong base (a set sold 3 times, corrected to 2, then to 1,
+ * would credit 2 per component instead of 1). Component quantity and value both
+ * scale by `newQuantity / oldQuantity`; a line with no components, an unchanged
+ * quantity or no positive old quantity to scale from is left as it was.
+ */
+function scaleStockComponents(
+  line: InvoiceLine,
+  newQuantity: number,
+): Pick<InvoiceLine, 'stockComponents'> | Record<string, never> {
+  const components = line.stockComponents;
+  if (!components?.length || newQuantity === line.quantity || !(line.quantity > 0)) {
+    return {};
+  }
+  const ratio = newQuantity / line.quantity;
+  return {
+    stockComponents: components.map((component) => ({
+      ...component,
+      quantity: Math.round(component.quantity * ratio),
+      ...(component.totalGross !== undefined
+        ? { totalGross: Math.round(component.totalGross * ratio * 100) / 100 }
+        : {}),
+    })),
+  };
 }
 
 @Injectable()

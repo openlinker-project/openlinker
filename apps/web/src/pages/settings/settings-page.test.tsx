@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createAuthenticatedSessionAdapter,
@@ -13,7 +13,7 @@ describe('SettingsPage', () => {
   it('shows environment info', () => {
     renderWithProviders(<SettingsPage />);
 
-    expect(screen.getByRole('heading', { name: 'Environment' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Environment and account' })).toBeInTheDocument();
     // env.ts defaults: 'development' and 'http://localhost:3000'
     expect(screen.getByText('development')).toBeInTheDocument();
     expect(screen.getByText('http://localhost:3000')).toBeInTheDocument();
@@ -51,14 +51,14 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Role')).toBeInTheDocument();
   });
 
-  it('shows placeholder sections for upcoming features', () => {
+  it('says what is planned in one line instead of placeholder sections', () => {
     renderWithProviders(<SettingsPage />);
 
-    // Placeholder panels are static — always rendered regardless of session state
+    expect(
+      screen.getByText('Also planned: notifications, organization, preferences.'),
+    ).toBeInTheDocument();
     const headingNames = screen.getAllByRole('heading').map((h) => h.textContent);
-    expect(headingNames).toContain('Notifications');
-    expect(headingNames).toContain('Organization');
-    expect(headingNames).toContain('Preferences');
+    expect(headingNames).not.toContain('Notifications');
   });
 
   it('shows the Mailer tile for an admin session', async () => {
@@ -66,11 +66,41 @@ describe('SettingsPage', () => {
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
-    expect(await screen.findByRole('heading', { name: 'Mailer' })).toBeInTheDocument();
-    expect(screen.getByText('Mailer', { selector: '.toolbar-chip' })).toBeInTheDocument();
+    // The row is locked until the session resolves, so wait for the admin.
+    expect(await screen.findByText('admin@example.com')).toBeInTheDocument();
+    const row = screen.getByRole('heading', { name: 'Mailer' }).closest('li');
+    expect(within(row as HTMLElement).queryByRole('img', { name: /Administrators only/ })).not.toBeInTheDocument();
   });
 
-  it('never renders the Mailer tile for a non-admin session', async () => {
+  it('shows the Buyer data row with a way in for an admin and locked for a viewer (#4289)', async () => {
+    const admin = renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    const adminRow = (await screen.findByRole('heading', { name: 'Buyer data' })).closest('li');
+    expect(adminRow).not.toBeNull();
+    expect(within(adminRow as HTMLElement).getByRole('link', { name: 'Manage' })).toBeInTheDocument();
+    admin.unmount();
+
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_2',
+        username: 'viewer',
+        email: 'viewer@example.com',
+        role: 'viewer',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+    expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
+    const viewerRow = screen.getByRole('heading', { name: 'Buyer data' }).closest('li');
+    expect(viewerRow).not.toBeNull();
+    expect(within(viewerRow as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
+    expect(
+      within(viewerRow as HTMLElement).getByRole('img', { name: /Administrators only/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('lists the Mailer row as locked, with no way in, for a non-admin session', async () => {
     renderWithProviders(<SettingsPage />, {
       sessionAdapter: createAuthenticatedSessionAdapter({
         id: 'user_2',
@@ -82,11 +112,13 @@ describe('SettingsPage', () => {
       }),
     });
 
-    // Wait for the authenticated Account tile to confirm session resolution,
-    // then assert the Mailer tile is fully absent — not disabled, not present.
+    // The row stays readable so nobody has to guess the area exists, but it
+    // carries no action and never mounts the admin-only data read.
     expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Mailer' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Mailer', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
+    const row = screen.getByRole('heading', { name: 'Mailer' }).closest('li');
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(row as HTMLElement).getByRole('img', { name: /Administrators only/ })).toBeInTheDocument();
   });
 
   /**
@@ -116,9 +148,6 @@ describe('SettingsPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Who decides what' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('Who decides what', { selector: '.toolbar-chip' }),
-    ).toBeInTheDocument();
   });
 
   describe('with the OMS routing UI flag on (#3634)', () => {
@@ -136,7 +165,6 @@ describe('SettingsPage', () => {
       });
 
       expect(await screen.findByRole('heading', { name: 'Sourcing rules' })).toBeInTheDocument();
-      expect(screen.getByText('Sourcing rules', { selector: '.toolbar-chip' })).toBeInTheDocument();
     });
 
     /**
@@ -149,7 +177,7 @@ describe('SettingsPage', () => {
      * reads too (#2953) — a non-admin reaching the page meets a 403, not a
      * read-only view.
      */
-    it('never renders the Sourcing rules tile for a non-admin session', async () => {
+    it('lists the Sourcing rules row as locked for a non-admin session', async () => {
       renderWithProviders(<SettingsPage />, {
         sessionAdapter: createAuthenticatedSessionAdapter({
           id: 'user_4',
@@ -162,10 +190,9 @@ describe('SettingsPage', () => {
       });
 
       expect(await screen.findByText('viewer3@example.com')).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: 'Sourcing rules' })).not.toBeInTheDocument();
-      expect(
-        screen.queryByText('Sourcing rules', { selector: '.toolbar-chip' }),
-      ).not.toBeInTheDocument();
+      const row = screen.getByRole('heading', { name: 'Sourcing rules' }).closest('li');
+      expect(within(row as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
+      expect(within(row as HTMLElement).getByRole('img', { name: /Administrators only/ })).toBeInTheDocument();
     });
 
     /**
@@ -191,9 +218,6 @@ describe('SettingsPage', () => {
       expect(
         await screen.findByRole('heading', { name: 'Inventory locations' }),
       ).toBeInTheDocument();
-      expect(
-        screen.getByText('Inventory locations', { selector: '.toolbar-chip' }),
-      ).toBeInTheDocument();
     });
   });
 
@@ -205,12 +229,6 @@ describe('SettingsPage', () => {
     expect(await screen.findByRole('heading', { name: 'Who decides what' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Sourcing rules' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Inventory locations' })).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('Sourcing rules', { selector: '.toolbar-chip' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('Inventory locations', { selector: '.toolbar-chip' }),
-    ).not.toBeInTheDocument();
   });
 
   it('shows the PostHog tile for an admin session', async () => {
@@ -218,11 +236,12 @@ describe('SettingsPage', () => {
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
-    expect(await screen.findByRole('heading', { name: 'PostHog' })).toBeInTheDocument();
-    expect(screen.getByText('PostHog', { selector: '.toolbar-chip' })).toBeInTheDocument();
+    expect(await screen.findByText('admin@example.com')).toBeInTheDocument();
+    const row = screen.getByRole('heading', { name: 'PostHog' }).closest('li');
+    expect(within(row as HTMLElement).queryByRole('img', { name: /Administrators only/ })).not.toBeInTheDocument();
   });
 
-  it('never renders the PostHog tile for a non-admin session', async () => {
+  it('lists the PostHog row as locked for a non-admin session', async () => {
     renderWithProviders(<SettingsPage />, {
       sessionAdapter: createAuthenticatedSessionAdapter({
         id: 'user_2',
@@ -235,8 +254,8 @@ describe('SettingsPage', () => {
     });
 
     expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'PostHog' })).not.toBeInTheDocument();
-    expect(screen.queryByText('PostHog', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
+    const row = screen.getByRole('heading', { name: 'PostHog' }).closest('li');
+    expect(within(row as HTMLElement).getByRole('img', { name: /Administrators only/ })).toBeInTheDocument();
   });
 
   it('never renders an analytics consent control, in demo mode or out of it (#1938)', async () => {
@@ -256,7 +275,6 @@ describe('SettingsPage', () => {
       // query left to await.
       await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument());
       expect(screen.queryByRole('heading', { name: 'Analytics' })).not.toBeInTheDocument();
-      expect(screen.queryByText('Privacy', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
       cleanup();
     }

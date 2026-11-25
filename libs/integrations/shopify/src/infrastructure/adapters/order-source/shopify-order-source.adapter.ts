@@ -174,6 +174,7 @@ export class ShopifyOrderSourceAdapter
   private readonly logger = new Logger(ShopifyOrderSourceAdapter.name);
   private readonly options: ShopifyMappingOptionsReader;
   private canReadAllOrders: Promise<boolean | null> | null = null;
+  private warnedOldOrdersHidden = false;
   private shopTimeZone: Promise<string> | null = null;
 
   constructor(
@@ -261,9 +262,11 @@ export class ShopifyOrderSourceAdapter
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     const cursor = parseShopifyFeedCursor(input.fromCursor, this.connection.id);
     if (cursor.updatedAt === null) {
-      // An empty cursor (null, empty or blank) is the whole history. Without the
-      // scope Shopify shows only the last 60 days, so it would truncate without a word.
-      await this.assertOldOrdersReadable(null);
+      // An empty cursor (null, empty or blank) is the whole history, which includes a
+      // connection that predates the start choice. Refusing here would fail every poll
+      // for such a connection, so the missing scope is reported, not thrown; the
+      // explicit import (listOrdersInWindow) still refuses.
+      await this.warnIfOldOrdersHidden();
     }
     const settledBefore = Date.now() - SETTLE_WINDOW_MS;
     const limit = Math.max(1, input.limit);
@@ -476,11 +479,39 @@ export class ShopifyOrderSourceAdapter
   }
 
   /**
-   * Shopify shows only the last 60 days to an app without `read_all_orders`, so
-   * an older start would silently import less than asked. Refused when the
-   * scope is missing, and also when it cannot be read: an import that may be
-   * silently cut to 60 days is worse than one that stops and says why. The
-   * answer is kept per adapter, so a job asks once, not once per page.
+   * Polling path. An app without `read_all_orders` sees only the last 60 days,
+   * which a cursor-less poll cannot avoid, so this warns once per adapter and
+   * keeps polling rather than refusing (a legacy connection may still hold a
+   * null cursor). A scope check that cannot be read throws a plain retryable
+   * error and clears the cached answer, so the next poll asks again.
+   */
+  private async warnIfOldOrdersHidden(): Promise<void> {
+    this.canReadAllOrders ??= this.readsAllOrders();
+    const allowed = await this.canReadAllOrders;
+    if (allowed === null) {
+      // A plain Error, not the typed refusal: nothing here is the operator's to fix, so the
+      // poll is retried instead of ending as a business failure.
+      this.canReadAllOrders = null;
+      throw new Error(
+        `Could not check the ${READ_ALL_ORDERS_SCOPE} scope for the order feed (connection: ${this.connection.id})`,
+      );
+    }
+    if (allowed === false && !this.warnedOldOrdersHidden) {
+      this.warnedOldOrdersHidden = true;
+      this.logger.warn(
+        `shopify_feed_history_truncated: the app lacks ${READ_ALL_ORDERS_SCOPE}, so this feed ` +
+          `shows only the last 60 days (connection: ${this.connection.id})`,
+      );
+    }
+  }
+
+  /**
+   * Explicit-import path (`listOrdersInWindow`, `startCursorAt`). Shopify shows
+   * only the last 60 days to an app without `read_all_orders`, so an older start
+   * would silently import less than asked. Refused when the scope is missing,
+   * and also when it cannot be read: an import that may be silently cut to 60
+   * days is worse than one that stops and says why. The answer is kept per
+   * adapter, so a job asks once, not once per page.
    */
   private async assertOldOrdersReadable(from: string | null): Promise<void> {
     if (from !== null && Date.parse(from) >= Date.now() - RECENT_ORDERS_HORIZON_MS) {

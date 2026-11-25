@@ -22,6 +22,7 @@
     "bulkListing": "Publikacja zbiorcza",
     "bundleEdit": "Zestaw",
     "bundleNew": "Nowy zestaw",
+    "buyerData": "Dane kupujących",
     "buyerEmail": "E-mail do kupującego",
     "buyerEmails": "E-maile do kupujących",
     "connection": "Połączenie",
@@ -61,7 +62,8 @@
     "promotions": "Promocje",
     "promptTemplate": "Szablon promptu",
     "promptTemplates": "Szablony promptów",
-    "providerSettings": "Ustawienia dostawcy",
+    "providerSettings": "Ustawienia dostawców",
+    "releaseCenter": "Nowości po aktualizacji",
     "return": "Zwrot",
     "returns": "Zwroty",
     "runLog": "Log uruchomień",
@@ -76,6 +78,7 @@
     "users": "Użytkownicy",
     "webhook": "Webhook",
     "webhooks": "Webhooki",
+    "whatsNew": "Nowości i powiadomienia",
     "whoDecides": "Kto o czym decyduje"
   },
   "palette": {
@@ -97,13 +100,6 @@
     "settings": "Ustawienia"
   },
   "shell": {
-    "alerts": "Alerty",
-    "alertsNew": {
-      "few": "({n} nowe)",
-      "many": "({n} nowych)",
-      "one": "({n} nowy)",
-      "other": "({n} nowego)"
-    },
     "breadcrumb": "Ścieżka nawigacji",
     "closeMenu": "Zamknij menu",
     "loggedOut": "Wylogowano.",
@@ -117,6 +113,7 @@
   "userMenu": {
     "accountMenu": "Menu konta {username}",
     "density": "Gęstość",
+    "fontSize": "Rozmiar tekstu",
     "language": "Język",
     "signOut": "Wyloguj się",
     "theme": "Motyw"

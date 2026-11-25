@@ -36,8 +36,13 @@ export interface ConnectionShippingCopy {
   /** Method names that could not be read are counted, never shown as raw ids. */
   readonly shipsForUnnamed: (count: number) => string;
   readonly shipsForNoSources: string;
-  readonly rowChange: string;
-  readonly rowChoose: string;
+  readonly rowOpenChannel: string;
+  readonly shipsForUnusedTitle: (carrier: string) => string;
+  readonly shipsForUnusedBody: string;
+  readonly carrierMappingsTitle: (carrier: string) => string;
+  readonly carrierMappingsMessage: string;
+  readonly carrierMappingsNoChannels: string;
+  readonly carrierMappingsOpenChannel: (channel: string) => string;
   readonly rowLoading: string;
   readonly rowUnavailable: string;
   readonly createdTitle: (carrier: string) => string;
@@ -75,8 +80,13 @@ export function buildConnectionShippingCopy(
     shipsForEmpty: (carrier) => interpolate(m.shipsForEmpty, { carrier }),
     shipsForUnnamed: (count) => formatPlural(count, m.shipsForUnnamed, locale),
     shipsForNoSources: m.shipsForNoSources,
-    rowChange: m.rowChange,
-    rowChoose: m.rowChoose,
+    rowOpenChannel: m.rowOpenChannel,
+    shipsForUnusedTitle: (carrier) => interpolate(m.shipsForUnusedTitle, { carrier }),
+    shipsForUnusedBody: m.shipsForUnusedBody,
+    carrierMappingsTitle: (carrier) => interpolate(m.carrierMappingsTitle, { carrier }),
+    carrierMappingsMessage: m.carrierMappingsMessage,
+    carrierMappingsNoChannels: m.carrierMappingsNoChannels,
+    carrierMappingsOpenChannel: (channel) => interpolate(m.carrierMappingsOpenChannel, { channel }),
     rowLoading: m.rowLoading,
     rowUnavailable: m.rowUnavailable,
     createdTitle: (carrier) => interpolate(m.createdTitle, { carrier }),

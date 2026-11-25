@@ -315,7 +315,9 @@ export function ConnectionCapabilitiesPanel({
             onChange={setStartValue}
             supportedModes={supportedStartModes}
             windowImport={adapter?.orderWindowImport ?? false}
-            error={startValue.mode === 'from' && (startValue.from ?? '') !== '' ? startError : undefined}
+            error={
+              startValue.mode === 'from' && (startValue.from ?? '') !== '' ? startError : undefined
+            }
           />
           <div className="capability-list__order-start-actions">
             <Button
@@ -331,7 +333,11 @@ export function ConnectionCapabilitiesPanel({
             <Button
               tone="primary"
               onClick={() =>
-                void handleToggle('OrderSource', true, toOrderSyncStart(startValue) ?? { mode: 'now' })
+                void handleToggle(
+                  'OrderSource',
+                  true,
+                  toOrderSyncStart(startValue) ?? { mode: 'now' }
+                )
               }
               disabled={!startParsed.success || updateMutation.isPending}
             >

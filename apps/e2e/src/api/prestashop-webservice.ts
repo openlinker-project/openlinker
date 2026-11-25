@@ -1310,6 +1310,20 @@ export class PrestashopWebserviceClient {
     await this.send('PUT', `/api/stock_availables/${stockId}`, xml);
   }
 
+  /**
+   * How many orders the shop reports as updated on or after `since` (a `YYYY-MM-DD`
+   * date). Goes through the client's own transport, so a stand reached through a
+   * mapped port keeps its Host override instead of being redirected to a port
+   * nothing listens on.
+   */
+  async countOrdersUpdatedSince(since: string): Promise<number> {
+    const filter = encodeURI(`>[${since} 00:00:00]`);
+    const body = (await this.get(
+      `/api/orders?date=1&display=[id]&filter[date_upd]=${filter}`
+    )) as { orders?: Array<{ id: number }> } | null;
+    return body?.orders?.length ?? 0;
+  }
+
   private async get(path: string): Promise<unknown> {
     const separator = path.includes('?') ? '&' : '?';
     const url = `${this.baseUrl}${path}${separator}output_format=JSON`;

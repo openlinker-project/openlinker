@@ -48,6 +48,15 @@ function renderModal(props: Partial<Parameters<typeof BulkConfirmModal>[0]> = {}
 describe('BulkConfirmModal', () => {
   afterEach(cleanup);
 
+  it('should state the stock rule and consequence of sets right under the summary', () => {
+    renderModal({ bundleSummary: { sets: 2, packs: 1 }, alreadyListedCount: 1, alreadyListedBundleCount: 1 });
+    const alert = screen.getByTestId('bundle-confirm-summary');
+    expect(alert).toHaveTextContent('2 sets');
+    expect(alert).toHaveTextContent('whole sets can be assembled');
+    expect(alert).toHaveTextContent('reduces the stock of its components');
+    expect(screen.getByText(/including 1 set/)).toBeInTheDocument();
+  });
+
   it('disables the Create offers submit for a demo read-only viewer', () => {
     const { onConfirm } = renderModal({ demoReadOnly: true });
 

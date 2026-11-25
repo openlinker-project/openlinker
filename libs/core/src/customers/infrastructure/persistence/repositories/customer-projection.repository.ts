@@ -204,6 +204,24 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
     return this.toDomainAddress(saved);
   }
 
+  async clearPersonalData(internalCustomerIds: readonly string[]): Promise<number> {
+    if (internalCustomerIds.length === 0) {
+      return 0;
+    }
+    const ids = [...internalCustomerIds];
+    // `.update()` with an `@UpdateDateColumn` would stamp updatedAt; that is
+    // the truthful answer here - the row did change.
+    await this.addressRepository.update(
+      { internalCustomerId: In(ids) },
+      { address1: null, address2: null, city: null, postcode: null }
+    );
+    const result = await this.customerRepository.update(
+      { internalCustomerId: In(ids) },
+      { normalizedEmail: null, firstName: null, lastName: null }
+    );
+    return result.affected ?? 0;
+  }
+
   async findDestinationAddressMapping(
     internalCustomerId: string,
     destinationConnectionId: string,

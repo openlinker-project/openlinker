@@ -325,6 +325,11 @@ module.exports = {
                   '**/bench/components/**',
                   '**/bench/lib/**',
                   '**/bench/types/**',
+                  '**/buyer-data/api/**',
+                  '**/buyer-data/hooks/**',
+                  '**/buyer-data/components/**',
+                  '**/buyer-data/lib/**',
+                  '**/buyer-data/types/**',
                   '**/login-page-settings/api/**',
                   '**/login-page-settings/hooks/**',
                   '**/login-page-settings/components/**',
@@ -628,6 +633,11 @@ module.exports = {
                   '**/bench/components/**',
                   '**/bench/lib/**',
                   '**/bench/types/**',
+                  '**/buyer-data/api/**',
+                  '**/buyer-data/hooks/**',
+                  '**/buyer-data/components/**',
+                  '**/buyer-data/lib/**',
+                  '**/buyer-data/types/**',
                   '**/login-page-settings/api/**',
                   '**/login-page-settings/hooks/**',
                   '**/login-page-settings/components/**',
@@ -928,6 +938,42 @@ module.exports = {
       excludedFiles: ['**/*.test.{ts,tsx}', '**/test/**'],
       rules: {
         'no-restricted-syntax': ['error', ...WEB_RESTRICTED_SYNTAX, ...API_ERROR_MESSAGE_SYNTAX],
+      },
+    },
+
+    {
+      // #4146 / ADR-086: the release center keeps no state in browser storage.
+      // The server owns it (GET /release-state); a rejected cursor write is
+      // remembered in module memory only.
+      files: ['apps/web/src/features/release-center/**/*.{ts,tsx}'],
+      excludedFiles: ['**/*.test.{ts,tsx}'],
+      rules: {
+        'no-restricted-properties': [
+          'error',
+          ...['window', 'globalThis'].flatMap((object) =>
+            ['localStorage', 'sessionStorage'].map((property) => ({
+              object,
+              property,
+              message: 'The release center must not use browser storage (ADR-086); state comes from GET /release-state.',
+            }))
+          ),
+        ],
+        'no-restricted-globals': [
+          'error',
+          { name: 'localStorage', message: 'The release center must not use browser storage (ADR-086).' },
+          { name: 'sessionStorage', message: 'The release center must not use browser storage (ADR-086).' },
+        ],
+      },
+    },
+
+    {
+      // #4244 / ADR-086 amendment: message notifications have no server-side source yet, so their content is
+      // kept per signed-in user in this browser. Exactly this one file may touch localStorage; every other
+      // file of the release center still may not.
+      files: ['apps/web/src/features/release-center/lib/notification-store.ts'],
+      rules: {
+        'no-restricted-properties': 'off',
+        'no-restricted-globals': 'off',
       },
     },
 

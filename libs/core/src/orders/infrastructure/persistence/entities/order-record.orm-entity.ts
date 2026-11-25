@@ -97,7 +97,7 @@ export interface SyncAttemptJson {
 @Index(
   'IDX_order_records_sales_document_batch_queue',
   ['salesDocumentBlockConnectionId', 'internalOrderId'],
-  { where: `"salesDocumentBlockReason" = 'trigger-model-batched'` },
+  { where: `"salesDocumentBlockReason" = 'trigger-model-batched'` }
 )
 export class OrderRecordOrmEntity {
   @PrimaryColumn({ type: 'text' })
@@ -466,6 +466,23 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'timestamptz', nullable: true })
   buyerNoteChangedAt!: Date | null;
+
+  /**
+   * When the buyer data retention rule hid this order from the default lists
+   * (#4289). Sole writer `hideForBuyerDataRetention`; excluded from `toOrm` and
+   * from the ingestion upsert, so a re-poll can never un-hide an order.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  hiddenAt!: Date | null;
+
+  /**
+   * When the buyer's personal data was erased from this order (#4289). Sole
+   * writer `erasePersonalDataForRetention`. Excluded from `toOrm`, and the
+   * ingestion upsert reads it to keep the erased state rather than restore the
+   * source's copy.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  personalDataErasedAt!: Date | null;
 
   /**
    * Shipping / billing address country (#3538, D7), ISO-3166 alpha-2, `NULL`

@@ -57,6 +57,7 @@ const INTEGRATIONS = join('libs', 'integrations');
  * `{ none: reason }` when the plugin offers no choice (modes `[]`).
  */
 export const WIZARDS = {
+  amazon: { none: 'the first poll reads a fixed recent window; Amazon has no head or date bootstrap' },
   allegro: ['apps/web/src/features/allegro/components/AllegroSetupForm.tsx'],
   erli: ['apps/web/src/features/connections/components/erli-setup-form.tsx'],
   prestashop: ['apps/web/src/features/connections/components/prestashop-setup-form.tsx'],

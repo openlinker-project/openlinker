@@ -443,6 +443,47 @@ describe('OrderSyncService', () => {
       });
     });
 
+    it('should forward the physical components of a bundle through the same item allowlist, keeping the share core assigned', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+      const order = createOrder();
+      const component = {
+        ...order.items[0],
+        id: 'item-1~c:v-mug',
+        parentLineId: 'item-1',
+        giftSlot: true,
+        shareGross: 12.5,
+        imageUrl: 'https://example.test/not-for-destinations.png',
+      };
+
+      await service.syncOrder({
+        order,
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+        physicalItems: [component],
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect(command.physicalItems).toHaveLength(1);
+      expect(command.physicalItems?.[0]).toEqual(
+        expect.objectContaining({ parentLineId: 'item-1', giftSlot: true, shareGross: 12.5 })
+      );
+      expect(command.physicalItems?.[0]).not.toHaveProperty('imageUrl');
+    });
+
+    it('should send no physical items when nothing expanded', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      expect(adapter.createOrder.mock.calls[0][0]).not.toHaveProperty('physicalItems');
+    });
+
     it('should sync to a single destination and return a success result', async () => {
       const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
       registerDestinations([{ connectionId: 'dest-a', adapter }]);
@@ -1811,6 +1852,21 @@ describe('OrderSyncService', () => {
         // key.
         keyScope: 'order:ol_order_123',
       });
+    });
+
+    it('should leave an unmatched catalogue-less line out of the refresh (#4283)', async () => {
+      registerDestination('dest-a');
+      const order = createOrder();
+      order.items = [
+        ...order.items,
+        { id: 'item-2', productId: 'unmatched:source-1:offer-b', quantity: 1, price: 10 },
+      ];
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ productIds: ['ol_product_789'] })
+      );
     });
 
     it('should not fail order sync when the refresh itself throws', async () => {

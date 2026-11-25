@@ -37,6 +37,8 @@ export interface BundleOfferPreviewComponent {
   externalOfferId?: string;
   /** Category of the component's product card, when the destination knows it. */
   cardCategoryId?: string;
+  /** Units of this component the channel may promise now; `null` when unknown. */
+  availableUnits: number | null;
   problems: ProductSetComponentProblem[];
 }
 

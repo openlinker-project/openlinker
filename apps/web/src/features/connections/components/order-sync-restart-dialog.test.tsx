@@ -72,9 +72,7 @@ describe('OrderSyncRestartDialog', () => {
     await user.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
     await user.click(screen.getByRole('button', { name: 'Apply change' }));
 
-    await waitFor(() =>
-      expect(restartOrderSync).toHaveBeenCalledWith('conn_1', { mode: 'all' })
-    );
+    await waitFor(() => expect(restartOrderSync).toHaveBeenCalledWith('conn_1', { mode: 'all' }));
     expect(await screen.findByText('Start changed')).toBeInTheDocument();
   });
 

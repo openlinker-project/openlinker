@@ -33,7 +33,7 @@ import {
   useCreateUserMutation,
   type PackerSummary,
 } from '../../users';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { WIZARD_STEPS } from '../lib/onboarding-state';
 import {
   ADD_PACKER_DEFAULTS,
@@ -71,6 +71,7 @@ export interface PackerCreatorProps {
  * it (leaving the step, closing the dialog) also discards the password.
  */
 export function PackerCreator({ packers, canWrite, demoReadOnly }: PackerCreatorProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const createUser = useCreateUserMutation();
   const [created, setCreated] = useState<CreatedPacker | null>(null);
   const [copied, setCopied] = useState(false);
@@ -234,6 +235,7 @@ export function PackerCreator({ packers, canWrite, demoReadOnly }: PackerCreator
 }
 
 export function StepPackers({ packers, canWrite, demoReadOnly, onBack, onContinue }: StepPackersProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   return (
     <StepPanel
       step={WIZARD_STEPS.packers}

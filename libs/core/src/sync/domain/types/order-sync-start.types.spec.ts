@@ -22,7 +22,11 @@ describe('order sync start intent', () => {
 
     it('should store an instant as its UTC calendar day when serializing a from start', () => {
       expect(
-        serializeOrderSyncStart({ mode: 'from', from: '2026-10-01T23:30:00.000Z', order: 'oldest-first' })
+        serializeOrderSyncStart({
+          mode: 'from',
+          from: '2026-10-01T23:30:00.000Z',
+          order: 'oldest-first',
+        })
       ).toBe('{"mode":"from","from":"2026-10-01"}');
       expect(serializeOrderSyncStart({ mode: 'from', from: '2026-10-01' })).toBe(
         '{"mode":"from","from":"2026-10-01"}'
@@ -72,11 +76,15 @@ describe('order sync start intent', () => {
   describe('import order (#4228)', () => {
     it('should keep oldest-first out of the stored value so old and new intents match', () => {
       expect(serializeOrderSyncStart({ mode: 'all' })).toBe('{"mode":"all"}');
-      expect(serializeOrderSyncStart({ mode: 'all', order: 'oldest-first' })).toBe('{"mode":"all"}');
+      expect(serializeOrderSyncStart({ mode: 'all', order: 'oldest-first' })).toBe(
+        '{"mode":"all"}'
+      );
     });
 
     it('should round-trip newest-first for all and from, and never for now', () => {
-      expect(parseOrderSyncStart(serializeOrderSyncStart({ mode: 'all', order: 'newest-first' }))).toEqual({
+      expect(
+        parseOrderSyncStart(serializeOrderSyncStart({ mode: 'all', order: 'newest-first' }))
+      ).toEqual({
         mode: 'all',
         order: 'newest-first',
       });

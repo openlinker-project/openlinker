@@ -135,7 +135,10 @@ export function listingRowBadges(
     return badges;
   }
 
-  if (status.lifecycle === activeLifecycle) return badges;
+  // Ended is the exception to "the tab already says it": an ended offer is the
+  // one state a row must keep stating, because its other cells (price, quantity)
+  // still carry the last reading and would otherwise look like a live offer.
+  if (status.lifecycle === activeLifecycle && status.lifecycle !== 'Ended') return badges;
 
   switch (status.lifecycle) {
     case 'Invalid':
@@ -165,7 +168,12 @@ export function listingRowBadges(
       });
       break;
     case 'Ended':
-      badges.push({ id: 'lifecycle', label: copy.badges.ended, tone: 'neutral' });
+      badges.push({
+        id: 'lifecycle',
+        label: copy.badges.ended,
+        tone: 'neutral',
+        title: copy.badgeTitles.ended,
+      });
       break;
     case 'Unsynced':
       badges.push({

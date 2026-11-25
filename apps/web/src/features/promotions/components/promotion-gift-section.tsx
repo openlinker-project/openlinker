@@ -116,6 +116,9 @@ export function PromotionGiftSection({
             </>
           ) : null}
         </div>
+        <p className="pm-help" data-testid="promotion-gift-effect">
+          {copy.effectNote}
+        </p>
       </fieldset>
     </ComposerSection>
   );

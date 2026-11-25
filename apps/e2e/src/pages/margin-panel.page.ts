@@ -22,7 +22,7 @@ export class MarginPanelPage {
     }
     const query = search.toString();
     await this.page.goto(`/${query ? `?${query}` : ''}`);
-    await expect(this.page.getByRole('heading', { name: 'Analytics', exact: true })).toBeVisible();
+    await expect(this.page.getByRole('heading', { name: /^Analytics\b/ })).toBeVisible();
   }
 
   get panel(): Locator {

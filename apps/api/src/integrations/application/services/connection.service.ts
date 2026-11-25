@@ -14,12 +14,7 @@ import {
   validateDeliveryOnDocumentsShape,
   validateGiftOnDocumentsShape,
 } from '@openlinker/core/sales-documents';
-import {
-  BadRequestException,
-  HttpStatus,
-  Injectable,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
 import type { ApiErrorParams, KnownApiErrorCode } from '@openlinker/shared/errors';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
@@ -58,6 +53,9 @@ import {
   ConnectionNotFoundException,
   FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
   isPresentButInvalidFulfilmentOwnedByDestination,
+  CATALOGUE_MODE_CONFIG_KEY,
+  CatalogueModeValues,
+  isPresentButInvalidCatalogueMode,
   describeInvalidPaymentWritebackConfig,
   PaymentWritebackModeValues,
   ConnectionInUseException,
@@ -67,6 +65,7 @@ import {
   isBuyerEmailTemplate,
   isSingleEmailAddress,
   readBuyerEmailsConfig,
+  findBuyerDataRetentionConfigIssue,
 } from '@openlinker/core/identifier-mapping';
 import type {
   AdapterMetadata,
@@ -653,6 +652,26 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
+   * Refuse an unrecognised `config.catalogueMode` (#4280).
+   *
+   * Neutral like `validateRateLimitConfig`: the key is read by core's order
+   * ingestion for every marketplace, so no per-plugin shape validator needs to
+   * know it. A mistyped value (`"None"`, `true`) reads back as the default
+   * `'linked'`, i.e. it would silently fail to turn the mode on, so it is refused
+   * rather than coerced. Absent and `null` (what the form writes for a cleared
+   * value, #2016) are accepted.
+   */
+  private validateCatalogueModeConfig(config: Record<string, unknown>): void {
+    if (!isPresentButInvalidCatalogueMode(config)) return;
+    throw connectionConfigInvalid(
+      `config.${CATALOGUE_MODE_CONFIG_KEY}`,
+      'one-of',
+      `config.${CATALOGUE_MODE_CONFIG_KEY} must be one of: ${CatalogueModeValues.join(', ')}`,
+      { allowed: allowedValues(CatalogueModeValues) }
+    );
+  }
+
+  /**
    * Core-owned bounds check for the four platform-neutral stock, pricing and
    * price-sync keys (#2610, widened by #3142/ADR-072): `config.stockSafetyBuffer`,
    * `config.stockZeroThreshold`, `config.pricingRule` and `config.priceSyncMode`.
@@ -705,6 +724,19 @@ export class ConnectionService implements IConnectionService {
 
     this.validatePricingRuleConfig(config.pricingRule);
     this.validatePriceSyncModeConfig(config.priceSyncMode);
+  }
+
+  /**
+   * Core-owned shape check for `config.buyerDataRetention` (#4289): the
+   * per-connection override of the global buyer data retention defaults. The
+   * rules live in `findBuyerDataRetentionConfigIssue` beside the reader, so the
+   * write path and the sweep agree on what a usable value is. Absent or `null`
+   * stays absent - it means "inherit the global defaults".
+   */
+  private validateBuyerDataRetentionConfig(config: Record<string, unknown>): void {
+    const issue = findBuyerDataRetentionConfigIssue(config);
+    if (issue === null) return;
+    throw connectionConfigInvalid(issue.field, issue.rule, issue.message, issue.bounds);
   }
 
   /**
@@ -1402,7 +1434,12 @@ export class ConnectionService implements IConnectionService {
       idempotencyKey: first.options.dedupeKey,
     });
     if (isExisting) {
-      throw new InternalServerErrorException('The order import was not queued, retry');
+      throw codedHttpError(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'ORDER_IMPORT_NOT_QUEUED',
+        'The order import was not queued; retry',
+        { connectionId }
+      );
     }
     this.logger.log(
       `Started order import ${runId} for connection ${connectionId} (direction: ${request.direction}, from: ${from ?? '-'}, to: ${to ?? '-'})`
@@ -1443,10 +1480,7 @@ export class ConnectionService implements IConnectionService {
    * connection exists and would start "from now", which is not what was asked, so
    * the operator is told instead of being left to find out from the order list.
    */
-  private async storeOrderSyncStart(
-    connection: Connection,
-    start: OrderSyncStart
-  ): Promise<void> {
+  private async storeOrderSyncStart(connection: Connection, start: OrderSyncStart): Promise<void> {
     try {
       await this.syncCursors.advanceCursor(
         connection.id,
@@ -1457,8 +1491,11 @@ export class ConnectionService implements IConnectionService {
       this.logger.error(
         `Could not store the order sync start for connection ${connection.id}: ${(error as Error).message}`
       );
-      throw new InternalServerErrorException(
-        `The connection ${connection.id} was created, but its order sync start could not be saved, so it will start from now. Check the connection and recreate it if that is not what you want.`
+      throw codedHttpError(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'ORDER_SYNC_START_NOT_SAVED',
+        `The order sync start of connection ${connection.id} could not be saved, so its order sync start was not changed`,
+        { connectionId: connection.id }
       );
     }
   }
@@ -1467,7 +1504,8 @@ export class ConnectionService implements IConnectionService {
     connection: Connection,
     start: OrderSyncStart | undefined
   ): Promise<void> {
-    const hasIntent = (await this.syncCursors.getCursor(connection.id, ORDER_SYNC_START_CURSOR_KEY)) !== null;
+    const hasIntent =
+      (await this.syncCursors.getCursor(connection.id, ORDER_SYNC_START_CURSOR_KEY)) !== null;
     if (hasIntent || (await this.syncCursors.hasOrderFeedCursor(connection.id))) {
       return;
     }
@@ -1583,8 +1621,10 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        this.validateBuyerDataRetentionConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validatePaymentWritebackConfig(rest.config);
+        this.validateCatalogueModeConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
         await this.validateDeliveryOnDocumentsConfig(rest.config);
         this.validateGiftOnDocumentsConfig(rest.config);
@@ -1915,8 +1955,10 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        this.validateBuyerDataRetentionConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validatePaymentWritebackConfig(patch.config);
+        this.validateCatalogueModeConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
         await this.validateDeliveryOnDocumentsConfig(patch.config);
         this.validateGiftOnDocumentsConfig(patch.config);

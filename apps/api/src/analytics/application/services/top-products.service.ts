@@ -31,6 +31,7 @@ import {
   type VariantSalesView,
 } from '@openlinker/core/orders';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
+import { isUnmatchedProductId, readUnmatchedOfferId } from '@openlinker/core/identifier-mapping';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
   type IIntegrationsService,
@@ -76,7 +77,15 @@ export class TopProductsService implements ITopProductsService {
       filters,
       includeBackfilledTaxRatesInNetSales
     );
-    const productIds = core.items.map((item) => item.productId);
+    // #4280: a line accepted without a catalogue match carries a synthetic
+    // `unmatched:` id. It is not a catalogue product, so it must NOT be asked of
+    // the catalogue (it would only inflate `unresolvedProductCount`, which means
+    // "a real product id we could not find") and has no variant to list. It is
+    // reported as its own thing, identified by the marketplace's offer id, which
+    // is also what a marketplace reports as the line's SKU.
+    const productIds = core.items
+      .map((item) => item.productId)
+      .filter((productId) => !isUnmatchedProductId(productId));
 
     const [catalogByProductId, coverageGaps] = await Promise.all([
       this.resolveCatalog(productIds),
@@ -87,12 +96,15 @@ export class TopProductsService implements ITopProductsService {
     dto.items = core.items.map((item) =>
       TopProductRowDto.fromDomain(
         item,
-        catalogByProductId.entries.get(item.productId) ?? { name: null, sku: null },
+        isUnmatchedProductId(item.productId)
+          ? { name: null, sku: readUnmatchedOfferId(item.productId) }
+          : (catalogByProductId.entries.get(item.productId) ?? { name: null, sku: null }),
         coverageGaps.byProductId.get(item.productId) ?? []
       )
     );
     dto.total = core.total;
     dto.unresolvedProductCount = catalogByProductId.unresolvedCount;
+    dto.unmatchedOfferCount = dto.items.filter((row) => row.unmatchedOfferId !== null).length;
     dto.coverageGapAvailable = coverageGaps.available;
     return dto;
   }

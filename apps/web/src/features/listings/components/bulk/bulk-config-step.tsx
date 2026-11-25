@@ -176,6 +176,18 @@ export function BulkConfigStep({
   const canProceed =
     connectionId !== '' && sharedSliceValid && sectionComplete && masterCatalogConfigured;
 
+  // A disabled primary button with no words is a dead end; name the first thing
+  // that is missing, in the order the page asks for it.
+  const blockedReason: string | null = canProceed
+    ? null
+    : connectionId === ''
+      ? copy.blocked.destination
+      : !masterCatalogConfigured
+        ? copy.blocked.catalogue
+        : !sectionComplete
+          ? copy.blocked.section
+          : copy.blocked.sharedSlice;
+
   function buildPricingPolicy(): PricingPolicy {
     if (values.pricingMode === 'markup') {
       return { mode: 'markup', percent: Number(values.markupPercent) };
@@ -465,10 +477,25 @@ export function BulkConfigStep({
         <Button tone="ghost" onClick={onCancel}>
           {copy.cancel}
         </Button>
-        <Button tone="primary" disabled={!canProceed} onClick={handleProceed}>
+        <Button
+          tone="primary"
+          disabled={!canProceed}
+          onClick={handleProceed}
+          aria-describedby={blockedReason !== null ? 'bulk-config-blocked-reason' : undefined}
+        >
           {copy.proceed}
         </Button>
       </footer>
+      {blockedReason !== null ? (
+        <p
+          id="bulk-config-blocked-reason"
+          className="hint"
+          data-testid="bulk-config-blocked-reason"
+          style={{ textAlign: 'right', color: 'var(--text-muted)', fontSize: 12 }}
+        >
+          {blockedReason}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -58,7 +58,9 @@ export class OrdersImportHandler implements SyncJobHandler {
       if (error instanceof OrderSyncStartUnavailableError) {
         // The adapter cannot read a window at all; ten retries would only delay the
         // same answer (ADR-007).
-        this.logger.error(`Order import cannot run for connection ${job.connectionId}: ${error.message}`);
+        this.logger.error(
+          `Order import cannot run for connection ${job.connectionId}: ${error.message}`
+        );
         return { outcome: 'business_failure' };
       }
       const message = error instanceof Error ? error.message : String(error);

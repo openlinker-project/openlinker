@@ -159,6 +159,7 @@ export const BASE_NAV_GROUPS: readonly BaseNavGroup[] = [
       { to: '/connections', page: 'connections', countKey: 'connections' },
       { to: '/adapters', page: 'adapters' },
       { to: '/settings', page: 'settings' },
+      { to: '/whats-new', page: 'whatsNew' },
     ],
   },
   {

@@ -27,8 +27,12 @@ export class OrdersListPage {
     return this.page.getByRole('row').filter({ hasText: text });
   }
 
-  async open(internalOrderId: string): Promise<OrderDetailPage> {
-    await this.page.goto(`/orders/${internalOrderId}`);
+  /**
+   * `tab` selects the order-detail tab (`?tab=`, #4286). The invoice panel lives
+   * on `documents`; the default is the Overview tab.
+   */
+  async open(internalOrderId: string, tab?: string): Promise<OrderDetailPage> {
+    await this.page.goto(`/orders/${internalOrderId}${tab ? `?tab=${tab}` : ''}`);
     const detail = new OrderDetailPage(this.page);
     await detail.expectVisible();
     return detail;

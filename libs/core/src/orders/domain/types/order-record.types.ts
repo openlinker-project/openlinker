@@ -275,6 +275,8 @@ export interface FailedSyncValueSummary {
  * contradiction (counting all buckets while filtering to one).
  */
 export interface OrderHealthSummaryFilters {
+  /** #4289: same default as the list - hidden orders are excluded unless `true`. */
+  hidden?: boolean;
   sourceConnectionId?: string;
   customerId?: string;
   createdFrom?: Date;
@@ -541,6 +543,13 @@ export interface OrderRecordFilters {
    * over a denormalized column; ANDed with every other axis.
    */
   hasBuyerNote?: boolean;
+  /**
+   * Buyer data retention (#4289). Absent or `false` -> only orders that are NOT
+   * hidden (the default list); `true` -> only hidden ones. A hidden order is
+   * out of lists and search but is never deleted, and a direct read by id still
+   * returns it.
+   */
+  hidden?: boolean;
   /**
    * Free-text search (#3527). Matches order number, buyer name, buyer email
    * and any line SKU via the denormalized, diacritic-folded `searchText`

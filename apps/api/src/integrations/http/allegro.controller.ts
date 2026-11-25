@@ -197,6 +197,10 @@ export class AllegroController {
         ...(dto.deliveryOnDocuments && !dto.connectionId
           ? { deliveryOnDocuments: dto.deliveryOnDocuments }
           : {}),
+        // Only an explicit `none` is seeded: `linked` is the default and an
+        // absent key already reads as linked. Like the delivery line above, a
+        // reauth must not touch config (#4280).
+        ...(dto.catalogueMode === 'none' && !dto.connectionId ? { catalogueMode: 'none' } : {}),
       },
     });
 

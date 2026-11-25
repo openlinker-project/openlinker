@@ -175,3 +175,29 @@ describe('BulkOfferCreateRequestDto map-value validation (#1741)', () => {
     expect(errs).toEqual([]);
   });
 });
+
+describe('BulkOfferCreateRequestDto cleared barcode (#4036)', () => {
+  const clearedRequest = {
+    perVariantOverrides: { ol_variant_a: { overrides: { ean: '' } } },
+  };
+
+  it('accepts an empty ean override as the explicit no-barcode choice', async () => {
+    expect(await constraintKeysFor(baseRequest(clearedRequest))).toEqual([]);
+  });
+
+  it('keeps the empty ean on the transformed DTO instead of dropping it', () => {
+    const dto = plainToInstance(BulkOfferCreateRequestDto, baseRequest(clearedRequest));
+
+    // A transform that turned '' into undefined would make the builder fall
+    // back to the master barcode, which is the defect #4036 fixes.
+    expect(dto.perVariantOverrides?.ol_variant_a.overrides?.ean).toBe('');
+  });
+
+  it('still rejects an ean that is neither empty nor a GTIN length', async () => {
+    const errs = await constraintKeysFor(
+      baseRequest({ perVariantOverrides: { ol_variant_a: { overrides: { ean: '12345' } } } })
+    );
+    expect(errs).toContain('validateRecordValues');
+  });
+});
+

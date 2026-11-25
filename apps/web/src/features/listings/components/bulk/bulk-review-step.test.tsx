@@ -161,6 +161,43 @@ describe('BulkReviewStep', () => {
       .forEach((btn) => expect(btn).toBeDisabled());
   });
 
+  it('shows a checking state and holds Create offers while the bundle composition is unknown', () => {
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1', ['no-match'])])]}
+        {...baseProps()}
+        bundles={{
+          bundles: new Map(),
+          failedVariantIds: new Set(),
+          isLoading: true,
+          retry: vi.fn(),
+        }}
+      />,
+    );
+    expect(screen.getByTestId('bundle-checking-banner')).toBeInTheDocument();
+    expect(screen.getByTestId('bundle-checking-chip')).toBeInTheDocument();
+    expect(screen.queryByText('No catalog match')).not.toBeInTheDocument();
+    screen.getAllByRole('button', { name: /Create offers/ }).forEach((btn) => expect(btn).toBeDisabled());
+  });
+
+  it('offers a retry when the bundle check failed', () => {
+    const retry = vi.fn();
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1')])]}
+        {...baseProps()}
+        bundles={{
+          bundles: new Map(),
+          failedVariantIds: new Set(['v1']),
+          isLoading: false,
+          retry,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalled();
+  });
+
   it('tri-state parent toggle includes/excludes all variants', () => {
     const onSetProductIncluded = vi.fn();
     renderWithProviders(
@@ -406,7 +443,7 @@ describe('BulkReviewStep for a bundle (#3520)', () => {
     renderWithProviders(
       <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
     );
-    expect(screen.getByText('limited by Kubek 350 ml')).toBeInTheDocument();
+    expect(screen.getByText(/limited by: Kubek 350 ml/)).toBeInTheDocument();
   });
 
   it('should expand to the composition', () => {
@@ -416,8 +453,41 @@ describe('BulkReviewStep for a bundle (#3520)', () => {
     expect(screen.queryByTestId('bundle-composition')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Show set contents of/ }));
     expect(screen.getByTestId('bundle-composition')).toBeInTheDocument();
-    expect(screen.getByText('own offer 778')).toBeInTheDocument();
-    expect(screen.getByText('catalogue card')).toBeInTheDocument();
+    expect(screen.getByText('your offer 778')).toBeInTheDocument();
+    expect(screen.getByText('from catalogue')).toBeInTheDocument();
+  });
+
+  it('should say how many whole sets fit and what limits them', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    expect(screen.getByText('3 sets')).toBeInTheDocument();
+  });
+
+  it('should name the first components under the set instead of a jargon note', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    expect(screen.getByText(/Set of: Kawa 250 g, Kubek 350 ml/)).toBeInTheDocument();
+  });
+
+  it('should say "no data" rather than a dash when the sets cannot be counted', () => {
+    const unknown = {
+      ...bundles,
+      bundles: new Map([['v1', { ...preview, availableSets: null }]]),
+    };
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={unknown} />,
+    );
+    expect(screen.getByText('no data')).toBeInTheDocument();
+  });
+
+  it('should let the set tag open the composition', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    fireEvent.click(screen.getByTestId('bundle-row-tag'));
+    expect(screen.getByTestId('bundle-composition')).toBeInTheDocument();
   });
 
   it('should not show the set marker for an ordinary product', () => {

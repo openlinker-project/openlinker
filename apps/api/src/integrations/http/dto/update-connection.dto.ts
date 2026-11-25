@@ -6,7 +6,15 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsString, IsOptional, IsObject, IsEnum, IsArray, IsIn, ValidateNested } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsObject,
+  IsEnum,
+  IsArray,
+  IsIn,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { OrderSyncStartDto } from './order-sync-start.dto';
 import { ApiPropertyOptional } from '@nestjs/swagger';
