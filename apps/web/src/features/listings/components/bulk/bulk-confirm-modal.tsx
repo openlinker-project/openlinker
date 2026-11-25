@@ -50,11 +50,15 @@ interface BulkConfirmModalProps {
    * counting them as offers would promise work that will not happen.
    */
   alreadyListedCount: number;
+  /** How many of the already-listed variants are sets or multipacks (#3520); named in the skipped reasons. */
+  alreadyListedBundleCount?: number;
   /**
    * True when a multi-variant product has both publish + draft variants - the
    * listing goes live with a partial variant selector until completed (#1741).
    */
   mixedPublishWarning: boolean;
+  /** How many of the offers are sets and how many multipacks (#3520); omitted when none. */
+  bundleSummary?: { sets: number; packs: number };
   connectionName: string;
   /** Resolved marketplace display name (#1096) - e.g. "Allegro", "Erli". */
   marketplaceName: string;
@@ -77,7 +81,9 @@ export function BulkConfirmModal({
   excludedCount,
   blockedCount,
   alreadyListedCount,
+  alreadyListedBundleCount = 0,
   mixedPublishWarning,
+  bundleSummary,
   connectionName,
   marketplaceName,
   initialPublishImmediately,
@@ -100,7 +106,12 @@ export function BulkConfirmModal({
       ? interpolate(copy.reasons.alreadyListed, {
           n: format.number(alreadyListedCount),
           connection: connectionName,
-        })
+        }) +
+        (alreadyListedBundleCount > 0
+          ? ` ${interpolate(copy.reasons.ofWhichBundles, {
+              bundles: plural(alreadyListedBundleCount, copy.reasons.bundleCount),
+            })}`
+          : '')
       : '',
     excludedCount > 0
       ? interpolate(copy.reasons.switchedOff, { n: format.number(excludedCount) })
@@ -166,6 +177,23 @@ export function BulkConfirmModal({
           </DialogDescription>
         )}
 
+        {bundleSummary && bundleSummary.sets + bundleSummary.packs > 0 && !nothingToCreate ? (
+          <Alert tone="info" className="bulk-confirm__bundles" data-testid="bundle-confirm-summary">
+            <p>
+              {interpolate(copy.bundles.line, {
+                parts: format.list(
+                  [
+                    bundleSummary.sets > 0 ? plural(bundleSummary.sets, copy.bundles.sets) : '',
+                    bundleSummary.packs > 0 ? plural(bundleSummary.packs, copy.bundles.packs) : '',
+                  ].filter((part) => part !== ''),
+                ),
+              })}
+            </p>
+            <p>{copy.bundles.stockRule}</p>
+            <p>{copy.bundles.consequence}</p>
+          </Alert>
+        ) : null}
+
         <div style={{ marginTop: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           {nothingToCreate ? null : (
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
@@ -179,9 +207,13 @@ export function BulkConfirmModal({
               <strong>{copy.publish.label}</strong>{' '}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="bulk-editor__infotip" role="img" aria-label={copy.publish.infoLabel}>
+                  <button
+                    type="button"
+                    className="bulk-editor__infotip bulk-confirm__infotip"
+                    aria-label={copy.publish.infoLabel}
+                  >
                     &#9432;
-                  </span>
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>
                   {copy.publish.tooltip}
@@ -203,9 +235,9 @@ export function BulkConfirmModal({
           {errorMessage !== null ? (
             <Alert tone="error">{errorMessage}</Alert>
           ) : nothingToCreate ? null : (
-            <Alert tone="info">
+            <p className="bulk-confirm__footnote">
               {renderRich(copy.idempotency, { strong: (text) => <strong>{text}</strong> })}
-            </Alert>
+            </p>
           )}
         </div>
 

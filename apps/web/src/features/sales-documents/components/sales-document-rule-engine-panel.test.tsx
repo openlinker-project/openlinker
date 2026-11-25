@@ -191,7 +191,7 @@ describe('SalesDocumentRuleEnginePanel — "Add a market" picker (review finding
     expect(addButton).toBeDisabled();
 
     await userEvent.click(screen.getByRole('combobox', { name: 'New market country' }));
-    await userEvent.type(screen.getByPlaceholderText(/Type to search/i), 'France');
+    await userEvent.type(screen.getByPlaceholderText(/Type to filter/i), 'France');
     await userEvent.click(await screen.findByText('France'));
 
     expect(addButton).toBeEnabled();
@@ -234,7 +234,7 @@ describe('SalesDocumentRuleEnginePanel — "Add a market" picker (review finding
 
     await screen.findByText('DE');
     await userEvent.click(screen.getByRole('combobox', { name: 'New market country' }));
-    await userEvent.type(screen.getByPlaceholderText(/Type to search/i), 'Germany');
+    await userEvent.type(screen.getByPlaceholderText(/Type to filter/i), 'Germany');
 
     const germanyOption = await screen.findByText('Germany');
     expect(germanyOption.closest('[role="option"]')).toHaveAttribute('aria-disabled', 'true');

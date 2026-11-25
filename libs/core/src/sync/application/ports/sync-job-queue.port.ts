@@ -32,6 +32,13 @@ export interface EnqueueJobRequest {
   options: EnqueueJobOptions;
 }
 
+/** What one enqueue answered: the job id and whether the dedupe key already existed. */
+export interface EnqueueJobOutcome {
+  jobId: string;
+  /** True when the idempotency key was already taken, so nothing new was queued. */
+  isExisting: boolean;
+}
+
 export interface SyncJobQueuePort {
   enqueue(request: EnqueueJobRequest): Promise<string>;
   /**
@@ -41,4 +48,10 @@ export interface SyncJobQueuePort {
    * Callers must not rely on this being an atomic/batched operation.
    */
   enqueueBulk(requests: EnqueueJobRequest[]): Promise<string[]>;
+  /**
+   * Enqueue one job and report whether its dedupe key already existed. For a
+   * caller that must not read a swallowed enqueue as success (the first page of
+   * an order import chain, #4228).
+   */
+  enqueueDetailed(request: EnqueueJobRequest): Promise<EnqueueJobOutcome>;
 }

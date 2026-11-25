@@ -19,9 +19,9 @@ const SHORT_OPTIONS: ComboboxOption[] = [
   { id: 'p1', label: 'Puma', hint: '#p1' },
 ];
 
-const LARGE_OPTIONS: ComboboxOption[] = Array.from({ length: 60 }, (_, i) => ({
+const LARGE_OPTIONS: ComboboxOption[] = Array.from({ length: 600 }, (_, i) => ({
   id: `id-${i}`,
-  label: `Brand ${i.toString().padStart(2, '0')}`,
+  label: `Brand ${i.toString().padStart(3, "0")}`,
 }));
 
 function ControlledCombobox(props: {
@@ -100,11 +100,11 @@ describe('Combobox', () => {
     render(<ControlledCombobox options={LARGE_OPTIONS} />);
     await user.click(screen.getByRole('combobox', { name: 'Brand' }));
 
-    expect(screen.getByText(/Type to search 60 options\./)).toBeInTheDocument();
-    expect(screen.queryByText('Brand 00')).toBeNull();
+    expect(screen.getByText(/Type to search 600 options\./)).toBeInTheDocument();
+    expect(screen.queryByText('Brand 000')).toBeNull();
 
-    await user.type(screen.getByPlaceholderText(/Type to search/i), 'Brand 03');
-    expect(screen.getByText('Brand 03')).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText(/Type to search/i), 'Brand 003');
+    expect(screen.getByText('Brand 003')).toBeInTheDocument();
   });
 
   it('emits a custom-value commit when allowCustomValues=true and the typed text has no exact match', async () => {

@@ -5,7 +5,7 @@
     "empty": "Żadne zamówienie nie ma jeszcze kwoty raportowej. Nowe zamówienia dostają ją przy synchronizacji w {currency}, a istniejące są uzupełniane w ciągu godziny.",
     "eraLabel": "Zapisane w {currency}",
     "multipleEras": {
-      "message": "Waluta raportowa była już wcześniej zmieniana. Zapisane kwoty nigdy nie są nadpisywane, więc te zamówienia zachowują walutę obowiązującą w chwili zapisu.",
+      "message": "Waluta raportowa była już zmieniana. Każde zamówienie zachowuje kwotę w walucie, która obowiązywała w chwili jego zapisu.",
       "title": "Więcej niż jeden okres waluty raportowej"
     },
     "title": "Pokrycie analityki",
@@ -36,12 +36,12 @@
     "saveError": "Nie udało się zapisać waluty raportowej",
     "splitHistory": {
       "message": {
-        "few": "<count>{n}</count> zamówienia mają już kwotę zapisaną w {currency}. Zachowają ją - zapisane kwoty nigdy nie są nadpisywane - więc system będzie miał więcej niż jedną walutę raportową i żadna pojedyncza kwota ich nie obejmie.",
-        "many": "<count>{n}</count> zamówień ma już kwotę zapisaną w {currency}. Zachowają ją - zapisane kwoty nigdy nie są nadpisywane - więc system będzie miał więcej niż jedną walutę raportową i żadna pojedyncza kwota ich nie obejmie.",
-        "one": "<count>{n}</count> zamówienie ma już kwotę zapisaną w {currency}. Zachowa ją - zapisane kwoty nigdy nie są nadpisywane - więc system będzie miał więcej niż jedną walutę raportową i żadna pojedyncza kwota ich nie obejmie.",
-        "other": "<count>{n}</count> zamówienia ma już kwotę zapisaną w {currency}. Zachowają ją - zapisane kwoty nigdy nie są nadpisywane - więc system będzie miał więcej niż jedną walutę raportową i żadna pojedyncza kwota ich nie obejmie."
+        "few": "<count>{n}</count> zamówienia mają już kwotę w {currency}. Starych kwot nie zmieniamy, a nowe zamówienia będą liczone w nowej walucie, więc w raportach nie zsumują się razem.",
+        "many": "<count>{n}</count> zamówień ma już kwotę w {currency}. Starych kwot nie zmieniamy, a nowe zamówienia będą liczone w nowej walucie, więc w raportach nie zsumują się razem.",
+        "one": "<count>{n}</count> zamówienie ma już kwotę w {currency}. Starych kwot nie zmieniamy, a nowe zamówienia będą liczone w nowej walucie, więc w raportach nie zsumują się razem.",
+        "other": "<count>{n}</count> zamówienia ma już kwotę w {currency}. Starych kwot nie zmieniamy, a nowe zamówienia będą liczone w nowej walucie, więc w raportach nie zsumują się razem."
       },
-      "title": "Raportować w {selected} od teraz?"
+      "title": "Zmienić walutę raportową na {selected}?"
     },
     "title": "Waluta",
     "toast": {
@@ -52,6 +52,7 @@
   "currencySettingsTile": {
     "actions": {
       "coverage": "Pokrycie",
+      "coverageHint": "Zobacz, dla jakich walut z zamówień są kursy wymiany.",
       "edit": "Edytuj"
     },
     "adminOnly": "Tylko administrator",
@@ -61,7 +62,14 @@
     "loading": "Wczytywanie ustawień waluty…",
     "notConfigured": "Nie skonfigurowano",
     "rateDateRule": "Reguła daty kursu",
+    "rateDateRules": {
+      "prev-business-day": "Poprzedni dzień roboczy"
+    },
     "rateSource": "Źródło kursów",
+    "rateSources": {
+      "ecb": "EBC",
+      "nbp": "NBP"
+    },
     "reportingIn": "Raportowanie w",
     "reportingValue": "{currency} ({qualifier})",
     "sourceQualifier": {

@@ -4,6 +4,7 @@
  */
 import type { SyncJob } from '@openlinker/core/sync';
 import type { SchedulerTaskConfig } from '@openlinker/core/sync';
+import { OrderSyncStartUnavailableError } from '@openlinker/core/orders';
 import { OrdersPollHandler } from './orders-poll.handler';
 
 function makeJob(payload: Record<string, unknown>): SyncJob {
@@ -67,5 +68,21 @@ describe('OrdersPollHandler', () => {
     const result = await handler.execute(makeJob({}));
     expect(result).toEqual({ outcome: 'business_failure' });
     expect(ingestOrders).not.toHaveBeenCalled();
+  });
+
+  it('should end as a business failure, not retry, when the chosen start can never be applied', async () => {
+    ingestOrders.mockRejectedValue(new OrderSyncStartUnavailableError('cannot start from a date'));
+
+    const result = await handler.execute(makeJob({ cursorKey: 'custom.key' }));
+
+    expect(result).toEqual({ outcome: 'business_failure' });
+  });
+
+  it('should keep throwing a retryable error for an ordinary ingestion failure', async () => {
+    ingestOrders.mockRejectedValue(new Error('network down'));
+
+    await expect(handler.execute(makeJob({ cursorKey: 'custom.key' }))).rejects.toThrow(
+      /network down/
+    );
   });
 });

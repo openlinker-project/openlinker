@@ -188,6 +188,13 @@
     "uploading": "Uploading…",
     "wrongType": "File type \"{type}\" is not accepted. Allowed: {accept}."
   },
+  "fontSize": {
+    "default": "Default",
+    "extraLarge": "Largest",
+    "group": "Text size",
+    "large": "Large",
+    "small": "Small"
+  },
   "formErrorSummary": {
     "title": "Please correct the highlighted fields."
   },
@@ -271,6 +278,18 @@
   },
   "richTextView": {
     "empty": "No description"
+  },
+  "settingsIndex": {
+    "loading": "Loading…",
+    "lockedHint": "Only administrators can open this. Ask an administrator if you need a change.",
+    "lockedLabel": "Administrators only",
+    "unavailable": "Unavailable"
+  },
+  "settingsTemplate": {
+    "newBadge": "New",
+    "onThisPage": "On this page",
+    "readOnly": "You have read-only access. An administrator saves changes.",
+    "sections": "Page sections"
   },
   "setupStepper": {
     "label": "Setup progress",

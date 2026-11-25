@@ -76,6 +76,33 @@ describe('InpostStructuredSection', () => {
     expect(syncStructuredToJson).toHaveBeenCalledWith('inpostEnvironment', 'production');
   });
 
+  it('writes the notify-on-label checkbox as a tri-state string and names the account', () => {
+    const syncStructuredToJson = vi.fn();
+    renderWithProviders(<Harness syncStructuredToJson={syncStructuredToJson} />);
+
+    const checkbox = screen.getByRole('checkbox');
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(checkbox);
+
+    expect(syncStructuredToJson).toHaveBeenCalledWith('inpostNotifyOnLabelPurchase', 'true');
+    expect(screen.getByText(/InPost ShipX/, { selector: 'p' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /how marketplace notification works/i })).toBeTruthy();
+  });
+
+  it('writes an explicit false when the checkbox is turned off', () => {
+    const syncStructuredToJson = vi.fn();
+    renderWithProviders(
+      <Harness
+        syncStructuredToJson={syncStructuredToJson}
+        defaultValues={{ inpostNotifyOnLabelPurchase: 'true' }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('checkbox'));
+
+    expect(syncStructuredToJson).toHaveBeenCalledWith('inpostNotifyOnLabelPurchase', 'false');
+  });
+
   it('routes organization id changes to the inpostOrganizationId field', () => {
     const syncStructuredToJson = vi.fn();
     renderWithProviders(<Harness syncStructuredToJson={syncStructuredToJson} />);

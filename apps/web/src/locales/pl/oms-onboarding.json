@@ -1,4 +1,60 @@
 {
+  "adminOnly": "Tylko administrator może zmienić konfigurację pakowania.",
+  "and": " i ",
+  "back": "Wstecz",
+  "continue": "Dalej",
+  "packingConnectionName": "OpenLinker OMS",
+  "page": {
+    "backToConnections": "Dodaj połączenie",
+    "errorMessage": "Coś poszło nie tak podczas odczytu konfiguracji. Spróbuj ponownie.",
+    "errorTitle": "Nie udało się wczytać konfiguracji pakowania",
+    "eyebrow": "Połączenia",
+    "loadingMessage": "Odczytujemy Twoje połączenia, lokalizacje i stany magazynowe.",
+    "loadingTitle": "Wczytywanie konfiguracji pakowania",
+    "retry": "Spróbuj ponownie",
+    "statusDescription": "Co przejmuje OpenLinker: pakowanie na stanowisku pakowania, a potem dokumenty sprzedaży i automatyzacje. Pakowanie możesz wyłączyć w każdej chwili.",
+    "statusTitle": "OpenLinker OMS",
+    "wizardDescription": "Kompletuj i pakuj zamówienia na jednym ekranie, ze skanerem kodów kreskowych. Konfiguracja zajmuje około 5 minut. Do ostatniego kroku nic się nie zmienia w obsłudze Twoich zamówień.",
+    "wizardTitle": "OpenLinker OMS"
+  },
+  "salesDocumentsStep": {
+    "addConnection": "Dodaj połączenie",
+    "automaticRequiredBody": "Wybierz, co wystawia połączenie, oznacz je jako Główne i ustaw Wyzwalacz na opcję automatyczną (np. Automatycznie po opłaceniu zamówienia). Gdy Wyzwalacz jest ustawiony na Ręcznie, nic nie zostanie wystawione, dopóki ktoś nie zrobi tego ręcznie.",
+    "automaticRequiredTitle": "Dokumenty muszą być wystawiane automatycznie",
+    "noConnectionBody": "Najpierw połącz dostawcę, który wystawia faktury (np. inFakt albo Subiekt) lub paragony fiskalne. Potem wróć tutaj i wybierz, co ma wystawiać.",
+    "noConnectionTitle": "Brak połączenia do faktur lub paragonów fiskalnych",
+    "openRouting": "Otwórz wybór dokumentów",
+    "perCountry": "Reguły dla konkretnego kraju albo ustawienie domyślne dla zamówień, których nie obejmuje żadna reguła, ustawisz na stronie wyboru dokumentów.",
+    "why": "Zdecyduj, jaki dokument dostaje każde zamówienie: fakturę czy paragon. Połącz dostawcę, który je wystawia, a potem określ, co wystawia każde połączenie, które jest pierwsze i czy wystawia samo po opłaceniu zamówienia."
+  },
+  "setupSteps": {
+    "automations": {
+      "detail": "Automatyzacje mają osobną stronę. Przeglądaj je albo dodawaj nowe, kiedy chcesz.",
+      "open": "Otwórz automatyzacje",
+      "why": "Automatyzacje pozwalają OpenLinkerowi działać samodzielnie, gdy coś się wydarzy, np. powiadomić kupującego o spakowaniu zamówienia. Etykiety nadawcze ustawiasz w kroku Wysyłka. Tutaj nic się nie ustawia: to podgląd tego, co już istnieje."
+    },
+    "finish": "Zakończ",
+    "notNeeded": "Niepotrzebne",
+    "review": "Przejrzyj",
+    "salesDocuments": {
+      "detail": "Wybór dokumentów konfiguruje się na osobnej stronie. Gdy skończysz, możesz tu wrócić.",
+      "open": "Otwórz wybór dokumentów",
+      "why": "Pakowanie działa. Teraz zdecyduj, jaki dokument dostaje każde zamówienie: fakturę czy paragon, kraj po kraju."
+    },
+    "state": {
+      "done": "Już skonfigurowane",
+      "none": "Jeszcze brak",
+      "pending": "Jeszcze nieskonfigurowane",
+      "skipped": "Oznaczone jako niepotrzebne",
+      "unknown": "Nie udało się teraz tego sprawdzić"
+    },
+    "undo": "Cofnij",
+    "whoDecides": {
+      "detail": "To przegląd, nie formularz: nic się tu nie zmieni, dopóki nie wybierzesz układu.",
+      "open": "Otwórz Kto o czym decyduje",
+      "why": "Sprawdź, który system decyduje o stanach magazynowych, pakowaniu i zwrotach. Wszystko, co wymaga Twojej uwagi, jest tam wymienione."
+    }
+  },
   "shippingStatus": {
     "change": "Zmień",
     "none": "Żadna metoda dostawy nie trafia jeszcze do przewoźnika. Każdą etykietę kupujesz sam.",
@@ -82,6 +138,252 @@
     "yesBody": "Jedna etykieta na paczkę, na koncie przewoźnika, do którego trafia jej metoda dostawy.",
     "yesTitle": "Tak, kupuj po przyjęciu paczki"
   },
+  "status": {
+    "addPackerDialogBody": "Loguje się na stanowisku pakowania tym loginem.",
+    "addPackers": "Dodaj pakowaczy",
+    "arrivedMeta": {
+      "few": "{n} produkty · {ago} · każdy pakowacz może je wziąć albo przypisz je w Realizacji",
+      "many": "{n} produktów · {ago} · każdy pakowacz może je wziąć albo przypisz je w Realizacji",
+      "one": "{n} produkt · {ago} · każdy pakowacz może je wziąć albo przypisz je w Realizacji",
+      "other": "{n} produktu · {ago} · każdy pakowacz może je wziąć albo przypisz je w Realizacji"
+    },
+    "arrivedStock": "Stan spada w {names}. Samo zamówienie zostaje w OpenLinkerze.",
+    "arrivedTitle": "Zamówienie {reference} przyszło jako nieprzypisane.",
+    "closeDialog": "Zamknij",
+    "continueSetup": "Kontynuuj konfigurację",
+    "firstOrderTitle": "Twoje pierwsze zamówienie",
+    "goToStatus": "Przejdź do statusu",
+    "offBody": "Nowe zamówienia trafiają do {names} i są tam pakowane, jak wcześniej. Twoja konfiguracja stanów zostaje.",
+    "offTitle": "Realizacja jest wyłączona",
+    "onBodyCount": {
+      "few": "{n} paczki w realizacji{last}",
+      "many": "{n} paczek w realizacji{last}",
+      "one": "{n} paczka w realizacji{last}",
+      "other": "{n} paczki w realizacji{last}"
+    },
+    "onBodyEmpty": "W realizacji jeszcze nic nie ma.",
+    "onBodyLast": " · ostatnia przyszła {ago}",
+    "onBodyWaiting": "Nowe zamówienia trafiają teraz na stanowisko pakowania.",
+    "onTitle": "Pakowanie jest włączone",
+    "open": "Otwórz",
+    "openBench": "Otwórz stanowisko pakowania",
+    "openFulfilment": "Otwórz realizację",
+    "partialTitle": "OMS jest skonfigurowany częściowo",
+    "setUpTitle": "OMS jest skonfigurowany",
+    "setupTitle": "Konfiguracja",
+    "startAgain": "Włącz ponownie realizację",
+    "starting": "Włączanie…",
+    "steps": {
+      "automations": {
+        "done": "Jest co najmniej jedna automatyzacja.",
+        "pending": "Jeszcze brak. Opcjonalnie: niech OpenLinker działa po spakowaniu zamówienia, np. powiadomi kupującego.",
+        "title": "Automatyzacje"
+      },
+      "notNeeded": "Niepotrzebne",
+      "review": "Przejrzyj",
+      "salesDocuments": {
+        "done": "Dokumenty są wystawiane automatycznie.",
+        "pending": "Dokumenty są wystawiane ręcznie albo wcale. Oznacz połączenie jako Główne i ustaw jego Wyzwalacz na automatyczny.",
+        "title": "Dokumenty sprzedaży"
+      },
+      "setUp": "Skonfiguruj",
+      "skipped": "Oznaczone jako niepotrzebne.",
+      "undo": "Cofnij",
+      "unknown": "Nie udało się teraz tego sprawdzić.",
+      "whoDecides": {
+        "done": "Nic nie wymaga uwagi.",
+        "pending": "Coś wymaga Twojej uwagi w tym, kto decyduje o stanach, pakowaniu i zwrotach.",
+        "title": "Kto o czym decyduje"
+      }
+    },
+    "stepsLeft": {
+      "few": "Pakowanie działa. Zostały {n} kroki.",
+      "many": "Pakowanie działa. Zostało {n} kroków.",
+      "one": "Pakowanie działa. Został {n} krok.",
+      "other": "Pakowanie działa. Zostało {n} kroku."
+    },
+    "stockFrom": "{located} z {total} z {names}",
+    "stop": "Wyłącz realizację",
+    "toggleFailedTitle": "Nie udało się zmienić pakowania",
+    "waitingBody": "Pojawi się tutaj, gdy tylko OpenLinker je pobierze, zwykle w ciągu kilku minut. Możesz opuścić tę stronę.",
+    "waitingTitle": "Czekamy na następne zamówienie…"
+  },
+  "step1": {
+    "capabilityProducts": "Produkty",
+    "capabilityStock": "Stany",
+    "completeBody": "OpenLinker może teraz pakować każdy produkt.",
+    "completeTitle": "Wszystkie stany są aktualne",
+    "confirm": "Potwierdź",
+    "confirming": "Konfigurowanie…",
+    "conflictBody": "{name} wysyła już swoje stany w inne miejsce. Pakowanie w OpenLinkerze korzysta na razie z jednego magazynu, więc najpierw zmień to w ustawieniach połączenia.",
+    "conflictTitle": "Stany już trafiają gdzie indziej",
+    "connectMaster": "Połącz główny sklep",
+    "failedHint": "Nic nie przepadło. Potwierdź ponownie, aby kontynuować od miejsca, w którym się zatrzymało.",
+    "failedStep": {
+      "connection": "Nie udało się utworzyć połączenia do pakowania.",
+      "location": "Nie udało się utworzyć magazynu.",
+      "override": "Nie udało się skierować stanów z {name} do magazynu."
+    },
+    "failedTitle": "Nie dokończono konfiguracji",
+    "mainInactiveBody": "Magazyn, z którego pakuje OpenLinker, jest oznaczony jako nieaktywny. Włącz go ponownie w Magazyn › Lokalizacje, a potem potwierdź jeszcze raz.",
+    "mainInactiveTitle": "Magazyn jest wyłączony",
+    "masterBadge": "Twój główny sklep",
+    "missingBoth": "produktów i stanów magazynowych",
+    "missingProducts": "produktów",
+    "missingStock": "stanów magazynowych",
+    "noMasterBody": "Połącz główny sklep, w którym są Twoje produkty i stany magazynowe, np. PrestaShop, WooCommerce albo Subiekt GT. Potem wróć tutaj.",
+    "noMasterTitle": "Nie połączono jeszcze głównego sklepu",
+    "noMasterWhy": "OpenLinker nie ma własnych produktów ani stanów magazynowych. Odczytuje je z Twojego głównego sklepu. Najpierw go połącz.",
+    "noStockYetBody": "OpenLinker nie otrzymał jeszcze żadnych stanów. Przyjdą z następną synchronizacją stanów. Nie musisz tu czekać.",
+    "openConnection": "Otwórz połączenie",
+    "openLocations": "Otwórz lokalizacje",
+    "partialBody": "{name} nie udostępnia OpenLinkerowi {missing}. Włącz to w ustawieniach połączenia.",
+    "partialTitle": "Nie może jeszcze pełnić roli głównego sklepu",
+    "progressAria": "Aktualne stany",
+    "progressCount": "{located} z {total}",
+    "progressLabel": "Aktualne stany z {names}",
+    "syncingBody": "Nie musisz tu czekać. Dopóki nie dojdzie do {total}, zamówienie na produkt, który nie został jeszcze policzony, jest obsługiwane po staremu.",
+    "syncingTitle": "Uzupełnia się przy każdej synchronizacji stanów z {names}",
+    "tooManyBody": {
+      "few": "Masz {n} główne sklepy. Pakowanie w OpenLinkerze działa na razie z jednym albo dwoma. Wyłącz te, których nie potrzebujesz, i wróć tutaj.",
+      "many": "Masz {n} głównych sklepów. Pakowanie w OpenLinkerze działa na razie z jednym albo dwoma. Wyłącz te, których nie potrzebujesz, i wróć tutaj.",
+      "one": "Masz {n} główny sklep. Pakowanie w OpenLinkerze działa na razie z jednym albo dwoma. Wyłącz te, których nie potrzebujesz, i wróć tutaj.",
+      "other": "Masz {n} głównego sklepu. Pakowanie w OpenLinkerze działa na razie z jednym albo dwoma. Wyłącz te, których nie potrzebujesz, i wróć tutaj."
+    },
+    "tooManyTitle": "Za dużo głównych sklepów",
+    "twoBody": "Trzymaj każdy produkt tylko w jednym głównym sklepie. Jeśli ten sam produkt jest w obu, OpenLinker widzi dwa różne produkty z dwoma osobnymi stanami. Sprzedaż obniża stan tylko w sklepie, z którego pochodzi produkt, więc drugi sklep może nadal sprzedać ostatnie sztuki.",
+    "twoTitle": "Oba główne sklepy wysyłają stany do tego jednego miejsca",
+    "why": "OpenLinker nie ma własnych produktów ani stanów magazynowych. Odczytuje je z Twojego głównego sklepu."
+  },
+  "step2": {
+    "add": "Dodaj pakowacza",
+    "addTitle": "Dodaj pakowacza",
+    "adding": "Dodawanie…",
+    "copied": "Skopiowano",
+    "copy": "Kopiuj hasło",
+    "createFailedTitle": "Nie udało się dodać pakowacza",
+    "createdBody": "Przekaż login {login} i hasło poniżej. Jest pokazywane tylko raz. Przy pierwszym logowaniu trzeba będzie je zmienić.",
+    "createdTitle": "{name} może się już zalogować",
+    "emailHint": "Zostaw puste, jeśli pakowacz nie ma służbowego e-maila. Rola to zawsze Pakowacz.",
+    "emailInvalid": "Wpisz poprawny adres e-mail albo zostaw pole puste.",
+    "emailLabel": "E-mail",
+    "emailOptional": "(opcjonalnie)",
+    "emailPlaceholder": "anna@example.com",
+    "emailTaken": "Ten e-mail jest już używany przez inne konto.",
+    "existingBody": "Zmień jego rolę na Pakowacz w",
+    "existingSummary": "Ktoś ma już konto?",
+    "listTitle": "Pakowacze ({count})",
+    "loginHint": "To wpisuje na stanowisku pakowania, żeby się zalogować.",
+    "loginLabel": "Login",
+    "loginNoAt": "Login nie może zawierać znaku \"@\".",
+    "loginPlaceholder": "anna",
+    "loginPrefix": "Login:",
+    "loginRequired": "Wpisz login.",
+    "loginTaken": "Ten login jest już zajęty. Wybierz inny.",
+    "nameLabel": "Imię i nazwisko",
+    "namePlaceholder": "Anna Nowak",
+    "nameRequired": "Wpisz imię i nazwisko.",
+    "packerBadge": "Pakowacz",
+    "skip": "Pomiń na razie",
+    "tempPasswordLabel": "Hasło tymczasowe",
+    "unassignedBody": "Każdy pakowacz może wziąć nieprzypisane zamówienie na stanowisku pakowania. Aby dać zamówienie konkretnej osobie, przypisz je na stronie Realizacja.",
+    "unassignedTitle": "Nowe zamówienia są na początku nieprzypisane",
+    "usersLink": "Użytkownicy",
+    "why": "Utwórz login dla każdej osoby, która pakuje. Widzi ona tylko stanowisko pakowania. Możesz to pominąć i pakować sam: administratorzy i operatorzy też mogą otworzyć stanowisko pakowania."
+  },
+  "step3": {
+    "ack": "Rozumiem, że zamówienia z marketplace'ów zostają w OpenLinkerze, a w {names} spada tylko stan.",
+    "after": "Po włączeniu",
+    "benchBody": "Trafia jako nieprzypisane. Pakowacz je bierze, skanuje i pakuje.",
+    "benchBoxItems": {
+      "inStock": "Gdy każdy produkt jest na stanie, a zamówienie ma adres dostawy",
+      "newOrders": "Nowe zamówienia z Allegro, Erli i Twoich innych marketplace'ów, złożone po włączeniu"
+    },
+    "benchBoxTitle": "Trafia na stanowisko pakowania",
+    "benchBoxTwo": "Zamówienie z produktami z obu sklepów jest pakowane jako jedna paczka",
+    "benchTitle": "Realizacja → Stanowisko pakowania",
+    "buyerBody": "Klient kupuje",
+    "buyerTitle": "Allegro, Erli",
+    "changes": {
+      "allMarketplaces": {
+        "body": "Nie da się włączyć tego tylko dla Allegro.",
+        "title": "Dotyczy wszystkich Twoich marketplace'ów naraz."
+      },
+      "labels": {
+        "body": "Na stanowisku pakowania albo w Zamówieniach, albo automatycznie po przyjęciu paczki do pakowania, jeśli włączysz to w kroku Wysyłka. Wtedy Allegro i Erli dostają status wysłania i numer przesyłki.",
+        "title": "Etykiety nadawcze kupujesz w OpenLinkerze."
+      },
+      "printing": {
+        "body": "Nie tworzy ich. Faktury i paragony działają według Twoich ustawień dokumentów sprzedaży, jak dziś.",
+        "title": "Stanowisko pakowania drukuje etykietę i fakturę."
+      },
+      "stayInOpenLinker": {
+        "body": "Nie pojawiają się już jako zamówienia w {names}, a raporty sprzedaży tam ich nie obejmą. Spada tam tylko stan sprzedanych produktów.",
+        "title": "Zamówienia z marketplace'ów zostają w OpenLinkerze."
+      }
+    },
+    "changesTitle": "Co się zmieni dla Ciebie",
+    "flowTitle": "Jak przechodzi zamówienie z marketplace'u",
+    "masterAfterOne": "Nie dostaje zamówienia. Spada tylko stan sprzedanych produktów.",
+    "masterAfterTwo": "Nie dostają zamówienia. Stan spada w sklepie, który sprzedaje dany produkt.",
+    "masterTodayOne": "Dostaje zamówienie. Tam spada stan. Pakujesz z {name}.",
+    "masterTodayTwo": "Oba dostają zamówienie. Każdy sklep przyjmuje tylko swoje produkty, więc zamówienie z produktami z obu nie przechodzi w jednym z nich.",
+    "olAfterBody": "Zatrzymuje zamówienie",
+    "olTitle": "OpenLinker",
+    "olTodayBody": "Pobiera zamówienie i przekazuje je dalej",
+    "sameBoxItems": {
+      "alreadyIn": "Zamówienia, które były już w {names} przed włączeniem",
+      "marketplaceShips": "Zamówienia, które marketplace wysyła sam, np. Allegro One Fulfillment",
+      "ownStore": "Zamówienia z Twojego sklepu {names}. Pakujesz je tam."
+    },
+    "sameBoxTitle": "Zostaje jak dziś",
+    "today": "Dziś",
+    "waitBoxItems": {
+      "noAddress": "Zamówienie bez adresu dostawy",
+      "outOfStock": "Zamówienie, w którym choć jednego produktu brakuje na stanie"
+    },
+    "waitBoxTitle": "Czeka na Ciebie w Zamówieniach",
+    "why": "Przeczytaj to przed włączeniem. Wyłączysz to jednym kliknięciem, ale zamówienia wysłane już na stanowisko pakowania tam zostaną."
+  },
+  "step4": {
+    "change": "Zmień",
+    "failedTitle": "Nie udało się włączyć pakowania",
+    "masters": {
+      "few": "Twoje główne sklepy",
+      "many": "Twoje główne sklepy",
+      "one": "Twój główny sklep",
+      "other": "Twoje główne sklepy"
+    },
+    "noLocationBody": "Wróć do kroku 1 i jeszcze raz potwierdź główny sklep. To utworzy magazyn.",
+    "noLocationTitle": "Brak aktywnego magazynu, z którego można pakować",
+    "noPackers": "Brak pakowaczy, pakować mogą administratorzy i operatorzy",
+    "otherSystemBody": "Włączenie tego teraz sprawiłoby, że o tym samym decydowałyby dwa systemy, a OpenLinker przestałby decydować w ogóle. Najpierw sprawdź to na stronie Kto o czym decyduje.",
+    "otherSystemTitle": "Inny system już decyduje, gdzie pakowane są zamówienia",
+    "packers": "Pakowacze",
+    "stillFilling": "jeszcze się uzupełnia",
+    "stock": "Aktualne stany",
+    "turnOn": "Zacznij pakować w OpenLinkerze",
+    "turningOn": "Włączanie…",
+    "view": "Zobacz",
+    "whoDecidesLink": "Otwórz Kto o czym decyduje",
+    "why": "Wszystko gotowe. Od chwili włączenia nowe zamówienia trafiają na stanowisko pakowania."
+  },
+  "stepOf": "Krok {step} z {total}",
+  "stopDialog": {
+    "bodyExisting": {
+      "few": "{n} paczki, które są już na stanowisku pakowania, tam zostają. Dokończ ich pakowanie.",
+      "many": "{n} paczek, które są już na stanowisku pakowania, tam zostaje. Dokończ ich pakowanie.",
+      "one": "{n} paczka, która jest już na stanowisku pakowania, tam zostaje. Dokończ jej pakowanie.",
+      "other": "{n} paczki, które są już na stanowisku pakowania, tam zostają. Dokończ ich pakowanie."
+    },
+    "bodyExistingNone": "W realizacji nic teraz nie ma.",
+    "bodyKept": "Faktury i paragony są nadal wystawiane automatycznie, także dla nowych zamówień. Twoje automatyzacje dalej działają. Konfiguracja stanów zostaje, więc realizację włączysz ponownie jednym kliknięciem.",
+    "bodyNewOrders": "Nowe zamówienia będą trafiać do {names} i tam będą pakowane, jak wcześniej.",
+    "cancel": "Zostaw włączoną",
+    "confirm": "Wyłącz realizację",
+    "stopping": "Wyłączanie…",
+    "title": "Wyłączyć realizację w OpenLinkerze?"
+  },
   "wizardSteps": {
     "automations": {
       "meta": "Tylko do przejrzenia",
@@ -115,5 +417,6 @@
       "meta": "Do przejrzenia",
       "title": "Kto o czym decyduje"
     }
-  }
+  },
+  "yourProductMasters": "Twoich głównych sklepów"
 }

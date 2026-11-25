@@ -142,7 +142,7 @@ describe('RoutingRulesPanel', () => {
 
     expect(await screen.findByText('Unsaved changes')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }));
 
     await waitFor(() => {
       expect(replace).toHaveBeenCalledWith('conn_1', {
@@ -276,7 +276,7 @@ describe('RoutingRulesPanel', () => {
         name: /Fulfilment processor for ERLI InPost Paczkomaty/i,
       });
       fireEvent.change(select, { target: { value: 'ol_managed_carrier::conn_inpost' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }));
 
       await waitFor(() => {
         expect(replace).toHaveBeenCalledWith('conn_1', {
@@ -335,7 +335,7 @@ describe('RoutingRulesPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
       expect(await screen.findByText('Unsaved changes')).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }));
 
       await waitFor(() => {
         expect(replace).toHaveBeenCalledWith('conn_1', {
@@ -365,7 +365,7 @@ describe('RoutingRulesPanel', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Edit parcel' }));
       fireEvent.click(screen.getByRole('button', { name: 'Clear parcel' }));
       fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }));
 
       await waitFor(() => {
         expect(replace).toHaveBeenCalledWith('conn_1', {
@@ -410,7 +410,7 @@ describe('RoutingRulesPanel', () => {
       fireEvent.change(screen.getByLabelText('Size'), { target: { value: '__other__' } });
       fireEvent.change(screen.getByLabelText('Carrier size code'), { target: { value: 'A' } });
       fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }));
 
       await waitFor(() => {
         expect(replace).toHaveBeenCalledWith('conn_1', {
@@ -440,7 +440,7 @@ describe('RoutingRulesPanel', () => {
         name: /Fulfilment processor for InPost Paczkomat/i,
       });
       fireEvent.change(select, { target: { value: 'source_brokered::conn_allegro' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Save routing' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save assignment' }));
       await waitFor(() => {
         expect(replace).toHaveBeenCalledWith('conn_1', {
           items: [

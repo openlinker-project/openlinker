@@ -1,0 +1,63 @@
+/**
+ * Release center - public barrel (#4145)
+ *
+ * @module features/release-center
+ */
+export { RELEASE_STEPS } from './catalog/release-steps';
+export { RELEASE_HIGHLIGHTS, highlightsForMinor } from './catalog/release-highlights';
+export type {
+  ReleaseStepContext,
+  ReleaseStepEntry,
+  ReleaseStepImportance,
+  ReleaseStepScope,
+} from './catalog/release-step.types';
+export { compareVersions, isMinorOrMajorIncrease, isValidVersion } from './lib/compare-versions';
+export { shouldOpenDialog, type DialogDecision } from './lib/should-open-dialog';
+export { visibleSteps } from './lib/visible-steps';
+export { ReleaseStepObserver } from './components/release-step-observer';
+export { ReleaseDialog, type ReleaseDialogProps } from './components/release-dialog';
+export { ReleaseDialogHost, WHATS_NEW_PATH, stepPath } from './components/release-dialog-host';
+export { WhatsNewContent } from './components/whats-new-content';
+export { useReleaseStepRows } from './hooks/use-release-step-rows';
+export {
+  buildDialogHighlights,
+  buildStepRows,
+  type ReleaseStepRow,
+} from './lib/release-dialog-content';
+export { useReleaseCenterAccess, type ReleaseCenterAccess } from './hooks/use-release-center-access';
+export { useReleaseStateQuery, useReleaseCenterEnabled } from './hooks/use-release-state-query';
+export { useReleaseCursorMutation } from './hooks/use-release-cursor-mutation';
+export { useRejectedCursorVersions } from './hooks/release-cursor-write-memory';
+export { useReleaseItemStatesMutation } from './hooks/use-release-item-states-mutation';
+export { useReleaseStepsMutation } from './hooks/use-release-steps-mutation';
+export { releaseStepItemKey, installationStatusOf } from './lib/release-state-merge';
+export { completedStepItemKeys } from './lib/completed-steps';
+export { releaseStateQueryKeys } from './api/release-state.query-keys';
+export type {
+  InstallationReleaseItemChange,
+  ReleaseCursor,
+  ReleaseDoneVia,
+  ReleaseItemState,
+  ReleaseState,
+  UserReleaseItemChange,
+} from './api/release-state.types';
+export { TourProvider } from './tour/tour-provider';
+export { useTour, type TourController, type TourStepInput } from './tour/tour-context';
+export { ReleaseBell } from './components/release-bell';
+export { ReleaseCenterProvider, useReleaseCenterView } from './components/release-center-provider';
+export {
+  requestReleaseTour,
+  requestWhatsNew,
+  subscribeToTourRequests,
+  subscribeToWhatsNewRequests,
+  type TourRequest,
+  type WhatsNewRequest,
+} from './lib/release-center-requests';
+export {
+  publishNotification,
+  type MessageNotification,
+  type NotificationAction,
+  type NotificationDraft,
+  type NotificationSeverity,
+} from './lib/notification-store';
+export { registerNotificationRule, type NotificationRule } from './lib/notification-rules';

@@ -33,6 +33,11 @@ export interface RailGroup {
    * the chip must read "not checked" rather than a confident "ready".
    */
   wholeEan: { loaded: boolean; needCount: number } | null;
+  /**
+   * The product is a bundle (a set or multipack). Its components carry the
+   * barcodes, so it never counts toward the need-EAN total.
+   */
+  isBundle?: boolean;
   /** Selected variants for a subset pick; `null` for a whole-product pick. */
   selected: { id: string; label: string; hasBarcode: boolean }[] | null;
 }

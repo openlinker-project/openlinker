@@ -80,6 +80,7 @@ import type {
   IncomingOrder,
   MappingOption,
   OrderDispatchWindow,
+  OrderFeedBootstrap,
   OrderFeedEventType,
   OrderFeedInput,
   OrderFeedItem,
@@ -152,7 +153,7 @@ const ERLI_ORDER_STATUS_LABELS: ReadonlyArray<{ value: ErliOrderStatus; label: s
 ];
 
 export class ErliOrderSourceAdapter
-  implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader
+  implements OrderSourcePort, OrderStatusWriteback, SourceOptionsReader, OrderFeedBootstrap
 {
   private readonly logger = new Logger(ErliOrderSourceAdapter.name);
 
@@ -179,6 +180,31 @@ export class ErliOrderSourceAdapter
      */
     private readonly defaultDispatchTime?: ErliDispatchTime,
   ) {}
+
+  /**
+   * Newest inbox message id, so a fresh connection starts from "now" (#4228).
+   * Read-only: this is a plain `GET /inbox` and NEVER marks anything read. The
+   * next real poll acks everything up to the seeded cursor, which is intended -
+   * those messages are history the operator chose not to import. Only the
+   * unread inbox (server cap 500) is visible, so on a very backlogged shop the
+   * seed is the newest id within that window. Returns null for an empty inbox.
+   */
+  async headCursor(): Promise<string | null> {
+    const response = await this.httpClient.get<unknown>(ERLI_INBOX_PATH);
+    const rawMessages: unknown = response.data;
+    if (!Array.isArray(rawMessages)) {
+      throw new ErliApiException('Erli inbox response is not an array', response.status);
+    }
+
+    let head: string | null = null;
+    for (const candidate of rawMessages) {
+      const msg = this.validateInboxMessage(candidate);
+      if (msg && (head === null || msg.id > head)) {
+        head = msg.id;
+      }
+    }
+    return head;
+  }
 
   /**
    * Read Erli's unread inbox and emit neutral `OrderFeedItem`s. Ack-on-next-read:

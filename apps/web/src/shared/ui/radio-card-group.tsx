@@ -3,13 +3,17 @@
  *
  * A group of choices drawn as cards: each card holds a title, a one-line
  * description and whatever illustrates the choice (a mini document, a diagram),
- * and the whole card is the radio. The selected card is tinted and an optional
- * panel opens inside it for the choice's own input. Built on real radio inputs,
- * so arrow keys, `name` grouping and form semantics are the browser's.
+ * and the whole card is the radio. The selected card gets an accent outline that
+ * slides between cards (one shared layout id per group) and an optional panel
+ * opens inside it for the choice's own input. Built on real radio inputs laid
+ * over the whole card, so arrow keys, `name` grouping, form semantics and the
+ * focus ring on the WHOLE card are the browser's; the dot is drawn beside them.
  *
  * @module shared/ui
  */
-import type { ReactElement, ReactNode } from 'react';
+import { useId, type ReactElement, type ReactNode } from 'react';
+import { motion } from 'motion/react';
+import { SNAPPY_SPRING, THUMB_SPRING } from './motion-presets';
 
 export interface RadioCardOption<V extends string> {
   value: V;
@@ -48,6 +52,7 @@ export function RadioCardGroup<V extends string>({
   disabled = false,
   className,
 }: RadioCardGroupProps<V>): ReactElement {
+  const outlineId = useId();
   return (
     <div
       className={['pm-docs', className].filter(Boolean).join(' ')}
@@ -80,6 +85,22 @@ export function RadioCardGroup<V extends string>({
                 onChange(option.value);
               }}
             />
+            <span className="rcg__ring" aria-hidden="true">
+              <motion.span
+                className="rcg__dot"
+                initial={false}
+                animate={{ scale: selected ? 1 : 0 }}
+                transition={THUMB_SPRING}
+              />
+            </span>
+            {selected ? (
+              <motion.span
+                className="rcg__outline"
+                layoutId={`rcg-outline-${outlineId}`}
+                transition={SNAPPY_SPRING}
+                aria-hidden="true"
+              />
+            ) : null}
             <span className="pm-doccard__h">
               <span className="pm-doccard__t">{option.title}</span>
               <span className="pm-doccard__d">

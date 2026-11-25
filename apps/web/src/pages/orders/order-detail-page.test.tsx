@@ -978,7 +978,7 @@ describe('OrderDetailPage — buyer note (#3539)', () => {
       expect(screen.queryByText('Status')).toBeNull();
       const label = await screen.findByText(`Status at ${sampleConnection.name}`);
       expect(label).toBeInTheDocument();
-      expect(screen.getByText('processing')).toBeInTheDocument();
+      expect(screen.getByText('Processing')).toBeInTheDocument();
     });
 
     it('should keep the plain Status row when the channel also says cancelled (C-23)', async () => {

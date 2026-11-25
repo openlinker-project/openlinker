@@ -28,11 +28,11 @@
  *
  * @module apps/web/src/pages/sales-documents
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useIsAdmin } from '../../shared/auth/use-permission';
 import { PageLayout } from '../../shared/ui/page-layout';
-import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { DataTable } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
@@ -49,6 +49,15 @@ import {
   type ConcreteDocumentKind,
   type SalesDocumentListItem,
 } from '../../features/sales-documents';
+import { createSalesDocumentsListRegistry } from '../../features/sales-documents/lib/sales-documents.list-config';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+} from '../../features/saved-views';
 import { ConnectionCell, useConnectionsQuery } from '../../features/connections';
 import { OrderIdentityCell } from '../../features/orders';
 import { InvoiceStatusValues } from '../../features/invoicing';
@@ -93,10 +102,13 @@ export function SalesDocumentsListPage(): ReactElement {
   const messages = useMessages('sales-documents');
   const copy = messages.salesDocumentsListPage;
   const format = useFormat();
-  const kindLabels: Record<string, string> = {
-    invoice: messages.documentKind.invoice,
-    'fiscal-receipt': messages.documentKind.fiscalReceipt,
-  };
+  const kindLabels = useMemo<Record<string, string>>(
+    () => ({
+      invoice: messages.documentKind.invoice,
+      'fiscal-receipt': messages.documentKind.fiscalReceipt,
+    }),
+    [messages.documentKind.invoice, messages.documentKind.fiscalReceipt],
+  );
   const statusLabels: Record<string, string> = copy.status;
   const [searchParams, setSearchParams] = useSearchParams();
   const isAdmin = useIsAdmin();
@@ -133,9 +145,12 @@ export function SalesDocumentsListPage(): ReactElement {
   const query = useSalesDocumentsListQuery(filters, { limit: PAGE_SIZE, cursor: currentCursor });
 
   const connectionsQuery = useConnectionsQuery();
-  const connections = connectionsQuery.data ?? [];
-  const connectionsById = new Map(connections.map((c) => [c.id, { name: c.name, status: c.status }]));
-  const connectionNames = new Map(connections.map((c) => [c.id, c.name]));
+  const connections = useMemo(() => connectionsQuery.data ?? [], [connectionsQuery.data]);
+  const connectionsById = useMemo(
+    () => new Map(connections.map((c) => [c.id, { name: c.name, status: c.status }])),
+    [connections],
+  );
+  const connectionNames = useMemo(() => new Map(connections.map((c) => [c.id, c.name])), [connections]);
 
   function setFilter(key: string, value: string): void {
     setSearchParams((prev) => {
@@ -197,70 +212,57 @@ export function SalesDocumentsListPage(): ReactElement {
     setCursorStack((prev) => prev.slice(0, -1));
   }
 
-  const renderAmount = (item: SalesDocumentListItem): ReactElement => {
-    if (!item.amount) return <EmptyValue />;
-    // `formatAmount` (#3309 review, SUGGESTION), not a hardcoded
-    // `.toFixed(2)`: a bare two-decimal render is wrong for a zero-decimal
-    // currency (JPY) and short a digit for a three-decimal one (KWD).
-    return <span className="mono-text tabular">{format.money(item.amount.value, item.amount.currency)}</span>;
-  };
+  const registry = useMemo(() => {
+    const renderAmount = (item: SalesDocumentListItem): ReactElement => {
+      if (!item.amount) return <EmptyValue />;
+      // `formatAmount` (#3309 review, SUGGESTION), not a hardcoded
+      // `.toFixed(2)`: a bare two-decimal render is wrong for a zero-decimal
+      // currency (JPY) and short a digit for a three-decimal one (KWD).
+      return <span className="mono-text tabular">{format.money(item.amount.value, item.amount.currency)}</span>;
+    };
+    return createSalesDocumentsListRegistry(
+      copy,
+      {
+        order: (item): ReactNode => <OrderIdentityCell orderId={item.orderId} />,
+        kind: (item): ReactNode => (
+          <span className="invoice-document-cell">
+            <DocumentKindGlyph kind={item.document.kind} />
+            <span>{kindLabels[item.document.kind] ?? item.document.kind}</span>
+          </span>
+        ),
+        status: (item): ReactNode => (
+          <SalesDocumentListCell
+            orderId={item.orderId}
+            document={item.document}
+            otherRecordCount={item.otherRecordCount}
+            connectionNames={connectionNames}
+          />
+        ),
+        amount: renderAmount,
+        connection: (item): ReactNode => (
+          <ConnectionCell
+            connectionId={item.connectionId}
+            connection={connectionsById.get(item.connectionId) ?? null}
+            loading={connectionsQuery.isLoading}
+          />
+        ),
+        created: (item): ReactNode => <TimeDisplay iso={item.document.identity.createdAt} format="date" />,
+      },
+      {
+        isKind: (raw) => isSalesDocumentKind(raw),
+        isTaxId: (raw) => isTaxIdFilter(raw),
+      },
+    );
+  }, [copy, kindLabels, connectionNames, connectionsById, connectionsQuery.isLoading, format]);
+  const view = useListView<SalesDocumentListItem>({ registry, pageTitle: copy.title });
+  const columns = view.toColumns();
 
-  const columns: DataTableColumn<SalesDocumentListItem>[] = [
-    {
-      id: 'orderId',
-      lines: 2,
-      header: copy.columns.order,
-      cell: (item) => <OrderIdentityCell orderId={item.orderId} />,
-      accessor: (item) => item.orderId,
-    },
-    {
-      id: 'kind',
-      header: copy.columns.kind,
-      cell: (item) => (
-        <span className="invoice-document-cell">
-          <DocumentKindGlyph kind={item.document.kind} />
-          <span>{kindLabels[item.document.kind] ?? item.document.kind}</span>
-        </span>
-      ),
-      accessor: (item) => item.document.kind,
-    },
-    {
-      id: 'status',
-      header: copy.columns.status,
-      cell: (item) => (
-        <SalesDocumentListCell
-          orderId={item.orderId}
-          document={item.document}
-          otherRecordCount={item.otherRecordCount}
-          connectionNames={connectionNames}
-        />
-      ),
-    },
-    {
-      id: 'amount',
-      header: copy.columns.amount,
-      cell: renderAmount,
-      accessor: (item) => item.amount?.value ?? 0,
-    },
-    {
-      id: 'connection',
-      header: copy.columns.connection,
-      cell: (item) => (
-        <ConnectionCell
-          connectionId={item.connectionId}
-          connection={connectionsById.get(item.connectionId) ?? null}
-          loading={connectionsQuery.isLoading}
-        />
-      ),
-      hideBelow: 1024,
-    },
-    {
-      id: 'createdAt',
-      header: copy.columns.created,
-      cell: (item) => <TimeDisplay iso={item.document.identity.createdAt} format="date" />,
-      accessor: (item) => item.document.identity.createdAt,
-    },
-  ];
+  // A different view is a different result set, and a keyset walk is only valid
+  // for the filters it was fetched under; the cursor never belongs to a view.
+  const viewKey = view.activeView.id;
+  useEffect(() => {
+    setCursorStack([]);
+  }, [viewKey]);
 
   const hasFilters = Boolean(kind || status || connectionId || taxId || search || issuedFrom || issuedTo);
   const items = query.data?.items ?? [];
@@ -288,6 +290,8 @@ export function SalesDocumentsListPage(): ReactElement {
         </div>
       }
     >
+      <ViewsBar {...view.viewsBar} />
+
       <div className="toolbar">
         <Select
           aria-label={copy.filters.kind}
@@ -358,7 +362,16 @@ export function SalesDocumentsListPage(): ReactElement {
           value={issuedTo ?? ''}
           onChange={(e) => setFilter('issuedTo', e.target.value)}
         />
+        <ColumnsPanel {...view.columnsPanel} />
       </div>
+
+      {view.editedBar ? (
+        <div className="sv-applied">
+          <EditedBar {...view.editedBar} />
+        </div>
+      ) : null}
+      {view.repairBanner ? <RepairBanner {...view.repairBanner} /> : null}
+      <ViewDialogs {...view.dialogs} />
 
       {query.isLoading ? (
         <DataTableSkeleton columns={columns} label={copy.loading} />

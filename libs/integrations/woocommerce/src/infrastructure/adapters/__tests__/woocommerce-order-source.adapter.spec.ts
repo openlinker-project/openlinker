@@ -90,6 +90,82 @@ function makeHttpClient(impl: Partial<IWooCommerceHttpClient> = {}): jest.Mocked
 }
 
 describe('WooCommerceOrderSourceAdapter', () => {
+  describe('headCursor (#4228)', () => {
+    it('should return the newest order modification time minus the safety margin', async () => {
+      const get = jest.fn().mockResolvedValue([
+        { id: 5, date_modified_gmt: '2024-06-01T10:00:10', date_modified: '2024-06-01T12:00:10' },
+      ]);
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), makeConnection());
+
+      await expect(adapter.headCursor()).resolves.toBe('2024-06-01T10:00:08.000Z');
+      expect(get).toHaveBeenCalledWith('/wp-json/wc/v3/orders', {
+        per_page: 1,
+        orderby: 'modified',
+        order: 'desc',
+      });
+    });
+
+    it('should return null when the shop has no orders', async () => {
+      const get = jest.fn().mockResolvedValue([]);
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), makeConnection());
+
+      await expect(adapter.headCursor()).resolves.toBeNull();
+    });
+
+    it('should seed at the real head and ignore initialSyncFrom when the operator chose from now', async () => {
+      const get = jest.fn().mockResolvedValue([
+        { id: 5, date_modified_gmt: '2024-06-01T10:00:10', date_modified: '2024-06-01T12:00:10' },
+      ]);
+      const conn = makeConnection({
+        config: { siteUrl: 'https://myshop.example.com', orders: { initialSyncFrom: '2024-01-01' } },
+      });
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), conn);
+
+      await expect(adapter.headCursor()).resolves.toBe('2024-06-01T10:00:08.000Z');
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw when the newest order has no readable modification time', async () => {
+      const get = jest.fn().mockResolvedValue([{ id: 5 }]);
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), makeConnection());
+
+      await expect(adapter.headCursor()).rejects.toThrow('readable');
+    });
+  });
+
+  describe('cursorForDate (#4228)', () => {
+    it('should return midnight GMT of a bare date without reading orders', async () => {
+      const get = jest.fn();
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), makeConnection());
+
+      await expect(adapter.cursorForDate('2026-10-01')).resolves.toBe('2026-10-01T00:00:00.000Z');
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should normalise a full instant to GMT', async () => {
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient(), makeConnection());
+
+      await expect(adapter.cursorForDate('2026-10-01T10:00:00+02:00')).resolves.toBe(
+        '2026-10-01T08:00:00.000Z'
+      );
+    });
+
+    it('should let the explicit choice win over the configured initialSyncFrom', async () => {
+      const conn = makeConnection({
+        config: { siteUrl: 'https://myshop.example.com', orders: { initialSyncFrom: '2024-01-01' } },
+      });
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient(), conn);
+
+      await expect(adapter.cursorForDate('2026-10-01')).resolves.toBe('2026-10-01T00:00:00.000Z');
+    });
+
+    it('should throw on an unreadable date', async () => {
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient(), makeConnection());
+
+      await expect(adapter.cursorForDate('soon')).rejects.toThrow('expected an ISO date');
+    });
+  });
+
   describe('listOrderFeed', () => {
     it('should not include modified_after when fromCursor is null and no initialSyncFrom', async () => {
       const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue([]) });

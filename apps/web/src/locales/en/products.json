@@ -349,6 +349,8 @@
   "productsListPage": {
     "availabilityUnknownLink": "Who decides what",
     "bulk": {
+      "bundleDisabledMixed": "A set can only be made from single-variant products that are not sets themselves.",
+      "bundleDisabledTooMany": "A set can have at most {max} components ({n} selected).",
       "clear": "Clear",
       "hint": "Max {max} per batch · {remaining} more available",
       "hintAtCap": "Max {max} per batch",
@@ -522,6 +524,15 @@
         "other": "{n} variants"
       }
     },
+    "savedViews": {
+      "money": "Price, updated, created",
+      "moneyUpdated": "Last update",
+      "productFields": "Name, SKU",
+      "sourceFields": "Connection, status",
+      "views": {
+        "noTaxRate": "No tax rate"
+      }
+    },
     "sortOptions": {
       "createdAt": "Created",
       "name": "Name",
@@ -531,6 +542,11 @@
       "updatedAt": "Updated"
     },
     "stock": {
+      "bundleNone": "none",
+      "bundleSets": {
+        "one": "{n} set",
+        "other": "{n} sets"
+      },
       "master": "master {n}",
       "notKnown": "Not known",
       "notKnownTitle": "OpenLinker doesn't know. Not zero.",

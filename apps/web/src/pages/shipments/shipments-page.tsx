@@ -24,13 +24,10 @@ import { useSearchParams } from 'react-router-dom';
 import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
-import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { PeekArrow } from '../../shared/ui/capped-badges';
-import { StatusTabs, type StatusTabTone } from '../../shared/ui/status-tabs';
-import type { SortMenuDir } from '../../shared/ui/sort-menu';
 import { shortenId } from '../../shared/ui/entity-label';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { usePermission } from '../../shared/auth/use-permission';
@@ -63,34 +60,20 @@ import {
   toShipmentProcessorFilters,
 } from '../../features/shipments/lib/processor';
 import { describeApiError } from '../../shared/api/describe-api-error';
-import { ShipmentsFilterBar, type ShipmentSortKey } from './shipments-filter-bar';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+  type ViewSort,
+} from '../../features/saved-views';
+import { createShipmentsListRegistry } from '../../features/shipments/lib/shipments.list-config';
+import { ShipmentsFilterBar } from './shipments-filter-bar';
 import { ShipmentPeek, type ShipmentPeekView } from './shipment-peek';
 
 const PAGE_SIZE = SHIPMENTS_PAGE_SIZE;
-
-/** The table sort state, as `useTableSort` stores it in the URL. */
-type SortingState = ReturnType<typeof useTableSort>['sort'];
-
-/** Default sort: newest first (unchanged from before #4044). */
-const DEFAULT_SORT: SortingState = [{ id: 'createdAt', desc: true }];
-
-/** Tab dot per status; draft and cancelled carry none. */
-const STATUS_TAB_TONE: Readonly<Record<ShipmentStatus, StatusTabTone | null>> = {
-  draft: null,
-  generated: 'info',
-  dispatched: 'info',
-  'in-transit': 'info',
-  delivered: 'success',
-  failed: 'error',
-  cancelled: null,
-};
-
-/** First-click direction of each header sort button. */
-const HEADER_SORT_DIR: Readonly<Record<'createdAt' | 'status' | 'shippingMethod', 'asc' | 'desc'>> = {
-  createdAt: 'desc',
-  status: 'asc',
-  shippingMethod: 'asc',
-};
 
 function isShipmentStatus(raw: string | null): raw is ShipmentStatus {
   return raw !== null && (SHIPMENT_STATUS_VALUES as readonly string[]).includes(raw);
@@ -101,15 +84,16 @@ function isShippingMethod(raw: string | null): raw is ShippingMethod {
 }
 
 /**
- * Rows are one server page, sorted here (as before #4044). Status follows the
- * lifecycle order, not the alphabet, so "draft" sits before "delivered".
+ * Rows are one server page, sorted here: `GET /shipments` takes no sort, so a
+ * view's sort orders the page on screen and never the whole list. Status
+ * follows the lifecycle order, not the alphabet, so "draft" sits before
+ * "delivered".
  */
-function sortShipments(rows: readonly Shipment[], sort: SortingState): Shipment[] {
-  const first = sort[0] ?? DEFAULT_SORT[0];
-  const sign = first.desc ? -1 : 1;
+function sortShipments(rows: readonly Shipment[], sort: ViewSort): Shipment[] {
+  const sign = sort.dir === 'desc' ? -1 : 1;
   const value = (s: Shipment): number | string => {
-    if (first.id === 'status') return SHIPMENT_STATUS_VALUES.indexOf(s.status);
-    if (first.id === 'shippingMethod') return SHIPPING_METHOD_LABEL[s.shippingMethod];
+    if (sort.key === 'status') return SHIPMENT_STATUS_VALUES.indexOf(s.status);
+    if (sort.key === 'shippingMethod') return SHIPPING_METHOD_LABEL[s.shippingMethod];
     return s.createdAt;
   };
   return [...rows].sort((a, b) => {
@@ -196,7 +180,6 @@ export function ShipmentsPage(): ReactElement {
   const format = useFormat();
   const retryLabel = useMessages('ui').common.retry;
   const [searchParams, setSearchParams] = useSearchParams();
-  const { sort, setSort } = useTableSort(DEFAULT_SORT);
   const [peekId, setPeekId] = useState<string | null>(null);
   // Gates the triage strips and the "to fix" cause groups, the recovery
   // actions in the peek, and the raw errorMessage text in the status cell
@@ -252,6 +235,114 @@ export function ShipmentsPage(): ReactElement {
     [connections],
   );
 
+  // The registry is rebuilt only when what its cells read changes: `useListView` keys its
+  // memoised state on the registry's identity, so a fresh object per render would re-derive
+  // every view each time.
+  const cells = useMemo(() => {
+    // ONE renderer for the desktop Order column and the mobile card title (#2089).
+    const renderOrderCell = (s: Shipment): ReactElement => (
+      <OrderIdentityCell
+        orderId={s.orderId}
+        orderNumber={s.orderSummary?.orderNumber}
+        firstItemName={s.orderSummary?.firstItemName}
+        firstItemImageUrl={s.orderSummary?.firstItemImageUrl}
+        itemCount={s.orderSummary?.itemCount}
+      />
+    );
+
+    const renderConnectionDot = (s: Shipment): ReactElement => {
+      const connection = connectionsById.get(s.connectionId) ?? null;
+      return (
+        <span aria-hidden="true">
+          <ConnectionDot
+            name={connection?.name ?? null}
+            platformType={connection?.platformType}
+            variant={s.shippingMethod === 'omp' ? 'shop' : 'carrier'}
+          />
+        </span>
+      );
+    };
+
+    // Processor with the method (and Paczkomat) folded under it (#4044): one
+    // question, "who ships this and how", in one cell.
+    const renderProcessor = (s: Shipment): ReactElement => (
+      <span className="shipments-processor-cell">
+        <ProcessorBadge processor={deriveProcessor(s)} />
+        <span className="shipments-processor-cell__method">
+          {SHIPPING_METHOD_LABEL[s.shippingMethod]}
+          {s.paczkomatId ? ` · ${s.paczkomatId}` : null}
+        </span>
+      </span>
+    );
+    return { renderOrderCell, renderConnectionDot, renderProcessor };
+  }, [connectionsById]);
+  const { renderOrderCell, renderConnectionDot, renderProcessor } = cells;
+
+  const registry = useMemo(
+    () =>
+      createShipmentsListRegistry(copy, {
+        status: (s): ReactNode => <ShipmentStatusCell shipment={s} canWrite={canWrite} />,
+        // Status + Order are the frozen pane (#1905): the row's identity.
+        order: renderOrderCell,
+        action: (s): ReactNode => <ShipmentSeverityLabel shipment={s} canWrite={canWrite} />,
+        // The Connection column is `hideBelow: 1024`, so below that width the
+        // carrier connection folds here instead (#2094); `display: none` above
+        // the breakpoint, so exactly one rendering is exposed.
+        processor: (s): ReactNode => (
+          <span className="shipments-processor-stack">
+            {renderProcessor(s)}
+            <ConnectionFold
+              connectionId={s.connectionId}
+              connection={connectionsById.get(s.connectionId) ?? null}
+              loading={connectionsQuery.isLoading}
+              adornment={renderConnectionDot(s)}
+            />
+          </span>
+        ),
+        customer: (s): ReactNode =>
+          s.customerId ? (
+            <CustomerEntityLabel customerId={s.customerId} showId={false} />
+          ) : (
+            <span className="text-muted">—</span>
+          ),
+        // For a carrier-dispatched shipment `connectionId` is the carrier
+        // connection; for an `omp`/branch-1 row it is the destination SHOP
+        // connection (no OL dispatch exists), hence the `variant` split.
+        // Header stays "Connection" (#1905), the vocabulary of every table.
+        connection: (s): ReactNode => (
+          <ConnectionCell
+            connectionId={s.connectionId}
+            connection={connectionsById.get(s.connectionId) ?? null}
+            loading={connectionsQuery.isLoading}
+            adornment={renderConnectionDot(s)}
+          />
+        ),
+        created: (s): ReactNode => (
+          <span className="shipments-created tabular text-muted">
+            <TimeDisplay iso={s.createdAt} />
+          </span>
+        ),
+      }),
+    [
+      copy,
+      canWrite,
+      connectionsById,
+      connectionsQuery.isLoading,
+      renderOrderCell,
+      renderConnectionDot,
+      renderProcessor,
+    ],
+  );
+  const view = useListView<Shipment>({
+    registry,
+    pageTitle: copy.title,
+    counts: {
+      all: summary?.total,
+      ...Object.fromEntries(SHIPMENT_STATUS_VALUES.map((value) => [value, summary?.byStatus[value]])),
+    },
+  });
+  const sort = view.sort;
+
   const rows = useMemo(() => sortShipments(query.data?.items ?? [], sort), [query.data, sort]);
   const peekIndex = peekId ? rows.findIndex((s) => s.id === peekId) : -1;
   const peekShipment = peekIndex >= 0 ? rows[peekIndex] : undefined;
@@ -261,42 +352,6 @@ export function ShipmentsPage(): ReactElement {
       if (next) setPeekId(next.id);
     },
     [rows, peekIndex],
-  );
-
-  // ONE renderer for the desktop Order column and the mobile card title (#2089).
-  const renderOrderCell = (s: Shipment): ReactElement => (
-    <OrderIdentityCell
-      orderId={s.orderId}
-      orderNumber={s.orderSummary?.orderNumber}
-      firstItemName={s.orderSummary?.firstItemName}
-      firstItemImageUrl={s.orderSummary?.firstItemImageUrl}
-      itemCount={s.orderSummary?.itemCount}
-    />
-  );
-
-  const renderConnectionDot = (s: Shipment): ReactElement => {
-    const connection = connectionsById.get(s.connectionId) ?? null;
-    return (
-      <span aria-hidden="true">
-        <ConnectionDot
-          name={connection?.name ?? null}
-          platformType={connection?.platformType}
-          variant={s.shippingMethod === 'omp' ? 'shop' : 'carrier'}
-        />
-      </span>
-    );
-  };
-
-  // Processor with the method (and Paczkomat) folded under it (#4044): one
-  // question, "who ships this and how", in one cell.
-  const renderProcessor = (s: Shipment): ReactElement => (
-    <span className="shipments-processor-cell">
-      <ProcessorBadge processor={deriveProcessor(s)} />
-      <span className="shipments-processor-cell__method">
-        {SHIPPING_METHOD_LABEL[s.shippingMethod]}
-        {s.paczkomatId ? ` · ${s.paczkomatId}` : null}
-      </span>
-    </span>
   );
 
   const pageCauseGroups = useMemo(
@@ -315,6 +370,19 @@ export function ShipmentsPage(): ReactElement {
 
   function setFilter(key: string, value: string | null | undefined): void {
     updateParams((next) => {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    });
+  }
+
+  /**
+   * A click that changes the filters from outside the views strip (the attention summary, a cause
+   * group). The applied view id goes with it: left in place, the list would read as an edited
+   * version of whichever view it was on, when the address now names its own state.
+   */
+  function setFilterOutsideViews(key: string, value: string | null | undefined): void {
+    updateParams((next) => {
+      next.delete('view');
       if (value) next.set(key, value);
       else next.delete(key);
     });
@@ -357,44 +425,11 @@ export function ShipmentsPage(): ReactElement {
   function showCause(causeConnectionId: string): void {
     updateParams((next) => {
       for (const key of FILTER_KEYS) next.delete(key);
+      next.delete('view');
       next.set('status', 'failed');
       next.set('connectionId', causeConnectionId);
     });
   }
-
-  const sortFirst = sort[0] ?? DEFAULT_SORT[0];
-  const sortKey: ShipmentSortKey =
-    sortFirst.id === 'status' || sortFirst.id === 'shippingMethod'
-      ? sortFirst.id
-      : sortFirst.desc
-        ? 'createdAt'
-        : 'createdAtAsc';
-  const sortDir: SortMenuDir = sortFirst.desc ? 'desc' : 'asc';
-
-  function applySort(key: ShipmentSortKey, dir: SortMenuDir): void {
-    if (key === 'createdAtAsc') setSort([{ id: 'createdAt', desc: false }]);
-    else setSort([{ id: key, desc: dir === 'desc' }]);
-  }
-
-  /** A header sort button: the active one flips, another starts at its default. */
-  const sortButton = (id: 'createdAt' | 'status' | 'shippingMethod', label: string): ReactElement => {
-    const active = sortFirst.id === id;
-    return (
-      <button
-        type="button"
-        className={`sortbtn${active ? ' sortbtn--active' : ''}`}
-        aria-pressed={active}
-        onClick={() => {
-          setSort([{ id, desc: active ? !sortFirst.desc : HEADER_SORT_DIR[id] === 'desc' }]);
-        }}
-      >
-        {label}
-        <span className="sortbtn__ind" aria-hidden="true">
-          {active ? (sortFirst.desc ? '▼' : '▲') : '↕'}
-        </span>
-      </button>
-    );
-  };
 
   const filtersActive = Boolean(
     status ||
@@ -410,109 +445,26 @@ export function ShipmentsPage(): ReactElement {
   const hasPrev = offset > 0;
   const hasNext = offset + PAGE_SIZE < total;
 
+  const peekColumn: DataTableColumn<Shipment> = {
+    id: 'peek',
+    width: '3rem',
+    // #4044 - the arrow says the row opens a panel from the right.
+    header: <span className="sr-only">{copy.peek.details}</span>,
+    cell: (s): ReactNode => (
+      <PeekArrow
+        label={interpolate(copy.peek.detailsAria, { id: s.orderSummary?.orderNumber ?? shortenId(s.id) })}
+        onOpen={() => {
+          setPeekId(s.id);
+        }}
+      />
+    ),
+  };
   const columns: DataTableColumn<Shipment>[] = [
-    {
-      id: 'status',
-      width: '17%',
-      header: <span className="sortstack sortstack--left">{sortButton('status', copy.columns.status)}</span>,
-      cell: (s) => <ShipmentStatusCell shipment={s} canWrite={canWrite} />,
-    },
-    {
-      id: 'orderId',
-      width: '22%',
-      // #2538 - OrderIdentityCell stacks the order number over a meta line.
-      lines: 2,
-      header: copy.columns.order,
-      // Status + Order are the frozen pane (#1905): the row's identity.
-      cell: renderOrderCell,
-    },
-    {
-      id: 'action',
-      width: '8%',
-      header: copy.columns.action,
-      cell: (s) => <ShipmentSeverityLabel shipment={s} canWrite={canWrite} />,
-    },
-    {
-      id: 'processor',
-      width: '16%',
-      lines: 2,
-      header: (
-        <span className="sortstack sortstack--left">
-          <span className="sortstack__label">{copy.columns.processor}</span>
-          {sortButton('shippingMethod', copy.columns.method)}
-        </span>
-      ),
-      // The Connection column is `hideBelow: 1024`, so below that width the
-      // carrier connection folds here instead (#2094); `display: none` above
-      // the breakpoint, so exactly one rendering is exposed.
-      cell: (s): ReactElement => (
-        <span className="shipments-processor-stack">
-          {renderProcessor(s)}
-          <ConnectionFold
-            connectionId={s.connectionId}
-            connection={connectionsById.get(s.connectionId) ?? null}
-            loading={connectionsQuery.isLoading}
-            adornment={renderConnectionDot(s)}
-          />
-        </span>
-      ),
-    },
-    {
-      id: 'customerId',
-      width: '12%',
-      header: copy.columns.customer,
-      cell: (s) =>
-        s.customerId ? (
-          <CustomerEntityLabel customerId={s.customerId} showId={false} />
-        ) : (
-          <span className="text-muted">—</span>
-        ),
-      hideBelow: 768,
-    },
-    {
-      // For a carrier-dispatched shipment `connectionId` is the carrier
-      // connection; for an `omp`/branch-1 row it is the destination SHOP
-      // connection (no OL dispatch exists), hence the `variant` split.
-      // Header stays "Connection" (#1905), the vocabulary of every table.
-      id: 'connectionId',
-      width: '12%',
-      header: copy.columns.connection,
-      cell: (s): ReactElement => (
-        <ConnectionCell
-          connectionId={s.connectionId}
-          connection={connectionsById.get(s.connectionId) ?? null}
-          loading={connectionsQuery.isLoading}
-          adornment={renderConnectionDot(s)}
-        />
-      ),
-      hideBelow: 1024,
-    },
-    {
-      id: 'createdAt',
-      width: '13%',
-      align: 'right',
-      header: <span className="sortstack">{sortButton('createdAt', copy.columns.created)}</span>,
-      cell: (s) => (
-        <span className="shipments-created tabular text-muted">
-          <TimeDisplay iso={s.createdAt} />
-        </span>
-      ),
-    },
-    {
-      id: 'peek',
-      width: '3rem',
-      // #4044 - the arrow says the row opens a panel from the right.
-      header: <span className="sr-only">{copy.peek.details}</span>,
-      cell: (s) => (
-        <PeekArrow
-          label={interpolate(copy.peek.detailsAria, { id: s.orderSummary?.orderNumber ?? shortenId(s.id) })}
-          onOpen={() => {
-            setPeekId(s.id);
-          }}
-        />
-      ),
-    },
+    ...view.toColumns(),
+    peekColumn,
   ];
+  // The frozen pane is Status plus Order, but only while Order sits right after Status.
+  const stickyLeft = view.current.columns[0] === 'orderId' ? 2 : 1;
 
   const renderDetail = (s: Shipment): ReactNode => (
     <ShipmentRowDetail shipment={s} canWrite={canWrite} canReviewConnection={canReviewConnection} />
@@ -548,40 +500,23 @@ export function ShipmentsPage(): ReactElement {
       }
     : null;
 
-  const statusTabs = [
-    { key: null, label: copy.statusTabs.all, count: summary?.total },
-    ...SHIPMENT_STATUS_VALUES.map((value) => ({
-      key: value,
-      label: copy.statusTabs.labels[value],
-      tone: STATUS_TAB_TONE[value],
-      count: summary?.byStatus[value],
-    })),
-  ];
-
   return (
     <PageLayout
       eyebrow={copy.eyebrow}
       title={copy.title}
       description={copy.description}
     >
-      <div className="list-statusbar">
-        <StatusTabs<ShipmentStatus>
-          tabs={statusTabs}
-          value={status ?? null}
-          onChange={(next) => {
-            setFilter('status', next);
-          }}
-          aria-label={copy.statusTabs.aria}
-        />
+      <div className="list-statusbar list-statusbar--views">
+        <ViewsBar {...view.viewsBar} />
         <ShipmentAttentionSummary
           summary={summary}
           status={status}
           waybillRelayStuck={waybillRelayStuck}
           onStatusChange={(next) => {
-            setFilter('status', next);
+            setFilterOutsideViews('status', next);
           }}
           onRelayChange={(on) => {
-            setFilter('waybillRelayStuck', on ? 'true' : null);
+            setFilterOutsideViews('waybillRelayStuck', on ? 'true' : null);
           }}
           onShowCause={showCause}
           connectionName={(id) => connectionsById.get(id)?.name ?? null}
@@ -634,11 +569,17 @@ export function ShipmentsPage(): ReactElement {
           setFilter(key, value);
         }}
         resultCount={query.data ? total : null}
-        sortKey={sortKey}
-        sortDir={sortDir}
-        onSortChange={applySort}
         onClearAll={clearFilters}
+        trailing={<ColumnsPanel {...view.columnsPanel} />}
       />
+
+      {view.editedBar ? (
+        <div className="sv-applied">
+          <EditedBar {...view.editedBar} />
+        </div>
+      ) : null}
+      {view.repairBanner ? <RepairBanner {...view.repairBanner} /> : null}
+      <ViewDialogs {...view.dialogs} />
 
       {/* Cause-first triage (#1826) on the Failed tab only (#4044): the
           strips no longer push every list down; "to fix" carries the same
@@ -697,7 +638,7 @@ export function ShipmentsPage(): ReactElement {
             // `.order-cell__body` (#2089, re-scoped by #2091).
             className="shipments-table list-table--fixed list-table--peek"
             // Frozen anchor = Status + Order (#1905) — the row's identity.
-            stickyLeftColumns={2}
+            stickyLeftColumns={stickyLeft}
             stickyRightColumns={1}
             onRowClick={(s) => {
               setPeekId(s.id);

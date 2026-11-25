@@ -86,6 +86,17 @@ public static class ProductsEndpoints
             return product is null ? Fail("not_found", $"No product with symbol {symbol}.", 404) : Ok(product);
         });
 
+        // Composition of a KOMPLET (kit): a towar with tw_Rodzaj = 8 whose
+        // components live in tw_Komplet. Read-only SQL, no Sfera. A towar that
+        // exists but is not a kit answers 200 with JestKompletem = false and no
+        // components, so a caller can tell "not a kit" apart from "no such
+        // towar" (404) without parsing a reason string.
+        app.MapGet("/api/products/{symbol}/komplet", async (string symbol) =>
+        {
+            var komplet = await ReadKomplet(symbol);
+            return komplet is null ? Fail("not_found", $"No product with symbol {symbol}.", 404) : Ok(komplet);
+        });
+
         // --- models --------------------------------------------------------
         // A Subiekt MODEL (sl_ModelTw) is the operator's own grouping of towary
         // that are one article in several sizes or finishes. It is the only
@@ -256,6 +267,55 @@ public static class ProductsEndpoints
                 Zdjecia = await ReadImageUrls(row.TowarId, imageBase),
             });
         return new BridgeModelDto(modelId, modelName ?? string.Empty, pozycje);
+    }
+
+    /// <summary>tw__Towar.tw_Rodzaj value of a komplet (kit).</summary>
+    private const int TowarRodzajKomplet = 8;
+
+    /// <summary>The composition of a komplet, or null when no live towar has
+    /// this symbol. A towar that is not a kit (tw_Rodzaj other than 8) comes
+    /// back with JestKompletem = false and an empty list, never null, so
+    /// "unknown symbol" and "not a kit" stay distinguishable. Components are
+    /// read from tw_Komplet (kpl_IdKomplet -> kpl_IdSkladnik, kpl_Liczba) and
+    /// include a soft-deleted component, flagged, rather than dropping it: a
+    /// silently shortened composition would let a caller treat a broken kit as
+    /// a smaller one.</summary>
+    private static async Task<BridgeKompletDto?> ReadKomplet(string symbol)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        int towarId;
+        int rodzaj;
+        await using (var head = new SqlCommand(
+            "SELECT TOP 1 tw_Id, tw_Rodzaj FROM tw__Towar WHERE tw_Symbol = @sym AND tw_Usuniety = 0", c))
+        {
+            head.Parameters.AddWithValue("@sym", symbol);
+            await using var hr = await head.ExecuteReaderAsync();
+            if (!await hr.ReadAsync()) return null;
+            towarId = hr.GetInt32(0);
+            rodzaj = Convert.ToInt32(hr.GetValue(1));
+        }
+        if (rodzaj != TowarRodzajKomplet)
+            return new BridgeKompletDto(symbol, rodzaj, false, new List<BridgeKompletSkladnikDto>());
+
+        await using var cmd = new SqlCommand(
+            @"SELECT s.tw_Symbol, k.kpl_Liczba, s.tw_Usuniety
+              FROM tw_Komplet k
+              LEFT JOIN tw__Towar s ON s.tw_Id = k.kpl_IdSkladnik
+              WHERE k.kpl_IdKomplet = @id
+              ORDER BY k.kpl_Id", c);
+        cmd.Parameters.AddWithValue("@id", towarId);
+        var skladniki = new List<BridgeKompletSkladnikDto>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            var compSymbol = r.IsDBNull(0) ? null : r.GetString(0).Trim();
+            var ilosc = r.IsDBNull(1) ? 0m : r.GetDecimal(1);
+            // A missing tw__Towar row (LEFT JOIN miss) counts as deleted.
+            var usuniety = r.IsDBNull(2) || Convert.ToInt32(r.GetValue(2)) != 0;
+            skladniki.Add(new BridgeKompletSkladnikDto(compSymbol, ilosc, usuniety));
+        }
+        return new BridgeKompletDto(symbol, rodzaj, true, skladniki);
     }
 
     private static async Task<List<string>> ListSymbols(int limit, int offset)
@@ -759,6 +819,16 @@ public sealed record BridgeModelDto(int ModelId, string ModelNazwa, List<BridgeP
 /// a synthetic hierarchy - by reading grt_NrAnalityka as a path, say - would
 /// invent a shape Subiekt does not have.</summary>
 public sealed record BridgeCategoryDto(int Id, string Nazwa);
+
+/// <summary>GET /api/products/{symbol}/komplet. Rodzaj is tw__Towar.tw_Rodzaj
+/// (8 = komplet). Skladniki is empty when JestKompletem is false.</summary>
+public sealed record BridgeKompletDto(
+    string Symbol, int Rodzaj, bool JestKompletem, List<BridgeKompletSkladnikDto> Skladniki);
+
+/// <summary>One tw_Komplet row. Symbol is the component towar's tw_Symbol (null
+/// when the component row no longer exists), Ilosc is kpl_Liczba, Usuniety is
+/// true for a soft-deleted or missing component.</summary>
+public sealed record BridgeKompletSkladnikDto(string? Symbol, decimal Ilosc, bool Usuniety);
 
 public sealed class CreateProductRequest
 {

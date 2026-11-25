@@ -808,7 +808,7 @@
       "allConnections": "Wszystkie połączenia",
       "allKinds": "Wszystkie rodzaje",
       "allStatuses": "Wszystkie statusy",
-      "allTaxIds": "Wszystkie NIP kupujących",
+      "allTaxIds": "Wszystkie NIP-y kupujących",
       "connection": "Filtruj według połączenia",
       "issuedFrom": "Wystawione od",
       "issuedTo": "Wystawione do",
@@ -823,7 +823,7 @@
     "loadError": "Nie udało się wczytać dokumentów sprzedaży",
     "loading": "Wczytywanie dokumentów sprzedaży…",
     "manageInvoices": "Zarządzaj fakturami",
-    "manageRouting": "Zarządzaj kierowaniem",
+    "manageRouting": "Kierowanie dokumentów",
     "next": "Dalej",
     "previous": "Wstecz",
     "retry": "Ponów",
@@ -836,7 +836,16 @@
       "registered": "Zarejestrowany",
       "registering": "Rejestrowanie"
     },
-    "title": "Dokumenty sprzedaży"
+    "title": "Dokumenty sprzedaży",
+    "views": {
+      "lockedDescription": "Identyfikator zamówienia",
+      "systemViews": {
+        "all": "Wszystkie dokumenty",
+        "failed": "Nieudane",
+        "fiscalReceipts": "Paragony fiskalne",
+        "invoices": "Faktury"
+      }
+    }
   },
   "salesDocumentsPanel": {
     "capability": {
@@ -911,10 +920,16 @@
   "salesDocumentsTile": {
     "adminOnly": "Tylko administratorzy",
     "conflict": "Sprzeczna konfiguracja połączenia głównego - wymaga uwagi.",
+    "connectionCount": {
+      "few": "{n} połączenia",
+      "many": "{n} połączeń",
+      "one": "{n} połączenie",
+      "other": "{n} połączenia"
+    },
     "connections": "Połączenia",
     "description": "Które połączenie wystawia faktury lub paragony fiskalne i które wystawia jako pierwsze.",
     "eyebrow": "Fiskalne",
-    "manage": "Zarządzaj kierowaniem",
+    "manage": "Kierowanie dokumentów",
     "title": "Kierowanie dokumentów sprzedaży"
   },
   "taxIdCoverage": {

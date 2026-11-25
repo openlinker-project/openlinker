@@ -769,6 +769,20 @@ export interface CreateConnectionInput {
   credentialsRef?: string;
   adapterKey?: string;
   enabledCapabilities?: string[];
+  /** Where order sync starts (#4228). Absent means `{ mode: 'now' }` for an order source. */
+  orderSyncStart?: OrderSyncStartInput;
+}
+
+/** `orderSyncStart` on `POST /connections` (#4228). `from` is `YYYY-MM-DD` or an ISO date-time. */
+export type OrderSyncStartInput =
+  | { mode: 'now' }
+  | { mode: 'all' }
+  | { mode: 'from'; from: string };
+
+/** The slice of `GET /connections/:id/sync-status` the order-sync-start suite reads (#4228). */
+export interface ConnectionSyncStatus {
+  /** ISO timestamp the feed was started from "now"; null when no start was recorded. */
+  orderSyncStartedAt: string | null;
 }
 
 /** PATCH /connections/:id request body — all fields optional. */

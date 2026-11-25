@@ -50,9 +50,10 @@ export interface BulkOfferOverrides {
    * threaded to both barcode sites in the core `OfferBuilderService` (catalog
    * self-link + EanCategoryMatcher). The BE strips it from perVariant/perProduct
    * maps only for `categoryId`; `ean` is kept. Must be a GS1-valid GTIN-8/13.
-   * An empty string is wizard-local (#4036): "list without a barcode", distinct
-   * from absent (inherit the master barcode). It never reaches the wire - the
-   * submit drops the field and the catalogue card with it.
+   * An empty string means "list without a barcode" (#4036), distinct from absent
+   * (inherit the master barcode). It is sent as-is: the backend treats it as no
+   * barcode for category resolution and the catalogue link, instead of falling
+   * back to the master's.
    */
   ean?: string;
   /**

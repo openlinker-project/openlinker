@@ -10,7 +10,10 @@
  * @see {@link SyncJobRepository} for the TypeORM implementation
  */
 import type { SyncJob } from '../entities/sync-job.entity';
-import type { ConnectionBacklogStats } from '../types/connection-sync-status.types';
+import type {
+  ConnectionBacklogStats,
+  OrderImportStats,
+} from '../types/connection-sync-status.types';
 import type {
   JobOutcome,
   JobOutcomeReason,
@@ -452,4 +455,20 @@ export interface SyncJobRepositoryPort {
     historyStart: Date,
     now: Date
   ): Promise<ConnectionBacklogStats>;
+
+  /**
+   * How one connection's order import is doing (#4228): orders imported and
+   * failed, orders still waiting, and the history or range import that is still
+   * running. Aggregate-only and bounded by `since`, so the result and the read
+   * are independent of how many jobs the connection ever had.
+   *
+   * @param connectionId - Connection UUID
+   * @param since24h - Lower bound of the "imported recently" figure
+   * @param since7d - Lower bound of every other historical figure
+   */
+  getOrderImportStats(
+    connectionId: string,
+    since24h: Date,
+    since7d: Date
+  ): Promise<OrderImportStats>;
 }
