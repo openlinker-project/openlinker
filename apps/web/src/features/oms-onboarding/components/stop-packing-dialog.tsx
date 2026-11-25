@@ -15,7 +15,7 @@ import type { ReactElement } from 'react';
 
 import { Button } from '../../../shared/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 
 export interface StopPackingDialogProps {
   readonly open: boolean;
@@ -27,6 +27,7 @@ export interface StopPackingDialogProps {
 }
 
 export function StopPackingDialog(props: StopPackingDialogProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent>

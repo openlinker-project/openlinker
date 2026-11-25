@@ -47,6 +47,10 @@ export function CurrencySettingsTile(): ReactElement {
       qualifier: copy.sourceQualifier[source],
     });
   };
+  // An unknown value - a rule or source added on the server before this bundle
+  // knows it - falls back to the raw code rather than to nothing.
+  const rateSourceLabels: Record<string, string | undefined> = copy.rateSources;
+  const rateDateRuleLabels: Record<string, string | undefined> = copy.rateDateRules;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [coverageOpen, setCoverageOpen] = useState(false);
 
@@ -83,11 +87,15 @@ export function CurrencySettingsTile(): ReactElement {
             </div>
             <div>
               <dt>{copy.rateSource}</dt>
-              <dd>{query.data.rateSource ?? copy.notConfigured}</dd>
+              <dd>
+                {query.data.rateSource === null
+                  ? copy.notConfigured
+                  : rateSourceLabels[query.data.rateSource] ?? query.data.rateSource}
+              </dd>
             </div>
             <div>
               <dt>{copy.rateDateRule}</dt>
-              <dd className="mono-text">{query.data.rateDateRule}</dd>
+              <dd>{rateDateRuleLabels[query.data.rateDateRule] ?? query.data.rateDateRule}</dd>
             </div>
           </dl>
 
