@@ -15,6 +15,7 @@
  * @module tests/buyer-data
  */
 import { test, expect } from '../../src/fixtures/test';
+import { BuyerDataRules } from '../../src/pages/buyer-data.page';
 import { deleteConnectionsByName } from '../../src/support/delivery-on-documents-seed';
 
 const INHERIT_NAME = `Buyer data E2E inherit ${String(Date.now())}`;
@@ -35,12 +36,19 @@ test('general settings: switch locked until the plan is calculated, then saved',
 
   await test.step('the tile on Settings leads to the page', async () => {
     await page.goto('/settings');
-    await page.getByRole('link', { name: 'Manage' }).last().click();
+    // Scoped to the Buyer data row: the settings page carries a Manage link in every
+    // group, and the last one is not this tile since main added rows after it.
+    await page
+      .getByText('Buyer data', { exact: true })
+      .first()
+      .locator('xpath=ancestor::*[.//a[normalize-space()="Manage"]][1]')
+      .getByRole('link', { name: 'Manage' })
+      .click();
     await expect(page).toHaveURL(/\/settings\/buyer-data$/);
   });
 
   await test.step('it says these are defaults and starts with the rules off', async () => {
-    await expect(page.getByText('These are default settings')).toBeVisible();
+    await expect(page.getByText('Default rules for every connection that has none of its own.')).toBeVisible();
     await expect(settings.masterSwitch).toHaveAttribute('aria-checked', 'false');
   });
 
@@ -84,7 +92,8 @@ test('Erli wizard: general settings by default, own rules saved without an enabl
   async function createErli(name: string, own: boolean): Promise<void> {
     await wizard.goto();
     await wizard.fillCredentials(name, 'buyer-data-e2e-dummy-key');
-    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    // The buyer data step is the one before Connect Erli (after Order history).
+    await wizard.continueToReview();
     await expect(step.root).toBeVisible();
     await expect(step.inheritOption).toBeChecked();
     if (own) {
@@ -113,47 +122,49 @@ test('Erli wizard: general settings by default, own rules saved without an enabl
   });
 });
 
-test('connection edit: own rules need a trial run, then are saved into the config', async ({
+test('connection edit: the section summarises the rules and opens its scope in settings', async ({
   page,
-  pages,
   api,
 }) => {
-  const section = pages.buyerDataSection;
   const connection = (await api.connections.list()).find((c) => c.name === INHERIT_NAME);
   expect(connection, 'the inheriting connection exists').toBeDefined();
   const connectionId = connection?.id ?? '';
 
-  await test.step('it inherits the general rules and shows no questions', async () => {
-    await section.goto(connectionId);
-    await expect(section.inheritOption).toBeChecked();
-    await expect(page.getByText('Same as the general settings:')).toBeVisible();
+  await test.step('the edit page shows a read-only summary that follows the defaults', async () => {
+    await page.goto(`/connections/${connectionId}/edit`);
+    const section = page.getByTestId('buyer-data-section');
+    await expect(section).toBeVisible({ timeout: 30_000 });
+    // The general switch is off for the run, so the connection that follows it reads off.
+    await expect(section.getByTestId('buyer-data-source')).toContainText('Switched off');
+    await expect(section.getByTestId('buyer-data-hint')).toContainText(
+      'The rules are off. Turn them on in settings.'
+    );
   });
 
-  await test.step('taking own rules keeps following the general switch (off here)', async () => {
-    await section.ownOption.check();
-    await expect(section.enabledSwitch).toHaveAttribute('aria-checked', 'false');
-    await section.rules.choose({ amount: 1, unit: 'years' }, { amount: 2, unit: 'years' });
+  await test.step('its button opens the connection tab in the general settings', async () => {
+    await page.getByTestId('buyer-data-cta').click();
+    await expect(page).toHaveURL(new RegExp(`/settings/buyer-data\\?scope=${connectionId}$`));
+    await expect(page.getByTestId('scope-chain')).toBeVisible();
+    await expect(page.getByTestId('scope-unlink')).toBeVisible();
   });
 
-  await test.step('the trial run unlocks the switch', async () => {
-    await expect(section.rules.plan).toContainText('Calculated at');
-    await section.enabledSwitch.click();
-  });
-
-  await test.step('saving writes config.buyerDataRetention', async () => {
-    await page.getByRole('button', { name: 'Save changes' }).click();
+  await test.step('setting own rules and saving writes config.buyerDataRetention', async () => {
+    const rules = new BuyerDataRules(page.getByTestId('buyer-data-page'), `conn-${connectionId}`);
+    await page.getByTestId('scope-unlink').click();
+    await rules.choose({ amount: 1, unit: 'years' }, { amount: 2, unit: 'years' });
+    await page.getByTestId('buyer-data-save').click();
     await expect
       .poll(async () => {
         const saved = await api.connections.getById(connectionId);
         return (saved.config as Record<string, unknown>)['buyerDataRetention'];
       })
-      .toMatchObject({ enabled: true, hideAfterDays: 365, eraseAfterDays: 730 });
+      .toMatchObject({ hideAfterDays: 365, eraseAfterDays: 730 });
   });
 
-  await test.step('returning to the general rules writes an explicit null', async () => {
-    await section.goto(connectionId);
-    await section.inheritOption.check();
-    await page.getByRole('button', { name: 'Save changes' }).click();
+  await test.step('going back to the defaults writes an explicit null', async () => {
+    await page.goto(`/settings/buyer-data?scope=${connectionId}`);
+    await page.getByTestId('scope-relink').click();
+    await page.getByTestId('buyer-data-save').click();
     await expect
       .poll(async () => {
         const saved = await api.connections.getById(connectionId);

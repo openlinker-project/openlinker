@@ -87,7 +87,7 @@ test('Erli wizard: the suggested settings land in the created connection', async
   });
 
   await test.step('review and create the connection', async () => {
-    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await wizard.continueToReview();
     await page.getByRole('button', { name: 'Connect Erli' }).click();
     await expect(page.getByRole('button', { name: 'Test connection' })).toBeVisible({
       timeout: 30_000,
