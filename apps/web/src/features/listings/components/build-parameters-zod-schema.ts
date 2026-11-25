@@ -60,7 +60,7 @@ export function buildParametersZodSchema(
   return base.superRefine((rawValues, ctx) => {
     const values = rawValues as CategoryParameterFormValues;
     for (const p of parameters) {
-      if (!isParameterVisible(p, values)) continue;
+      if (!isParameterVisible(p, values, parameters)) continue;
 
       const v = values[p.id];
 
@@ -80,7 +80,7 @@ export function buildParametersZodSchema(
         p.dictionary.length > 0 &&
         !p.restrictions.customValuesEnabled
       ) {
-        const allowedIds = new Set(visibleDictionaryEntries(p, values).map((e) => e.id));
+        const allowedIds = new Set(visibleDictionaryEntries(p, values, parameters).map((e) => e.id));
         const selected = Array.isArray(v) ? v : typeof v === 'string' ? [v] : [];
         for (const id of selected) {
           if (!allowedIds.has(id)) {
