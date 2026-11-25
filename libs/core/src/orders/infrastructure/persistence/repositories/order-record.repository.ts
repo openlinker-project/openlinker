@@ -3743,7 +3743,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
       // the address would stay in the delivery log for good.
       const returned = await this.dataSource.transaction(
         async (manager: EntityManager): Promise<{ customer_id: string | null }[]> => {
-          const rows = (await manager.query(
+          const rows: unknown = await manager.query(
             `UPDATE "order_records" rec
              SET "orderSnapshot" = $2::jsonb,
                  "orderEdits" = CASE WHEN rec."orderEdits" IS NULL THEN NULL
@@ -3765,10 +3765,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
               now,
               erasure.hide,
             ]
-          )) as [{ customer_id: string | null }[], number] | { customer_id: string | null }[];
-          const updated = Array.isArray(rows[0])
-            ? (rows[0] as { customer_id: string | null }[])
-            : (rows as { customer_id: string | null }[]);
+          );
+          // TypeORM returns `[rows, count]` for UPDATE ... RETURNING on some
+          // driver versions and the bare row array on others.
+          const tuple = rows as [{ customer_id: string | null }[], number] | undefined;
+          const updated = (Array.isArray(tuple?.[0]) ? tuple?.[0] : rows) as {
+            customer_id: string | null;
+          }[];
           if (updated.length > 0) {
             // The buyer's address is also kept in clear text on the delivery logs
             // (nullable columns), keyed by the same order id. Only for rows this
