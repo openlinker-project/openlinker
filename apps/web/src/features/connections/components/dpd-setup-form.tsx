@@ -38,6 +38,8 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { captureDemoEvent } from '../../demo';
+import { WizardCreatedScreen } from './wizard-created-screen';
+import { CarrierNextStep } from './carrier-next-step';
 import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
@@ -79,6 +81,7 @@ export function DpdSetupForm(): ReactElement {
     mode: 'onBlur',
   });
 
+  const [created, setCreated] = useState<{ id: string; name: string } | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
 
@@ -128,22 +131,49 @@ export function DpdSetupForm(): ReactElement {
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
+      const result = await createConnection.mutateAsync(toCreateConnectionInput(values));
       form.reset(values, { keepValues: true, keepDirty: false });
       showToast({
         tone: 'success',
         title: copy.createdTitle,
-        description: interpolate(copy.createdDescription, { platform, name: created.name }),
+        description: interpolate(copy.createdDescription, { platform, name: result.name }),
       });
       // A new carrier ships nothing until a delivery method is routed to it,
       // so the operator lands where that next step is offered (#3958).
-      void navigate(createdConnectionLandingPath(created.id, isFromOmsSetup(searchParams)));
+      if (isFromOmsSetup(searchParams)) {
+        void navigate(createdConnectionLandingPath(result.id, true));
+        return;
+      }
+      setCreated({ id: result.id, name: result.name });
     } catch {
       return;
     }
   });
 
   const values = form.watch();
+
+  if (created) {
+    return (
+      <WizardLayout
+        stepper={
+          <SetupStepper
+            steps={STEP_LABELS}
+            currentStep={STEP_LABELS.length - 1}
+            completedSteps={new Set(STEP_LABELS.map((_, index) => index))}
+          />
+        }
+      >
+        <WizardCreatedScreen
+          connectionId={created.id}
+          connectionName={created.name}
+          title={copy.createdTitle}
+          
+        >
+          <CarrierNextStep connectionId={created.id} />
+        </WizardCreatedScreen>
+      </WizardLayout>
+    );
+  }
 
   return (
     <WizardLayout

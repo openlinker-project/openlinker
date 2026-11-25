@@ -46,7 +46,22 @@
       "range": "Wyświetlono {from}-{to} z {total}"
     },
     "retry": "Ponów",
-    "title": "Doręczenia webhooków"
+    "title": "Doręczenia webhooków",
+    "views": {
+      "lockedDescription": "Stan doręczenia",
+      "sorts": {
+        "providerAsc": "Dostawca",
+        "receivedAsc": "Odebrano, najstarsze",
+        "receivedDesc": "Odebrano, najnowsze",
+        "statusAsc": "Status"
+      },
+      "systemViews": {
+        "all": "Wszystkie doręczenia",
+        "deadlettered": "Porzucone",
+        "failed": "Nieudane",
+        "rejected": "Odrzucone"
+      }
+    }
   },
   "webhookDeliveryDetailPage": {
     "backTo": "Webhooki",

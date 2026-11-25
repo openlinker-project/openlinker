@@ -14,11 +14,13 @@ import { useSession } from '../../shared/auth/use-session';
 import { interpolate, useMessages } from '../../shared/i18n';
 import { ErrorState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { useConnectionQuery } from '../../features/connections';
 import { SalesDocumentBatchScreen } from '../../features/sales-documents';
 
 export function SalesDocumentBatchPage(): ReactElement {
   const copy = useMessages('sales-documents').batch.page;
+  const tpl = useMessages('settings').template.batch;
   const { session } = useSession();
   const isAdmin = useIsAdmin();
   const { connectionId = '' } = useParams<{ connectionId: string }>();
@@ -41,13 +43,22 @@ export function SalesDocumentBatchPage(): ReactElement {
 
   const name = connection.data?.name;
   return (
-    <PageLayout
+    <SettingsPageFrame
+      wide
       eyebrow={copy.eyebrow}
       title={name ? interpolate(copy.titleFor, { name }) : copy.title}
+      short={tpl.short}
       description={copy.description}
       backTo={{ to: '/settings/sales-documents', label: copy.backLabel }}
-    >
-      <SalesDocumentBatchScreen connectionId={connectionId} />
-    </PageLayout>
+      sections={[
+        {
+          id: 'batch',
+          label: tpl.short,
+          title: tpl.title,
+          hint: tpl.hint,
+          children: <SalesDocumentBatchScreen connectionId={connectionId} />,
+        },
+      ]}
+    />
   );
 }

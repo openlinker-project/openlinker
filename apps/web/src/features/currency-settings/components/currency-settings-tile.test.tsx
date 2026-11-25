@@ -96,7 +96,8 @@ describe('CurrencySettingsTile', () => {
     });
     renderWithProviders(<CurrencySettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
 
-    expect(await screen.findByText('EUR (default)')).toBeInTheDocument();
+    expect(await screen.findByText('EUR')).toBeInTheDocument();
+    expect(screen.getByText('default')).toBeInTheDocument();
   });
 
   it('renders "PLN (from env)" when the value comes from OL_REPORTING_CURRENCY', async () => {
@@ -105,7 +106,8 @@ describe('CurrencySettingsTile', () => {
     });
     renderWithProviders(<CurrencySettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
 
-    expect(await screen.findByText('PLN (from env)')).toBeInTheDocument();
+    expect(await screen.findByText('PLN')).toBeInTheDocument();
+    expect(screen.getByText('from env')).toBeInTheDocument();
   });
 
   it('renders a bare "PLN" when an operator has saved a value', async () => {

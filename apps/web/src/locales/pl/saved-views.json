@@ -1,0 +1,144 @@
+{
+  "columnsPanel": {
+    "always": "Zawsze",
+    "announceColumn": "Kolumna {name} jest teraz na pozycji {to} z {total}.",
+    "announcePart": "Pole {name} jest teraz w wierszu {to} z {total} w kolumnie {column}.",
+    "columns": "Kolumny",
+    "description": "Wybierz kolumny listy, ich kolejność i sposób sortowania.",
+    "done": "Gotowe",
+    "fieldsDisclosure": "Pola",
+    "fieldsGroup": "Pola w kolumnie {name}",
+    "fieldsHint": "Wyświetlane od góry do dołu w każdej komórce",
+    "fieldsOf": "Pola kolumny {name}",
+    "gripLabel": "Przenieś: {name}. Przeciągnij albo użyj strzałek w górę i w dół.",
+    "hidden": "Ukryte",
+    "minOneField": "Kolumna zachowuje co najmniej jedno pole. Aby ją ukryć, odznacz samą kolumnę.",
+    "moveDown": "Przenieś w dół: {name}",
+    "moveUp": "Przenieś w górę: {name}",
+    "noCustomViews": "Zapisane dla Ciebie na tej liście. Ta lista nie ma własnych widoków.",
+    "restoreDefaults": "Przywróć domyślne",
+    "sort": "Sortowanie",
+    "sortHint": "Możesz też kliknąć pole w nagłówku kolumny.",
+    "sortableTitle": "Można sortować z nagłówka kolumny",
+    "title": "Kolumny i sortowanie",
+    "trigger": "Kolumny i sortowanie"
+  },
+  "deleteDialog": {
+    "body": "Dane nie zostaną zmienione. Usunięte zostaną tylko zapisane filtry i kolumny.",
+    "confirm": "Usuń widok",
+    "sharedWarning": "Widok zniknie dla wszystkich.",
+    "title": "Usunąć „{name}”?",
+    "unsavedWarning": "Niezapisane zmiany też zostaną utracone."
+  },
+  "edited": {
+    "changes": {
+      "columns": "Kolumny",
+      "fields": "Pola",
+      "filters": "Filtry",
+      "sort": "Sortowanie"
+    },
+    "group": "Niezapisane zmiany widoku",
+    "reset": "Cofnij zmiany",
+    "saveAsMine": "Zapisz jako mój widok…",
+    "saveAsNew": "Zapisz jako nowy…",
+    "saveAsView": "Zapisz jako widok…",
+    "saveChanges": "Zapisz zmiany",
+    "status": "Widok {name} ma niezapisane zmiany: {changes}.",
+    "tag": "Zmieniono · {changes}"
+  },
+  "errors": {
+    "conflict": "Ktoś inny zmienił „{name}” w trakcie edycji. Wczytaj widoki ponownie i powtórz zmianę.",
+    "conflictAction": "Wczytaj ponownie",
+    "generic": "Nie udało się zapisać widoku. Spróbuj ponownie."
+  },
+  "repair": {
+    "body": "Brakujące elementy są pomijane, dopóki tego nie naprawisz.",
+    "dismiss": "Zamknij",
+    "fix": "Usuń brakujące elementy i zapisz",
+    "issues": {
+      "invalidFilterValue": "Filtr „{name}” nie przyjmuje już wartości „{value}”, więc ten widok go pomija.",
+      "unknownColumn": "Kolumna „{name}” już nie istnieje.",
+      "unknownFilter": "Filtr „{name}” już nie istnieje, więc ten widok go pomija.",
+      "unknownPart": "Pole kolumny „{column}” już nie istnieje.",
+      "unknownSort": "Pole sortowania już nie istnieje, używamy: „{fallback}”."
+    },
+    "saveAsMine": "Zapisz jako mój widok…",
+    "title": "Ten widok wymaga naprawy."
+  },
+  "saveDialog": {
+    "cancel": "Anuluj",
+    "createDescription": "Zapisuje bieżące filtry, sortowanie i kolumny pod wybraną nazwą.",
+    "createTitle": "Zapisz jako nowy widok",
+    "defaultCheck": "Otwieraj: {page} w tym widoku domyślnie",
+    "errors": {
+      "required": "Wpisz nazwę widoku.",
+      "taken": "Widok o tej nazwie już istnieje."
+    },
+    "everyone": "Wszyscy",
+    "nameLabel": "Nazwa",
+    "namePlaceholder": "np. Allegro, gotowe do pakowania",
+    "onlyMe": "Tylko ja",
+    "renameDescription": "Zmienia nazwę widoku. Jego filtry i kolumny zostają bez zmian.",
+    "renameTitle": "Zmień nazwę widoku",
+    "saveName": "Zapisz nazwę",
+    "saveView": "Zapisz widok",
+    "scopeAdminsOnly": "Tylko administratorzy",
+    "scopeHint": {
+      "personal": "Widoczny tylko na Twoim koncie.",
+      "shared": "Widzą go wszyscy. Edytować i usuwać mogą go tylko administratorzy.",
+      "viewer": "Widoki wspólne tworzą administratorzy. Możesz skopiować taki widok do własnych."
+    },
+    "scopeLabel": "Kto go widzi",
+    "summary": {
+      "columns": {
+        "few": "{n} kolumny",
+        "many": "{n} kolumn",
+        "one": "{n} kolumna",
+        "other": "{n} kolumny"
+      },
+      "label": "Co zostanie zapisane",
+      "sort": "Sortowanie: {label}"
+    }
+  },
+  "sortField": {
+    "ascending": "{label}, sortowanie rosnąco",
+    "descending": "{label}, sortowanie malejąco",
+    "sortable": "{label}, sortuj"
+  },
+  "toasts": {
+    "copied": "Skopiowano do Twoich widoków.",
+    "copiedWithChanges": "Skopiowano wraz z bieżącymi zmianami.",
+    "defaultSet": "{page}: domyślnie otworzy się „{name}”.",
+    "deleted": "Usunięto „{name}”.",
+    "deletedDefault": "{page}: teraz otwiera się {fallback}.",
+    "discarded": "Odrzucono zmiany w widoku „{name}”.",
+    "lockedPin": "Ten widok zawsze zostaje na pasku.",
+    "pinFull": "Na pasku mieści się {max} widoków. Najpierw odepnij jeden.",
+    "renamed": "Zmieniono nazwę na „{name}”.",
+    "replacedPin": "Zastąpił „{name}” na pasku.",
+    "savedChanges": "Zapisano zmiany w widoku „{name}”.",
+    "savedView": "Zapisano widok „{name}”.",
+    "savedViewShared": "Zapisano widok „{name}” dla wszystkich.",
+    "undo": "Cofnij"
+  },
+  "viewsBar": {
+    "actionsFor": "Działania dla widoku {name}",
+    "builtIn": "Wbudowane",
+    "copyWord": "kopia",
+    "defaultBadge": "Domyślny",
+    "defaultForMe": "Mój domyślny ✓",
+    "delete": "Usuń",
+    "duplicate": "Skopiuj do moich",
+    "group": "Widoki",
+    "mine": "Moje",
+    "none": "Jeszcze brak.",
+    "openByDefault": "Otwieraj domyślnie",
+    "pin": "Przypnij do paska",
+    "rename": "Zmień nazwę",
+    "saveNew": "Zapisz bieżące filtry jako nowy widok…",
+    "shared": "Wspólne",
+    "tab": "{name}, {count}",
+    "unpin": "Odepnij od paska",
+    "viewsButton": "Widoki"
+  }
+}

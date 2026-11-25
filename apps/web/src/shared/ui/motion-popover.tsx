@@ -47,18 +47,29 @@ export function measureZoom(el: HTMLElement): number {
 }
 
 /**
- * Centred on the trigger, moved inwards only as far as needed to stay on screen.
- * `trigger` and the viewport are in screen pixels while `left`/`top`/`bottom`
- * are written inside the zoomed subtree, so everything is divided by `zoom`.
+ * Which edge of the trigger the panel lines up with. `center` is the switch
+ * family's default; `end` puts the panel's right edge on the trigger's, for a
+ * trigger that sits at the right edge of a card or a dialog and would otherwise
+ * push a centred panel out past it.
+ */
+export type PopoverAlign = 'center' | 'end';
+
+/**
+ * Centred on the trigger (or lined up with its end edge), moved inwards only as
+ * far as needed to stay on screen. `trigger` and the viewport are in screen
+ * pixels while `left`/`top`/`bottom` are written inside the zoomed subtree, so
+ * everything is divided by `zoom`.
  */
 export function anchoredPosition(
   trigger: DOMRect,
   width: number,
   placement: PopoverPlacement,
+  align: PopoverAlign = 'center',
   zoom = 1
 ): CSSProperties {
   const half = width / 2;
-  const centre = (trigger.left + trigger.width / 2) / zoom;
+  const centre =
+    align === 'end' ? trigger.right / zoom - half : (trigger.left + trigger.width / 2) / zoom;
   const viewportWidth = window.innerWidth / zoom;
   const left = Math.min(Math.max(centre, GAP + half), viewportWidth - GAP - half);
   return placement === 'down'
@@ -69,6 +80,7 @@ export function anchoredPosition(
 export interface UseAnchoredPopoverOptions {
   width: number;
   placement: PopoverPlacement;
+  align?: PopoverAlign;
 }
 
 export interface AnchoredPopover<T extends HTMLElement> {
@@ -86,6 +98,7 @@ export interface AnchoredPopover<T extends HTMLElement> {
 export function useAnchoredPopover<T extends HTMLElement = HTMLButtonElement>({
   width,
   placement,
+  align = 'center',
 }: UseAnchoredPopoverOptions): AnchoredPopover<T> {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<CSSProperties>({});
@@ -108,6 +121,7 @@ export function useAnchoredPopover<T extends HTMLElement = HTMLButtonElement>({
             anchorRef.current.getBoundingClientRect(),
             width,
             placement,
+            align,
             measureZoom(anchorRef.current)
           )
         );
@@ -121,22 +135,23 @@ export function useAnchoredPopover<T extends HTMLElement = HTMLButtonElement>({
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open, width, placement]);
+  }, [open, width, placement, align]);
 
   const toggle = useCallback((): void => {
     if (!open && anchorRef.current) {
       setHost(anchorRef.current.closest('dialog'));
       setPosition(
-          anchoredPosition(
-            anchorRef.current.getBoundingClientRect(),
-            width,
-            placement,
-            measureZoom(anchorRef.current)
-          )
-        );
+        anchoredPosition(
+          anchorRef.current.getBoundingClientRect(),
+          width,
+          placement,
+          align,
+          measureZoom(anchorRef.current)
+        )
+      );
     }
     setOpen(!open);
-  }, [open, width, placement]);
+  }, [open, width, placement, align]);
 
   const close = useCallback((): void => {
     setOpen(false);

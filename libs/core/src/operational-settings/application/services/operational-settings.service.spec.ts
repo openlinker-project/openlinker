@@ -15,7 +15,7 @@ import type { OperationalSettingsRepositoryPort } from '../../domain/ports/opera
 import { OperationalSettingsService } from './operational-settings.service';
 
 const emptyRow = (): OperationalSettings =>
-  new OperationalSettings(null, null, null, null, null, null, null, null, null, new Date('2026-08-01T00:00:00Z'), 'admin');
+  new OperationalSettings(null, null, null, null, null, null, null, null, null, null, new Date('2026-08-01T00:00:00Z'), 'admin');
 
 describe('OperationalSettingsService', () => {
   let repository: jest.Mocked<OperationalSettingsRepositoryPort>;
@@ -68,7 +68,7 @@ describe('OperationalSettingsService', () => {
     it('should let a stored row win over the env var and report the row stamp', async () => {
       env.OL_PRODUCT_SYNC_PAGE_LIMIT = '250';
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(900, null, null, null, null, null, null, null, null, new Date('2026-08-02T10:00:00Z'), 'ada')
+        new OperationalSettings(900, null, null, null, null, null, null, null, null, null, new Date('2026-08-02T10:00:00Z'), 'ada')
       );
 
       const view = await service.resolve();
@@ -87,7 +87,7 @@ describe('OperationalSettingsService', () => {
 
     it('should fall back rather than hand the scheduler a stored cadence it cannot construct a CronJob from', async () => {
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(null, null, null, null, null, null, null, null, 'not-a-cron', new Date(), null)
+        new OperationalSettings(null, null, null, null, null, null, null, null, 'not-a-cron', null, new Date(), null)
       );
 
       const view = await service.resolve();
@@ -186,7 +186,7 @@ describe('OperationalSettingsService', () => {
 
     it('should report an acknowledged override as above the recommendation when read back', async () => {
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(5000, null, null, null, null, null, null, null, null, new Date(), 'ada')
+        new OperationalSettings(5000, null, null, null, null, null, null, null, null, null, new Date(), 'ada')
       );
 
       const view = await service.resolve();
@@ -270,7 +270,7 @@ describe('OperationalSettingsService', () => {
 
     it('should mark a stored value as one both processes read', async () => {
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(750, null, null, null, null, null, null, null, null, new Date(), 'ada')
+        new OperationalSettings(750, null, null, null, null, null, null, null, null, null, new Date(), 'ada')
       );
 
       const view = await service.resolve();
@@ -305,6 +305,50 @@ describe('OperationalSettingsService', () => {
 
       expect(view.inventorySweepCadence.value).toBe('*/15 * * * *');
       expect(view.inventorySweepCadence.source).toBe('default');
+    });
+  });
+
+  describe('releaseCenterEnabled', () => {
+    const row = (value: boolean | null): OperationalSettings =>
+      new OperationalSettings(null, null, null, null, null, null, null, null, null, value, new Date(), null);
+
+    it('should default to on when nothing is set', async () => {
+      expect((await service.resolve()).releaseCenterEnabled).toEqual({
+        value: true,
+        source: 'default',
+        workerMayDiffer: true,
+      });
+    });
+
+    it('should report the env rung when the setting is null and env is false', async () => {
+      env.OL_RELEASE_CENTER_ENABLED = 'false';
+      repository.findSettings.mockResolvedValue(row(null));
+      expect((await service.resolve()).releaseCenterEnabled).toMatchObject({ value: false, source: 'env' });
+    });
+
+    it('should let a stored false win over env true', async () => {
+      env.OL_RELEASE_CENTER_ENABLED = 'true';
+      repository.findSettings.mockResolvedValue(row(false));
+      expect((await service.resolve()).releaseCenterEnabled).toEqual({
+        value: false,
+        source: 'setting',
+        workerMayDiffer: false,
+      });
+    });
+
+    it('should fall through on a garbage env value', async () => {
+      env.OL_RELEASE_CENTER_ENABLED = 'yes please';
+      expect((await service.resolve()).releaseCenterEnabled).toMatchObject({ value: true, source: 'default' });
+    });
+
+    it('should persist an explicit null so the setting clears back to env or default', async () => {
+      await service.updateSettings({ releaseCenterEnabled: null }, 'ada');
+      expect(repository.upsertSettings).toHaveBeenCalledWith({ releaseCenterEnabled: null }, 'ada');
+    });
+
+    it('should leave the toggle alone when the field is omitted', async () => {
+      await service.updateSettings({ sweepPageSize: 50 }, 'ada');
+      expect(repository.upsertSettings).toHaveBeenCalledWith({ sweepPageSize: 50 }, 'ada');
     });
   });
 });

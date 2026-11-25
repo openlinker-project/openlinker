@@ -279,6 +279,18 @@
   "richTextView": {
     "empty": "No description"
   },
+  "settingsIndex": {
+    "loading": "Loading…",
+    "lockedHint": "Only administrators can open this. Ask an administrator if you need a change.",
+    "lockedLabel": "Administrators only",
+    "unavailable": "Unavailable"
+  },
+  "settingsTemplate": {
+    "newBadge": "New",
+    "onThisPage": "On this page",
+    "readOnly": "You have read-only access. An administrator saves changes.",
+    "sections": "Page sections"
+  },
   "setupStepper": {
     "label": "Setup progress",
     "step": "Step {current} of {total}"

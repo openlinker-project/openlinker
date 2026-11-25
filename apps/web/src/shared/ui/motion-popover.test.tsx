@@ -79,13 +79,13 @@ describe('anchoredPosition', () => {
 describe('anchoredPosition under zoom', () => {
   it('divides screen-pixel measurements by the zoom', () => {
     const trigger = { left: 405, width: 90, top: 100, bottom: 136 } as DOMRect;
-    const pos = anchoredPosition(trigger, 200, 'down', 1.125);
+    const pos = anchoredPosition(trigger, 200, 'down', 'center', 1.125);
     expect(pos).toEqual({ left: (405 + 45) / 1.125, top: 136 / 1.125 + 8 });
   });
 
   it('clamps against the zoomed viewport', () => {
     const trigger = { left: 5000, width: 10, top: 0, bottom: 10 } as DOMRect;
-    const pos = anchoredPosition(trigger, 200, 'down', 2);
+    const pos = anchoredPosition(trigger, 200, 'down', 'center', 2);
     expect(pos.left).toBe(window.innerWidth / 2 - 8 - 100);
   });
 

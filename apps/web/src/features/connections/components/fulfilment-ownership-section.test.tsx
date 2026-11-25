@@ -58,4 +58,14 @@ describe('FulfilmentOwnershipSection', () => {
 
     expect(screen.getByTestId('fulfilment-owned-by-destination-checkbox')).toBeDisabled();
   });
+
+  it('should state what packing does not affect and offer the external-warehouse example', () => {
+    render(<Harness initial={false} sync={vi.fn()} />);
+
+    expect(screen.getByTestId('fulfilment-ownership-description')).toHaveTextContent(
+      'It does not choose a carrier or generate labels.'
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Example: an external warehouse packs the order' }));
+    expect(screen.getByText(/external warehouse system packs the parcel/i)).toBeInTheDocument();
+  });
 });

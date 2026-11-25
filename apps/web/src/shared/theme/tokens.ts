@@ -77,6 +77,7 @@ export const tokens = {
   'ease-out': 'var(--ease-out)',
   'ease-standard': 'var(--ease-standard)',
   'ease-in-out': 'var(--ease-in-out)',
+  'ease-spring': 'var(--ease-spring)',
 
   // ── Tracking (letter-spacing) ───────────────────────────────────
   'tracking-tight': 'var(--tracking-tight)',

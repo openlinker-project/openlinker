@@ -175,7 +175,7 @@ describe('ConnectionMappingsPage', () => {
     await user.click(await screen.findByText('Ready for processing'));
     await user.click(screen.getByRole('combobox', { name: /Select PrestaShop status/i }));
     await user.click(await screen.findByText('Payment accepted'));
-    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('button', { name: 'Add to list' }));
 
     await waitFor(() => {
       expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
@@ -430,7 +430,7 @@ describe('ConnectionMappingsPage', () => {
       await user.click(await screen.findByText('Shipped'));
       await user.click(screen.getByRole('combobox', { name: /Select PrestaShop order state/i }));
       await user.click(await screen.findByText('Payment accepted'));
-      await user.click(screen.getByRole('button', { name: 'Add' }));
+      await user.click(screen.getByRole('button', { name: 'Add to list' }));
       await user.click(screen.getByRole('button', { name: 'Save mappings' }));
 
       await waitFor(() => {
