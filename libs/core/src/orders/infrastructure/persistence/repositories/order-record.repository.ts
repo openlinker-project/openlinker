@@ -2093,7 +2093,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
     filters: SalesAnalyticsFilters
   ): void {
-    qb.andWhere(`rec."recordStatus" = 'ready'`)
+    // #4289: an order hidden by buyer-data retention is out of every sum, summary
+    // and KPI - the same scope the order list applies (hiddenScopePredicate).
+    qb.andWhere(OrderRecordRepository.hiddenScopePredicate(false))
+      .andWhere(`rec."recordStatus" = 'ready'`)
       .andWhere('rec."placedAt" IS NOT NULL')
       .andWhere('rec."totalAmount" IS NOT NULL')
       .andWhere('rec."placedAt" >= :salesFrom', { salesFrom: filters.from })
