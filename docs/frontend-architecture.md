@@ -434,6 +434,39 @@ A global client store is only justified when all of the following are true:
 
 Until those conditions are met, prefer Query, URL, form state, or local component state instead.
 
+## Saved list views (#4241)
+
+Named, restorable arrangements of a list page: filter query, sort, visible columns and the field order inside stacked columns. Feature: `features/saved-views` (public barrel `index.ts`); backend in `libs/core/src/saved-views` and `apps/api/src/saved-views` (see `docs/architecture-overview.md` § 32). Design of record: `docs/plans/mockups/saved-views/`.
+
+### State ownership
+
+| State | Owner |
+|---|---|
+| The list as it is now (filters, sort, view id) | the URL |
+| Named views (personal, shared, per-user default) | TanStack Query (`/saved-views`) |
+| Pinned tabs, and column drafts of a list with built-in views only | `localStorage` (`ol.saved-views.pinned.<pageKey>`, `ol.saved-views.<pageKey>.draft.v1`), every access guarded |
+| Search text, page, density, theme | never part of a view and never stored with one |
+
+System views are code (the registry), never rows. A view applies by writing its query into the address, so a link always reproduces what is on screen. A deep link (a view param or any filter) wins over the default view; the default chain (own default, workspace default, first built-in view) applies only to a bare address.
+
+### How a page adopts it
+
+1. Declare a `ListRegistry<Row>` in `features/<feature>/lib/<feature>.list-config.ts`: `pageKey`, the `locked` identity column, `columns` (with `parts` for stacked cells), `filters`, `sorts`, `defaultSort`, `systemViews`. A registry whose cells close over query data must be built in `useMemo` keyed on that data: the engine memoizes on registry identity.
+2. Call `useListView({ registry, pageTitle, counts })` and render what it returns: `viewsBar`, `editedBar`, `repairBanner`, the columns panel props and dialogs, with `toColumns()` feeding `DataTable`.
+3. Add the page to `SAVED_VIEW_PAGES` in `apps/api/src/saved-views/saved-view-page-keys.ts`, with its existing list-query DTO.
+4. Copy lives in the `saved-views` i18n namespace; per-page labels (column, sort and system view names) in the page's own namespace.
+
+Registry options that matter: `customViews: false` keeps built-in views only (Customers, Sales documents, Sync jobs, Webhook deliveries: no save, no per-view menu); `nonViewParams` / `extraNonViewParams` name params that are never part of a view (search, paging, page-specific modes); `sortCodec` keeps a page's existing sort spelling (Orders keeps `sort=total&dir=asc`; the default is `sort=key:dir`); `storedQuery` encodes and decodes the filter query for storage; `viewParam` renames the param carrying the applied view id when the page's own `view` param is taken (Listings uses `savedView`).
+
+### Rules
+
+- **A stored query is validated by the page's list DTO**, so its keys must be names that DTO accepts. When a page's URL params differ from the DTO's (Orders: `invoicing=blocked` vs `salesDocumentBlocked=true`), supply a `storedQuery` codec. The server refuses unknown keys by name rather than storing them.
+- The server strips `search`, `offset`, `cursor`, `limit` and `withTotal` from every stored query, and the client treats them as non-view params. Search is free text (often an email or a name) and a shared view would show it to every role.
+- Selection is cleared when the view changes: the rows underneath are different.
+- Column and part ids in a stored view that the registry no longer knows are reconciled on load and reported by the repair banner; they are never refused on write.
+- Orders adopts views behind `VITE_OL_ORDERS_SAVED_VIEWS_ENABLED` (build-time, on by default, only the literal `false` turns it off, restoring the health tabs and column presets). The legacy `ol.orders-list.visible-columns.v1` key is read once into the draft and removed. A "Late to ship" system view was deliberately not shipped: it needs a relative date, which a stored query cannot express.
+- Not done: views for `failed-orders` and `dispatch-risk`; the Orders export dialog still reads the old column-preset endpoints.
+
 ## Auth And Session
 
 The backend does not yet expose a production-ready user session flow, so the frontend must define an abstraction without coupling the app to a premature implementation.

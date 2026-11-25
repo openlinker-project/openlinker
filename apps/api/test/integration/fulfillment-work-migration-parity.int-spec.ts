@@ -98,6 +98,13 @@ const TABLES = [
   // stated above: the expensive part is the migration chain, already run once.
   'shipment_lines',
   'shipment_line_events',
+  // #4241's saved views. Both carry ON DELETE CASCADE foreign keys to `users`
+  // that `synchronize` never builds (the entities declare no `@ManyToOne`, so the
+  // saved-views leaf never names the users context), plus the personal/shared
+  // PARTIAL unique indexes and the scope/owner CHECK - which is why they join
+  // this file: it is the only place the shipped schema is ever built.
+  'saved_views',
+  'saved_view_defaults',
   // #4141: release-center state. Two PARTIAL unique indexes, two CHECKs and
   // three migration-only FKs (CASCADE and SET NULL) that `synchronize` never builds.
   'user_release_state',
@@ -446,6 +453,9 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // schemas matching and both wrong.
       'CHK_shipment_lines_capacity',
       'CHK_shipment_line_events_quantity_positive',
+      // #4241. The one constraint that lets a shared view have no owner while a
+      // personal one always has: without it the cascade rule is meaningless.
+      'CHK_saved_views_scope_owner',
       'CHK_release_item_states_scope_user',
       'CHK_release_item_states_done_via',
     ]));
@@ -578,6 +588,11 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // deleting a shipment must take both.
       FK_shipment_lines_shipment: 'ON DELETE CASCADE',
       FK_shipment_line_events_line: 'ON DELETE CASCADE',
+      // #4241: a deleted user takes their personal views and defaults; a deleted
+      // view takes the defaults that point at it.
+      FK_saved_views_owner: 'ON DELETE CASCADE',
+      FK_saved_view_defaults_user: 'ON DELETE CASCADE',
+      FK_saved_view_defaults_view: 'ON DELETE CASCADE',
       // #4141: a user's cursor and per-user rows go with the user; the acting
       // admin on an installation row is only attribution, so it is nulled.
       FK_user_release_state_user: 'ON DELETE CASCADE',
@@ -613,6 +628,9 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // these two is unexercisable by any other int-spec.
       'FK_shipment_lines_shipment',
       'FK_shipment_line_events_line',
+      'FK_saved_views_owner',
+      'FK_saved_view_defaults_user',
+      'FK_saved_view_defaults_view',
       'FK_user_release_state_user',
       'FK_release_item_states_user',
       'FK_release_item_states_acted_by',
@@ -793,6 +811,116 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       expect(byName.get('labelPrintedAt')).toMatchObject({ data_type: 'timestamp with time zone' });
       expect(byName.get('completedAt')).toMatchObject({ data_type: 'timestamp with time zone' });
       expect(byName.get('completedByUserId')).toMatchObject({ data_type: 'uuid' });
+    });
+  });
+  describe('saved views (#4241)', () => {
+    const insertUser = async (username: string): Promise<string> => {
+      const rows = (await migrated.query(
+        `INSERT INTO "users"("username","email","password_hash","role")
+         VALUES ($1, $2, 'x', 'viewer') RETURNING "id"`,
+        [username, `${username}@example.com`]
+      )) as { id: string }[];
+      return rows[0].id;
+    };
+
+    it('should delete a user\'s personal views and defaults but keep shared views when the user is deleted', async () => {
+      const userId = await insertUser('sv-cascade');
+      const personal = (await migrated.query(
+        `INSERT INTO "saved_views"("scope","owner_user_id","created_by_user_id","page_key","name","definition")
+         VALUES ('personal', $1, $1, 'orders', 'mine', '{"v":1}') RETURNING "id"`,
+        [userId]
+      )) as { id: string }[];
+      const shared = (await migrated.query(
+        `INSERT INTO "saved_views"("scope","owner_user_id","created_by_user_id","page_key","name","definition")
+         VALUES ('shared', NULL, $1, 'orders', 'team', '{"v":1}') RETURNING "id"`,
+        [userId]
+      )) as { id: string }[];
+      await migrated.query(
+        `INSERT INTO "saved_view_defaults"("user_id","page_key","saved_view_id") VALUES ($1,'orders',$2)`,
+        [userId, shared[0].id]
+      );
+
+      await migrated.query(`DELETE FROM "users" WHERE "id" = $1`, [userId]);
+
+      const remaining = (await migrated.query(
+        `SELECT "id" FROM "saved_views" WHERE "id" = ANY($1)`,
+        [[personal[0].id, shared[0].id]]
+      )) as { id: string }[];
+      // Personal gone with its owner; the shared view is installation-owned and stays.
+      expect(remaining.map((r) => r.id)).toEqual([shared[0].id]);
+      const defaults = (await migrated.query(
+        `SELECT 1 FROM "saved_view_defaults" WHERE "user_id" = $1`,
+        [userId]
+      )) as unknown[];
+      expect(defaults).toHaveLength(0);
+    });
+
+    it('should refuse a shared view with an owner and a personal view without one', async () => {
+      const userId = await insertUser('sv-check');
+      await expect(
+        migrated.query(
+          `INSERT INTO "saved_views"("scope","owner_user_id","page_key","name","definition")
+           VALUES ('shared', $1, 'orders', 'bad-shared', '{}')`,
+          [userId]
+        )
+      ).rejects.toThrow(/CHK_saved_views_scope_owner/);
+      await expect(
+        migrated.query(
+          `INSERT INTO "saved_views"("scope","owner_user_id","page_key","name","definition")
+           VALUES ('personal', NULL, 'orders', 'bad-personal', '{}')`
+        )
+      ).rejects.toThrow(/CHK_saved_views_scope_owner/);
+    });
+
+    it('should copy order column presets into saved views once, narrowed to list columns, and skip orphans', async () => {
+      const userId = await insertUser('sv-presets');
+      await migrated.query(
+        `INSERT INTO "order_column_presets"("userId","name","columns") VALUES
+           ($1, 'Packing', '["money","orderNumber","customer"]'),
+           ($1, 'Export only', '["orderNumber","skus"]'),
+           (NULL, 'Team default', '["status","channel"]'),
+           ('99999999-9999-9999-9999-999999999999', 'Orphan', '["customer"]')`,
+        [userId]
+      );
+
+      // Taken from the DataSource's own glob-loaded list rather than imported by
+      // path: the test type-check runs under node16 resolution, which refuses an
+      // extensionless relative specifier (TS2835), and jest does not map `.js`.
+      const copyMigration = migrated.migrations.find(
+        (m) => m.constructor.name === 'CopyOrderColumnPresetsToSavedViews1940100000000'
+      );
+      if (!copyMigration) {
+        throw new Error('CopyOrderColumnPresetsToSavedViews1940100000000 was not loaded');
+      }
+      // The migration chain already ran over an empty presets table; running the
+      // copy now over populated rows is the trigger, and running it twice is the
+      // idempotency check.
+      await copyMigration.up(migrated.createQueryRunner());
+      await copyMigration.up(migrated.createQueryRunner());
+
+      const rows = (await migrated.query(
+        `SELECT "scope","name","is_workspace_default","owner_user_id","definition"
+           FROM "saved_views" WHERE "page_key" = 'orders'
+            AND "name" IN ('Packing','Export only','Team default','Orphan')
+          ORDER BY "name"`
+      )) as {
+        scope: string;
+        name: string;
+        is_workspace_default: boolean;
+        owner_user_id: string | null;
+        definition: { columns: string[]; query: string; v: number };
+      }[];
+
+      expect(rows.map((r) => r.name)).toEqual(['Packing', 'Team default']);
+      expect(rows[0]).toMatchObject({ scope: 'personal', owner_user_id: userId });
+      // Order preserved, export-only ids dropped.
+      expect(rows[0].definition.columns).toEqual(['money', 'customer']);
+      expect(rows[1]).toMatchObject({
+        scope: 'shared',
+        is_workspace_default: true,
+        owner_user_id: null,
+      });
+      expect(rows[1].definition.columns).toEqual(['status', 'channel']);
     });
   });
 

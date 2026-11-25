@@ -27,6 +27,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { useMediaQuery } from './use-media-query';
 import { useMessages } from '../i18n/use-messages';
+import { SortArrow } from './sort-field';
 import { interpolate } from '../i18n/interpolate';
 
 export type DataTableHideBreakpoint = 480 | 768 | 1024 | 1280;
@@ -44,6 +45,11 @@ export interface DataTableColumn<Row> {
    */
   accessor?: (row: Row) => string | number | boolean | null | undefined;
   sortable?: boolean;
+  /**
+   * `aria-sort` for a column that draws its own sort controls in `header` and
+   * so is not `sortable` here (saved views, #4241). Ignored when `sortable`.
+   */
+  ariaSort?: 'ascending' | 'descending';
   /**
    * How many text lines this column's cell renders at its tallest (#2538).
    * Read only by `DataTableSkeleton`, so a two-line identity cell reserves its
@@ -829,7 +835,7 @@ export function DataTable<Row>({
                         : sortDir === 'desc'
                           ? 'descending'
                           : 'none'
-                      : undefined
+                      : column?.ariaSort
                   }
                 >
                   {canSort ? (
@@ -839,9 +845,7 @@ export function DataTable<Row>({
                       onClick={header.column.getToggleSortingHandler()}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
-                      <span className="data-table__sort-indicator" aria-hidden="true">
-                        {sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : '↕'}
-                      </span>
+                      <SortArrow active={sortDir !== false} dir={sortDir === 'desc' ? 'desc' : 'asc'} />
                     </button>
                   ) : (
                     flexRender(header.column.columnDef.header, header.getContext())

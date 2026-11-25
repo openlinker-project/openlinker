@@ -39,6 +39,11 @@
       "require": "./dist/operational-settings/index.js",
       "default": "./dist/operational-settings/index.js"
     },
+    "./saved-views": {
+      "types": "./dist/saved-views/index.d.ts",
+      "require": "./dist/saved-views/index.js",
+      "default": "./dist/saved-views/index.js"
+    },
     "./integrations": {
       "types": "./dist/integrations/index.d.ts",
       "require": "./dist/integrations/index.js",

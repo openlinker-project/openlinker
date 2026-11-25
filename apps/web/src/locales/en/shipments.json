@@ -306,6 +306,19 @@
     "triageOverflow": {
       "one": "+{n} more group with a shared carrier message.",
       "other": "+{n} more groups with a shared carrier message."
+    },
+    "views": {
+      "fields": {
+        "method": "Method",
+        "processor": "Processor"
+      },
+      "lockedDescription": "State, error, time",
+      "sorts": {
+        "createdAsc": "Created, oldest first",
+        "createdDesc": "Created, newest first",
+        "methodAsc": "Method",
+        "statusAsc": "Status"
+      }
     }
   },
   "shipmentsTypes": {

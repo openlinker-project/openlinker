@@ -107,6 +107,7 @@ import {
   type MailerSettingsApi,
 } from '../../features/mailer-settings/api/mailer-settings.api';
 import { createMcpTokensApi, type McpTokensApi } from '../../features/mcp-tokens';
+import { createSavedViewsApi, type SavedViewsApi } from '../../features/saved-views';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
 import {
   createOperationalSettingsApi,
@@ -294,6 +295,7 @@ export interface CoreApiClient {
   automations: AutomationsApi;
   buyerEmails: BuyerEmailsApi;
   mcpTokens: McpTokensApi;
+  savedViews: SavedViewsApi;
   operationalSettings: OperationalSettingsApi;
   orders: OrdersApi;
   posthogSettings: PosthogSettingsApi;
@@ -562,6 +564,7 @@ export function createApiClient({
     pricingSync: createPricingSyncApi(request),
     mailerSettings: createMailerSettingsApi(request),
     mcpTokens: createMcpTokensApi(request),
+    savedViews: createSavedViewsApi(request),
     mappings: createMappingsApi(request),
     operationalSettings: createOperationalSettingsApi(request),
     orders: createOrdersApi(request, requestBlob),

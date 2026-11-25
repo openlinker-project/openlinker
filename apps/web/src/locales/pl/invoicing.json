@@ -274,6 +274,18 @@
       "rejected": "Odrzucona",
       "submitted": "Przesłana"
     },
+    "savedViews": {
+      "connectionFields": "Nazwa, id",
+      "documentFields": "Numer, typ",
+      "orderFields": "Id zamówienia, produkt",
+      "views": {
+        "all": "Wszystkie faktury",
+        "awaiting": "Czekają na wysłanie",
+        "failed": "Nieudane",
+        "noTaxId": "Bez NIP",
+        "rejected": "Odrzucone przez regulatora"
+      }
+    },
     "status": {
       "failed": "Błąd",
       "in-doubt": "Do sprawdzenia",

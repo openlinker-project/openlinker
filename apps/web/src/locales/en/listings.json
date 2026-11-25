@@ -1685,6 +1685,12 @@
     },
     "publishProducts": "Publish products",
     "retry": "Retry",
+    "savedViews": {
+      "listingFields": "Product, variant, offer id, SKU, EAN",
+      "price": "Price on channel",
+      "quantity": "Quantity on channel",
+      "updated": "Updated, status read"
+    },
     "status": {
       "countsLoaded": "Listing counts loaded.",
       "countsLoading": "Loading listing counts…",

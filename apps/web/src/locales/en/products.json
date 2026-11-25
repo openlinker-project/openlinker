@@ -522,6 +522,15 @@
         "other": "{n} variants"
       }
     },
+    "savedViews": {
+      "money": "Price, updated, created",
+      "moneyUpdated": "Last update",
+      "productFields": "Name, SKU",
+      "sourceFields": "Connection, status",
+      "views": {
+        "noTaxRate": "No tax rate"
+      }
+    },
     "sortOptions": {
       "createdAt": "Created",
       "name": "Name",

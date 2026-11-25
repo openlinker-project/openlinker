@@ -318,6 +318,19 @@
       "many": "+{n} kolejnych grup ze wspólnym komunikatem przewoźnika.",
       "one": "+{n} kolejna grupa ze wspólnym komunikatem przewoźnika.",
       "other": "+{n} kolejnej grupy ze wspólnym komunikatem przewoźnika."
+    },
+    "views": {
+      "fields": {
+        "method": "Metoda",
+        "processor": "Realizacja"
+      },
+      "lockedDescription": "Stan, błąd, czas",
+      "sorts": {
+        "createdAsc": "Utworzono, najstarsze",
+        "createdDesc": "Utworzono, najnowsze",
+        "methodAsc": "Metoda",
+        "statusAsc": "Status"
+      }
     }
   },
   "shipmentsTypes": {
