@@ -66,7 +66,7 @@ moves to **Needs reauth**: authorize again and paste the new token on the connec
    only** (the default) imports nothing placed before the connection; **Orders since a date** reads
    every order updated since that day (midnight UTC), so an older order changed after it comes too;
    **Every order** reads the whole account history at the order search quota, which takes long on
-   a busy account. You can import older orders later from the connection's **Orders** tab; importing
+   a busy account. You can import older orders later from the connection's **Sync** tab; importing
    a date range is not available for Amazon yet.
 6. **Test connection**: it passes when the credentials work and the account sells in every
    marketplace you listed. If it names a marketplace, remove it or enable selling there.

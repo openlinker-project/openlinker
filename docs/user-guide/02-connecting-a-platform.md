@@ -138,9 +138,88 @@ The **Connection OK** toast and the displayed response time confirm the Allegro 
 
 ---
 
+## Amazon walkthrough
+
+Amazon is connected through the Selling Partner API (SP-API) with a private app you register in Seller Central. The steps on Amazon's side (registering the app, the roles to request, authorizing it to get a refresh token) are in the [Amazon setup guide](../../libs/integrations/amazon/docs/setup-guide.md#1-register-a-private-sp-api-app-and-request-roles). Have these ready before you start:
+
+- the app's **LWA client id** and **LWA client secret**,
+- the **refresh token** from authorizing the app,
+- your **merchant token** (Seller Central: **Settings > Account info > Merchant token**), needed for offers and for the catalogue master.
+
+### Step 1 — Region, environment and marketplaces
+
+Go to **Connections > Add connection** and pick **Amazon**. The **Connect Amazon** form opens:
+
+<!-- screenshot: Connect Amazon form - Connection name, Region (Europe), Environment (Production) and the Marketplaces picker with Germany and Poland chosen -->
+![Amazon connection form — region and marketplaces](./images/02-amazon-setup-form.png)
+
+| Field | Description |
+|---|---|
+| **Connection name** | A label, e.g. `Amazon EU` |
+| **Region** | The SP-API region that serves your marketplaces (Europe, North America, Far East) |
+| **Environment** | **Production** for your account; **Sandbox** answers with Amazon's sample data only |
+| **Marketplaces** | Where orders are read and offers written. In the Far East each country is a separate account, so choose one |
+
+Region, environment and (in the Far East) the marketplace cannot be changed after saving: another region is another seller account, so it needs another connection.
+
+### Step 2 — What Amazon does in OpenLinker
+
+<!-- screenshot: Connect Amazon form - "What Amazon does in OpenLinker" with Sales channel selected and "What OpenLinker handles" with Orders and Offers ticked -->
+![Amazon connection form — role](./images/02-amazon-role.png)
+
+- **Sales channel**: products come from your catalogue (for example PrestaShop); Amazon receives offers and sends orders. Tick **Orders**, **Offers** or both.
+- **Catalogue master**: products and stock come from your Amazon listings and are sold on your other channels. Offers stay off.
+
+### Step 3 — Which orders to import
+
+When **Orders** is ticked, the form asks where order sync starts:
+
+<!-- screenshot: Connect Amazon form - "Which orders should OpenLinker import?" with the three cards, New orders only selected (Recommended) -->
+![Amazon connection form — order history](./images/02-amazon-order-history.png)
+
+- **New orders only** (recommended): nothing placed before the connection is copied to your other shops and systems.
+- **Orders since a date**: for Amazon this reads every order **updated** since that day (midnight UTC), so an older order that changed after it comes too.
+- **Every order the shop has**: the whole account history. Amazon allows about one order search every three minutes, so a large history takes a long time.
+
+Orders past Amazon's 30-day limit for buyer data arrive without the buyer's name, email and address. You can move the start or import older orders later from the connection's **Sync** tab (**Change where syncing starts...**).
+
+### Step 4 — Credentials
+
+<!-- screenshot: Connect Amazon form - Merchant token, LWA client id, LWA client secret, Refresh token fields and the collapsed "Order notifications (optional)" section -->
+![Amazon connection form — credentials](./images/02-amazon-credentials.png)
+
+| Field | Description |
+|---|---|
+| **Merchant token** | Required for offers and the catalogue master |
+| **LWA client id** / **LWA client secret** | From your SP-API app |
+| **Refresh token** | Issued when you authorize the app; stored encrypted |
+| **Order notifications (optional)** | An SQS queue URL and AWS keys, so order changes arrive within a minute instead of at the next poll. You can add them later |
+
+Click **Create connection**.
+
+### Step 5 — Test the connection
+
+Click **Test connection**. It passes (**The connection works**) when the credentials work and the account sells in every marketplace you chose; if it names a marketplace, remove it from the connection or enable selling there in Seller Central. When Amazon refuses the credentials, the test says so:
+
+<!-- screenshot: "Amazon connection created" followed by the red "The connection test failed - Amazon refused the credentials" result -->
+![Amazon connection — test failed on credentials](./images/02-amazon-test-connection.png)
+
+Check the LWA client id and secret, or authorize the app again in Seller Central for a new refresh token, then replace them in the connection's credentials panel. **Open the connection** takes you to the connection page.
+
+### Step 6 — Turn on the background tasks
+
+Amazon's background tasks (importing orders, linking listings, refreshing stock and prices, returns) are **off by default** and switched on in the worker's environment. The list and what each one does is in the [setup guide, section 7](../../libs/integrations/amazon/docs/setup-guide.md#7-background-tasks).
+
+<!-- screenshot: Amazon connection page - Sync tab, Order import panel: "Not checked yet", "Starts on the next check: orders since 1 Nov 2026", Check for new orders -->
+![Amazon connection — Sync tab](./images/02-amazon-orders-tab.png)
+
+The connection's **Sync** tab (**Order import**) shows where syncing starts, the last check, orders imported in the last 24 hours and anything that could not be imported. **Check for new orders** runs the import at once instead of waiting for the next scheduled check.
+
+---
+
 ### Where order sync starts
 
-If the connection reads orders, the wizard asks where to start: **only new orders** (default), **from a date**, or **all orders**. Only the choices the platform supports are shown (Allegro and Erli have no "from a date"). Shopify shows orders from the last 60 days unless the app has the `read_all_orders` permission, and Subiekt GT needs an up-to-date bridge. You can change the start later on the connection's **Orders** tab; see [Orders](./06-orders.md#where-order-sync-starts) for details.
+If the connection reads orders, the wizard asks where to start: **only new orders** (default), **from a date**, or **all orders**. Only the choices the platform supports are shown (Allegro and Erli have no "from a date"; for Amazon "from a date" counts orders updated since that day). Shopify shows orders from the last 60 days unless the app has the `read_all_orders` permission, and Subiekt GT needs an up-to-date bridge. You can change the start later on the connection's **Sync** tab; see [Orders](./06-orders.md#where-order-sync-starts) for details.
 
 ---
 
