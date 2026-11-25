@@ -140,4 +140,34 @@ describe('AmazonSetupForm', () => {
       ),
     );
   });
+  it('should send the chosen order start when the connection reads orders', async () => {
+    const apiClient = createMockApiClient();
+    renderWithProviders(<AmazonSetupForm />, { apiClient });
+
+    await fill();
+    fireEvent.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() =>
+      expect(apiClient.connections.create).toHaveBeenCalledWith(
+        expect.objectContaining({ orderSyncStart: { mode: 'all' } }),
+      ),
+    );
+  });
+
+  it('should not ask for an order start, nor block the submit, once orders are switched off', async () => {
+    const apiClient = createMockApiClient();
+    renderWithProviders(<AmazonSetupForm />, { apiClient });
+
+    await fill();
+    fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+    fireEvent.click(screen.getByLabelText(/^Orders/));
+    expect(screen.queryByRole('radio', { name: /Orders since a date/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() => expect(apiClient.connections.create).toHaveBeenCalledTimes(1));
+    expect(
+      (vi.mocked(apiClient.connections.create).mock.calls[0][0] as { orderSyncStart?: unknown }).orderSyncStart,
+    ).toBeUndefined();
+  });
 });

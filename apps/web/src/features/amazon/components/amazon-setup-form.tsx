@@ -25,6 +25,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  OrderSyncStartSection,
   describeConnectionTestFailure,
   useCreateConnectionMutation,
   useTestConnectionMutation,
@@ -41,6 +43,7 @@ import { Select } from '../../../shared/ui/select';
 import { isSingleMarketplaceRegion, marketplacesForRegion, type AmazonRegion } from '../lib/amazon-marketplaces';
 import { AmazonMarketplacePicker } from './amazon-marketplace-picker';
 import {
+  AMAZON_ADAPTER_KEY,
   AMAZON_SETUP_DEFAULT_VALUES,
   AmazonSetupErrorKeyValues,
   amazonSetupSchema,
@@ -67,6 +70,8 @@ export function AmazonSetupForm(): ReactElement {
   const selected = form.watch('marketplaceIds');
   const role = form.watch('role');
   const offers = form.watch('offers') && role !== 'master';
+  const readsOrders = form.watch('orders');
+  const orderSyncStart = form.watch('orderSyncStart');
   const errors = form.formState.errors;
 
   const errorText = (message: string | undefined): string | undefined =>
@@ -260,6 +265,16 @@ export function AmazonSetupForm(): ReactElement {
           </p>
         ) : null}
       </fieldset>
+
+      {readsOrders ? (
+        <OrderSyncStartSection
+          adapterKey={AMAZON_ADAPTER_KEY}
+          value={orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+          onChange={(next) => form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })}
+          error={errors.orderSyncStart?.from?.message}
+          separated
+        />
+      ) : null}
 
       <FormField
         label={copy.sellerId}

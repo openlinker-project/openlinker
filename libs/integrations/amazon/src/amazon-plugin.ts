@@ -82,9 +82,11 @@ export const amazonAdapterManifest: AdapterMetadata = {
   // than 30 days after delivery. Enforced by the order buyer-data retention
   // pass (#4178).
   buyerDataRetentionDays: 30,
-  // No start choice: the first poll reads a fixed recent window (see the feed
-  // cursor policy), and Amazon offers no head cursor or date bootstrap.
-  orderSyncStartModes: [],
+  // The operator chooses where order sync starts (#4262): only new orders,
+  // from a date, or everything the Orders API still serves. The date window
+  // import backs "newest first" and a manual date-range run.
+  orderSyncStartModes: ['now', 'from', 'all'],
+  orderWindowImport: true,
   displayName: 'Amazon Selling Partner API',
   version: '0.1.0',
   isDefault: true,
