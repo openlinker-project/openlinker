@@ -77,15 +77,82 @@ describe('ConnectionCapabilitiesPanel', () => {
     });
 
     fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+    // Enabling order reading asks where to start first.
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable order reading' }));
 
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(
         connection.id,
         expect.objectContaining({
           enabledCapabilities: expect.arrayContaining(['ProductMaster', 'OrderSource']),
+          orderSyncStart: { mode: 'now' },
         })
       )
     );
+  });
+
+  it('sends the chosen start when order reading is switched on', async () => {
+    const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+    const apiClient = createMockApiClient({
+      connections: { update },
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          {
+            adapterKey: sampleConnection.adapterKey,
+            platformType: sampleConnection.platformType,
+            isDefault: true,
+            orderSyncStartModes: ['now', 'all'],
+          },
+        ]),
+      },
+    });
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'OrderSource'],
+      enabledCapabilities: ['ProductMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />, { apiClient });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable order reading' }));
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        connection.id,
+        expect.objectContaining({ orderSyncStart: { mode: 'all' } })
+      )
+    );
+  });
+
+  it('enables order reading at once when the adapter offers no start choice', async () => {
+    const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+    const apiClient = createMockApiClient({
+      connections: { update },
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          {
+            adapterKey: sampleConnection.adapterKey,
+            platformType: sampleConnection.platformType,
+            isDefault: true,
+            orderSyncStartModes: [],
+          },
+        ]),
+      },
+    });
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'OrderSource'],
+      enabledCapabilities: ['ProductMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />, { apiClient });
+
+    await waitFor(() => expect(apiClient.adapters.list).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls[0][1]).not.toHaveProperty('orderSyncStart');
   });
 
   it('renders supported capabilities as pills above the toggles', () => {
@@ -127,6 +194,7 @@ describe('ConnectionCapabilitiesPanel', () => {
     });
 
     fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable order reading' }));
 
     expect(await screen.findByText(/Unable to update capabilities/)).toBeInTheDocument();
     expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
@@ -429,6 +497,60 @@ describe('ConnectionCapabilitiesPanel', () => {
         expect(await screen.findByText(/1 of 2 enabled/)).toBeInTheDocument();
         expect(screen.queryByText(/MCP tools follow these capabilities/)).not.toBeInTheDocument();
       });
+    });
+  });
+
+  describe('switching order reading off', () => {
+    const live: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'OrderSource'],
+      enabledCapabilities: ['ProductMaster', 'OrderSource'],
+    };
+
+    it('should ask first and send nothing when the operator cancels', async () => {
+      const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={live} />, {
+        apiClient: createMockApiClient({ connections: { update } }),
+      });
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+      expect(await screen.findByText('Stop reading orders?')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(screen.queryByText('Stop reading orders?')).not.toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: /OrderSource/ })).toBeChecked();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('should send the update only after the operator confirms', async () => {
+      const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={live} />, {
+        apiClient: createMockApiClient({ connections: { update } }),
+      });
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+      await screen.findByText('Stop reading orders?');
+      expect(update).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));
+
+      await waitFor(() =>
+        expect(update).toHaveBeenCalledWith(
+          live.id,
+          expect.objectContaining({ enabledCapabilities: ['ProductMaster'] })
+        )
+      );
+    });
+
+    it('should not ask when another capability is switched off', async () => {
+      const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={live} />, {
+        apiClient: createMockApiClient({ connections: { update } }),
+      });
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /ProductMaster/ }));
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(screen.queryByText('Stop reading orders?')).not.toBeInTheDocument();
     });
   });
 });

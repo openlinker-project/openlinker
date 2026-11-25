@@ -55,6 +55,18 @@ export const ApiErrorCodeValues = [
   'WEBHOOK_PROVISIONING_UNSUPPORTED',
   /** The adapter cannot test a connection. params: `adapterKey`. */
   'CONNECTION_TEST_UNSUPPORTED',
+  /** The order poll holds this connection's lock; retry shortly. params: `connectionId`. */
+  'ORDER_SYNC_BUSY',
+  /** The adapter does not declare `orderWindowImport`. params: `adapterKey`. */
+  'ORDER_IMPORT_UNSUPPORTED',
+  /** The connection has no OrderSource capability. params: `connectionId`. */
+  'ORDER_SOURCE_NOT_ENABLED',
+  /** `from`/`to` are not valid dates, or `to` is before `from`. params: `reason`. */
+  'ORDER_IMPORT_RANGE_INVALID',
+  /** The first page of a manual order import was not queued (a run with the same id already exists). params: `connectionId`. */
+  'ORDER_IMPORT_NOT_QUEUED',
+  /** The order sync start could not be saved; the connection keeps its previous start. params: `connectionId`. */
+  'ORDER_SYNC_START_NOT_SAVED',
   /** Send exactly one of `credentials` or `credentialsRef`. */
   'CREDENTIALS_INPUT_AMBIGUOUS',
   /** `credentialsRef` must start with `db:`. */

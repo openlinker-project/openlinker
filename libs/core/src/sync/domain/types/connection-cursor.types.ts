@@ -22,6 +22,8 @@ export interface ConnectionCursorFilters {
   keyPrefix?: string;
   /** Leave out keys starting with this prefix (#4023). Matched literally. */
   excludeKeyPrefix?: string;
+  /** Only keys ending with this suffix (#4228). Matched literally, never as a pattern. */
+  keySuffix?: string;
 }
 
 /**

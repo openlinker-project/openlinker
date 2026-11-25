@@ -69,7 +69,8 @@ describe('SyncController', () => {
     requeueWithoutPenalty: jest.fn(),
     findLastSucceededByConnectionAndJobType: jest.fn(),
     findLatestByConnectionsAndJobTypes: jest.fn(),
-    getConnectionBacklogStats: jest.fn(),
+    getOrderImportStats: jest.fn(),
+      getConnectionBacklogStats: jest.fn(),
   };
 
   const mockRetryService = {

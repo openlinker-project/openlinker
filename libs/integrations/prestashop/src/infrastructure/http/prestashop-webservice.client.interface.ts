@@ -44,8 +44,12 @@ export interface PrestashopQueryFilters {
   dateTo?: Date;
   /** `date_upd` lower bound, exclusive, as the shop's own `YYYY-MM-DD HH:MM:SS`. */
   updatedAfter?: string;
+  /** `date_add` window, both ends inclusive, as the shop's own `YYYY-MM-DD HH:MM:SS`; an end may be omitted. */
+  dateAddBetween?: { from?: string; to?: string };
   /** `id` lower bound, exclusive - the id-only fallback pagination key (#2877). */
   idAfter?: number;
+  /** `id` upper bound, exclusive - newest-first keyset paging (#4228). */
+  idBefore?: number;
   /** Result ordering, e.g. `['date_upd_ASC', 'id_ASC']`. */
   sort?: PrestashopSort[];
   status?: string | string[];

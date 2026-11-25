@@ -40,6 +40,7 @@ import { PlatformType } from '../../src/world/world';
 import type { Connection } from '../../src/api/api.types';
 import { buildOrderWebhookEnvelope, signWebhook } from '../../src/support/webhooks';
 import { restoreWebhookSecret } from '../../src/support/webhook-secret';
+import { ensureOrderFeedSeeded } from '../../src/support/order-feed-seed';
 
 const PROVIDER = PlatformType.prestashop;
 
@@ -48,9 +49,11 @@ test.describe('lifecycle: webhook + poll convergence (idempotency, #1574 / close
   let secret: string | null = null;
   let setupError: string | null = null;
 
-  test.beforeAll(async ({ api, world }) => {
+  test.beforeAll(async ({ api, world, jobs }) => {
     connection = world.connectionFor(PROVIDER);
     if (!connection) return;
+    // The feed starts from "now" (#4228): record its position before the test's poll.
+    await ensureOrderFeedSeeded(api, jobs, connection.id);
     try {
       const rotated = await api.connections.rotateWebhookSecret(connection.id);
       secret = rotated.secret;
