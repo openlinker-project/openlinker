@@ -865,6 +865,11 @@
     "sync": "Synchro.",
     "total": "Razem"
   },
+  "hiddenBadge": {
+    "label": "Ukryte",
+    "title": "Ukryte przez zasady danych kupujących. Zamówienie zostaje w OpenLinkerze.",
+    "titleErased": "Ukryte przez zasady danych kupujących. Dane osobowe kupującego zostały usunięte."
+  },
   "holds": {
     "onHold": "Wstrzymane - {reason}",
     "panel": {
@@ -1101,6 +1106,7 @@
     },
     "checks": {
       "buyerNote": "Z notatką kupującego",
+      "hidden": "Ukryte zamówienia",
       "omsStopped": "Zatrzymane przez OpenLinker",
       "openReturn": "Otwarty zwrot",
       "packBench": "Na stanowisku pakowania",
@@ -1123,6 +1129,8 @@
       "dueValue": "≤ 24 godz. lub po terminie",
       "fulfilment": "Realizacja",
       "health": "Status",
+      "hidden": "Widoczność",
+      "hiddenValue": "Tylko ukryte",
       "hold": "Wstrzym.",
       "oms": "OpenLinker",
       "open": "Otwarty",

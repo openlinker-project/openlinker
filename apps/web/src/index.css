@@ -8608,6 +8608,196 @@ html:has(.login-stage) {
   cursor: pointer;
 }
 
+/* ── Buyer data summary on the connection edit (#4289): read-only, one way out. ── */
+.buyer-data-summary {
+  --bds-hide: color-mix(in oklab, var(--status-warning) 62%, var(--bg-surface));
+  --bds-erase: color-mix(in oklab, var(--status-error) 58%, var(--bg-surface));
+  --bds-keep: color-mix(in oklab, var(--border-strong) 55%, var(--bg-surface));
+  min-width: 0;
+  animation: retention-soft 120ms linear both;
+}
+.buyer-data-summary__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+}
+.buyer-data-summary__card .rate-limit-section__help {
+  margin: 0;
+}
+.buyer-data-summary__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.buyer-data-summary__head .rate-limit-section__title {
+  margin: 0;
+}
+.buyer-data-summary__badge {
+  display: inline-flex;
+  animation: retention-soft 120ms linear both;
+}
+.buyer-data-summary__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.buyer-data-summary__body--off .buyer-data-summary__track,
+.buyer-data-summary__body--off .buyer-data-summary__legend {
+  opacity: 0.55;
+}
+.buyer-data-summary__track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.buyer-data-summary__bar {
+  position: relative;
+  height: 0.625rem;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+.buyer-data-summary__seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transform-origin: left center;
+  animation: buyer-data-grow 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+.buyer-data-summary__seg--kept {
+  background: var(--bds-keep);
+}
+.buyer-data-summary__seg--hidden {
+  background-color: var(--bds-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.buyer-data-summary__seg--erased {
+  background-color: var(--bds-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.buyer-data-summary__seg--never {
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--border-strong) 0 1px,
+    transparent 1px 4px
+  );
+  opacity: 0.5;
+}
+.buyer-data-summary__caps {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.buyer-data-summary__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+}
+.buyer-data-summary__legend-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.buyer-data-summary__legend-item::before {
+  content: '';
+  flex: none;
+  align-self: center;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+}
+.buyer-data-summary__legend-item--hidden::before {
+  background: var(--bds-hide);
+}
+.buyer-data-summary__legend-item--erased::before {
+  background: var(--bds-erase);
+}
+.buyer-data-summary__legend dt {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.buyer-data-summary__legend dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.buyer-data-summary__sentence {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.buyer-data-summary__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+.buyer-data-summary__hint {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.buyer-data-summary__cta {
+  gap: var(--space-2);
+}
+.buyer-data-summary__arrow {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 120ms var(--ease-out);
+}
+.buyer-data-summary__cta:hover .buyer-data-summary__arrow,
+.buyer-data-summary__cta:focus-visible .buyer-data-summary__arrow {
+  transform: translateX(2px);
+}
+@keyframes buyer-data-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@media (max-width: 640px) {
+  .buyer-data-summary__foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .buyer-data-summary__cta {
+    justify-content: center;
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .buyer-data-summary__arrow {
+    transition: none;
+  }
+  .buyer-data-summary__seg,
+  .buyer-data-summary__badge {
+    animation: none;
+  }
+  .scope-tabs .tabs__list[data-placed='true']::before {
+    transition: opacity 120ms linear;
+  }
+}
+
 /* ── Capabilities: where order reading starts (#4228) ── */
 .capability-list__order-start {
   display: flex;
@@ -11607,6 +11797,11 @@ a.kpi-card:focus-visible {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+  /* The raw JSON switch is a different kind of control from the sections above
+     it, so it gets its own divider and breathing room (#4289). */
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
 }
 
 /*
@@ -15968,7 +16163,8 @@ a.kpi-card:focus-visible {
 /* ── Name first (#4232) ── the face leads with the connection name the operator
  * chose and the integration slides out. The label is capped so a long name
  * cannot widen a column; the full text stays in the native title. */
-.connection-chip--name-first .connection-chip__label {
+.connection-chip--name-first .connection-chip__label,
+.connection-chip--static .connection-chip__label {
   min-width: 0;
   max-width: 15rem;
   overflow: hidden;
@@ -15977,7 +16173,8 @@ a.kpi-card:focus-visible {
   color: var(--text-primary);
 }
 
-.connection-chip--name-first .connection-chip__env {
+.connection-chip--name-first .connection-chip__env,
+.connection-chip--static .connection-chip__env {
   flex: none;
   padding: 2px 5px;
   border-radius: 4px;
@@ -16001,6 +16198,12 @@ a.kpi-card:focus-visible {
 .connection-chip--name-first.connection-chip--unknown .connection-chip__label {
   color: var(--text-muted);
   font-weight: 400;
+}
+
+/* Static: the face alone, never a link and never wider than at rest. */
+.connection-chip--static {
+  align-self: auto;
+  cursor: inherit;
 }
 
 /* No hover to open it: show the name statically, joined to the face, rather
@@ -16980,6 +17183,12 @@ body > *:not([data-radix-popper-content-wrapper]),
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  /* The actions wrap inside the bar instead of spilling past its edge: at text
+     size L on a 1100 px window the Orders bar carries six actions and the last
+     one (Dispatch) was cut off at the table's right edge (#4264). */
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 @media (max-width: 639.98px) {
@@ -40174,6 +40383,2067 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   .sync-guide__item[data-focus='true'] { animation: none; }
 }
 
+/* ── Switch (#4289) ── */
+/* A button, so the global `button:hover` / `:active` / `:focus-visible` rules (orange fill,
+   shadow) would paint the whole control; they are overridden here at equal specificity
+   so only the small track ever takes the accent colour. The 44px hit area is padding on
+   the button, not a coloured box. */
+.ol-switch,
+.ol-switch:hover,
+.ol-switch:active,
+.ol-switch:focus-visible {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-primary);
+}
+.ol-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  height: auto;
+  min-height: 44px;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ol-switch__track {
+  position: relative;
+  flex: none;
+  width: 2.5rem;
+  height: 1.375rem;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  transition: background-color 160ms var(--ease-out);
+}
+.ol-switch__knob {
+  position: absolute;
+  top: 0.1875rem;
+  left: 0.1875rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform 160ms var(--ease-out);
+}
+.ol-switch--on .ol-switch__track {
+  background: var(--accent-primary);
+}
+.ol-switch--on .ol-switch__knob {
+  transform: translateX(1.125rem);
+}
+.ol-switch:focus-visible {
+  outline: none;
+}
+.ol-switch:focus-visible .ol-switch__track {
+  box-shadow: var(--shadow-focus);
+}
+.ol-switch:disabled,
+.ol-switch:disabled:hover {
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+.ol-switch:disabled .ol-switch__track {
+  opacity: 0.5;
+}
+/* Reduced motion: the thumb jumps and the track changes colour at once. */
+@media (prefers-reduced-motion: reduce) {
+  .ol-switch__track,
+  .ol-switch__knob {
+    transition: none;
+  }
+}
+
+
+/* ── Retention studio (#4289) ── */
+/* Two zones: a workbench (the controls) and a sticky rail (what they do). The
+   studio keeps its own small set of figures here rather than in the global
+   tokens: they are this screen's rhythm, not the design system's. */
+.retention-studio,
+.retention-studio__sheet {
+  --rs-top: calc(var(--shell-topbar-height, 52px) + var(--demo-banner-height, 0px) + var(--space-4));
+  --rs-bar: 4.5rem;
+  --rs-rail: 22rem;
+  /* Zone colours are the status tokens mixed down into the surface, so the three
+     fates read as tints of one palette instead of three saturated fills. */
+  --rs-hide: color-mix(in oklab, var(--status-warning) 62%, var(--bg-surface));
+  --rs-hide-soft: color-mix(in oklab, var(--status-warning) 8%, var(--bg-surface));
+  --rs-hide-line: color-mix(in oklab, var(--status-warning) 80%, var(--bg-surface));
+  --rs-erase: color-mix(in oklab, var(--status-error) 58%, var(--bg-surface));
+  --rs-erase-soft: color-mix(in oklab, var(--status-error) 6%, var(--bg-surface));
+  --rs-erase-line: color-mix(in oklab, var(--status-error) 78%, var(--bg-surface));
+  --rs-keep: color-mix(in oklab, var(--border-strong) 75%, var(--bg-surface));
+  --rs-fs-hero: 1.75rem;
+  --rs-fs-title: 1.25rem;
+  --rs-fs-body: 0.875rem;
+  --rs-fs-cap: 0.75rem;
+  --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* `overflow-x: hidden` on the shell turns it into a scroll container that never
+   scrolls, which silently disables every `position: sticky` below it. `clip`
+   still stops sideways spill without becoming one. */
+.shell-content:has(.retention-studio--full) {
+  overflow-x: clip;
+}
+
+/* Page rhythm and containment: nothing may push the page wider than the screen. */
+.buyer-data-page,
+.buyer-data-page > *,
+[data-testid='buyer-data-wizard-step'],
+[data-testid='buyer-data-wizard-step'] > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.buyer-data-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+[data-testid='buyer-data-wizard-step'] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.buyer-data-points {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+[data-testid='buyer-data-wizard-step'] .segmented-control,
+.retention-studio .segmented-control {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  max-width: 100%;
+}
+[data-testid='buyer-data-wizard-step'] .segmented-control__option,
+.retention-studio .segmented-control__option,
+.record-card .segmented-control__option {
+  text-transform: none;
+  letter-spacing: normal;
+  min-height: 44px;
+  white-space: normal;
+  text-align: center;
+}
+
+/* Scope bar: Defaults and each connection as one segmented track; the dot says
+   whether a connection follows the defaults (ring) or has rules of its own (filled). */
+.scope-tabs .tabs__list {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-muted);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.scope-tabs .tabs__trigger {
+  flex: none;
+  min-height: 2rem;
+  margin: 0;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  font-size: var(--rs-fs-body);
+  white-space: nowrap;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.scope-tabs .tabs__trigger.scope-tabs__trigger--chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) 0 var(--space-2);
+}
+.scope-tabs .tabs__trigger:hover {
+  background: color-mix(in oklab, var(--bg-surface) 55%, transparent);
+}
+.scope-tabs .tabs__trigger[data-state='active'] {
+  background: transparent;
+}
+/* One indicator slides under the active tab (position measured into --scope-x/--scope-w). */
+.scope-tabs .tabs__list::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: var(--scope-w, 0);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow:
+    0 0 0 1px var(--border-default),
+    var(--shadow-xs);
+  transform: translateX(var(--scope-x, 0));
+  opacity: 0;
+  pointer-events: none;
+}
+.scope-tabs .tabs__list[data-placed='true']::before {
+  opacity: 1;
+  transition:
+    transform 220ms var(--ease-spring),
+    width 220ms var(--ease-spring);
+}
+.scope-tabs .tabs__trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+.scope-tabs .tabs__content {
+  gap: var(--space-4);
+  animation: retention-soft 120ms linear both;
+}
+.scope-tabs__lead {
+  margin: var(--space-3) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-body);
+}
+.scope-tabs__dot {
+  display: inline-block;
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+}
+.scope-tabs__dot--linked {
+  border: 1.5px solid var(--text-muted);
+  background: transparent;
+}
+.scope-chain {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  color: var(--text-secondary);
+}
+.scope-chain__icon {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--text-muted);
+}
+.scope-chain--own .scope-chain__icon {
+  color: var(--accent-primary-soft-strong);
+}
+.scope-chain__text {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--rs-fs-body);
+}
+.scope-compare {
+  margin-top: var(--space-2);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+}
+.scope-compare__open {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-link);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.scope-compare__row--active {
+  background: var(--accent-primary-soft);
+}
+.scope-compare .data-table__container {
+  max-width: 100%;
+  overflow-x: auto;
+  margin-top: var(--space-4);
+}
+
+.retention-scope {
+  min-width: 0;
+}
+.retention-scope__switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+}
+.retention-scope__hint {
+  flex: 1 1 12rem;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  line-height: 1.4;
+}
+.retention-scope > .retention-scope__hint {
+  margin-bottom: var(--space-2);
+}
+/* As a direct child of the tab panel (a column flex) the row-axis basis above
+ * becomes a 12rem HEIGHT: a hint line followed by a ~170px hole. */
+.scope-tabs .tabs__content > .retention-scope__hint {
+  flex: none;
+}
+
+/* ── Load sequence: scope bar, instrument, then the rail panels one after another ── */
+.retention-scope {
+  animation: retention-rise 360ms var(--ease-spring) both;
+}
+.retention-studio__instrument {
+  animation: retention-rise 360ms var(--ease-spring) 60ms both;
+}
+.retention-studio--full .retention-studio__rail-head {
+  animation: retention-slide-in 360ms var(--ease-spring) 240ms both;
+}
+.retention-studio--full .retention-studio__rail-plan {
+  animation: retention-slide-in 360ms var(--ease-spring) 300ms both;
+}
+.retention-studio--full .retention-studio__rail-detail,
+.retention-studio--full .retention-studio__rail-card {
+  animation: retention-slide-in 360ms var(--ease-spring) 360ms both;
+}
+
+/* ── Layout ── */
+.retention-studio {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  min-width: 0;
+}
+.retention-studio__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+/* Below 1100px the rail dissolves: its pieces become siblings of the workbench, with
+   the master switch first, so it is never left at the bottom of the page. */
+.retention-studio--full .retention-studio__side {
+  display: contents;
+}
+.retention-studio--full .retention-studio__rail-head {
+  order: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+.retention-studio--full .retention-studio__main {
+  order: 1;
+}
+.retention-studio--full .retention-studio__rail-top {
+  display: contents;
+}
+.retention-studio--full .retention-studio__rail-plan,
+.retention-studio--full .retention-studio__rail-detail {
+  order: 2;
+}
+.retention-studio--full .retention-studio__rail-card {
+  order: 3;
+}
+.retention-studio--full .retention-studio__summary {
+  order: 4;
+}
+
+@media (min-width: 1100px) {
+  .retention-studio--full {
+    grid-template-columns: minmax(0, 1fr) var(--rs-rail);
+    align-items: start;
+  }
+  .retention-studio--full .retention-studio__main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  /* The consequences stay in view while the workbench scrolls; if the rail is taller
+     than the screen it scrolls on its own. */
+  .retention-studio--full .retention-studio__side {
+    display: flex;
+    flex-direction: column;
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: var(--rs-top);
+    max-height: calc(100vh - var(--rs-top) - var(--rs-bar) - var(--space-2));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    /* A shadow appears at the edge only where there is more to scroll to. */
+    background:
+      linear-gradient(transparent, var(--bg-surface) 70%) center bottom / 100% 2rem local no-repeat,
+      radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 0.14), transparent) center bottom /
+        100% 0.5rem scroll no-repeat,
+      var(--bg-surface);
+  }
+  /* The switch and the plan stay put at the top of the rail; the example scrolls under them. */
+  .retention-studio--full .retention-studio__rail-top {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .retention-studio--full .retention-studio__rail-head {
+    padding: var(--space-3) var(--space-4);
+    border: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    border-radius: 0;
+    background: var(--bg-surface);
+  }
+  .retention-studio--full .retention-studio__summary {
+    display: none;
+  }
+}
+
+/* The rail is one flat panel: its sections lose their own frames and are divided by hairlines. */
+.retention-studio__side .plan-panel,
+.retention-studio__side .record-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.retention-studio__side .retention-studio__rail-plan .plan-panel {
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+}
+.retention-studio__side .plan-panel--detail {
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+.retention-studio__side .retention-studio__rail-card {
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ── Instrument: the strip and its control deck are one surface ── */
+.retention-studio__instrument {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.retention-studio__deck {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: color-mix(in oklab, var(--bg-muted) 45%, var(--bg-surface));
+}
+.retention-studio__inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4) var(--space-5);
+  align-items: start;
+}
+.retention-studio--ghost .retention-studio__inputs,
+.retention-studio--ghost .retention-studio__mode {
+  opacity: 0.7;
+}
+.retention-studio__mode {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.retention-studio--compact {
+  gap: var(--space-4);
+}
+.retention-studio--compact .retention-studio__main {
+  gap: var(--space-4);
+}
+
+.period-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.period-field__label {
+  font-size: var(--rs-fs-body);
+  font-weight: 600;
+}
+.period-field__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--rs-fs-cap);
+  line-height: 1.45;
+}
+.period-field__error {
+  color: var(--status-error-fg);
+  font-size: var(--rs-fs-cap);
+}
+/* One calm line, attached to the field it is about. */
+.period-field__footnote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  line-height: 1.45;
+}
+.period-field__footnote-icon {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-top: 1px;
+  color: var(--status-error-fg);
+}
+.period-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.period-input .control {
+  width: auto;
+  min-width: 0;
+  min-height: 2.75rem;
+}
+.period-input input.control {
+  width: 5.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.period-input__never {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  font-size: var(--rs-fs-body);
+}
+.period-input__never input {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* ── Age strip ── */
+.age-strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  min-width: 0;
+}
+.age-strip--ghost .age-strip__canvas {
+  opacity: 0.6;
+}
+/* The three fates as a legend that is also the readout: swatch, name, count. */
+.age-strip__zones {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.age-strip__zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0 var(--space-4);
+  border-left: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+.age-strip__zone:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.age-strip__zone-label {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.age-strip__zone-label small {
+  color: var(--text-muted);
+  font-size: var(--rs-fs-cap);
+  font-weight: 400;
+}
+.age-strip__swatch {
+  align-self: center;
+  flex: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 3px;
+  background: var(--rs-keep);
+}
+.age-strip__zone--hidden .age-strip__swatch {
+  background-color: var(--rs-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.age-strip__zone--erased .age-strip__swatch {
+  background-color: var(--rs-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.age-strip__zone strong {
+  font-size: var(--rs-fs-title);
+  line-height: 1.15;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.age-strip__already {
+  color: var(--text-muted);
+  font-size: var(--rs-fs-cap);
+  font-weight: 500;
+}
+.age-strip__stat--busy {
+  color: var(--text-secondary);
+}
+.age-strip__skeleton,
+.plan-panel__skeleton {
+  display: inline-block;
+  width: 3.5rem;
+  height: 1.25rem;
+  border-radius: var(--radius-xs);
+  background: var(--bg-strong);
+  animation: retention-pulse 1.2s ease-in-out infinite;
+}
+@keyframes retention-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+.age-strip__canvas {
+  position: relative;
+  padding: 3rem 0 3.75rem;
+}
+.age-strip__track {
+  position: relative;
+  height: 11rem;
+  border-bottom: 1px solid var(--border-strong);
+}
+.age-strip__plot {
+  position: absolute;
+  inset: 0 auto 0 0;
+}
+.age-strip__bars {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+}
+.age-strip__col {
+  transform-origin: bottom center;
+  animation: retention-bar-rise 360ms var(--ease-spring) both;
+  animation-delay: calc(var(--i, 0) * 1ms);
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  height: 100%;
+  min-width: 0;
+}
+.age-strip__bar {
+  display: block;
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  background: var(--rs-keep);
+  transform-origin: bottom center;
+  transition: height 420ms var(--ease-spring);
+}
+.age-strip__bar--wave {
+  animation: retention-press 360ms var(--ease-spring) both;
+  animation-delay: calc(var(--d, 0) * 1ms);
+}
+.age-strip__bar--hidden {
+  background-color: var(--rs-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.age-strip__bar--erased {
+  background-color: var(--rs-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.age-strip__band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+}
+.age-strip__band--hidden {
+  background: color-mix(in oklab, var(--rs-hide) 14%, transparent);
+  box-shadow:
+    inset 2px 0 0 var(--rs-hide-line),
+    -8px 0 18px -6px var(--rs-hide-line);
+}
+.age-strip__band--erased {
+  background: color-mix(in oklab, var(--rs-erase) 14%, transparent);
+  box-shadow:
+    inset 2px 0 0 var(--rs-erase-line),
+    -8px 0 18px -6px var(--rs-erase-line);
+}
+.age-strip__tick {
+  position: absolute;
+  bottom: -4px;
+  z-index: 2;
+  width: 1px;
+  height: 7px;
+  background: var(--text-muted);
+}
+.age-strip__today {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 2;
+  width: 2px;
+  background: var(--text-secondary);
+}
+/* The example order's age: a neutral ink marker, distinct from the two cut handles. Clicking
+   the plot sets it; it glides to the new position. */
+.age-strip__track--pickable {
+  cursor: pointer;
+}
+.age-strip__example {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 0;
+  pointer-events: none;
+  transition: left 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.age-strip__example-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -0.5px;
+  width: 1px;
+  background: var(--text-primary);
+  opacity: 0.75;
+}
+.age-strip__example-flag {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-2) 1px var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--text-primary);
+  color: var(--bg-surface);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.age-strip__example--flip .age-strip__example-flag {
+  right: var(--space-1);
+  left: auto;
+}
+.age-strip__example-diamond {
+  width: 0.375rem;
+  height: 0.375rem;
+  background: currentColor;
+  transform: rotate(45deg);
+}
+.age-strip__never {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-left: 1px dashed var(--border-strong);
+  background-image: repeating-linear-gradient(135deg, var(--border-subtle) 0 1px, transparent 1px 6px);
+  color: var(--text-muted);
+  font-size: var(--rs-fs-cap);
+  text-align: center;
+}
+.age-strip__never span {
+  white-space: nowrap;
+  padding: 0 var(--space-1);
+  background: var(--bg-surface);
+}
+.age-strip__axis {
+  position: relative;
+  height: 1.25rem;
+  margin-top: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  font-variant-numeric: tabular-nums;
+}
+.age-strip__axis span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.age-strip__axis span:first-child {
+  transform: none;
+}
+.age-strip__axis-end {
+  transform: translateX(-100%) !important;
+}
+.age-strip__handle {
+  transition: left 110ms var(--ease-spring);
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 0;
+}
+.age-strip__handle--erase {
+  bottom: -1.75rem;
+}
+.age-strip__line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  background: var(--rs-hide-line);
+}
+.age-strip__handle--erase .age-strip__line {
+  background: var(--rs-erase-line);
+}
+/* The flag is neutral; only its edge says which cut it is. The accent is reserved
+   for the one being held. */
+.age-strip__flag {
+  position: absolute;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 1.75rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--rs-hide-line);
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--rs-fs-cap);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: grab;
+  transform: translateX(-1rem);
+  touch-action: none;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.age-strip__handle--hide .age-strip__flag {
+  bottom: 100%;
+  margin-bottom: var(--space-1);
+}
+.age-strip__handle--erase .age-strip__flag {
+  top: 100%;
+  margin-top: var(--space-1);
+  border-color: var(--rs-erase-line);
+}
+.age-strip__handle--flip .age-strip__flag {
+  left: auto;
+  right: 0;
+  transform: translateX(1rem);
+}
+.age-strip__flag:active,
+.age-strip__handle--dragging .age-strip__flag {
+  background: var(--accent-primary-soft);
+  color: var(--text-primary);
+}
+.age-strip__handle--dragging .age-strip__flag {
+  cursor: grabbing;
+  border-color: var(--accent-primary);
+  box-shadow:
+    0 0 0 4px var(--accent-ring),
+    var(--shadow-md);
+  transform: translateX(-1rem) scale(1.12);
+  animation: retention-ring 360ms var(--ease-spring) both;
+}
+.age-strip__handle--flip.age-strip__handle--dragging .age-strip__flag {
+  transform: translateX(1rem) scale(1.12);
+}
+.age-strip__flag:focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+.age-strip__flag[aria-disabled='true'] {
+  cursor: default;
+  opacity: 0.7;
+}
+.age-strip__lock {
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--status-error-fg);
+}
+.age-strip__steppers {
+  display: none;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+.age-strip__stepper {
+  display: grid;
+  grid-template-columns: 1fr 2.75rem 5rem 2.75rem;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--rs-fs-body);
+}
+.age-strip__stepper button {
+  min-height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: inherit;
+  font: inherit;
+  font-size: 1.125rem;
+  cursor: pointer;
+}
+.age-strip__stepper output {
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.age-strip__note {
+  margin: 0;
+  color: var(--status-warning-fg);
+  font-size: var(--rs-fs-cap);
+}
+.age-strip__message,
+.age-strip__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 11rem;
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background-image: repeating-linear-gradient(135deg, var(--bg-muted) 0 1px, transparent 1px 8px);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-body);
+  text-align: center;
+}
+.age-strip__message--error {
+  border-color: var(--status-error-border);
+  color: var(--status-error-fg);
+}
+.age-strip__table summary {
+  cursor: pointer;
+  color: var(--text-link);
+  font-size: var(--rs-fs-cap);
+}
+.age-strip__table table {
+  width: 100%;
+  margin-top: var(--space-2);
+  border-collapse: collapse;
+  font-size: var(--rs-fs-cap);
+  font-variant-numeric: tabular-nums;
+}
+.age-strip__table th,
+.age-strip__table td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+}
+
+/* ── Record card ── */
+/* Three durations only: 120ms (micro), 220ms (standard), 360ms (emphasis); one entrance
+   curve (--ease-spring). Movement is transform / opacity; nothing here animates layout. */
+.record-card {
+  --rs-dur-micro: 120ms;
+  --rs-dur: 220ms;
+  --rs-dur-emph: 360ms;
+  --rc-pad: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--rc-pad);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  min-width: 0;
+}
+.record-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.record-card__head h4,
+.plan-panel__head h4 {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  font-weight: 600;
+}
+.record-card__sample-tag {
+  padding: 0 var(--space-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-size: var(--rs-fs-cap);
+}
+.record-card .segmented-control {
+  display: flex;
+  align-self: stretch;
+}
+.record-card .segmented-control__option {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+  min-height: 2.25rem;
+  padding: var(--space-1) var(--space-1);
+  font-size: var(--rs-fs-cap);
+  line-height: 1.15;
+  text-align: center;
+  text-wrap: balance;
+}
+.record-card__icon {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+/* Status: a compact badge sized to its text; the previous one fades out under the new. */
+.record-card__pillbox {
+  position: relative;
+  align-self: flex-start;
+  display: grid;
+  justify-items: start;
+}
+.record-card__pill {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  margin: 0;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--status-success) 12%, var(--bg-surface));
+  color: var(--status-success-fg);
+  font-size: var(--rs-fs-cap);
+  font-weight: 600;
+  line-height: 1.4;
+  animation: retention-soft var(--rs-dur-micro) var(--ease-spring) both;
+}
+.record-card__pill--out {
+  animation: retention-fade-out var(--rs-dur-micro) var(--ease-spring) both;
+  pointer-events: none;
+}
+.record-card__pill--hidden {
+  background: var(--rs-hide-soft);
+  color: var(--status-warning-fg);
+}
+.record-card__pill--visible-erased,
+.record-card__pill--hidden-erased {
+  background: var(--rs-erase-soft);
+  color: var(--status-error-fg);
+}
+
+/* Rows: label left (fixed), value right; the old value is a small struck line under it. */
+.record-card__rows {
+  display: flex;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums;
+}
+.record-card__row {
+  display: grid;
+  grid-template-columns: 5.25rem minmax(0, 1fr);
+  column-gap: var(--space-3);
+  align-items: start;
+  min-height: 2.25rem;
+  padding: 6px var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  box-shadow: inset 2px 0 0 transparent;
+  transition: background-color var(--rs-dur) var(--ease-spring);
+}
+.record-card__row.is-changed {
+  background: color-mix(in oklab, var(--status-error) 4%, transparent);
+  box-shadow: inset 2px 0 0 var(--rs-erase-line);
+}
+.record-card--hidden .record-card__row.is-changed {
+  background: color-mix(in oklab, var(--status-warning) 5%, transparent);
+  box-shadow: inset 2px 0 0 var(--rs-hide-line);
+}
+.record-card__label {
+  padding-top: 2px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--rs-fs-cap);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-card__values {
+  display: grid;
+  min-width: 0;
+}
+.record-card__values--kept {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-2);
+}
+.record-card__new {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--rs-fs-body);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-card__old {
+  position: relative;
+  justify-self: start;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The strike is drawn left to right across the old value. */
+.record-card__old::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 55%;
+  height: 1px;
+  background: var(--text-muted);
+  transform-origin: left center;
+  animation: retention-strike 180ms var(--ease-spring) both;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+.record-card__new--redacted {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  animation: retention-soft var(--rs-dur-micro) linear both;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+.record-card__stays {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: 11px;
+  animation: retention-soft var(--rs-dur-micro) linear both;
+}
+
+/* While a strip handle is dragged the rows and the badge keep their last values behind a
+   skeleton (same boxes, so nothing jumps) and settle in, row by row, once it is let go. */
+.record-card__rows[data-loading='true'] .record-card__values {
+  position: relative;
+}
+.record-card__rows[data-loading='true'] .record-card__values > *,
+.record-card__pillbox[data-loading='true'] .record-card__pill {
+  visibility: hidden;
+}
+.record-card__rows[data-loading='true'] .record-card__values::after,
+.record-card__pillbox[data-loading='true']::after {
+  content: '';
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface-muted);
+  background-image: linear-gradient(
+    90deg,
+    var(--bg-surface-muted) 0%,
+    var(--bg-surface-hover) 50%,
+    var(--bg-surface-muted) 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: data-table-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.record-card__rows[data-loading='true'] .record-card__values::after {
+  position: absolute;
+  inset: 3px 18% auto 0;
+  height: 1rem;
+}
+.record-card__pillbox[data-loading='true']::after {
+  grid-area: 1 / 1;
+  width: 11rem;
+  height: 1.375rem;
+  border-radius: var(--radius-pill);
+}
+@keyframes record-card-settle {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.record-card__rows--reveal .record-card__row {
+  animation: record-card-settle 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(var(--r, 0) * 30ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .record-card__rows[data-loading='true'] .record-card__values::after,
+  .record-card__pillbox[data-loading='true']::after {
+    animation: none;
+    background-image: none;
+  }
+  .record-card__rows--reveal .record-card__row {
+    animation: retention-soft 120ms linear both;
+    animation-delay: 0ms;
+  }
+  .age-strip__example {
+    transition: none;
+  }
+}
+
+/* Age footer: pinned to the bottom of the rail (or of the sheet) while the rows scroll under it. */
+.record-card__age {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) calc(var(--rc-pad) * -1) calc(var(--rc-pad) * -1);
+  padding: var(--space-3) var(--rc-pad);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: 0 -10px 12px -10px rgb(0 0 0 / 0.16);
+}
+.record-card__age-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--rs-fs-cap);
+}
+.record-card__age-head label {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.record-card__age-now {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0 var(--space-2);
+  min-width: 0;
+}
+.record-card__age-value {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+/* The zone name sits beside the value; the old one fades out under the new. */
+.record-card__zone-box {
+  display: inline-grid;
+  justify-items: end;
+}
+.record-card__zone-badge {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+  animation: retention-soft var(--rs-dur-micro) linear both;
+}
+.record-card__zone-badge--out {
+  animation: retention-fade-out var(--rs-dur-micro) linear both;
+  pointer-events: none;
+}
+/* One control carries everything: the zone-coloured track under a transparent native range. */
+.record-card__scrub {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 2.75rem;
+}
+.record-card__rail {
+  position: absolute;
+  inset-inline: 0.625rem;
+  top: 50%;
+  height: 0;
+}
+.record-card__track {
+  position: absolute;
+  inset-inline: 0;
+  top: -0.25rem;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--rs-keep);
+}
+.record-card__seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--l, 0) * 1%);
+  width: calc(var(--w, 0) * 1%);
+  transition:
+    left 160ms ease,
+    width 160ms ease;
+}
+.record-card__seg--keep {
+  background: var(--rs-keep);
+}
+.record-card__seg--hide {
+  background-color: var(--rs-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.record-card__seg--erase {
+  background-color: var(--rs-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.record-card__scrub input[type='range'] {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 2.75rem;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+.record-card__scrub input[type='range']::-webkit-slider-runnable-track {
+  height: 0.5rem;
+  background: transparent;
+}
+.record-card__scrub input[type='range']::-moz-range-track {
+  height: 0.5rem;
+  background: transparent;
+}
+.record-card__scrub input[type='range']::-webkit-slider-thumb {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: -0.375rem;
+  border: 2px solid var(--bg-surface);
+  border-radius: 50%;
+  background: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  transition: transform 120ms ease;
+  appearance: none;
+}
+.record-card__scrub input[type='range']::-moz-range-thumb {
+  width: 1.25rem;
+  height: 1.25rem;
+  box-sizing: border-box;
+  border: 2px solid var(--bg-surface);
+  border-radius: 50%;
+  background: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  transition: transform 120ms ease;
+}
+.record-card__scrub input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+.record-card__scrub input[type='range']:active::-moz-range-thumb {
+  transform: scale(1.1);
+}
+.record-card__scrub input[type='range']:focus-visible {
+  outline: none;
+}
+.record-card__scrub input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--shadow-focus);
+}
+.record-card__scrub input[type='range']:focus-visible::-moz-range-thumb {
+  box-shadow: var(--shadow-focus);
+}
+/* Where the rules bite, drawn on the track. The rail already runs between the thumb's centres. */
+.record-card__cut {
+  position: absolute;
+  top: -0.5rem;
+  width: 2px;
+  height: 1rem;
+  margin-left: -1px;
+  left: calc(var(--x, 0) * 100%);
+  border-radius: 1px;
+  background: var(--rs-hide-line);
+}
+.record-card__cut--erase {
+  background: var(--rs-erase-line);
+}
+.record-card__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+}
+.record-card__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.record-card__swatch {
+  flex: none;
+  width: 0.75rem;
+  height: 0.5rem;
+  border-radius: 2px;
+  background: var(--rs-keep);
+}
+.record-card__swatch--hide {
+  background-color: var(--rs-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.record-card__swatch--erase {
+  background-color: var(--rs-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.record-card__swatch--never {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+}
+@media (prefers-reduced-motion: reduce) {
+  .record-card__seg,
+  .record-card__scrub input[type='range']::-webkit-slider-thumb,
+  .record-card__scrub input[type='range']::-moz-range-thumb {
+    transition: none;
+  }
+  .record-card__zone-badge,
+  .record-card__zone-badge--out {
+    animation: none;
+  }
+  .record-card__zone-badge--out {
+    display: none;
+  }
+}
+
+/* ── Plan panel ── */
+.plan-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  min-width: 0;
+}
+.plan-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.plan-panel__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--rs-fs-cap);
+}
+.plan-panel__status .section-infotip:hover,
+.plan-panel__status .section-infotip:active {
+  background: none;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+.plan-panel__note {
+  margin: calc(var(--space-2) * -1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+}
+.followers-count,
+button.followers-count:hover,
+button.followers-count:active {
+  all: unset;
+  box-sizing: border-box;
+  cursor: help;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+button.followers-count:hover {
+  text-decoration-style: solid;
+}
+button.followers-count:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.followers-count__plain {
+  font-variant-numeric: tabular-nums;
+}
+.popover__content.followers-pop {
+  width: fit-content;
+  min-width: 0;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: var(--space-2);
+}
+.followers-pop__list {
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.followers-pop__list--scroll {
+  max-height: 14rem;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong, var(--border-subtle)) transparent;
+}
+.followers-pop__list li {
+  display: grid;
+}
+.followers-pop__list li > .connection-chip.followers-pop__chip {
+  display: flex;
+  width: 100%;
+  max-width: none;
+}
+.followers-pop__chip .connection-chip__face {
+  flex: 1;
+}
+.followers-pop__chip:focus-visible {
+  outline: none;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-focus);
+}
+.plan-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.plan-panel__numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+.plan-panel__number {
+  min-width: 0;
+}
+.plan-panel__number dt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  font-weight: 600;
+}
+.plan-panel__swatch {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+  background: var(--rs-keep);
+}
+.plan-panel__number--hidden .plan-panel__swatch {
+  background-color: var(--rs-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.plan-panel__number--erased .plan-panel__swatch {
+  background-color: var(--rs-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.plan-panel__number dd {
+  margin: var(--space-1) 0 0;
+  font-size: var(--rs-fs-hero);
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.plan-panel__bar {
+  display: flex;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--bg-strong);
+}
+.plan-panel__seg {
+  display: block;
+  height: 100%;
+  transition: width 360ms var(--ease-spring);
+}
+.plan-panel__seg--stays {
+  background: var(--rs-keep);
+}
+.plan-panel__seg--hidden {
+  background-color: var(--rs-hide);
+  background-image: repeating-linear-gradient(135deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.plan-panel__seg--erased {
+  background-color: var(--rs-erase);
+  background-image: repeating-linear-gradient(45deg, var(--bg-surface) 0 1px, transparent 1px 3px);
+}
+.plan-panel__sentence {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  line-height: 1.5;
+}
+.plan-panel__skipped {
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+}
+.plan-panel__skipped strong {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--rs-fs-body);
+}
+.plan-panel__shield {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--status-info-fg);
+}
+.plan-panel__skipped ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+}
+
+/* Odometer: each digit is a reel (drawn here, so the DOM keeps the plain number)
+   that slides to its value; a changed figure also gets a tint. */
+.odo {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  border-radius: var(--radius-xs);
+}
+.odo__col {
+  position: relative;
+  display: inline-block;
+  height: 1.15em;
+  overflow: hidden;
+  line-height: 1.15;
+  vertical-align: bottom;
+}
+.odo__col::before {
+  content: '0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9';
+  display: block;
+  white-space: pre;
+  transform: translateY(calc(var(--digit, 0) * -1.15em));
+  transition: transform 360ms var(--ease-spring);
+}
+.odo__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.odo__char {
+  line-height: 1.15;
+}
+.odo--pulse {
+  animation: retention-tick 360ms ease-out;
+}
+.odo__delta {
+  position: absolute;
+  left: 100%;
+  top: -0.2em;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--accent-primary);
+  color: var(--accent-primary-fg, #fff);
+  font-size: var(--rs-fs-cap);
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: retention-delta 1300ms linear both;
+}
+.plan-panel {
+  position: relative;
+  overflow: hidden;
+}
+.plan-panel--busy::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+  animation: retention-scan 1100ms var(--ease-in-out) infinite;
+}
+.plan-panel__skipped-why {
+  margin: var(--space-1) 0 var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+  line-height: 1.4;
+}
+.plan-panel__sentence {
+  animation: retention-rise 360ms var(--ease-spring) both;
+}
+
+@keyframes retention-tick {
+  from {
+    background-color: color-mix(in oklab, var(--accent-primary) 26%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+@keyframes retention-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes retention-strike {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes retention-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes retention-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes retention-slide {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes retention-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes retention-bar-rise {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes retention-press {
+  from {
+    transform: scaleY(0.94);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes retention-ring {
+  0% {
+    box-shadow:
+      0 0 0 3px var(--accent-ring),
+      var(--shadow-md);
+  }
+  100% {
+    box-shadow:
+      0 0 0 10px transparent,
+      var(--shadow-md);
+  }
+}
+@keyframes retention-delta {
+  0% {
+    opacity: 0;
+  }
+  10%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes retention-scan {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes retention-soft {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── Save bar ── */
+.studio-actions {
+  animation: retention-rise 360ms var(--ease-spring) 400ms both;
+  position: sticky;
+  bottom: var(--space-3);
+  z-index: 6;
+  margin-top: var(--space-2);
+}
+.studio-actions__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+}
+.studio-actions__draft {
+  animation: retention-rise 220ms var(--ease-spring) both;
+  display: inline-flex;
+  flex: 1 1 14rem;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--rs-fs-cap);
+}
+.studio-actions__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--status-warning);
+}
+
+/* ── Phone: a compact summary rides above the save bar ── */
+.retention-studio__summary {
+  display: none;
+}
+.retention-studio__sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.retention-studio__sheet > * {
+  flex: none;
+}
+/* The sheet has its own padding, which scrolled content would show through under a footer
+   pinned at 0: pin it past the padding instead. */
+.retention-studio__sheet .record-card__age {
+  bottom: calc(var(--space-5) * -1);
+}
+@media (max-width: 699px) {
+  .retention-studio--full .retention-studio__rail-plan,
+  .retention-studio--full .retention-studio__rail-detail,
+  .retention-studio--full .retention-studio__rail-card {
+    display: none;
+  }
+  .retention-studio--full .retention-studio__summary {
+    position: sticky;
+    bottom: var(--rs-bar);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-md);
+  }
+  .retention-studio__summary dl {
+    display: grid;
+    flex: 1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-3);
+    margin: 0;
+  }
+  .retention-studio__summary dt {
+    color: var(--text-secondary);
+    font-size: var(--rs-fs-cap);
+  }
+  .retention-studio__summary dd {
+    margin: 0;
+    font-size: var(--rs-fs-title);
+    font-weight: 700;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (max-width: 600px) {
+  .age-strip__never span {
+    writing-mode: vertical-rl;
+    padding: var(--space-1) 0;
+  }
+  .scope-compare__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .scope-compare__table,
+  .scope-compare__table tbody,
+  .scope-compare__table tr,
+  .scope-compare__table td {
+    display: block;
+    width: 100%;
+  }
+  .scope-compare__table tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .scope-compare__table td {
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .scope-compare__table td:first-child {
+    grid-column: 1 / -1;
+  }
+  .scope-compare__table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .age-strip {
+    padding: var(--space-4) var(--space-3) var(--space-3);
+  }
+  .age-strip__zones {
+    grid-template-columns: 1fr;
+    gap: var(--space-2);
+  }
+  .age-strip__zone,
+  .age-strip__zone:first-child {
+    display: grid;
+    grid-template-columns: 1fr 4.5ch 7.5rem;
+    align-items: baseline;
+    gap: 0 var(--space-3);
+    padding: 0;
+    border-left: 0;
+  }
+  .age-strip__zone strong {
+    text-align: right;
+  }
+  .age-strip__zone strong {
+    font-size: 1.125rem;
+  }
+  .age-strip__steppers {
+    display: grid;
+  }
+  .age-strip__flag {
+    min-height: 2.75rem;
+  }
+  .age-strip__canvas {
+    padding-top: 3.5rem;
+    padding-bottom: 4.5rem;
+  }
+  .age-strip__track {
+    height: 9rem;
+  }
+  .age-strip__handle--erase {
+    bottom: -1.75rem;
+  }
+  .retention-studio__deck {
+    padding: var(--space-4) var(--space-3);
+  }
+  .record-card {
+    --rc-pad: var(--space-3);
+  }
+  .studio-actions__inner {
+    padding: var(--space-3);
+  }
+}
+
+/* Reduced motion keeps feedback but drops movement: no rolling, sliding, scaling or
+   staggering. What changed still answers with a 120 ms opacity fade or a colour tint,
+   so an operator who turned animations off is told a figure or a state moved. */
+@media (prefers-reduced-motion: reduce) {
+  .retention-scope,
+  .retention-studio__instrument,
+  .retention-studio--full .retention-studio__rail-head,
+  .retention-studio--full .retention-studio__rail-plan,
+  .retention-studio--full .retention-studio__rail-detail,
+  .retention-studio--full .retention-studio__rail-card,
+  .scope-tabs .tabs__content,
+  .plan-panel__sentence,
+  .studio-actions,
+  .studio-actions__draft,
+  .age-strip__col,
+  .age-strip__bar--wave,
+  .record-card__pill,
+  .record-card__stays,
+  .record-card__old::after,
+  .record-card__new--redacted {
+    animation: retention-soft 120ms linear both;
+    animation-delay: 0ms;
+  }
+  .record-card__pill--out {
+    animation: retention-fade-out 120ms linear both;
+  }
+  .odo__col::before,
+  .plan-panel__seg,
+  .age-strip__bar,
+  .age-strip__handle,
+  .age-strip__flag,
+  .record-card__row {
+    transition: none;
+  }
+  .age-strip__handle--dragging .age-strip__flag {
+    animation: none;
+  }
+  .plan-panel--busy::before {
+    animation: none;
+    background: var(--accent-primary);
+    opacity: 0.6;
+  }
+  .age-strip__skeleton,
+  .plan-panel__skeleton {
+    animation: none;
+  }
+}
+
 /* Order detail tabs (#4286): panels stay mounted (forceMount) and are hidden,
    so a note draft and invoice polling survive a tab change. Radix sets the
    `hidden` attribute; make sure no display rule overrides it. */
@@ -40461,150 +42731,9 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 /* ── Icon popover tooltips (#4228) ──────────────────────────────────────── */
 /* An icon button that explains itself: `IconWithOnHoverPopoverTooltip` and its
    Warning variant, on top of `PopoverOnHover`. */
-.icon-tip.button--bare.button--bare {
-  width: 1.5rem;
-  height: 1.5rem;
-}
-.icon-tip--warning.button--bare.button--bare {
-  color: var(--status-warning-strong);
-}
-.icon-tip--error.button--bare.button--bare {
-  color: var(--status-error-fg);
-}
-.icon-tip--info.button--bare.button--bare {
-  color: var(--accent-primary);
-}
-.icon-tip--warning.button--bare.button--bare:hover,
-.icon-tip--warning.button--bare.button--bare[aria-expanded='true'] {
-  background: var(--status-warning-soft);
-  color: var(--status-warning-strong);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .icon-tip:hover svg,
-  .icon-tip[aria-expanded='true'] svg {
-    animation: icon-tip-nudge 420ms ease-out;
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  /* Once, when the card is chosen: the mark says "there is something to read here"
-     without opening a panel over the confirm button. */
-  .order-sync-start__option:has(.order-sync-start__card--checked) .icon-tip svg {
-    animation: icon-tip-nudge 600ms ease-out 120ms;
-  }
-}
-@keyframes icon-tip-nudge {
-  0% { transform: rotate(0); }
-  25% { transform: rotate(-9deg); }
-  55% { transform: rotate(7deg); }
-  100% { transform: rotate(0); }
-}
 
-.motion-popover.popover-on-hover {
-  padding: 0;
-  max-width: calc(100vw - 16px);
-  /* Above the elevated dialog tier (101): the mark usually sits INSIDE a dialog,
-     and a panel behind its own dialog cannot be read. */
-  z-index: 120;
-}
-.motion-popover.popover-on-hover--warning {
-  border-color: var(--status-warning-border);
-}
-.popover-on-hover__body {
-  margin: -6px;
-  font-size: 0.875rem;
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
-.motion-popover.popover-on-hover {
-  overflow: hidden;
-}
 
 /* ── Popover card (#4228) ── */
-.popover-card {
-  display: grid;
-}
-.popover-card__head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) 0;
-}
-.popover-card__tile {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: var(--radius-md);
-  background: var(--bg-surface-hover);
-  color: var(--text-secondary);
-}
-.popover-card__tile svg {
-  width: 1.125rem;
-  height: 1.125rem;
-}
-.popover-card--warning .popover-card__tile {
-  background: var(--status-warning-soft);
-  color: var(--status-warning-strong);
-}
-.popover-card--error .popover-card__tile {
-  background: var(--status-error-soft);
-  color: var(--status-error-fg);
-}
-.popover-card--info .popover-card__tile {
-  background: var(--accent-primary-soft);
-  color: var(--accent-primary);
-}
-.popover-card__title {
-  margin: 0;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--text-primary);
-}
-.popover-card__summary {
-  margin: var(--space-3) 0 0;
-  padding: 0 var(--space-4);
-  color: var(--text-primary);
-}
-.popover-card__list {
-  margin: var(--space-3) 0 0;
-  padding: 0 var(--space-4);
-  list-style: none;
-  display: grid;
-  gap: var(--space-2);
-}
-.popover-card__list li {
-  position: relative;
-  padding-left: var(--space-4);
-}
-.popover-card__list li::before {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: 0.6em;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-.popover-card--warning .popover-card__list li::before {
-  background: var(--status-warning);
-}
-.popover-card--info .popover-card__list li::before {
-  background: var(--accent-primary);
-}
-.popover-card__footer {
-  margin: var(--space-4) 0 0;
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--border-subtle);
-  background: var(--bg-surface-hover);
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-}
-.popover-card:not(:has(.popover-card__footer)) {
-  padding-bottom: var(--space-4);
-}
 
 .order-sync-start__note {
   margin: 0;
@@ -42010,9 +44139,6 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 }
 .release-card__toggle:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
 /* The 44px target is a touch concern, so it follows the pointer rather than the width. */
-@media (hover: none) and (pointer: coarse) {
-  .release-card__toggle { min-height: 44px; }
-}
 
 /* Pinned to the bottom of the panel list while the card is on screen. It inherits the card's own
    background so nothing shows through, and stretches over the card padding to its edges. */

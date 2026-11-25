@@ -851,6 +851,7 @@
     "saving": "Saving...",
     "sections": {
       "advanced": "Advanced",
+      "buyerData": "Buyer data",
       "fulfilment": "Packing",
       "general": "General",
       "labelPurchase": "Shipping notification",

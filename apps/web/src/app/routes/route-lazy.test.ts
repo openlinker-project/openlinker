@@ -163,8 +163,10 @@ const lazyRoutes = collectLazyRoutes([
  * and its OAuth callback (`integrations/shopify/connect/callback`), from 85 to 87.
  *
  * The release center adds `whats-new` and `settings/release-center`, from 87 to 89, and the bulk multipack creator (`products/bundles/bulk`) takes it to 90.
+ *
+ * #4289 adds the buyer data rules page (`settings/buyer-data`), from 90 to 91.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 90;
+const EXPECTED_LAZY_ROUTE_COUNT = 91;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {
@@ -189,6 +191,6 @@ describe('route lazy contract', () => {
         ('Component' in result && result.Component !== undefined) ||
         ('element' in result && result.element !== undefined);
       expect(hasComponentOrElement).toBe(true);
-    },
+    }
   );
 });

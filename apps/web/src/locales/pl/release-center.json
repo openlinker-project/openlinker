@@ -167,10 +167,10 @@
         },
         "1": {
           "body": "Tu masz pełną listę zmian w każdym wydaniu, a obok kroki do ustawienia z postępem.",
-          "title": "Co nowego"
+          "title": "Nowości i powiadomienia"
         }
       },
-      "title": "Powiadomienia i „Co nowego\"",
+      "title": "Nowości i powiadomienia",
       "why": "Zobacz, gdzie znajdziesz zmiany w każdym wydaniu i rzeczy do ustawienia."
     }
   },
@@ -209,7 +209,7 @@
     },
     "close": "Zamknij przewodnik",
     "collapse": "Zwiń do samych kroków",
-    "doneToastBody": "To wszystko. Wrócisz do niego w „Co nowego\".",
+    "doneToastBody": "To wszystko. Wrócisz do niego w „Nowości i powiadomienia\".",
     "doneToastTitle": "Przewodnik zakończony",
     "expand": "Rozwiń treść",
     "finish": "Gotowe",
@@ -273,6 +273,6 @@
     "setupTitle": "Do skonfigurowania",
     "setupTitleView": "Co się zmieniło",
     "showWhere": "Pokaż, gdzie to jest",
-    "title": "Co nowego w OpenLinker"
+    "title": "Nowości i powiadomienia"
   }
 }

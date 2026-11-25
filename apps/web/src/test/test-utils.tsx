@@ -194,6 +194,30 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue([]),
       ...overrides.adapters,
     } as ApiClient['adapters'],
+    buyerData: {
+      preview: vi.fn().mockResolvedValue({
+        toHide: 120,
+        toErase: 40,
+        alreadyHiddenDueForErase: 0,
+        total: 1000,
+        totalOrders: 1500,
+        skippedProtected: 3,
+        skippedByReason: { openReturn: 2, hold: 1, invoicePending: 0 },
+        samples: [{ orderRef: 'OL-91240', placedAt: '2024-12-01T10:00:00.000Z', maskedBuyer: 'J. K.' }],
+      }),
+      ageHistogram: vi.fn().mockResolvedValue({
+        bucketUnit: 'month',
+        buckets: Array.from({ length: 36 }, (_, ageMonths) => ({
+          ageMonths,
+          visible: Math.max(0, 60 - ageMonths),
+          hidden: 0,
+          erased: 0,
+        })),
+        totalOrders: 1500,
+        oldestPlacedAt: '2023-12-01T10:00:00.000Z',
+      }),
+      ...overrides.buyerData,
+    },
     buyerEmails: {
       listForOrder: vi.fn().mockResolvedValue([]),
       sendTest: vi.fn().mockResolvedValue(undefined),

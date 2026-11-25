@@ -76,6 +76,10 @@ export class FakeOperationalSettingsService implements IOperationalSettingsServi
       source: 'default',
       workerMayDiffer: true,
     },
+    buyerDataRetentionEnabled: { value: false, source: 'default', workerMayDiffer: false },
+    buyerDataHideAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
+    buyerDataEraseAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
+    buyerDataEraseMode: { value: 'personal-data', source: 'default', workerMayDiffer: false },
     catalogueSweepCadence: {
       value: CATALOGUE_SWEEP_CADENCE_DEFAULT,
       source: 'default',

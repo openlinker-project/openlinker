@@ -132,8 +132,7 @@ describe('ErliSetupForm', () => {
 
   it('should keep the date card disabled with its reason on the orders step for an Erli-shaped manifest', async () => {
     renderWithProviders(<ErliSetupForm />, { apiClient: createMockApiClient({}) });
-    fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'E' } });
-    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk' } });
+    await fillCredentialsAndReachCatalogue({ name: 'E', apiKey: 'sk' });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await screen.findByText('How should delivery appear on receipts and invoices?');
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));

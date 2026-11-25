@@ -267,8 +267,10 @@ export function useOrderListFilters(): UseOrderListFiltersResult {
       sourceConnectionId: filters.sourceConnectionId,
       createdFrom: filters.createdFrom,
       createdTo: filters.createdTo,
+      // #4289: the KPI cards describe the view the rows show, hidden or not.
+      hidden: filters.hidden,
     }),
-    [filters.sourceConnectionId, filters.createdFrom, filters.createdTo],
+    [filters.sourceConnectionId, filters.createdFrom, filters.createdTo, filters.hidden],
   );
 
   return {

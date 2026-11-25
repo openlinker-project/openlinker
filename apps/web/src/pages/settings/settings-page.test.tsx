@@ -72,6 +72,34 @@ describe('SettingsPage', () => {
     expect(within(row as HTMLElement).queryByRole('img', { name: /Administrators only/ })).not.toBeInTheDocument();
   });
 
+  it('shows the Buyer data row with a way in for an admin and locked for a viewer (#4289)', async () => {
+    const admin = renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+    const adminRow = (await screen.findByRole('heading', { name: 'Buyer data' })).closest('li');
+    expect(adminRow).not.toBeNull();
+    expect(within(adminRow as HTMLElement).getByRole('link', { name: 'Manage' })).toBeInTheDocument();
+    admin.unmount();
+
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_2',
+        username: 'viewer',
+        email: 'viewer@example.com',
+        role: 'viewer',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+    expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
+    const viewerRow = screen.getByRole('heading', { name: 'Buyer data' }).closest('li');
+    expect(viewerRow).not.toBeNull();
+    expect(within(viewerRow as HTMLElement).queryByRole('link')).not.toBeInTheDocument();
+    expect(
+      within(viewerRow as HTMLElement).getByRole('img', { name: /Administrators only/ }),
+    ).toBeInTheDocument();
+  });
+
   it('lists the Mailer row as locked, with no way in, for a non-admin session', async () => {
     renderWithProviders(<SettingsPage />, {
       sessionAdapter: createAuthenticatedSessionAdapter({

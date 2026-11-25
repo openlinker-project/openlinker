@@ -353,6 +353,25 @@ describe('SubiektOrderProcessorAdapter', () => {
     await expect(adapter.createOrder(order)).rejects.toThrow(SubiektOrderProductMappingException);
   });
 
+  it('refuses a catalogue-less unmatched line with the not-mapped error, before the bridge is called (ADR-014 point 5, #4283)', async () => {
+    const fetchImpl = (() => {
+      throw new Error('bridge must not be called when product resolution fails');
+    }) as unknown as typeof fetch;
+    const client = new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl });
+    const identifierMapping = new InMemoryIdentifierMappingAdapter();
+    const adapter = new SubiektOrderProcessorAdapter(client, identifierMapping, CONNECTION_ID, noopLogger);
+
+    const order: OrderCreate = {
+      status: 'pending',
+      items: [
+        { id: '1', productId: `unmatched:source-connection:offer-1`, quantity: 1, price: 10 },
+      ],
+      totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+    };
+
+    await expect(adapter.createOrder(order)).rejects.toThrow(SubiektOrderProductMappingException);
+  });
+
   it('classifies a transport failure into SubiektBridgeTransportError, not a raw unreachable error (#3369/#3373)', async () => {
     // Real fetch throw shape — code lives on `error.cause.code`, matching the
     // shared retryability classifier's read path.

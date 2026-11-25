@@ -809,6 +809,11 @@
     "sync": "Sync",
     "total": "Total"
   },
+  "hiddenBadge": {
+    "label": "Hidden",
+    "title": "Hidden by your buyer data rule. The order is kept in OpenLinker.",
+    "titleErased": "Hidden by your buyer data rule. The buyer's personal data was erased."
+  },
   "holds": {
     "onHold": "On hold - {reason}",
     "panel": {
@@ -1037,6 +1042,7 @@
     },
     "checks": {
       "buyerNote": "With buyer note",
+      "hidden": "Hidden orders",
       "omsStopped": "OpenLinker stopped",
       "openReturn": "Open return",
       "packBench": "On pack bench",
@@ -1059,6 +1065,8 @@
       "dueValue": "≤ 24h or overdue",
       "fulfilment": "Fulfilment",
       "health": "Status",
+      "hidden": "Visibility",
+      "hiddenValue": "Hidden only",
       "hold": "Hold",
       "oms": "OpenLinker",
       "open": "Open",

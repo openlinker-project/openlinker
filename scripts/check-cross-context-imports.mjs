@@ -442,6 +442,12 @@ const ALLOW_LIST = new Map([
   // repository ports on purpose: the claim IS about repository behaviour under
   // real SQL, so unlike the rewire debt below this entry has no rewire target
   // and must NOT be dropped when #722 lands.
+  // #4289: the retention int-spec asserts on stored rows (erase survives
+  // re-ingestion), so it reads the order repository port directly. Permanent.
+  [
+    'apps/api/test/integration/buyer-data-retention.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
   [
     'apps/api/test/integration/paginated-total-split.int-spec.ts',
     new Set([

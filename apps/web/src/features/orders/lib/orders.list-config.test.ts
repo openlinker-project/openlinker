@@ -24,7 +24,7 @@ const DTO_KEYS = new Set([
   'sourceConnectionId', 'createdFrom', 'createdTo', 'health', 'sort', 'dir', 'slaState', 'fulfillmentState',
   'hold', 'salesDocumentBlocked', 'destinationRoutingBlocked', 'waitingInOpenLinker', 'onPackBench', 'phase',
   'taxRateConflict', 'attention', 'withGift', 'withBundle', 'giftNotAdded', 'giftShopRejected', 'attentionReason',
-  'paymentNotSent', 'packed', 'hasBuyerNote', 'openReturn', 'tag', 'untagged',
+  'paymentNotSent', 'packed', 'hasBuyerNote', 'hidden', 'openReturn', 'tag', 'untagged',
 ]);
 
 describe('orders list config', () => {

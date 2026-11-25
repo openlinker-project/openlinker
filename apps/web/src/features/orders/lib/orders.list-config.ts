@@ -180,6 +180,7 @@ const ORDER_VIEW_FILTERS: ListRegistry<OrderRecord>['filters'] = [
   { key: 'packBench', parse: TOGGLE },
   { key: 'openReturn', parse: TOGGLE },
   { key: 'hasBuyerNote', parse: TOGGLE },
+  { key: 'hidden', parse: TOGGLE },
   { key: 'withGift', parse: TOGGLE },
   { key: 'withBundle', parse: TOGGLE },
   { key: 'giftNotAdded', parse: TOGGLE },

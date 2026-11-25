@@ -889,13 +889,21 @@ export class OrderIngestionService implements IOrderIngestionService {
     // The fact is an observation about the SOURCE and is true whether or not
     // item resolution subsequently succeeds. The destination-echo early return
     // above is untouched: an echo is not an amendment.
-    await this.recordSourceAmendment(existing, incoming, internalOrderId, connectionId);
+    //
+    // Buyer-data retention (#4289): an ERASED order's stored snapshot carries
+    // placeholders, so (a) the diff would report a `shipping-address-changed`
+    // amendment on every re-poll, and (b) resolving the buyer / syncing the
+    // projections below would write the buyer's email, name and address back
+    // into the customer projection. Both are skipped; the order keeps the
+    // customer id it already carries and only non-personal fields refresh.
+    const erased = existing?.personalDataErasedAt != null;
+    if (!erased) {
+      await this.recordSourceAmendment(existing, incoming, internalOrderId, connectionId);
+    }
 
-    const internalCustomerId = await this.resolveCustomerId(
-      incoming,
-      connectionId,
-      internalOrderId
-    );
+    const internalCustomerId = erased
+      ? existing?.customerId ?? undefined
+      : await this.resolveCustomerId(incoming, connectionId, internalOrderId);
 
     // Step 2: persist raw snapshot immediately — operator can see the order even if item resolution fails
     const snapshotRecord = await this.orderRecordService.persistIncomingSnapshot(
@@ -1287,7 +1295,8 @@ export class OrderIngestionService implements IOrderIngestionService {
           });
           this.logger.log(
             `Cancellation relayed for order ${internalOrderId} on update: ` +
-              (relayed.targets.map((t) => `${t.connectionId}=${t.outcome}`).join(', ') || 'no targets')
+              (relayed.targets.map((t) => `${t.connectionId}=${t.outcome}`).join(', ') ||
+                'no targets')
           );
         } catch (error) {
           this.logger.error(
@@ -1301,7 +1310,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
     // a destination failure can't drop projection updates. Failure here is swallowed —
     // projections are non-authoritative and must never block order sync.
-    if (internalCustomerId) {
+    if (internalCustomerId && !erased) {
       try {
         await this.customerProjectionUpdater.updateProjectionsForOrder(
           order,
@@ -1497,7 +1506,8 @@ export class OrderIngestionService implements IOrderIngestionService {
           result.status === 'skipped_cancelled' &&
           existing?.syncStatus.some(
             (entry) =>
-              entry.destinationConnectionId === result.destinationConnectionId && entry.status === 'synced'
+              entry.destinationConnectionId === result.destinationConnectionId &&
+              entry.status === 'synced'
           )
         ) {
           // The destination already holds this order. "Cancelled before the

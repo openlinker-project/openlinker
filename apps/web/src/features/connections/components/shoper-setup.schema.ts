@@ -13,7 +13,16 @@
  * @module features/connections/components
  */
 import { z } from 'zod';
-import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
+import {
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+  wizardBuyerDataConfig,
+  type BuyerDataWizardValue,
+} from '../../buyer-data';
+import {
+  CORE_CAPABILITY_VALUES,
+  type CoreCapability,
+  type CreateConnectionInput,
+} from '../api/connections.types';
 import { schemaMessage } from '../lib/schema-message';
 
 const msg = schemaMessage('shoperSetupSchema');
@@ -40,6 +49,8 @@ export const shoperSetupSchema = z.object({
   baseUrl: z.string().trim().min(1, msg('baseUrlRequired')),
   token: z.string().trim().min(1, msg('tokenRequired')),
   enabledCapabilities: z.array(z.enum(CORE_CAPABILITY_VALUES)).default(SHOPER_DEFAULT_CAPABILITIES),
+  // The answer to the "Buyer data" question (#4289); set through `setValue`.
+  buyerDataRetention: z.custom<BuyerDataWizardValue>().optional(),
 });
 
 export type ShoperSetupFormValues = z.input<typeof shoperSetupSchema>;
@@ -50,6 +61,7 @@ export const SHOPER_SETUP_DEFAULT_VALUES: ShoperSetupFormValues = {
   baseUrl: '',
   token: '',
   enabledCapabilities: SHOPER_DEFAULT_CAPABILITIES,
+  buyerDataRetention: DEFAULT_BUYER_DATA_WIZARD_VALUE,
 };
 
 export function toCreateConnectionInput(values: ShoperSetupFormSubmission): CreateConnectionInput {
@@ -58,7 +70,7 @@ export function toCreateConnectionInput(values: ShoperSetupFormSubmission): Crea
     platformType: 'shoper',
     adapterKey: SHOPER_ADAPTER_KEY,
     credentials: { token: values.token },
-    config: { baseUrl: values.baseUrl },
+    config: { baseUrl: values.baseUrl, ...wizardBuyerDataConfig(values.buyerDataRetention) },
     enabledCapabilities: values.enabledCapabilities,
   };
 }

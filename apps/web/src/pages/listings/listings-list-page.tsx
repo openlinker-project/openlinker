@@ -500,8 +500,10 @@ export function ListingsListPage(): ReactElement {
 
   // Which listed products are sets or multipacks. The listings payload carries no
   // bundle mark, so ask the catalogue once for its bundles (a short list) and
-  // look rows up by product; past the cap a row simply shows no badge.
-  const bundlesQuery = useProductsQuery({ bundles: 'only' }, { limit: 200, offset: 0 });
+  // look rows up by product; past the cap a row simply shows no badge. The cap is
+  // the products API's page maximum (100): a larger limit is refused with a 400 and
+  // the page then shows no badge at all.
+  const bundlesQuery = useProductsQuery({ bundles: 'only' }, { limit: 100, offset: 0 });
   const bundleByProduct = useMemo(() => {
     const map = new Map<string, ProductBundleMark>();
     for (const product of bundlesQuery.data?.items ?? []) {

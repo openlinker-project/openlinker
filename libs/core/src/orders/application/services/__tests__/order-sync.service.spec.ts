@@ -1854,6 +1854,21 @@ describe('OrderSyncService', () => {
       });
     });
 
+    it('should leave an unmatched catalogue-less line out of the refresh (#4283)', async () => {
+      registerDestination('dest-a');
+      const order = createOrder();
+      order.items = [
+        ...order.items,
+        { id: 'item-2', productId: 'unmatched:source-1:offer-b', quantity: 1, price: 10 },
+      ];
+
+      await service.syncOrder({ order, sourceConnectionId: 'source-1' });
+
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ productIds: ['ol_product_789'] })
+      );
+    });
+
     it('should not fail order sync when the refresh itself throws', async () => {
       registerDestination('dest-a');
       postSaleInventoryRefresh.enqueue.mockRejectedValue(new Error('queue unavailable'));

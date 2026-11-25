@@ -51,6 +51,11 @@ export function stepViewable(stepId: string): boolean {
   return RELEASE_STEPS.find((candidate) => candidate.id === stepId)?.viewable !== false;
 }
 
+/** The steps a person can walk: without the right to change settings, a setup step whose page is closed to them is left out (showcase stops are always view pages). */
+export function walkableSteps<T extends { stepId: string; showcase?: unknown }>(steps: readonly T[], canConfig: boolean): T[] {
+  return canConfig ? [...steps] : steps.filter((step) => step.showcase || stepViewable(step.stepId));
+}
+
 /** `major.minor` of the release that ships this entry, or null for an unknown id. */
 export function tourItemMinor(step: TourStepInput): string | null {
   const introducedIn = step.showcase

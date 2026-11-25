@@ -47,6 +47,11 @@ import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
+import {
+  BuyerDataWizardReviewRows,
+  BuyerDataWizardStep,
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+} from '../../buyer-data';
 import { captureDemoEvent } from '../../demo';
 import { WizardCreatedScreen } from './wizard-created-screen';
 import { ShopPackingNextStep } from './shop-packing-next-step';
@@ -189,6 +194,8 @@ export function PrestashopSetupForm(): ReactElement {
     }
   });
 
+  const buyerDataValue = values.buyerDataRetention ?? DEFAULT_BUYER_DATA_WIZARD_VALUE;
+  const takesOrders = (values.enabledCapabilities ?? []).includes('OrderSource');
   if (created) {
     return (
       <WizardLayout
@@ -409,6 +416,13 @@ export function PrestashopSetupForm(): ReactElement {
         ) : null}
 
         {stepId === 'review' ? (
+          <>
+          {takesOrders ? (
+            <BuyerDataWizardStep
+              value={buyerDataValue}
+              onChange={(next) => form.setValue('buyerDataRetention', next, { shouldDirty: true })}
+            />
+          ) : null}
           <dl className="wizard-review-list">
             <dt>{copy.review.name}</dt>
             <dd>{values.name || '—'}</dd>
@@ -442,6 +456,7 @@ export function PrestashopSetupForm(): ReactElement {
                 ? (values.enabledCapabilities ?? []).join(', ')
                 : copy.review.noneSelected}
             </dd>
+            {takesOrders ? <BuyerDataWizardReviewRows value={buyerDataValue} /> : null}
             {readsOrders(values.enabledCapabilities) ? (
               <>
                 <dt>{orderStartCopy.review.label}</dt>
@@ -449,6 +464,7 @@ export function PrestashopSetupForm(): ReactElement {
               </>
             ) : null}
           </dl>
+          </>
         ) : null}
 
         <div className="wizard-actions">

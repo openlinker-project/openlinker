@@ -41,6 +41,7 @@ import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
 import { PaymentWritebackSection } from './payment-writeback-section';
 import { ChannelShippingSummarySection } from './channel-shipping-summary-section';
 import { LabelPurchaseNotificationSection } from './label-purchase-notification-section';
+import { BuyerDataSection, readBuyerDataSettings } from '../../buyer-data';
 import { readNotifyOnLabelPurchase } from '../lib/label-purchase-notification';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
 import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
@@ -553,6 +554,8 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
       paymentWriteback: readPaymentWritebackForm(connection.config),
       // "Tell the shop when a label is bought" (#4097) — carrier connections.
       notifyOnLabelPurchase: readNotifyOnLabelPurchase(connection.config),
+      // Per-connection buyer data rules (#4289) - `null` inherits the general rules.
+      buyerDataRetention: readBuyerDataSettings(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -1147,6 +1150,16 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
           syncLabelPurchaseNotificationToJson={syncLabelPurchaseNotificationToJson}
         />
       ),
+    });
+  }
+
+  // #4289 - buyer data rules: read for any connection that takes orders. `null` inherits
+  // the general rules from the settings page.
+  if (connection.enabledCapabilities.includes('OrderSource')) {
+    sections.push({
+      id: 'buyer-data',
+      label: copy.sections.buyerData,
+      children: <BuyerDataSection connectionId={connection.id} form={form} />,
     });
   }
 

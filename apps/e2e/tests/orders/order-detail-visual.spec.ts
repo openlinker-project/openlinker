@@ -26,6 +26,8 @@ import {
   FIXED_NOW,
   buildOrderRecord,
   shippingConnection,
+  SOURCE_CONNECTION_ID,
+  sourceConnection,
   situationData,
   type OrderDetailSituation,
 } from '../../src/support/order-detail-fixtures';
@@ -55,11 +57,23 @@ const TABS = [
  * so their budgets are loose until the fixtures cover them. The numbers are the
  * MEASURED distance from the mockup, rounded up with a small margin: they pin
  * today's state, they are not a claim that the page matches the mockup.
+ *
+ * Re-pinned (#4290): the first set did not reproduce. Rendering the very commit they were pinned on (#4288,
+ * a0f71644f) on a fresh stack gives the same distances as the branch that merged it, so the gap was never a
+ * regression: ready-overview 38.5%, held-header 23.9%, cancelled-overview 52.3% against pins of 31/15/48.
+ * What did differ between environments is what the page and the mockup render with: the order's channel was
+ * "whichever connection the stack lists first" (now a synthetic Allegro connection, see
+ * `sourceConnection()`), and the notes, shipments and packing panels read stack endpoints. Measured with
+ * the synthetic channel on the reference stack (headless Chromium, 1440x1000, UTC): header 34.7 / 24.1 /
+ * 43.6, overview 39.9 / 59.4 / 53.4, packing 55.4 / 40.1 / 56.5, returns 50.4 / 50.4 / 50.0, notes 23.3 /
+ * 28.1 / 27.9 (ready / held / cancelled). Every raised budget sits about two points above its measurement;
+ * the cells that already passed keep their pin. The live header carries a meta row the mockup has no
+ * counterpart for ("1 item, 2 units - first product", 53 px), so the header cannot converge on zero.
  */
 const BUDGET: Record<OrderDetailSituation, Record<string, number>> = {
-  ready: { header: 0.42, overview: 0.31, shipping: 0.61, packing: 0.53, documents: 0.15, returns: 0.49, notes: 0.17, history: 0.61, technical: 0.4 },
-  held: { header: 0.15, overview: 0.55, shipping: 0.53, packing: 0.35, documents: 0.19, returns: 0.49, notes: 0.23, history: 0.61, technical: 0.29 },
-  cancelled: { header: 0.51, overview: 0.48, shipping: 0.26, packing: 0.55, documents: 0.5, returns: 0.48, notes: 0.22, history: 0.54, technical: 0.43 },
+  ready: { header: 0.42, overview: 0.42, shipping: 0.62, packing: 0.57, documents: 0.15, returns: 0.52, notes: 0.26, history: 0.61, technical: 0.4 },
+  held: { header: 0.26, overview: 0.61, shipping: 0.53, packing: 0.42, documents: 0.19, returns: 0.52, notes: 0.3, history: 0.61, technical: 0.29 },
+  cancelled: { header: 0.51, overview: 0.55, shipping: 0.26, packing: 0.58, documents: 0.5, returns: 0.52, notes: 0.3, history: 0.54, technical: 0.43 },
 };
 const DEFAULT_PANEL_BUDGET = 1;
 
@@ -112,13 +126,9 @@ test.describe('orders: detail page against the mockup (#4286)', () => {
   test.use({ viewport: { width: 1440, height: 1000 }, timezoneId: 'UTC' });
 
   for (const situation of ['ready', 'held', 'cancelled'] as const) {
-    test(`${situation}: header and every tab stay within the visual budget`, async ({ page, api }, testInfo) => {
-      const connections = await api.connections.list();
-      const sourceConnectionId = connections[0]?.id;
-      test.skip(!sourceConnectionId, 'stack has no connection to attribute the order to');
-
+    test(`${situation}: header and every tab stay within the visual budget`, async ({ page }, testInfo) => {
       const data = situationData(situation);
-      const record = buildOrderRecord(situation, sourceConnectionId);
+      const record = buildOrderRecord(situation, SOURCE_CONNECTION_ID);
 
       await page.clock.setFixedTime(new Date(FIXED_NOW[situation]));
       // Only the API read: the SPA route of the same name is a document request.
@@ -130,7 +140,8 @@ test.describe('orders: detail page against the mockup (#4286)', () => {
         return route.fulfill({ json: record });
       });
 
-      // The stack's own connections plus one shipping connection, so the label form can render.
+      // The stack's own connections plus a synthetic source and shipping connection: the first lets the header
+      // name the channel as the mockup does, the second lets the label form render.
       await page.route('**/connections', async (route) => {
         const type = route.request().resourceType();
         if (route.request().method() !== 'GET' || (type !== 'fetch' && type !== 'xhr')) {
@@ -141,7 +152,7 @@ test.describe('orders: detail page against the mockup (#4286)', () => {
         const list: unknown[] = Array.isArray(body)
           ? (body as unknown[])
           : ((body as { items?: unknown[] }).items ?? []);
-        return route.fulfill({ response, json: [...list, shippingConnection()] });
+        return route.fulfill({ response, json: [...list, sourceConnection(), shippingConnection()] });
       });
 
       const mockupPage = await page.context().newPage();

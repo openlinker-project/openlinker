@@ -253,23 +253,16 @@ test.describe('order ingestion: order sync start (#4228)', () => {
   test('from: a date inside the history imports exactly the orders since that date', async ({
     api,
     jobs,
+    world,
   }) => {
     requireSeeded();
     test.setTimeout(HISTORY_BUDGET_MS + 60_000);
-    const key = process.env.OL_PS_WEBSERVICE_KEY?.trim();
-    const baseUrl = (
-      process.env.OL_PS_ADMIN_URL?.trim() ||
-      (typeof master?.config?.['baseUrl'] === 'string' ? master.config['baseUrl'] : '')
-    ).replace(/\/$/, '');
+    const shop = buildPrestashopWebserviceClient(world);
+    test.skip(!shop, 'needs OL_PS_WEBSERVICE_KEY (+ a resolvable PS base URL)');
     // A week back, which cuts through a shop seeded with dated history
-    // (`perf/prestashop-baseline/seed-orders-varied.py`).
+    // (`perf/prestashop-baseline/seed-orders.sh`).
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const response = await fetch(
-      `${baseUrl}/api/orders?output_format=JSON&date=1&display=[id]&filter[date_upd]=>[${since} 00:00:00]`,
-      { headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString('base64')}` } }
-    );
-    const body = (await response.json()) as { orders?: Array<{ id: number }> };
-    const expected = body.orders?.length ?? 0;
+    const expected = await shop!.countOrdersUpdatedSince(since);
     test.skip(
       expected < 30 || expected > 700,
       `needs a shop with a few hundred orders in the last week, found ${expected}`

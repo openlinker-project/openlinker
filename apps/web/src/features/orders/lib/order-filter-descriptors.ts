@@ -109,6 +109,8 @@ export interface OrderListFilterState {
   openReturn: boolean;
   /** `?hasBuyerNote=true` - only orders whose source reported a note (#3539). */
   hasBuyerNote: boolean;
+  /** `?hidden=true` - show only orders the buyer data retention rule hid (#4289). */
+  hidden: boolean;
   /** `?withGift=true` - only orders carrying a gift line (#3940). */
   withGift: boolean;
   /** `?withBundle=true` - only orders carrying a bundle (#3935). */
@@ -368,6 +370,14 @@ export const ORDER_FILTER_DESCRIPTORS: Record<NarrowingOrderFilterKey, OrderFilt
     chip: (s, ctx) =>
       single('hasBuyerNote', ctx.copy.listFilters.chips.buyerNote, s.hasBuyerNote ? ctx.copy.listFilters.chips.buyerNoteValue : null),
   },
+  hidden: {
+    param: 'hidden',
+    group: 'exceptions',
+    analyticsName: 'hidden',
+    isActive: (s) => s.hidden,
+    chip: (s, ctx) =>
+      single('hidden', ctx.copy.listFilters.chips.hidden, s.hidden ? ctx.copy.listFilters.chips.hiddenValue : null),
+  },
   withGift: {
     param: 'withGift',
     group: 'exceptions',
@@ -502,6 +512,7 @@ export function parseOrderListFilterState(params: URLSearchParams): OrderListFil
     packed: rawPacked === 'true' ? true : rawPacked === 'false' ? false : undefined,
     openReturn: params.get('openReturn') === 'true',
     hasBuyerNote: params.get('hasBuyerNote') === 'true',
+    hidden: params.get('hidden') === 'true',
     withGift: params.get('withGift') === 'true',
     withBundle: params.get('withBundle') === 'true',
     giftNotAdded: params.get('giftNotAdded') === 'true',
@@ -529,6 +540,7 @@ export const ORDER_TOGGLE_FILTER_VALUES = {
   paymentNotSent: 'true',
   openReturn: 'true',
   hasBuyerNote: 'true',
+  hidden: 'true',
   withGift: 'true',
   withBundle: 'true',
   giftNotAdded: 'true',
@@ -566,6 +578,7 @@ export function toOrderQueryFilters(
     search: derived.search || undefined,
     openReturn: state.openReturn ? true : undefined,
     hasBuyerNote: state.hasBuyerNote ? true : undefined,
+    hidden: state.hidden ? true : undefined,
     withGift: state.withGift ? true : undefined,
     withBundle: state.withBundle ? true : undefined,
     giftNotAdded: state.giftNotAdded ? true : undefined,

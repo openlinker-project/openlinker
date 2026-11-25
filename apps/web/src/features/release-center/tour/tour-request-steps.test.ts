@@ -136,4 +136,22 @@ describe('tourStepsForRequest', () => {
       expect(walk.steps[3].showcase).toEqual({ itemKey: 'showcase-s', stopIndex: 0, stopCount: 2 });
     });
   });
+
+  describe('without the right to change settings', () => {
+    const replay = [
+      { stepId: 'packing-owner', connectionId: 'c1', importance: 'optional' as const },
+      { stepId: 'inpost-notify-buyer', connectionId: 'c1', importance: 'optional' as const },
+      { stepId: 'a', connectionId: 'c1', importance: 'optional' as const },
+    ];
+
+    it('should leave out replayed steps whose page is closed to a viewer', () => {
+      const walk = tourStepsForRequest([], undefined, { replaySteps: replay }, [], false);
+      expect(walk.steps.map((s) => s.stepId)).toEqual(['a']);
+    });
+
+    it('should keep every replayed step for someone who can change settings', () => {
+      const walk = tourStepsForRequest([], undefined, { replaySteps: replay }, [], true);
+      expect(walk.steps.map((s) => s.stepId)).toEqual(['packing-owner', 'inpost-notify-buyer', 'a']);
+    });
+  });
 });

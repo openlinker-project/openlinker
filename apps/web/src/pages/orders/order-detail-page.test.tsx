@@ -57,6 +57,41 @@ function renderDetail(apiClient: ReturnType<typeof createMockApiClient>): void {
 describe('OrderDetailPage', () => {
   afterEach(cleanup);
 
+  it('should render a hidden, erased order without a hooks-order error (#4289)', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const erased = {
+      ...sampleOrder,
+      customerId: null,
+      orderSnapshot: {
+        orderNumber: 'ER-1',
+        buyer: { firstName: '[REDACTED]', lastName: 'KUPUJACY-192918', email: null },
+        billingAddress: {
+          firstName: '[REDACTED]',
+          lastName: 'KUPUJACY-192918',
+          address1: '[REDACTED]',
+          city: '[REDACTED]',
+          postalCode: '[REDACTED]',
+          country: '',
+        },
+        items: [{ id: 'l1', sku: 'SKU-1', name: 'Item', quantity: 1, unitPrice: 10 }],
+      },
+      hiddenAt: '2026-04-21T10:00:00.000Z',
+      personalDataErasedAt: '2026-04-21T10:00:00.000Z',
+    } as unknown as OrderRecord;
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(erased) },
+    });
+
+    renderDetail(api);
+
+    expect((await screen.findAllByText('ol_order_abc123')).length).toBeGreaterThan(0);
+    const hooksErrors = consoleError.mock.calls.filter((call) =>
+      call.some((arg) => typeof arg === 'string' && /order of Hooks|Rendered (more|fewer) hooks/.test(arg)),
+    );
+    consoleError.mockRestore();
+    expect(hooksErrors).toEqual([]);
+  });
+
   it('renders key order fields and resolves the source connection name', async () => {
     const api = createMockApiClient({
       orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },

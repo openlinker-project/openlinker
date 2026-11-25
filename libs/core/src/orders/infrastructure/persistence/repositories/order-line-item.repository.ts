@@ -149,7 +149,8 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
         `COALESCE(SUM(li."quantity") FILTER (WHERE ${isUnconverted}), 0)`,
         'unconverted_units'
       )
-      .where(`rec."recordStatus" = 'ready'`)
+      .where('rec."hiddenAt" IS NULL')
+      .andWhere(`rec."recordStatus" = 'ready'`)
       .andWhere('rec."cancelledAt" IS NULL')
       // `totalAmount IS NOT NULL` aligns this read's population with the two
       // order-level scopes (#2668 review, SUGGESTION 11). Both
@@ -717,7 +718,10 @@ export class OrderLineItemRepository implements OrderLineItemRepositoryPort {
     qb: SelectQueryBuilder<OrderLineItemOrmEntity>,
     filters: SalesAnalyticsFilters
   ): void {
-    qb.andWhere(`rec."recordStatus" = 'ready'`)
+    // #4289: orders hidden by buyer-data retention are not analytics (same
+    // predicate as `OrderRecordRepository.applySalesAnalyticsScope`).
+    qb.andWhere('rec."hiddenAt" IS NULL')
+      .andWhere(`rec."recordStatus" = 'ready'`)
       .andWhere('rec."cancelledAt" IS NULL')
       .andWhere('rec."totalAmount" IS NOT NULL')
       .andWhere('li."placedAt" >= :salesFrom', { salesFrom: filters.from })

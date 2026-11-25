@@ -7,7 +7,11 @@
  *
  * @module domain/entities
  */
-import type { OrderBundleComponent, OrderBundleLine, RawMultipackLine } from '../types/order-bundle-line.types';
+import type {
+  OrderBundleComponent,
+  OrderBundleLine,
+  RawMultipackLine,
+} from '../types/order-bundle-line.types';
 import {
   componentLineIdsFor,
   componentRefsFor,
@@ -566,7 +570,17 @@ export class OrderRecord {
      * read; `null` when the block has none or predates the column. Appended
      * LAST: positional constructor.
      */
-    public readonly salesDocumentBlockParams: SalesDocumentBlockParams | null = null
+    public readonly salesDocumentBlockParams: SalesDocumentBlockParams | null = null,
+    /**
+     * When the buyer data retention rule hid the order (#4289); `null` = visible.
+     * Sole writer `hideForBuyerDataRetention`. Appended LAST: positional constructor.
+     */
+    public readonly hiddenAt: Date | null = null,
+    /**
+     * When the buyer's personal data was erased (#4289); `null` = not erased.
+     * Sole writer `erasePersonalDataForRetention`. Appended LAST.
+     */
+    public readonly personalDataErasedAt: Date | null = null
   ) {}
 
   /**
@@ -942,7 +956,10 @@ export class OrderRecord {
           itemId: id,
           name: typeof name === 'string' ? name : null,
           packQuantity,
-          productRef: { type: ref.type as RawMultipackLine['productRef']['type'], externalId: ref.externalId },
+          productRef: {
+            type: ref.type as RawMultipackLine['productRef']['type'],
+            externalId: ref.externalId,
+          },
         });
       }
     }

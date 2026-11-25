@@ -56,6 +56,11 @@ import {
   wizardRules,
   wizardSummaryRows,
 } from '../../delivery-on-documents';
+import {
+  BuyerDataWizardReviewRows,
+  BuyerDataWizardStep,
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+} from '../../buyer-data';
 import { Alert } from '../../../shared/ui/alert';
 import { BackLink } from '../../../shared/ui/back-link';
 import { Button } from '../../../shared/ui/button';
@@ -217,6 +222,7 @@ export function ErliSetupForm(): ReactElement {
   const values = form.watch();
   const catalogueMode = values.catalogueMode ?? 'linked';
   const deliveryValue = values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE;
+  const buyerDataValue = values.buyerDataRetention ?? DEFAULT_BUYER_DATA_WIZARD_VALUE;
   const deliverySummary = wizardSummaryRows(wizardRules(deliveryValue, suggestions))
     .map((row) => `${row.label}: ${row.value}`)
     .join('; ');
@@ -329,6 +335,11 @@ export function ErliSetupForm(): ReactElement {
         ) : null}
 
         {stepIndex === 4 ? (
+          <>
+          <BuyerDataWizardStep
+            value={buyerDataValue}
+            onChange={(next) => form.setValue('buyerDataRetention', next, { shouldDirty: true })}
+          />
           <dl className="wizard-review-list">
             <dt>{copy.review.name}</dt>
             <dd>{values.name || '-'}</dd>
@@ -340,9 +351,11 @@ export function ErliSetupForm(): ReactElement {
             <dd>{catalogueMode === 'none' ? copy.review.noCatalogue : copy.review.linkedLater}</dd>
             <dt>{copy.review.deliveryOnDocuments}</dt>
             <dd>{deliverySummary}</dd>
+            <BuyerDataWizardReviewRows value={buyerDataValue} />
             <dt>{orderStartCopy.review.label}</dt>
             <dd>{describeOrderSyncStart(values.orderSyncStart, orderStartCopy.review, format.date)}</dd>
           </dl>
+          </>
         ) : null}
 
         {createdConnectionId ? (

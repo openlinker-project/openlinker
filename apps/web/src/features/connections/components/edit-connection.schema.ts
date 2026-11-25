@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { BuyerDataOverride } from '../../buyer-data';
 import type {
   ConnectionConfigContribution,
   PluginEditConnectionFields,
@@ -432,6 +433,8 @@ export const editConnectionSchema = z
       .optional(),
     // "Tell the shop when a label is bought" (#4097) — carrier connections.
     notifyOnLabelPurchase: z.boolean().optional(),
+    // Per-connection buyer data rules (#4289) - `null` inherits the general rules.
+    buyerDataRetention: z.custom<BuyerDataOverride | null>().optional(),
   });
 
 /**
@@ -623,6 +626,12 @@ export type StructuredConfigPatch = {
    * boolean; other keys in the `shipping` namespace are kept.
    */
   notifyOnLabelPurchase?: boolean;
+  /**
+   * Per-connection buyer data rules (#4289) - flat `config.buyerDataRetention`.
+   * `null` inherits the general rules and is written as an explicit `null`, never
+   * a deleted key (see `rateLimit`).
+   */
+  buyerDataRetention?: BuyerDataOverride | null;
 };
 
 /**
@@ -1032,6 +1041,9 @@ export function mergeStructuredIntoConfig(
       ...namespace,
       [NOTIFY_ON_LABEL_PURCHASE_CONFIG_KEY]: structured.notifyOnLabelPurchase === true,
     };
+  }
+  if (structured.buyerDataRetention !== undefined) {
+    next.buyerDataRetention = structured.buyerDataRetention;
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are
   // assembled by the platform contribution with the same partial-patch

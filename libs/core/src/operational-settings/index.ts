@@ -13,6 +13,13 @@
 
 // Types + the pure rules that belong to them
 export {
+  BUYER_DATA_ERASE_MODES,
+  BUYER_DATA_PERIOD_MAX_DAYS,
+  BUYER_DATA_PERIOD_MIN_DAYS,
+  BUYER_DATA_RETENTION_DEFAULTS,
+  isBuyerDataEraseMode,
+  isBuyerDataPeriodOrderValid,
+  isValidBuyerDataPeriod,
   CATALOGUE_SWEEP_CADENCE_DEFAULT,
   CATALOGUE_SWEEP_CADENCE_ENV_VAR,
   DELETION_AUDIT_CADENCE_DEFAULT,
@@ -34,6 +41,8 @@ export {
   resolveOperationalSetting,
 } from './domain/types/operational-settings.types';
 export type {
+  BuyerDataEraseMode,
+  BuyerDataRetentionRule,
   OperationalSettingBound,
   OperationalSettingBoundBreach,
   OperationalSettingKey,

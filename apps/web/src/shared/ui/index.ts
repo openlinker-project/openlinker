@@ -37,6 +37,8 @@ export type { BareIconButtonProps, BareIconButtonSize } from './bare-icon-button
 export { Input } from './input';
 export { Textarea } from './textarea';
 export { Select } from './select';
+export { Switch } from './switch';
+export type { SwitchProps } from './switch';
 export { Combobox } from './combobox';
 export type { ComboboxOption, ComboboxValue } from './combobox';
 export { SegmentedControl } from './segmented-control';

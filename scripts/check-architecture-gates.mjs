@@ -130,6 +130,12 @@ const KNOWN_CONFIG_KNOBS = new Map([
     { helper: 'readBuyerEmailsConfig', key: 'config.buyerEmails' },
   ],
   [
+    // #4289: per-connection override of the install-wide buyer data retention
+    // defaults (hide old orders, erase buyer personal data).
+    'libs/core/src/identifier-mapping/domain/types/buyer-data-retention-config.types.ts',
+    { helper: 'readBuyerDataRetentionConfig', key: 'config.buyerDataRetention' },
+  ],
+  [
     'libs/core/src/sales-documents/domain/types/sales-document-kind.types.ts',
     {
       helper: 'readSalesDocumentRouting',
@@ -469,7 +475,14 @@ const NON_KNOBS = new Map([
 // ProductMaster exists" auto-detection would make an order's outcome depend on
 // global mutable state. Registered rather than excused; the #1032 question still
 // stands, and the number is raised by one so the next knob asks again.
-const KNOB_THRESHOLD = 18;
+//
+// #4289 raised it to 19 for `config.buyerDataRetention` - when a connection's
+// old orders are hidden and its buyers' personal data is erased. It is an
+// optional per-connection OVERRIDE of the OpenLinker-wide default held in the
+// `operational_settings` singleton (absent = inherit), the same shape #3941
+// gave the gift-line form, and per connection by nature: marketplaces carry
+// their own retention obligations. Registered rather than excused.
+const KNOB_THRESHOLD = 19;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
