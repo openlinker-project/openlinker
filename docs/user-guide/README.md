@@ -16,6 +16,9 @@ The guide is organized around the left-navigation groups in the admin UI:
 2. **[Connecting a Platform](./02-connecting-a-platform.md)**
    Full walkthrough: pick a platform, run the setup wizard, test the connection, read connection health. Uses PrestaShop as the worked example.
 
+   - **[Connecting Amazon](./02a-amazon.md)**
+     Connect an Amazon seller account, choose which orders to import, and configure tax codes, stock locations, notifications, mappings and pricing.
+
 3. **[Catalog & Inventory](./03-catalog-and-inventory.md)**
    Products list and detail, inventory per-variant stock, sync state chips, and how to tell when a sync has stalled.
 
