@@ -29,6 +29,7 @@ import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import { Catch, HttpException, HttpStatus } from '@nestjs/common';
 import type { Response } from 'express';
 import { Logger } from '@openlinker/shared/logging';
+import { codedErrorBody } from '../errors/coded-http.exception';
 import {
   httpStatusErrorCode,
   withApiErrorCode,
@@ -56,6 +57,23 @@ export class ApiErrorCodeFilter implements ExceptionFilter {
     const clientError = readClientError(exception);
     if (clientError) {
       if (response.headersSent) return;
+      // 401/403 are the statuses the browser reads as "your OpenLinker session
+      // ended / you may not do this". An error that carries one and was not
+      // raised by Nest's own guards came from a downstream system (a marketplace
+      // refusing the connection's API key), so it must not wear the OL session's
+      // status: it is a provider refusal, answered as a bad gateway.
+      if (clientError.statusCode === 401 || clientError.statusCode === 403) {
+        response.status(HttpStatus.BAD_GATEWAY).json(
+          codedErrorBody(
+            HttpStatus.BAD_GATEWAY,
+            'PROVIDER_REJECTED',
+            clientError.message,
+            undefined,
+            { providerMessage: clientError.message }
+          )
+        );
+        return;
+      }
       response.status(clientError.statusCode).json({
         ...clientError,
         code: httpStatusErrorCode(clientError.statusCode),
