@@ -62,7 +62,13 @@ moves to **Needs reauth**: authorize again and paste the new token on the connec
 3. The **role**: a sales channel (**Orders** and/or **Offers**) or the catalogue master (below). With
    offers on, or as the catalogue master, the **merchant token** is required.
 4. The **LWA client id**, **client secret** and **refresh token** from steps 1-2.
-5. **Test connection**: it passes when the credentials work and the account sells in every
+5. **Order history** (shown when **Orders** is ticked): where order sync starts. **New orders
+   only** (the default) imports nothing placed before the connection; **Orders since a date** reads
+   every order updated since that day (midnight UTC), so an older order changed after it comes too;
+   **Every order** reads the whole account history at the order search quota, which takes long on
+   a busy account. You can import older orders later from the connection's **Orders** tab; importing
+   a date range is not available for Amazon yet.
+6. **Test connection**: it passes when the credentials work and the account sells in every
    marketplace you listed. If it names a marketplace, remove it or enable selling there.
 
 Credentials are stored encrypted and never shown again; replace them in the connection's
@@ -178,6 +184,11 @@ Amazon's Data Protection Policy allows keeping a buyer's personal data at most 3
 delivery. OpenLinker removes buyer addresses, email, note and tax id from Amazon orders 30 days
 after the order's ship-by deadline (earlier than Amazon's limit, since OpenLinker does not always
 know the delivery date), and a later re-import does not store them again.
+
+OpenLinker also does not fetch them for an order already past that window: an imported history
+(**Every order**, an old start date, or a marketplace added later) reads such an order without the
+buyer and recipient data, so it arrives with no name, email or address. A recent order costs one
+extra order read for this check.
 
 ## Sandbox and probes
 

@@ -95,16 +95,39 @@ describe('AmazonOrderSourceAdapter.listOrderFeed', () => {
 });
 
 describe('AmazonOrderSourceAdapter.getOrder', () => {
-  it('should read the order with buyer, recipient and proceeds', async () => {
+  it('should read a recent order again with buyer, recipient and proceeds', async () => {
     const { client, get } = clientStub();
     get.mockResolvedValue({ status: 200, requestId: 'r', data: { order: amazonFbmOrder() } });
 
     const order = await adapter(client).getOrder({ externalOrderId: '302-1234567-7654321' });
 
-    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders/302-1234567-7654321', {
+    expect(get).toHaveBeenNthCalledWith(1, '/orders/2026-01-01/orders/302-1234567-7654321', {
+      includedData: ['PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'],
+    });
+    expect(get).toHaveBeenNthCalledWith(2, '/orders/2026-01-01/orders/302-1234567-7654321', {
       includedData: ['BUYER', 'RECIPIENT', 'PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'],
     });
     expect(order.externalOrderId).toBe('302-1234567-7654321');
+    expect(order.customerEmail).toBe('abc123@marketplace.amazon.de');
+  });
+
+  it('should never fetch the buyer data of an order shipped-by more than 30 days ago', async () => {
+    const { client, get } = clientStub();
+    const withoutBuyer = amazonFbmOrder({
+      createdTime: '2026-10-01T09:00:00Z',
+      buyer: undefined,
+      recipient: undefined,
+      fulfillment: { fulfillmentStatus: 'SHIPPED', shipByWindow: { latestDateTime: '2026-10-03T22:59:59Z' } },
+    });
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { order: withoutBuyer } });
+
+    const order = await adapter(client).getOrder({ externalOrderId: '302-1234567-7654321' });
+
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders/302-1234567-7654321', {
+      includedData: ['PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'],
+    });
+    expect(order.customerEmail).toBeUndefined();
   });
 
   it('should key lines by the reference the connection role resolves through', async () => {
@@ -118,6 +141,48 @@ describe('AmazonOrderSourceAdapter.getOrder', () => {
 
     expect(asOffer.items[0].productRef).toEqual({ type: 'offer', externalId: 'MUG-BLUE' });
     expect(asVariant.items[0].productRef).toEqual({ type: 'variant', externalId: 'MUG-BLUE' });
+  });
+});
+
+describe('AmazonOrderSourceAdapter order sync start (#4228)', () => {
+  it('should start "from now" two minutes back for the connection\'s marketplaces', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { orders: [amazonFbmOrder()] } });
+
+    const head = await adapter(client).headCursor();
+
+    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders', {
+      marketplaceIds: ['A1PA6795UKMFR9'],
+      lastUpdatedAfter: '2000-01-01T00:00:00.000Z',
+      maxResultsPerPage: 1,
+    });
+    expect(JSON.parse(head ?? '')).toEqual({ since: '2026-11-17T11:58:00.000Z', marketplaceIds: ['A1PA6795UKMFR9'] });
+  });
+
+  it('should answer null for an account with no orders', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { orders: [] } });
+
+    await expect(adapter(client).headCursor()).resolves.toBeNull();
+  });
+
+  it('should start a bare day at midnight UTC', async () => {
+    const { client } = clientStub();
+
+    const cursor = await adapter(client).cursorForDate('2026-11-01');
+
+    expect(JSON.parse(cursor)).toEqual({ since: '2026-11-01T00:00:00.000Z', marketplaceIds: ['A1PA6795UKMFR9'] });
+  });
+
+  it('should refuse a future date and a value that is not a date', async () => {
+    const { client } = clientStub();
+
+    await expect(adapter(client).cursorForDate('2026-12-01')).rejects.toMatchObject({
+      name: 'OrderSyncStartUnavailableError',
+    });
+    await expect(adapter(client).cursorForDate('yesterday')).rejects.toMatchObject({
+      name: 'OrderSyncStartUnavailableError',
+    });
   });
 });
 

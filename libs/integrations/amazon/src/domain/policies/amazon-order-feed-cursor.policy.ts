@@ -6,10 +6,14 @@
  * token. Core treats it as an opaque string; only this file reads it.
  *
  * Rules:
- *   - No cursor: start at `AMAZON_ORDER_FEED_HISTORY_START`, so a new
- *     connection reads the account's whole order history, as the other order
- *     sources do. Amazon sets no lower bound on `lastUpdatedAfter`; the
- *     history arrives in pages at the `searchOrders` quota.
+ *   - Where a new connection starts is the operator's choice (#4228): core
+ *     seeds the cursor from `amazonOrderFeedStartCursor` with "now" (the
+ *     default) or a date, and only "all orders" leaves it empty. No cursor
+ *     starts at `AMAZON_ORDER_FEED_HISTORY_START`, the account's whole order
+ *     history. Amazon sets no lower bound on `lastUpdatedAfter`; the history
+ *     arrives in pages at the `searchOrders` quota.
+ *   - The watermark is `lastUpdatedAfter`, so a start date reads every order
+ *     UPDATED since that day, including older orders changed after it.
  *   - A pagination token expires 24 h after it was issued. A cursor holding an
  *     older one restarts the window from its watermark instead of sending a
  *     token Amazon will refuse; re-reading is safe because order sync is
@@ -21,9 +25,13 @@
  *   - The cursor records the marketplaces its watermark covers. When the
  *     connection gains a marketplace, the watermark is moved back to the
  *     history start and any pagination token dropped, so the new
- *     marketplace's orders are read like a new connection's. A cursor
- *     written before this rule carries no list and is taken to cover the
- *     connection's current marketplaces.
+ *     marketplace's orders are read like a new connection's. The watermark is
+ *     shared, so that re-reads the history of EVERY marketplace of the
+ *     connection at the `searchOrders` quota; orders already imported are
+ *     updated, not duplicated, and orders past the buyer-data window are read
+ *     without the buyer's personal data (`amazon-buyer-data-window.policy.ts`).
+ *     A cursor written before this rule carries no list and is taken to cover
+ *     the connection's current marketplaces.
  *
  * @module libs/integrations/amazon/src/domain/policies
  */
@@ -98,6 +106,27 @@ export function scopeAmazonOrderFeedCursor(
 
 export function encodeAmazonOrderFeedCursor(cursor: AmazonOrderFeedCursor): string {
   return JSON.stringify(cursor);
+}
+
+/** A first cursor at `since`, for the connection's current marketplaces (#4228). */
+export function amazonOrderFeedStartCursor(since: Date, marketplaceIds: readonly string[]): string {
+  return encodeAmazonOrderFeedCursor({ since: since.toISOString(), marketplaceIds: [...marketplaceIds] });
+}
+
+/**
+ * The instant a "from a date" start means: a bare `YYYY-MM-DD` is midnight UTC
+ * (Seller Central shows order times in the marketplace's zone; UTC is the one
+ * boundary every marketplace of the connection shares), an ISO instant is kept
+ * as given. `null` for anything else.
+ */
+export function parseAmazonOrderSyncStartDate(date: string): Date | null {
+  const trimmed = date.trim();
+  const value = /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? `${trimmed}T00:00:00.000Z` : trimmed;
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : new Date(parsed);
 }
 
 /**

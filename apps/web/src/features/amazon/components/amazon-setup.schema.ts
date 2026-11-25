@@ -17,7 +17,14 @@
  * @module features/amazon/components
  */
 import { z } from 'zod';
-import type { CoreCapability, CreateConnectionInput } from '../../connections';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  addOrderSyncStartIssues,
+  orderSyncStartShape,
+  toOrderSyncStart,
+  type CoreCapability,
+  type CreateConnectionInput,
+} from '../../connections';
 import {
   AmazonEnvironmentValues,
   AmazonRegionValues,
@@ -63,6 +70,7 @@ export const amazonSetupSchema = z
     notificationQueueUrl: z.string().trim(),
     awsAccessKeyId: z.string().trim(),
     awsSecretAccessKey: z.string().trim(),
+    orderSyncStart: orderSyncStartShape.default(ORDER_SYNC_START_DEFAULT_VALUE),
   })
   .superRefine((values, ctx) => {
     const fail = (path: string, message: AmazonSetupErrorKey): void => {
@@ -92,6 +100,11 @@ export const amazonSetupSchema = z
     if ((values.awsAccessKeyId === '') !== (values.awsSecretAccessKey === '')) {
       fail('awsAccessKeyId', 'awsKeysPaired');
     }
+    // Asked only when the connection reads orders: a stale date typed before
+    // unticking orders must not block the submit.
+    if (values.orders) {
+      addOrderSyncStartIssues(values.orderSyncStart, ctx);
+    }
   });
 
 export type AmazonSetupFormValues = z.input<typeof amazonSetupSchema>;
@@ -112,6 +125,7 @@ export const AMAZON_SETUP_DEFAULT_VALUES: AmazonSetupFormValues = {
   notificationQueueUrl: '',
   awsAccessKeyId: '',
   awsSecretAccessKey: '',
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toCreateConnectionInput(values: AmazonSetupFormSubmission): CreateConnectionInput {
@@ -142,5 +156,7 @@ export function toCreateConnectionInput(values: AmazonSetupFormSubmission): Crea
         : {}),
     },
     enabledCapabilities,
+    // Where order sync starts (#4228); "from now" unless the operator chose otherwise.
+    orderSyncStart: values.orders ? toOrderSyncStart(values.orderSyncStart) : undefined,
   };
 }

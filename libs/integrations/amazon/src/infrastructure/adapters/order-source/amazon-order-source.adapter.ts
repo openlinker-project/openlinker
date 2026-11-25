@@ -53,11 +53,13 @@ import type {
   OrderFulfillmentReadback,
   OrderStatusWriteback,
   OrderWritebackResult,
+  OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
   ReturnSourceReader,
   SourceFulfillmentReadback,
   SourceOptionsReader,
 } from '@openlinker/core/orders';
-import { unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
+import { OrderSyncStartUnavailableError, unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
 import type { IncomingReturn, ReturnFeedInput, ReturnFeedOutput } from '@openlinker/core/returns';
 import { Logger } from '@openlinker/shared/logging';
 import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
@@ -65,11 +67,16 @@ import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared
 import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
 import type { AmazonConnectionConfig } from '../../../domain/types/amazon-config.types';
 import {
+  AMAZON_ORDER_FEED_HISTORY_START,
+  AMAZON_ORDER_FEED_OVERLAP_MS,
+  amazonOrderFeedStartCursor,
   decodeAmazonOrderFeedCursor,
   encodeAmazonOrderFeedCursor,
   nextAmazonOrderFeedCursor,
+  parseAmazonOrderSyncStartDate,
   scopeAmazonOrderFeedCursor,
 } from '../../../domain/policies/amazon-order-feed-cursor.policy';
+import { isWithinAmazonBuyerDataWindow } from '../../../domain/policies/amazon-buyer-data-window.policy';
 import { amazonPackageReferenceId } from '../../../domain/policies/amazon-package-reference.policy';
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
 import { AmazonNetworkError } from '../../../domain/exceptions/amazon-network.error';
@@ -119,6 +126,8 @@ const DOCUMENTED_PAYMENT_METHODS = ['CashOnDelivery', 'ConvenienceStore', 'Credi
 export class AmazonOrderSourceAdapter
   implements
     OrderSourcePort,
+    OrderFeedBootstrap,
+    OrderFeedDateBootstrap,
     OrderStatusWriteback,
     OrderFulfillmentReadback,
     SourceOptionsReader,
@@ -189,9 +198,72 @@ export class AmazonOrderSourceAdapter
     return { items, nextCursor: encodeAmazonOrderFeedCursor(next) };
   }
 
+  /**
+   * The buyer's personal data is fetched only while the order is inside the
+   * buyer-data window (`amazon-buyer-data-window.policy.ts`): the first read
+   * leaves the `BUYER` and `RECIPIENT` blocks out, and only an order whose
+   * ship-by deadline (else placement) is less than 30 days ago is read again
+   * with them, the same anchor core's retention pass uses. An imported history therefore
+   * never fetches data Amazon's Data Protection Policy would have deleted.
+   * The cost is a second `getOrder` for a recent order.
+   */
   async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {
+    const withoutBuyer = await this.readOrder(input.externalOrderId, ORDER_WITHOUT_BUYER_DATA_INCLUDED_DATA);
+    const anchor = {
+      createdTime: withoutBuyer.createdTime,
+      ...(withoutBuyer.fulfillment?.shipByWindow?.latestDateTime
+        ? { shipByLatest: withoutBuyer.fulfillment.shipByWindow.latestDateTime }
+        : {}),
+    };
+    if (!isWithinAmazonBuyerDataWindow(anchor, this.now())) {
+      return mapAmazonOrderToIncomingOrder(withoutBuyer, this.orderLineRef);
+    }
     const order = await this.readOrder(input.externalOrderId);
     return mapAmazonOrderToIncomingOrder(order, this.orderLineRef);
+  }
+
+  /**
+   * The "from now" start (#4228): a watermark at now minus the feed's overlap,
+   * so orders updated in the last two minutes are read once more rather than
+   * missed (Amazon's `lastUpdatedAfter` must be at least that far in the past).
+   * `null` when the account has no order at all, so core reads from the start
+   * and nothing placed before the next poll is skipped. A failed read throws.
+   */
+  async headCursor(): Promise<string | null> {
+    const response = await this.client.get<AmazonSearchOrdersResponse>(SEARCH_ORDERS_PATH, {
+      marketplaceIds: this.config.marketplaceIds,
+      lastUpdatedAfter: AMAZON_ORDER_FEED_HISTORY_START,
+      maxResultsPerPage: 1,
+    });
+    if ((response.data.orders ?? []).length === 0) {
+      return null;
+    }
+    return amazonOrderFeedStartCursor(
+      new Date(this.now().getTime() - AMAZON_ORDER_FEED_OVERLAP_MS),
+      this.config.marketplaceIds,
+    );
+  }
+
+  /**
+   * The "from a date" start (#4228): a watermark at the start of `date` (a bare
+   * day is midnight UTC). The feed reads by `lastUpdatedAfter`, so an order
+   * placed before the date and changed after it is read too. A value that is
+   * not a date, or a date in the future, is refused with the typed error core
+   * shows the operator.
+   */
+  cursorForDate(date: string): Promise<string> {
+    const since = parseAmazonOrderSyncStartDate(date);
+    if (since === null) {
+      return Promise.reject(
+        new OrderSyncStartUnavailableError(`"${date}" is not a date Amazon order sync can start from`),
+      );
+    }
+    if (since.getTime() > this.now().getTime()) {
+      return Promise.reject(
+        new OrderSyncStartUnavailableError(`Amazon order sync cannot start from a future date (${date})`),
+      );
+    }
+    return Promise.resolve(amazonOrderFeedStartCursor(since, this.config.marketplaceIds));
   }
 
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {

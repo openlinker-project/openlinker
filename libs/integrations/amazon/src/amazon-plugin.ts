@@ -54,6 +54,7 @@ import { AmazonEmailNormalizerAdapter } from './infrastructure/adapters/amazon-e
 import { buildAmazonSchedulerTasks } from './infrastructure/scheduler/amazon-scheduler-tasks';
 import { AmazonAdapterFactory } from './application/amazon-adapter.factory';
 import { createAmazonPacedFetch } from './infrastructure/http/amazon-paced-transport';
+import { AMAZON_BUYER_DATA_RETENTION_DAYS } from './domain/policies/amazon-buyer-data-window.policy';
 import type { AmazonResolution } from './application/interfaces/amazon-adapter.factory.interface';
 
 /**
@@ -80,8 +81,13 @@ export const amazonAdapterManifest: AdapterMetadata = {
   defaultEnabledCapabilities: [],
   // Amazon's Data Protection Policy: buyer personal data is deleted no later
   // than 30 days after delivery. Enforced by the order buyer-data retention
-  // pass (#4178).
-  buyerDataRetentionDays: 30,
+  // pass (#4178). The order source reads an order already past it without the
+  // buyer's data (`amazon-buyer-data-window.policy.ts`).
+  buyerDataRetentionDays: AMAZON_BUYER_DATA_RETENTION_DAYS,
+  // Where order sync starts (#4228): from now (the default), from a date, or
+  // the whole history. No date-window import: `listOrdersInWindow` is not
+  // implemented, so the import dialog's range choice stays unavailable.
+  orderSyncStartModes: ['now', 'from', 'all'],
   displayName: 'Amazon Selling Partner API',
   version: '0.1.0',
   isDefault: true,
