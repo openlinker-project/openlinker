@@ -154,6 +154,7 @@ import { createGiftsApi, type GiftsApi } from '../../features/gifts/api/gifts.ap
 import { createPromotionsApi, type PromotionsApi } from '../../features/promotions/api/promotions.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
+import { createBuyerDataApi, type BuyerDataApi } from '../../features/buyer-data/api/buyer-data.api';
 import { createBuyerEmailsApi, type BuyerEmailsApi } from '../../features/buyer-emails/api/buyer-emails.api';
 import { createReturnsApi, type ReturnsApi } from '../../features/returns';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
@@ -293,6 +294,7 @@ export interface CoreApiClient {
   pricingSync: PricingSyncApi;
   mailerSettings: MailerSettingsApi;
   automations: AutomationsApi;
+  buyerData: BuyerDataApi;
   buyerEmails: BuyerEmailsApi;
   mcpTokens: McpTokensApi;
   savedViews: SavedViewsApi;
@@ -586,6 +588,7 @@ export function createApiClient({
     sourcingRules: createSourcingRulesApi(request),
     routingDryRun: createRoutingDryRunApi(request),
     automations: createAutomationsApi(request),
+    buyerData: createBuyerDataApi(request),
     buyerEmails: createBuyerEmailsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),
