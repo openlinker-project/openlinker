@@ -110,7 +110,7 @@ export function ConnectionActionsPanel({ connection, settingsLink }: ConnectionA
       window.clearTimeout(timer);
       unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per arrival; the params are dropped by this very effect
+    // Deps are deliberately partial: runs once per arrival, the params are dropped by this very effect.
   }, [syncTarget, wantsRange, sync.visible]);
 
   const isDisabled = connection.status === 'disabled';
