@@ -208,16 +208,25 @@ const CONTRACT_CASES: Record<OrderSourceStartContractCaseId, ContractCase> = {
     return Promise.resolve();
   },
 
-  // Documented limitation: with no orders there is nothing to anchor on, so the
-  // first poll retries. What must NOT happen is a made-up cursor that points
-  // "from the beginning".
+  // An empty shop has nothing to anchor on, so an adapter may answer null (the
+  // first poll retries) or a position at "now". What must NOT happen is a cursor
+  // the feed cannot read, or one that reads history. (A scenario cannot place an
+  // order newer than "now", so the first order after the head is not asserted.)
   'head-null-on-empty-shop': async ({ adapter, scenario }, record) => {
     if (!isOrderFeedBootstrap(adapter)) return;
     await scenario.emptyShop();
     const head = await settle(() => adapter.headCursor());
-    record.check(head.ok, 'headCursor() threw on an empty shop instead of answering null');
-    if (head.ok) {
-      record.check(head.value === null, 'headCursor() must be null on a shop with no orders');
+    record.check(head.ok, 'headCursor() threw on an empty shop instead of answering');
+    if (!head.ok || head.value === null) return;
+
+    const headCursor = head.value;
+    const before = await settle(() => readFeedIds(adapter, headCursor));
+    record.check(before.ok, 'the feed could not read the head cursor of an empty shop');
+    if (before.ok) {
+      record.check(
+        before.value.length === 0,
+        `feed from the head of an empty shop returned orders: ${before.value.join(', ')}`
+      );
     }
   },
 

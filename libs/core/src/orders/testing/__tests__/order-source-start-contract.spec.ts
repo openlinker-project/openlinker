@@ -34,7 +34,7 @@ describe('order-source start contract', () => {
   });
 
   const BROKEN: ReadonlyArray<readonly [Flaw, OrderSourceStartContractCaseId]> = [
-    ['fabricate-head-on-empty-shop', 'head-null-on-empty-shop'],
+    ['empty-head-unreadable', 'head-null-on-empty-shop'],
     ['swallow-head-failure', 'head-failure-throws-never-null'],
     ['head-feed-includes-older', 'head-then-feed-reads-only-newer'],
     ['feed-duplicates-newer', 'head-then-feed-reads-only-newer'],

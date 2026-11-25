@@ -17,7 +17,7 @@ import type {
 } from '../order-source-start-contract.suite';
 
 export type Flaw =
-  | 'fabricate-head-on-empty-shop'
+  | 'empty-head-unreadable'
   | 'swallow-head-failure'
   | 'head-feed-includes-older'
   | 'feed-duplicates-newer'
@@ -72,6 +72,7 @@ export class FakeOrderSource {
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     this.guard();
     const from = input.fromCursor === null ? 0 : Number(input.fromCursor);
+    if (Number.isNaN(from)) throw new Error('malformed cursor');
     const floor = this.flaws.has('head-feed-includes-older') && from > 0 ? from - 1 : from;
     const rows = this.shop.orders.filter((o) => o.seq > floor).slice(0, input.limit);
     const items = rows.map(item);
@@ -90,7 +91,7 @@ export class FakeOrderSource {
       throw new Error('transport down');
     }
     const last = this.shop.orders[this.shop.orders.length - 1];
-    if (!last) return this.flaws.has('fabricate-head-on-empty-shop') ? '0' : null;
+    if (!last) return this.flaws.has('empty-head-unreadable') ? 'unreadable' : null;
     return String(last.seq);
   }
 
