@@ -58,11 +58,13 @@ On the connection edit page, in the Shopify section:
 
 - **Stock location** - the ONE location OpenLinker reads and writes stock at, picked from the
   store's active locations. Leave it on the primary location unless your stock lives elsewhere.
-  Stock at other locations is not counted: OpenLinker treats Shopify as a single warehouse until
-  multi-location support arrives. With the field empty the connection FOLLOWS the store's primary
+  Stock at other locations is not counted unless **Track stock at all locations** is on. With the field empty the connection FOLLOWS the store's primary
   location (re-read about every 10 minutes), so changing the primary location in Shopify moves
   where stock is read and written; OpenLinker logs a warning when it sees that change. Pick a
   location explicitly to pin it.
+- **Track stock at all locations** - reports stock for every active Shopify location instead of only
+  the one above. Each location becomes an OpenLinker location on the next stock sync (you can rename
+  it). Stock written back from OpenLinker still goes to the stock location above.
 - **Quantity for untracked stock** - reported for a variant whose stock Shopify does not track
   ("always available"). Empty means 1000.
 - **Sales country** - the country whose VAT rate is read for products. Empty means the store's

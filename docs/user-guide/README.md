@@ -18,6 +18,10 @@ The guide is organized around the left-navigation groups in the admin UI:
 
    - **[Connecting Amazon](./02a-amazon.md)**
      Connect an Amazon seller account, choose which orders to import, and configure tax codes, stock locations, notifications, mappings and pricing.
+   - **[Connecting Shopify](./02b-shopify.md)**
+     Connect a Shopify store (app credentials, access token or OAuth), choose its roles, and set the stock location, webhooks and refunds.
+   - **[Connecting Shoper](./02c-shoper.md)**
+     Connect a Shoper shop with its API token, choose its roles, and set the order defaults and webhooks.
 
 3. **[Catalog & Inventory](./03-catalog-and-inventory.md)**
    Products list and detail, inventory per-variant stock, sync state chips, and how to tell when a sync has stalled.

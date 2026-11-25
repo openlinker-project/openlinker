@@ -1,6 +1,6 @@
 # Connecting a Platform
 
-OpenLinker works by connecting to your existing platforms — a **master shop** (PrestaShop, WooCommerce or Shoper) that is the source of truth for products and inventory, and one or more **marketplace** connections (Allegro) where offers are created and orders are ingested. This section walks you through the full connection flow using PrestaShop and Allegro as worked examples.
+OpenLinker works by connecting to your existing platforms — a **master shop** (PrestaShop, WooCommerce, Shoper or Shopify) that is the source of truth for products and inventory, and one or more **marketplace** connections (Allegro) where offers are created and orders are ingested. This section walks you through the full connection flow using PrestaShop and Allegro as worked examples. Amazon, Shopify and Shoper have their own pages: [Connecting Amazon](./02a-amazon.md), [Connecting Shopify](./02b-shopify.md) and [Connecting Shoper](./02c-shoper.md).
 
 For WooCommerce-specific wizard steps, see the **[WooCommerce Setup Guide](../../libs/integrations/woocommerce/docs/setup-guide.md)**.
 
@@ -144,6 +144,18 @@ Connecting and configuring Amazon has its own page: [Connecting Amazon](./02a-am
 
 ---
 
+## Shopify walkthrough
+
+Connecting and configuring Shopify has its own page: [Connecting Shopify](./02b-shopify.md).
+
+---
+
+## Shoper walkthrough
+
+Connecting and configuring Shoper has its own page: [Connecting Shoper](./02c-shoper.md).
+
+---
+
 ### Where order sync starts
 
 If the connection reads orders, the wizard asks where to start: **only new orders** (default), **from a date**, or **all orders**. Only the choices the platform supports are shown (Allegro and Erli have no "from a date"; for Amazon "from a date" counts orders updated since that day). Shopify shows orders from the last 60 days unless the app has the `read_all_orders` permission, and Subiekt GT needs an up-to-date bridge. You can change the start later on the connection's **Sync** tab; see [Orders](./06-orders.md#where-order-sync-starts) for details.
@@ -170,7 +182,8 @@ Beyond the PrestaShop/Allegro worked example above:
 | **PrestaShop** | `prestashop.webservice.v1` | ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager, ProductPublisher, CategoryProvisioner | Worked example above |
 | **Allegro** | `allegro.publicapi.v1` | OrderSource, OfferManager, ShippingProviderManager, CategoryBrowser, EanCategoryMatcher, OfferCreator, OfferEventReader | Worked example above |
 | **WooCommerce** | `woocommerce.restapi.v3` | ProductMaster, InventoryMaster, OrderProcessorManager, OrderSource, ProductPublisher, CategoryProvisioner, OfferManager | See the **[WooCommerce Setup Guide](../../libs/integrations/woocommerce/docs/setup-guide.md)** |
-| **Shoper** | `shoper.restapi.v1` | ProductMaster, InventoryMaster, ProductPublisher, CategoryProvisioner, OrderProcessorManager, OrderSource, ShopCategoryBrowser, ShopAttributeReader, ShopProductStatusReader | Polish SaaS shop platform. Only ProductMaster and InventoryMaster are enabled by default; enable the rest on the connection when Shoper should also receive orders, send its own orders or take published products. Every connection to one shop shares that shop's request budget. No invoices: the Shoper API has none. See the [adapter README](../../libs/integrations/shoper/README.md) |
+| **Shoper** | `shoper.restapi.v1` | ProductMaster, InventoryMaster, ProductPublisher, CategoryProvisioner, OrderProcessorManager, OrderSource, ShopCategoryBrowser, ShopAttributeReader, ShopProductStatusReader | Polish SaaS shop platform. Only ProductMaster and InventoryMaster are enabled by default; enable the rest on the connection when Shoper should also receive orders, send its own orders or take published products. Every connection to one shop shares that shop's request budget. No invoices: the Shoper API has none. See **[Connecting Shoper](./02c-shoper.md)** |
+| **Shopify** | `shopify.admin.v1` | ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager, ProductPublisher, CategoryProvisioner, OfferManager | Admin GraphQL API. ProductMaster and InventoryMaster are enabled by default; publishing needs a separate connection. See **[Connecting Shopify](./02b-shopify.md)** |
 | **Erli** | `erli.shopapi.v1` | OfferManager, OrderSource, OfferCreator | Reconciliation-first marketplace adapter; reuses an existing PrestaShop → Allegro category/attribute mapping rather than requiring a separate one (borrowed-taxonomy model). Static API-key auth — no OAuth step. |
 | **InPost** | `inpost.shipx.v1` | ShippingProviderManager | Generates shipment labels and paczkomat (parcel-locker) tracking, surfaced in the order's [Shipment panel](./06-orders.md#shipment-panel) |
 | **DPD Polska** | `dpd.polska.rest.v1` | ShippingProviderManager | Same shipment-panel integration point as InPost |
