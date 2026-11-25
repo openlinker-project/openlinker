@@ -479,11 +479,11 @@ export class ShopifyOrderSourceAdapter
   }
 
   /**
-   * Shopify shows only the last 60 days to an app without `read_all_orders`, so
-   * an older start would silently import less than asked. Refused when the
-   * scope is missing, and also when it cannot be read: an import that may be
-   * silently cut to 60 days is worse than one that stops and says why. The
-   * answer is kept per adapter, so a job asks once, not once per page.
+   * Polling path. An app without `read_all_orders` sees only the last 60 days,
+   * which a cursor-less poll cannot avoid, so this warns once per adapter and
+   * keeps polling rather than refusing (a legacy connection may still hold a
+   * null cursor). A scope check that cannot be read throws a plain retryable
+   * error and clears the cached answer, so the next poll asks again.
    */
   private async warnIfOldOrdersHidden(): Promise<void> {
     this.canReadAllOrders ??= this.readsAllOrders();
@@ -505,6 +505,14 @@ export class ShopifyOrderSourceAdapter
     }
   }
 
+  /**
+   * Explicit-import path (`listOrdersInWindow`, `startCursorAt`). Shopify shows
+   * only the last 60 days to an app without `read_all_orders`, so an older start
+   * would silently import less than asked. Refused when the scope is missing,
+   * and also when it cannot be read: an import that may be silently cut to 60
+   * days is worse than one that stops and says why. The answer is kept per
+   * adapter, so a job asks once, not once per page.
+   */
   private async assertOldOrdersReadable(from: string | null): Promise<void> {
     if (from !== null && Date.parse(from) >= Date.now() - RECENT_ORDERS_HORIZON_MS) {
       return;
