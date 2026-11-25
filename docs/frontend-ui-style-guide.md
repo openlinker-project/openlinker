@@ -449,6 +449,25 @@ The scale below is what primitives now use. Keep page-level typography aligned w
 
 **Always pair numerics with `font-variant-numeric: tabular-nums`** (or the `.tabular` utility) — the cockpit table view depends on it for scan-ability.
 
+#### Text size scale (#4261)
+
+The values in the table above are the **Small (S) baseline**, the look before the text size switch existed. The user menu lets an operator pick one of four steps; the default is **M**, so the shipped UI is 12.5% larger than the table reads.
+
+| Step | Zoom | Body renders at |
+|---|---|---|
+| S | 1.0 | 14px (the table as written) |
+| M (default) | 1.125 | ~15.75px |
+| L | 1.25 | 17.5px |
+| XL | 1.375 | ~19.25px |
+
+How it works, so new CSS stays compatible:
+
+- The step is one `zoom` (`--ui-zoom`, set from `<html data-font-size>`), applied to the content of `body` and to Radix popper content. It scales text, spacing, radii and icons together, so **keep writing `px` and `rem` values as before**; never compensate for the step in a component.
+- `vh`, `dvh` and `vw` ignore zoom. Write `calc(N * var(--ui-vh))`, `calc(N * var(--ui-dvh))` and `calc(N * var(--ui-vw))` instead of the raw units, or a full-height or full-width box overflows the viewport by the zoom factor.
+- Anything that must stay in **screen pixels** (the ultrawide layout cap, `--layout-max-width`) divides by `--ui-zoom`.
+- On a viewport of `640px` or less the step is ignored (`--ui-zoom: 1`): browser zoom is how people get large text there, and scaling again loses controls off the edge (WCAG 1.4.10).
+- The switch is the shared `SegmentedSwitch` with `slideThumb`. Do not use Motion's `layoutId` for anything that sits inside a zoomed ancestor: it measures with `getBoundingClientRect`, which is wrong there.
+
 ## CSS Implementation Standard
 
 The visual direction above must be enforced in CSS and component markup, not only in mockups.

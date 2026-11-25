@@ -126,6 +126,8 @@ export { ProductThumbnail } from './product-thumbnail';
 export { CopyableId } from './copyable-id';
 export { DensityToggle, useDensity } from './density-toggle';
 export type { Density } from './density-toggle';
+export { FontSizeToggle, useFontSize } from './font-size-toggle';
+export type { FontSize } from './font-size-toggle';
 
 // ── Bulk-selection (#739, #1109) ────────────────────────────────────
 export { BulkActionBar } from './bulk-action-bar';

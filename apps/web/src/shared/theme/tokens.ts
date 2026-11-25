@@ -44,6 +44,10 @@ export const tokens = {
   // ── Layout heights (#2227) ──────────────────────────────────────
   // The two pinned strips at the top of the shell.
   'shell-topbar-height': 'var(--shell-topbar-height)',
+  'ui-zoom': 'var(--ui-zoom)',
+  'ui-vh': 'var(--ui-vh)',
+  'ui-vw': 'var(--ui-vw)',
+  'ui-dvh': 'var(--ui-dvh)',
   'layout-max-width': 'var(--layout-max-width)',
   'demo-banner-height': 'var(--demo-banner-height)',
 

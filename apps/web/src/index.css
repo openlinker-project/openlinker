@@ -359,9 +359,11 @@
   --shell-topbar-height: 52px;
   /* The widest the app's layout block gets on an ultrawide screen: from the
      left edge of the floating sidebar box to the right edge of the page
-     content. The one knob for "how wide"; the content cap, the sidebar column
+     content. In REAL screen pixels: the text-size zoom scales every CSS px, so
+     the value is divided by it, and the block stays 2560 screen px at every
+     size. The one knob for "how wide"; the content cap, the sidebar column
      and the top bar's padding are all derived from it. */
-  --layout-max-width: 2560px;
+  --layout-max-width: calc(2560px / var(--ui-zoom, 1));
   /* The floating layout switches on at the same width: the
      `@media (min-width: 2560px)` block below must follow this value by hand.
      (Panels become a centred modal earlier, from 1920px - WIDE_QUERY in
@@ -553,7 +555,7 @@ html[data-theme='dark'] {
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: calc(100 * var(--ui-vh));
   background: var(--bg-canvas);
 }
 
@@ -1222,7 +1224,7 @@ textarea,
 }
 
 #root {
-  min-height: 100vh;
+  min-height: calc(100 * var(--ui-vh));
 }
 
 .sr-only {
@@ -1246,7 +1248,7 @@ textarea,
  */
 
 .shell {
-  min-height: 100vh;
+  min-height: calc(100 * var(--ui-vh));
   background: var(--bg-canvas);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1276,7 +1278,7 @@ textarea,
     padding: 12px 0;
     position: sticky;
     top: 0;
-    height: 100vh;
+    height: calc(100 * var(--ui-vh));
     overflow: hidden;
   }
 }
@@ -1297,7 +1299,7 @@ textarea,
    read a custom property). */
 @media (min-width: 2560px) {
   .shell {
-    --shell-side: max(264px, calc((100vw - var(--layout-max-width)) / 2 + 240px));
+    --shell-side: max(264px, calc((calc(100 * var(--ui-vw)) - var(--layout-max-width)) / 2 + 240px));
     grid-template-columns: var(--shell-side) minmax(0, 1fr);
   }
 
@@ -1308,7 +1310,7 @@ textarea,
 
   .shell .shell-topbar {
     padding-left: 32px;
-    padding-right: max(16px, calc(100vw - var(--shell-side) - var(--layout-max-width) + 240px));
+    padding-right: max(16px, calc(calc(100 * var(--ui-vw)) - var(--shell-side) - var(--layout-max-width) + 240px));
   }
 
   /* The brand sits in the bar above the sidebar box: the box starts 240px
@@ -1349,7 +1351,7 @@ textarea,
     /* Below the top bar, not beside it; the menu inside (`.shell-nav`)
        scrolls on its own when it outgrows the box. */
     top: calc(var(--shell-topbar-height) + 12px);
-    height: calc(100vh - var(--shell-topbar-height) - 24px);
+    height: calc(calc(100 * var(--ui-vh)) - var(--shell-topbar-height) - 24px);
     margin: calc(var(--shell-topbar-height) + 12px) 0 12px;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-xl);
@@ -1626,9 +1628,9 @@ textarea,
   border: none;
   border-radius: 0 12px 12px 0;
   margin: 0;
-  width: min(280px, 85vw);
-  height: 100vh;
-  max-height: 100vh;
+  width: min(280px, calc(85 * var(--ui-vw)));
+  height: calc(100 * var(--ui-vh));
+  max-height: calc(100 * var(--ui-vh));
   background: var(--bg-shell);
   box-shadow: var(--shadow-overlay);
 }
@@ -1905,6 +1907,14 @@ textarea,
 
 .shell-user-chip__menu {
   min-width: 240px;
+  /* Never taller than the room the browser leaves: at 200% browser zoom the
+     viewport is ~400 css px high and this menu (language, theme, density, text
+     size, sign out) is taller, so without a cap the lower rows are
+     unreachable (WCAG 1.4.4 / 1.4.10). Radix reports the room in screen
+     pixels outside the text-size zoom, hence the division. */
+  max-height: calc(var(--radix-dropdown-menu-content-available-height, 100dvh) / var(--ui-zoom, 1) - 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .shell-user-chip__menu-name {
@@ -5701,7 +5711,7 @@ a.delivery-rider-banner__button:focus-visible {
 }
 
 .trigger-sync-dialog {
-  width: min(36rem, 92vw);
+  width: min(36rem, calc(92 * var(--ui-vw)));
 }
 
 .trigger-sync-dialog__body {
@@ -6049,7 +6059,7 @@ a.delivery-rider-banner__button:focus-visible {
   bottom: 1rem;
   display: grid;
   gap: 0.75rem;
-  width: min(24rem, calc(100vw - 2rem));
+  width: min(24rem, calc(calc(100 * var(--ui-vw)) - 2rem));
   z-index: 70;
 }
 
@@ -6311,7 +6321,7 @@ a.delivery-rider-banner__button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100dvh;
+  min-height: calc(100 * var(--ui-dvh));
   padding: 1.5rem;
   background: var(--bg-canvas);
   position: relative;
@@ -6591,7 +6601,7 @@ html:has(.login-stage) {
   overflow: clip;
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
+  min-height: calc(100 * var(--ui-dvh));
   background: var(--bg-canvas);
 }
 
@@ -6859,7 +6869,7 @@ html:has(.login-stage) {
 
 .login-hero__title {
   margin: 0;
-  font-size: clamp(2.2rem, 3.6vw, 3.1rem);
+  font-size: clamp(2.2rem, calc(3.6 * var(--ui-vw)), 3.1rem);
   line-height: 1.08;
   letter-spacing: -0.035em;
   font-weight: 600;
@@ -7665,7 +7675,7 @@ html:has(.login-stage) {
   }
 
   .login-hero__title {
-    font-size: clamp(2rem, 8vw, 2.6rem);
+    font-size: clamp(2rem, calc(8 * var(--ui-vw)), 2.6rem);
   }
 
   .login-hero__lead {
@@ -7745,8 +7755,8 @@ html:has(.login-stage) {
 }
 
 .login-page-editor__preview-dialog {
-  width: min(360px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px);
+  width: min(360px, calc(calc(100 * var(--ui-vw)) - 32px));
+  max-height: calc(calc(100 * var(--ui-dvh)) - 32px);
   overflow-y: auto;
 }
 
@@ -8288,10 +8298,10 @@ html:has(.login-stage) {
   bottom: 0;
   left: auto;
   transform: none;
-  width: min(34rem, 100vw);
+  width: min(34rem, calc(100 * var(--ui-vw)));
   max-width: none;
   max-height: none;
-  height: 100dvh;
+  height: calc(100 * var(--ui-dvh));
   padding: 0;
   border: 0;
   border-left: 1px solid var(--border-subtle);
@@ -9473,7 +9483,7 @@ a.kpi-card:focus-visible {
 }
 
 .infotip-popover {
-  max-width: min(22rem, 70vw);
+  max-width: min(22rem, calc(70 * var(--ui-vw)));
   font-family: var(--font-sans);
   font-size: 0.75rem;
   line-height: 1.5;
@@ -9778,8 +9788,8 @@ a.kpi-card:focus-visible {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: min(520px, 92vw);
-  max-height: min(90vh, 720px);
+  width: min(520px, calc(92 * var(--ui-vw)));
+  max-height: min(calc(90 * var(--ui-vh)), 720px);
   overflow-x: hidden;
   overflow-y: auto;
   background: var(--bg-surface-elevated);
@@ -9809,7 +9819,7 @@ a.kpi-card:focus-visible {
   transform: none;
   width: 100%;
   max-width: none;
-  max-height: 88dvh;
+  max-height: calc(88 * var(--ui-dvh));
   padding: 0;
   border-bottom: 0;
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
@@ -9875,7 +9885,7 @@ a.kpi-card:focus-visible {
   right: 0;
   bottom: 0;
   z-index: 41;
-  width: min(var(--side-panel-width, 480px), 100vw);
+  width: min(var(--side-panel-width, 480px), calc(100 * var(--ui-vw)));
   display: flex;
   flex-direction: column;
   background: var(--bg-surface-elevated);
@@ -9895,9 +9905,9 @@ a.kpi-card:focus-visible {
 .side-panel.side-panel--modal {
   inset: 0;
   margin: auto;
-  width: min(calc(var(--side-panel-width, 480px) + 120px), calc(100vw - 64px));
+  width: min(calc(var(--side-panel-width, 480px) + 120px), calc(calc(100 * var(--ui-vw)) - 64px));
   height: fit-content;
-  max-height: min(880px, calc(100vh - 96px));
+  max-height: min(880px, calc(calc(100 * var(--ui-vh)) - 96px));
   padding: 0;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
@@ -10021,7 +10031,7 @@ a.kpi-card:focus-visible {
     top: 8px;
     right: 8px;
     bottom: 8px;
-    width: min(var(--side-panel-width, 480px), calc(100vw - 16px));
+    width: min(var(--side-panel-width, 480px), calc(calc(100 * var(--ui-vw)) - 16px));
     margin-top: env(safe-area-inset-top, 0px);
     margin-bottom: env(safe-area-inset-bottom, 0px);
     margin-right: env(safe-area-inset-right, 0px);
@@ -10044,7 +10054,7 @@ a.kpi-card:focus-visible {
     right: 0;
     bottom: 0;
     width: 100%;
-    max-height: calc(100dvh - 44px - env(safe-area-inset-top, 0px));
+    max-height: calc(calc(100 * var(--ui-dvh)) - 44px - env(safe-area-inset-top, 0px));
     border-left: 0;
     border-top: 1px solid var(--border-default);
     border-radius: 18px 18px 0 0;
@@ -10251,7 +10261,7 @@ a.kpi-card:focus-visible {
   transform: none;
   left: 50%;
   translate: -50% 0;
-  width: min(640px, calc(100vw - var(--space-8)));
+  width: min(640px, calc(calc(100 * var(--ui-vw)) - var(--space-8)));
   max-width: none;
   padding: 0;
   overflow: hidden;
@@ -11903,13 +11913,13 @@ a.kpi-card:focus-visible {
    1024px the regions become a two-step wizard (data-mstep on the root);
    below 600px the modal is a full-screen sheet. */
 .offer-product-picker.dialog__content {
-  width: min(1080px, 96vw);
+  width: min(1080px, calc(96 * var(--ui-vw)));
   max-width: none;
   /* Fixed height so the modal stays stable as selections/variants are added -
      the product list and the rail scroll internally instead of growing the
-     modal (phone overrides to a 100dvh full-screen sheet below). */
-  height: min(760px, 88vh);
-  max-height: 88vh;
+     modal (phone overrides to a calc(100 * var(--ui-dvh)) full-screen sheet below). */
+  height: min(760px, calc(88 * var(--ui-vh)));
+  max-height: calc(88 * var(--ui-vh));
   padding: 0;
   overflow: hidden;
   display: flex;
@@ -12266,7 +12276,7 @@ a.kpi-card:focus-visible {
 .offer-product-picker__rail-body {
   flex: 1 1 auto;
   /* Keeps the batch review readable when the destination list is tall (#3725). */
-  min-height: min(9rem, 20vh);
+  min-height: min(9rem, calc(20 * var(--ui-vh)));
   overflow-y: auto;
   padding: var(--space-1) var(--space-3) var(--space-3);
 }
@@ -12355,7 +12365,7 @@ a.kpi-card:focus-visible {
 .offer-product-picker__rail-conn-list {
   /* Many connections scroll inside the rail instead of pushing the actions out (#3725);
      the label above stays pinned. */
-  max-height: min(30vh, 14rem);
+  max-height: min(calc(30 * var(--ui-vh)), 14rem);
   overflow-y: auto;
 }
 .offer-product-picker__eyebrow {
@@ -12513,7 +12523,7 @@ a.kpi-card:focus-visible {
    one focused screen at a time: step 1 = list, step 2 = review. */
 @media (max-width: 1023px) {
   .offer-product-picker.dialog__content {
-    width: min(720px, 96vw);
+    width: min(720px, calc(96 * var(--ui-vw)));
   }
   .offer-product-picker__body {
     display: block;
@@ -12557,10 +12567,10 @@ a.kpi-card:focus-visible {
 /* ── Phone (<=600px): full-screen sheet ─────────────────────────── */
 @media (max-width: 600px) {
   .offer-product-picker.dialog__content {
-    width: 100vw;
-    max-width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
+    width: calc(100 * var(--ui-vw));
+    max-width: calc(100 * var(--ui-vw));
+    height: calc(100 * var(--ui-dvh));
+    max-height: calc(100 * var(--ui-dvh));
     top: 0;
     left: 0;
     transform: none;
@@ -14747,7 +14757,7 @@ a.kpi-card:focus-visible {
   border-radius: var(--radius-pill);
   background: var(--accent-primary);
 }
-.popover__content.attention-pop { width: 360px; max-width: calc(100vw - 32px); padding: 4px; }
+.popover__content.attention-pop { width: 360px; max-width: calc(calc(100 * var(--ui-vw)) - 32px); padding: 4px; }
 .attention-pop__head { padding: 6px 10px 4px; font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
 .attention-item {
   display: grid;
@@ -15497,7 +15507,7 @@ a.kpi-card:focus-visible {
  * they take the menu's 6 px / 12 px box and 13 px type; this only aligns them
  * and paints the hover/keyboard highlight a `<label>` row cannot get from
  * Radix's `[data-highlighted]`. */
-.tag-picker { display: grid; gap: var(--space-1); width: min(300px, 86vw); padding: var(--space-2); font-size: 0.8125rem; }
+.tag-picker { display: grid; gap: var(--space-1); width: min(300px, calc(86 * var(--ui-vw))); padding: var(--space-2); font-size: 0.8125rem; }
 .tag-picker__search { width: 100%; }
 .tag-picker__list { display: grid; gap: 1px; max-height: 240px; overflow-y: auto; }
 .tag-picker__item { justify-content: flex-start; }
@@ -15557,7 +15567,7 @@ a.kpi-card:focus-visible {
 .tag-manager__usage { margin-top: var(--space-3); font-size: 0.8125rem; }
 
 /* Bulk "Tags ▾" menu (mockup M3 `bulk`) — Radix menu items, tag-first. */
-.bulk-menu { width: min(300px, 86vw); }
+.bulk-menu { width: min(300px, calc(86 * var(--ui-vw))); }
 .bulk-menu .dropdown-menu__item { justify-content: flex-start; }
 .bulk-menu .dropdown-menu__item:hover { background: var(--bg-surface-hover); }
 .bulk-menu a.dropdown-menu__item { text-decoration: none; }
@@ -16732,6 +16742,57 @@ html[data-density='compact'] .status-badge {
   pointer-events: none;
 }
 
+/* ── Text size ──────────────────────────────────────────────────────
+ * One `zoom` per step instead of rewriting ~1700 px values: zoom scales
+ * text, spacing, radii and icons together. Default (no attribute, or
+ * `m`) is 18px-equivalent root; `s` is the pre-switch look.
+ */
+/* Registered so the zoom can be transitioned: the page eases to the new size
+ * instead of jumping. Every derived value (--ui-vh, --ui-vw, the zoomed
+ * content) follows the animated number. */
+@property --ui-zoom {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1.125;
+}
+
+html { --ui-zoom: 1.125; transition: --ui-zoom 240ms var(--ease-out); }
+html[data-font-size='s'] { --ui-zoom: 1; }
+html[data-font-size='m'] { --ui-zoom: 1.125; }
+html[data-font-size='l'] { --ui-zoom: 1.25; }
+html[data-font-size='xl'] { --ui-zoom: 1.375; }
+
+/* On a narrow viewport the text-size zoom steps aside. That is where browser
+ * zoom lands people who need big text (400% on a 1280px screen is 320 css px),
+ * and shrinking the room further by 1.375x loses controls off the edge
+ * (WCAG 1.4.10). The browser zoom is the size they chose there. */
+@media (max-width: 640px) {
+  html,
+  html[data-font-size='s'],
+  html[data-font-size='m'],
+  html[data-font-size='l'],
+  html[data-font-size='xl'] {
+    --ui-zoom: 1;
+  }
+}
+
+/* `vh` ignores zoom, so a calc(100 * var(--ui-vh)) shell would overflow the viewport by the
+ * zoom factor. Every vh below is written as N * var(--ui-vh). */
+@media (prefers-reduced-motion: reduce) {
+  html { transition: none; }
+}
+
+html { --ui-vw: calc(1vw / var(--ui-zoom)); --ui-vh: calc(1vh / var(--ui-zoom)); --ui-dvh: calc(1dvh / var(--ui-zoom)); }
+
+/* Zoom the CONTENT of body, not <html>: Radix/floating-ui position poppers
+ * from getBoundingClientRect, which is wrong inside a zoomed ancestor (menus
+ * drifted off-screen). The popper wrapper stays unzoomed so it is placed
+ * correctly; its child is zoomed so the menu itself still scales. */
+body > *:not([data-radix-popper-content-wrapper]),
+[data-radix-popper-content-wrapper] > * {
+  zoom: var(--ui-zoom);
+}
+
 /* ── Mobile / touch tweaks for #775 new primitives ─────────────────
  * On touch devices there is no hover, so `.copyable-id__copy` and any
  * other hover-revealed affordance has to stay visible. We also collapse
@@ -16769,7 +16830,7 @@ html[data-density='compact'] .status-badge {
     /* Constrain to viewport so portals don't trigger horizontal scroll
        on narrow phones. The Radix portal already collision-shifts but
        this caps the worst-case width. */
-    max-width: calc(100vw - 1rem);
+    max-width: calc(calc(100 * var(--ui-vw)) - 1rem);
   }
 
   /* Density toggle hides on the smallest viewports — density only
@@ -16876,8 +16937,8 @@ html[data-density='compact'] .status-badge {
  * rows + result view. Composes the Dialog primitive; widened for the row table.
  */
 .bulk-dispatch {
-  width: min(880px, calc(100vw - var(--space-6)));
-  max-width: min(880px, calc(100vw - var(--space-6)));
+  width: min(880px, calc(calc(100 * var(--ui-vw)) - var(--space-6)));
+  max-width: min(880px, calc(calc(100 * var(--ui-vw)) - var(--space-6)));
 }
 
 .bulk-dispatch__body {
@@ -16989,7 +17050,7 @@ input.bulk-dispatch__num--wide {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
-  max-height: 46vh;
+  max-height: calc(46 * var(--ui-vh));
   overflow-y: auto;
 }
 
@@ -17098,7 +17159,7 @@ input.bulk-dispatch__num--wide {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
-  max-height: 52vh;
+  max-height: calc(52 * var(--ui-vh));
   overflow-y: auto;
 }
 
@@ -18315,8 +18376,8 @@ input.bulk-dispatch__num--wide {
   animation: bulk-image-lightbox-fade 0.18s ease;
 }
 .bulk-image-lightbox__img {
-  max-width: min(90vw, 900px);
-  max-height: 90vh;
+  max-width: min(calc(90 * var(--ui-vw)), 900px);
+  max-height: calc(90 * var(--ui-vh));
   object-fit: contain;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
@@ -18531,7 +18592,7 @@ input.bulk-dispatch__num--wide {
 /* ── Barcode vs mapping: the category fork (#3994) ──
    The two category paths drawn as one tree: the shared trunk once, then the
    split. How far up the tree it splits is the whole answer. */
-.cat-fork-dialog { width: min(620px, 94vw); }
+.cat-fork-dialog { width: min(620px, calc(94 * var(--ui-vw))); }
 .cat-fork-dialog__lede { line-height: 1.55; }
 .cat-fork-dialog__lede strong { color: var(--text-primary); font-weight: 600; }
 .cat-fork-dialog__ean { font-family: var(--font-mono); font-size: 12.5px; }
@@ -18681,7 +18742,7 @@ button.bulk-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--acce
 .bulk-editor__content {
   width: min(960px, 100%);
   max-width: 960px;
-  max-height: 88vh;
+  max-height: calc(88 * var(--ui-vh));
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -19117,7 +19178,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__acc-head { display: none; }
 
 @media (max-width: 599.98px) {
-  .bulk-editor__content { max-width: 100%; max-height: 100vh; height: 100dvh; border-radius: 0; }
+  .bulk-editor__content { max-width: 100%; max-height: calc(100 * var(--ui-vh)); height: calc(100 * var(--ui-dvh)); border-radius: 0; }
   .bulk-editor__body { display: block; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .bulk-editor__rail { display: none; }
   .bulk-editor__scopes { overflow: visible; }
@@ -19250,7 +19311,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__catpick {
   width: min(560px, 100%);
   max-width: 560px;
-  max-height: 80vh;
+  max-height: calc(80 * var(--ui-vh));
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -19330,7 +19391,7 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
 .bulk-editor__catpick-foot .grow { flex: 1; color: var(--text-muted); font-size: 12px; min-width: 140px; }
 
 @media (max-width: 599.98px) {
-  .bulk-editor__catpick { max-width: 100%; max-height: 100vh; height: 100dvh; border-radius: 0; }
+  .bulk-editor__catpick { max-width: 100%; max-height: calc(100 * var(--ui-vh)); height: calc(100 * var(--ui-dvh)); border-radius: 0; }
 }
 
 /* ── Shop attribute picker (#1835) ── */
@@ -20927,8 +20988,8 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
  * 2-column Stock/Price fields without wrapping, and for real product names
  * to have space to truncate gracefully instead of overflowing at 520px. */
 .dialog__content--publish {
-  width: min(680px, 94vw);
-  max-height: min(90vh, 800px);
+  width: min(680px, calc(94 * var(--ui-vw)));
+  max-height: min(calc(90 * var(--ui-vh)), 800px);
 }
 
 /* Product/variant name truncation in the search picker — names spilled past
@@ -22406,13 +22467,13 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
  * Namespaced under .ksef-upo-* so it doesn't collide with other dialogs.
  */
 .dialog__content--wide {
-  width: min(920px, 94vw);
-  max-height: min(92vh, 880px);
+  width: min(920px, calc(94 * var(--ui-vw)));
+  max-height: min(calc(92 * var(--ui-vh)), 880px);
 }
 
 .ksef-upo-preview__frame {
   width: 100%;
-  height: min(70vh, 640px);
+  height: min(calc(70 * var(--ui-vh)), 640px);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--bg-shell);
@@ -23316,7 +23377,7 @@ a.sales-channels__offer:hover { color: var(--text-link); text-decoration: underl
   border: none;
   border-radius: 0;
   box-shadow: none;
-  width: min(880px, 92vw);
+  width: min(880px, calc(92 * var(--ui-vw)));
   max-width: none;
   max-height: none;
   padding: var(--space-6);
@@ -24910,7 +24971,7 @@ a.sales-channels__offer:hover { color: var(--text-link); text-decoration: underl
   /* Paper sheet — fixed light presentation regardless of app theme. */
   width: 100%;
   max-width: 48rem;
-  min-height: 60vh;
+  min-height: calc(60 * var(--ui-vh));
   padding: 3.5rem 3rem;
   background: #ffffff;
   color: #1a1a1a;
@@ -30182,7 +30243,7 @@ legend.analytics-settings-dialog__label {
     top: var(--pacing-rail-top);
     /* --space-7 matches .shell-content's bottom padding, so at the very end of
        the page the grid area does not push the rail up under the topbar. */
-    max-height: calc(100dvh - var(--pacing-rail-top) - var(--space-7));
+    max-height: calc(calc(100 * var(--ui-dvh)) - var(--pacing-rail-top) - var(--space-7));
   }
 
   .pacing-rail__body {
@@ -31741,7 +31802,7 @@ legend.analytics-settings-dialog__label {
   flex-direction: column;
   gap: var(--space-5);
   padding: var(--space-5);
-  min-height: 100vh;
+  min-height: calc(100 * var(--ui-vh));
   background: var(--bg-canvas);
 }
 
@@ -31772,7 +31833,7 @@ legend.analytics-settings-dialog__label {
 .bench-rail {
   position: sticky;
   top: var(--space-4);
-  max-height: calc(100vh - var(--space-6));
+  max-height: calc(calc(100 * var(--ui-vh)) - var(--space-6));
   overflow-y: auto;
 }
 
@@ -33045,7 +33106,7 @@ legend.analytics-settings-dialog__label {
 }
 
 .bench-dock__items {
-  max-height: 44vh;
+  max-height: calc(44 * var(--ui-vh));
   overflow-y: auto;
   padding: 0 var(--space-2) var(--space-2);
   background: var(--bg-surface-elevated);
@@ -33394,7 +33455,7 @@ legend.analytics-settings-dialog__label {
   position: fixed;
   inset: 0;
   bottom: auto;
-  height: 58vh;
+  height: calc(58 * var(--ui-vh));
   z-index: 25;
   display: flex;
   flex-direction: column;
@@ -34579,10 +34640,10 @@ legend.analytics-settings-dialog__label {
     top: 0;
     left: 0;
     transform: none;
-    width: 100vw;
-    max-width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
+    width: calc(100 * var(--ui-vw));
+    max-width: calc(100 * var(--ui-vw));
+    height: calc(100 * var(--ui-dvh));
+    max-height: calc(100 * var(--ui-dvh));
     border: 0;
     border-radius: 0;
     padding: var(--space-4) var(--space-4) 0;
@@ -34620,7 +34681,7 @@ legend.analytics-settings-dialog__label {
    ============================================================ */
 
 .columns-panel.popover__content {
-  width: min(320px, calc(100vw - 16px));
+  width: min(320px, calc(calc(100 * var(--ui-vw)) - 16px));
   padding: var(--space-3);
   display: grid;
   gap: var(--space-3);
@@ -35705,7 +35766,7 @@ legend.analytics-settings-dialog__label {
 }
 
 /* Manual stock correction dialog (#3567, mockup m6). Page-specific layout only. */
-.sc-dialog { max-width: 34rem; max-height: calc(100vh - 24px); overflow-y: auto; }
+.sc-dialog { max-width: 34rem; max-height: calc(calc(100 * var(--ui-vh)) - 24px); overflow-y: auto; }
 .sc-dialog--compact { max-width: 28rem; }
 .sc-form { display: grid; gap: var(--space-3); }
 .sc-diff { margin: 0; font-size: 0.875rem; color: var(--text-secondary); }
@@ -36629,6 +36690,25 @@ legend.analytics-settings-dialog__label {
     0 0 0 1px var(--border-default);
 }
 
+/* `slideThumb`: one thumb moved by option index with a CSS transition, so it
+ * needs no measuring (see the prop). Same box as the option it sits behind:
+ * track padding 3px, gap 2px between the --seg-count columns. */
+.segmented-switch__thumb--slide {
+  inset: auto;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 6px - (var(--seg-count) - 1) * 2px) / var(--seg-count));
+  transform: translateX(calc(var(--seg-index) * (100% + 2px)));
+  transition: transform 340ms cubic-bezier(0.34, 1.35, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented-switch__thumb--slide {
+    transition: none;
+  }
+}
+
 /* The unchosen icons sit a little smaller; `scale` (not `transform`) so it
  * does not fight the press animation Motion runs on the transform. */
 .segmented-switch__icon {
@@ -36655,7 +36735,9 @@ legend.analytics-settings-dialog__label {
   font-size: 11px;
   font-weight: 500;
   line-height: 22px;
-  color: var(--text-muted);
+  /* --text-muted was 4.4:1 on the dark menu, under the 4.5:1 AA floor for
+     11px text (WCAG 1.4.3); the chosen name steps up to --text-primary. */
+  color: var(--text-secondary);
 }
 
 /* Same columns as the track (3px padding + 1px border), so each name sits
@@ -36677,7 +36759,7 @@ legend.analytics-settings-dialog__label {
 }
 
 .segmented-switch__name[data-state='active'] {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .segmented-switch__name[data-state='pointed'] {
@@ -37449,7 +37531,7 @@ legend.analytics-settings-dialog__label {
 
 /* #3958 - the routing panel's single "Who ships it" cell: the choice, then the
    default parcel for a method OpenLinker buys a label for. */
-.routing-dialog { width: min(52rem, 94vw); max-width: none; max-height: 90vh; overflow-y: auto; }
+.routing-dialog { width: min(52rem, calc(94 * var(--ui-vw))); max-width: none; max-height: calc(90 * var(--ui-vh)); overflow-y: auto; }
 .routing-route-cell { display: grid; gap: 4px; min-width: 0; }
 /* Wide enough for the longest carrier name, so a choice is never cut mid-word. */
 .routing-route-cell select { width: 100%; }
@@ -38217,7 +38299,7 @@ tr.pm-row--ended .pm-name{color:var(--text-secondary)}
 .pm-pop-anchor{position:relative;display:inline-flex}
 .pm-pop-anchor .popover__content{position:absolute;top:calc(100% + 6px);left:0;opacity:0;transform:translateY(-4px) scale(.98);transform-origin:top left;pointer-events:none;transition:opacity var(--duration-normal) var(--ease-out),transform var(--duration-normal) var(--ease-out)}
 .pm-pop-anchor.is-open .popover__content{opacity:1;transform:none;pointer-events:auto}
-.pm-peek{width:min(420px,100vw);--side-panel-width:420px;animation:pm-peek-in .34s var(--ease-out) both}
+.pm-peek{width:min(420px,calc(100 * var(--ui-vw)));--side-panel-width:420px;animation:pm-peek-in .34s var(--ease-out) both}
 body.pm-peek-closed .pm-peek{display:none}
 .pm-peek.is-leaving{animation:pm-peek-out .2s var(--ease-standard) both}
 @keyframes pm-peek-in{from{opacity:0;transform:translateX(28px)}}
@@ -38377,7 +38459,7 @@ body.pm-peek-closed .pm-peek{display:none}
 .pm-hint{font-family:var(--font-mono);font-size:.6875rem;text-transform:uppercase;letter-spacing:var(--tracking-caps);color:var(--text-muted);white-space:nowrap}
 .pm-guide-scrim{position:fixed;inset:0;background:var(--overlay-scrim);z-index:50;opacity:0;pointer-events:none;transition:opacity .25s var(--ease-out)}
 .pm-guide-scrim[data-open=true]{opacity:1;pointer-events:auto}
-.pm-guide{position:fixed;top:0;right:0;bottom:0;width:min(460px,100vw);z-index:51;background:var(--bg-surface-elevated);border-left:1px solid var(--border-default);box-shadow:var(--shadow-overlay);display:flex;flex-direction:column;transform:translateX(104%);visibility:hidden;transition:transform .38s var(--ease-out),visibility 0s .38s}
+.pm-guide{position:fixed;top:0;right:0;bottom:0;width:min(460px,calc(100 * var(--ui-vw)));z-index:51;background:var(--bg-surface-elevated);border-left:1px solid var(--border-default);box-shadow:var(--shadow-overlay);display:flex;flex-direction:column;transform:translateX(104%);visibility:hidden;transition:transform .38s var(--ease-out),visibility 0s .38s}
 .pm-guide[data-open=true]{transform:none;visibility:visible;transition:transform .38s var(--ease-out),visibility 0s}
 .pm-guide__handle{display:none}
 @media (min-width:641px){
@@ -38386,7 +38468,7 @@ body.pm-peek-closed .pm-peek{display:none}
   .pm-guide-scrim{-webkit-backdrop-filter:blur(3px) saturate(.85);backdrop-filter:blur(3px) saturate(.85)}
 }
 @media (max-width:640px){
-  .pm-guide{top:auto;left:0;right:0;bottom:0;width:100%;max-height:calc(100dvh - 44px);border-left:0;border-top:1px solid var(--border-default);border-radius:18px 18px 0 0;transform:translateY(104%);transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s .48s}
+  .pm-guide{top:auto;left:0;right:0;bottom:0;width:100%;max-height:calc(calc(100 * var(--ui-dvh)) - 44px);border-left:0;border-top:1px solid var(--border-default);border-radius:18px 18px 0 0;transform:translateY(104%);transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s .48s}
   .pm-guide[data-open=true]{transform:translateY(var(--drag,0px));transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s}
   .pm-guide[data-dragging=true]{transition:none}
   .pm-guide__handle{display:flex;justify-content:center;padding:10px 0 4px;touch-action:none;cursor:grab}
@@ -38782,7 +38864,7 @@ tr.cx-detail.is-open .cx-detail__pad{opacity:1;transform:none;transition-delay:.
 .cx-empty{display:grid;justify-items:center;gap:var(--space-1);text-align:center;padding:var(--space-6) var(--space-4);border:1px dashed var(--border-strong);border-radius:var(--radius-lg);background:var(--bg-surface)}
 .cx-empty .pm-empty__ico{display:grid}
 #cx-empty-err{margin-top:-6px}
-.cx-plist{position:absolute;z-index:30;min-width:20rem;max-width:min(26rem,calc(100vw - 32px));padding:var(--space-1)}
+.cx-plist{position:absolute;z-index:30;min-width:20rem;max-width:min(26rem,calc(calc(100 * var(--ui-vw)) - 32px));padding:var(--space-1)}
 .cx-plist button{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--space-3);align-items:center;width:100%;height:auto;padding:6px var(--space-3);border:0;border-radius:var(--radius-sm);background:none;box-shadow:none;color:var(--text-primary);text-align:left;font-weight:400;font-size:.8125rem}
 .cx-plist button:hover{background:var(--bg-surface-muted);color:var(--text-primary);border:0}
 .cx-plist small{display:block;color:var(--text-muted);font-size:.75rem}
@@ -38829,10 +38911,10 @@ tr.cx-detail.is-open .cx-detail__pad{opacity:1;transform:none;transition-delay:.
 .cx-wcomp>li{grid-template-columns:auto minmax(0,1fr) auto}
 .cx-wm{display:flex;align-items:center;gap:var(--space-2);justify-content:flex-end;flex-wrap:wrap}
 .cx-wcomp>li.is-bad{background:color-mix(in oklab,var(--status-error-soft) 55%,transparent)}
-.cx-toast{position:fixed;left:50%;bottom:5.5rem;transform:translateX(-50%);z-index:70;padding:var(--space-3) var(--space-4);border-radius:var(--radius-lg);background:var(--text-primary);color:var(--text-inverse);font-size:.8125rem;box-shadow:var(--shadow-overlay);max-width:min(32rem,calc(100vw - 32px))}
+.cx-toast{position:fixed;left:50%;bottom:5.5rem;transform:translateX(-50%);z-index:70;padding:var(--space-3) var(--space-4);border-radius:var(--radius-lg);background:var(--text-primary);color:var(--text-inverse);font-size:.8125rem;box-shadow:var(--shadow-overlay);max-width:min(32rem,calc(calc(100 * var(--ui-vw)) - 32px))}
 .cx-mscrim{position:fixed;inset:0;background:var(--overlay-scrim);z-index:50;opacity:0;pointer-events:none;transition:opacity .25s var(--ease-out);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
 .cx-mscrim[data-open=true]{opacity:1;pointer-events:auto}
-.cx-modal{position:fixed;z-index:51;left:50%;top:50%;width:min(44rem,calc(100vw - 24px));max-height:calc(100dvh - 32px);display:flex;flex-direction:column;background:var(--bg-surface-elevated);border:1px solid var(--border-default);border-radius:var(--radius-xl);box-shadow:var(--shadow-overlay);opacity:0;visibility:hidden;transform:translate(-50%,-47%) scale(.98);transition:opacity .2s var(--ease-out),transform .3s var(--ease-out),visibility 0s .3s}
+.cx-modal{position:fixed;z-index:51;left:50%;top:50%;width:min(44rem,calc(calc(100 * var(--ui-vw)) - 24px));max-height:calc(calc(100 * var(--ui-dvh)) - 32px);display:flex;flex-direction:column;background:var(--bg-surface-elevated);border:1px solid var(--border-default);border-radius:var(--radius-xl);box-shadow:var(--shadow-overlay);opacity:0;visibility:hidden;transform:translate(-50%,-47%) scale(.98);transition:opacity .2s var(--ease-out),transform .3s var(--ease-out),visibility 0s .3s}
 .cx-modal[data-open=true]{opacity:1;visibility:visible;transform:translate(-50%,-50%);transition:opacity .2s var(--ease-out),transform .34s var(--ease-out),visibility 0s}
 .cx-modal__h{display:flex;justify-content:space-between;gap:var(--space-3);align-items:flex-start;padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border-subtle)}
 .cx-modal__t{margin:0;font-size:1.0625rem;font-weight:600;letter-spacing:var(--tracking-tight)}
@@ -38843,7 +38925,7 @@ tr.cx-detail.is-open .cx-detail__pad{opacity:1;transform:none;transition-delay:.
 .cx-ms__h{display:flex;justify-content:space-between;align-items:center;gap:var(--space-3)}
 .cx-ms__h h3{margin:0;font-size:.8125rem;font-weight:600}
 body.cx-modal-open{overflow:hidden}
-@media (width<=640px){.cx-modal{left:0;top:auto;bottom:0;width:100%;max-height:calc(100dvh - 44px);border-radius:18px 18px 0 0;transform:translateY(104%)}
+@media (width<=640px){.cx-modal{left:0;top:auto;bottom:0;width:100%;max-height:calc(calc(100 * var(--ui-dvh)) - 44px);border-radius:18px 18px 0 0;transform:translateY(104%)}
   .cx-modal[data-open=true]{transform:none}.cx-dset{grid-template-columns:repeat(2,minmax(0,1fr))}.cx-wcomp>li{grid-template-columns:auto minmax(0,1fr)}.cx-wm{grid-column:1/-1;justify-content:flex-start}}
 .pm-cards .cx-wcomp{margin-top:var(--space-2)}
 @media (prefers-reduced-motion:reduce){.cx-modal,.cx-mscrim{transition:none}}
@@ -38904,7 +38986,7 @@ tr.pm-row--ended .pm-name{color:var(--text-secondary)}
 .pm-pop-anchor{position:relative;display:inline-flex}
 .pm-pop-anchor .popover__content{position:absolute;top:calc(100% + 6px);left:0;opacity:0;transform:translateY(-4px) scale(.98);transform-origin:top left;pointer-events:none;transition:opacity var(--duration-normal) var(--ease-out),transform var(--duration-normal) var(--ease-out)}
 .pm-pop-anchor.is-open .popover__content{opacity:1;transform:none;pointer-events:auto}
-.pm-peek{width:min(420px,100vw);--side-panel-width:420px;animation:pm-peek-in .34s var(--ease-out) both}
+.pm-peek{width:min(420px,calc(100 * var(--ui-vw)));--side-panel-width:420px;animation:pm-peek-in .34s var(--ease-out) both}
 body.pm-peek-closed .pm-peek{display:none}
 .pm-peek.is-leaving{animation:pm-peek-out .2s var(--ease-standard) both}
 @keyframes pm-peek-in{from{opacity:0;transform:translateX(28px)}}
@@ -39074,7 +39156,7 @@ body.pm-peek-closed .pm-peek{display:none}
 .pm-hint{font-family:var(--font-mono);font-size:.6875rem;text-transform:uppercase;letter-spacing:var(--tracking-caps);color:var(--text-muted);white-space:nowrap}
 .pm-guide-scrim{position:fixed;inset:0;background:var(--overlay-scrim);z-index:50;opacity:0;pointer-events:none;transition:opacity .25s var(--ease-out)}
 .pm-guide-scrim[data-open=true]{opacity:1;pointer-events:auto}
-.pm-guide{position:fixed;top:0;right:0;bottom:0;width:min(460px,100vw);z-index:51;background:var(--bg-surface-elevated);border-left:1px solid var(--border-default);box-shadow:var(--shadow-overlay);display:flex;flex-direction:column;transform:translateX(104%);visibility:hidden;transition:transform .38s var(--ease-out),visibility 0s .38s}
+.pm-guide{position:fixed;top:0;right:0;bottom:0;width:min(460px,calc(100 * var(--ui-vw)));z-index:51;background:var(--bg-surface-elevated);border-left:1px solid var(--border-default);box-shadow:var(--shadow-overlay);display:flex;flex-direction:column;transform:translateX(104%);visibility:hidden;transition:transform .38s var(--ease-out),visibility 0s .38s}
 .pm-guide[data-open=true]{transform:none;visibility:visible;transition:transform .38s var(--ease-out),visibility 0s}
 .pm-guide__handle{display:none}
 @media (min-width:641px){
@@ -39083,7 +39165,7 @@ body.pm-peek-closed .pm-peek{display:none}
   .pm-guide-scrim{-webkit-backdrop-filter:blur(3px) saturate(.85);backdrop-filter:blur(3px) saturate(.85)}
 }
 @media (max-width:640px){
-  .pm-guide{top:auto;left:0;right:0;bottom:0;width:100%;max-height:calc(100dvh - 44px);border-left:0;border-top:1px solid var(--border-default);border-radius:18px 18px 0 0;transform:translateY(104%);transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s .48s}
+  .pm-guide{top:auto;left:0;right:0;bottom:0;width:100%;max-height:calc(calc(100 * var(--ui-dvh)) - 44px);border-left:0;border-top:1px solid var(--border-default);border-radius:18px 18px 0 0;transform:translateY(104%);transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s .48s}
   .pm-guide[data-open=true]{transform:translateY(var(--drag,0px));transition:transform .48s cubic-bezier(.32,.72,0,1),visibility 0s}
   .pm-guide[data-dragging=true]{transition:none}
   .pm-guide__handle{display:flex;justify-content:center;padding:10px 0 4px;touch-action:none;cursor:grab}
@@ -39572,7 +39654,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
 .gift-comp__chip { height: 1.1rem; cursor: default; }
 .gift-exp { border: 0; background: none; cursor: pointer; color: var(--text-muted); width: 1.5rem; height: 1.5rem; border-radius: 4px; transition: transform 0.2s var(--ease-out); }
 .gift-exp[aria-expanded='true'] { transform: rotate(90deg); }
-.gift-dlg { width: min(520px, calc(100vw - 2rem)); display: grid; gap: var(--space-3); }
+.gift-dlg { width: min(520px, calc(calc(100 * var(--ui-vw)) - 2rem)); display: grid; gap: var(--space-3); }
 .gift-dlg__p { margin: 0; font-size: 0.875rem; color: var(--text-secondary); line-height: 1.55; }
 .gift-dlg__f { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }
 @media (prefers-reduced-motion: reduce) {
@@ -39789,7 +39871,7 @@ tr:hover .pm-move,tr:focus-within .pm-move{opacity:1}
   width: 0.75rem; height: 0.75rem; fill: none; stroke: var(--text-muted);
   stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round;
 }
-.motion-popover.described-select__popover { padding: var(--space-1); max-height: min(70vh, 28rem); overflow-y: auto; }
+.motion-popover.described-select__popover { padding: var(--space-1); max-height: min(calc(70 * var(--ui-vh)), 28rem); overflow-y: auto; }
 .option-list--described .option-list__option {
   height: auto;
   min-height: 3.25rem;
