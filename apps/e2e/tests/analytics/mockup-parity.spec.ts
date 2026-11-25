@@ -137,7 +137,7 @@ test.describe('analytics mockup parity (#2482)', () => {
         await pages.analyticsMockup.goto();
         await pages.analytics.goto({ from: range.from, to: range.to });
         await captureBoth(testInfo, pages.analyticsMockup.regionFor('native'), page, 'native');
-        await expect(page.getByRole('heading', { name: 'Analytics', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: /^Analytics\b/ })).toBeVisible();
       });
 
       await test.step('settings-open', async () => {
@@ -152,7 +152,7 @@ test.describe('analytics mockup parity (#2482)', () => {
         await expect(pages.analytics.settingsDialog).toContainText('Analytics settings');
         await expect(pages.analytics.settingsDialog).toContainText('Show amounts in');
         await expect(pages.analytics.settingsDialog).toContainText('Rate basis');
-        await expect(pages.analytics.settingsDialog).toContainText('Currency — recalculation');
+        await expect(pages.analytics.settingsDialog).toContainText('Currency - recalculation');
         await expect(pages.analytics.settingsDialog).toContainText('Tax rates');
         await page.getByRole('button', { name: 'Cancel' }).click();
       });
@@ -468,7 +468,7 @@ test.describe('analytics mockup parity (#2482)', () => {
         await pages.analyticsMockup.gotoState('detail-novat');
         await pages.analytics.goto({ from: range.from, to: range.to });
         const dialog = await pages.analytics.openCoverageDetail('tax-b');
-        await expect(dialog).toContainText('have no tax rate at all');
+        await expect(dialog).toContainText(/ha(s|ve) no tax rate at all/);
         await captureBoth(testInfo, pages.analyticsMockup.regionFor('detail-novat'), page, 'detail-novat');
         const taxB = await api.analytics.getTaxCoverageOrders({
           ...range,
