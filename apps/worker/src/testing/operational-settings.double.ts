@@ -70,6 +70,7 @@ export class FakeOperationalSettingsService implements IOperationalSettingsServi
     syncJobDeadRetentionDays: defaultNumber('syncJobDeadRetentionDays'),
     inventoryMovementRetentionDays: defaultNumber('inventoryMovementRetentionDays'),
     stockStaleSyncThresholdHours: defaultNumber('stockStaleSyncThresholdHours'),
+    releaseCenterEnabled: { value: true, source: 'default', workerMayDiffer: true },
     deletionAuditCadence: {
       value: DELETION_AUDIT_CADENCE_DEFAULT,
       source: 'default',

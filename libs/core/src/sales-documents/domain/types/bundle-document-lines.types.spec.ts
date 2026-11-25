@@ -1,6 +1,7 @@
 import {
   BundleSplitUnknownError,
   presentBundleComponents,
+  splitBundleLineTotal,
   type DocumentBundleComponent,
 } from './bundle-document-lines.types';
 import { validateGiftOnDocumentsShape, type GiftPresentationLine } from './gift-lines.types';
@@ -170,5 +171,33 @@ describe('presentBundleComponents', () => {
     ]);
     expect(result.lines[0]).toBe(other);
     expect(result.lines.slice(1).every((l) => l.taxRate === '8')).toBe(true);
+  });
+});
+
+describe('splitBundleLineTotal', () => {
+  const component = (unitPriceGross: number, giftSlot?: boolean) => ({
+    lineId: `L~c:${unitPriceGross}`,
+    variantId: `v${unitPriceGross}`,
+    productId: `p${unitPriceGross}`,
+    name: null,
+    quantity: 1,
+    unitPriceGross,
+    ...(giftSlot ? { giftSlot: true } : {}),
+  });
+
+  it('should weight the paid total by the standalone prices, not by unit count', () => {
+    const shares = splitBundleLineTotal(90, [component(100), component(5)], 'PLN');
+    expect(shares).toEqual([85.72, 4.28]);
+  });
+
+  it('should give a gift slot nothing and sum to exactly the paid total', () => {
+    const shares = splitBundleLineTotal(59.9, [component(30), component(40), component(12, true)], 'PLN');
+    expect(shares?.[2]).toBe(0);
+    expect(((shares?.[0] ?? 0) + (shares?.[1] ?? 0)).toFixed(2)).toBe('59.90');
+  });
+
+  it('should answer null when no price can weight the split', () => {
+    const noPrice = { ...component(10), unitPriceGross: null };
+    expect(splitBundleLineTotal(50, [noPrice], 'PLN')).toBeNull();
   });
 });

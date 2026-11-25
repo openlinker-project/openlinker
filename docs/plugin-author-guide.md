@@ -367,6 +367,29 @@ export class XOrderProcessorManagerAdapter
 Concrete worked example:
 [`libs/integrations/prestashop/src/infrastructure/adapters/prestashop-order-processor-manager.adapter.ts`](../libs/integrations/prestashop/src/infrastructure/adapters/prestashop-order-processor-manager.adapter.ts).
 
+#### Choosing where order sync starts (`OrderFeedBootstrap`, `OrderFeedDateBootstrap`)
+
+By default a new `OrderSource` connection must not import the source's whole
+history. Two optional, guard-only sub-capabilities (not in the manifest's
+`supportedCapabilities`) let the first poll start somewhere else:
+
+- `OrderFeedBootstrap.headCursor(): Promise<string | null>` returns a cursor at
+  the source's current head ("from now"). Return `null` for a source with no
+  orders yet: core then writes nothing and retries on the next poll.
+- `OrderFeedDateBootstrap.cursorForDate(date): Promise<string>` returns a cursor
+  at the start of an ISO date ("from a date"). Throw
+  `OrderSyncStartUnavailableError` (from `@openlinker/core/orders`) for a
+  deterministic refusal, e.g. the shop cannot filter by date; core turns it into
+  a business failure instead of ten retries. Any other error retries.
+
+Declare the modes your adapter supports in the static manifest field
+`orderSyncStartModes` (absent means `['now', 'all']`; add `'from'` only if you
+implement `cursorForDate`). It is static because an OAuth connection has no
+adapter instance until the callback. The operator's choice is stored as a
+one-shot `orders.syncStart` cursor row, which core deletes once consumed; you
+never read it. Connections without that row are legacy and keep reading history,
+so a plugin needs no migration path.
+
 ### Error handling
 
 Adapters must translate platform errors into domain exceptions. Per

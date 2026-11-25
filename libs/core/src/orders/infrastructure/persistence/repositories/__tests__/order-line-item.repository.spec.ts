@@ -650,7 +650,10 @@ describe('OrderLineItemRepository', () => {
       expect(qb.andWhere).toHaveBeenCalledWith('li."sourceConnectionId" = :sourceConnectionId', {
         sourceConnectionId: 'conn-1',
       });
-      expect(qb.andWhere).toHaveBeenCalledTimes(1);
+      expect(qb.andWhere).toHaveBeenCalledWith('li."productId" NOT LIKE :unmatchedPrefix', {
+        unmatchedPrefix: 'unmatched:%',
+      });
+      expect(qb.andWhere).toHaveBeenCalledTimes(2);
       expect(qb.orderBy).toHaveBeenCalledWith('li."id"', 'ASC');
       expect(qb.take).toHaveBeenCalledWith(100);
       expect(result).toHaveLength(1);
@@ -668,7 +671,7 @@ describe('OrderLineItemRepository', () => {
       });
 
       expect(qb.andWhere).toHaveBeenCalledWith('li."id" > :afterId', { afterId: 'line-99' });
-      expect(qb.andWhere).toHaveBeenCalledTimes(2);
+      expect(qb.andWhere).toHaveBeenCalledTimes(3);
     });
   });
 

@@ -14,7 +14,7 @@ import { Combobox, type ComboboxOption, type ComboboxValue } from '../../../shar
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import type { MappingOption } from '../api/mappings.types';
 import { captureDemoEvent } from '../../demo';
-import { getMessages, interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { getMessages, interpolate, renderRich, useMessages, usePlural } from '../../../shared/i18n';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface MappingRow {
@@ -182,6 +182,7 @@ export function MappingPanel({
   dynamicOptionSuffix: dynamicOptionSuffixProp,
 }: MappingPanelProps): ReactElement {
   const copy = useMessages('mappings').mappingPanel;
+  const plural = usePlural();
   const dynamicOptionSuffix = dynamicOptionSuffixProp ?? copy.defaultDynamicSuffix;
   const [localRows, setLocalRows] = useState<MappingRow[]>(savedRows);
   const [pendingSource, setPendingSource] = useState('');
@@ -189,6 +190,9 @@ export function MappingPanel({
   const [addError, setAddError] = useState<string | null>(null);
   const [focusApplied, setFocusApplied] = useState(false);
   const sourceSelectRef = useRef<HTMLButtonElement>(null);
+  const [savedCount, setSavedCount] = useState<number | null>(null);
+  const wasSaving = useRef(false);
+  const sentCount = useRef(0);
 
   // Track dirty state by comparing local rows to saved rows
   const isDirty =
@@ -213,6 +217,20 @@ export function MappingPanel({
   useEffect(() => {
     setLocalRows(savedRows);
   }, [savedSignature]);
+
+  // Clear confirmation after a successful save: the panel was saving, the save
+  // did not fail, so what is on screen now is what the server holds.
+  useEffect(() => {
+    if (isSaving) {
+      wasSaving.current = true;
+      setSavedCount(null);
+      return;
+    }
+    if (wasSaving.current) {
+      wasSaving.current = false;
+      if (!saveError) setSavedCount(sentCount.current);
+    }
+  }, [isSaving, saveError]);
 
   // Surface the dirty signal up for the page-level discard guard (#1784 I3).
   useEffect(() => {
@@ -245,17 +263,25 @@ export function MappingPanel({
       return;
     }
     setAddError(null);
+    setSavedCount(null);
     setLocalRows((prev) => [...prev, { sourceValue: pendingSource, targetValue: pendingTarget }]);
     setPendingSource('');
     setPendingTarget('');
   }
 
+  function handleDiscard(): void {
+    setLocalRows(savedRows);
+    setAddError(null);
+  }
+
   function handleDeleteRow(sourceValue: string): void {
+    setSavedCount(null);
     setLocalRows((prev) => prev.filter((r) => r.sourceValue !== sourceValue));
   }
 
   function handleSave(): void {
     captureDemoEvent('demo_mapping_save_attempted', { mappingKind });
+    sentCount.current = localRows.length;
     onSave(localRows);
   }
 
@@ -333,6 +359,19 @@ export function MappingPanel({
   );
   const focusLabel = focusSourceName ?? focusSourceValue ?? '';
 
+  // Rows that exist only on screen (added or retargeted, not yet saved) and
+  // saved rows the operator removed: together the pending change count.
+  const savedKeys = new Set(savedRows.map((r) => `${r.sourceValue}\u0000${r.targetValue}`));
+  const stagedSources = new Set(
+    localRows
+      .filter((r) => !savedKeys.has(`${r.sourceValue}\u0000${r.targetValue}`))
+      .map((r) => r.sourceValue),
+  );
+  const localSources = new Set(localRows.map((r) => r.sourceValue));
+  const removedCount = savedRows.filter((r) => !localSources.has(r.sourceValue)).length;
+  const changeCount = stagedSources.size + removedCount;
+  const canAdd = Boolean(pendingSource && pendingTarget);
+
   return (
     <div className="panel panel--dense">
       <div className="panel__header">
@@ -370,12 +409,18 @@ export function MappingPanel({
               const sourceOption = sourceOptionByValue.get(row.sourceValue) ?? null;
               const targetOption = targetOptionByValue.get(row.targetValue) ?? null;
               return (
-                <tr key={row.sourceValue}>
+                <tr
+                  key={row.sourceValue}
+                  className={stagedSources.has(row.sourceValue) ? 'mapping-row--staged' : undefined}
+                >
                   <td data-label={sourceLabel}>
                     {sourceOption ? (
                       renderOptionLabel(sourceOption, dynamicOptionSuffix)
                     ) : (
                       <span className="mono-text">{row.sourceValue}</span>
+                    )}
+                    {stagedSources.has(row.sourceValue) && (
+                      <span className="mapping-row__chip">{copy.notSavedChip}</span>
                     )}
                   </td>
                   <td data-label={targetLabel}>
@@ -443,12 +488,22 @@ export function MappingPanel({
 
         <Button
           tone="secondary"
-          disabled={!pendingSource || !pendingTarget}
+          disabled={!canAdd}
+          aria-describedby={canAdd || noSourcesLeft ? undefined : 'mapping-panel-add-hint'}
           onClick={handleAddRow}
         >
           {copy.add}
         </Button>
       </div>
+
+      {!canAdd && !noSourcesLeft && (
+        <p id="mapping-panel-add-hint" className="muted-text mapping-panel__add-hint">
+          {interpolate(copy.addDisabledHint, {
+            source: sourceLabel,
+            target: targetLabel,
+          })}
+        </p>
+      )}
 
       {addError && (
         <p className="error-message" role="alert" style={{ marginTop: '0.25rem' }}>
@@ -462,19 +517,41 @@ export function MappingPanel({
         </p>
       )}
 
-      <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        <Button
-          tone="primary"
-          disabled={!isDirty || isSaving}
-          onClick={handleSave}
-        >
-          {isSaving ? copy.saving : copy.save}
-        </Button>
-        {saveError && (
-          <Button tone="secondary" disabled={isSaving} onClick={handleSave}>
-            {copy.tryAgain}
-          </Button>
+      {savedCount !== null && !isDirty && !saveError && (
+        <p className="mapping-panel__saved" role="status" aria-live="polite">
+          {savedCount === 0 ? copy.savedNone : plural(savedCount, copy.savedCount)}
+        </p>
+      )}
+
+      <div
+        className={`mapping-panel__bar${isDirty ? ' mapping-panel__bar--dirty' : ''}`}
+        data-testid="mapping-unsaved-bar"
+      >
+        {isDirty && (
+          <div className="mapping-panel__bar-text">
+            <strong>{plural(changeCount, copy.unsavedCount)}</strong>
+            <span className="muted-text">{copy.unsavedBarHint}</span>
+          </div>
         )}
+        <div className="mapping-panel__bar-actions">
+          {isDirty && (
+            <Button tone="secondary" disabled={isSaving} onClick={handleDiscard}>
+              {copy.discard}
+            </Button>
+          )}
+          {saveError && (
+            <Button tone="secondary" disabled={isSaving} onClick={handleSave}>
+              {copy.tryAgain}
+            </Button>
+          )}
+          <Button
+            tone={isDirty ? 'primary' : 'secondary'}
+            disabled={!isDirty || isSaving}
+            onClick={handleSave}
+          >
+            {isSaving ? copy.saving : copy.save}
+          </Button>
+        </div>
       </div>
     </div>
   );

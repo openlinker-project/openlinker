@@ -5,6 +5,7 @@ import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
+import { SortField } from '../../shared/ui/sort-field';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
@@ -24,7 +25,13 @@ import {
 } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms, type Platform } from '../../shared/plugins';
-import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../shared/i18n';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+} from '../../shared/i18n';
 import type {
   SyncJob,
   SyncJobFilters,
@@ -40,6 +47,19 @@ import {
 } from '../../features/sync-jobs/api/sync-jobs.types';
 import type { StreamDeadLetter } from '../../features/sync-jobs/api/stream-dead-letters.types';
 import { jobTypeLabel } from '../../features/sync-jobs/lib/job-type-label';
+import {
+  createSyncJobsListRegistry,
+  sortSyncJobs,
+  type SyncJobsListConfigInput,
+} from '../../features/sync-jobs/lib/sync-jobs.list-config';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+} from '../../features/saved-views';
 
 // Capped by the backend validator on GET /sync/jobs (@Max(100)).
 const PAGE_SIZE = SYNC_JOBS_MAX_LIMIT;
@@ -177,96 +197,46 @@ function JobConnectionChip({
   );
 }
 
-function buildColumns(
+function buildSyncJobCells(
   renderConnection: (connectionId: string) => ReactElement,
-  copy: SyncJobsCopy
-): DataTableColumn<SyncJob>[] {
-  return [
-    {
-      id: 'status',
-      header: copy.columns.status,
-      cell: (job) => (
-        <SyncJobStatusBadge
-          status={job.status}
-          outcome={job.outcome}
-          outcomeReason={job.outcomeReason}
-        />
-      ),
-      accessor: (job) => job.status,
-      sortable: true,
+  copy: SyncJobsCopy,
+): SyncJobsListConfigInput['cells'] {
+  return {
+    status: (job) => (
+      <SyncJobStatusBadge
+        status={job.status}
+        outcome={job.outcome}
+        outcomeReason={job.outcomeReason}
+      />
+    ),
+    jobType: (job) => <JobTypeCell jobType={job.jobType} />,
+    connection: (job) => renderConnection(job.connectionId),
+    attempts: (job): ReactElement => {
+      const deferred = formatDurationMs(job.deferredTotalMs);
+      return (
+        <>
+          {job.attempts} / {job.maxAttempts}
+          {deferred !== null ? (
+            // A deferred job consumes no attempt, so its counter stands still
+            // while it waits. Without this an operator reads a row parked on a
+            // throttling shop as simply stuck (#2613).
+            <span
+              className="text-muted"
+              title={interpolate(copy.columns.deferredTitle, { duration: deferred })}
+            >
+              {' '}
+              · {copy.columns.deferred}
+            </span>
+          ) : null}
+        </>
+      );
     },
-    {
-      id: 'jobType',
-      header: copy.columns.jobType,
-      cell: (job) => <JobTypeCell jobType={job.jobType} />,
-      accessor: (job) => job.jobType,
-      sortable: true,
-    },
-    {
-      id: 'connectionId',
-      header: copy.columns.connection,
-      cell: (job) => renderConnection(job.connectionId),
-      hideBelow: 1024,
-    },
-    {
-      id: 'attempts',
-      header: copy.columns.attempts,
-      align: 'right',
-      cell: (job) => {
-        const deferred = formatDurationMs(job.deferredTotalMs);
-        return (
-          <>
-            {job.attempts} / {job.maxAttempts}
-            {deferred !== null ? (
-              // A deferred job consumes no attempt, so its counter stands still
-              // while it waits. Without this an operator reads a row parked on a
-              // throttling shop as simply stuck (#2613).
-              <span
-                className="text-muted"
-                title={interpolate(copy.columns.deferredTitle, { duration: deferred })}
-              >
-                {' '}
-                · {copy.columns.deferred}
-              </span>
-            ) : null}
-          </>
-        );
-      },
-      accessor: (job) => job.attempts,
-      sortable: true,
-      hideBelow: 768,
-    },
-    {
-      id: 'lastAttemptDurationMs',
-      header: copy.columns.duration,
-      align: 'right',
-      // Unmeasured rows sort as -1, so they group together and land first on an
-      // ascending sort - ahead of a genuine 0 ms row. Stated rather than dressed
-      // up: the cell renders the shared empty-value mark, so the group is
-      // identifiable, and this page sorts only the visible page anyway.
-      cell: (job) => {
-        const formatted = formatDurationMs(job.lastAttemptDurationMs);
-        return formatted ?? <EmptyValue />;
-      },
-      accessor: (job) => job.lastAttemptDurationMs ?? -1,
-      sortable: true,
-      // The first column to go on a mid-width window: the detail page has it.
-      hideBelow: 1280,
-    },
-    {
-      id: 'lastError',
-      header: copy.columns.lastError,
-      cell: (job) => (job.lastError ? <LastErrorCell error={job.lastError} /> : <EmptyValue />),
-      hideBelow: 1024,
-    },
-    {
-      id: 'createdAt',
-      header: copy.columns.created,
-      cell: (job) => <TimeDisplay iso={job.createdAt} />,
-      accessor: (job) => job.createdAt,
-      sortable: true,
-    },
-  ];
+    // Unmeasured rows render the shared empty-value mark, so the group the
+    // duration sort puts together stays identifiable.
+    duration: (job) => formatDurationMs(job.lastAttemptDurationMs) ?? <EmptyValue />,
+    lastError: (job) => (job.lastError ? <LastErrorCell error={job.lastError} /> : <EmptyValue />),
+    created: (job) => <TimeDisplay iso={job.createdAt} />,
+  };
 }
 
 // Poison stream entries are rare (they only exist after MAX_RECOVERY_ATTEMPTS
@@ -333,6 +303,7 @@ function buildDeadLetterColumns(
 function StreamDeadLettersSection(): ReactElement {
   const pageCopy = useMessages('sync-jobs').syncJobsPage;
   const copy = pageCopy.deadLetters;
+  const format = useFormat();
   const deadLetterColumns = useMemo(() => buildDeadLetterColumns(copy.columns), [copy.columns]);
   const [offset, setOffset] = useState(0);
   const { sort, setSort } = useTableSort([{ id: 'lastSeenAt', desc: true }]);
@@ -402,9 +373,9 @@ function StreamDeadLettersSection(): ReactElement {
           <div className="pagination">
             <span className="text-muted">
               {interpolate(pageCopy.pagination.range, {
-                from: offset + 1,
-                to: Math.min(offset + DEAD_LETTER_PAGE_SIZE, total),
-                total,
+                from: format.number(offset + 1),
+                to: format.number(Math.min(offset + DEAD_LETTER_PAGE_SIZE, total)),
+                total: format.number(total),
               })}
             </span>
             <div className="pagination__actions">
@@ -437,10 +408,10 @@ function StreamDeadLettersSection(): ReactElement {
 export function SyncJobsPage(): ReactElement {
   const copy = useMessages('sync-jobs').syncJobsPage;
   const pageCopy = copy;
+  const format = useFormat();
   const statusLabels: Record<string, string | undefined> =
     useMessages('sync-jobs').syncJobStatusBadge.statuses;
   const [searchParams, setSearchParams] = useSearchParams();
-  const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
   const status = (searchParams.get('status') as JobStatus | null) ?? undefined;
   const jobType = (searchParams.get('jobType') as JobType | null) ?? undefined;
@@ -471,7 +442,48 @@ export function SyncJobsPage(): ReactElement {
     ),
     [connectionById, connectionsLoading, platforms]
   );
-  const columns = useMemo(() => buildColumns(renderConnection, copy), [renderConnection, copy]);
+  const registry = useMemo(
+    () =>
+      createSyncJobsListRegistry({
+        labels: {
+          status: copy.columns.status,
+          statusFields: copy.savedViews.statusFields,
+          jobType: copy.columns.jobType,
+          jobTypeFields: copy.savedViews.jobTypeFields,
+          connection: copy.columns.connection,
+          attempts: copy.columns.attempts,
+          duration: copy.columns.duration,
+          lastError: copy.columns.lastError,
+          created: copy.columns.created,
+        },
+        viewNames: copy.savedViews.views,
+        sortLabels: copy.savedViews.sorts,
+        lockedHeader: (context) => {
+          const active = context.sort.key === 'status';
+          return (
+            <SortField
+              label={copy.columns.status}
+              active={active}
+              dir={context.sort.dir}
+              ariaLabel={context.sortLabel(copy.columns.status, active, context.sort.dir)}
+              onClick={() => {
+                context.onSort('status');
+              }}
+            />
+          );
+        },
+        cells: buildSyncJobCells(renderConnection, copy),
+      }),
+    [copy, renderConnection],
+  );
+  const view = useListView<SyncJob>({ registry, pageTitle: copy.title });
+  const { toColumns } = view;
+  const columns = useMemo<DataTableColumn<SyncJob>[]>(() => toColumns(), [toColumns]);
+  // The API has no sort, so the rows already fetched are put in the view's order.
+  const items = useMemo(
+    () => sortSyncJobs(query.data?.items ?? [], view.sort),
+    [query.data?.items, view.sort],
+  );
 
   function setFilter(key: string, value: string): void {
     setSearchParams((prev) => {
@@ -517,6 +529,8 @@ export function SyncJobsPage(): ReactElement {
 
   return (
     <PageLayout eyebrow={copy.eyebrow} title={copy.title} description={copy.description}>
+      <ViewsBar {...view.viewsBar} />
+
       {/* Filter bar - labelled, grouped on the left, wrapping (#4016). */}
       <div className="sync-jobs-filters" role="group" aria-label={copy.filters.group}>
         <div className="sync-jobs-filters__field">
@@ -595,6 +609,8 @@ export function SyncJobsPage(): ReactElement {
           </Select>
         </div>
 
+        <ColumnsPanel {...view.columnsPanel} />
+
         {filtersActive ? (
           <Button tone="ghost" className="sync-jobs-filters__clear" onClick={clearFilters}>
             {copy.empty.clearFilters}
@@ -602,8 +618,15 @@ export function SyncJobsPage(): ReactElement {
         ) : null}
       </div>
 
+      {view.editedBar ? (
+        <div className="sv-applied">
+          <EditedBar {...view.editedBar} />
+        </div>
+      ) : null}
+      {view.repairBanner ? <RepairBanner {...view.repairBanner} /> : null}
+
       {/* Table */}
-      {query.isLoading ? (
+      {query.isLoading || !view.isReady ? (
         <DataTableSkeleton columns={columns} label={copy.loading} />
       ) : query.error ? (
         <ErrorState
@@ -638,11 +661,9 @@ export function SyncJobsPage(): ReactElement {
             caption={copy.caption}
             className="sync-jobs-table"
             columns={columns}
-            rows={query.data?.items ?? []}
+            rows={items}
             rowKey={(job) => job.id}
             rowHref={(job) => job.id}
-            sort={sort}
-            onSortChange={setSort}
             cardView={{
               title: (job) => jobTypeLabel(job.jobType),
               subtitle: (job) => renderConnection(job.connectionId),
@@ -660,9 +681,9 @@ export function SyncJobsPage(): ReactElement {
           <div className="pagination">
             <span className="text-muted">
               {interpolate(copy.pagination.range, {
-                from: offset + 1,
-                to: Math.min(offset + PAGE_SIZE, total),
-                total,
+                from: format.number(offset + 1),
+                to: format.number(Math.min(offset + PAGE_SIZE, total)),
+                total: format.number(total),
               })}
             </span>
             <div className="pagination__actions">
@@ -690,6 +711,8 @@ export function SyncJobsPage(): ReactElement {
       )}
 
       <StreamDeadLettersSection />
+
+      <ViewDialogs {...view.dialogs} />
     </PageLayout>
   );
 }

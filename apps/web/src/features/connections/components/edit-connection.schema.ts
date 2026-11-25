@@ -8,6 +8,7 @@ import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 import { writeTriggerModelForKind } from '../lib/resolve-trigger-model-for-kind';
+import { CatalogueModeValues, type CatalogueMode } from '../lib/catalogue-mode';
 import { schemaMessage } from '../lib/schema-message';
 import {
   NOTIFY_ON_LABEL_PURCHASE_CONFIG_KEY,
@@ -34,7 +35,10 @@ const allegroSellerLocationSchema = z.object({
   province: z.union([z.enum(POLISH_VOIVODESHIP_VALUES), z.literal('')]).optional(),
   city: z.string().trim().max(200).optional(),
   postCode: z
-    .union([z.string().regex(/^\d{2}-\d{3}$/, msg('postcodeFormat')), z.literal('')])
+    .union([
+      z.string().regex(/^\d{2}-\d{3}$/, msg('postcodeFormat')),
+      z.literal(''),
+    ])
     .optional(),
 });
 
@@ -91,7 +95,10 @@ const inpostAddressSchema = z.object({
   buildingNumber: z.string().trim().max(50).optional(),
   city: z.string().trim().max(200).optional(),
   postCode: z
-    .union([z.string().regex(/^\d{2}-\d{3}$/, msg('postcodeFormat')), z.literal('')])
+    .union([
+      z.string().regex(/^\d{2}-\d{3}$/, msg('postcodeFormat')),
+      z.literal(''),
+    ])
     .optional(),
   // Coerce to uppercase before the ISO2 check so a lowercase `pl` is accepted
   // and normalized — parity with the setup wizard's countryCode transform
@@ -206,7 +213,9 @@ const stockLocationOverrideFormSchema = z
 
 const pricingRuleFormSchema = z
   .object({
-    type: z.union([z.enum(['passthrough', 'markup', 'margin']), z.literal('')]).optional(),
+    type: z
+      .union([z.enum(['passthrough', 'markup', 'margin']), z.literal('')])
+      .optional(),
     percent: z
       .union([
         // Any decimal precision the backend accepts. A tighter rule rejected a
@@ -216,7 +225,9 @@ const pricingRuleFormSchema = z
         z.literal(''),
       ])
       .optional(),
-    rounding: z.union([z.enum(['none', 'nearestWhole', 'endingIn99']), z.literal('')]).optional(),
+    rounding: z
+      .union([z.enum(['none', 'nearestWhole', 'endingIn99']), z.literal('')])
+      .optional(),
   })
   .superRefine((value, ctx) => {
     if (value.type !== 'markup' && value.type !== 'margin') {
@@ -239,188 +250,192 @@ const pricingRuleFormSchema = z
     }
   });
 
-export const editConnectionSchema = z.object({
-  name: z.string().trim().min(1, msg('nameRequired')),
-  baseUrl: z.string().trim().optional(),
-  // WooCommerce-only structured field surfacing `config.siteUrl` — the key
-  // the WooCommerce backend config DTO validates (#975). Mirrors the setup
-  // wizard's https-only rule (Basic Auth credentials must not travel in
-  // cleartext); empty string stays allowed (delete-on-empty merge semantics).
-  siteUrl: z
-    .union([
-      z
-        .url(msg('siteUrlInvalid'))
-        .refine((value) => value.startsWith('https://'), msg('siteUrlHttps')),
-      z.literal(''),
-    ])
-    .optional(),
-  shopId: z.string().trim().optional(),
-  // Optional override for the split-host case (webservice host ≠ public storefront).
-  // Accepts a validated URL or an empty string (to unset). See #271 / #283.
-  storefrontBaseUrl: z
-    .union([
-      z
-        .url(msg('storefrontUrlInvalid'))
-        .refine(
-          (value) => value.startsWith('http://') || value.startsWith('https://'),
-          msg('storefrontUrlProtocol')
-        ),
-      z.literal(''),
-    ])
-    .optional(),
-  // OL's URL from PrestaShop's perspective — used by the webhook auto-install
-  // flow (#168). FE pre-fills this with the API address the web app calls on
-  // first render when empty so most operators don't have to think about it; dev
-  // override is `http://host.docker.internal:3000`.
-  openlinkerCallbackBaseUrl: z
-    .union([
-      z
-        .url(msg('callbackUrlInvalid'))
-        .refine(
-          (value) => value.startsWith('http://') || value.startsWith('https://'),
-          msg('callbackUrlProtocol')
-        ),
-      z.literal(''),
-    ])
-    .optional(),
-  // Erli-only structured field surfacing `config.callbackBaseUrl` — the
-  // key `ErliWebhookProvisioningAdapter` reads (distinct from PrestaShop's
-  // `openlinkerCallbackBaseUrl`; the two integrations chose different wire
-  // key names before this field existed on the FE, so both are kept
-  // verbatim rather than unified). FE pre-fills from the web app's API address
-  // via `getCallbackUrlDefault`, same convenience as PrestaShop's field.
-  callbackBaseUrl: z
-    .union([
-      z
-        .url(msg('callbackUrlInvalid'))
-        .refine(
-          (value) => value.startsWith('http://') || value.startsWith('https://'),
-          msg('callbackUrlProtocol')
-        ),
-      z.literal(''),
-    ])
-    .optional(),
-  masterCatalogConnectionId: z
-    .union([z.string().uuid(msg('productCatalogInvalid')), z.literal('')])
-    .optional(),
-  // PrestaShop-only structured field surfacing `config.defaultCarrierId`
-  // (#517). Stored as a string on the form so the same `<Select>`
-  // primitive can serve both this field and the per-method mapping
-  // dropdown (which uses string `id_reference` values). `mergeStructuredIntoConfig`
-  // coerces to an integer at submit; non-integer/zero/negative input is
-  // refused with a Zod refine.
-  defaultCarrierId: z
-    .union([
-      z
-        .string()
-        .refine((v) => v === '' || /^[1-9]\d*$/.test(v.trim()), msg('defaultCarrierInvalid')),
-      z.literal(''),
-    ])
-    .optional(),
-  // WooCommerce-only structured field surfacing `config.inventory.unmanagedStockQuantity`
-  // (#969 §7.3). Quantity reported for products with stock management disabled but
-  // `stock_status=instock`. String on the form (same shape as defaultCarrierId);
-  // `mergeStructuredIntoConfig` coerces to an integer nested under `inventory` at
-  // submit. Empty clears the override so the adapter default (1000) applies.
-  unmanagedStockQuantity: z
-    .union([
-      z
-        .string()
-        .refine((v) => v === '' || /^[1-9]\d*$/.test(v.trim()), msg('unmanagedStockInvalid')),
-      z.literal(''),
-    ])
-    .optional(),
-  // PS-only structured field for the installed InPost PS module type (#767/#1155).
-  // Controls whether OL reads the paczkomat locker code from address2 on order
-  // ingestion. '' (empty string, select sentinel) = clear the key; 'official_inpost' = enabled.
-  inpostPsModuleType: z.union([z.literal('official_inpost'), z.literal('')]).optional(),
-  configText: z
-    .string()
-    .trim()
-    .min(2, msg('configRequired'))
-    .refine((value) => {
-      try {
-        JSON.parse(value);
-        return true;
-      } catch {
-        return false;
-      }
-    }, msg('configInvalid')),
-  adapterKey: z.string().trim().optional(),
-  // #430 — Allegro-only structured fields. Always optional at the form
-  // level; the BE DTO validates strict shape on PATCH.
-  sellerDefaults: allegroSellerDefaultsSchema.optional(),
-  // #759 — Subiekt-only structured fields.
-  // Bridge URL → flat `config.subiektBridgeUrl`. URL-or-empty (empty unsets,
-  // delete-on-empty merge). Mirrors `storefrontBaseUrl` (http/https allowed).
-  subiektBridgeUrl: z
-    .union([
-      z
-        .url(msg('bridgeUrlInvalid'))
-        .refine(
-          (value) => value.startsWith('http://') || value.startsWith('https://'),
-          msg('bridgeUrlProtocol')
-        ),
-      z.literal(''),
-    ])
-    .optional(),
-  // Invoice trigger model → NESTED `config.invoicing.triggerModel` (NOT flat).
-  // Empty allowed for unset. The 4 values mirror the live BE reader
-  // `getInvoiceTriggerModel` (see `types/invoice-trigger-model.types.ts`).
-  subiektTriggerModel: z.union([z.enum(INVOICE_TRIGGER_MODEL_VALUES), z.literal('')]).optional(),
-  // Capability toggles → whole-object `config.capabilities.<key> = boolean`.
-  subiektCapabilities: z.record(z.string(), z.boolean()).optional(),
-  // Infakt-only structured field surfacing `config.defaultPaymentMethod`
-  // (#1303). Empty allowed for unset — the adapter falls back to `'cash'`.
-  infaktPaymentMethod: z.union([z.enum(['cash', 'transfer']), z.literal('')]).optional(),
-  // Infakt-only environment selector surfacing `config.environment` (#2174).
-  // Field name is `infakt*`-prefixed to avoid an RHF/Zod SCHEMA-KEY collision
-  // with InPost's `inpostEnvironment` below - both intentionally persist to
-  // the SAME flat `config.environment` key, which is safe because a
-  // `Connection` has exactly one `platformType`, so the InPost and Infakt
-  // structured sections never render (or submit) for the same row. The
-  // prefix namespaces the two form fields, not the persisted config key.
-  // Empty allowed for unset.
-  // Like `infaktPaymentMethod` and `infaktBankAccount` above, this field is
-  // declared host-side rather than contributed through the plugin
-  // `connectionConfig` seam (#1330) - the third inFakt field still awaiting
-  // that migration.
-  infaktEnvironment: z.union([z.enum(['sandbox', 'production']), z.literal('')]).optional(),
-  // Infakt-only bank-account snapshot surfacing `config.bankAccount`
-  // (#1303 follow-up). Whole-object field (like `sellerDefaults`) — the
-  // structured section fetches the live list and writes the whole object
-  // in one shot, never a sub-field at a time.
-  infaktBankAccount: z
-    .object({ id: z.string(), accountNumber: z.string(), bankName: z.string() })
-    .nullable()
-    .optional(),
-  // InPost-only structured fields (#771). `inpostEnvironment` → flat
-  // `config.environment`, `inpostOrganizationId` → flat `config.organizationId`,
-  // `inpostSenderAddress` → whole-object `config.senderAddress`. Field names are
-  // `inpost*`-prefixed to avoid colliding with DPD's `environment` / other
-  // platforms' flat keys; the merge clauses map them to the real config keys.
-  // All optional at the FE level for incremental save; the BE DTO is the gate.
-  inpostEnvironment: z.union([z.enum(['sandbox', 'production']), z.literal('')]).optional(),
-  inpostOrganizationId: z.string().trim().optional(),
-  inpostSenderAddress: inpostSenderAddressSchema.optional(),
-  // Per-connection outbound rate limit (#1810) — platform-neutral, every connection.
-  rateLimit: rateLimitFormSchema.optional(),
-  // Per-connection stock publish policy + pricing rule (#2610) — platform-neutral.
-  stockPolicy: stockPolicyFormSchema.optional(),
-  pricingRule: pricingRuleFormSchema.optional(),
-  // Per-connection stock-location override (#3206/#3207) — platform-neutral.
-  stockLocationOverride: stockLocationOverrideFormSchema,
-  // Per-connection "this system packs and ships orders itself" flag (#2118) — platform-neutral.
-  fulfilmentOwnedByDestination: z.boolean().nullable().optional(),
-  // "When the buyer pays later" (#3963) — platform-neutral.
-  paymentWriteback: z
-    .object({ mode: z.enum(['mark-paid', 'leave']), paidStateId: z.string() })
-    .optional(),
-  // "Tell the shop when a label is bought" (#4097) — carrier connections.
-  notifyOnLabelPurchase: z.boolean().optional(),
-  // Per-connection buyer data rules (#4289) - `null` inherits the general rules.
-  buyerDataRetention: z.custom<BuyerDataOverride | null>().optional(),
-});
+export const editConnectionSchema = z
+  .object({
+    name: z.string().trim().min(1, msg('nameRequired')),
+    baseUrl: z.string().trim().optional(),
+    // WooCommerce-only structured field surfacing `config.siteUrl` — the key
+    // the WooCommerce backend config DTO validates (#975). Mirrors the setup
+    // wizard's https-only rule (Basic Auth credentials must not travel in
+    // cleartext); empty string stays allowed (delete-on-empty merge semantics).
+    siteUrl: z
+      .union([
+        z
+          .url(msg('siteUrlInvalid'))
+          .refine((value) => value.startsWith('https://'), msg('siteUrlHttps')),
+        z.literal(''),
+      ])
+      .optional(),
+    shopId: z.string().trim().optional(),
+    // Optional override for the split-host case (webservice host ≠ public storefront).
+    // Accepts a validated URL or an empty string (to unset). See #271 / #283.
+    storefrontBaseUrl: z
+      .union([
+        z
+          .url(msg('storefrontUrlInvalid'))
+          .refine(
+            (value) => value.startsWith('http://') || value.startsWith('https://'),
+            msg('storefrontUrlProtocol'),
+          ),
+        z.literal(''),
+      ])
+      .optional(),
+    // OL's URL from PrestaShop's perspective — used by the webhook auto-install
+    // flow (#168). FE pre-fills this with the API address the web app calls on
+    // first render when empty so most operators don't have to think about it; dev
+    // override is `http://host.docker.internal:3000`.
+    openlinkerCallbackBaseUrl: z
+      .union([
+        z
+          .url(msg('callbackUrlInvalid'))
+          .refine(
+            (value) => value.startsWith('http://') || value.startsWith('https://'),
+            msg('callbackUrlProtocol'),
+          ),
+        z.literal(''),
+      ])
+      .optional(),
+    // Erli-only structured field surfacing `config.callbackBaseUrl` — the
+    // key `ErliWebhookProvisioningAdapter` reads (distinct from PrestaShop's
+    // `openlinkerCallbackBaseUrl`; the two integrations chose different wire
+    // key names before this field existed on the FE, so both are kept
+    // verbatim rather than unified). FE pre-fills from the web app's API address
+    // via `getCallbackUrlDefault`, same convenience as PrestaShop's field.
+    callbackBaseUrl: z
+      .union([
+        z
+          .url(msg('callbackUrlInvalid'))
+          .refine(
+            (value) => value.startsWith('http://') || value.startsWith('https://'),
+            msg('callbackUrlProtocol'),
+          ),
+        z.literal(''),
+      ])
+      .optional(),
+    masterCatalogConnectionId: z
+      .union([z.string().uuid(msg('productCatalogInvalid')), z.literal('')])
+      .optional(),
+    // #4281: `config.catalogueMode` (#4280). Defaults to `linked`, which is what a
+    // missing key means, so the form never reports a spurious change.
+    catalogueMode: z.enum(CatalogueModeValues).optional(),
+    // PrestaShop-only structured field surfacing `config.defaultCarrierId`
+    // (#517). Stored as a string on the form so the same `<Select>`
+    // primitive can serve both this field and the per-method mapping
+    // dropdown (which uses string `id_reference` values). `mergeStructuredIntoConfig`
+    // coerces to an integer at submit; non-integer/zero/negative input is
+    // refused with a Zod refine.
+    defaultCarrierId: z
+      .union([
+        z
+          .string()
+          .refine((v) => v === '' || /^[1-9]\d*$/.test(v.trim()), msg('defaultCarrierInvalid')),
+        z.literal(''),
+      ])
+      .optional(),
+    // WooCommerce-only structured field surfacing `config.inventory.unmanagedStockQuantity`
+    // (#969 §7.3). Quantity reported for products with stock management disabled but
+    // `stock_status=instock`. String on the form (same shape as defaultCarrierId);
+    // `mergeStructuredIntoConfig` coerces to an integer nested under `inventory` at
+    // submit. Empty clears the override so the adapter default (1000) applies.
+    unmanagedStockQuantity: z
+      .union([
+        z
+          .string()
+          .refine((v) => v === '' || /^[1-9]\d*$/.test(v.trim()), msg('unmanagedStockInvalid')),
+        z.literal(''),
+      ])
+      .optional(),
+    // PS-only structured field for the installed InPost PS module type (#767/#1155).
+    // Controls whether OL reads the paczkomat locker code from address2 on order
+    // ingestion. '' (empty string, select sentinel) = clear the key; 'official_inpost' = enabled.
+    inpostPsModuleType: z.union([z.literal('official_inpost'), z.literal('')]).optional(),
+    configText: z
+      .string()
+      .trim()
+      .min(2, msg('configRequired'))
+      .refine((value) => {
+        try {
+          JSON.parse(value);
+          return true;
+        } catch {
+          return false;
+        }
+      }, msg('configInvalid')),
+    adapterKey: z.string().trim().optional(),
+    // #430 — Allegro-only structured fields. Always optional at the form
+    // level; the BE DTO validates strict shape on PATCH.
+    sellerDefaults: allegroSellerDefaultsSchema.optional(),
+    // #759 — Subiekt-only structured fields.
+    // Bridge URL → flat `config.subiektBridgeUrl`. URL-or-empty (empty unsets,
+    // delete-on-empty merge). Mirrors `storefrontBaseUrl` (http/https allowed).
+    subiektBridgeUrl: z
+      .union([
+        z
+          .url(msg('bridgeUrlInvalid'))
+          .refine(
+            (value) => value.startsWith('http://') || value.startsWith('https://'),
+            msg('bridgeUrlProtocol'),
+          ),
+        z.literal(''),
+      ])
+      .optional(),
+    // Invoice trigger model → NESTED `config.invoicing.triggerModel` (NOT flat).
+    // Empty allowed for unset. The 4 values mirror the live BE reader
+    // `getInvoiceTriggerModel` (see `types/invoice-trigger-model.types.ts`).
+    subiektTriggerModel: z.union([z.enum(INVOICE_TRIGGER_MODEL_VALUES), z.literal('')]).optional(),
+    // Capability toggles → whole-object `config.capabilities.<key> = boolean`.
+    subiektCapabilities: z.record(z.string(), z.boolean()).optional(),
+    // Infakt-only structured field surfacing `config.defaultPaymentMethod`
+    // (#1303). Empty allowed for unset — the adapter falls back to `'cash'`.
+    infaktPaymentMethod: z.union([z.enum(['cash', 'transfer']), z.literal('')]).optional(),
+    // Infakt-only environment selector surfacing `config.environment` (#2174).
+    // Field name is `infakt*`-prefixed to avoid an RHF/Zod SCHEMA-KEY collision
+    // with InPost's `inpostEnvironment` below - both intentionally persist to
+    // the SAME flat `config.environment` key, which is safe because a
+    // `Connection` has exactly one `platformType`, so the InPost and Infakt
+    // structured sections never render (or submit) for the same row. The
+    // prefix namespaces the two form fields, not the persisted config key.
+    // Empty allowed for unset.
+    // Like `infaktPaymentMethod` and `infaktBankAccount` above, this field is
+    // declared host-side rather than contributed through the plugin
+    // `connectionConfig` seam (#1330) - the third inFakt field still awaiting
+    // that migration.
+    infaktEnvironment: z.union([z.enum(['sandbox', 'production']), z.literal('')]).optional(),
+    // Infakt-only bank-account snapshot surfacing `config.bankAccount`
+    // (#1303 follow-up). Whole-object field (like `sellerDefaults`) — the
+    // structured section fetches the live list and writes the whole object
+    // in one shot, never a sub-field at a time.
+    infaktBankAccount: z
+      .object({ id: z.string(), accountNumber: z.string(), bankName: z.string() })
+      .nullable()
+      .optional(),
+    // InPost-only structured fields (#771). `inpostEnvironment` → flat
+    // `config.environment`, `inpostOrganizationId` → flat `config.organizationId`,
+    // `inpostSenderAddress` → whole-object `config.senderAddress`. Field names are
+    // `inpost*`-prefixed to avoid colliding with DPD's `environment` / other
+    // platforms' flat keys; the merge clauses map them to the real config keys.
+    // All optional at the FE level for incremental save; the BE DTO is the gate.
+    inpostEnvironment: z.union([z.enum(['sandbox', 'production']), z.literal('')]).optional(),
+    inpostOrganizationId: z.string().trim().optional(),
+    inpostSenderAddress: inpostSenderAddressSchema.optional(),
+    // Per-connection outbound rate limit (#1810) — platform-neutral, every connection.
+    rateLimit: rateLimitFormSchema.optional(),
+    // Per-connection stock publish policy + pricing rule (#2610) — platform-neutral.
+    stockPolicy: stockPolicyFormSchema.optional(),
+    pricingRule: pricingRuleFormSchema.optional(),
+    // Per-connection stock-location override (#3206/#3207) — platform-neutral.
+    stockLocationOverride: stockLocationOverrideFormSchema,
+    // Per-connection "this system packs and ships orders itself" flag (#2118) — platform-neutral.
+    fulfilmentOwnedByDestination: z.boolean().nullable().optional(),
+    // "When the buyer pays later" (#3963) — platform-neutral.
+    paymentWriteback: z
+      .object({ mode: z.enum(['mark-paid', 'leave']), paidStateId: z.string() })
+      .optional(),
+    // "Tell the shop when a label is bought" (#4097) — carrier connections.
+    notifyOnLabelPurchase: z.boolean().optional(),
+    // Per-connection buyer data rules (#4289) - `null` inherits the general rules.
+    buyerDataRetention: z.custom<BuyerDataOverride | null>().optional(),
+  });
 
 /**
  * Form value types are widened with `PluginEditConnectionFields` (#1330) — the
@@ -444,7 +459,7 @@ export type EditConnectionFormSubmission = z.output<typeof editConnectionSchema>
  * render time — never from a `features → plugins` import.
  */
 export function buildEditConnectionSchema(
-  contribution?: ConnectionConfigContribution
+  contribution?: ConnectionConfigContribution,
 ): z.ZodType<EditConnectionFormSubmission, EditConnectionFormValues> {
   // `schemaShape` is keyed by `keyof PluginEditConnectionFields` (a mapped
   // type whose values may read as `| undefined`), so it needs a structural
@@ -454,17 +469,13 @@ export function buildEditConnectionSchema(
     ? editConnectionSchema.extend(contribution.schemaShape as z.ZodRawShape)
     : editConnectionSchema;
   const refine = contribution?.superRefine;
-  const composed = refine
-    ? objectSchema.superRefine((values, ctx) => refine(values, ctx))
-    : objectSchema;
+  const composed = refine ? objectSchema.superRefine((values, ctx) => refine(values, ctx)) : objectSchema;
   // The extended shape is opaque to the static base types; the contribution's
   // declaration-merged fields make the runtime and static views agree.
   return composed as unknown as z.ZodType<EditConnectionFormSubmission, EditConnectionFormValues>;
 }
 
-export function toUpdateConnectionInput(
-  values: EditConnectionFormSubmission
-): UpdateConnectionInput {
+export function toUpdateConnectionInput(values: EditConnectionFormSubmission): UpdateConnectionInput {
   return {
     name: values.name,
     adapterKey: values.adapterKey ? values.adapterKey : undefined,
@@ -489,6 +500,8 @@ export type StructuredConfigPatch = {
   /** Erli webhook callback URL — `config.callbackBaseUrl` (#1454 follow-up). */
   callbackBaseUrl?: string;
   masterCatalogConnectionId?: string;
+  /** `config.catalogueMode` (#4281). `linked` is written as an explicit `null`. */
+  catalogueMode?: CatalogueMode;
   /**
    * PrestaShop fallback carrier id (#517). Empty string clears the key;
    * a non-empty value is coerced to a positive integer. Values that fail
@@ -673,7 +686,7 @@ export type EditConnectionStructuredPatch = StructuredConfigPatch &
 export function mergeStructuredIntoConfig(
   base: Record<string, unknown>,
   structured: EditConnectionStructuredPatch,
-  contribution?: ConnectionConfigContribution
+  contribution?: ConnectionConfigContribution,
 ): Record<string, unknown> {
   const next: Record<string, unknown> = { ...base };
   if (structured.baseUrl !== undefined) {
@@ -744,6 +757,13 @@ export function mergeStructuredIntoConfig(
   if (structured.masterCatalogConnectionId !== undefined) {
     next.masterCatalogConnectionId = structured.masterCatalogConnectionId;
   }
+  // #4281: the default is written as an explicit `null`, never by deleting the
+  // key (#2016). The submit merge is a shallow spread over the freshly fetched
+  // config, so a deleted key would let a stale `'none'` survive; every reader
+  // (core `readCatalogueMode`, the service validator) treats `null` as absent.
+  if (structured.catalogueMode !== undefined) {
+    next.catalogueMode = structured.catalogueMode === 'none' ? 'none' : null;
+  }
   if (structured.defaultCarrierId !== undefined) {
     if (structured.defaultCarrierId.length === 0) {
       delete next.defaultCarrierId;
@@ -811,7 +831,7 @@ export function mergeStructuredIntoConfig(
   // reader could otherwise misread as enabled).
   if (structured.subiektCapabilities !== undefined) {
     const enabled = Object.fromEntries(
-      Object.entries(structured.subiektCapabilities).filter(([, on]) => on === true)
+      Object.entries(structured.subiektCapabilities).filter(([, on]) => on === true),
     );
     if (Object.keys(enabled).length === 0) {
       delete next.capabilities;
@@ -989,9 +1009,7 @@ export function mergeStructuredIntoConfig(
   // server-side guard only re-validates the id when its trimmed value CHANGES).
   if (structured.stockLocationOverride !== undefined) {
     const trimmed =
-      typeof structured.stockLocationOverride === 'string'
-        ? structured.stockLocationOverride.trim()
-        : '';
+      typeof structured.stockLocationOverride === 'string' ? structured.stockLocationOverride.trim() : '';
     next.stockLocationOverride = trimmed.length === 0 ? null : trimmed;
   }
   // "This system packs and ships orders itself" (#2118). One flat boolean; only
@@ -1024,9 +1042,6 @@ export function mergeStructuredIntoConfig(
       [NOTIFY_ON_LABEL_PURCHASE_CONFIG_KEY]: structured.notifyOnLabelPurchase === true,
     };
   }
-  // Buyer data rules (#4289). `null` is "inherit"; an object is the connection's
-  // own rules. An explicit `null` rather than a delete, so the shallow-spread
-  // merge in `EditConnectionForm.onSubmit` cannot resurrect a stale override.
   if (structured.buyerDataRetention !== undefined) {
     next.buyerDataRetention = structured.buyerDataRetention;
   }
@@ -1037,7 +1052,7 @@ export function mergeStructuredIntoConfig(
 }
 
 function pruneEmptySellerDefaults(
-  values: AllegroSellerDefaultsFormValues
+  values: AllegroSellerDefaultsFormValues,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (values.location) {
@@ -1082,7 +1097,7 @@ function pruneEmptySellerDefaults(
  * `address` object is dropped entirely when none of its fields are set.
  */
 function pruneEmptyInpostSenderAddress(
-  values: InpostSenderAddressFormValues
+  values: InpostSenderAddressFormValues,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (values.company && values.company.length > 0) out.company = values.company;

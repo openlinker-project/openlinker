@@ -277,7 +277,6 @@
   },
   "tile": {
     "description": "Zdecyduj, kiedy zamówienia znikają z listy i kiedy usuwamy dane osobowe kupujących. Zasady ogólne ustawiasz tutaj, każde połączenie może mieć własne.",
-    "eyebrow": "Ochrona danych",
     "link": "Zarządzaj",
     "title": "Dane kupujących"
   },

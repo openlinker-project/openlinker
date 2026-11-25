@@ -16,6 +16,7 @@
 export const JobTypeValues = [
   // Generic (Option B)
   'marketplace.orders.poll',
+  'marketplace.orders.import', // One page of a date-window order import, newest-first history or a manual range (#4228).
   'marketplace.order.sync',
   // Per-order reporting-currency stamp: bounded retry after a degraded inline
   // attempt, plus the hourly reconcile that survives a dead retry job (#2125).

@@ -20,6 +20,8 @@ import type {
   IncomingOrderTotals,
   OrderFeedEventType,
   PaymentStatus,
+  OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
 } from '@openlinker/core/orders';
 import {
   readSourceBuyerNote,
@@ -62,13 +64,80 @@ const COD_DEAD_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'failed', '
  */
 const COD_SETTLED_STATUSES: ReadonlySet<string> = new Set(['completed']);
 
-export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
+export class WooCommerceOrderSourceAdapter
+  implements OrderSourcePort, OrderFeedBootstrap, OrderFeedDateBootstrap
+{
   private readonly logger = new Logger(WooCommerceOrderSourceAdapter.name);
 
   constructor(
     private readonly httpClient: IWooCommerceHttpClient,
     private readonly connection: Connection,
   ) {}
+
+  /**
+   * Seconds the seeded cursor is moved behind the newest order's modification
+   * time (#4228). WC treats `modified_after` as exclusive and has second
+   * granularity, so an order written in the same second as the newest one would
+   * otherwise fall behind the seed. Ingestion is idempotent, so a re-read of
+   * the last moments is free.
+   */
+  private static readonly SEED_SAFETY_MARGIN_MS = 2000;
+
+  /**
+   * Where a fresh connection's feed should start (#4228).
+   *
+   * The newest order's modification time (minus a small margin), or null for a
+   * shop with no orders. `orders.initialSyncFrom` is deliberately NOT consulted:
+   * the operator choosing "from now" asked for the head, and returning that
+   * older instant would import the very history they declined. The setting still
+   * applies to the cursor-less "all orders" read in `listOrderFeed`. Errors
+   * propagate so core retries the poll.
+   */
+  async headCursor(): Promise<string | null> {
+    const orders = await this.httpClient.get<WooCommerceOrder[]>('/wp-json/wc/v3/orders', {
+      per_page: 1,
+      orderby: 'modified',
+      order: 'desc',
+    });
+    const newest = orders[0];
+    if (!newest) {
+      return null;
+    }
+
+    const modifiedAt = new Date(normGmt(newest.date_modified_gmt, newest.date_modified));
+    if (Number.isNaN(modifiedAt.getTime()) || modifiedAt.getTime() === 0) {
+      throw new Error(
+        `Cannot seed the order cursor: newest WooCommerce order ${String(newest.id)} has no readable modification time (connection: ${this.connection.id})`
+      );
+    }
+    return new Date(
+      modifiedAt.getTime() - WooCommerceOrderSourceAdapter.SEED_SAFETY_MARGIN_MS
+    ).toISOString();
+  }
+
+  /**
+   * Cursor at the start of `date` in GMT, so a connection the operator created
+   * "from {date}" imports only orders modified since then (#4228). A bare date
+   * means 00:00:00 GMT of that day; a full instant is used as given. The value
+   * is the same `modified_after` GMT instant `listOrderFeed` resumes from.
+   *
+   * The operator's explicit choice wins over `orders.initialSyncFrom`, which
+   * only applies to the cursor-less "all orders" read.
+   *
+   * @throws when `date` is not a readable ISO date.
+   */
+  cursorForDate(date: string): Promise<string> {
+    const value = date.trim();
+    const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00.000Z` : value);
+    if (Number.isNaN(parsed.getTime())) {
+      return Promise.reject(
+        new Error(
+          `Cannot start the order feed from "${date}": expected an ISO date (connection: ${this.connection.id})`
+        )
+      );
+    }
+    return Promise.resolve(parsed.toISOString());
+  }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     this.logger.debug('Listing WooCommerce order feed', {

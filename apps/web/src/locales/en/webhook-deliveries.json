@@ -46,7 +46,22 @@
       "range": "Showing {from}-{to} of {total}"
     },
     "retry": "Retry",
-    "title": "Webhook Deliveries"
+    "title": "Webhook Deliveries",
+    "views": {
+      "lockedDescription": "Delivery state",
+      "sorts": {
+        "providerAsc": "Provider",
+        "receivedAsc": "Received, oldest first",
+        "receivedDesc": "Received, newest first",
+        "statusAsc": "Status"
+      },
+      "systemViews": {
+        "all": "All deliveries",
+        "deadlettered": "Gave up",
+        "failed": "Failed",
+        "rejected": "Rejected"
+      }
+    }
   },
   "webhookDeliveryDetailPage": {
     "backTo": "Webhooks",

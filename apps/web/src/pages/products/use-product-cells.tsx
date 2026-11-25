@@ -181,19 +181,33 @@ export function useProductCells() {
                   data-testid={
                     product.bundle ? `bundle-list-available-${product.sku ?? product.id}` : undefined
                   }
+                  style={
+                    product.bundle && product.availableToPromise <= 0
+                      ? { color: 'var(--status-error-strong)' }
+                      : undefined
+                  }
                 >
-                  {product.availableToPromise}
-                </span>{' '}
-                <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                  {copy.stock.toSell}
+                  {product.bundle
+                    ? product.availableToPromise <= 0
+                      ? copy.stock.bundleNone
+                      : plural(product.availableToPromise, copy.stock.bundleSets)
+                    : product.availableToPromise}
                 </span>
+                {product.bundle ? null : (
+                  <>
+                    {' '}
+                    <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                      {copy.stock.toSell}
+                    </span>
+                  </>
+                )}
               </span>
             )}
             {atpStatus === 'unknown' ? (
               <StatusBadge tone="neutral" withDot compact>
                 {copy.stock.notKnown}
               </StatusBadge>
-            ) : (
+            ) : product.bundle && atpStatus !== 'out-of-stock' && atpStatus !== 'oversold' ? null : (
               <StatusBadge tone={STOCK_STATUS_BADGE_TONE[atpStatus]} withDot compact>
                 {STOCK_STATUS_LABEL[atpStatus]}
               </StatusBadge>
@@ -214,7 +228,23 @@ export function useProductCells() {
                   : interpolate(bundleCopy.list.unknownReasonGeneric, { name: product.name })}
               </span>
             ) : null}
-            {product.totalAvailable !== undefined ? (
+            {product.bundle && product.availableToPromise !== null ? (
+              <span className="sr-only">
+                {interpolate(bundleCopy.list.stockAria, {
+                  n: product.availableToPromise,
+                  limit: product.bundle.limitedBy?.name ?? product.bundle.limitedBy?.sku ?? '-',
+                })}
+              </span>
+            ) : null}
+            {product.bundle ? (
+              <span
+                className="text-muted products-cell-sub"
+                title={bundleCopy.list.fromComponentsTitle}
+                data-testid={`bundle-list-from-components-${product.sku ?? product.id}`}
+              >
+                {bundleCopy.list.fromComponents}
+              </span>
+            ) : product.totalAvailable !== undefined ? (
               <span className="text-muted products-cell-sub tabular">
                 {interpolate(copy.stock.master, { n: format.number(product.totalAvailable) })}
               </span>
@@ -240,7 +270,7 @@ export function useProductCells() {
         </span>
       );
     },
-    [bundleCopy, copy, format]
+    [bundleCopy, copy, format, plural]
   );
 
   /** The product's stock state as one badge (the peek header). */

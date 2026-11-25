@@ -102,6 +102,16 @@ export interface ConnectionConfig {
    */
   stockSafetyBuffer?: number;
   /**
+   * Whether this ORDER SOURCE expects its order lines to resolve to catalogue
+   * products (#4280). `'linked'` (the default; a missing or `null` value reads as
+   * this) parks an unmapped line in `awaiting_mapping`. `'none'` accepts it as an
+   * unmatched line so a marketplace-only install can reach `ready` without any
+   * ProductMaster. Read via `readCatalogueMode` (`catalogue-mode.types.ts`);
+   * typed `string | null` here so the stored JSONB value can be an explicit `null`
+   * (the form clears a knob by writing `null`, never by deleting the key, #2016).
+   */
+  catalogueMode?: string | null;
+  /**
    * Per-connection pricing-resolution rule (#1843). Markup/margin formula +
    * rounding applied when a destination's price is derived from the master
    * catalog price (no explicit per-item price override). A missing value

@@ -3775,6 +3775,49 @@ describe('AllegroOfferManagerAdapter', () => {
         });
       });
 
+      it('should link a component to a card that lives outside the offer category, found by a catalogue-wide GTIN lookup', async () => {
+        httpClient.post.mockResolvedValue(
+          mockHttpResponse({ id: 'allegro-offer-set', publication: { status: 'INACTIVE' } })
+        );
+        httpClient.get
+          .mockResolvedValueOnce({ data: { products: [] }, status: 200, headers: {} })
+          .mockResolvedValueOnce({
+            data: {
+              products: [
+                {
+                  id: 'card-mouse-pad',
+                  parameters: [
+                    { id: '225693', name: 'EAN (GTIN)', values: ['5905386992244'], options: { isGTIN: true } },
+                  ],
+                },
+              ],
+            },
+            status: 200,
+            headers: {},
+          });
+        const cmd: CreateOfferCommand = {
+          ...setCmd,
+          productSet: [{ ...setCmd.productSet![0], barcode: '5905386992244' }],
+        };
+
+        await adapter.createOffer(cmd);
+
+        const firstQuery = (httpClient.get.mock.calls[0][1] as { queryParams: Record<string, unknown> })
+          .queryParams;
+        const secondQuery = (httpClient.get.mock.calls[1][1] as { queryParams: Record<string, unknown> })
+          .queryParams;
+        expect(firstQuery['category.id']).toBeDefined();
+        expect(secondQuery['category.id']).toBeUndefined();
+        const body = httpClient.post.mock.calls[0][1] as {
+          productSet: Array<{ product: { id?: string; name?: string }; quantity: { value: number } }>;
+        };
+        expect(body.productSet[0]).toMatchObject({
+          product: { id: 'card-mouse-pad' },
+          quantity: { value: 2 },
+        });
+        expect(body.productSet[0].product.name).toBeUndefined();
+      });
+
       describe('previewProductSet (read-only)', () => {
         it('should report the mode and card category per component without posting', async () => {
           httpClient.get.mockResolvedValueOnce({

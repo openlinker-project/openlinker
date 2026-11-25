@@ -36,10 +36,14 @@ import {
 } from './connection-errors';
 import { codedHttpError } from '../../../common/errors/coded-http.exception';
 import { hasMasterAndPublisher, masterPublisherConflictError } from './connection-capability-rules';
-import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
+import type {
+  ConnectionCreateInput,
+  ConnectionUpdateInput,
+  OrderImportRequest,
+  OrderSyncRestartResult,
+} from '../interfaces/connection.service.types';
 import type {
   Connection,
-  ConnectionUpdate,
   ConnectionFilters,
   ConnectionReferrer,
 } from '@openlinker/core/identifier-mapping';
@@ -49,6 +53,9 @@ import {
   ConnectionNotFoundException,
   FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
   isPresentButInvalidFulfilmentOwnedByDestination,
+  CATALOGUE_MODE_CONFIG_KEY,
+  CatalogueModeValues,
+  isPresentButInvalidCatalogueMode,
   describeInvalidPaymentWritebackConfig,
   PaymentWritebackModeValues,
   ConnectionInUseException,
@@ -90,8 +97,25 @@ import {
   resolveRequiresCredentials,
   resolveArchivable,
 } from '@openlinker/core/integrations';
-import type { SyncJobRequest } from '@openlinker/core/sync';
-import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import {
+  SYNC_LOCK_TOKEN,
+  type OrderSyncStart,
+  type SyncJobRequest,
+  type SyncLockPort,
+  buildOrdersImportRequest,
+  generateOrdersImportNonce,
+} from '@openlinker/core/sync';
+import {
+  JobEnqueuePort,
+  JOB_ENQUEUE_TOKEN,
+  ISyncCursorsService,
+  SYNC_CURSORS_SERVICE_TOKEN,
+  ORDER_SYNC_START_CURSOR_KEY,
+  OrderSyncStartModeValues,
+  describeInvalidOrderSyncStartDate,
+  resolveOrderSyncStartModes,
+  serializeOrderSyncStart,
+} from '@openlinker/core/sync';
 import { parseAuthorityConfig } from '@openlinker/core/fulfillment-authority';
 import { describeInvalidTriggerModels } from '@openlinker/core/invoicing';
 import { describeInvalidBatchSchedules } from '@openlinker/core/sales-documents';
@@ -131,6 +155,8 @@ export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE: KnownApiErrorCode =
 
 @Injectable()
 export class ConnectionService implements IConnectionService {
+  /** Long enough for a restart's three writes, short enough that a crash frees the poll quickly. */
+  private static readonly RESTART_LOCK_TTL_MS = 30_000;
   private readonly logger = new Logger(ConnectionService.name);
   private readonly legacyMasterPublisherWarned = new Set<string>();
 
@@ -162,8 +188,70 @@ export class ConnectionService implements IConnectionService {
     @Inject(LOCATION_SERVICE_TOKEN)
     private readonly locations: ILocationService,
     @Inject(CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN)
-    private readonly connectionArchiveHookRegistry: ConnectionArchiveHookRegistryService
+    private readonly connectionArchiveHookRegistry: ConnectionArchiveHookRegistryService,
+    // #4228: where the one-shot order-sync start choice is stored.
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly syncCursors: ISyncCursorsService,
+    // #4228: the order poll's own lock, taken by a restart so it cannot race a
+    // poll that is reading the cursor it is about to delete.
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly lock: SyncLockPort
   ) {}
+
+  /**
+   * Refuse an order-sync start choice the connection cannot honour (#4228).
+   * Always a 400: a choice silently dropped would import the wrong history for
+   * a shop that may already hold thousands of orders. The supported modes come
+   * from the adapter's STATIC declaration, because an OAuth connection has no
+   * credentials, and so no adapter instance, until the callback.
+   */
+  private assertOrderSyncStart(
+    start: OrderSyncStart,
+    declaredModes: AdapterMetadata['orderSyncStartModes'],
+    enabledCapabilities: readonly string[],
+    windowImport: boolean
+  ): void {
+    const field = 'orderSyncStart';
+    if (!OrderSyncStartModeValues.includes(start.mode)) {
+      throw connectionConfigInvalid(
+        `${field}.mode`,
+        'one-of',
+        `${field}.mode must be one of ${OrderSyncStartModeValues.join(', ')}`,
+        { allowed: allowedValues(OrderSyncStartModeValues) }
+      );
+    }
+    if (!enabledCapabilities.includes('OrderSource')) {
+      throw connectionConfigInvalid(
+        field,
+        'required-with',
+        `${field} needs the OrderSource capability: this connection does not import orders`,
+        { with: 'OrderSource' }
+      );
+    }
+    const modes = resolveOrderSyncStartModes(declaredModes);
+    if (!modes.includes(start.mode)) {
+      throw connectionConfigInvalid(
+        `${field}.mode`,
+        'one-of',
+        `${field}.mode "${start.mode}" is not supported by this adapter. Supported: ${modes.join(', ')}`,
+        { allowed: allowedValues(modes) }
+      );
+    }
+    if (start.mode !== 'now' && start.order === 'newest-first' && !windowImport) {
+      throw connectionConfigInvalid(
+        `${field}.order`,
+        'one-of',
+        `${field}.order "newest-first" is not supported by this adapter. Supported: oldest-first`,
+        { allowed: allowedValues(['oldest-first']) }
+      );
+    }
+    if (start.mode === 'from') {
+      const problem = describeInvalidOrderSyncStartDate(start.from, new Date());
+      if (problem !== null) {
+        throw connectionConfigInvalid(`${field}.from`, 'range', problem);
+      }
+    }
+  }
 
   /**
    * Refuse to switch fulfilment routing ON while no active inventory location
@@ -550,6 +638,26 @@ export class ConnectionService implements IConnectionService {
       field,
       field.endsWith('.paidStateId') ? 'string' : 'object',
       `config.${problem}`
+    );
+  }
+
+  /**
+   * Refuse an unrecognised `config.catalogueMode` (#4280).
+   *
+   * Neutral like `validateRateLimitConfig`: the key is read by core's order
+   * ingestion for every marketplace, so no per-plugin shape validator needs to
+   * know it. A mistyped value (`"None"`, `true`) reads back as the default
+   * `'linked'`, i.e. it would silently fail to turn the mode on, so it is refused
+   * rather than coerced. Absent and `null` (what the form writes for a cleared
+   * value, #2016) are accepted.
+   */
+  private validateCatalogueModeConfig(config: Record<string, unknown>): void {
+    if (!isPresentButInvalidCatalogueMode(config)) return;
+    throw connectionConfigInvalid(
+      `config.${CATALOGUE_MODE_CONFIG_KEY}`,
+      'one-of',
+      `config.${CATALOGUE_MODE_CONFIG_KEY} must be one of: ${CatalogueModeValues.join(', ')}`,
+      { allowed: allowedValues(CatalogueModeValues) }
     );
   }
 
@@ -1160,6 +1268,175 @@ export class ConnectionService implements IConnectionService {
     return provisioner.install(connectionId, actorUserId);
   }
 
+  /**
+   * Restart a connection's order sync from a new start (#4228): store the new
+   * intent, drop the order cursor and its seed marker, and let the next poll seed
+   * from it. Orders already imported stay; the restart only decides what the next
+   * poll reads. `from`/`all` can re-read orders already stored, which is
+   * idempotent, and `now` leaves a gap between the old cursor and now.
+   *
+   * Runs under the order poll's lock, and writes the intent BEFORE it deletes the
+   * cursors: if the write fails nothing was reset, and a poll can never see a
+   * cursor-less connection with no intent (which reads as a legacy connection
+   * and imports the whole history).
+   *
+   * @throws ORDER_SYNC_BUSY (409) while a poll holds the lock.
+   */
+  async restartOrderSync(
+    connectionId: string,
+    start: OrderSyncStart
+  ): Promise<OrderSyncRestartResult> {
+    const connection = await this.get(connectionId);
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    this.assertOrderSyncStart(
+      start,
+      metadata.orderSyncStartModes,
+      connection.enabledCapabilities,
+      metadata.orderWindowImport === true
+    );
+    const lockKey = `marketplace:orders:poll:${connectionId}`;
+    const token = await this.lock.acquire(lockKey, ConnectionService.RESTART_LOCK_TTL_MS);
+    if (!token) {
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'ORDER_SYNC_BUSY',
+        'The order poll of this connection is running; retry in a moment',
+        { connectionId }
+      );
+    }
+    try {
+      // "New orders only" on a feed that already has a position is what the feed is doing:
+      // it reads on from its last check. Resetting it to the shop's head would skip every
+      // order placed since that check, so there is nothing to reset.
+      if (start.mode === 'now' && (await this.syncCursors.hasOrderFeedCursor(connectionId))) {
+        this.logger.log(
+          `Order sync for connection ${connectionId} already imports new orders from its last check; nothing to reset`
+        );
+        return { applied: false, reason: 'already-following-feed' };
+      }
+      await this.storeOrderSyncStart(connection, start);
+      const removed = await this.syncCursors.deleteOrderFeedCursors(connectionId);
+      this.logger.log(
+        `Restarted order sync for connection ${connectionId} (mode: ${start.mode}); removed cursors: ${removed.join(', ') || 'none'}`
+      );
+      return { applied: true };
+    } finally {
+      await this.lock.release(lockKey, token);
+    }
+  }
+
+  /**
+   * Import orders for a chosen range on demand (#4228): enqueues the first page
+   * of a `marketplace.orders.import` chain, which the worker then walks. The run
+   * id is minted here with a per-request nonce, so asking for the same range
+   * twice is two runs and never a silently swallowed one.
+   *
+   * @throws 400 ORDER_SOURCE_NOT_ENABLED / ORDER_IMPORT_UNSUPPORTED /
+   * ORDER_IMPORT_RANGE_INVALID, 409 CONNECTION_DISABLED when the connection is not active.
+   */
+  async startOrderImport(
+    connectionId: string,
+    request: OrderImportRequest
+  ): Promise<{ runId: string }> {
+    const connection = await this.get(connectionId);
+    if (connection.status !== 'active') {
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_DISABLED',
+        'The connection must be active to import orders',
+        { connectionId }
+      );
+    }
+    if (!connection.enabledCapabilities.includes('OrderSource')) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_SOURCE_NOT_ENABLED',
+        'This connection does not import orders',
+        { connectionId }
+      );
+    }
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    if (metadata.orderWindowImport !== true) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_IMPORT_UNSUPPORTED',
+        `Adapter ${metadata.adapterKey} cannot import orders by date or in a chosen order`,
+        { adapterKey: metadata.adapterKey }
+      );
+    }
+    const from = request.from?.trim() || undefined;
+    const to = request.to?.trim() || undefined;
+    const fromMs = from === undefined ? null : Date.parse(from);
+    const toMs = to === undefined ? null : Date.parse(to);
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_IMPORT_RANGE_INVALID',
+        'from and to must be ISO dates',
+        { reason: 'unparseable' }
+      );
+    }
+    if (fromMs !== null && toMs !== null && toMs < fromMs) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_IMPORT_RANGE_INVALID',
+        'to must not be before from',
+        { reason: 'to-before-from' }
+      );
+    }
+    // The same bounds as the start date at create: an unbounded range would let
+    // one request walk a source's whole history from a typo.
+    for (const [field, value] of [
+      ['from', from],
+      ['to', to],
+    ] as const) {
+      if (value === undefined) continue;
+      const problem = describeInvalidOrderSyncStartDate(value, new Date());
+      if (problem !== null) {
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'ORDER_IMPORT_RANGE_INVALID',
+          `${field}: ${problem}`,
+          { reason: problem.includes('future') ? 'in-future' : 'too-old', field }
+        );
+      }
+    }
+    const runId = `manual:${connectionId}:${generateOrdersImportNonce()}`;
+    const first = buildOrdersImportRequest(connectionId, {
+      schemaVersion: 1,
+      runId,
+      ...(from !== undefined ? { from } : {}),
+      ...(to !== undefined ? { to } : {}),
+      direction: request.direction,
+      cursor: null,
+      page: 1,
+    });
+    const { isExisting } = await this.jobEnqueue.enqueueJob({
+      jobType: first.type,
+      connectionId,
+      payload: first.payload,
+      idempotencyKey: first.options.dedupeKey,
+    });
+    if (isExisting) {
+      throw codedHttpError(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'ORDER_IMPORT_NOT_QUEUED',
+        'The order import was not queued; retry',
+        { connectionId }
+      );
+    }
+    this.logger.log(
+      `Started order import ${runId} for connection ${connectionId} (direction: ${request.direction}, from: ${from ?? '-'}, to: ${to ?? '-'})`
+    );
+    return { runId };
+  }
+
   async testConnection(connectionId: string): Promise<ConnectionTestResult> {
     // Disabled connections are intentionally still testable: operators use the
     // probe to diagnose *why* a connection was disabled (expired credentials,
@@ -1187,8 +1464,46 @@ export class ConnectionService implements IConnectionService {
     return result;
   }
 
+  /**
+   * Persist the operator's start choice as a one-shot intent cursor, consumed by
+   * the connection's first order poll (#4228). Deliberately not best-effort: the
+   * connection exists and would start "from now", which is not what was asked, so
+   * the operator is told instead of being left to find out from the order list.
+   */
+  private async storeOrderSyncStart(connection: Connection, start: OrderSyncStart): Promise<void> {
+    try {
+      await this.syncCursors.advanceCursor(
+        connection.id,
+        ORDER_SYNC_START_CURSOR_KEY,
+        serializeOrderSyncStart(start)
+      );
+    } catch (error) {
+      this.logger.error(
+        `Could not store the order sync start for connection ${connection.id}: ${(error as Error).message}`
+      );
+      throw codedHttpError(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'ORDER_SYNC_START_NOT_SAVED',
+        `The order sync start of connection ${connection.id} could not be saved, so its order sync start was not changed`,
+        { connectionId: connection.id }
+      );
+    }
+  }
+
+  private async storeOrderSyncStartForNewOrderSource(
+    connection: Connection,
+    start: OrderSyncStart | undefined
+  ): Promise<void> {
+    const hasIntent =
+      (await this.syncCursors.getCursor(connection.id, ORDER_SYNC_START_CURSOR_KEY)) !== null;
+    if (hasIntent || (await this.syncCursors.hasOrderFeedCursor(connection.id))) {
+      return;
+    }
+    await this.storeOrderSyncStart(connection, start ?? { mode: 'now' });
+  }
+
   async create(payload: ConnectionCreateInput): Promise<Connection> {
-    const { credentials, credentialsRef, ...rest } = payload;
+    const { credentials, credentialsRef, orderSyncStart, ...rest } = payload;
 
     // Supplying BOTH is contradictory input at every setting, including for a
     // credential-less adapter (#2405): the `if (credentials)` branch below
@@ -1277,6 +1592,15 @@ export class ConnectionService implements IConnectionService {
       }
       this.assertNoWriteBackAuthorityConflict(enabledCapabilities);
       this.assertNotMasterAndPublisher(enabledCapabilities, null);
+      // #4228 - before credentials are persisted, like the config checks below.
+      if (orderSyncStart !== undefined) {
+        this.assertOrderSyncStart(
+          orderSyncStart,
+          metadata.orderSyncStartModes,
+          enabledCapabilities,
+          metadata.orderWindowImport === true
+        );
+      }
 
       // #509 / #587 — validate the platform-specific config shape on create
       // (was platformType-keyed static record; now adapterKey-keyed registry
@@ -1290,6 +1614,7 @@ export class ConnectionService implements IConnectionService {
         this.validateBuyerDataRetentionConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
         this.validatePaymentWritebackConfig(rest.config);
+        this.validateCatalogueModeConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
         await this.validateDeliveryOnDocumentsConfig(rest.config);
         this.validateGiftOnDocumentsConfig(rest.config);
@@ -1358,6 +1683,13 @@ export class ConnectionService implements IConnectionService {
       }
 
       this.logger.log(`Connection created successfully: ${connection.id} (${connection.name})`);
+      // The intent row is also what tells the first poll this connection was
+      // created AFTER the feature: an absent row means a legacy connection that
+      // keeps reading its history. So every order-importing connection gets one,
+      // defaulting to "now".
+      if (orderSyncStart !== undefined || connection.enabledCapabilities.includes('OrderSource')) {
+        await this.storeOrderSyncStart(connection, orderSyncStart ?? { mode: 'now' });
+      }
       await this.enqueueInitialCatalogSync(connection);
       await this.enqueueInitialTaxonomySync(connection);
       return connection;
@@ -1521,7 +1853,8 @@ export class ConnectionService implements IConnectionService {
     }
   }
 
-  async update(connectionId: string, patch: ConnectionUpdate): Promise<Connection> {
+  async update(connectionId: string, input: ConnectionUpdateInput): Promise<Connection> {
+    const { orderSyncStart, ...patch } = input;
     try {
       this.logger.log(
         `Updating connection: ${connectionId}${patch.status ? ` (status: ${patch.status})` : ''}`
@@ -1567,7 +1900,9 @@ export class ConnectionService implements IConnectionService {
       // consume the result, so a name-only patch (`patch = { name }`) stays
       // free of an extra call.
       const needsAdapterMetadata =
-        patch.enabledCapabilities !== undefined || patch.config !== undefined;
+        patch.enabledCapabilities !== undefined ||
+        patch.config !== undefined ||
+        orderSyncStart !== undefined;
       const metadata = needsAdapterMetadata
         ? await this.integrationsService.resolveAdapterMetadata({
             platformType: existing.platformType,
@@ -1586,6 +1921,15 @@ export class ConnectionService implements IConnectionService {
         this.assertNotMasterAndPublisher(patch.enabledCapabilities, existing.enabledCapabilities);
       }
 
+      if (orderSyncStart !== undefined && metadata) {
+        this.assertOrderSyncStart(
+          orderSyncStart,
+          metadata.orderSyncStartModes,
+          patch.enabledCapabilities ?? existing.enabledCapabilities,
+          metadata.orderWindowImport === true
+        );
+      }
+
       // #437 / #587 — close the DTO bypass on `Connection.config`. The
       // HTTP-layer `UpdateConnectionDto.config: Record<string, unknown>`
       // erases the typed shape at the controller boundary, so the nested
@@ -1600,6 +1944,7 @@ export class ConnectionService implements IConnectionService {
         this.validateBuyerDataRetentionConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
         this.validatePaymentWritebackConfig(patch.config);
+        this.validateCatalogueModeConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
         await this.validateDeliveryOnDocumentsConfig(patch.config);
         this.validateGiftOnDocumentsConfig(patch.config);
@@ -1645,6 +1990,17 @@ export class ConnectionService implements IConnectionService {
         connection.enabledCapabilities.includes('ProductMaster');
       if (becameActive || productMasterEnabled) {
         await this.enqueueInitialCatalogSync(connection);
+      }
+
+      // #4228 - OrderSource switched on for a connection created without it:
+      // create wrote no intent then, and with none the first poll reads the whole
+      // history (the legacy reading). Compared against the PERSISTED capabilities,
+      // and never over an existing feed position, marker or intent.
+      const orderSourceEnabled =
+        !existing.enabledCapabilities.includes('OrderSource') &&
+        connection.enabledCapabilities.includes('OrderSource');
+      if (orderSourceEnabled) {
+        await this.storeOrderSyncStartForNewOrderSource(connection, orderSyncStart);
       }
 
       return connection;

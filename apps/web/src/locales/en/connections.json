@@ -206,6 +206,16 @@
       "body": "This connection is inactive for every capability. No sync jobs will use it.",
       "title": "No capabilities enabled"
     },
+    "orderOff": {
+      "body": "New orders from this connection will no longer be imported until you turn this on again. Orders already imported stay.",
+      "cancel": "Cancel",
+      "confirm": "Turn off",
+      "title": "Stop reading orders?"
+    },
+    "orderStart": {
+      "cancel": "Cancel",
+      "confirm": "Enable order reading"
+    },
     "routingNote": {
       "body": {
         "both": "This connection becomes <em>eligible</em> to issue sales documents. Which orders actually get one is decided under <link>Sales documents routing</link>, per country.",
@@ -320,6 +330,7 @@
       "config": "Config",
       "gifts": "Gifts on documents",
       "health": "Health",
+      "orders": "Sync",
       "overview": "Overview"
     }
   },
@@ -382,7 +393,7 @@
     "carriers": {
       "description": "Map {source} delivery method IDs to the corresponding {destination} carrier IDs.",
       "dynamicSuffix": "exact {platform} cost",
-      "empty": "No mappings configured yet. An unmapped carrier can fail order sync unless a fallback carrier is set. Add one below.",
+      "empty": "No mappings configured yet. An unmapped carrier can fail order sync unless a fallback carrier is set. Pick both values below, press Add to list, then Save mappings.",
       "sourceColumn": "{platform} delivery method",
       "targetColumn": "{platform} carrier",
       "title": "Carrier mappings"
@@ -419,14 +430,14 @@
     },
     "orderStates": {
       "description": "Override which {destination} order state each OpenLinker status transitions to. Customised shops (renamed or added states) map here; unmapped statuses use the default-install state.",
-      "empty": "No mappings configured yet. Unmapped statuses use the default-install order state. Add one below.",
+      "empty": "No mappings configured yet. Unmapped statuses use the default-install order state. Pick both values below, press Add to list, then Save mappings.",
       "sourceColumn": "OpenLinker status",
       "targetColumn": "{platform} order state",
       "title": "Order-state mappings"
     },
     "payments": {
       "description": "Map {source} payment provider names to the corresponding {destination} payment module names.",
-      "empty": "No mappings configured yet. Unmapped payment methods are recorded as \"Check payment\" on the order. A mapped one is recorded under the name you choose. Add one below.",
+      "empty": "No mappings configured yet. Unmapped payment methods are recorded as \"Check payment\" on the order. A mapped one is recorded under the name you choose. Pick both values below, press Add to list, then Save mappings.",
       "sourceColumn": "{platform} payment provider",
       "targetColumn": "{platform} payment module",
       "title": "Payment mappings"
@@ -440,9 +451,10 @@
     "status": {
       "columnLabel": "{platform} status",
       "description": "Map {source} order statuses to the corresponding {destination} order status IDs.",
-      "empty": "No mappings configured yet. Unmapped statuses fall back to the default status at sync time. Add one below.",
+      "empty": "No mappings configured yet. Unmapped statuses fall back to the default status at sync time. Pick both values below, press Add to list, then Save mappings.",
       "title": "Order status mappings"
     },
+    "tabUnsaved": "unsaved changes",
     "tabs": {
       "attributeRules": "Attribute rules",
       "carriers": "Carriers",
@@ -789,6 +801,15 @@
       "staleBody": "This connection points to a deleted or disabled catalog connection. Pick a new one below or clear the link.",
       "staleTitle": "Linked catalog is missing"
     },
+    "catalogueMode": {
+      "help": "Orders and offers work without a catalog. Barcode linking and product mapping are off while no catalog is used.",
+      "legend": "Product catalog",
+      "linkedBody": "Match orders and offers to products by barcode.",
+      "linkedTitle": "Linked to a catalog",
+      "noneBody": "Orders arrive with the marketplace's own lines (offer, SKU, name, price) and are not matched to products. Stock, catalog offers and per-product reports do not apply to these orders.",
+      "noneHint": "Only this marketplace. Order lines stay as the marketplace sent them.",
+      "noneTitle": "No catalog"
+    },
     "errorTitle": "Unable to update connection",
     "eyebrow": "Edit connection",
     "fields": {
@@ -828,6 +849,19 @@
     "readOnlyNote": "You have read-only access, so these settings cannot be changed.",
     "save": "Save changes",
     "saving": "Saving...",
+    "sections": {
+      "advanced": "Advanced",
+      "buyerData": "Buyer data",
+      "fulfilment": "Packing",
+      "general": "General",
+      "labelPurchase": "Shipping notification",
+      "paymentWriteback": "Payment writeback",
+      "platform": "Platform settings",
+      "rateLimit": "Request rate limit",
+      "salesDocuments": "Sales documents",
+      "shipping": "Who ships",
+      "stockPricing": "Stock and pricing"
+    },
     "someNeedAttention": "Some fields need attention. See the list at the top of the form.",
     "updatedDescription": "Connection settings have been saved.",
     "updatedTitle": "Connection updated",
@@ -836,6 +870,10 @@
   "editConnectionPage": {
     "backLabel": "Connection",
     "description": "Update the connection name, configuration, and adapter settings.",
+    "environment": {
+      "production": "Production",
+      "sandbox": "Sandbox"
+    },
     "error": {
       "title": "Unable to load connection"
     },
@@ -909,6 +947,9 @@
         "description": "Your {platform} Shop API key - generated in the {platform} seller panel.",
         "label": "API key"
       },
+      "catalogue": {
+        "linkedHint": "You pick the catalog connection on this connection’s edit page after it is created."
+      },
       "environment": {
         "description": "Choose Sandbox to test against {platform}'s sandbox before switching to production.",
         "label": "Environment",
@@ -924,10 +965,15 @@
     "platformFallback": "the marketplace",
     "review": {
       "deliveryOnDocuments": "Delivery on documents",
-      "name": "Name"
+      "linkedLater": "Linked (pick it after creating)",
+      "name": "Name",
+      "noCatalogue": "No catalog (marketplace only)",
+      "productCatalogue": "Product catalog"
     },
     "steps": {
       "credentials": "Credentials",
+      "orders": "Order history",
+      "productCatalogue": "Product catalogue",
       "review": "Review & connect",
       "salesDocuments": "Sales documents"
     },
@@ -954,11 +1000,18 @@
       "production": "Production",
       "sandbox": "Sandbox"
     },
-    "name": "Name"
+    "linkedLater": "Linked",
+    "name": "Name",
+    "noCatalogue": "None (marketplace only)",
+    "productCatalogue": "Product catalog"
   },
   "fulfilmentOwnershipSection": {
+    "description": "Decides whether OpenLinker shows its own packing controls for orders that go to this system. It does not choose a carrier or generate labels.",
     "heading": "Who packs the orders",
     "help": "Turn this on when the system packs the box and ships it (for example an external warehouse system). OpenLinker then hides its own \"Mark packed\" button and packed tick for orders that go here. It only changes what you see: nothing is blocked, and that system can still report an order as packed.",
+    "hintLabel": "Example: an external warehouse packs the order",
+    "hintTerm": "Example",
+    "hintText": "An external warehouse system packs the parcel. Turn this on and OpenLinker hides its own \"Mark packed\" button and packed tick for these orders, because the warehouse does the packing. Labels and carriers are set separately under Who ships.",
     "toggle": "This system packs and ships orders itself"
   },
   "inpostSetupForm": {
@@ -1075,7 +1128,216 @@
     "title": "Add a connection",
     "wizardsChip": "Per-platform wizards"
   },
+  "orderSyncPanel": {
+    "change": "Change where syncing starts…",
+    "checkNowStartedMessage": "OpenLinker is checking the shop for new orders now.",
+    "checkNowStartedTitle": "Check started",
+    "errorTitle": "Could not load order import",
+    "getPeriod": "Get orders from a period…",
+    "health": {
+      "failures": {
+        "banner": "{count} could not be imported",
+        "count": {
+          "one": "{n} order",
+          "other": "{n} orders"
+        },
+        "fixLabel": "What to do:",
+        "latest": "Latest: order {order}, {when}",
+        "original": "Original message (not translated):",
+        "panelDescription": "The causes of the orders that could not be imported, with what to do about each.",
+        "panelMeta": "Fix the cause, then retry them all at once.",
+        "reasons": {
+          "missing-mapping": {
+            "fix": "Sync products from the shop, then use Retry failed orders.",
+            "text": "These orders contain a product OpenLinker does not know, so they cannot be created.",
+            "title": "unknown product"
+          },
+          "other": {
+            "fix": "Read the error, fix the cause, then use Retry failed orders.",
+            "text": "OpenLinker could not import these orders. The original message is below.",
+            "title": "other error"
+          }
+        },
+        "retryAll": "Retry failed orders",
+        "retryDone": "Failed orders are back in the queue.",
+        "retrying": "Retrying…",
+        "syncProducts": "Sync products…",
+        "title": "Orders that failed",
+        "view": "View"
+      },
+      "fromDay": "from {date}",
+      "fromStart": "from the beginning",
+      "importRunning": "History import in progress",
+      "imported": "Imported in the last 24 hours",
+      "lastChecked": "Last check for new orders",
+      "neverChecked": "Not checked yet",
+      "newestFirst": "Newest first",
+      "oldestFirst": "Oldest first",
+      "startedAgo": "Started {when}",
+      "toDay": "to {date}",
+      "viewJobs": "Open Jobs & Logs",
+      "waiting": "Waiting to import"
+    },
+    "loadingMessage": "Checking where order import starts.",
+    "loadingTitle": "Loading order import",
+    "nextLabel": "What to do:",
+    "noCheck": "Not checked yet",
+    "orderPhrase": {
+      "newest": "newest first",
+      "oldest": "oldest first"
+    },
+    "paused": {
+      "archived": {
+        "next": "Restore the connection first.",
+        "reason": "Unavailable while the connection is archived.",
+        "text": "This connection is archived, so no orders are imported.",
+        "verdict": "Archived"
+      },
+      "disabled": {
+        "next": "Enable the connection first (Enable connection, at the top of this page).",
+        "reason": "Unavailable while the connection is disabled.",
+        "text": "This connection is disabled, so no orders are imported.",
+        "verdict": "Paused"
+      },
+      "error": {
+        "next": "Fix the connection first: look at the Health tab, then edit the connection.",
+        "reason": "Unavailable while the connection is in an error state.",
+        "text": "The connection is in an error state, so order import is not running.",
+        "verdict": "Connection error"
+      },
+      "needs_reauth": {
+        "link": "Re-authenticate",
+        "next": "Re-authenticate first; checks and imports will not run until then.",
+        "reason": "Unavailable until the connection is re-authenticated.",
+        "text": "OpenLinker can no longer sign in to the shop, so order import is paused.",
+        "verdict": "Sign-in needed"
+      }
+    },
+    "restart": {
+      "alreadyFollowingNote": "This connection is already reading orders from the shop. To go further back, choose a date or every order.",
+      "cancel": "Cancel",
+      "confirm": "Apply change",
+      "confirming": "Saving…",
+      "failedTitle": "Could not change the start",
+      "nothingToResetMessage": "OpenLinker is already reading orders from the shop, so there is no start to reset. To get past orders, choose a date range.",
+      "nothingToResetTitle": "Nothing to reset",
+      "nowNote": "OpenLinker keeps importing new orders from the last check.",
+      "startDescription": "Choose which orders OpenLinker reads from the shop from now on. Orders it already has stay.",
+      "startTitle": "Change where syncing starts",
+      "successMessage": "The next order check uses the new start.",
+      "successNowMessage": "Nothing changed. New orders keep coming in.",
+      "successTitle": "Start changed"
+    },
+    "retry": "Retry",
+    "startLabel": "Import start",
+    "startText": {
+      "all": "Every order the shop has, {order}.",
+      "from": "Orders since {date}, {order}. Earlier orders stay in the shop.",
+      "now": "New orders only, from {date}. Older orders stay in the shop.",
+      "pending": "Starts on the next check: {what}.",
+      "started": "Importing since {date}. We have no record of the option chosen.",
+      "unknown": "The start was not recorded.",
+      "whatAll": "every order, {order}",
+      "whatFrom": "orders since {date}, {order}",
+      "whatNow": "new orders only"
+    },
+    "syncNow": "Check for new orders",
+    "title": "Order import",
+    "verdict": {
+      "behind": "Behind",
+      "failing": "Needs attention",
+      "notChecked": "Not checked yet",
+      "ok": "Up to date",
+      "unknown": "Unknown"
+    },
+    "verdictNext": {
+      "behind": "Click Check for new orders. If the shop is still not checked, look at the Health tab.",
+      "notChecked": "Click Check for new orders, or wait for the next scheduled check.",
+      "unknown": "Reload the page. If this stays, look at the Health tab."
+    },
+    "verdictText": {
+      "behind": "Last check of the shop: {when}.",
+      "behindQueued": "Checked orders are waiting in the queue to be imported.",
+      "failing": "Some orders could not be imported.",
+      "notChecked": "There is no successful check of the shop yet.",
+      "ok": "The shop was checked recently and every order came in without errors.",
+      "unknown": "Order import figures are not available right now."
+    }
+  },
+  "orderSyncStart": {
+    "all": {
+      "analytics": "Want exact analytics over your whole history? Every order has to be imported, and this is how.",
+      "delay": "New orders wait behind the import and can arrive hours late.",
+      "documents": "If automatic invoicing is on, OpenLinker issues invoices and receipts for old sales, dated today.",
+      "orders": "Each old order is copied again to every connected shop, with its customer.",
+      "stock": "Stock is held for orders that already shipped, so available stock can look too low.",
+      "summary": "Everything already in the shop is copied and processed.",
+      "warningLabel": "What happens to old orders",
+      "warningTitle": "Old orders are handled like new ones"
+    },
+    "dateLabel": "First day to import",
+    "info": {
+      "from": "Orders placed before {date} are not imported.",
+      "now": "Orders already in the shop stay there and are not imported. Only orders placed from now on are."
+    },
+    "intro": "Every order OpenLinker brings in is copied to your other connected shops and systems. Pick where to start, so you do not copy orders you already handled.",
+    "modes": {
+      "all": {
+        "description": "All past orders, however old. Choose this only if you want every one of them in OpenLinker.",
+        "title": "Every order the shop has"
+      },
+      "from": {
+        "description": "Orders placed on or after the day you pick, and every new order after that.",
+        "title": "Orders since a date"
+      },
+      "now": {
+        "description": "Orders placed from now on. Older orders stay in the shop and are never copied.",
+        "title": "New orders only"
+      }
+    },
+    "now": {
+      "analytics": "Want exact analytics over past periods? You still have to import every order.",
+      "infoLabel": "Why this is recommended",
+      "infoTitle": "Why we recommend this",
+      "noFlood": "Your shops and invoices are not flooded with old sales.",
+      "noQueue": "New orders never wait behind an old backlog.",
+      "noStock": "Stock is not held for orders that already shipped.",
+      "summary": "Starting from now keeps the first import quick and leaves the past alone."
+    },
+    "order": {
+      "newest-first": {
+        "description": "The latest orders arrive first and new orders keep flowing while older ones are read.",
+        "title": "Newest first"
+      },
+      "oldest-first": {
+        "description": "Orders are imported in the order they were placed. New orders wait until the history is done.",
+        "title": "Oldest first"
+      },
+      "title": "Which orders come first?",
+      "unsupported": "Not available for this connection yet."
+    },
+    "review": {
+      "all": "Every order",
+      "from": "Since {date}",
+      "label": "Orders to import",
+      "newestFirst": "newest first",
+      "now": "New orders only"
+    },
+    "title": "Which orders should OpenLinker import?",
+    "unsupported": {
+      "all": "OpenLinker cannot import the full history of this connection yet.",
+      "from": "Choosing a start date is not available for this connection yet.",
+      "now": "Starting from now is not available for this connection yet."
+    }
+  },
+  "orderSyncStartSchema": {
+    "dateFuture": "Choose a day before today",
+    "dateInvalid": "Enter a valid date",
+    "dateRequired": "Choose the first day to import",
+    "dateTooOld": "Choose a day within the last 5 years"
+  },
   "paymentWriteback": {
+    "description": "Controls whether OpenLinker marks an order as paid in this shop after the buyer pays. It does not change packing or shipping.",
     "factCod": "Cash on delivery and cancelled orders are never marked paid.",
     "factFailure": "If the shop doesn't accept it, the order shows under Orders, Payment not sent to shop.",
     "factFromNow": "Applies to payments from now on.",
@@ -1177,6 +1439,7 @@
     "steps": {
       "capabilities": "Capabilities",
       "credentials": "Credentials",
+      "orders": "Order history",
       "review": "Review & connect",
       "verify": "Verify credentials"
     },
@@ -1382,12 +1645,15 @@
   },
   "shipping": {
     "backToOmsSetup": "Back to OMS setup",
+    "carrierMappingsMessage": "Which delivery methods it labels is set on the sales channel, not here. Open the channel and use its fulfillment routing tab.",
+    "carrierMappingsNoChannels": "No sales channel is connected yet. Connect one first.",
+    "carrierMappingsOpenChannel": "Open {channel}",
+    "carrierMappingsTitle": "{carrier} is a carrier account, not a sales channel",
     "createdAction": "Choose delivery methods",
     "createdBody": "Next, choose which delivery methods {carrier} ships. Until then no order goes to it.",
     "createdTitle": "{carrier} is connected.",
-    "rowChange": "Change",
-    "rowChoose": "Choose",
     "rowLoading": "Loading delivery methods...",
+    "rowOpenChannel": "Open on the sales channel",
     "rowUnavailable": "Could not load who ships these delivery methods.",
     "shippingAllLabelled": "Every delivery method gets a label from OpenLinker.",
     "shippingChange": "Change who ships what",
@@ -1412,7 +1678,19 @@
     "shipsForUnnamed": {
       "one": "{n} delivery method (name not loaded)",
       "other": "{n} delivery methods (names not loaded)"
-    }
+    },
+    "shipsForUnusedBody": "No delivery method goes to this account. Assignment is set on the sales channel: open one below and choose which of its delivery methods this carrier ships.",
+    "shipsForUnusedTitle": "{carrier} is not used yet"
+  },
+  "shippingNextStep": {
+    "body": "Until you assign a carrier, your shop ships every order from this channel, the way it did before OpenLinker. To have OpenLinker buy labels, choose a carrier per delivery method in Mappings.",
+    "link": "Assign who ships",
+    "title": "What next: who ships from this channel"
+  },
+  "shippingSummary": {
+    "configure": "Configure in Mappings",
+    "intro": "Who creates the shipping label (the carrier) for each delivery method, per sales channel. This is about labels and carriers, not about who packs the box. Methods without a carrier are shipped by your shop.",
+    "noChannels": "No sales channel is connected to this shop yet. Connect one, then assign who ships its delivery methods."
   },
   "shoperSetupForm": {
     "beforeYouStart": {
@@ -1448,6 +1726,7 @@
     "latency": "({ms}ms)",
     "ordersNextStep": {
       "body": "{platform} needs a default delivery method, payment method and order status to create an order. Pick them from the shop's own lists in <link>the connection settings</link>.",
+      "shipping": "Packing: once a sales channel is connected to this shop, choose per delivery method who ships it. <link>Assign carriers per channel</link>.",
       "title": "One more step to receive orders"
     },
     "platformFallback": "the shop",
@@ -1622,6 +1901,23 @@
     "unreachable": "The platform could not be reached. Check the address and that it is online.",
     "unsupported": "This kind of connection cannot be tested yet."
   },
+  "wizardCreated": {
+    "active": "Active",
+    "assignChannel": {
+      "body": "This carrier ships nothing until a delivery method of a sales channel is assigned to it. Do it on the connection page, under \"Ships for\".",
+      "link": "Assign this account to a sales channel",
+      "title": "Assign this account to a sales channel"
+    },
+    "editConnection": "Open connection settings",
+    "goToConnection": "Go to connection",
+    "name": "Connected as",
+    "shopPacking": {
+      "body": "Once a sales channel is connected to this shop, choose per delivery method who ships it. Until then your shop ships every order.",
+      "link": "Assign carriers per channel",
+      "title": "Packing and carriers come next"
+    },
+    "targetShop": "Target shop"
+  },
   "woocommerceSetupForm": {
     "beforeYouStart": {
       "body": "In your {platform} admin, go to <strong>{platform} → Settings → Advanced → REST API</strong> and generate a key with <strong>Read/Write</strong> permissions. Copy the consumer key and consumer secret below - they are only shown once.",
@@ -1663,6 +1959,7 @@
     "steps": {
       "capabilities": "Capabilities",
       "credentials": "API credentials",
+      "orders": "Order history",
       "review": "Review & create",
       "store": "Store details"
     }

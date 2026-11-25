@@ -1,6 +1,6 @@
 {
   "jobTypes": {
-    "analyticsCurrencyRecalculate": "Przelicz walutę raportów",
+    "analyticsCurrencyRecalculate": "Przelicz walutę raportowania",
     "automationTriggerDeadlineSweep": "Sprawdź terminy automatyzacji",
     "destinationTaxonomySync": "Odśwież kategorie kanału docelowego",
     "fiscalizationRegister": "Zarejestruj dokument sprzedaży",
@@ -37,7 +37,7 @@
     "marketplaceOfferStockRestore": "Przywróć stan w ofercie",
     "marketplaceOfferUpdateFields": "Zaktualizuj szczegóły oferty",
     "marketplaceOffersSync": "Synchronizuj oferty z marketplace",
-    "marketplaceOrderFxStamp": "Przelicz zamówienie na walutę raportów",
+    "marketplaceOrderFxStamp": "Przelicz zamówienie na walutę raportowania",
     "marketplaceOrderFxStampSweep": "Przelicz nieprzeliczone zamówienia",
     "marketplaceOrderSync": "Synchronizuj zamówienie",
     "marketplaceOrdersPoll": "Pobierz nowe zamówienia",
@@ -58,11 +58,14 @@
     "masterProductSyncDelta": "Synchronizuj zmienione produkty",
     "masterProductSyncFromSweep": "Synchronizuj jeden produkt (zaplanowane)",
     "masterVariantsAutoMatch": "Dopasuj warianty do ofert",
+    "orderPaymentWritebackPush": "Przekaż sklepowi opłacenie zamówienia",
     "ordersExport": "Eksportuj zamówienia",
     "ordersHoldsReconcile": "Napraw wstrzymania zamówień",
     "ordersTaxRateBackfill": "Uzupełnij stawki VAT zamówień",
     "pricingPropagateToMarketplaces": "Wyślij zmianę ceny do kanałów",
     "returnsOrphanReconcile": "Dopasuj zwroty do zamówień",
+    "salesDocumentBatchRun": "Wystaw dokumenty sprzedaży zbiorczo",
+    "salesDocumentBatchTick": "Sprawdź harmonogramy wystawiania zbiorczego",
     "shippingPickupPointRefreshFrequent": "Odśwież punkty odbioru",
     "shippingShipmentNotifyDispatched": "Powiadom marketplace o nadaniu paczki",
     "shopProductPublish": "Opublikuj produkt w sklepie",
@@ -209,6 +212,25 @@
       "range": "Wyświetlono {from}-{to} z {total}"
     },
     "retry": "Ponów",
+    "savedViews": {
+      "jobTypeFields": "Nazwa, klucz",
+      "sorts": {
+        "attempts": "Próby",
+        "createdNewest": "Utworzone, najnowsze",
+        "createdOldest": "Utworzone, najstarsze",
+        "duration": "Czas trwania",
+        "jobType": "Typ zadania",
+        "status": "Status"
+      },
+      "statusFields": "Stan, wynik",
+      "views": {
+        "all": "Wszystkie zadania",
+        "businessFailures": "Błędy biznesowe",
+        "dead": "Poddane",
+        "queued": "W kolejce",
+        "running": "W trakcie"
+      }
+    },
     "title": "Zadania synchronizacji"
   },
   "triggerSyncDialog": {
@@ -218,7 +240,6 @@
     "enqueuing": "Dodawanie do kolejki…",
     "fieldRequired": "Pole {field} jest wymagane",
     "fields": {
-      "cursorKey": "Klucz kursora",
       "externalId": "ID zewnętrzne",
       "maxInvoices": "Maks. liczba faktur",
       "objectType": "Typ obiektu",
@@ -232,8 +253,8 @@
         "label": "Automatycznie dopasuj warianty"
       },
       "pollOrders": {
-        "description": "Pobierz nowe zamówienia ze strumienia zdarzeń marketplace.",
-        "label": "Pobierz zamówienia z marketplace"
+        "description": "Pobiera zamówienia ze sklepu do OpenLinker.",
+        "label": "Synchronizuj zamówienia"
       },
       "propagateInventory": {
         "description": "Wyślij bieżące stany magazynowe do wszystkich podłączonych marketplace.",
@@ -265,6 +286,42 @@
       }
     },
     "noTriggers": "Dla tego połączenia nie ma dostępnych synchronizacji do uruchomienia.",
+    "orderPosition": {
+      "customHelp": "Użyj tylko wtedy, gdy klucz podało Ci wsparcie.",
+      "customLabel": "Klucz miejsca",
+      "customRequired": "Wpisz klucz miejsca albo wybierz inną opcję powyżej.",
+      "limitHelp": "Tyle zamówień OpenLinker przeczyta za jednym razem. Domyślnie 100.",
+      "limitLabel": "Maks. liczba zamówień",
+      "positionCustom": "Inne miejsce (własny klucz)…",
+      "positionDefault": "Od miejsca, w którym skończyło się ostatnie sprawdzenie (zalecane)",
+      "positionDefaultHint": "OpenLinker zapamiętuje, dokąd doczytał listę zamówień ze sklepu. Zostaw bez zmian, chyba że wsparcie podało inaczej.",
+      "positionDefaultHintSaved": "Zapisane w {key}, ostatnio przesunięte {when}.",
+      "positionLabel": "Skąd czytać zamówienia",
+      "positionSaved": "Zapisane miejsce {key}, przesunięte {when}"
+    },
+    "orderRange": {
+      "directionLabel": "Kolejność importu",
+      "errors": {
+        "fromInvalid": "Wpisz poprawną datę",
+        "fromRequired": "Wybierz pierwszy dzień",
+        "fromTooOld": "Wybierz dzień z ostatnich 5 lat",
+        "future": "Wybierz dzień, który nie jest w przyszłości",
+        "toBeforeFrom": "Ostatni dzień nie może być przed pierwszym",
+        "toInvalid": "Wpisz poprawną datę"
+      },
+      "fromLabel": "Pierwszy dzień",
+      "newestFirst": "Od najnowszych",
+      "oldestFirst": "Od najstarszych",
+      "toHelp": "Zostaw puste, żeby pobrać aż do najnowszego zamówienia.",
+      "toLabel": "Ostatni dzień"
+    },
+    "orderScope": {
+      "label": "Co synchronizować",
+      "new": "Od zapisanej pozycji (kursora)",
+      "newHint": "Pobiera zamówienia nowsze niż zapisana pozycja, czyli tylko te, których OpenLinker jeszcze nie zaimportował. Początek importu się nie przesuwa.",
+      "range": "Między dwiema datami",
+      "rangeHint": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Zamówienia, które OpenLinker już ma, są aktualizowane, a nie kopiowane drugi raz."
+    },
     "requiredField": "{field} *",
     "title": "Uruchom synchronizację",
     "toast": {

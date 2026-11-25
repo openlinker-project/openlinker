@@ -1044,6 +1044,8 @@ export interface BundleOfferPreviewComponent {
   mode: BundleComponentMode;
   externalOfferId?: string;
   cardCategoryId?: string;
+  /** Units of this component the channel may promise now; null when unknown. */
+  availableUnits?: number | null;
   problems: BundleComponentProblem[];
 }
 

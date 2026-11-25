@@ -99,6 +99,10 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
       payload.buyerDataEraseMode = input.buyerDataEraseMode;
     }
 
+    if (input.releaseCenterEnabled !== undefined) {
+      payload.releaseCenterEnabled = input.releaseCenterEnabled;
+    }
+
     await this.ormRepository.upsert(payload, { conflictPaths: ['id'] });
 
     const saved = await this.ormRepository.findOneOrFail({
@@ -125,6 +129,7 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
       entity.inventoryMovementRetentionDays,
       entity.stockStaleSyncThresholdHours,
       entity.deletionAuditCadence,
+      entity.releaseCenterEnabled,
       entity.updatedAt,
       entity.updatedBy,
       entity.buyerDataRetentionEnabled,

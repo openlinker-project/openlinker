@@ -27,6 +27,11 @@ export interface StickyActionBarProps {
   message?: ReactNode;
   /** Replays the status line's shake when it turns true. */
   shaking?: boolean;
+  /**
+   * `warning` turns the ready state amber: the form can be submitted, but the caller wants the
+   * status line to say something is off (so it must not read as a plain green "ready").
+   */
+  tone?: 'warning';
   /** False while the form is clean and the bar should leave. */
   visible?: boolean;
   children: ReactNode;
@@ -40,6 +45,7 @@ export function StickyActionBar({
   readyText,
   message,
   shaking = false,
+  tone,
   visible = true,
   children,
   className,
@@ -68,7 +74,11 @@ export function StickyActionBar({
       inert={!visible}
     >
       <div
-        className={['pm-missing', message === undefined && ready ? 'is-ready' : '', shaking ? 'is-shake' : '']
+        className={[
+          'pm-missing',
+          message === undefined && ready ? (tone === 'warning' ? 'is-warning' : 'is-ready') : '',
+          shaking ? 'is-shake' : '',
+        ]
           .filter(Boolean)
           .join(' ')}
         role="status"

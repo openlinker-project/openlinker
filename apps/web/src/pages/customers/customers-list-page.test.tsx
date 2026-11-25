@@ -654,4 +654,38 @@ describe('CustomersListPage', () => {
     });
   });
 
+  describe('saved views (#4241)', () => {
+    it('should open on the built-in All customers view with the sort it implies', async () => {
+      renderWithProviders(<CustomersListPage />, { apiClient: mockApi() });
+
+      const strip = await screen.findByRole('group', { name: 'Views' });
+      expect(within(strip).getByRole('button', { name: 'All customers' })).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('should drop a column from the table when the Columns panel hides it', async () => {
+      renderWithProviders(<CustomersListPage />, { apiClient: mockApi() });
+
+      const table = await screen.findByRole('table');
+      expect(within(table).getByRole('columnheader', { name: 'Customer ID' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /Columns & sort/ }));
+      fireEvent.click(await screen.findByRole('checkbox', { name: /Customer ID/ }));
+
+      await waitFor(() => {
+        expect(within(table).queryByRole('columnheader', { name: 'Customer ID' })).toBeNull();
+      });
+    });
+
+    it('should sort the page by customer name from the header, nameless rows last', async () => {
+      renderWithProviders(<CustomersListPage />, { apiClient: mockApi() });
+
+      await screen.findByText('Jane Smith');
+      fireEvent.click(screen.getByRole('button', { name: /Customer(, | |$)/ }));
+
+      await waitFor(() => {
+        const rows = screen.getAllByRole('row');
+        expect(rows[1]).toHaveTextContent('Jane Smith');
+      });
+    });
+  });
 });

@@ -37,6 +37,7 @@ import type {
   AllegroProductsSearchResponse,
 } from '../../domain/types/allegro-api.types';
 import type { IAllegroHttpClient } from '../http/allegro-http-client.interface';
+import { hasExactGtin } from './allegro-card-gtin';
 import type {
   ResolveAllegroProductCardOptions,
   ResolveProductCardResult,
@@ -62,13 +63,15 @@ type CachedOutcome =
 export async function resolveAllegroProductCardByEan(
   httpClient: IAllegroHttpClient,
   cache: CachePort | undefined,
-  input: { ean: string; categoryId: string },
+  input: { ean: string; categoryId?: string },
   options?: ResolveAllegroProductCardOptions,
 ): Promise<ResolveProductCardResult> {
   const ttl = options?.cacheTtlSec ?? DEFAULT_CACHE_TTL_SEC;
   const prefix = options?.cacheKeyPrefix ?? DEFAULT_CACHE_KEY_PREFIX;
   const limit = options?.searchLimit ?? DEFAULT_SEARCH_LIMIT;
-  const cacheKey = `${prefix}:${input.categoryId}:${input.ean}`;
+  // No category means a catalogue-wide lookup. A GTIN identifies one product, so
+  // it is a valid key on its own; '*' keeps it apart from a category-scoped entry.
+  const cacheKey = `${prefix}:${input.categoryId ?? '*'}:${input.ean}`;
 
   if (cache) {
     const cached = await cache.get<CachedOutcome>(cacheKey);
@@ -88,7 +91,7 @@ export async function resolveAllegroProductCardByEan(
         // matching the tighter lookup the category matcher uses (#735/#797)
         // rather than the looser phrase-only search this path used before.
         mode: 'GTIN',
-        'category.id': input.categoryId,
+        ...(input.categoryId ? { 'category.id': input.categoryId } : {}),
         limit,
       },
     });
@@ -100,8 +103,13 @@ export async function resolveAllegroProductCardByEan(
     return { kind: 'no_match' };
   }
 
-  // Allegro's matcher is fuzzy on `phrase` — filter to exact-EAN matches.
-  const exact = products.filter((p) => typeof p.ean === 'string' && p.ean === input.ean);
+  // Allegro's matcher is fuzzy on `phrase` — filter to exact-EAN matches. The EAN
+  // lives in the GTIN-flagged parameter; the top-level `ean` is kept as a
+  // fallback only, because the live API does not send it (a filter on it alone
+  // never matched, so every smart-link fell through to the inline-product path).
+  const exact = products.filter(
+    (p) => hasExactGtin(p, input.ean) || (typeof p.ean === 'string' && p.ean === input.ean),
+  );
 
   if (exact.length === 1) {
     const productId = exact[0].id;

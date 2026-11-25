@@ -20,6 +20,12 @@ import {
   type CreateConnectionInput,
 } from '../api/connections.types';
 import { schemaMessage } from '../lib/schema-message';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  readsOrders,
+  toOrderSyncStart,
+} from '../lib/order-sync-start';
 
 const msg = schemaMessage('prestashopSetupSchema');
 
@@ -93,6 +99,7 @@ export const prestashopSetupSchema = z.object({
     .default(PRESTASHOP_FALLBACK_CAPABILITIES),
   // The answer to the "Buyer data" question (#4289); set through `setValue`.
   buyerDataRetention: z.custom<BuyerDataWizardValue>().optional(),
+  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
 });
 
 export type PrestashopSetupFormValues = z.input<typeof prestashopSetupSchema>;
@@ -107,6 +114,7 @@ export const PRESTASHOP_SETUP_DEFAULT_VALUES: PrestashopSetupFormValues = {
   currency: '',
   enabledCapabilities: PRESTASHOP_FALLBACK_CAPABILITIES,
   buyerDataRetention: DEFAULT_BUYER_DATA_WIZARD_VALUE,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toCreateConnectionInput(
@@ -129,5 +137,8 @@ export function toCreateConnectionInput(
     credentials: { webserviceApiKey: values.webserviceKey },
     config: { ...config, ...wizardBuyerDataConfig(values.buyerDataRetention) },
     enabledCapabilities: values.enabledCapabilities,
+    orderSyncStart: readsOrders(values.enabledCapabilities)
+      ? toOrderSyncStart(values.orderSyncStart)
+      : undefined,
   };
 }

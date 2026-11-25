@@ -72,6 +72,8 @@ export const erliAdapterManifest: AdapterMetadata = {
     'ResponsibleProducerReader',
     'DeliveryPriceListReader',
   ],
+  // The inbox is a cursor queue with no date lookup, so a start date is not offered (#4228).
+  orderSyncStartModes: ['now', 'all'],
   displayName: 'Erli Shop API v1',
   version: '1.0.0',
   isDefault: true,

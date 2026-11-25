@@ -49,6 +49,7 @@ function makeSettingsView(
     buyerDataHideAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
     buyerDataEraseAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
     buyerDataEraseMode: { value: 'personal-data', source: 'default', workerMayDiffer: false },
+    releaseCenterEnabled: { value: true, source: 'default', workerMayDiffer: true },
     catalogueSweepCadence: { value: '*/20 * * * *', source: 'default', workerMayDiffer: true },
     inventorySweepCadence: { value: '*/15 * * * *', source: 'default', workerMayDiffer: true },
     deletionAuditAlwaysEnabled: true,

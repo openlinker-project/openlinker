@@ -47,6 +47,7 @@ const view = (overrides: Partial<OperationalSettingsView> = {}): OperationalSett
   buyerDataHideAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
   buyerDataEraseAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
   buyerDataEraseMode: { value: 'personal-data', source: 'default', workerMayDiffer: false },
+  releaseCenterEnabled: { value: true, source: 'default', workerMayDiffer: true },
   catalogueSweepCadence: { value: '*/20 * * * *', source: 'default', workerMayDiffer: true },
   inventorySweepCadence: { value: '*/15 * * * *', source: 'default', workerMayDiffer: true },
   deletionAuditAlwaysEnabled: true,
@@ -174,6 +175,7 @@ describe('OperationalSettingsController', () => {
           sweepPageSize: undefined,
           deletionAuditBudget: undefined,
           deletionAuditCadence: undefined,
+          releaseCenterEnabled: undefined,
           acknowledgeAboveRecommended: undefined,
         },
         'user-1'
@@ -207,6 +209,7 @@ describe('OperationalSettingsController', () => {
         buyerDataHideAfterDays: 180,
         buyerDataEraseAfterDays: 365,
         buyerDataEraseMode: 'whole-order',
+        releaseCenterEnabled: false,
         acknowledgeAboveRecommended: true,
       };
 

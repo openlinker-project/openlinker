@@ -849,3 +849,117 @@ describe('SubiektOrderProcessorAdapter — an order-level discount', () => {
     });
   });
 });
+
+describe('SubiektOrderProcessorAdapter - bundle components on the ZK (#3607)', () => {
+  type Line = { symbol: string; ilosc: number; wartoscBrutto: number };
+
+  async function send(order: OrderCreate): Promise<Line[]> {
+    let body: { lines: Line[] } | undefined;
+    const fetchImpl = ((_url: RequestInfo | URL, init?: RequestInit) => {
+      body = JSON.parse(init!.body as string);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ success: true, data: { id: 9, numer: 'ZK 9/2026' }, error: null }),
+          { status: 200 },
+        ),
+      );
+    }) as unknown as typeof fetch;
+    const idMapping = new InMemoryIdentifierMappingAdapter();
+    for (const [internal, symbol] of [
+      ['ol_p_set', 'OLE2E-ZESTAW-BIURKO'],
+      ['ol_p_mug', 'OLE2E-KUBEK'],
+      ['ol_p_pad', 'OLE2E-PODKLADKA'],
+      ['ol_p_coffee', 'OLE2E-KAWA-250'],
+      ['ol_p_gift', 'OLE2E-GRATIS'],
+    ]) {
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: symbol,
+        connectionId: CONNECTION_ID,
+        internalId: internal,
+      });
+    }
+    const adapter = new SubiektOrderProcessorAdapter(
+      new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl }),
+      idMapping,
+      CONNECTION_ID,
+      noopLogger,
+    );
+    await adapter.createOrder(order);
+    return body!.lines;
+  }
+
+  const base = {
+    status: 'pending',
+    internalOrderId: 'ol_order_b1',
+    totals: { subtotal: 59.9, tax: 0, shipping: 0, total: 59.9, currency: 'PLN' },
+    billingAddress: { firstName: 'Jan', lastName: 'K', address1: 'x', city: 'W', postalCode: '00-001', country: 'PL' },
+  };
+  const setLine = { id: 'L1', productId: 'ol_p_set', variantId: 'v_set', quantity: 1, price: 59.9, sku: 'S' };
+
+  it('sells the components of a set instead of the placeholder, summing to what was paid', async () => {
+    const lines = await send({
+      ...base,
+      items: [setLine],
+      physicalItems: [
+        { ...setLine, id: 'L1:a', productId: 'ol_p_mug', quantity: 1, parentLineId: 'L1' },
+        { ...setLine, id: 'L1:b', productId: 'ol_p_pad', quantity: 1, parentLineId: 'L1' },
+      ],
+    } as unknown as OrderCreate);
+
+    expect(lines.map((l) => l.symbol)).toEqual(['OLE2E-KUBEK', 'OLE2E-PODKLADKA']);
+    expect(lines.reduce((s, l) => s + l.wartoscBrutto, 0)).toBeCloseTo(59.9, 2);
+  });
+
+  it('books the share core assigned each component instead of splitting by unit count', async () => {
+    const lines = await send({
+      ...base,
+      totals: { ...base.totals, subtotal: 90, total: 90 },
+      items: [{ ...setLine, price: 90 }],
+      physicalItems: [
+        { ...setLine, id: 'L1:a', productId: 'ol_p_mug', quantity: 1, parentLineId: 'L1', shareGross: 85.71 },
+        { ...setLine, id: 'L1:b', productId: 'ol_p_pad', quantity: 1, parentLineId: 'L1', shareGross: 4.29 },
+      ],
+    } as unknown as OrderCreate);
+
+    expect(lines.map((l) => l.wartoscBrutto)).toEqual([85.71, 4.29]);
+  });
+
+  it('multiplies a multipack by its pack size and keeps the total', async () => {
+    const lines = await send({
+      ...base,
+      totals: { ...base.totals, subtotal: 99.9, total: 99.9 },
+      items: [{ ...setLine, price: 99.9 }],
+      physicalItems: [
+        { ...setLine, price: 99.9, id: 'L1:c', productId: 'ol_p_coffee', quantity: 3, parentLineId: 'L1' },
+      ],
+    } as unknown as OrderCreate);
+
+    expect(lines).toEqual([{ symbol: 'OLE2E-KAWA-250', ilosc: 3, wartoscBrutto: 99.9 }]);
+  });
+
+  it('sells a gift slot at zero and gives the whole price to the paid component', async () => {
+    const lines = await send({
+      ...base,
+      items: [setLine],
+      physicalItems: [
+        { ...setLine, id: 'L1:a', productId: 'ol_p_coffee', quantity: 1, parentLineId: 'L1' },
+        { ...setLine, id: 'L1:g', productId: 'ol_p_gift', quantity: 1, parentLineId: 'L1', giftSlot: true },
+      ],
+    } as unknown as OrderCreate);
+
+    expect(lines).toEqual([
+      { symbol: 'OLE2E-KAWA-250', ilosc: 1, wartoscBrutto: 59.9 },
+      { symbol: 'OLE2E-GRATIS', ilosc: 1, wartoscBrutto: 0 },
+    ]);
+  });
+
+  it('prices a line nothing expanded exactly as before', async () => {
+    const lines = await send({
+      ...base,
+      items: [{ ...setLine, productId: 'ol_p_mug', quantity: 2, price: 10 }],
+    } as unknown as OrderCreate);
+
+    expect(lines).toEqual([{ symbol: 'OLE2E-KUBEK', ilosc: 2, wartoscBrutto: 20 }]);
+  });
+});

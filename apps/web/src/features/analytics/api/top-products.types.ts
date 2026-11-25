@@ -45,6 +45,13 @@ export interface TopProductRow {
   netExcludedRevenue: number;
   /** Count of lines contributing to `netExcludedRevenue`. */
   netExcludedLineCount: number;
+  /**
+   * Set when this row is a marketplace line accepted WITHOUT a catalogue
+   * match (catalogue-less mode, #4280): the marketplace's own offer id.
+   * `productId` is then a synthetic id, not a catalogue product, and `sku`
+   * carries the offer id. Absent from an API that predates #4280.
+   */
+  unmatchedOfferId?: string | null;
 }
 
 export interface TopProductsResult {
@@ -52,6 +59,8 @@ export interface TopProductsResult {
   /** Distinct products matching scope, before pagination. */
   total: number;
   unresolvedProductCount: number;
+  /** Rows on this page that are unmatched marketplace offers (#4280); not part of `unresolvedProductCount`. */
+  unmatchedOfferCount?: number;
   /**
    * `false` when the coverage-gap enrichment failed for this whole response
    * — every row's `missingFromConnectionIds` is then an unreliable `[]`,

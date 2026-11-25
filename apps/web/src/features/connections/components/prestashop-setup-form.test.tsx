@@ -89,7 +89,7 @@ describe('PrestashopSetupForm', () => {
       url: 'https://shop.example.com',
       key: 'WSKEY123',
     });
-    await advanceToStep(view.container, 2);
+    await advanceToStep(view.container, 3);
 
     const form = view.container.querySelector('form');
     if (!form) throw new Error('wizard form not found');
@@ -118,14 +118,13 @@ describe('PrestashopSetupForm', () => {
       key: 'WSKEY123',
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('location-pathname')).toHaveTextContent('/connections');
-    });
+    expect(await screen.findByRole('link', { name: 'Go to connection' })).toBeInTheDocument();
+    expect(screen.getByText('Packing and carriers come next')).toBeInTheDocument();
     expect(create).toHaveBeenCalledWith({
       name: 'Main store',
       platformType: 'prestashop',
@@ -168,6 +167,32 @@ describe('PrestashopSetupForm', () => {
     );
   });
 
+  it('sends the chosen order sync start and states it on the review step (#4228)', async () => {
+    const create = vi.fn().mockResolvedValue(sampleConnection);
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<PrestashopSetupForm />, { apiClient });
+
+    fillCredentialsStep(view.container, {
+      name: 'Main store',
+      url: 'https://shop.example.com',
+      key: 'WSKEY123',
+    });
+    await advanceToStep(view.container, 3);
+
+    fireEvent.click(
+      within(view.container).getByRole('radio', { name: /Every order the shop has/ })
+    );
+    await advanceOneStep(view.container);
+
+    expect(within(view.container).getAllByText('Every order').length).toBeGreaterThan(0);
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await findToastTitle('Connection created');
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ orderSyncStart: { mode: 'all' } })
+    );
+  });
+
   it('includes shopId in config when provided', async () => {
     const create = vi.fn().mockResolvedValue(sampleConnection);
     const apiClient = createMockApiClient({ connections: { create } });
@@ -180,7 +205,7 @@ describe('PrestashopSetupForm', () => {
       shopId: '2',
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -206,7 +231,7 @@ describe('PrestashopSetupForm', () => {
       target: { value: 'https://shop.example.com' },
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -232,7 +257,7 @@ describe('PrestashopSetupForm', () => {
       key: 'WSKEY',
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -282,7 +307,7 @@ describe('PrestashopSetupForm', () => {
       key: 'WSKEY',
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -304,7 +329,7 @@ describe('PrestashopSetupForm', () => {
       target: { value: 'PLN' },
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
@@ -327,7 +352,7 @@ describe('PrestashopSetupForm', () => {
       key: 'WSKEY',
     });
 
-    await advanceToStep(view.container, 3);
+    await advanceToStep(view.container, 4);
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 

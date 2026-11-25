@@ -46,4 +46,14 @@ describe('StickyActionBar', () => {
     expect(screen.getByRole('region', { name: 'Changes' })).toHaveAttribute('data-clean', 'false');
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
   });
+
+  it('should turn the ready line amber when the caller asks for a warning', () => {
+    render(
+      <StickyActionBar missingLabel="Missing" readyText="Ready, but" tone="warning">
+        <button type="button">Go</button>
+      </StickyActionBar>
+    );
+    expect(screen.getByRole('status')).toHaveClass('is-warning');
+    expect(screen.getByRole('status')).not.toHaveClass('is-ready');
+  });
 });

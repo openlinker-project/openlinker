@@ -1,6 +1,6 @@
 {
   "attention": {
-    "label": "To check",
+    "label": "Needs attention",
     "limitDesc": "Paused. Raise the limit and resume it.",
     "limitLabel": "The limit is used up",
     "limitShort": "limit",
@@ -297,6 +297,7 @@
     "cap": "Limit is {cap} pcs.",
     "channel": "channel",
     "channelsLabel": "Channels",
+    "effect": "The gift takes the units we add off stock and shows on the document at 0.00.",
     "eyebrow": "The rule in one sentence",
     "from": "Works from {from}.",
     "fromTo": "Works from {from} to {to}.",
@@ -305,7 +306,7 @@
     "or": " or ",
     "product": "When an order from {channels} contains {product}, we add a gift: {gift}, {qty} pcs.",
     "product_ph": "product in the order",
-    "stackAll": "Stacks with all promotions.",
+    "stackAll": "Stacks with every other promotion.",
     "stackNone": "Does not stack with others.",
     "stackSelected": "Stacks only with: {names}.",
     "stackSelectedNone": "Stacks only with selected (none yet).",
@@ -385,6 +386,7 @@
       "costsYouAfter": " a piece",
       "costsYouBefore": "It costs you ",
       "customerPays": "The customer pays",
+      "effectNote": "The gift goes into the order at 0.00 and comes off stock like any item. On the document it appears as set in the invoice or receipt settings.",
       "empty": "No gift chosen",
       "emptyHelp": "Choose the product we add to the order.",
       "error": "Choose the gift product.",

@@ -22,7 +22,7 @@
  * @module features/connections/components
  */
 import { interpolate, useMessages } from '../../../shared/i18n';
-import type { ReactElement } from 'react';
+import type { FocusEvent, PointerEvent, ReactElement } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { ConnectionEnvironment } from '../lib/connection-environment';
 import { resolveConnectionLinkTarget } from '../lib/connection-link-target';
@@ -72,6 +72,29 @@ export interface ConnectionChipProps {
   /** Accessible name of a linked chip; defaults to "name, platform". */
   linkLabel?: string;
   className?: string;
+  /**
+   * Lay the slide-out on the viewport instead of inside the chip. For a chip
+   * inside a container that clips its overflow (a collapsing card), where the
+   * absolutely positioned slide-out is cut off. It opens to the right, or to
+   * the left when the right edge of the screen would cut it.
+   */
+  floatReveal?: boolean;
+}
+
+/** Places the floating slide-out beside the face, on whichever side fits the screen. */
+function placeFloatingReveal(chip: HTMLElement): void {
+  const face = chip.querySelector<HTMLElement>('.connection-chip__face');
+  const reveal = chip.querySelector<HTMLElement>('.connection-chip__reveal');
+  if (!face || !reveal) return;
+  const rect = face.getBoundingClientRect();
+  const width = reveal.offsetWidth;
+  const overlap = 12;
+  const margin = 8;
+  const fitsRight = rect.right - overlap + width <= window.innerWidth - margin;
+  chip.dataset.side = fitsRight ? 'right' : 'left';
+  const x = fitsRight ? rect.right - overlap : Math.max(margin, rect.left + overlap - width);
+  chip.style.setProperty('--reveal-x', `${x}px`);
+  chip.style.setProperty('--reveal-y', `${rect.top}px`);
 }
 
 export function ConnectionChip({
@@ -85,6 +108,7 @@ export function ConnectionChip({
   onNavigate,
   linkLabel,
   className = '',
+  floatReveal = false,
 }: ConnectionChipProps): ReactElement {
   const copy = useMessages('connections').connectionChip;
   const location = useLocation();
@@ -131,6 +155,7 @@ export function ConnectionChip({
     label ? null : 'connection-chip--name-only',
     unknown ? 'connection-chip--unknown' : null,
     staticFace ? 'connection-chip--static' : null,
+    floatReveal ? 'connection-chip--float' : null,
     className,
   ]
     .filter(Boolean)
@@ -197,6 +222,9 @@ export function ConnectionChip({
     </span>
   );
 
+  const onFloatEnter = (e: PointerEvent<HTMLElement> | FocusEvent<HTMLElement>): void =>
+    placeFloatingReveal(e.currentTarget);
+
   if (!linked) {
     return (
       <span className={classes} data-channel={channel.platformType ?? undefined} title={title}>
@@ -212,6 +240,8 @@ export function ConnectionChip({
       className={classes}
       data-channel={channel.platformType ?? undefined}
       title={title}
+      onPointerEnter={floatReveal ? onFloatEnter : undefined}
+      onFocus={floatReveal ? onFloatEnter : undefined}
       // Face and slide-out are adjacent inline boxes, so the computed name would
       // run them together ("e-boxShoper"). Name first: it is what tells two rows
       // apart.

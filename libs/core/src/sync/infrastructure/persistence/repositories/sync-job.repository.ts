@@ -24,7 +24,11 @@ import type { SyncJobRepositoryPort } from '../../../domain/ports/sync-job-repos
 import { SyncJob } from '../../../domain/entities/sync-job.entity';
 import { InvalidSyncJobStateError } from '../../../domain/exceptions/invalid-sync-job-state.error';
 import { SyncJobNotFoundError } from '../../../domain/exceptions/sync-job-not-found.error';
-import type { ConnectionBacklogStats } from '../../../domain/types/connection-sync-status.types';
+import type {
+  ConnectionBacklogStats,
+  OrderImportFailureReason,
+  OrderImportStats,
+} from '../../../domain/types/connection-sync-status.types';
 import type {
   JobOutcome,
   JobOutcomeReason,
@@ -694,6 +698,144 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
       requeuedJobIds,
       count: requeuedJobIds.length,
       skipped: candidateIds.length - requeuedJobIds.length,
+    };
+  }
+
+  async getOrderImportStats(
+    connectionId: string,
+    since24h: Date,
+    since7d: Date
+  ): Promise<OrderImportStats> {
+    // Two small aggregates. The order-job one is bounded by the 7 day floor on the
+    // (connectionId, createdAt) index; the active-import one reads only queued and
+    // running rows, so it scales with the live queue, never with history.
+    const ordersSql = `
+      SELECT
+        COUNT(DISTINCT "payloadJson"->>'externalOrderId') FILTER (
+          WHERE status = 'succeeded' AND "updatedAt" >= $2
+        )::int AS imported_24h,
+        COUNT(*) FILTER (WHERE status IN ('queued', 'running'))::int AS waiting,
+        MAX("updatedAt") FILTER (WHERE status = 'succeeded') AS last_imported_at
+      FROM sync_jobs
+      WHERE "connectionId" = $1
+        AND "jobType" = 'marketplace.order.sync'
+        AND "createdAt" >= $3
+    `;
+    // A job an operator cancelled ends dead too, but it is not a failure: it is
+    // left out here so the failed figure means "something went wrong".
+    const failuresSql = `
+      SELECT
+        CASE
+          WHEN "lastError" ILIKE '%Missing mapping for order item%' THEN 'missing-mapping'
+          ELSE 'other'
+        END AS code,
+        COUNT(DISTINCT "payloadJson"->>'externalOrderId')::int AS cnt,
+        MAX("updatedAt") AS last_failed_at,
+        (array_agg("payloadJson"->>'externalOrderId' ORDER BY "updatedAt" DESC))[1] AS sample_order_id,
+        (array_agg(LEFT(COALESCE("lastError", ''), 300) ORDER BY "updatedAt" DESC))[1] AS sample_message
+      FROM sync_jobs
+      WHERE "connectionId" = $1
+        AND "jobType" = 'marketplace.order.sync'
+        AND status = 'dead'
+        AND "createdAt" >= $2
+        AND COALESCE("lastError", '') NOT ILIKE 'cancelled%'
+        -- An order whose import later succeeded (a retry, or a newer event) is no longer failing.
+        AND NOT EXISTS (
+          SELECT 1 FROM sync_jobs ok
+          WHERE ok."connectionId" = $1
+            AND ok."jobType" = 'marketplace.order.sync'
+            AND ok.status = 'succeeded'
+            AND ok."createdAt" >= $2
+            AND ok."payloadJson"->>'externalOrderId' = sync_jobs."payloadJson"->>'externalOrderId'
+            AND ok."updatedAt" > sync_jobs."updatedAt"
+        )
+      GROUP BY 1
+      ORDER BY cnt DESC
+    `;
+    // The shop was "last checked" when a poll last SUCCEEDED, not when any cursor
+    // last moved: a quiet shop moves no cursor, and a product sweep moves some that
+    // have nothing to do with orders.
+    const pollSql = `
+      SELECT MAX("updatedAt") AS last_polled_at
+      FROM sync_jobs
+      WHERE "connectionId" = $1
+        AND "jobType" = 'marketplace.orders.poll'
+        AND status = 'succeeded'
+        AND "createdAt" >= $2
+    `;
+    const importSql = `
+      WITH active AS (
+        SELECT "payloadJson" AS payload
+        FROM sync_jobs
+        WHERE "connectionId" = $1
+          AND "jobType" = 'marketplace.orders.import'
+          AND status IN ('queued', 'running')
+        ORDER BY "createdAt" DESC
+        LIMIT 1
+      )
+      SELECT
+        a.payload->>'runId' AS run_id,
+        a.payload->>'direction' AS direction,
+        a.payload->>'from' AS from_day,
+        a.payload->>'to' AS to_day,
+        (
+          SELECT COUNT(*)::int FROM sync_jobs s
+          WHERE s."connectionId" = $1
+            AND s."jobType" = 'marketplace.orders.import'
+            AND s.status = 'succeeded'
+            AND s."createdAt" >= $2
+            AND s."payloadJson"->>'runId' = a.payload->>'runId'
+        ) AS pages_done,
+        (
+          SELECT MIN(s."createdAt") FROM sync_jobs s
+          WHERE s."connectionId" = $1
+            AND s."jobType" = 'marketplace.orders.import'
+            AND s."createdAt" >= $2
+            AND s."payloadJson"->>'runId' = a.payload->>'runId'
+        ) AS started_at
+      FROM active a
+    `;
+    const [orderRows, importRows, failureRows, pollRows] = await Promise.all([
+      this.dataSource.query<Array<Record<string, unknown>>>(ordersSql, [
+        connectionId,
+        since24h,
+        since7d,
+      ]),
+      // The run's pages are only counted back to the 7 day floor: a run still
+      // going after a week is reported with the pages it has shown this week.
+      this.dataSource.query<Array<Record<string, unknown>>>(importSql, [connectionId, since7d]),
+      this.dataSource.query<Array<Record<string, unknown>>>(failuresSql, [connectionId, since7d]),
+      this.dataSource.query<Array<Record<string, unknown>>>(pollSql, [connectionId, since7d]),
+    ]);
+    const o = orderRows[0] ?? {};
+    const a = importRows[0];
+    const failures: OrderImportFailureReason[] = failureRows.map((row) => ({
+      code: row.code === 'missing-mapping' ? 'missing-mapping' : 'other',
+      count: Number(row.cnt ?? 0),
+      lastFailedAt: new Date(row.last_failed_at as string),
+      sampleOrderId: typeof row.sample_order_id === 'string' ? row.sample_order_id : null,
+      sampleMessage: typeof row.sample_message === 'string' ? row.sample_message : '',
+    }));
+    return {
+      importedLast24h: Number(o.imported_24h ?? 0),
+      lastPolledAt: pollRows[0]?.last_polled_at
+        ? new Date(pollRows[0].last_polled_at as string)
+        : null,
+      failedLast7d: failures.reduce((sum, f) => sum + f.count, 0),
+      failures,
+      waiting: Number(o.waiting ?? 0),
+      lastImportedAt: o.last_imported_at ? new Date(o.last_imported_at as string) : null,
+      activeImport:
+        a && typeof a.run_id === 'string'
+          ? {
+              runId: a.run_id,
+              direction: a.direction === 'newest-first' ? 'newest-first' : 'oldest-first',
+              from: typeof a.from_day === 'string' ? a.from_day : null,
+              to: typeof a.to_day === 'string' ? a.to_day : null,
+              pagesDone: Number(a.pages_done ?? 0),
+              startedAt: a.started_at ? new Date(a.started_at as string) : new Date(),
+            }
+          : null,
     };
   }
 

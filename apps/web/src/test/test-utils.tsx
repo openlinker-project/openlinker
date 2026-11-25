@@ -796,6 +796,7 @@ export function createMockApiClient(
       updateOfferFields: vi.fn().mockResolvedValue({ jobId: 'job-1' }),
       // #3962 - a live product with nothing held: the product page's sales
       // channels section renders nothing and the products banner stays away.
+      previewBundleOffers: vi.fn().mockResolvedValue({ entries: [] }),
       getProductSaleStatus: vi.fn().mockResolvedValue({
         productId: '',
         deletedAtSource: false,
@@ -935,6 +936,14 @@ export function createMockApiClient(
       revoke: vi.fn().mockResolvedValue(undefined),
       ...overrides.mcpTokens,
     } as ApiClient['mcpTokens'],
+    savedViews: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      remove: vi.fn().mockResolvedValue(undefined),
+      setDefault: vi.fn().mockResolvedValue(undefined),
+      ...overrides.savedViews,
+    } as ApiClient['savedViews'],
     posthogSettings: {
       get: vi.fn().mockResolvedValue({
         enabled: false,
@@ -1309,6 +1318,13 @@ export function createMockApiClient(
       getGiftBundleReport: vi.fn().mockResolvedValue({ bundles: [], demand: [] }),
       ...overrides.giftReport,
     } as ApiClient['giftReport'],
+    releaseState: {
+      getState: vi.fn().mockResolvedValue({ enabled: false, cursor: null, user: [], installation: [] }),
+      updateCursor: vi.fn(),
+      updateItems: vi.fn().mockResolvedValue([]),
+      updateSteps: vi.fn().mockResolvedValue([]),
+      ...overrides.releaseState,
+    } as ApiClient['releaseState'],
     returnGifts: {
       getReturnGifts: vi.fn().mockResolvedValue({ gifts: [], currency: null, refundDeductionGross: 0 }),
       decideReturnGift: vi.fn(),

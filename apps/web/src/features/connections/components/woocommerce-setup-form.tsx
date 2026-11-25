@@ -16,7 +16,6 @@
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
 import { useAdaptersQuery } from '../../adapters';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import { CORE_CAPABILITY_VALUES, type CoreCapability } from '../api/connections.types';
@@ -37,6 +36,13 @@ import {
 import { Alert } from '../../../shared/ui/alert';
 import { BackLink } from '../../../shared/ui/back-link';
 import { Button } from '../../../shared/ui/button';
+import { OrderSyncStartField } from './order-sync-start-field';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  describeOrderSyncStart,
+  readsOrders,
+} from '../lib/order-sync-start';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
@@ -49,24 +55,30 @@ import {
   DEFAULT_BUYER_DATA_WIZARD_VALUE,
 } from '../../buyer-data';
 import { captureDemoEvent } from '../../demo';
-import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { WizardCreatedScreen } from './wizard-created-screen';
+import { ShopPackingNextStep } from './shop-packing-next-step';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 
 // Analytics step names, kept in English so events stay comparable across languages.
-const STEP_EVENT_IDS = [
-  'Store details',
-  'API credentials',
-  'Capabilities',
-  'Review & create',
-] as const;
+type StepId = 'store' | 'credentials' | 'capabilities' | 'orders' | 'review';
 
-const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<WoocommerceSetupFormValues>>> = [
-  ['name', 'siteUrl'],
-  ['consumerKey', 'consumerSecret'],
-  ['enabledCapabilities'],
-  [],
-];
+const STEP_EVENT_IDS: Record<StepId, string> = {
+  store: 'Store details',
+  credentials: 'API credentials',
+  capabilities: 'Capabilities',
+  orders: 'Order history',
+  review: 'Review & create',
+};
+
+const STEP_FIELDS: Record<StepId, ReadonlyArray<Path<WoocommerceSetupFormValues>>> = {
+  store: ['name', 'siteUrl'],
+  credentials: ['consumerKey', 'consumerSecret'],
+  capabilities: ['enabledCapabilities'],
+  orders: ['orderSyncStart'],
+  review: [],
+};
 
 function maskKey(key: string): string {
   if (key.length <= 4) return '•'.repeat(key.length);
@@ -77,15 +89,8 @@ export function WoocommerceSetupForm(): ReactElement {
   const copy = useMessages('connections').woocommerceSetupForm;
   const setupCopy = useMessages('connections').setup;
   const platform = usePlatform('woocommerce')?.displayName ?? copy.platformFallback;
-  const STEP_LABELS = [
-    copy.steps.store,
-    copy.steps.credentials,
-    copy.steps.capabilities,
-    copy.steps.review,
-  ];
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
-  const navigate = useNavigate();
   const adaptersQuery = useAdaptersQuery();
 
   const form = useForm<WoocommerceSetupFormValues, undefined, WoocommerceSetupFormSubmission>({
@@ -94,7 +99,16 @@ export function WoocommerceSetupForm(): ReactElement {
     mode: 'onBlur',
   });
 
+  const values = form.watch();
+  // The order-history step only exists for a connection that will read orders.
+  const stepIds: StepId[] = readsOrders(values.enabledCapabilities)
+    ? ['store', 'credentials', 'capabilities', 'orders', 'review']
+    : ['store', 'credentials', 'capabilities', 'review'];
+  const STEP_LABELS = stepIds.map((id) => copy.steps[id]);
+
+  const [created, setCreated] = useState<{ id: string; name: string } | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
+  const stepId = stepIds[Math.min(stepIndex, stepIds.length - 1)];
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
 
   // Abandon-prevention.
@@ -108,10 +122,14 @@ export function WoocommerceSetupForm(): ReactElement {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty]);
 
+  const orderStartCopy = useMessages('connections').orderSyncStart;
+  const format = useFormat();
   const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === WOOCOMMERCE_ADAPTER_KEY);
   // The checkbox list is gated on the well-known core capabilities: the
   // create-connection request DTO is still strict on `CoreCapabilityValues`
   // (#576), so the wizard only exposes core caps today.
+  const orderSyncStartModes = adapterMetadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
+  const orderWindowImport = adapterMetadata?.orderWindowImport ?? false;
   const supportedCapabilities: CoreCapability[] = (
     adapterMetadata?.supportedCapabilities ?? WOOCOMMERCE_FALLBACK_CAPABILITIES
   ).filter((capability): capability is CoreCapability =>
@@ -123,7 +141,7 @@ export function WoocommerceSetupForm(): ReactElement {
   );
 
   async function goNext(): Promise<void> {
-    const fields = STEP_FIELDS[stepIndex];
+    const fields = STEP_FIELDS[stepId];
     if (fields.length > 0) {
       const valid = await form.trigger([...fields]);
       if (!valid) return;
@@ -131,7 +149,7 @@ export function WoocommerceSetupForm(): ReactElement {
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
     captureDemoEvent('demo_connection_wizard_step_advanced', {
       platform: 'woocommerce',
-      step: STEP_EVENT_IDS[stepIndex],
+      step: STEP_EVENT_IDS[stepId],
     });
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
@@ -144,7 +162,7 @@ export function WoocommerceSetupForm(): ReactElement {
   // advanced to the last step landing on the Create button that replaced Next.
   // Either way it means "Next", never "Create" (the review step must be seen).
   function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
-    if (stepIndex < STEP_LABELS.length - 1) {
+    if (stepIndex < stepIds.length - 1) {
       event.preventDefault();
       void goNext();
       return;
@@ -154,23 +172,44 @@ export function WoocommerceSetupForm(): ReactElement {
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
+      const result = await createConnection.mutateAsync(toCreateConnectionInput(values));
       form.reset(values, { keepValues: true, keepDirty: false });
       showToast({
         tone: 'success',
         title: copy.createdTitle,
-        description: interpolate(copy.createdDescription, { platform, name: created.name }),
+        description: interpolate(copy.createdDescription, { platform, name: result.name }),
       });
-      void navigate('/connections');
+      setCreated({ id: result.id, name: result.name });
     } catch {
       return;
     }
   });
 
-  const values = form.watch();
   const selectedCapabilities = values.enabledCapabilities ?? [];
   const buyerDataValue = values.buyerDataRetention ?? DEFAULT_BUYER_DATA_WIZARD_VALUE;
   const takesOrders = selectedCapabilities.includes('OrderSource');
+
+  if (created) {
+    return (
+      <WizardLayout
+        stepper={
+          <SetupStepper
+            steps={STEP_LABELS}
+            currentStep={STEP_LABELS.length - 1}
+            completedSteps={new Set(STEP_LABELS.map((_, index) => index))}
+          />
+        }
+      >
+        <WizardCreatedScreen
+          connectionId={created.id}
+          connectionName={created.name}
+          title={copy.createdTitle}
+        >
+          <ShopPackingNextStep connectionId={created.id} />
+        </WizardCreatedScreen>
+      </WizardLayout>
+    );
+  }
 
   return (
     <WizardLayout
@@ -190,7 +229,7 @@ export function WoocommerceSetupForm(): ReactElement {
           </Alert>
         ) : null}
 
-        {stepIndex === 0 ? (
+        {stepId === 'store' ? (
           <>
             <FormField
               label={copy.fields.name.label}
@@ -223,7 +262,7 @@ export function WoocommerceSetupForm(): ReactElement {
           </>
         ) : null}
 
-        {stepIndex === 1 ? (
+        {stepId === 'credentials' ? (
           <>
             <Alert tone="info" title={copy.beforeYouStart.title}>
               {renderRich(
@@ -267,7 +306,7 @@ export function WoocommerceSetupForm(): ReactElement {
           </>
         ) : null}
 
-        {stepIndex === 2 ? (
+        {stepId === 'capabilities' ? (
           <fieldset className="capability-fieldset">
             <legend className="capability-fieldset__legend">{copy.capabilities.legend}</legend>
             <p className="muted-text capability-fieldset__help">{copy.capabilities.help}</p>
@@ -300,7 +339,19 @@ export function WoocommerceSetupForm(): ReactElement {
           </fieldset>
         ) : null}
 
-        {stepIndex === 3 ? (
+        {stepId === 'orders' ? (
+          <OrderSyncStartField
+            value={values.orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+            onChange={(next) =>
+              form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+            }
+            supportedModes={orderSyncStartModes}
+            windowImport={orderWindowImport}
+            error={form.formState.errors.orderSyncStart?.from?.message}
+          />
+        ) : null}
+
+        {stepId === 'review' ? (
           <>
           {takesOrders ? (
             <BuyerDataWizardStep
@@ -320,6 +371,12 @@ export function WoocommerceSetupForm(): ReactElement {
               {selectedCapabilities.length > 0 ? selectedCapabilities.join(', ') : copy.review.noneSelected}
             </dd>
             {takesOrders ? <BuyerDataWizardReviewRows value={buyerDataValue} /> : null}
+            {readsOrders(values.enabledCapabilities) ? (
+              <>
+                <dt>{orderStartCopy.review.label}</dt>
+                <dd>{describeOrderSyncStart(values.orderSyncStart, orderStartCopy.review, format.date)}</dd>
+              </>
+            ) : null}
           </dl>
           </>
         ) : null}
@@ -333,7 +390,7 @@ export function WoocommerceSetupForm(): ReactElement {
             ) : null}
           </div>
           <div className="wizard-actions__group">
-            {stepIndex < STEP_LABELS.length - 1 ? (
+            {stepIndex < stepIds.length - 1 ? (
               <Button key="next" type="button" onClick={() => void goNext()}>
                 {setupCopy.next}
               </Button>

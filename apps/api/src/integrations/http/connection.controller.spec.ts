@@ -85,6 +85,8 @@ describe('ConnectionController', () => {
       disable: jest.fn(),
       archive: jest.fn(),
       restore: jest.fn(),
+      restartOrderSync: jest.fn(),
+      startOrderImport: jest.fn(),
     } as unknown as jest.Mocked<ConnectionService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -636,6 +638,63 @@ describe('ConnectionController', () => {
       await expect(
         controller.updateCredentials('connection-123', { credentials: { webserviceApiKey: 'K' } })
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('order sync start (#4228)', () => {
+    it('should answer the restart body the service produced', async () => {
+      service.restartOrderSync.mockResolvedValue({ applied: false, reason: 'already-following-feed' });
+
+      const result = await controller.restartOrderSync('connection-123', { mode: 'now' });
+
+      expect(result).toEqual({ applied: false, reason: 'already-following-feed' });
+      expect(service.restartOrderSync).toHaveBeenCalledWith('connection-123', { mode: 'now' });
+    });
+
+    it('should hand a from start with its order to the service', async () => {
+      service.restartOrderSync.mockResolvedValue({ applied: true });
+
+      await controller.restartOrderSync('connection-123', {
+        mode: 'from',
+        from: '2026-10-01',
+        order: 'newest-first',
+      });
+
+      expect(service.restartOrderSync).toHaveBeenCalledWith('connection-123', {
+        mode: 'from',
+        from: '2026-10-01',
+        order: 'newest-first',
+      });
+    });
+
+    it('should delegate the manual import and return its run id', async () => {
+      service.startOrderImport.mockResolvedValue({ runId: 'manual:connection-123:abc' });
+
+      const result = await controller.startOrderImport('connection-123', {
+        from: '2026-10-01',
+        direction: 'newest-first',
+      });
+
+      expect(result).toEqual({ runId: 'manual:connection-123:abc' });
+      expect(service.startOrderImport).toHaveBeenCalledWith('connection-123', {
+        from: '2026-10-01',
+        direction: 'newest-first',
+      });
+    });
+
+    it('should pass an order sync start from the update body to the service', async () => {
+      service.update.mockResolvedValue(mockConnection);
+
+      await controller.update(
+        'connection-123',
+        { enabledCapabilities: ['OrderSource'], orderSyncStart: { mode: 'all' } },
+        mockAdminUser
+      );
+
+      expect(service.update).toHaveBeenCalledWith('connection-123', {
+        enabledCapabilities: ['OrderSource'],
+        orderSyncStart: { mode: 'all' },
+      });
     });
   });
 

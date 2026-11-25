@@ -372,6 +372,11 @@ export interface OperationalSettingsView {
   readonly buyerDataEraseAfterDays: ResolvedOperationalSetting<number>;
   readonly buyerDataEraseMode: ResolvedOperationalSetting<BuyerDataEraseMode>;
   /**
+   * Release center on/off (#4143). A separate boolean kind, not a numeric key:
+   * it has no bounds, so it takes none of the numeric machinery.
+   */
+  readonly releaseCenterEnabled: ResolvedOperationalSetting<boolean>;
+  /**
    * How often each sweep runs (#2660 review).
    *
    * Read-only here - there is no input for either - but reported so a consumer
@@ -426,6 +431,8 @@ export interface OperationalSettingsInput {
   readonly buyerDataHideAfterDays?: number | null;
   readonly buyerDataEraseAfterDays?: number | null;
   readonly buyerDataEraseMode?: BuyerDataEraseMode | null;
+  /** `null` clears the stored value back to the env or default rung. */
+  readonly releaseCenterEnabled?: boolean | null;
   /**
    * Permission to exceed a RECOMMENDED ceiling on this request.
    *
@@ -622,4 +629,43 @@ export function resolveOperationalSetting(
  */
 export function exceedsAdapterPageSize(requested: number, adapterMax: number): boolean {
   return requested > adapterMax;
+}
+
+export const RELEASE_CENTER_ENABLED_ENV_VAR = 'OL_RELEASE_CENTER_ENABLED';
+
+/** On by default: an install that sets nothing keeps the release center. */
+export const RELEASE_CENTER_ENABLED_DEFAULT = true;
+
+/**
+ * Reads the env rung. Only the literal `true` / `false` (case-insensitive,
+ * trimmed) count; anything else falls through to the default, because a typo
+ * must not silently switch the feature off.
+ */
+export function readReleaseCenterEnabledEnv(raw: string | undefined): boolean | null {
+  if (raw === undefined) {
+    return null;
+  }
+  const normalised = raw.trim().toLowerCase();
+  if (normalised === 'true') {
+    return true;
+  }
+  if (normalised === 'false') {
+    return false;
+  }
+  return null;
+}
+
+/** `setting -> OL_RELEASE_CENTER_ENABLED -> default on`, reported with its rung. */
+export function resolveReleaseCenterEnabled(
+  stored: boolean | null,
+  env: string | undefined
+): ResolvedOperationalSetting<boolean> {
+  if (stored !== null) {
+    return { value: stored, source: 'setting', workerMayDiffer: false };
+  }
+  const fromEnv = readReleaseCenterEnabledEnv(env);
+  if (fromEnv !== null) {
+    return { value: fromEnv, source: 'env', workerMayDiffer: true };
+  }
+  return { value: RELEASE_CENTER_ENABLED_DEFAULT, source: 'default', workerMayDiffer: true };
 }

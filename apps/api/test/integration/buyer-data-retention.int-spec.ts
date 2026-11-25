@@ -264,6 +264,62 @@ describe('Buyer data retention (integration)', () => {
     }
   });
 
+  it('should erase an order and its delivery-log recipients all-or-nothing', async () => {
+    const order = await seed('ol_order_ret_tx');
+    const ds = harness.getDataSource();
+    await ds.query(
+      `INSERT INTO buyer_email_deliveries ("internalOrderId", "connectionId", "templateKey", "subjectRef", outcome, recipient) VALUES ($1, $2, 'shipped', 's', 'sent', 'jan@example.com')`,
+      [order.internalOrderId, CONNECTION_ID]
+    );
+    await ds.query(
+      `INSERT INTO document_email_deliveries ("internalOrderId", "documentKind", "documentId", outcome, recipient) VALUES ($1, 'invoice', 'd1', 'sent', 'jan@example.com')`,
+      [order.internalOrderId]
+    );
+    // A failure on the LAST statement of the erase: without a transaction the order row
+    // and the first recipient UPDATE would already be committed, the next pass would skip
+    // the order (`personalDataErasedAt` is set) and the address would stay in the log.
+    await ds.query(
+      `CREATE OR REPLACE FUNCTION ol_test_fail_doc_recipient() RETURNS trigger AS $$
+       BEGIN RAISE EXCEPTION 'simulated delivery-log failure'; END; $$ LANGUAGE plpgsql`
+    );
+    await ds.query(
+      `CREATE TRIGGER ol_test_fail_doc_recipient BEFORE UPDATE ON document_email_deliveries
+       FOR EACH ROW EXECUTE FUNCTION ol_test_fail_doc_recipient()`
+    );
+    try {
+      await expect(
+        repository.erasePersonalDataForRetention(
+          [
+            {
+              internalOrderId: order.internalOrderId,
+              orderSnapshot: eraseBuyerPersonalDataFromSnapshot(
+                PII_SNAPSHOT,
+                order.internalOrderId
+              ),
+              searchText: 'a-1',
+              hide: false,
+            },
+          ],
+          new Date()
+        )
+      ).rejects.toThrow(/simulated delivery-log failure/);
+    } finally {
+      await ds.query(`DROP TRIGGER IF EXISTS ol_test_fail_doc_recipient ON document_email_deliveries`);
+      await ds.query(`DROP FUNCTION IF EXISTS ol_test_fail_doc_recipient()`);
+    }
+
+    const row = await ds
+      .getRepository(OrderRecordOrmEntity)
+      .findOneByOrFail({ internalOrderId: order.internalOrderId });
+    expect(row.personalDataErasedAt).toBeNull();
+    expect(JSON.stringify(row.orderSnapshot)).toContain('jan@example.com');
+    const buyerRows = (await ds.query(
+      `SELECT recipient FROM buyer_email_deliveries WHERE "internalOrderId" = $1`,
+      [order.internalOrderId]
+    )) as { recipient: string | null }[];
+    expect(buyerRows[0]?.recipient).toBe('jan@example.com');
+  });
+
   it('should report an already hidden order due for erasure apart, and keep the histogram a partition', async () => {
     const hiddenDue = await seed('ol_order_ret_hd');
     const erasedVisible = await seed('ol_order_ret_ev');

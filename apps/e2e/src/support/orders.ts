@@ -84,7 +84,7 @@ export async function waitForOrder(
 }
 
 /** Does this OL order record originate from the given source-native order id? */
-function matchesExternalOrderId(order: OrderRecord, externalOrderId: string): boolean {
+export function matchesExternalOrderId(order: OrderRecord, externalOrderId: string): boolean {
   // Both in-tree order sources shape the feed cursor as `{externalId}:...`
   // (WooCommerce `100:processing:<iso>`, PrestaShop `41:<date_upd>:created`).
   if (order.sourceEventId?.startsWith(`${externalOrderId}:`)) return true;

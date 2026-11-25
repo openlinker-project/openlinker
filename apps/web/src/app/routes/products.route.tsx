@@ -45,6 +45,14 @@ export const productsRoute: RouteObject = {
       },
     },
     {
+      path: 'bundles/bulk',
+      handle: bundleNewCrumb,
+      lazy: async () => {
+        const { BundleBulkPage } = await import('../../pages/products/bundle-bulk-page');
+        return { Component: BundleBulkPage };
+      },
+    },
+    {
       path: 'bundles/:variantId',
       handle: bundleEditCrumb,
       lazy: async () => {

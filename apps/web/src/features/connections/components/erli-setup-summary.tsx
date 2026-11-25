@@ -8,7 +8,8 @@
  *
  * @see {@link ErliSetupForm} for the form this summary is paired with.
  */
-import { useMessages } from '../../../shared/i18n';
+import { useFormat, useMessages } from '../../../shared/i18n';
+import { describeOrderSyncStart } from '../lib/order-sync-start';
 import type { ReactElement } from 'react';
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import {
@@ -30,6 +31,8 @@ export function ErliSetupSummary({
   values,
 }: ErliSetupSummaryProps): ReactElement {
   const copy = useMessages('connections').erliSetupSummary;
+  const orderCopy = useMessages('connections').orderSyncStart;
+  const format = useFormat();
   const environmentLabel =
     values.environment === 'production'
       ? copy.environments.production
@@ -44,10 +47,20 @@ export function ErliSetupSummary({
         <dl className="wizard-summary__rows">
           <WizardSummaryRow label={copy.name} value={values.name?.trim() ? values.name : null} />
           <WizardSummaryRow label={copy.environment} value={environmentLabel} />
+          {stepIndex >= 1 ? (
+            <WizardSummaryRow
+              label={copy.productCatalogue}
+              value={values.catalogueMode === 'none' ? copy.noCatalogue : copy.linkedLater}
+            />
+          ) : null}
+          <WizardSummaryRow
+            label={orderCopy.review.label}
+            value={describeOrderSyncStart(values.orderSyncStart, orderCopy.review, format.date)}
+          />
         </dl>
       </section>
 
-      {stepIndex >= 1 ? (
+      {stepIndex >= 2 ? (
         <DeliveryWizardSummary
           value={values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE}
           suggestions={suggestions}

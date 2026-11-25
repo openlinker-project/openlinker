@@ -187,6 +187,16 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/identifier-mapping/domain/types/payment-writeback-config.types.ts',
     { helper: 'readPaymentWritebackConfig', key: 'config.paymentWriteback' },
   ],
+  [
+    'libs/core/src/identifier-mapping/domain/types/catalogue-mode.types.ts',
+    // #4280: whether a marketplace SOURCE accepts an order line that matches no
+    // catalogue product. Changes what the system DOES (ingestion reaches `ready`
+    // instead of parking in `awaiting_mapping`), so it is counted, not excused.
+    {
+      helper: 'readCatalogueMode',
+      key: 'config.catalogueMode',
+    },
+  ],
 ]);
 
 /**
@@ -457,14 +467,22 @@ const NON_KNOBS = new Map([
 // is now an optional per-connection OVERRIDE of the OpenLinker-wide default held
 // in the `sales_document_settings` singleton (absent = inherit).
 //
-// #4289 raises it to 18 for `config.buyerDataRetention` - when a connection's
+// #4280 raised it to 18 for `config.catalogueMode` - whether a marketplace source
+// accepts an order line with no catalogue match, so an install with only a
+// marketplace and no ProductMaster can ingest, track and ship. Per connection by
+// nature: it is a fact about ONE source (a shop-backed source expects its lines
+// to map; a marketplace-only one cannot), and an install-wide switch or "no
+// ProductMaster exists" auto-detection would make an order's outcome depend on
+// global mutable state. Registered rather than excused; the #1032 question still
+// stands, and the number is raised by one so the next knob asks again.
+//
+// #4289 raised it to 19 for `config.buyerDataRetention` - when a connection's
 // old orders are hidden and its buyers' personal data is erased. It is an
 // optional per-connection OVERRIDE of the OpenLinker-wide default held in the
 // `operational_settings` singleton (absent = inherit), the same shape #3941
 // gave the gift-line form, and per connection by nature: marketplaces carry
-// their own retention obligations. Registered rather than excused; the #1032
-// question still stands and the next knob asks again.
-const KNOB_THRESHOLD = 18;
+// their own retention obligations. Registered rather than excused.
+const KNOB_THRESHOLD = 19;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

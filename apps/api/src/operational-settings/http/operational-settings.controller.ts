@@ -96,6 +96,7 @@ export class OperationalSettingsController {
           buyerDataHideAfterDays: dto.buyerDataHideAfterDays,
           buyerDataEraseAfterDays: dto.buyerDataEraseAfterDays,
           buyerDataEraseMode: dto.buyerDataEraseMode,
+          releaseCenterEnabled: dto.releaseCenterEnabled,
           acknowledgeAboveRecommended: dto.acknowledgeAboveRecommended,
         },
         user?.id ?? null

@@ -23,7 +23,11 @@ interface AlreadyListedChipProps {
 export function AlreadyListedChip({ destinationName, title }: AlreadyListedChipProps): ReactElement {
   const copy = useMessages('listings').alreadyListedChip;
   return (
-    <span className="bulk-chip bulk-chip--neutral" title={title}>
+    <span
+      className="bulk-chip bulk-chip--neutral"
+      title={title}
+      style={{ maxWidth: '100%', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+    >
       <span className="bulk-chip__dot" aria-hidden="true" />
       {interpolate(copy.label, { destination: destinationName })}
     </span>

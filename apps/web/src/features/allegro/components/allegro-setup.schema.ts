@@ -6,7 +6,13 @@ import {
   type DeliveryLineSuggestion,
   type DeliveryWizardValue,
 } from '../../delivery-on-documents';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  toOrderSyncStart,
+} from '../../connections';
 import type { Messages, ResolvedCopy } from '../../../shared/i18n';
+import { CatalogueModeValues } from '../../connections';
 
 export type AllegroSetupSchemaCopy = ResolvedCopy<Messages['allegro-core']>['allegroSetupSchema'];
 
@@ -35,9 +41,14 @@ export function createAllegroSetupSchema(copy: AllegroSetupSchemaCopy) {
       copy.invalidConnectionId,
     )
     .transform((value) => (value && value.length > 0 ? value : undefined)),
+  // Whether this connection expects its order lines to resolve to catalogue
+  // products (#4281). Structured state set through `setValue`, like the answer
+  // to the "Sales documents" step below.
+  catalogueMode: z.enum(CatalogueModeValues).optional(),
   // The answer to the "Sales documents" step. Structured state rather than a
   // registered input, so it is set through `setValue` (#3911).
   deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),
+  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
   });
 }
 
@@ -52,7 +63,9 @@ export const ALLEGRO_SETUP_DEFAULT_VALUES: AllegroSetupFormValues = {
   clientId: '',
   clientSecret: '',
   masterCatalogConnectionId: '',
+  catalogueMode: 'linked',
   deliveryOnDocuments: DEFAULT_DELIVERY_WIZARD_VALUE,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toStartOAuthInput(
@@ -67,10 +80,17 @@ export function toStartOAuthInput(
     redirectUri,
     environment: values.environment,
     connectionName: values.name,
-    ...(values.masterCatalogConnectionId
+    // With no catalogue there is nothing to link a barcode to, so a catalogue
+    // connection picked before switching to "none" is not sent (#4281).
+    ...(values.masterCatalogConnectionId && values.catalogueMode !== 'none'
       ? { masterCatalogConnectionId: values.masterCatalogConnectionId }
       : {}),
+    // Only an explicit none is sent; linked is the default. A reauth rotates
+    // credentials only and must not carry config (#3911).
+    ...(values.catalogueMode === 'none' && !reauthConnectionId ? { catalogueMode: 'none' as const } : {}),
     ...(reauthConnectionId ? { connectionId: reauthConnectionId } : {}),
+    // A reauth only rotates credentials, so it carries no order start either.
+    ...(reauthConnectionId ? {} : { orderSyncStart: toOrderSyncStart(values.orderSyncStart) }),
     // A reauth only rotates credentials; it must not carry config (#3911).
     ...(reauthConnectionId
       ? {}

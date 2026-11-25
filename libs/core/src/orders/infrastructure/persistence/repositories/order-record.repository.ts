@@ -3732,51 +3732,62 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
     for (const erasure of erasures) {
       // `orderEdits.address` is an operator-typed buyer address and goes with
       // the rest; so does the recipient on `buyer_email_deliveries` and
-      // `document_email_deliveries` (nulled right after, same order id). The guard on `personalDataErasedAt` makes a replay a no-op;
-      // the protected re-check closes the window between the page read and this
-      // write, in which an operator may have placed a hold.
-      const rows = (await this.repository.query(
-        `UPDATE "order_records" rec
-         SET "orderSnapshot" = $2::jsonb,
-             "orderEdits" = CASE WHEN rec."orderEdits" IS NULL THEN NULL
-                                 ELSE rec."orderEdits" - 'address' END,
-             "buyerNote" = NULL,
-             "hasBuyerNote" = false,
-             "buyerTaxId" = NULL,
-             "searchText" = $3,
-             "personalDataErasedAt" = $4,
-             "hiddenAt" = CASE WHEN $5::boolean THEN COALESCE(rec."hiddenAt", $4) ELSE rec."hiddenAt" END
-         WHERE rec."internalOrderId" = $1
-           AND rec."personalDataErasedAt" IS NULL
-           AND NOT ${BUYER_DATA_PROTECTED_SQL}
-         RETURNING rec."customerId" AS customer_id`,
-        [
-          erasure.internalOrderId,
-          JSON.stringify(erasure.orderSnapshot),
-          erasure.searchText,
-          now,
-          erasure.hide,
-        ]
-      )) as [{ customer_id: string | null }[], number] | { customer_id: string | null }[];
-      const returned = Array.isArray(rows[0])
-        ? (rows[0] as { customer_id: string | null }[])
-        : (rows as { customer_id: string | null }[]);
+      // `document_email_deliveries` (nulled in the same transaction, same order id).
+      // The guard on `personalDataErasedAt` makes a replay a no-op; the protected
+      // re-check closes the window between the page read and this write, in which
+      // an operator may have placed a hold.
+      //
+      // One transaction per order: the order row and its delivery-log rows erase
+      // all-or-nothing. Were the order UPDATE to commit and a recipient UPDATE then
+      // fail, the next pass would skip the order (`personalDataErasedAt` is set) and
+      // the address would stay in the delivery log for good.
+      const returned = await this.dataSource.transaction(
+        async (manager: EntityManager): Promise<{ customer_id: string | null }[]> => {
+          const rows = (await manager.query(
+            `UPDATE "order_records" rec
+             SET "orderSnapshot" = $2::jsonb,
+                 "orderEdits" = CASE WHEN rec."orderEdits" IS NULL THEN NULL
+                                     ELSE rec."orderEdits" - 'address' END,
+                 "buyerNote" = NULL,
+                 "hasBuyerNote" = false,
+                 "buyerTaxId" = NULL,
+                 "searchText" = $3,
+                 "personalDataErasedAt" = $4,
+                 "hiddenAt" = CASE WHEN $5::boolean THEN COALESCE(rec."hiddenAt", $4) ELSE rec."hiddenAt" END
+             WHERE rec."internalOrderId" = $1
+               AND rec."personalDataErasedAt" IS NULL
+               AND NOT ${BUYER_DATA_PROTECTED_SQL}
+             RETURNING rec."customerId" AS customer_id`,
+            [
+              erasure.internalOrderId,
+              JSON.stringify(erasure.orderSnapshot),
+              erasure.searchText,
+              now,
+              erasure.hide,
+            ]
+          )) as [{ customer_id: string | null }[], number] | { customer_id: string | null }[];
+          const updated = Array.isArray(rows[0])
+            ? (rows[0] as { customer_id: string | null }[])
+            : (rows as { customer_id: string | null }[]);
+          if (updated.length > 0) {
+            // The buyer's address is also kept in clear text on the delivery logs
+            // (nullable columns), keyed by the same order id. Only for rows this
+            // statement actually erased, so a protected order keeps its history.
+            await manager.query(
+              `UPDATE "buyer_email_deliveries" SET "recipient" = NULL
+               WHERE "internalOrderId" = $1 AND "recipient" IS NOT NULL`,
+              [erasure.internalOrderId]
+            );
+            await manager.query(
+              `UPDATE "document_email_deliveries" SET "recipient" = NULL
+               WHERE "internalOrderId" = $1 AND "recipient" IS NOT NULL`,
+              [erasure.internalOrderId]
+            );
+          }
+          return updated;
+        }
+      );
       erased += returned.length;
-      if (returned.length > 0) {
-        // The buyer's address is also kept in clear text on the delivery logs
-        // (nullable columns), keyed by the same order id. Only for rows this
-        // statement actually erased, so a protected order keeps its history.
-        await this.repository.query(
-          `UPDATE "buyer_email_deliveries" SET "recipient" = NULL
-           WHERE "internalOrderId" = $1 AND "recipient" IS NOT NULL`,
-          [erasure.internalOrderId]
-        );
-        await this.repository.query(
-          `UPDATE "document_email_deliveries" SET "recipient" = NULL
-           WHERE "internalOrderId" = $1 AND "recipient" IS NOT NULL`,
-          [erasure.internalOrderId]
-        );
-      }
       for (const row of returned) {
         if (row.customer_id !== null) {
           customerIds.add(row.customer_id);

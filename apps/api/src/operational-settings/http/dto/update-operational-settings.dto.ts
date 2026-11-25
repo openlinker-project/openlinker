@@ -226,6 +226,17 @@ export class UpdateOperationalSettingsDto {
 
   @ApiPropertyOptional({
     type: Boolean,
+    nullable: true,
+    description:
+      'Release center on/off (#4143). `null` clears it back to OL_RELEASE_CENTER_ENABLED (read by the API), then to the built-in default of on.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsBoolean()
+  releaseCenterEnabled?: boolean | null;
+
+  @ApiPropertyOptional({
+    type: Boolean,
     description:
       'Permission to exceed a RECOMMENDED ceiling on this request. Never licenses exceeding an absolute ceiling, and is not stored — an operator who runs past our advice once does not thereby license every later write.',
   })

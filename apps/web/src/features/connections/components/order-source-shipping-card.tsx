@@ -92,14 +92,20 @@ function buildShippingSplit(
   };
 }
 
-export interface OrderSourceShippingCardProps {
-  /** The order-source connection whose page this is. */
+export interface OrderSourceShippingSummaryProps {
+  /** The order-source connection whose delivery methods are summarised. */
   readonly connection: Connection;
 }
 
-export function OrderSourceShippingCard({
+/**
+ * The saved-rules summary alone (coverage line, split bar, what the shop
+ * still ships). Shared by the detail-page card and the edit form, so both say
+ * the same thing about the same channel. Methods left to the shop are plain
+ * text, not muted: an unassigned method is work still to do, not an option.
+ */
+export function OrderSourceShippingSummary({
   connection,
-}: OrderSourceShippingCardProps): ReactElement {
+}: OrderSourceShippingSummaryProps): ReactElement {
   const copy = useConnectionShippingCopy();
   const routeCopy = useShippingRouteCopy();
   const platforms = usePlatforms();
@@ -109,14 +115,11 @@ export function OrderSourceShippingCard({
     connection.id,
     DELIVERY_METHOD_OPTION_KEYS
   );
-  const demoMode = useDemoMode();
-  const write = useWriteAccess('connections:write', demoMode);
-  const [open, setOpen] = useState(false);
 
   const methods = options.allegroDeliveryMethods;
 
   // A source that cannot list delivery methods has nothing to route, so the
-  // card would only show an empty bar; one line says why instead.
+  // summary would only show an empty bar; one line says why instead.
   if (errors.allegroDeliveryMethods) {
     return <p className="muted-text">{copy.shippingUnlisted}</p>;
   }
@@ -124,31 +127,52 @@ export function OrderSourceShippingCard({
   const nameById = new Map((connectionsQuery.data ?? []).map((c) => [c.id, c.name]));
   const sourceLabel = resolvePlatformLabel(platforms, connection);
 
-  let body: ReactElement;
   if (isLoading || rulesQuery.isLoading) {
-    body = <p className="muted-text">{copy.shippingLoading}</p>;
-  } else if (rulesQuery.error) {
-    body = <p className="muted-text">{copy.rowUnavailable}</p>;
-  } else if (methods.length === 0) {
-    body = <p className="muted-text">{copy.shippingNoMethods}</p>;
-  } else {
-    const split = buildShippingSplit(methods, rulesQuery.data ?? [], nameById, sourceLabel, routeCopy);
-    const rest = methods.length - split.labelled;
-    body = (
-      <>
-        <p className="source-shipping__coverage">
-          {copy.shippingCoverage(split.labelled, methods.length, (chunk) => (
-            <strong>{chunk}</strong>
-          ))}
-        </p>
-        <RoutingSplitBar buckets={split.buckets} />
-        <p className="muted-text">
-          {rest > 0
-            ? copy.shippingRestByShop(rest)
-            : copy.shippingAllLabelled}
-        </p>
-      </>
-    );
+    return <p className="muted-text">{copy.shippingLoading}</p>;
+  }
+  if (rulesQuery.error) {
+    return <p className="muted-text">{copy.rowUnavailable}</p>;
+  }
+  if (methods.length === 0) {
+    return <p className="muted-text">{copy.shippingNoMethods}</p>;
+  }
+
+  const split = buildShippingSplit(methods, rulesQuery.data ?? [], nameById, sourceLabel, routeCopy);
+  const rest = methods.length - split.labelled;
+  return (
+    <>
+      <p className="source-shipping__coverage">
+        {copy.shippingCoverage(split.labelled, methods.length, (chunk) => (
+          <strong>{chunk}</strong>
+        ))}
+      </p>
+      <RoutingSplitBar buckets={split.buckets} />
+      <p className={rest > 0 ? 'source-shipping__rest' : 'muted-text'}>
+        {rest > 0 ? copy.shippingRestByShop(rest) : copy.shippingAllLabelled}
+      </p>
+    </>
+  );
+}
+
+export interface OrderSourceShippingCardProps {
+  /** The order-source connection whose page this is. */
+  readonly connection: Connection;
+}
+
+export function OrderSourceShippingCard({
+  connection,
+}: OrderSourceShippingCardProps): ReactElement {
+  const copy = useConnectionShippingCopy();
+  const { options, errors } = useMappingOptions(connection.id, DELIVERY_METHOD_OPTION_KEYS);
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('connections:write', demoMode);
+  const [open, setOpen] = useState(false);
+
+  const methods = options.allegroDeliveryMethods;
+
+  // Unlistable source: one line instead of a card with nothing to route.
+  if (errors.allegroDeliveryMethods) {
+    return <p className="muted-text">{copy.shippingUnlisted}</p>;
   }
 
   return (
@@ -167,7 +191,9 @@ export function OrderSourceShippingCard({
           </Button>
         ) : null}
       </div>
-      <div className="source-shipping">{body}</div>
+      <div className="source-shipping">
+        <OrderSourceShippingSummary connection={connection} />
+      </div>
       <RoutingDialog
         open={open}
         onOpenChange={setOpen}

@@ -56,8 +56,10 @@ import {
   isBuyerDataEraseMode,
   isBuyerDataPeriodOrderValid,
   isValidBuyerDataPeriod,
+  RELEASE_CENTER_ENABLED_ENV_VAR,
   resolveOperationalSetting,
   type BuyerDataEraseMode,
+  resolveReleaseCenterEnabled,
   type OperationalSettingKey,
   type OperationalSettingsInput,
   type OperationalSettingsView,
@@ -163,6 +165,10 @@ export class OperationalSettingsService implements IOperationalSettingsService {
         stored?.buyerDataEraseMode ?? null,
         BUYER_DATA_RETENTION_DEFAULTS.mode
       ),
+      releaseCenterEnabled: resolveReleaseCenterEnabled(
+        stored?.releaseCenterEnabled ?? null,
+        this.configService.get<string>(RELEASE_CENTER_ENABLED_ENV_VAR)
+      ),
       // Read-only, and never `source: 'setting'` - there is no column for
       // either. Reported so a consumer computing a full-pass length uses the
       // cadence actually in force (#2660 review): both are settable through the
@@ -204,6 +210,16 @@ export class OperationalSettingsService implements IOperationalSettingsService {
       const breach = findOperationalSettingBoundBreach(key, value, acknowledged);
       if (breach !== null) {
         throw new InvalidOperationalSettingError(key, breach.message, breach.rule, breach.limit);
+      }
+    }
+
+    if (input.releaseCenterEnabled !== undefined && input.releaseCenterEnabled !== null) {
+      if (typeof input.releaseCenterEnabled !== 'boolean') {
+        throw new InvalidOperationalSettingError(
+          'releaseCenterEnabled',
+          'releaseCenterEnabled must be a boolean or null',
+          'not-a-number'
+        );
       }
     }
 
@@ -257,6 +273,9 @@ export class OperationalSettingsService implements IOperationalSettingsService {
         }),
         ...(input.buyerDataEraseMode !== undefined && {
           buyerDataEraseMode: input.buyerDataEraseMode,
+        }),
+        ...(input.releaseCenterEnabled !== undefined && {
+          releaseCenterEnabled: input.releaseCenterEnabled,
         }),
       },
       updatedBy

@@ -124,6 +124,20 @@ export class ResolvedCadenceSettingDto {
   workerMayDiffer!: boolean;
 }
 
+export class ResolvedBooleanSettingDto {
+  @ApiProperty({ description: 'The effective value.' })
+  value!: boolean;
+
+  @ApiProperty({ enum: OPERATIONAL_SETTING_SOURCES })
+  source!: OperationalSettingSource;
+
+  @ApiProperty({
+    description:
+      'True when the value is not stored, so the worker resolves it from its own environment.',
+  })
+  workerMayDiffer!: boolean;
+}
+
 export class OperationalSettingBoundDto {
   @ApiProperty()
   min!: number;
@@ -194,6 +208,9 @@ export class OperationalSettingsResponseDto {
 
   @ApiProperty({ type: ResolvedCadenceSettingDto })
   deletionAuditCadence!: ResolvedCadenceSettingDto;
+
+  @ApiProperty({ type: ResolvedBooleanSettingDto })
+  releaseCenterEnabled!: ResolvedBooleanSettingDto;
 
   @ApiProperty({
     type: ResolvedBuyerDataBooleanDto,
@@ -295,6 +312,7 @@ export class OperationalSettingsResponseDto {
       maxDays: BUYER_DATA_PERIOD_MAX_DAYS,
       modes: [...BUYER_DATA_ERASE_MODES],
     };
+    dto.releaseCenterEnabled = { ...view.releaseCenterEnabled };
     dto.catalogueSweepCadence = { ...view.catalogueSweepCadence };
     dto.inventorySweepCadence = { ...view.inventorySweepCadence };
     dto.deletionAuditAlwaysEnabled = view.deletionAuditAlwaysEnabled;

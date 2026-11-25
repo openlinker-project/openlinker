@@ -265,7 +265,6 @@
   },
   "tile": {
     "description": "Decide when orders leave the list and when buyers' personal data is erased. General rules here; each connection can have its own.",
-    "eyebrow": "Data protection",
     "link": "Manage",
     "title": "Buyer data"
   },
