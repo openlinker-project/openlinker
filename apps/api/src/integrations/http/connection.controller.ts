@@ -68,7 +68,6 @@ import { ConnectionService } from '../application/services/connection.service';
 import type { ConnectionUpdateInput } from '../application/interfaces/connection.service.types';
 import type {
   Connection,
-  
   ConnectionFilters,
   ConnectionRateLimit,
 } from '@openlinker/core/identifier-mapping';
@@ -472,7 +471,10 @@ export class ConnectionController {
   @ApiResponse({ status: 400, description: 'Mode not supported by the adapter, or invalid date' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
-  @ApiResponse({ status: 409, description: 'ORDER_SYNC_BUSY: an order poll is running; retry shortly' })
+  @ApiResponse({
+    status: 409,
+    description: 'ORDER_SYNC_BUSY: an order poll is running; retry shortly',
+  })
   async restartOrderSync(
     @Param('id') id: string,
     @Body() dto: OrderSyncStartDto

@@ -251,7 +251,7 @@ export function RoutingRulesPanel({
 
   // Routing-split buckets (#1739): methods-per-processor derived from the
   // CURRENT selections (not the saved rules), so the bar moves live while the
-  // operator edits and before "Save routing". One bucket per live divert
+  // operator edits and before "Save assignment". One bucket per live divert
   // candidate (kept even at 0 so its colour slot stays stable), one bucket per
   // saved-but-unavailable selection, and the default bucket last.
   const splitBuckets = useMemo<RoutingSplitBucket[]>(() => {
@@ -501,16 +501,18 @@ export function RoutingRulesPanel({
   ) : null;
 
   return (
-    <div className={embedded ? 'routing-panel routing-panel--embedded' : 'panel panel--dense routing-panel'}>
+    <div
+      className={embedded ? 'routing-panel routing-panel--embedded' : 'panel panel--dense routing-panel'}
+      // The release tour lights the whole assignment area; the card clamps it to what fits.
+      data-tour={embedded ? undefined : 'label-master'}
+    >
       {embedded ? null : (
-        <>
-          <div className="panel__header">
-            <h3 className="section-title">{routeCopy.panelTitle}</h3>
-            {dirtyBadge}
-          </div>
-          <p className="muted-text routing-panel__intro">{routeCopy.intro(sourceLabel, shopName)}</p>
-        </>
+        <div className="panel__header">
+          <h3 className="section-title">{routeCopy.panelTitle}</h3>
+          {dirtyBadge}
+        </div>
       )}
+      {embedded ? null : <p className="muted-text routing-panel__intro">{routeCopy.intro(sourceLabel, shopName)}</p>}
 
       {divertOptions.length === 0 && (
         <p

@@ -23,8 +23,8 @@ describe('deriveOrderImportVerdict', () => {
     expect(
       deriveOrderImportVerdict(
         figures({ failedLast7d: 2, lastPolledAt: '2026-11-18T00:00:00.000Z' }),
-        NOW,
-      ),
+        NOW
+      )
     ).toBe('failing');
   });
 
@@ -34,7 +34,7 @@ describe('deriveOrderImportVerdict', () => {
 
   it('should say behind once the shop has not been checked for over an hour', () => {
     expect(
-      deriveOrderImportVerdict(figures({ lastPolledAt: '2026-11-20T10:30:00.000Z' }), NOW),
+      deriveOrderImportVerdict(figures({ lastPolledAt: '2026-11-20T10:30:00.000Z' }), NOW)
     ).toBe('behind');
   });
 
@@ -47,6 +47,8 @@ describe('deriveOrderImportVerdict', () => {
   });
 
   it('should still say failing before behind', () => {
-    expect(deriveOrderImportVerdict(figures({ failedLast7d: 1 }), NOW, 'backlogged')).toBe('failing');
+    expect(deriveOrderImportVerdict(figures({ failedLast7d: 1 }), NOW, 'backlogged')).toBe(
+      'failing'
+    );
   });
 });

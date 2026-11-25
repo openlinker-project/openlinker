@@ -931,4 +931,91 @@ describe('InvoicesListPage', () => {
     expect(chip).toHaveAttribute('aria-pressed', 'true');
     expect(chip.textContent).toContain('0');
   });
+
+  // -------------------------------------------------------------------
+  // #4241 - saved views: built-in views, columns and selection.
+  // -------------------------------------------------------------------
+  describe('saved views', () => {
+    const rows = (): PaginatedInvoices => makeEnvelope({ items: [makeInvoice()], total: 1 });
+
+    it('opens on the All invoices view', async () => {
+      const list = vi.fn().mockResolvedValue(rows());
+      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+      expect(await screen.findByRole('button', { name: 'All invoices' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+      expect(await screen.findByText('order_1')).toBeInTheDocument();
+    });
+
+    it('sends the filters of a built-in view and marks it active', async () => {
+      const user = userEvent.setup();
+      const list = vi.fn().mockResolvedValue(rows());
+      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+      await user.click(await screen.findByRole('button', { name: 'Rejected by regulator' }));
+
+      await waitFor(() => {
+        expect(list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ regulatoryStatus: 'rejected' }),
+          { limit: 20, offset: 0 },
+        );
+      });
+      expect(screen.getByRole('button', { name: 'Rejected by regulator' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+    });
+
+    it('keeps a deep link instead of applying the default view', async () => {
+      const list = vi.fn().mockResolvedValue(rows());
+      renderWithProviders(<InvoicesListPage />, {
+        apiClient: mockApi(list),
+        route: '/invoices?status=failed',
+      });
+
+      await waitFor(() => {
+        expect(list).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }), {
+          limit: 20,
+          offset: 0,
+        });
+      });
+      expect(await screen.findByRole('button', { name: 'Failed' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+    });
+
+    it('hides a column that the view drops', async () => {
+      const user = userEvent.setup();
+      const list = vi.fn().mockResolvedValue(rows());
+      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+      expect(await screen.findByRole('columnheader', { name: 'Clearance ref.' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /Columns & sort/ }));
+      await user.click(await screen.findByRole('checkbox', { name: /Clearance ref\./ }));
+      await user.click(screen.getAllByRole('button', { name: 'Done' })[0]);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('columnheader', { name: 'Clearance ref.' })).not.toBeInTheDocument();
+      });
+      expect(await screen.findByRole('columnheader', { name: 'Issued' })).toBeInTheDocument();
+    });
+
+    it('clears the row selection when another view is opened', async () => {
+      const user = userEvent.setup();
+      const list = vi.fn().mockResolvedValue(rows());
+      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+      await user.click((await screen.findAllByRole('checkbox', { name: 'Select invoice' }))[0]);
+      expect((await screen.findAllByRole('checkbox', { name: 'Select invoice' }))[0]).toBeChecked();
+
+      await user.click(screen.getByRole('button', { name: 'Failed' }));
+
+      await waitFor(() => {
+        expect(screen.getAllByRole('checkbox', { name: 'Select invoice' })[0]).not.toBeChecked();
+      });
+    });
+  });
 });

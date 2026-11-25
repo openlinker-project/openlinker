@@ -1,96 +1,84 @@
 /**
  * Mailer Settings Tile
  *
- * Read-only summary of the current mailer/SMTP transport, rendered on
- * `/settings` next to the Environment and Account tiles. Admin-only — the
- * caller (`settings-page.tsx`) mounts this component only for an
- * authenticated admin session, so a non-admin never even triggers the
- * `GET /mailer-settings` request.
+ * Settings-index row for the outbound mail transport. The transport is the
+ * value; for SMTP the quiet note names the server and sender, and says so when
+ * the password is missing, since that is the one detail an operator must act on.
  *
  * @module apps/web/src/features/mailer-settings/components
  */
 import { useState, type ReactElement } from 'react';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useMessages } from '../../../shared/i18n';
-import { Button } from '../../../shared/ui/button';
+import { SettingsIndexRow } from '../../../shared/ui/settings-index-row';
 import { useMailerSettingsQuery } from '../hooks/use-mailer-settings-query';
 import { MailerSettingsDialog } from './mailer-settings-dialog';
 
-export function MailerSettingsTile(): ReactElement {
+function MailerSettingsLive(): ReactElement {
   const copy = useMessages('mailer-settings').mailerSettingsTile;
   const query = useMailerSettingsQuery();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const view = query.data;
+
+  const notice =
+    !view
+      ? undefined
+      : view.transport === 'console'
+        ? copy.consoleNote
+        : view.smtpPasswordConfigured
+          ? undefined
+          : `${copy.passwordLabel}: ${copy.notSet}`;
+  const suffix =
+    view && view.transport === 'smtp'
+      ? `${view.smtpHost ?? '-'}${view.smtpPort ? `:${String(view.smtpPort)}` : ''}`
+      : undefined;
 
   return (
-    <article className="panel panel--dense">
-      <div className="panel__header">
-        <div>
-          <p className="eyebrow">{copy.eyebrow}</p>
-          <h3 className="section-title">{copy.title}</h3>
-        </div>
-        <span className="panel__meta">{copy.adminOnly}</span>
-      </div>
-
-      {query.isLoading ? (
-        <p className="muted-text" aria-live="polite">
-          {copy.loading}
-        </p>
+    <SettingsIndexRow
+      icon="send"
+      tone={!view ? undefined : view.transport === 'console' || !view.smtpPasswordConfigured ? 'warning' : 'success'}
+      title={copy.title}
+      description={copy.description}
+      valueState={query.isLoading ? 'loading' : query.isError ? 'error' : 'ready'}
+      stateText={
+        query.isError
+          ? `${copy.loadError} ${describeApiError(query.error, 'mailer-settings')}`
+          : copy.loading
+      }
+      value={view ? copy.transport[view.transport] : undefined}
+      caption={view ? copy.transportLabel : undefined}
+      suffix={suffix}
+      notice={notice}
+      dot
+      action={
+        view
+          ? {
+              label: copy.edit,
+              onClick: (): void => {
+                setDialogOpen(true);
+              },
+            }
+          : undefined
+      }
+    >
+      {view ? (
+        <MailerSettingsDialog
+          open={dialogOpen}
+          view={view}
+          onClose={() => {
+            setDialogOpen(false);
+          }}
+        />
       ) : null}
+    </SettingsIndexRow>
+  );
+}
 
-      {query.isError ? (
-        <p className="muted-text" role="alert">
-          {copy.loadError} {describeApiError(query.error, 'mailer-settings')}
-        </p>
-      ) : null}
-
-      {query.data ? (
-        <>
-          <dl className="definition-list">
-            <div>
-              <dt>{copy.transportLabel}</dt>
-              <dd>{copy.transport[query.data.transport]}</dd>
-            </div>
-            {query.data.transport === 'smtp' ? (
-              <>
-                <div>
-                  <dt>{copy.hostLabel}</dt>
-                  <dd className="mono-text">{query.data.smtpHost ?? '—'}</dd>
-                </div>
-                <div>
-                  <dt>{copy.portLabel}</dt>
-                  <dd className="mono-text">{query.data.smtpPort ?? '—'}</dd>
-                </div>
-                <div>
-                  <dt>{copy.fromLabel}</dt>
-                  <dd className="mono-text">{query.data.fromAddress ?? '—'}</dd>
-                </div>
-                <div>
-                  <dt>{copy.passwordLabel}</dt>
-                  <dd>{query.data.smtpPasswordConfigured ? copy.configured : copy.notSet}</dd>
-                </div>
-              </>
-            ) : null}
-          </dl>
-
-          <Button
-            tone="secondary"
-            className="button--sm"
-            onClick={() => {
-              setDialogOpen(true);
-            }}
-          >
-            {copy.edit}
-          </Button>
-
-          <MailerSettingsDialog
-            open={dialogOpen}
-            view={query.data}
-            onClose={() => {
-              setDialogOpen(false);
-            }}
-          />
-        </>
-      ) : null}
-    </article>
+export function MailerSettingsTile({ locked = false }: { locked?: boolean }): ReactElement {
+  const copy = useMessages('mailer-settings').mailerSettingsTile;
+  return locked ? (
+    <SettingsIndexRow locked icon="send" title={copy.title} description={copy.description} />
+  ) : (
+    <MailerSettingsLive />
   );
 }

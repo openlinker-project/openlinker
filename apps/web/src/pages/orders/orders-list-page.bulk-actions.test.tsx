@@ -6,7 +6,7 @@
  * excluding it. Viewers see none of the buttons, only admins see Cancel, and
  * more than 100 selected disables the new actions with a reason.
  */
-import { cleanup, screen } from '@testing-library/react';
+import { act, cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -178,6 +178,10 @@ describe('OrdersListPage bulk actions (#3619)', () => {
     renderPage(orders);
 
     await screen.findByText('NUM-ol_000');
+    // The engine writes the default view to the address right after first paint; a click in that tick is lost.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
     await user.click(await screen.findByRole('checkbox', { name: 'Select all visible orders' }));
 
     expect(screen.getByTestId('orders-bulk-cancel')).toHaveTextContent('Cancel 100');

@@ -1,4 +1,4 @@
-# ADR-086: Order sync start and window import
+# ADR-087: Order sync start and window import
 
 - **Status**: Accepted
 - **Date**: 2026-11-23

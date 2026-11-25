@@ -51,9 +51,19 @@ describe('resolveCursorCatalogueEntry', () => {
     [orderFeedSeededAtCursorKey('allegro.orders.lastEventId'), 'completion-stamp', null, null],
     [orderFeedSeededAtCursorKey('erli.orders.inboxCursor'), 'completion-stamp', null, null],
     [orderFeedSeededAtCursorKey('prestashop.orders.dateUpd'), 'completion-stamp', null, null],
-    [orderFeedSeededAtCursorKey('woocommerce.orders.lastModifiedAfter'), 'completion-stamp', null, null],
+    [
+      orderFeedSeededAtCursorKey('woocommerce.orders.lastModifiedAfter'),
+      'completion-stamp',
+      null,
+      null,
+    ],
     [orderFeedSeededAtCursorKey('shoper.orders.lastOrderId'), 'completion-stamp', null, null],
-    [orderFeedSeededAtCursorKey('subiekt.orders.dataWystawieniaCursor'), 'completion-stamp', null, null],
+    [
+      orderFeedSeededAtCursorKey('subiekt.orders.dataWystawieniaCursor'),
+      'completion-stamp',
+      null,
+      null,
+    ],
     [ORDER_SYNC_START_CURSOR_KEY, 'completion-stamp', null, null],
     [`${OFFER_QUANTITY_WRITE_MARK_PREFIX}9`, 'write-order', null, null],
   ])('should classify %s', (key, family, writerJobType, rewind) => {

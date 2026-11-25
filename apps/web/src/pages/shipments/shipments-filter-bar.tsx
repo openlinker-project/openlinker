@@ -2,8 +2,8 @@
  * ShipmentsFilterBar (#4044)
  *
  * The shipments list's toolbar on the orders system (#4026): one joined group
- * Processor / Method / Connection / Filters (`F`), the results count, the Sort
- * menu, the applied-filter pills and the Filters side panel (bottom sheet on
+ * Processor / Method / Connection / Filters (`F`), the results count, the
+ * applied-filter pills and the Filters side panel (bottom sheet on
  * phones) with Tracking and Created. Status is not here: the tabs own it, so
  * it is neither a pill nor cleared by Clear all.
  *
@@ -14,7 +14,7 @@
  *
  * @module apps/web/src/pages/shipments
  */
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { interpolate, useMessages, usePlural } from '../../shared/i18n';
 import { ActiveFilterChips, type ActiveFilterChip } from '../../shared/ui/active-filter-chips';
 import { Button } from '../../shared/ui/button';
@@ -24,7 +24,6 @@ import { FilterRange } from '../../shared/ui/filter-panel';
 import { FilterSection } from '../../shared/ui/filter-sheet';
 import { Input } from '../../shared/ui/input';
 import { SidePanel } from '../../shared/ui/side-panel';
-import { SortMenu, type SortMenuDir } from '../../shared/ui/sort-menu';
 import {
   SHIPPING_METHOD_LABEL,
   SHIPPING_METHOD_VALUES,
@@ -35,16 +34,6 @@ import {
   PROCESSOR_KIND_LABEL,
   type ProcessorFilter,
 } from '../../features/shipments/lib/processor';
-
-/** Sort menu entries; "Newest first" is the default. */
-export type ShipmentSortKey = 'createdAt' | 'createdAtAsc' | 'status' | 'shippingMethod';
-
-const SORT_MENU: readonly { key: ShipmentSortKey; dir: SortMenuDir }[] = [
-  { key: 'createdAt', dir: 'desc' },
-  { key: 'createdAtAsc', dir: 'asc' },
-  { key: 'status', dir: 'asc' },
-  { key: 'shippingMethod', dir: 'asc' },
-];
 
 export interface ShipmentsFilterBarProps {
   processor: ProcessorFilter | undefined;
@@ -70,11 +59,10 @@ export interface ShipmentsFilterBarProps {
 
   /** `null` while unknown. */
   resultCount: number | null;
-  sortKey: ShipmentSortKey;
-  sortDir: SortMenuDir;
-  onSortChange: (key: ShipmentSortKey, dir: SortMenuDir) => void;
-  /** Clears every filter except status (the tabs own it). */
+  /** Clears every filter except status (the views strip owns it). */
   onClearAll: () => void;
+  /** Rendered last in the toolbar: the saved-views "Columns & sort" trigger (#4241). */
+  trailing?: ReactNode;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -107,10 +95,8 @@ export function ShipmentsFilterBar(props: ShipmentsFilterBarProps): ReactElement
     createdTo,
     onCreatedChange,
     resultCount,
-    sortKey,
-    sortDir,
-    onSortChange,
     onClearAll,
+    trailing,
   } = props;
   const page = useMessages('shipments').shipmentsPage;
   const COPY = page.listFilters;
@@ -225,14 +211,7 @@ export function ShipmentsFilterBar(props: ShipmentsFilterBarProps): ReactElement
         <span className="text-muted mono tabular list-results" aria-live="polite">
           {resultCount === null ? null : plural(resultCount, COPY.results, { total: String(resultCount) })}
         </span>
-        <SortMenu<ShipmentSortKey>
-          options={SORT_MENU.map((o) => ({ key: o.key, label: COPY.sortMenu[o.key], dir: o.dir }))}
-          value={sortKey}
-          dir={sortDir}
-          defaultKey="createdAt"
-          onChange={onSortChange}
-          aria-label={COPY.sortMenuAria}
-        />
+        {trailing}
       </div>
 
       <ActiveFilterChips

@@ -1,6 +1,6 @@
 {
   "jobTypes": {
-    "analyticsCurrencyRecalculate": "Przelicz walutę raportów",
+    "analyticsCurrencyRecalculate": "Przelicz walutę raportowania",
     "automationTriggerDeadlineSweep": "Sprawdź terminy automatyzacji",
     "destinationTaxonomySync": "Odśwież kategorie kanału docelowego",
     "fiscalizationRegister": "Zarejestruj dokument sprzedaży",
@@ -37,7 +37,7 @@
     "marketplaceOfferStockRestore": "Przywróć stan w ofercie",
     "marketplaceOfferUpdateFields": "Zaktualizuj szczegóły oferty",
     "marketplaceOffersSync": "Synchronizuj oferty z marketplace",
-    "marketplaceOrderFxStamp": "Przelicz zamówienie na walutę raportów",
+    "marketplaceOrderFxStamp": "Przelicz zamówienie na walutę raportowania",
     "marketplaceOrderFxStampSweep": "Przelicz nieprzeliczone zamówienia",
     "marketplaceOrderSync": "Synchronizuj zamówienie",
     "marketplaceOrdersPoll": "Pobierz nowe zamówienia",
@@ -58,11 +58,14 @@
     "masterProductSyncDelta": "Synchronizuj zmienione produkty",
     "masterProductSyncFromSweep": "Synchronizuj jeden produkt (zaplanowane)",
     "masterVariantsAutoMatch": "Dopasuj warianty do ofert",
+    "orderPaymentWritebackPush": "Przekaż sklepowi opłacenie zamówienia",
     "ordersExport": "Eksportuj zamówienia",
     "ordersHoldsReconcile": "Napraw wstrzymania zamówień",
     "ordersTaxRateBackfill": "Uzupełnij stawki VAT zamówień",
     "pricingPropagateToMarketplaces": "Wyślij zmianę ceny do kanałów",
     "returnsOrphanReconcile": "Dopasuj zwroty do zamówień",
+    "salesDocumentBatchRun": "Wystaw dokumenty sprzedaży zbiorczo",
+    "salesDocumentBatchTick": "Sprawdź harmonogramy wystawiania zbiorczego",
     "shippingPickupPointRefreshFrequent": "Odśwież punkty odbioru",
     "shippingShipmentNotifyDispatched": "Powiadom marketplace o nadaniu paczki",
     "shopProductPublish": "Opublikuj produkt w sklepie",
@@ -209,6 +212,25 @@
       "range": "Wyświetlono {from}-{to} z {total}"
     },
     "retry": "Ponów",
+    "savedViews": {
+      "jobTypeFields": "Nazwa, klucz",
+      "sorts": {
+        "attempts": "Próby",
+        "createdNewest": "Utworzone, najnowsze",
+        "createdOldest": "Utworzone, najstarsze",
+        "duration": "Czas trwania",
+        "jobType": "Typ zadania",
+        "status": "Status"
+      },
+      "statusFields": "Stan, wynik",
+      "views": {
+        "all": "Wszystkie zadania",
+        "businessFailures": "Błędy biznesowe",
+        "dead": "Poddane",
+        "queued": "W kolejce",
+        "running": "W trakcie"
+      }
+    },
     "title": "Zadania synchronizacji"
   },
   "triggerSyncDialog": {

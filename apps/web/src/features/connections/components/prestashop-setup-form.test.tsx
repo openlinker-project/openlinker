@@ -123,9 +123,8 @@ describe('PrestashopSetupForm', () => {
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('location-pathname')).toHaveTextContent('/connections');
-    });
+    expect(await screen.findByRole('link', { name: 'Go to connection' })).toBeInTheDocument();
+    expect(screen.getByText('Packing and carriers come next')).toBeInTheDocument();
     expect(create).toHaveBeenCalledWith({
       name: 'Main store',
       platformType: 'prestashop',
@@ -180,7 +179,9 @@ describe('PrestashopSetupForm', () => {
     });
     await advanceToStep(view.container, 3);
 
-    fireEvent.click(within(view.container).getByRole('radio', { name: /Every order the shop has/ }));
+    fireEvent.click(
+      within(view.container).getByRole('radio', { name: /Every order the shop has/ })
+    );
     await advanceOneStep(view.container);
 
     expect(within(view.container).getAllByText('Every order').length).toBeGreaterThan(0);
@@ -188,7 +189,7 @@ describe('PrestashopSetupForm', () => {
 
     await findToastTitle('Connection created');
     expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({ orderSyncStart: { mode: 'all' } }),
+      expect.objectContaining({ orderSyncStart: { mode: 'all' } })
     );
   });
 

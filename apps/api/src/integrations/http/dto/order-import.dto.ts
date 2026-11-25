@@ -20,7 +20,8 @@ const ORDER_IMPORT_DATE_MAX_LENGTH = 40;
 
 export class OrderImportDto {
   @ApiPropertyOptional({
-    description: 'First day to import: an ISO date (YYYY-MM-DD) or ISO date-time. Omitted: from the oldest order.',
+    description:
+      'First day to import: an ISO date (YYYY-MM-DD) or ISO date-time. Omitted: from the oldest order.',
     example: '2026-10-01',
   })
   @IsOptional()
@@ -30,7 +31,8 @@ export class OrderImportDto {
   from?: string;
 
   @ApiPropertyOptional({
-    description: 'Last day to import: an ISO date (YYYY-MM-DD) or ISO date-time, not before `from`. Omitted: up to the newest order.',
+    description:
+      'Last day to import: an ISO date (YYYY-MM-DD) or ISO date-time, not before `from`. Omitted: up to the newest order.',
     example: '2026-10-31',
   })
   @IsOptional()
@@ -55,7 +57,8 @@ export class OrderImportResponseDto {
 
 export class OrderSyncRestartResponseDto {
   @ApiProperty({
-    description: 'False when nothing was reset because the feed already imports new orders from its last check.',
+    description:
+      'False when nothing was reset because the feed already imports new orders from its last check.',
   })
   applied!: boolean;
 

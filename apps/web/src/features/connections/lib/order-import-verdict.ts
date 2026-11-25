@@ -22,7 +22,7 @@ export type OrderImportVerdict = 'ok' | 'behind' | 'failing' | 'notChecked' | 'u
 export function deriveOrderImportVerdict(
   orderImport: OrderImportStatus | null,
   now: Date = new Date(),
-  queueStatus?: string,
+  queueStatus?: string
 ): OrderImportVerdict {
   if (orderImport === null) return 'unknown';
   if (orderImport.failedLast7d > 0) return 'failing';

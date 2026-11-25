@@ -62,11 +62,7 @@ export function OrderPositionField({
   return (
     <div className="order-position">
       <FormField label={copy.positionLabel} name="orderPosition" description={hint}>
-        <Select
-          value={choice}
-          onChange={(e) => onChoiceChange(e.target.value)}
-          disabled={disabled}
-        >
+        <Select value={choice} onChange={(e) => onChoiceChange(e.target.value)} disabled={disabled}>
           <option value={ORDER_POSITION_DEFAULT}>{copy.positionDefault}</option>
           {extraSaved.map((item) => (
             <option key={item.cursorKey} value={item.cursorKey}>

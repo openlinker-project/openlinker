@@ -66,13 +66,14 @@ export class ConnectionSyncStatusService implements IConnectionSyncStatusService
     const windowStart = new Date(now.getTime() - BACKLOG_OBSERVATION_WINDOW_MS);
     const historyStart = new Date(now.getTime() - BACKLOG_HISTORY_WINDOW_MS);
 
-    const [stats, lastCursorAdvanceAt, orderSyncStartedAt, orderImport, orderStart] = await Promise.all([
-      this.readStatsSafely(connectionId, windowStart, historyStart, now),
-      this.readCursorSafely(connectionId),
-      this.readOrderSyncStartSafely(connectionId),
-      this.readOrderImportSafely(connectionId, now),
-      this.readOrderStartSafely(connectionId),
-    ]);
+    const [stats, lastCursorAdvanceAt, orderSyncStartedAt, orderImport, orderStart] =
+      await Promise.all([
+        this.readStatsSafely(connectionId, windowStart, historyStart, now),
+        this.readCursorSafely(connectionId),
+        this.readOrderSyncStartSafely(connectionId),
+        this.readOrderImportSafely(connectionId, now),
+        this.readOrderStartSafely(connectionId),
+      ]);
 
     if (stats === null) {
       // 'unknown', never a healthy-looking zero. A read failure is an

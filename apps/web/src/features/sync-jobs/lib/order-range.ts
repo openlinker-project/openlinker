@@ -51,7 +51,9 @@ function isRealDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
   const parsed = new Date(year, month - 1, day);
-  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+  return (
+    parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day
+  );
 }
 
 export type OrderRangeErrorKey =
@@ -65,7 +67,7 @@ export type OrderRangeErrorKey =
 /** The problems with a range as error KEYS; the caller turns them into copy. */
 export function validateOrderRange(
   value: OrderRangeValue,
-  now: Date = new Date(),
+  now: Date = new Date()
 ): { from?: OrderRangeErrorKey; to?: OrderRangeErrorKey } {
   const errors: { from?: OrderRangeErrorKey; to?: OrderRangeErrorKey } = {};
   const today = todayOrderRangeDate(now);
@@ -88,7 +90,7 @@ export function validateOrderRange(
  */
 export function toOrderImportPayload(
   value: OrderRangeValue,
-  runId: string,
+  runId: string
 ): Record<string, unknown> {
   return {
     schemaVersion: 1,

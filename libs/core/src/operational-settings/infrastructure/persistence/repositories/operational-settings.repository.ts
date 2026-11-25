@@ -83,6 +83,10 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
       payload.deletionAuditCadence = input.deletionAuditCadence;
     }
 
+    if (input.releaseCenterEnabled !== undefined) {
+      payload.releaseCenterEnabled = input.releaseCenterEnabled;
+    }
+
     await this.ormRepository.upsert(payload, { conflictPaths: ['id'] });
 
     const saved = await this.ormRepository.findOneOrFail({
@@ -109,6 +113,7 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
       entity.inventoryMovementRetentionDays,
       entity.stockStaleSyncThresholdHours,
       entity.deletionAuditCadence,
+      entity.releaseCenterEnabled,
       entity.updatedAt,
       entity.updatedBy
     );

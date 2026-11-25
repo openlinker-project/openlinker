@@ -51,8 +51,8 @@ export function earliestOrderSyncStartDate(today: Date = new Date()): string {
     new Date(
       today.getFullYear() - ORDER_SYNC_START_MAX_YEARS,
       today.getMonth(),
-      today.getDate() + 1,
-    ),
+      today.getDate() + 1
+    )
   );
 }
 
@@ -60,7 +60,9 @@ function isRealDate(value: string): boolean {
   if (!DATE_PATTERN.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
   const parsed = new Date(year, month - 1, day);
-  return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day;
+  return (
+    parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day
+  );
 }
 
 /** The shape alone. A wizard that does not always ask the question validates the date itself. */
@@ -115,7 +117,9 @@ export const ORDER_SYNC_START_DEFAULT_VALUE: OrderSyncStartValue = { mode: 'now'
  * The create-payload part. "Only new orders" is what the backend does with no
  * value, so it is sent as nothing rather than as an explicit default.
  */
-export function toOrderSyncStart(value: OrderSyncStartValue | undefined): OrderSyncStart | undefined {
+export function toOrderSyncStart(
+  value: OrderSyncStartValue | undefined
+): OrderSyncStart | undefined {
   if (!value || value.mode === 'now') return undefined;
   // Oldest-first is what the backend does with no value, so only the other choice is sent.
   const order = value.order === 'newest-first' ? { order: value.order } : {};
@@ -140,7 +144,7 @@ interface ReviewCopy {
 export function describeOrderSyncStart(
   value: OrderSyncStartValue | undefined,
   copy: ReviewCopy,
-  formatDate: (iso: string) => string,
+  formatDate: (iso: string) => string
 ): string {
   if (!value || value.mode === 'now') return copy.now;
   const suffix = value.order === 'newest-first' && copy.newestFirst ? ` · ${copy.newestFirst}` : '';

@@ -81,6 +81,10 @@
     "revokedToastTitle": "Token revoked"
   },
   "mcpTokensTile": {
+    "activeCount": {
+      "one": "{n} active token",
+      "other": "{n} active tokens"
+    },
     "activeTokens": "Active tokens",
     "adminOnly": "Admin only",
     "description": "Personal access tokens that let an MCP client authenticate to this OpenLinker instance.",
