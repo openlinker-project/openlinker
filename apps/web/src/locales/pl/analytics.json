@@ -738,15 +738,15 @@
       "caption": "Stan połączeń",
       "columns": {
         "connection": "Połączenie",
-        "failedJobs": "Nieudane zadania w tle",
+        "failedJobs": "Nieudane zadania",
         "platform": "Platforma",
         "status": "Status"
       },
       "failedJobs": {
-        "few": "{n} nieudane zadania w tle",
-        "many": "{n} nieudanych zadań w tle",
-        "one": "{n} nieudane zadanie w tle",
-        "other": "{n} nieudanego zadania w tle"
+        "few": "{n} nieudane zadania",
+        "many": "{n} nieudanych zadań",
+        "one": "{n} nieudane zadanie",
+        "other": "{n} nieudanego zadania"
       },
       "failedJobsOn": {
         "few": "{n} nieudane zadania w tle w połączeniu {name}",

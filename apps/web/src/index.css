@@ -37857,7 +37857,7 @@ legend.analytics-settings-dialog__label {
 
 .conn-health__col-platform { width: 11.5rem; }
 .conn-health__col-status { width: 7.5rem; }
-.conn-health__col-failed { width: 9rem; }
+.conn-health__col-failed { width: 12rem; }
 
 .conn-health__table th {
   padding: var(--space-2) var(--space-3);
@@ -37940,7 +37940,10 @@ legend.analytics-settings-dialog__label {
   font-variant-numeric: tabular-nums;
   text-decoration: none;
   white-space: nowrap;
+  max-width: 100%;
+  box-sizing: border-box;
 }
+.conn-health__failed-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .conn-health__failed:hover { border-color: var(--status-error); }
 .conn-health__failed:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
 .conn-health__failed svg {
