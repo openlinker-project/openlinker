@@ -39,9 +39,9 @@ describe('mapAmazonOrderToIncomingOrder', () => {
     expect(order.totals.shippingGross).toBeUndefined();
   });
 
-  it('should key a line by seller SKU, and by ASIN when there is none', () => {
+  it('should key a line by an offer ref carrying the seller SKU, and by ASIN when there is none', () => {
     const [mug, coaster] = mapAmazonOrderToIncomingOrder(amazonFbmOrder()).items;
-    expect(mug).toMatchObject({ id: '11111111111111', productRef: { type: 'sku', externalId: 'MUG-BLUE' }, sku: 'MUG-BLUE', quantity: 2, price: 19.95 });
+    expect(mug).toMatchObject({ id: '11111111111111', productRef: { type: 'offer', externalId: 'MUG-BLUE' }, sku: 'MUG-BLUE', quantity: 2, price: 19.95 });
     expect(coaster.productRef).toEqual({ type: 'offer', externalId: 'B0ZZZZZZZZ' });
     expect(coaster.taxRate).toBeUndefined();
   });
