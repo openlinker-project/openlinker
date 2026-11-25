@@ -102,6 +102,7 @@ describe('AllegroSetupForm', () => {
       within(container).getByText('How should delivery appear on receipts and invoices?')
     ).toBeInTheDocument();
 
+    await advanceOneStep(container, 'Order history');
     await advanceOneStep(container, 'Review & connect');
     expect(
       within(container).getByRole('button', { name: /connect with allegro/i })
@@ -118,6 +119,7 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
+    await advanceOneStep(container, 'Order history');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -134,6 +136,7 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
+    await advanceOneStep(container, 'Order history');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -153,6 +156,7 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
+    await advanceOneStep(container, 'Order history');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -215,6 +219,7 @@ describe('AllegroSetupForm', () => {
         await within(container).findByText(/Orders to Poland say “Koszt dostawy”/)
       ).toBeInTheDocument();
       expect(within(container).getByText('Receipt for an order from Poland')).toBeInTheDocument();
+      await advanceOneStep(container, 'Order history');
       await advanceOneStep(container, 'Review & connect');
       fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -256,6 +261,7 @@ describe('AllegroSetupForm', () => {
         container.querySelector('aside[aria-label="Setup summary"]')
       ).toHaveTextContent('Delivery on documents');
 
+      await advanceOneStep(container, 'Order history');
       await advanceOneStep(container, 'Review & connect');
       fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
       await waitFor(() => {
@@ -326,6 +332,7 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
+    await advanceOneStep(container, 'Order history');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 

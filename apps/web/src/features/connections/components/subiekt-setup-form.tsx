@@ -36,6 +36,7 @@ import { useCreateConnectionMutation } from '../hooks/use-create-connection-muta
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
 import type { ConnectionTestResult } from '../api/connections.types';
 import {
+  SUBIEKT_GT_IDENTITY,
   SUBIEKT_SETUP_DEFAULT_VALUES,
   buildSubiektSetupSchema,
   toCreateConnectionInput,
@@ -54,6 +55,10 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
+import { useAdaptersQuery } from '../../adapters';
+import { OrderSyncStartSection } from './order-sync-start-section';
+import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
+import { ORDER_SYNC_START_DEFAULT_VALUE, readsOrders } from '../lib/order-sync-start';
 
 // The product family name, the same in every language.
 const SUBIEKT_FAMILY_NAME = 'Subiekt';
@@ -78,6 +83,13 @@ export function SubiektSetupForm({
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const adaptersQuery = useAdaptersQuery();
+  const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === identity.adapterKey);
+  // Capabilities are not chosen here, so the adapter's own set decides: Subiekt GT
+  // reads orders, nexo is invoicing only. Unknown until the registry answers.
+  // nexo reads no orders: its pending/error states must never show the start note.
+  const isGtIdentity = identity.adapterKey === SUBIEKT_GT_IDENTITY.adapterKey;
+  const willReadOrders = readsOrders(adapterMetadata?.supportedCapabilities);
   const [createdConnectionId, setCreatedConnectionId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 
@@ -102,13 +114,11 @@ export function SubiektSetupForm({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty, createdConnectionId]);
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
-    fieldError?.message ? [String(fieldError.message)] : [],
-  );
+  const validationMessages = collectFormErrorMessages(form.formState.errors);
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values, identity));
+      const created = await createConnection.mutateAsync(toCreateConnectionInput(values, identity, willReadOrders));
       form.reset(values, { keepValues: true, keepDirty: false });
       setCreatedConnectionId(created.id);
       showToast({
@@ -189,23 +199,30 @@ export function SubiektSetupForm({
         />
       </FormField>
 
-      <FormField
-        label={copy.fields.timeoutMs.label}
-        name="timeoutMs"
-        error={form.formState.errors.timeoutMs?.message}
-        description={interpolate(copy.fields.timeoutMs.description, {
-          min: format.number(1000),
-          max: format.number(120000),
-        })}
+      {/* Open while the field is invalid, or a bad value would hide behind a closed disclosure. */}
+      <details
+        className="subiekt-advanced"
+        open={form.formState.errors.timeoutMs ? true : undefined}
       >
-        <Input
-          {...form.register('timeoutMs')}
-          inputMode="numeric"
-          placeholder="30000"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.timeoutMs)}
-        />
-      </FormField>
+        <summary className="subiekt-advanced__summary">{copy.advanced}</summary>
+        <FormField
+          label={copy.fields.timeoutMs.label}
+          name="timeoutMs"
+          error={form.formState.errors.timeoutMs?.message}
+          description={interpolate(copy.fields.timeoutMs.description, {
+            min: format.number(1000),
+            max: format.number(120000),
+          })}
+        >
+          <Input
+            {...form.register('timeoutMs')}
+            inputMode="numeric"
+            placeholder="30000"
+            autoComplete="off"
+            invalid={Boolean(form.formState.errors.timeoutMs)}
+          />
+        </FormField>
+      </details>
 
       <FormField
         label={identity.tokenRequired ? copy.fields.bridgeToken.label : copy.fields.bridgeToken.labelOptional}
@@ -238,6 +255,21 @@ export function SubiektSetupForm({
           <option value="auto-on-paid">{copy.fields.triggerModel.autoOnPaid}</option>
         </Select>
       </FormField>
+
+      {/* Whether this product reads orders is only known once the adapter list answers,
+          so the section also covers the loading and failed states itself. */}
+      {isGtIdentity && (willReadOrders || adaptersQuery.isPending || adaptersQuery.isError) && !createdConnectionId ? (
+        <OrderSyncStartSection
+          adapterKey={identity.adapterKey}
+          value={form.watch('orderSyncStart') ?? ORDER_SYNC_START_DEFAULT_VALUE}
+          onChange={(next) =>
+            form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+          }
+          error={form.formState.errors.orderSyncStart?.from?.message}
+          sourceKind="system"
+          separated
+        />
+      ) : null}
 
       {createdConnectionId ? (
         <>

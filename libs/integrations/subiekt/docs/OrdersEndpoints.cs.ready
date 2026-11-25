@@ -120,10 +120,27 @@ public static class OrdersEndpoints
             if (since is { Length: > 0 } && !TryParseCursor(since, out _, out _))
                 return Fail("bad_request", $"'since' is not a parseable cursor: '{since}'.", 400);
 
+            if (!BridgeKeys.TryValidateFeedLimit(limit, out var pageSize, out var limitError))
+                return Fail("bad_request", limitError!, 400);
+
             try
             {
-                var page = await ListOrderFeed(since, limit ?? 50);
+                var page = await ListOrderFeed(since, pageSize);
                 return Ok(page);
+            }
+            catch (Exception ex)
+            {
+                return Fail("sfera_error", ex.Message, 500);
+            }
+        });
+
+        // The cursor of the NEWEST ZK, so a caller can start syncing "from now" without
+        // walking the whole feed.
+        app.MapGet("/api/orders/feed/head", async () =>
+        {
+            try
+            {
+                return Ok(await GetFeedHead());
             }
             catch (Exception ex)
             {
@@ -512,6 +529,23 @@ public static class OrdersEndpoints
         return new OrderFeedResponse(items, nextCursor);
     }
 
+    /// <summary>Newest ZK by the feed's own ordering reversed: same filter, same date column, same
+    /// cursor format as ListOrderFeed. nextCursor is null when there are no ZK at all.</summary>
+    private static async Task<OrderFeedHeadResponse> GetFeedHead()
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        var sql = $@"SELECT TOP 1 dok_Id, {DokDataKolumna}
+                     FROM dok__Dokument
+                     WHERE dok_Typ = {DocumentTypes.Zk}
+                     ORDER BY {DokDataKolumna} DESC, dok_Id DESC";
+        await using var cmd = new SqlCommand(sql, c);
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync())
+            return new OrderFeedHeadResponse(null);
+        return new OrderFeedHeadResponse(BridgeKeys.FormatHeadCursor(r.GetDateTime(1), r.GetInt32(0)));
+    }
+
     private static async Task<OrderDetailResponse?> GetOrder(int id)
     {
         await using var c = new SqlConnection(ConnStr);
@@ -663,6 +697,7 @@ public sealed record CreateOrderResponse(int Id, string Numer);
 
 public sealed record OrderFeedItem(int Id, string Numer, string DataWystawienia);
 public sealed record OrderFeedResponse(List<OrderFeedItem> Items, string? NextCursor);
+public sealed record OrderFeedHeadResponse(string? NextCursor);
 
 public sealed record OrderDetailLine(string Symbol, string? Nazwa, decimal Ilosc, decimal WartoscBrutto);
 public sealed record OrderDetailResponse(

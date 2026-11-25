@@ -44,6 +44,7 @@ import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './handlers/inventory-propagate-to-marketplaces.handler';
 import { OrdersPollHandler } from './handlers/orders-poll.handler';
 import { NotificationsDrainHandler } from './handlers/notifications-drain.handler';
+import { OrdersImportHandler } from './handlers/orders-import.handler';
 import { MarketplaceOrderSyncHandler } from './handlers/marketplace-order-sync.handler';
 import { MarketplaceOrderFxStampHandler } from './handlers/marketplace-order-fx-stamp.handler';
 import { MarketplaceOrderFxStampSweepHandler } from './handlers/marketplace-order-fx-stamp-sweep.handler';
@@ -163,6 +164,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     InboundQueueDrainService,
     { provide: INBOUND_QUEUE_DRAIN_SERVICE_TOKEN, useExisting: InboundQueueDrainService },
     NotificationsDrainHandler,
+    OrdersImportHandler,
     MarketplaceOrderSyncHandler,
     MarketplaceOrderFxStampHandler,
     MarketplaceOrderFxStampSweepHandler,

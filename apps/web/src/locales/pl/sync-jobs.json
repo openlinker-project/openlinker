@@ -219,7 +219,6 @@
     "enqueuing": "Dodawanie do kolejki…",
     "fieldRequired": "Pole {field} jest wymagane",
     "fields": {
-      "cursorKey": "Klucz kursora",
       "externalId": "ID zewnętrzne",
       "maxInvoices": "Maks. liczba faktur",
       "objectType": "Typ obiektu",
@@ -233,8 +232,8 @@
         "label": "Automatycznie dopasuj warianty"
       },
       "pollOrders": {
-        "description": "Pobierz nowe zamówienia ze strumienia zdarzeń marketplace.",
-        "label": "Pobierz zamówienia z marketplace"
+        "description": "Pobiera zamówienia ze sklepu do OpenLinker.",
+        "label": "Synchronizuj zamówienia"
       },
       "propagateInventory": {
         "description": "Wyślij bieżące stany magazynowe do wszystkich podłączonych marketplace.",
@@ -266,11 +265,52 @@
       }
     },
     "noTriggers": "Dla tego połączenia nie ma dostępnych synchronizacji do uruchomienia.",
+    "orderPosition": {
+      "customHelp": "Użyj tylko wtedy, gdy klucz podało Ci wsparcie.",
+      "customLabel": "Klucz miejsca",
+      "customRequired": "Wpisz klucz miejsca albo wybierz inną opcję powyżej.",
+      "limitHelp": "Tyle zamówień OpenLinker przeczyta za jednym razem. Domyślnie 100.",
+      "limitLabel": "Maks. liczba zamówień",
+      "positionCustom": "Inne miejsce (własny klucz)…",
+      "positionDefault": "Od miejsca, w którym skończyło się ostatnie sprawdzenie (zalecane)",
+      "positionDefaultHint": "OpenLinker zapamiętuje, dokąd doczytał listę zamówień ze sklepu. Zostaw bez zmian, chyba że wsparcie podało inaczej.",
+      "positionDefaultHintSaved": "Zapisane w {key}, ostatnio przesunięte {when}.",
+      "positionLabel": "Skąd czytać zamówienia",
+      "positionSaved": "Zapisane miejsce {key}, przesunięte {when}"
+    },
+    "orderRange": {
+      "directionLabel": "Kolejność importu",
+      "errors": {
+        "fromInvalid": "Wpisz poprawną datę",
+        "fromRequired": "Wybierz pierwszy dzień",
+        "fromTooOld": "Wybierz dzień z ostatnich 5 lat",
+        "future": "Wybierz dzień, który nie jest w przyszłości",
+        "toBeforeFrom": "Ostatni dzień nie może być przed pierwszym",
+        "toInvalid": "Wpisz poprawną datę"
+      },
+      "firstDayNeeded": "Wybierz pierwszy dzień, aby kontynuować.",
+      "fromLabel": "Pierwszy dzień",
+      "newestFirst": "Od najnowszych",
+      "oldestFirst": "Od najstarszych",
+      "toHelp": "Ostatni dzień jest wliczony. Zostaw puste, żeby pobrać aż do najnowszego zamówienia.",
+      "toLabel": "Ostatni dzień (opcjonalnie)"
+    },
+    "orderScope": {
+      "label": "Co synchronizować",
+      "new": "Od zapisanej pozycji (kursora)",
+      "newHint": "Pobiera zamówienia nowsze niż zapisana pozycja, czyli tylko te, których OpenLinker jeszcze nie zaimportował. Początek importu się nie przesuwa.",
+      "range": "Między dwiema datami",
+      "rangeHint": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Zamówienia, które OpenLinker już ma, są aktualizowane, a nie kopiowane drugi raz."
+    },
+    "periodConfirm": "Pobierz zamówienia",
+    "periodIntro": "Ustawione z „Pobierz zamówienia z okresu”. Wybierz daty poniżej.",
+    "periodTitle": "Pobierz zamówienia z okresu",
     "requiredField": "{field} *",
     "title": "Uruchom synchronizację",
     "toast": {
       "description": "Uruchomiono „{job}” dla „{connection}”. ID zadania w tle: {jobId}",
-      "title": "Zadanie synchronizacji dodane do kolejki"
+      "title": "Zadanie synchronizacji dodane do kolejki",
+      "viewJob": "Pokaż zadanie"
     },
     "trigger": "Uruchom",
     "viewAllJobs": "Pokaż wszystkie zadania w tle"

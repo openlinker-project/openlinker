@@ -415,3 +415,13 @@ describe('ErliIntegrationModule', () => {
     expect(imports.length).toBeGreaterThan(0);
   });
 });
+
+describe('erli order sync start declarations (#4265)', () => {
+  // Declared statically so the UI reads them without constructing an adapter:
+  // the inbox has neither a date lookup nor a window read.
+  // check-order-source-start-declarations.mjs ties them to the adapter's methods.
+  it('should declare the start modes and window import exactly as the adapter supports them', () => {
+    expect(erliAdapterManifest.orderSyncStartModes).toEqual(['now', 'all']);
+    expect(erliAdapterManifest.orderWindowImport).toBeUndefined();
+  });
+});

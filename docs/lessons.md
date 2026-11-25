@@ -23,6 +23,18 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A declared default is only honest if every adapter implements what it relies on, so pair declarations with an invariant check
+
+**Context**: #4228 made "start from now" the default for a new order-source connection, and a manifest that declares no `orderSyncStartModes` advertises `['now', 'all']`.
+
+**Problem**: the default relied on an optional capability (`OrderFeedBootstrap.headCursor`). An adapter without it hit `return null` in the first poll and silently read the shop's whole history, the exact import the default exists to prevent, with nothing logged for the operator. Nothing tied a manifest declaration to the capability behind it, so two adapters shipped with a declaration their code did not back.
+
+**Rule**: when a default or a UI option depends on an optional capability, fail loudly (typed error) where the capability is missing, never fall back to the behaviour the feature removes. Back every static declaration with a build-time check that it matches the implemented guard (`scripts/check-order-source-start-declarations.mjs`) and a shared contract kit run from each adapter spec (`runOrderSourceStartContract`).
+
+**Applies to**: `libs/core/src/orders/application/services/order-ingestion.service.ts`, every `OrderSource` adapter and its manifest.
+
+**Source**: #4228, #4265, ADR-086
+
 ## Check that every source actually produces the key a design is keyed on
 
 **Context**: #3520 bundles expand per order line, keyed on the line's `variantId`.

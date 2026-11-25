@@ -82,3 +82,36 @@ describe('CreateConnectionDto — credential fields', () => {
     ).toEqual([]);
   });
 });
+
+describe('CreateConnectionDto - orderSyncStart (#4228)', () => {
+  const nestedErrors = (orderSyncStart: unknown): number =>
+    validateSync(
+      plainToInstance(CreateConnectionDto, {
+        ...base,
+        credentialsRef: 'db:x',
+        orderSyncStart,
+      }),
+      { whitelist: false, forbidNonWhitelisted: false }
+    ).length;
+
+  it('should accept a body without the choice', () => {
+    expect(nestedErrors(undefined)).toBe(0);
+  });
+
+  it.each([[{ mode: 'now' }], [{ mode: 'all' }], [{ mode: 'from', from: '2026-10-01' }]])(
+    'should accept %j',
+    (value) => {
+      expect(nestedErrors(value)).toBe(0);
+    }
+  );
+
+  it.each([
+    ['an unknown mode', { mode: 'later' }],
+    ['a missing mode', {}],
+    ['from without a date', { mode: 'from' }],
+    ['from with an empty date', { mode: 'from', from: '' }],
+    ['a non-object', 'now'],
+  ])('should reject %s', (_label, value) => {
+    expect(nestedErrors(value)).toBeGreaterThan(0);
+  });
+});

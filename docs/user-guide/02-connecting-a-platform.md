@@ -138,6 +138,12 @@ The **Connection OK** toast and the displayed response time confirm the Allegro 
 
 ---
 
+### Where order sync starts
+
+If the connection reads orders, the wizard asks where to start: **only new orders** (default), **from a date**, or **all orders**. Only the choices the platform supports are shown (Allegro and Erli have no "from a date"). Shopify shows orders from the last 60 days unless the app has the `read_all_orders` permission, and Subiekt GT needs an up-to-date bridge. You can change the start later on the connection's **Orders** tab; see [Orders](./06-orders.md#where-order-sync-starts) for details.
+
+---
+
 ## Multiple connections
 
 You can add multiple connections of the same platform type — for example, two PrestaShop stores and three Allegro accounts. Each connection has its own credentials, config, and set of scheduled sync jobs. The Insights and Jobs & Logs views aggregate across all connections.

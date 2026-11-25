@@ -282,3 +282,13 @@ describe('WooCommerceIntegrationModule', () => {
     expect(typeof WooCommerceIntegrationModule.prototype.onModuleInit).toBe('function');
   });
 });
+
+describe('woocommerce order sync start declarations (#4265)', () => {
+  // Declared statically so the UI reads them without constructing an adapter:
+  // it can seed from the newest order and from a date, but has no window reader.
+  // check-order-source-start-declarations.mjs ties them to the adapter's methods.
+  it('should declare the start modes and window import exactly as the adapter supports them', () => {
+    expect(woocommerceAdapterManifest.orderSyncStartModes).toEqual(['now', 'from', 'all']);
+    expect(woocommerceAdapterManifest.orderWindowImport).toBeUndefined();
+  });
+});

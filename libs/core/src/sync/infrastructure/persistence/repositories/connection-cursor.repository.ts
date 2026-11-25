@@ -27,6 +27,8 @@ import type {
   PaginatedConnectionCursors,
 } from '../../../domain/types/connection-cursor.types';
 import { Logger } from '@openlinker/shared/logging';
+import { ORDER_SYNC_START_CURSOR_KEY } from '../../../domain/types/order-sync-start.types';
+import { ORDER_FEED_SEEDED_AT_SUFFIX } from '../../../domain/types/order-feed-seed-cursor.types';
 
 @Injectable()
 export class ConnectionCursorRepository implements ConnectionCursorRepositoryPort {
@@ -222,15 +224,30 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
         excludeKeyPrefix: `${escapeLike(filters.excludeKeyPrefix)}%`,
       });
     }
+    if (filters?.keySuffix) {
+      qb.andWhere("c.cursorKey LIKE :keySuffix ESCAPE '\\'", {
+        keySuffix: `%${escapeLike(filters.keySuffix)}`,
+      });
+    }
   }
 
   async findMostRecentUpdate(connectionId: string): Promise<Date | null> {
-    const entity = await this.repository.findOne({
-      where: { connectionId },
-      order: { updatedAt: 'DESC' },
-      select: { updatedAt: true },
-    });
-    return entity?.updatedAt ?? null;
+    // The #4228 start intent and the `.seededAt` marker are written at create /
+    // seed time, not by feed progress, so counting them would make a connection
+    // that never ingested anything look recently active.
+    const entity = await this.repository
+      .createQueryBuilder('c')
+      .select('c.updatedAt', 'updatedAt')
+      .where('c.connectionId = :connectionId', { connectionId })
+      .andWhere('c.cursorKey <> :syncStartKey', { syncStartKey: ORDER_SYNC_START_CURSOR_KEY })
+      .andWhere("c.cursorKey NOT LIKE :seededSuffix ESCAPE '\\'", {
+        seededSuffix: `%${escapeLike(ORDER_FEED_SEEDED_AT_SUFFIX)}`,
+      })
+      .orderBy('c.updatedAt', 'DESC')
+      .limit(1)
+      .getRawOne<{ updatedAt: Date | string }>();
+    if (!entity) return null;
+    return entity.updatedAt instanceof Date ? entity.updatedAt : new Date(entity.updatedAt);
   }
 
   async findOne(connectionId: string, cursorKey: string): Promise<ConnectionCursor | null> {

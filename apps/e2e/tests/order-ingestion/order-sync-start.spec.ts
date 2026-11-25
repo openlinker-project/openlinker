@@ -1,0 +1,368 @@
+/**
+ * Order ingestion: where a new connection's order sync starts (#4228)
+ *
+ * A connection used to import the shop's whole order history the moment it was
+ * added. It now starts from "now" unless the operator chose otherwise
+ * (`orderSyncStart`: `now` | `from` a date | `all`). Each mode below runs on its
+ * OWN throwaway PrestaShop connection pointing at the same shop, because the
+ * feed position lives on the connection: reusing the master connection would
+ * make the second mode inherit the first one's position.
+ *
+ * SETUP USES THE API. The connection wizard's "Order history" step is not
+ * driven here: no page object covers the PrestaShop wizard yet, and the choice
+ * is the same `orderSyncStart` field the wizard posts. The one UI assertion is
+ * the "Order sync" panel on the connection's health tab.
+ *
+ * WHAT `from` CAN AND CANNOT PROVE. The PrestaShop feed position is date
+ * granular (`cursorForDate` answers `YYYY-MM-DD 00:00:00|0`), and every order
+ * this suite seeds is created today. So a same-day `from` cannot separate "old"
+ * from "new" orders inside one test day. What is provable, and asserted: a
+ * `from` of today imports today's orders, and a `from` in the future is refused
+ * with a 400 naming `orderSyncStart`. The older-than-the-date half of the
+ * contract is covered by the adapter's unit tests, not here.
+ *
+ * MUTATING: seeds real PrestaShop orders and creates connections (archived
+ * afterwards), so `retries: 0` via the `order-ingestion` project. Serial: the
+ * cases share the seeded orders.
+ *
+ * @module tests/order-ingestion
+ */
+import { test, expect } from '../../src/fixtures/test';
+import { ApiError } from '../../src/api/api-error';
+import type { ApiClient } from '../../src/api/api-client';
+import type {
+  Connection,
+  CreateConnectionInput,
+  OrderRecord,
+  OrderSyncStartInput,
+} from '../../src/api/api.types';
+import type { SyncJobs } from '../../src/support/jobs';
+import { JobType } from '../../src/support/jobs';
+import { matchesExternalOrderId } from '../../src/support/orders';
+import { pollUntil } from '../../src/support/poller';
+import {
+  buildPrestashopWebserviceClient,
+  createSourceOrder,
+  resolvePrestashopStore,
+} from '../../src/support/order-synthesis';
+
+const OLD_ORDER_COUNT = 3;
+const POLL_BUDGET_MS = 120_000;
+/**
+ * The shop is seeded with thousands of dated orders (`perf/prestashop-baseline/
+ * seed-orders.sh`). The feed reads oldest first, so the few orders this suite
+ * seeds itself arrive LAST and "every order imported" cannot finish inside a test
+ * budget. History flowing is what matters: well past anything a single day holds.
+ */
+const HISTORY_FLOW_MIN = 100;
+const HISTORY_BUDGET_MS = 300_000;
+/** Longer than a second, so a `date_upd` written before it is strictly older than the feed position. */
+const CLOCK_GAP_MS = 2_500;
+/** A new order only has to be written after the feed position was recorded. */
+const FRESH_ORDER_GAP_MS = 2_500;
+
+test.describe.configure({ mode: 'serial' });
+
+test.describe('order ingestion: order sync start (#4228)', () => {
+  const stamp = Date.now().toString(36);
+  const created: Connection[] = [];
+  let master: Connection | undefined;
+  let oldExternalIds: string[] = [];
+  let seedError: string | null = null;
+
+  test.beforeAll(async ({ api, world }) => {
+    master = resolvePrestashopStore(world);
+    const ps = buildPrestashopWebserviceClient(world);
+    if (!master || !ps) {
+      seedError =
+        'needs a PrestaShop store connection and OL_PS_WEBSERVICE_KEY (+ a resolvable PS base URL)';
+      return;
+    }
+    try {
+      // Seeded BEFORE any throwaway connection exists: these are the shop's
+      // "history" the modes must treat differently.
+      for (let i = 0; i < OLD_ORDER_COUNT; i += 1) {
+        const seeded = await createSourceOrder({ api, world });
+        oldExternalIds.push(seeded.externalOrderId);
+      }
+      await new Promise((resolve) => setTimeout(resolve, CLOCK_GAP_MS));
+    } catch (error) {
+      seedError = error instanceof Error ? error.message : String(error);
+      oldExternalIds = [];
+    }
+  });
+
+  test.afterAll(async ({ api }) => {
+    for (const connection of created) {
+      await api.connections.update(connection.id, { status: 'disabled' }).catch(() => undefined);
+      await api.connections.archive(connection.id).catch(() => undefined);
+    }
+  });
+
+  async function createThrowaway(
+    api: ApiClient,
+    label: string,
+    orderSyncStart: OrderSyncStartInput,
+  ): Promise<Connection> {
+    const key = process.env.OL_PS_WEBSERVICE_KEY?.trim();
+    const input: CreateConnectionInput = {
+      name: `e2e-sync-start-${label}-${stamp}`,
+      platformType: 'prestashop',
+      adapterKey: 'prestashop.webservice.v1',
+      // The default limit (60 requests a minute) caps a connection at a handful of
+      // orders a minute, since every order costs about nine shop requests. A
+      // history import needs headroom, so the throwaway connections get it.
+      config: { ...(master?.config ?? {}), rateLimit: { requestsPerMinute: 6000, maxConcurrent: 8 } },
+      credentials: { webserviceApiKey: key },
+      enabledCapabilities: ['OrderSource'],
+      orderSyncStart,
+    };
+    const connection = await api.connections.create(input);
+    created.push(connection);
+    return connection;
+  }
+
+  async function ordersOf(api: ApiClient, connectionId: string): Promise<OrderRecord[]> {
+    const page = await api.orders.list({ sourceConnectionId: connectionId, limit: 100 });
+    return page.items;
+  }
+
+  async function importedTotal(api: ApiClient, connectionId: string): Promise<number> {
+    const page = await api.orders.list({ sourceConnectionId: connectionId, limit: 1 });
+    return page.total;
+  }
+
+  async function pollOnce(jobs: SyncJobs, connectionId: string): Promise<void> {
+    await jobs.triggerAndWait(
+      { connectionId, jobType: JobType.marketplaceOrdersPoll },
+      { timeoutMs: POLL_BUDGET_MS },
+    );
+  }
+
+  function requireSeeded(): void {
+    test.skip(seedError !== null, `could not seed old orders: ${seedError}`);
+  }
+
+  test('now: existing orders are not imported, and only a new order arrives', async ({
+    api,
+    world,
+    jobs,
+  }) => {
+    requireSeeded();
+    const connection = await createThrowaway(api, 'now', { mode: 'now' });
+
+    await pollOnce(jobs, connection.id);
+    const afterFirstPoll = await ordersOf(api, connection.id);
+    expect(afterFirstPoll, 'the first poll must not import the shop history').toHaveLength(0);
+    for (const id of oldExternalIds) {
+      expect(afterFirstPoll.some((o) => matchesExternalOrderId(o, id))).toBe(false);
+    }
+
+    const status = await api.connections.getSyncStatus(connection.id);
+    expect(status.orderSyncStartedAt, 'the start of order sync is recorded').not.toBeNull();
+
+    // A new order, created strictly after the feed position was recorded.
+    await new Promise((resolve) => setTimeout(resolve, FRESH_ORDER_GAP_MS));
+    const fresh = await createSourceOrder({ api, world });
+    const arrived = await pollUntil(
+      async () => {
+        await pollOnce(jobs, connection.id);
+        return ordersOf(api, connection.id);
+      },
+      (orders) => orders.some((o) => matchesExternalOrderId(o, fresh.externalOrderId)),
+      {
+        timeoutMs: POLL_BUDGET_MS,
+        intervalMs: 3_000,
+        message: `the new order ${fresh.externalOrderId} to arrive on the "now" connection`,
+      },
+    );
+    expect(arrived, 'exactly the new order, none of the old ones').toHaveLength(1);
+  });
+
+  test('all: the order history is imported, not only today', async ({ api, jobs }) => {
+    requireSeeded();
+    test.setTimeout(HISTORY_BUDGET_MS + 60_000);
+    const connection = await createThrowaway(api, 'all', { mode: 'all' });
+
+    const total = await pollUntil(
+      async () => {
+        await pollOnce(jobs, connection.id);
+        return importedTotal(api, connection.id);
+      },
+      (count) => count >= HISTORY_FLOW_MIN,
+      {
+        timeoutMs: HISTORY_BUDGET_MS,
+        intervalMs: 3_000,
+        message: `at least ${HISTORY_FLOW_MIN} historical orders to be imported on the "all" connection`,
+      },
+    );
+    expect(total).toBeGreaterThanOrEqual(HISTORY_FLOW_MIN);
+  });
+
+  test('from: today imports today\'s orders, and a future date is refused', async ({ api, jobs }) => {
+    requireSeeded();
+    // The date is the shop-side day the orders were created on. If the runner
+    // and the shop straddle midnight in different zones this can miss; that is a
+    // known limit of a date-granular feed, not of the feature.
+    const today = new Date().toISOString().slice(0, 10);
+    const connection = await createThrowaway(api, 'from-today', { mode: 'from', from: today });
+
+    await pollUntil(
+      async () => {
+        await pollOnce(jobs, connection.id);
+        return ordersOf(api, connection.id);
+      },
+      (list) => oldExternalIds.every((id) => list.some((o) => matchesExternalOrderId(o, id))),
+      {
+        timeoutMs: POLL_BUDGET_MS,
+        intervalMs: 3_000,
+        message: `today's orders to be imported from ${today}`,
+      },
+    );
+
+    const tomorrow = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const refusal = await api.connections
+      .create({
+        name: `e2e-sync-start-from-future-${stamp}`,
+        platformType: 'prestashop',
+        adapterKey: 'prestashop.webservice.v1',
+        config: { ...(master?.config ?? {}) },
+        credentials: { webserviceApiKey: process.env.OL_PS_WEBSERVICE_KEY?.trim() },
+        enabledCapabilities: ['OrderSource'],
+        orderSyncStart: { mode: 'from', from: tomorrow },
+      })
+      .then(
+        (leaked) => {
+          created.push(leaked);
+          return null;
+        },
+        (error: unknown) => error,
+      );
+    expect(refusal, 'a start date in the future must be refused').toBeInstanceOf(ApiError);
+    const apiError = refusal as ApiError;
+    expect(apiError.status).toBe(400);
+    expect(JSON.stringify(apiError.body)).toContain('orderSyncStart');
+  });
+
+  test('from: a date inside the history imports exactly the orders since that date', async ({
+    api,
+    jobs,
+  }) => {
+    requireSeeded();
+    test.setTimeout(HISTORY_BUDGET_MS + 60_000);
+    const key = process.env.OL_PS_WEBSERVICE_KEY?.trim();
+    const baseUrl = (
+      process.env.OL_PS_ADMIN_URL?.trim() ||
+      (typeof master?.config?.['baseUrl'] === 'string' ? master.config['baseUrl'] : '')
+    ).replace(/\/$/, '');
+    // A week back, which cuts through a shop seeded with dated history
+    // (`perf/prestashop-baseline/seed-orders-varied.py`).
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const response = await fetch(
+      `${baseUrl}/api/orders?output_format=JSON&date=1&display=[id]&filter[date_upd]=>[${since} 00:00:00]`,
+      { headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString('base64')}` } },
+    );
+    const body = (await response.json()) as { orders?: Array<{ id: number }> };
+    const expected = body.orders?.length ?? 0;
+    test.skip(
+      expected < 30 || expected > 700,
+      `needs a shop with a few hundred orders in the last week, found ${expected}`,
+    );
+
+    const connection = await createThrowaway(api, 'from-mid', { mode: 'from', from: since });
+    const total = await pollUntil(
+      async () => {
+        await pollOnce(jobs, connection.id);
+        return importedTotal(api, connection.id);
+      },
+      (count) => count >= expected,
+      {
+        timeoutMs: HISTORY_BUDGET_MS,
+        intervalMs: 3_000,
+        message: `${expected} orders placed since ${since} to be imported`,
+      },
+    );
+    // Exactly the window: nothing older leaks in, and nothing in it is skipped.
+    expect(total).toBe(expected);
+  });
+
+  test('restart: a connection started "now" can be restarted to import the history', async ({
+    api,
+    jobs,
+  }) => {
+    requireSeeded();
+    test.setTimeout(HISTORY_BUDGET_MS + 120_000);
+    const connection = await createThrowaway(api, 'restart', { mode: 'now' });
+    await pollOnce(jobs, connection.id);
+    expect(await ordersOf(api, connection.id), 'starts without the history').toHaveLength(0);
+
+    const tomorrow = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const refusal = await api.connections
+      .restartOrderSync(connection.id, { mode: 'from', from: tomorrow })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(refusal, 'a future start date must be refused').toBeInstanceOf(ApiError);
+    expect((refusal as ApiError).status).toBe(400);
+
+    await api.connections.restartOrderSync(connection.id, { mode: 'all' });
+    await pollUntil(
+      async () => {
+        await pollOnce(jobs, connection.id);
+        return importedTotal(api, connection.id);
+      },
+      (count) => count >= HISTORY_FLOW_MIN,
+      {
+        timeoutMs: HISTORY_BUDGET_MS,
+        intervalMs: 3_000,
+        message: `at least ${HISTORY_FLOW_MIN} historical orders after restarting from "all"`,
+      },
+    );
+  });
+
+  test('the connection orders tab shows the order import status', async ({
+    page,
+    pages,
+  }) => {
+    requireSeeded();
+    const connection = created.find((c) => c.name.startsWith('e2e-sync-start-now-'));
+    test.skip(!connection, 'the "now" connection was not created');
+    await pages.connectionDetail.goto(connection!.id, 'orders');
+    await pages.connectionDetail.expectOrderSyncPanel();
+    await expect(page).toHaveURL(new RegExp(`/connections/${connection!.id}`));
+  });
+
+  test('the worker stayed healthy: no dead and no stuck order poll jobs', async ({ api }) => {
+    requireSeeded();
+    test.skip(created.length === 0, 'no throwaway connection was created');
+    for (const connection of created) {
+      const dead = await api.syncJobs.list({
+        connectionId: connection.id,
+        jobType: JobType.marketplaceOrdersPoll,
+        status: 'dead',
+        limit: 100,
+      });
+      expect(dead.items, `dead order polls on ${connection.name}`).toHaveLength(0);
+
+      for (const status of ['queued', 'running'] as const) {
+        const open = await pollUntil(
+          () =>
+            api.syncJobs.list({
+              connectionId: connection.id,
+              jobType: JobType.marketplaceOrdersPoll,
+              status,
+              limit: 100,
+            }),
+          (page) => page.items.length === 0,
+          {
+            timeoutMs: 60_000,
+            intervalMs: 3_000,
+            message: `no ${status} order poll to remain on ${connection.name}`,
+          },
+        );
+        expect(open.items).toHaveLength(0);
+      }
+    }
+  });
+});

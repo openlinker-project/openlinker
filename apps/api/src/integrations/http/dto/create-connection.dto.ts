@@ -25,11 +25,14 @@ import {
   IsIn,
   Matches,
   Validate,
+  ValidateNested,
   ValidatorConstraint,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { CoreCapability } from '@openlinker/core/integrations';
 import { CoreCapabilityValues } from '@openlinker/core/integrations';
+import { OrderSyncStartDto } from './order-sync-start.dto';
 
 @ValidatorConstraint({ name: 'CredentialsXor', async: false })
 class CredentialsXorConstraint implements ValidatorConstraintInterface {
@@ -114,4 +117,18 @@ export class CreateConnectionDto {
   @IsIn(CoreCapabilityValues, { each: true })
   @IsOptional()
   enabledCapabilities?: CoreCapability[];
+
+  @ApiPropertyOptional({
+    description:
+      'Where order sync starts for a connection with the OrderSource capability (#4228). ' +
+      'Absent means "now": orders that already exist in the shop are not imported. ' +
+      'Each adapter declares the modes it supports (`orderSyncStartModes` on GET /adapters); ' +
+      'an unsupported mode answers 400. The choice is one-shot and is not stored in `config`.',
+    type: OrderSyncStartDto,
+    example: { mode: 'from', from: '2026-10-01' },
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => OrderSyncStartDto)
+  orderSyncStart?: OrderSyncStartDto;
 }

@@ -7,6 +7,7 @@ import { createHmac } from 'node:crypto';
 import { BadGatewayException, BadRequestException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import { CONNECTION_SERVICE_TOKEN } from '../application/interfaces/connection.service.interface';
 import { SHOPIFY_LOCATION_READER_TOKEN } from '@openlinker/integrations-shopify';
 
@@ -46,6 +47,7 @@ describe('ShopifyController', () => {
   let oauth: jest.Mocked<IOAuthConnectionService>;
   let locationReader: { listLocations: jest.Mock };
   let connections: { get: jest.Mock };
+  let integrations: { resolveAdapterMetadata: jest.Mock };
 
   beforeEach(async () => {
     oauth = {
@@ -59,6 +61,9 @@ describe('ShopifyController', () => {
     } as unknown as jest.Mocked<IOAuthConnectionService>;
     locationReader = { listLocations: jest.fn() };
     connections = { get: jest.fn().mockResolvedValue({ id: 'conn-1', platformType: 'shopify' }) };
+    integrations = {
+      resolveAdapterMetadata: jest.fn().mockResolvedValue({ orderSyncStartModes: ['now', 'from', 'all'] }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ShopifyController],
@@ -66,6 +71,7 @@ describe('ShopifyController', () => {
         { provide: OAUTH_CONNECTION_SERVICE_TOKEN, useValue: oauth },
         { provide: SHOPIFY_LOCATION_READER_TOKEN, useValue: locationReader },
         { provide: CONNECTION_SERVICE_TOKEN, useValue: connections },
+        { provide: INTEGRATIONS_SERVICE_TOKEN, useValue: integrations },
       ],
     }).compile();
     controller = module.get(ShopifyController);
@@ -103,6 +109,62 @@ describe('ShopifyController', () => {
       expect(oauth.generateAuthorizationUrl).toHaveBeenCalledWith(
         expect.objectContaining({ enabledCapabilities: ['ProductPublisher', 'CategoryProvisioner'] }),
       );
+    });
+
+    it('should carry the chosen order start through the install so the callback can store it (#4265)', async () => {
+      await controller.connect({
+        storeDomain: STORE,
+        clientId: 'id',
+        clientSecret: SECRET,
+        redirectUri: STATE_DATA.redirectUri,
+        orderSyncStart: { mode: 'from', from: '2026-10-01', order: 'newest-first' },
+      });
+
+      expect(oauth.generateAuthorizationUrl).toHaveBeenCalledWith(
+        expect.objectContaining({ orderSyncStart: { mode: 'from', from: '2026-10-01', order: 'newest-first' } }),
+      );
+    });
+
+    it('should carry an explicit "now" choice as it is, like the Allegro install', async () => {
+      await controller.connect({
+        storeDomain: STORE,
+        clientId: 'id',
+        clientSecret: SECRET,
+        redirectUri: STATE_DATA.redirectUri,
+        orderSyncStart: { mode: 'now' },
+      });
+
+      expect(oauth.generateAuthorizationUrl).toHaveBeenCalledWith(
+        expect.objectContaining({ orderSyncStart: { mode: 'now' } }),
+      );
+    });
+
+    it('should refuse a start mode the adapter does not declare before redirecting the merchant', async () => {
+      integrations.resolveAdapterMetadata.mockResolvedValue({ orderSyncStartModes: ['now'] });
+
+      await expect(
+        controller.connect({
+          storeDomain: STORE,
+          clientId: 'id',
+          clientSecret: SECRET,
+          redirectUri: STATE_DATA.redirectUri,
+          orderSyncStart: { mode: 'all' },
+        }),
+      ).rejects.toBeDefined();
+      expect(oauth.generateAuthorizationUrl).not.toHaveBeenCalled();
+    });
+
+    it('should ignore a start on a re-authentication, which rotates credentials only', async () => {
+      await controller.connect({
+        storeDomain: STORE,
+        clientId: 'id',
+        clientSecret: SECRET,
+        redirectUri: STATE_DATA.redirectUri,
+        connectionId: '3f6b8f26-8c6f-4c64-9a5d-2f2f6e3d1a11',
+        orderSyncStart: { mode: 'all' },
+      });
+
+      expect(oauth.generateAuthorizationUrl.mock.calls[0][0]).not.toHaveProperty('orderSyncStart');
     });
 
     it('should refuse a master plus publisher set before redirecting the merchant', async () => {

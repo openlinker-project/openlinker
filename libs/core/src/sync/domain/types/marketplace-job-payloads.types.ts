@@ -25,6 +25,32 @@ export interface MarketplaceNotificationsDrainPayloadV1 {
   maxMessages: number;
 }
 
+/**
+ * One page of an order import over a date window (#4228): the history of a new
+ * connection read newest-first, or a range an operator asked for by hand.
+ *
+ * The run is a CHAIN of these jobs rather than one long job: each page enqueues
+ * the next with the cursor the source returned, so a crash resumes at the last
+ * page, no job runs for minutes, and the lane slot is released between pages.
+ * `runId` identifies the chain and scopes the dedupe key of every page.
+ */
+export interface MarketplaceOrdersImportPayloadV1 {
+  schemaVersion: 1;
+  /** Identifies one import run; every page of it carries the same value. */
+  runId: string;
+  /** First day to include (ISO date or instant). Omitted: from the beginning. */
+  from?: string;
+  /** Last day to include (ISO date or instant). Omitted: up to the newest order. */
+  to?: string;
+  direction: 'oldest-first' | 'newest-first';
+  /** Opaque source position from the previous page; null on the first page. */
+  cursor: string | null;
+  /** Page size. The handler clamps it. */
+  limit?: number;
+  /** 1-based page number, for the dedupe key and the log. */
+  page: number;
+}
+
 export interface MarketplaceOrderSyncPayloadV1 {
   schemaVersion: 1;
   externalOrderId: string;

@@ -9,3 +9,27 @@
  */
 export { ORDER_HEALTH_FIXTURES } from './order-health.fixtures';
 export type { OrderHealthFixture, OrderHealthFixtureBucket } from './order-health.fixtures';
+
+// Jest-coupled (describe/it/expect). Reachable only from this sub-barrel; see
+// scripts/check-contract-suite-not-in-production.mjs.
+export {
+  ORDER_SOURCE_START_CONTRACT_CASE_IDS,
+  checkOrderSourceStartContract,
+  expectedOrderSourceStartContractCaseIds,
+  runOrderSourceStartContract,
+} from './order-source-start-contract.suite';
+export type {
+  OrderSourceStartContractCaseId,
+  OrderSourceStartDeclaration,
+  OrderSourceStartScenario,
+  OrderSourceStartSubject,
+} from './order-source-start-contract.suite';
+export {
+  ContractSubjectMissingError,
+  EmptyContractSuiteError,
+} from '../../fulfillment/testing/contract-result.types';
+export type {
+  ContractCaseRecorder,
+  ContractCaseResult,
+  ContractRunResult,
+} from '../../fulfillment/testing/contract-result.types';
