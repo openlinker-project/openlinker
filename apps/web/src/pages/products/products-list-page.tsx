@@ -35,6 +35,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { resolveSelectionBundle } from './selection-bundle';
 import { BundleGuide } from '../../features/bundles/components/bundle-guide';
 import { GuideButton } from '../../shared/ui/guide-drawer';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -334,29 +335,10 @@ function ProductsListPageBody(): ReactElement {
   // product to its variant itself. Bundles cannot be components, and a
   // multi-variant product has no single component to seed, so both are
   // excluded rather than silently dropped by the wizard.
-  const selectionBundle = useMemo((): {
-    link: string | null;
-    disabledReason: 'mixed' | 'tooMany' | null;
-  } => {
-    const picked = items.filter((p) => selectedIds.has(p.id));
-    // Selection carries ids this page does not show: nothing to seed from.
-    if (picked.length !== selectedIds.size) return { link: null, disabledReason: null };
-    if (picked.some((p) => p.bundle || (p.variantCount ?? 1) !== 1)) {
-      return { link: null, disabledReason: 'mixed' };
-    }
-    if (picked.length === 1) {
-      return {
-        link: `/products/bundles/new?componentProduct=${encodeURIComponent(picked[0]!.id)}&quantity=1`,
-        disabledReason: null,
-      };
-    }
-    if (picked.length > BUNDLE_COMPONENT_LIMIT) return { link: null, disabledReason: 'tooMany' };
-    if (picked.length < 2) return { link: null, disabledReason: null };
-    return {
-      link: `/products/bundles/new?components=${picked.map((p) => `${encodeURIComponent(p.id)}:1`).join(',')}`,
-      disabledReason: null,
-    };
-  }, [items, selectedIds]);
+  const selectionBundle = useMemo(
+    () => resolveSelectionBundle(items, selectedIds, BUNDLE_COMPONENT_LIMIT),
+    [items, selectedIds]
+  );
   const selectionBundleLink = selectionBundle.link;
   const restockItems = useMemo(
     () => items.filter((p) => p.bundle && p.availableToPromise === 0),
