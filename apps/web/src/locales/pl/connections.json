@@ -401,7 +401,7 @@
     "carriers": {
       "description": "Zmapuj identyfikatory metod dostawy {source} na odpowiadające im identyfikatory przewoźników {destination}.",
       "dynamicSuffix": "dokładny koszt {platform}",
-      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowany przewoźnik może spowodować błąd synchronizacji zamówienia, chyba że ustawiono przewoźnika zastępczego. Dodaj mapowanie poniżej.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowany przewoźnik może spowodować błąd synchronizacji zamówienia, chyba że ustawiono przewoźnika zastępczego. Wybierz obie wartości poniżej, kliknij Dodaj do listy, a potem Zapisz mapowania.",
       "sourceColumn": "Metoda dostawy {platform}",
       "targetColumn": "Przewoźnik {platform}",
       "title": "Mapowania przewoźników"
@@ -438,14 +438,14 @@
     },
     "orderStates": {
       "description": "Ustal, na który stan zamówienia {destination} przechodzi każdy status OpenLinker. Sklepy ze zmienionymi lub dodanymi stanami mapuje się tutaj; niezmapowane statusy używają stanu z domyślnej instalacji.",
-      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane statusy używają stanu zamówienia z domyślnej instalacji. Dodaj mapowanie poniżej.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane statusy używają stanu zamówienia z domyślnej instalacji. Wybierz obie wartości poniżej, kliknij Dodaj do listy, a potem Zapisz mapowania.",
       "sourceColumn": "Status OpenLinker",
       "targetColumn": "Stan zamówienia {platform}",
       "title": "Mapowania stanów zamówień"
     },
     "payments": {
       "description": "Zmapuj nazwy dostawców płatności {source} na odpowiadające im nazwy modułów płatności {destination}.",
-      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane metody płatności są zapisywane w zamówieniu jako „Check payment”. Zmapowana metoda jest zapisywana pod wybraną nazwą. Dodaj mapowanie poniżej.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane metody płatności są zapisywane w zamówieniu jako „Check payment”. Zmapowana metoda jest zapisywana pod wybraną nazwą. Wybierz obie wartości poniżej, kliknij Dodaj do listy, a potem Zapisz mapowania.",
       "sourceColumn": "Dostawca płatności {platform}",
       "targetColumn": "Moduł płatności {platform}",
       "title": "Mapowania płatności"
@@ -459,9 +459,10 @@
     "status": {
       "columnLabel": "Status {platform}",
       "description": "Zmapuj statusy zamówień {source} na odpowiadające im identyfikatory statusów zamówień {destination}.",
-      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane statusy przy synchronizacji otrzymują status domyślny. Dodaj mapowanie poniżej.",
+      "empty": "Nie skonfigurowano jeszcze mapowań. Niezmapowane statusy przy synchronizacji otrzymują status domyślny. Wybierz obie wartości poniżej, kliknij Dodaj do listy, a potem Zapisz mapowania.",
       "title": "Mapowania statusów zamówień"
     },
+    "tabUnsaved": "niezapisane zmiany",
     "tabs": {
       "attributeRules": "Reguły atrybutów",
       "carriers": "Przewoźnicy",
@@ -865,6 +866,18 @@
     "readOnlyNote": "Masz dostęp tylko do odczytu, więc tych ustawień nie można zmienić.",
     "save": "Zapisz zmiany",
     "saving": "Zapisywanie...",
+    "sections": {
+      "advanced": "Zaawansowane",
+      "fulfilment": "Pakowanie",
+      "general": "Ogólne",
+      "labelPurchase": "Powiadomienie o wysyłce",
+      "paymentWriteback": "Zapis płatności",
+      "platform": "Ustawienia platformy",
+      "rateLimit": "Limit zapytań",
+      "salesDocuments": "Dokumenty sprzedaży",
+      "shipping": "Kto wysyła",
+      "stockPricing": "Stany i ceny"
+    },
     "someNeedAttention": "Niektóre pola wymagają uwagi. Zobacz listę na górze formularza.",
     "updatedDescription": "Ustawienia połączenia zostały zapisane.",
     "updatedTitle": "Połączenie zaktualizowane",
@@ -873,6 +886,10 @@
   "editConnectionPage": {
     "backLabel": "Połączenie",
     "description": "Zmień nazwę połączenia, konfigurację i ustawienia adaptera.",
+    "environment": {
+      "production": "Produkcja",
+      "sandbox": "Sandbox"
+    },
     "error": {
       "title": "Nie udało się wczytać połączenia"
     },
@@ -995,8 +1012,12 @@
     "name": "Nazwa"
   },
   "fulfilmentOwnershipSection": {
+    "description": "Decyduje, czy OpenLinker pokazuje własne elementy pakowania dla zamówień trafiających do tego systemu. Nie wybiera przewoźnika ani nie generuje etykiet.",
     "heading": "Kto pakuje zamówienia",
     "help": "Włącz, gdy to ten system pakuje paczkę i ją wysyła (np. zewnętrzny system magazynowy). OpenLinker ukryje wtedy własny przycisk „Oznacz jako spakowane” i znacznik spakowania dla trafiających tu zamówień. Zmienia to tylko widok: nic nie jest blokowane, a ten system nadal może zgłosić zamówienie jako spakowane.",
+    "hintLabel": "Przykład: pakuje zewnętrzny magazyn",
+    "hintTerm": "Przykład",
+    "hintText": "Paczkę pakuje zewnętrzny system magazynowy. Po włączeniu OpenLinker ukrywa własny przycisk „Oznacz jako spakowane” i znacznik spakowania dla tych zamówień, bo pakuje magazyn. Etykiety i przewoźników ustawia się osobno w sekcji Kto wysyła.",
     "toggle": "Ten system sam pakuje i wysyła zamówienia"
   },
   "inpostSetupForm": {
@@ -1324,6 +1345,7 @@
     "dateTooOld": "Wybierz dzień z ostatnich 5 lat"
   },
   "paymentWriteback": {
+    "description": "Określa, czy OpenLinker oznacza zamówienie jako opłacone w tym sklepie po zapłacie kupującego. Nie zmienia pakowania ani wysyłki.",
     "factCod": "Zamówienia za pobraniem i anulowane nigdy nie są oznaczane jako opłacone.",
     "factFailure": "Jeśli sklep tego nie przyjmie, zamówienie pojawi się w Zamówieniach pod filtrem „Płatność nie trafiła do sklepu”.",
     "factFromNow": "Dotyczy płatności od tej chwili.",
@@ -1635,12 +1657,15 @@
   },
   "shipping": {
     "backToOmsSetup": "Wróć do konfiguracji OMS",
+    "carrierMappingsMessage": "To, dla jakich metod dostawy tworzy etykiety, ustawia się w kanale sprzedaży, a nie tutaj. Otwórz kanał i skorzystaj z zakładki routingu realizacji.",
+    "carrierMappingsNoChannels": "Nie połączono jeszcze żadnego kanału sprzedaży. Najpierw połącz kanał.",
+    "carrierMappingsOpenChannel": "Otwórz {channel}",
+    "carrierMappingsTitle": "{carrier} to konto przewoźnika, a nie kanał sprzedaży",
     "createdAction": "Wybierz metody dostawy",
     "createdBody": "Teraz wybierz, które metody dostawy wysyła {carrier}. Do tego czasu nie trafi tam żadne zamówienie.",
     "createdTitle": "Połączono {carrier}.",
-    "rowChange": "Zmień",
-    "rowChoose": "Wybierz",
     "rowLoading": "Wczytywanie metod dostawy...",
+    "rowOpenChannel": "Otwórz w kanale sprzedaży",
     "rowUnavailable": "Nie udało się wczytać, kto wysyła te metody dostawy.",
     "shippingAllLabelled": "Każda metoda dostawy dostaje etykietę z OpenLinker.",
     "shippingChange": "Zmień, kto co wysyła",
@@ -1671,7 +1696,19 @@
       "many": "{n} metod dostawy (nie wczytano nazw)",
       "one": "{n} metoda dostawy (nie wczytano nazwy)",
       "other": "{n} metody dostawy (nie wczytano nazw)"
-    }
+    },
+    "shipsForUnusedBody": "Żadna metoda dostawy nie trafia do tego konta. Przypisanie ustawia się w kanale sprzedaży: otwórz jeden z poniższych i wybierz, które jego metody dostawy wysyła ten przewoźnik.",
+    "shipsForUnusedTitle": "{carrier} nie jest jeszcze używany"
+  },
+  "shippingNextStep": {
+    "body": "Dopóki nie przypiszesz przewoźnika, twój sklep wysyła każde zamówienie z tego kanału, tak jak przed OpenLinker. Aby OpenLinker kupował etykiety, wybierz przewoźnika dla każdej metody dostawy w Mapowaniach.",
+    "link": "Przypisz, kto wysyła",
+    "title": "Co dalej: kto wysyła z tego kanału"
+  },
+  "shippingSummary": {
+    "configure": "Skonfiguruj w Mapowaniach",
+    "intro": "Kto tworzy etykietę przewozową (przewoźnik) dla każdej metody dostawy, osobno dla kanału sprzedaży. Dotyczy etykiet i przewoźników, nie tego, kto pakuje paczkę. Metody bez przewoźnika wysyła Twój sklep.",
+    "noChannels": "Z tym sklepem nie połączono jeszcze żadnego kanału sprzedaży. Połącz kanał, a potem przypisz, kto wysyła jego metody dostawy."
   },
   "shoperSetupForm": {
     "beforeYouStart": {
@@ -1707,6 +1744,7 @@
     "latency": "({ms} ms)",
     "ordersNextStep": {
       "body": "Do utworzenia zamówienia {platform} potrzebuje domyślnej metody dostawy, metody płatności i statusu zamówienia. Wybierz je z list sklepu w <link>ustawieniach połączenia</link>.",
+      "shipping": "Pakowanie: gdy kanał sprzedaży zostanie połączony z tym sklepem, wybierz dla każdej metody dostawy, kto ją wysyła. <link>Przypisz przewoźników do kanałów</link>.",
       "title": "Jeszcze jeden krok do przyjmowania zamówień"
     },
     "platformFallback": "sklep",
@@ -1884,6 +1922,23 @@
     "unexpected-status": "Platforma odpowiedziała w nieoczekiwany sposób.",
     "unreachable": "Nie udało się połączyć z platformą. Sprawdź adres i czy platforma działa.",
     "unsupported": "Tego rodzaju połączenia nie da się jeszcze przetestować."
+  },
+  "wizardCreated": {
+    "active": "Aktywne",
+    "assignChannel": {
+      "body": "Ten przewoźnik niczego nie wysyła, dopóki nie przypiszesz do niego metody dostawy kanału sprzedaży. Zrobisz to na stronie połączenia, w sekcji „Wysyła dla”.",
+      "link": "Przypisz to konto do kanału sprzedaży",
+      "title": "Przypisz to konto do kanału sprzedaży"
+    },
+    "editConnection": "Otwórz ustawienia połączenia",
+    "goToConnection": "Przejdź do połączenia",
+    "name": "Połączono jako",
+    "shopPacking": {
+      "body": "Gdy kanał sprzedaży zostanie połączony z tym sklepem, wybierz dla każdej metody dostawy, kto ją wysyła. Do tego czasu twój sklep wysyła każde zamówienie.",
+      "link": "Przypisz przewoźników do kanałów",
+      "title": "Dalej: pakowanie i przewoźnicy"
+    },
+    "targetShop": "Sklep docelowy"
   },
   "woocommerceSetupForm": {
     "beforeYouStart": {

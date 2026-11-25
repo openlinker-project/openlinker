@@ -16,7 +16,6 @@
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import {
   PRESTASHOP_ADAPTER_KEY,
@@ -49,6 +48,8 @@ import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { captureDemoEvent } from '../../demo';
+import { WizardCreatedScreen } from './wizard-created-screen';
+import { ShopPackingNextStep } from './shop-packing-next-step';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
@@ -91,7 +92,6 @@ export function PrestashopSetupForm(): ReactElement {
   const platform = usePlatform('prestashop')?.displayName ?? copy.platformFallback;
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
-  const navigate = useNavigate();
   const adaptersQuery = useAdaptersQuery();
   const form = useForm<PrestashopSetupFormValues, undefined, PrestashopSetupFormSubmission>({
     defaultValues: PRESTASHOP_SETUP_DEFAULT_VALUES,
@@ -106,6 +106,7 @@ export function PrestashopSetupForm(): ReactElement {
     : ['credentials', 'verify', 'capabilities', 'review'];
   const STEP_LABELS = stepIds.map((id) => copy.steps[id]);
 
+  const [created, setCreated] = useState<{ id: string; name: string } | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const stepId = stepIds[Math.min(stepIndex, stepIds.length - 1)];
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
@@ -175,18 +176,40 @@ export function PrestashopSetupForm(): ReactElement {
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
+      const result = await createConnection.mutateAsync(toCreateConnectionInput(values));
       form.reset(values, { keepValues: true, keepDirty: false });
       showToast({
         tone: 'success',
         title: copy.createdTitle,
-        description: interpolate(copy.createdDescription, { platform, name: created.name }),
+        description: interpolate(copy.createdDescription, { platform, name: result.name }),
       });
-      void navigate('/connections');
+      setCreated({ id: result.id, name: result.name });
     } catch {
       return;
     }
   });
+
+  if (created) {
+    return (
+      <WizardLayout
+        stepper={
+          <SetupStepper
+            steps={STEP_LABELS}
+            currentStep={STEP_LABELS.length - 1}
+            completedSteps={new Set(STEP_LABELS.map((_, index) => index))}
+          />
+        }
+      >
+        <WizardCreatedScreen
+          connectionId={created.id}
+          connectionName={created.name}
+          title={copy.createdTitle}
+        >
+          <ShopPackingNextStep connectionId={created.id} />
+        </WizardCreatedScreen>
+      </WizardLayout>
+    );
+  }
 
   return (
     <WizardLayout

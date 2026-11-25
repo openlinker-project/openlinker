@@ -36,6 +36,8 @@ export { FulfillmentRoutingSection } from './components/fulfillment-routing-sect
 export { ParcelProfileForm } from './components/parcel-profile-form';
 export { RoutingDialog } from './components/routing-dialog';
 export { RoutingSplitBar, type RoutingSplitBucket } from './components/routing-split-bar';
+export { MappingPairingBar } from './components/mapping-pairing-bar';
+export { resolveMappingPairing } from './hooks/use-mapping-pairing';
 export {
   routeBuysLabel,
   shippingRouteCopyIn,

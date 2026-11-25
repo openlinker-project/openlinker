@@ -267,9 +267,8 @@ describe('WoocommerceSetupForm', () => {
       });
     });
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('location-pathname')).toHaveTextContent('/connections');
-    });
+    expect(await screen.findByRole('link', { name: 'Go to connection' })).toBeInTheDocument();
+    expect(screen.getByText('Packing and carriers come next')).toBeInTheDocument();
   });
 
   it('never submits both InventoryMaster and OfferManager together', async () => {

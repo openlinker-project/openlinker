@@ -49,9 +49,8 @@ import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
-import { StatusTabs, type StatusTab } from '../../shared/ui/status-tabs';
+import { SortField, SortStack } from '../../shared/ui/sort-field';
 import { PeekArrow } from '../../shared/ui/capped-badges';
-import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -59,12 +58,22 @@ import { useDemoMode } from '../../features/system';
 import { ListPagination } from '../../shared/ui/list-pagination';
 import { ConnectionCell, ConnectionFold } from '../../features/connections';
 import { useProductsQuery } from '../../features/products/hooks/use-products-query';
+import { useProductsListFilters } from '../../features/products/hooks/use-products-list-filters';
+import {
+  PRODUCT_VIEW_IDS,
+  createProductsListRegistry,
+} from '../../features/products/lib/products.list-config';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+} from '../../features/saved-views';
 import {
   deriveStockStatus,
   ProductAttentionSummary,
-  ProductListSortDirValues,
-  ProductListSortFieldValues,
-  ProductStockFilterValues,
   STOCK_STATUS_BADGE_TONE,
   STOCK_STATUS_LABEL,
   useCostCoverageQuery,
@@ -75,9 +84,6 @@ import {
   type ProductCountProbe,
   type ProductFilters,
   type ProductListSort,
-  type ProductListSortDir,
-  type ProductListSortField,
-  type ProductStockFilter,
 } from '../../features/products';
 import { deriveAtpStatus } from '../../features/inventory';
 import {
@@ -102,49 +108,10 @@ import {
 import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
-const SEARCH_DEBOUNCE_MS = 300;
 /** Opens the product peek on arrival: `/products?peek=<productId>`. */
 const PEEK_PARAM = 'peek';
 /** Maximum products an operator can bulk-list in one batch (BE-enforced ceiling). */
 export const BULK_SELECTION_CAP = 100;
-
-/** Type-guard for the `stock` URL param (widen-then-narrow, orders pattern). */
-function isStockFilter(value: string | null): value is ProductStockFilter {
-  return value !== null && (ProductStockFilterValues as readonly string[]).includes(value);
-}
-
-/** Type-guard for the `sort` URL param. */
-function isSortField(value: string | null): value is ProductListSortField {
-  return value !== null && (ProductListSortFieldValues as readonly string[]).includes(value);
-}
-
-/** Type-guard for the `dir` URL param. */
-function isSortDir(value: string | null): value is ProductListSortDir {
-  return value !== null && (ProductListSortDirValues as readonly string[]).includes(value);
-}
-
-const DEFAULT_SORT: ProductListSortField = 'createdAt';
-
-/**
- * Every sortable header is a stack of per-label sort buttons (the orders
- * sortstack, #4026): Product + SKU, Stock, and Price / Updated / Created. A
- * click on the active key flips it; another key starts at its default.
- */
-const PRODUCT_SORT_FIELDS: readonly ProductListSortField[] = ['name', 'sku'];
-const STOCK_SORT_FIELDS: readonly ProductListSortField[] = ['stock'];
-const MONEY_SORT_FIELDS: readonly ProductListSortField[] = ['price', 'updatedAt', 'createdAt'];
-
-/** First-click direction per sort key; re-clicking the active column flips it. */
-const DEFAULT_DIR: Record<ProductListSortField, ProductListSortDir> = {
-  name: 'asc',
-  sku: 'asc',
-  price: 'desc',
-  createdAt: 'desc',
-  updatedAt: 'desc',
-  stock: 'asc',
-};
-
-
 
 export function ProductsListPage(): ReactElement {
   return (
@@ -163,9 +130,24 @@ function ProductsListPageBody(): ReactElement {
   const format = useFormat();
 
   // ── URL state ──────────────────────────────────────────────────────────
-  const urlSearch = searchParams.get('search') ?? '';
-  const rawStock = searchParams.get('stock');
-  const stock = isStockFilter(rawStock) ? rawStock : undefined;
+  const {
+    stock,
+    taxRateState,
+    unlistedOnParam,
+    sourceConnectionId,
+    hideFullyStale,
+    bundleView,
+    sortField,
+    sortDir,
+    offset,
+    searchInput,
+    filters,
+    anyFilterActive,
+    handleSearchChange,
+    setFilterParam,
+    setOffset,
+    clearFilters,
+  } = useProductsListFilters();
   // #2356 — one read for the page. A failed read costs the notice, never the
   // list: the state is supplementary and losing a settings read must not cost
   // the operator their catalogue.
@@ -179,41 +161,8 @@ function ProductsListPageBody(): ReactElement {
   const trackMargin = useTrackMargin();
   const costCoverage = useCostCoverageQuery({ enabled: trackMargin });
 
-  const rawTaxRateState = searchParams.get('taxRateState');
-  const taxRateState =
-    rawTaxRateState === 'missing' || rawTaxRateState === 'not-checked' || rawTaxRateState === 'known'
-      ? rawTaxRateState
-      : undefined;
-  const unlistedOnParam = searchParams.get('unlistedOn') ?? '';
-  const unlistedOn = useMemo(
-    () => (unlistedOnParam ? unlistedOnParam.split(',').filter(Boolean) : undefined),
-    [unlistedOnParam],
-  );
-  const sourceConnectionId = searchParams.get('connectionId') ?? undefined;
-  // #2447 — opt-in: hides only a product whose variants are ALL deleted at
-  // the master (a "phantom" row, #1689). Default off so an install's
-  // existing view is unchanged until the operator asks for it.
-  const hideFullyStale = searchParams.get('hideStale') === '1';
-  // #3624 - the "Bundles" view of the same list, URL-synced like every filter here.
-  const rawBundles = searchParams.get('bundles');
-  // `true` is the pre-"Without bundles" spelling of `only`; old links keep working.
-  const bundleView: 'only' | 'exclude' | undefined =
-    rawBundles === 'only' || rawBundles === 'true'
-      ? 'only'
-      : rawBundles === 'exclude'
-        ? 'exclude'
-        : undefined;
   const bundleCopy = useMessages('bundles');
   const bundleWrite = useWriteAccess('bundles:write', useDemoMode());
-  const rawSort = searchParams.get('sort');
-  const sortField = isSortField(rawSort) ? rawSort : DEFAULT_SORT;
-  const rawDir = searchParams.get('dir');
-  const sortDir: ProductListSortDir = isSortDir(rawDir) ? rawDir : DEFAULT_DIR[sortField];
-  const offset = Number(searchParams.get('offset') ?? '0');
-
-  const [searchInput, setSearchInput] = useState(urlSearch);
-  const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
-
 
   // Selection state is component-local. It is *not* mirrored into URL params
   // during selection (the URL would balloon on every checkbox toggle, and the
@@ -276,15 +225,6 @@ function ProductsListPageBody(): ReactElement {
   );
 
   // ── Server queries ─────────────────────────────────────────────────────
-  const filters: ProductFilters = {
-    search: debouncedSearch || undefined,
-    stock,
-    taxRateState,
-    unlistedOn,
-    connectionId: sourceConnectionId,
-    hideFullyStale: hideFullyStale || undefined,
-    bundles: bundleView,
-  };
   const sort: ProductListSort = { field: sortField, dir: sortDir };
   const pagination = { limit: PAGE_SIZE, offset };
 
@@ -365,115 +305,6 @@ function ProductsListPageBody(): ReactElement {
   );
   const staleCount =
     allTotal !== undefined && keptTotal !== undefined ? Math.max(allTotal - keptTotal, 0) : undefined;
-  const stockCounts = {
-    all: allTotal,
-    out: outCount,
-    low: lowCount,
-    oversold: oversoldCount,
-  };
-
-  // ── URL param setters ──────────────────────────────────────────────────
-  /** Set/clear one filter param and reset paging (orders pattern). */
-  const setFilterParam = useCallback(
-    (key: string, value: string): void => {
-      setSearchParams((prev) => {
-        const p = new URLSearchParams(prev);
-        if (value) {
-          p.set(key, value);
-        } else {
-          p.delete(key);
-        }
-        p.delete('offset');
-        return p;
-      });
-    },
-    [setSearchParams],
-  );
-
-
-  const handleSearchChange = useCallback(
-    (value: string): void => {
-      setSearchInput(value);
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        if (value) {
-          next.set('search', value);
-        } else {
-          next.delete('search');
-        }
-        next.delete('offset');
-        return next;
-      });
-    },
-    [setSearchParams],
-  );
-
-  const setOffset = useCallback(
-    (nextOffset: number): void => {
-      setSearchParams((prev) => {
-        const p = new URLSearchParams(prev);
-        if (nextOffset === 0) {
-          p.delete('offset');
-        } else {
-          p.set('offset', String(nextOffset));
-        }
-        return p;
-      });
-    },
-    [setSearchParams],
-  );
-
-  /** Explicit sort write (the Sort menu and the header sort buttons). */
-  const setSort = useCallback(
-    (field: ProductListSortField, dir: ProductListSortDir): void => {
-      setSearchParams((prev) => {
-        const p = new URLSearchParams(prev);
-        p.set('sort', field);
-        p.set('dir', dir);
-        p.delete('offset');
-        return p;
-      });
-    },
-    [setSearchParams],
-  );
-
-  /**
-   * Click handler for a per-label sort button inside the merged Price /
-   * Updated / Created header cell (same same-column-flips / new-column-
-   * defaults semantics as DataTable's own sortable-column click handler).
-   */
-  const handleMergedSort = useCallback(
-    (field: ProductListSortField): void => {
-      const nextDir = field === sortField ? (sortDir === 'asc' ? 'desc' : 'asc') : DEFAULT_DIR[field];
-      setSort(field, nextDir);
-    },
-    [sortField, sortDir, setSort],
-  );
-
-  const anyFilterActive = Boolean(
-    debouncedSearch || stock || unlistedOnParam || sourceConnectionId || hideFullyStale || taxRateState || bundleView !== undefined,
-  );
-
-  /** Clears every filter; `keepStock` leaves the stock tab alone (the pills' Clear all). */
-  const clearFilters = useCallback(
-    (keepStock = false): void => {
-      setSearchInput('');
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete('search');
-        if (!keepStock) next.delete('stock');
-        next.delete('unlistedOn');
-        next.delete('connectionId');
-        next.delete('hideStale');
-        next.delete('bundles');
-        next.delete('taxRateState');
-        next.delete('offset');
-        return next;
-      });
-    },
-    [setSearchParams],
-  );
-
   // ── Bulk selection (#739) ──────────────────────────────────────────────
   const handleToggleRow = useCallback((productId: string) => {
     setSelectedIds((prev) => {
@@ -622,253 +453,224 @@ function ProductsListPageBody(): ReactElement {
   );
 
 
-  /** A header stack of per-label sort buttons; the active key is marked. */
-  const renderSortStack = useCallback(
-    (fields: readonly ProductListSortField[], align: 'left' | 'right' = 'left'): ReactElement => (
-      <span className={align === 'right' ? 'sortstack' : 'sortstack sortstack--left'}>
-        {fields.map((field) => (
-          <button
-            key={field}
-            type="button"
-            className={`sortbtn${sortField === field ? ' sortbtn--active' : ''}`}
-            aria-pressed={sortField === field}
-            onClick={() => {
-              handleMergedSort(field);
-            }}
-          >
-            {field === 'name' ? copy.columns.product : field === 'stock' ? copy.columns.stock : copy.sortOptions[field]}
-            <span className="sortbtn__ind" aria-hidden="true">
-              {sortField === field ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
-            </span>
-          </button>
-        ))}
-      </span>
-    ),
-    [sortField, sortDir, handleMergedSort, copy],
-  );
-
-  const columns: DataTableColumn<Product>[] = useMemo(
-    () => [
-      {
-        id: 'select',
-        width: '2.5rem',
-        // Header rendered manually for indeterminate state.
-        header: (
-          <CheckboxCell
-            state={headerCheckboxState}
-            onToggle={handleToggleHeader}
-            ariaLabel={
-              headerCheckboxState === 'all' ? copy.columns.unselectAll : copy.columns.selectAll
-            }
-          />
+  const registry = useMemo(
+    () =>
+      createProductsListRegistry({
+        showTaxView: hasProductMaster,
+        labels: {
+          product: copy.columns.product,
+          productFields: copy.savedViews.productFields,
+          source: copy.columns.source,
+          sourceFields: copy.savedViews.sourceFields,
+          stock: copy.columns.stock,
+          listings: copy.columns.listings,
+          money: copy.savedViews.money,
+          price: copy.sortOptions.price,
+          updated: copy.sortOptions.updatedAt,
+          moneyUpdated: copy.savedViews.moneyUpdated,
+          created: copy.sortOptions.createdAt,
+          sku: copy.sortOptions.sku,
+        },
+        viewNames: {
+          all: copy.listFilters.allProducts,
+          out: copy.filters.stockChips.out,
+          low: copy.filters.stockChips.low,
+          oversold: copy.filters.stockChips.oversold,
+          noTaxRate: copy.savedViews.views.noTaxRate,
+        },
+        sortLabels: copy.listFilters.sortMenu,
+        // Every sortable header is a stack of per-label sort buttons (the orders
+        // sortstack, #4026): Product + SKU, Stock, and Price / Updated / Created.
+        // A click on the active key flips it; another key starts at its default.
+        lockedHeader: (context) => (
+          <SortStack>
+            {([
+              ['name', copy.columns.product],
+              ['sku', copy.sortOptions.sku],
+            ] as const).map(([key, label]) => {
+              const active = context.sort.key === key;
+              return (
+                <SortField
+                  key={key}
+                  label={label}
+                  active={active}
+                  dir={context.sort.dir}
+                  ariaLabel={context.sortLabel(label, active, context.sort.dir)}
+                  onClick={() => {
+                    context.onSort(key);
+                  }}
+                />
+              );
+            })}
+          </SortStack>
         ),
-        cell: (product) => renderSelectCheckbox(product),
-        align: 'left',
-      },
-      {
-        id: 'name',
-        width: '31%',
-        // #2538 - Thumbnail, name and a meta line.
-        lines: 2,
-        header: renderSortStack(PRODUCT_SORT_FIELDS),
-        cell: (product): ReactNode => {
+        cells: {
+          // #2538 - Thumbnail, name and a meta line.
+          product: (product): ReactNode => {
           const origin = product.externalIds?.[0];
-          return (
-            <span className="product-row">
-              {product.bundle && !product.images?.[0] ? (
-                <span className="cx-mosaic" aria-hidden="true">
-                  <i className="t-a" />
-                  <i className="t-d" />
-                  <i className="t-b" />
-                  <i className="t-c" />
-                </span>
-              ) : (
-                <ProductThumbnail src={product.images?.[0]} name={product.name} />
-              )}
-              <span className="products-cell-stack">
-                <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
-                  <Link
-                    to={product.id}
-                    className="product-row__name product-row__name--link"
-                    data-testid={`stock-list-open-${product.sku ?? product.id}`}
-                  >
-                    {product.name}
-                  </Link>
-                  {product.bundle ? (
-                    <span className="cx-tag">
-                      <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
-                      </svg>
-                      {bundleCopy.list.bundleMark}
-                    </span>
-                  ) : null}
-                  {(product.usedInBundlesCount ?? 0) > 0 ? (
-                    <span className="cx-tag cx-tag--quiet" data-testid={`product-used-in-bundles-${product.sku ?? product.id}`}>
-                      {plural(product.usedInBundlesCount ?? 0, bundleCopy.list.usedInBundles)}
-                    </span>
-                  ) : null}
-                  {(product.variantCount ?? 0) > 1 ? (
-                    <StatusBadge tone="neutral" compact>
-                      {plural(product.variantCount ?? 0, copy.row.variantsBadge)}
-                    </StatusBadge>
-                  ) : null}
-                  {renderStalenessBadge(product)}
-                </span>
-                {/* Labelled, not a bare mono string (#2092): unlabelled, an
-                    identifier under the product name reads as "some id" and the
-                    operator has to know by convention that it is the SKU rather
-                    than an EAN, an internal id or an external reference. The
-                    label is body text, the value stays mono — and `.mono-text`
-                    inside a table cell truncates at 20ch, which is why the
-                    `title` sits on the VALUE and not on the wrapper (a wrapper
-                    title would describe "SKU: …" and leave the truncated value
-                    unreachable). No EAN line: it lives on the variant, so a
-                    product row could only ever carry one when the product
-                    resolves to a single variant. */}
-                {product.sku ? (
-                  <span className="text-muted products-cell-sub">
-                    {renderRich(
-                      copy.row.sku,
-                      {
-                        value: (text: string) => (
-                          <span className="mono-text" title={text}>
-                            {text}
-                          </span>
-                        ),
-                      },
-                      { sku: product.sku },
-                    )}
+            return (
+              <span className="product-row">
+                {product.bundle && !product.images?.[0] ? (
+                  <span className="cx-mosaic" aria-hidden="true">
+                    <i className="t-a" />
+                    <i className="t-d" />
+                    <i className="t-b" />
+                    <i className="t-c" />
                   </span>
-                ) : null}
-                {/* #3624 - a bundle row says what limits it; its composition opens
-                    with the row (ProductRowDetail). */}
-                {product.bundle?.limitedBy ? (
-                  <span
-                    className="products-cell-sub"
-                    data-testid={`bundle-list-row-${product.sku ?? product.id}`}
-                  >
-                    <span data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}>
-                      {interpolate(bundleCopy.list.limitedBy, {
-                        name: product.bundle.limitedBy.name ?? product.bundle.limitedBy.sku ?? '',
-                      })}
-                    </span>
+                ) : (
+                  <ProductThumbnail src={product.images?.[0]} name={product.name} />
+                )}
+                <span className="products-cell-stack">
+                  <span className="ds-row" style={{ gap: 'var(--space-2)', alignItems: 'center' }}>
+                    <Link
+                      to={product.id}
+                      className="product-row__name product-row__name--link"
+                      data-testid={`stock-list-open-${product.sku ?? product.id}`}
+                    >
+                      {product.name}
+                    </Link>
+                    {product.bundle ? (
+                      <span className="cx-tag">
+                        <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+                        </svg>
+                        {bundleCopy.list.bundleMark}
+                      </span>
+                    ) : null}
+                    {(product.usedInBundlesCount ?? 0) > 0 ? (
+                      <span className="cx-tag cx-tag--quiet" data-testid={`product-used-in-bundles-${product.sku ?? product.id}`}>
+                        {plural(product.usedInBundlesCount ?? 0, bundleCopy.list.usedInBundles)}
+                      </span>
+                    ) : null}
+                    {(product.variantCount ?? 0) > 1 ? (
+                      <StatusBadge tone="neutral" compact>
+                        {plural(product.variantCount ?? 0, copy.row.variantsBadge)}
+                      </StatusBadge>
+                    ) : null}
+                    {renderStalenessBadge(product)}
                   </span>
-                ) : null}
-                {/* The Source column is `hideBelow: 1024`, so below that width the
-                    product's origin would vanish. It folds here instead (#2094):
-                    a product's source connection is this identity column's own
-                    subject. `display: none` above the breakpoint means exactly one
-                    of the two renderings is exposed at any width. */}
-                {origin ? (
-                  <ConnectionFold
-                    connectionId={origin.connectionId}
-                    connection={connectionById.get(origin.connectionId) ?? null}
-                    loading={connectionsQuery.isLoading}
-                    channel={originChipChannel(origin)}
-                  />
-                ) : null}
+                  {/* Labelled, not a bare mono string (#2092): unlabelled, an
+                      identifier under the product name reads as "some id" and the
+                      operator has to know by convention that it is the SKU rather
+                      than an EAN, an internal id or an external reference. The
+                      label is body text, the value stays mono — and `.mono-text`
+                      inside a table cell truncates at 20ch, which is why the
+                      `title` sits on the VALUE and not on the wrapper (a wrapper
+                      title would describe "SKU: …" and leave the truncated value
+                      unreachable). No EAN line: it lives on the variant, so a
+                      product row could only ever carry one when the product
+                      resolves to a single variant. */}
+                  {product.sku ? (
+                    <span className="text-muted products-cell-sub">
+                      {renderRich(
+                        copy.row.sku,
+                        {
+                          value: (text: string) => (
+                            <span className="mono-text" title={text}>
+                              {text}
+                            </span>
+                          ),
+                        },
+                        { sku: product.sku },
+                      )}
+                    </span>
+                  ) : null}
+                  {/* #3624 - a bundle row says what limits it; its composition opens
+                      with the row (ProductRowDetail). */}
+                  {product.bundle?.limitedBy ? (
+                    <span
+                      className="products-cell-sub"
+                      data-testid={`bundle-list-row-${product.sku ?? product.id}`}
+                    >
+                      <span data-testid={`bundle-list-limiting-${product.sku ?? product.id}`}>
+                        {interpolate(bundleCopy.list.limitedBy, {
+                          name: product.bundle.limitedBy.name ?? product.bundle.limitedBy.sku ?? '',
+                        })}
+                      </span>
+                    </span>
+                  ) : null}
+                  {/* The Source column is `hideBelow: 1024`, so below that width the
+                      product's origin would vanish. It folds here instead (#2094):
+                      a product's source connection is this identity column's own
+                      subject. `display: none` above the breakpoint means exactly one
+                      of the two renderings is exposed at any width. */}
+                  {origin ? (
+                    <ConnectionFold
+                      connectionId={origin.connectionId}
+                      connection={connectionById.get(origin.connectionId) ?? null}
+                      loading={connectionsQuery.isLoading}
+                      channel={originChipChannel(origin)}
+                    />
+                  ) : null}
+                </span>
+              </span>
+            );
+          },
+          // #2538 - ConnectionCell stacks the name over its status.
+          source: (product): ReactNode => {
+          const origin = product.externalIds?.[0];
+            if (!origin) return <span className="text-muted">-</span>;
+            return (
+              <ConnectionCell
+                connectionId={origin.connectionId}
+                // `.get()` returns undefined on a miss, which ConnectionCell reads
+                // as "resolve it yourself" and would silently reinstate the
+                // per-row fetch #1996 rejected — coalesce to null and hand it the
+                // batched query's loading state instead, or a cold load renders a
+                // column of "Unknown".
+                connection={connectionById.get(origin.connectionId) ?? null}
+                loading={connectionsQuery.isLoading}
+                // One clickable chip (#3670): the platform at rest, the
+                // connection name sliding out on hover.
+                channel={originChipChannel(origin)}
+              />
+            );
+          },
+          stock: (product) => renderStockCell(product),
+          listings: (product) => (
+            <span className="products-cell-stack">
+              {renderCoveragePills(product)}
+              {write.visible && (hasListingGap(product) || hasShopDestination) ? (
+                <Button
+                  tone="ghost"
+                  className="button--sm products-row-cta"
+                  onClick={() => {
+                    handleCreateOffersForProduct(product.id);
+                  }}
+                >
+                  {copy.row.publish}
+                </Button>
+              ) : null}
+            </span>
+          ),
+          // Each field of the stacked money column is its own end-aligned block, so
+          // hiding one in the Columns panel leaves the others stacked as before.
+          price: (product) => (
+            <span className="products-cell-stack products-cell-stack--end">
+              <span className="mono tabular products-stock-value">
+                {formatPrice(product.price, product.currency, copy.price.currencyUnknown, format)}
               </span>
             </span>
-          );
+          ),
+          updated: (product) => (
+            <span className="products-cell-stack products-cell-stack--end">
+              <span className="products-cell-sub products-cell-sub--date mono tabular">
+                {copy.row.updatedPrefix} <TimeDisplay iso={product.updatedAt} format="date" />
+              </span>
+            </span>
+          ),
+          created: (product) => (
+            <span className="products-cell-stack products-cell-stack--end">
+              <span className="products-cell-sub products-cell-sub--date mono tabular">
+                <TimeDisplay iso={product.createdAt} format="date" />
+              </span>
+            </span>
+          ),
         },
-      },
-      {
-        id: 'source',
-        width: '14%',
-        // #2538 - ConnectionCell stacks the name over its status.
-        lines: 2,
-        header: copy.columns.source,
-        // Stays 1024 (#1996): lowering it to 768 was rejected because it keeps
-        // the column only behind horizontal scroll. The tablet relocation of
-        // this fact into the Product cell shipped as #2094 (S8).
-        hideBelow: 1024,
-        cell: (product): ReactNode => {
-          const origin = product.externalIds?.[0];
-          if (!origin) return <span className="text-muted">-</span>;
-          return (
-            <ConnectionCell
-              connectionId={origin.connectionId}
-              // `.get()` returns undefined on a miss, which ConnectionCell reads
-              // as "resolve it yourself" and would silently reinstate the
-              // per-row fetch #1996 rejected — coalesce to null and hand it the
-              // batched query's loading state instead, or a cold load renders a
-              // column of "Unknown".
-              connection={connectionById.get(origin.connectionId) ?? null}
-              loading={connectionsQuery.isLoading}
-              // One clickable chip (#3670): the platform at rest, the
-              // connection name sliding out on hover.
-              channel={originChipChannel(origin)}
-            />
-          );
-        },
-      },
-      {
-        id: 'stock',
-        width: '14%',
-        header: renderSortStack(STOCK_SORT_FIELDS),
-        cell: (product) => renderStockCell(product),
-      },
-      {
-        id: 'listings',
-        width: '19%',
-        header: copy.columns.listings,
-        cell: (product) => (
-          <span className="products-cell-stack">
-            {renderCoveragePills(product)}
-            {write.visible && (hasListingGap(product) || hasShopDestination) ? (
-              <Button
-                tone="ghost"
-                className="button--sm products-row-cta"
-                onClick={() => {
-                  handleCreateOffersForProduct(product.id);
-                }}
-              >
-                {copy.row.publish}
-              </Button>
-            ) : null}
-          </span>
-        ),
-      },
-      {
-        id: 'money',
-        width: '14%',
-        header: renderSortStack(MONEY_SORT_FIELDS, 'right'),
-        align: 'right',
-        cell: (product) => (
-          <span className="products-cell-stack products-cell-stack--end">
-            <span className="mono tabular products-stock-value">
-              {formatPrice(product.price, product.currency, copy.price.currencyUnknown, format)}
-            </span>
-            <span className="products-cell-sub products-cell-sub--date mono tabular">
-              {copy.row.updatedPrefix} <TimeDisplay iso={product.updatedAt} format="date" />
-            </span>
-            <span className="products-cell-sub products-cell-sub--date mono tabular">
-              <TimeDisplay iso={product.createdAt} format="date" />
-            </span>
-          </span>
-        ),
-        hideBelow: 480,
-      },
-      {
-        id: 'peek',
-        width: '3rem',
-        // #4027 - the arrow says the row opens a panel from the right.
-        header: <span className="sr-only">{copy.peek.details}</span>,
-        cell: (product) => (
-          <PeekArrow
-            label={interpolate(copy.peek.detailsAria, { name: product.name })}
-            onOpen={() => {
-              setPeekId(product.id);
-            }}
-          />
-        ),
-      },
-    ],
+      }),
     [
+      hasProductMaster,
       bundleCopy,
-      headerCheckboxState,
-      handleToggleHeader,
-      renderSelectCheckbox,
       renderStockCell,
       renderCoveragePills,
       renderStalenessBadge,
@@ -882,8 +684,79 @@ function ProductsListPageBody(): ReactElement {
       copy,
       format,
       plural,
-      renderSortStack,
     ],
+  );
+
+  const stockCounts = {
+    all: allTotal,
+    out: outCount,
+    low: lowCount,
+    oversold: oversoldCount,
+  };
+  const viewCounts = useMemo<Record<string, number | undefined>>(
+    () => ({
+      [PRODUCT_VIEW_IDS.all]: allTotal,
+      [PRODUCT_VIEW_IDS.out]: outCount,
+      [PRODUCT_VIEW_IDS.low]: lowCount,
+      [PRODUCT_VIEW_IDS.oversold]: oversoldCount,
+      [PRODUCT_VIEW_IDS.noTax]: taxMissingCount,
+    }),
+    [allTotal, outCount, lowCount, oversoldCount, taxMissingCount],
+  );
+  const view = useListView<Product>({
+    registry,
+    pageTitle: copy.title,
+    counts: viewCounts,
+  });
+
+  // A selection belongs to the rows of one view: switching view swaps the rows underneath it.
+  const activeViewId = view.activeView.id;
+  useEffect(() => {
+    setSelectedIds((previous) => (previous.size === 0 ? previous : new Set()));
+  }, [activeViewId]);
+
+  const selectColumn = useMemo<DataTableColumn<Product>>(
+    () => ({
+      id: 'select',
+      width: '2.5rem',
+      // Header rendered manually for indeterminate state.
+      header: (
+        <CheckboxCell
+          state={headerCheckboxState}
+          onToggle={handleToggleHeader}
+          ariaLabel={headerCheckboxState === 'all' ? copy.columns.unselectAll : copy.columns.selectAll}
+        />
+      ),
+      cell: (product) => renderSelectCheckbox(product),
+      align: 'left',
+    }),
+    [headerCheckboxState, handleToggleHeader, renderSelectCheckbox, copy.columns],
+  );
+  const peekColumn = useMemo<DataTableColumn<Product>>(
+    () => ({
+      id: 'peek',
+      width: '3rem',
+      // #4027 - the arrow says the row opens a panel from the right.
+      header: <span className="sr-only">{copy.peek.details}</span>,
+      cell: (product) => (
+        <PeekArrow
+          label={interpolate(copy.peek.detailsAria, { name: product.name })}
+          onOpen={() => {
+            setPeekId(product.id);
+          }}
+        />
+      ),
+    }),
+    [copy.peek],
+  );
+  const { toColumns } = view;
+  const columns = useMemo<DataTableColumn<Product>[]>(
+    () => [
+      selectColumn,
+      ...toColumns(),
+      peekColumn,
+    ],
+    [selectColumn, toColumns, peekColumn],
   );
 
 
@@ -920,12 +793,6 @@ function ProductsListPageBody(): ReactElement {
         ? { value: offset + query.data.items.length, atLeast: true }
         : null;
 
-  const stockTabs: StatusTab<ProductStockFilter>[] = [
-    { key: null, label: copy.listFilters.allProducts, count: stockCounts.all },
-    { key: 'out', label: copy.filters.stockChips.out, tone: 'error', count: stockCounts.out },
-    { key: 'low', label: copy.filters.stockChips.low, tone: 'warning', count: stockCounts.low },
-    { key: 'oversold', label: copy.filters.stockChips.oversold, tone: 'error', count: stockCounts.oversold },
-  ];
   const costGap =
     !trackMargin || (costCoverage.data && costCoverage.data.soldVariantsWithoutCost <= 0)
       ? null
@@ -982,16 +849,10 @@ function ProductsListPageBody(): ReactElement {
         </Alert>
       ) : null}
 
-      {/* #4027 - stock tabs and "Needs a look", the orders status bar. */}
+      <ViewsBar {...view.viewsBar} />
+
+      {/* #4027 - "Needs a look", beside the views that replaced the stock tabs. */}
       <div className="list-statusbar">
-        <StatusTabs
-          tabs={stockTabs}
-          value={stock ?? null}
-          onChange={(next) => {
-            setFilterParam('stock', next ?? '');
-          }}
-          aria-label={copy.listFilters.statusTabsAria}
-        />
         <ProductAttentionSummary
           allGapsValue={gapsCsv}
           gapsCount={gapsCount}
@@ -1090,16 +951,20 @@ function ProductsListPageBody(): ReactElement {
           setFilterParam('bundles', next ?? '');
         }}
         resultCount={resultCount}
-        sort={sortField}
-        dir={sortDir}
-        defaultDir={DEFAULT_DIR}
-        onSortChange={setSort}
         onClearAll={() => {
           clearFilters(true);
         }}
+        trailing={<ColumnsPanel {...view.columnsPanel} />}
       />
 
-      {query.isLoading ? (
+      {view.editedBar ? (
+        <div className="sv-applied">
+          <EditedBar {...view.editedBar} />
+        </div>
+      ) : null}
+      {view.repairBanner ? <RepairBanner {...view.repairBanner} /> : null}
+
+      {query.isLoading || !view.isReady ? (
         <DataTableSkeleton columns={columns} label={copy.loading} />
       ) : query.error ? (
         <ErrorState
@@ -1302,6 +1167,8 @@ function ProductsListPageBody(): ReactElement {
           />
         </>
       )}
+
+      <ViewDialogs {...view.dialogs} />
     </PageLayout>
   );
 }

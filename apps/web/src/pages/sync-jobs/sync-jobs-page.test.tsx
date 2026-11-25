@@ -395,4 +395,84 @@ describe('SyncJobsPage', () => {
       expect(lastCall[0].connectionId).toBe(connection.id);
     });
   });
+
+  // #4241 - saved views: built-in views only, columns and the page-local sort.
+  describe('saved views', () => {
+    const twoJobs = (): PaginatedSyncJobs => ({
+      ...sampleJobs,
+      items: [
+        sampleJobs.items[0],
+        {
+          ...sampleJobs.items[0],
+          id: 'job_def67890-1111-2222-3333-444444444444',
+          jobType: 'marketplace.order.sync',
+          status: 'dead',
+          outcome: null,
+          attempts: 3,
+          lastError: 'connection_timeout',
+          createdAt: '2026-01-14T10:00:00.000Z',
+        },
+      ],
+      total: 2,
+    });
+    const setup = (route = '/sync/jobs'): ReturnType<typeof vi.fn> => {
+      const list = vi.fn().mockResolvedValue(twoJobs());
+      renderWithProviders(<SyncJobsPage />, {
+        apiClient: createMockApiClient({
+          syncJobs: { list },
+          connections: { list: vi.fn().mockResolvedValue([]) },
+        }),
+        route,
+      });
+      return list;
+    };
+
+    it('should open on the All jobs view', async () => {
+      setup();
+
+      expect(await screen.findByRole('button', { name: 'All jobs' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+    });
+
+    it('should send the filter of a built-in view and keep it free of saved views', async () => {
+      const user = userEvent.setup();
+      const list = setup();
+
+      await user.click(await screen.findByRole('button', { name: 'Gave up' }));
+
+      await waitFor(() => {
+        const lastCall = list.mock.calls.at(-1) as [SyncJobFilters, SyncJobPagination];
+        expect(lastCall[0].status).toBe('dead');
+      });
+      await user.click(screen.getByRole('button', { name: /^Views/ }));
+      expect(screen.queryByRole('button', { name: /new view/i })).not.toBeInTheDocument();
+    });
+
+    it('should hide a column the operator unticks in Columns & sort', async () => {
+      const user = userEvent.setup();
+      setup();
+
+      expect(await screen.findByRole('columnheader', { name: /Last error/ })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /Columns & sort/ }));
+      await user.click(await screen.findByRole('checkbox', { name: /Last error/ }));
+      await user.click(screen.getAllByRole('button', { name: 'Done' })[0]);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('columnheader', { name: /Last error/ })).not.toBeInTheDocument();
+      });
+    });
+
+    it('should order the fetched rows by the sort in the address', async () => {
+      setup('/sync/jobs?sort=createdAt:asc');
+
+      const older = await screen.findByText(/3 \/ 3/);
+      const newer = await screen.findByText(/1 \/ 3/);
+      const rows = screen.getAllByRole('row');
+      const position = (node: HTMLElement): number => rows.findIndex((row) => row.contains(node));
+      expect(position(older)).toBeGreaterThan(0);
+      expect(position(older)).toBeLessThan(position(newer));
+    });
+  });
 });

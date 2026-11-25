@@ -101,6 +101,7 @@ export class OperationalSettingsController {
           syncJobDeadRetentionDays: dto.syncJobDeadRetentionDays,
           inventoryMovementRetentionDays: dto.inventoryMovementRetentionDays,
           stockStaleSyncThresholdHours: dto.stockStaleSyncThresholdHours,
+          releaseCenterEnabled: dto.releaseCenterEnabled,
           acknowledgeAboveRecommended: dto.acknowledgeAboveRecommended,
         },
         user?.id ?? null

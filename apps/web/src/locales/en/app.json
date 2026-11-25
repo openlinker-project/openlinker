@@ -62,6 +62,7 @@
     "promptTemplate": "Prompt template",
     "promptTemplates": "Prompt templates",
     "providerSettings": "Provider settings",
+    "releaseCenter": "News and notifications",
     "return": "Return",
     "returns": "Returns",
     "runLog": "Run log",
@@ -76,6 +77,7 @@
     "users": "Users",
     "webhook": "Webhook",
     "webhooks": "Webhooks",
+    "whatsNew": "What's new",
     "whoDecides": "Who decides what"
   },
   "palette": {
@@ -97,11 +99,6 @@
     "settings": "Settings"
   },
   "shell": {
-    "alerts": "Alerts",
-    "alertsNew": {
-      "one": "({n} new)",
-      "other": "({n} new)"
-    },
     "breadcrumb": "Breadcrumb",
     "closeMenu": "Close menu",
     "loggedOut": "You have been logged out.",
@@ -115,6 +112,7 @@
   "userMenu": {
     "accountMenu": "Account menu for {username}",
     "density": "Density",
+    "fontSize": "Text size",
     "language": "Language",
     "signOut": "Sign out",
     "theme": "Theme"

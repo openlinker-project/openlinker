@@ -1,0 +1,274 @@
+{
+  "bell": {
+    "label": "Notifications",
+    "srNone": "(nothing new)",
+    "srOptional": "(optional steps waiting)",
+    "srTodo": {
+      "one": "({n} to do)",
+      "other": "({n} to do)"
+    }
+  },
+  "dialog": {
+    "back": "Back",
+    "close": "Close",
+    "closeIcon": "Close the window",
+    "fullChangelog": "All changes",
+    "guideLeadAdmin": "We will walk you through the screens where a setting is worth checking. Required steps are marked: without your decision the system may behave differently than you expect.",
+    "guideLeadReadOnly": "An administrator makes these changes. You can see where they are.",
+    "guideTitle": "What to set up after the update",
+    "highlightsLabel": "Highlights",
+    "later": "Remind me later",
+    "moreChanges": {
+      "one": "and {n} more change in the full changelog (English)",
+      "other": "and {n} more changes in the full changelog (English)"
+    },
+    "needsAdmin": "Needs an administrator",
+    "newVersion": "New version",
+    "optional": "Optional",
+    "required": "Required",
+    "showWhere": "Show me where",
+    "skipDialog": "Don't show the changes dialog after future updates",
+    "startGuide": "Start guide",
+    "stepIndicator": "Step {current} of {total}",
+    "title": "OpenLinker was updated to {version}",
+    "toGuide": "Go to the guide"
+  },
+  "panel": {
+    "adminCompletes": "An administrator changes these settings. You can still see where they are.",
+    "archivedLabel": "Archived",
+    "close": "Close",
+    "ctaAgain": "Go through again",
+    "ctaChangelog": "See changelog",
+    "ctaContinue": "Continue",
+    "ctaGuide": "Guide me",
+    "ctaShowWhere": "Show me where",
+    "ctaTour": "Start the tour",
+    "ctaTourAgain": "Replay the tour",
+    "doneAuto": "Detected automatically",
+    "doneManual": "Marked manually",
+    "doneOf": "{done} of {total} done",
+    "emptyArchiveBody": "Archived notifications appear here.",
+    "emptyArchiveTitle": "Archive is empty",
+    "emptyDoneBody": "Nothing is waiting for your decision. New changes show up after the next update.",
+    "emptyDoneTitle": "All done",
+    "generalTitle": "Recommended steps",
+    "goBack": "Go back to this setting",
+    "itemActions": "Notification actions",
+    "markRead": "Mark as read",
+    "menuArchive": "Archive",
+    "menuDelete": "Delete",
+    "menuMarkAllDone": "Mark all steps as done",
+    "menuMarkRead": "Mark as read",
+    "menuRestore": "Restore from archive",
+    "moreActions": "More step actions",
+    "moreLabel": "Optional and to view",
+    "naChip": "Marked not applicable",
+    "needsAdmin": "Needs an administrator",
+    "notApplicable": "Not applicable",
+    "nudgeDismiss": "Dismiss notification",
+    "nudgeMore": "+{n} more",
+    "nudgeOpen": "See all",
+    "optionalAndViewLabel": "Optional and to view",
+    "progressLabel": "Setup progress",
+    "progressShowcase": "Stops viewed",
+    "releaseTitle": "What changed in OpenLinker",
+    "remind": "Remind me in 7 days",
+    "reopen": "Reopen",
+    "requiredDone": "Required steps done",
+    "requiredLeft": "Required left: {n}",
+    "requiredStepsLabel": "Required steps",
+    "severity": {
+      "error": "Error",
+      "info": "Info",
+      "success": "Success",
+      "warning": "Warning"
+    },
+    "showMe": "Show me",
+    "showcaseChip": "Guide",
+    "showcaseHeading": "Worth a look",
+    "showcaseTally": "{viewed} of {total} stops viewed",
+    "snoozedChip": "We will remind you in 7 days",
+    "stayAsIs": "Keep as it is",
+    "stepOptional": "Optional",
+    "stepRequired": "Required",
+    "stepTour": "Take the tour",
+    "stepperAdmin": "The step ticks itself after you save the change",
+    "stepperViewer": "An administrator completes this step. You can see where it is.",
+    "stepsHide": "Hide steps",
+    "stepsLabel": "Steps",
+    "stepsRegion": "Steps of release {version}",
+    "stepsShow": "Show steps ({n})",
+    "stepsShowShowcase": "Show stops ({n})",
+    "stepsToggle": "Steps ({n})",
+    "stopsLabel": "Stops",
+    "stopsToggle": "Stops ({n})",
+    "tabActive": "Active",
+    "tabArchive": "Archive",
+    "tabsLabel": "Filter notifications",
+    "tally": {
+      "optional": "Optional {done}/{total}",
+      "required": "Required {done}/{total}",
+      "showcase": "To view {done}/{total}"
+    },
+    "title": "Notifications",
+    "toastAllDone": "All steps marked as done.",
+    "toastArchived": "Notification archived.",
+    "toastAutoDetected": "Done: {title} (detected automatically)",
+    "toastDeleted": "Notification deleted.",
+    "toastFailed": "Could not save the change. Try again.",
+    "toastMarkedRead": "Marked as read.",
+    "toastNotApplicable": "Step marked as not applicable.",
+    "toastReminded": "We will remind you about this step in 7 days.",
+    "toastReopened": "Step reopened.",
+    "toastStaysAsIs": "Step kept as it is.",
+    "undo": "Undo",
+    "unreadLabel": "Unread",
+    "unview": "Mark as not viewed",
+    "versionBadge": "v{version}",
+    "viewedChip": "Viewed",
+    "walkAll": {
+      "again": "Go through everything again",
+      "doneBody": "You can walk through the guides again.",
+      "doneTitle": "All caught up",
+      "leftTitle": "{count} left to go through",
+      "onlyOptional": "Nothing required, all optional",
+      "requiredLeft": "{count} required",
+      "start": "Go through everything",
+      "viewBody": "See where things changed. There is nothing you need to set.",
+      "viewStart": "Show me what changed",
+      "viewTitle": "{count} to look at"
+    }
+  },
+  "showcases": {
+    "first-steps": {
+      "stops": {
+        "0": {
+          "body": "Orders from every channel are here. Click a row to open its details.",
+          "followBody": "These are the details of the order you opened. You can handle it from here. Go back to the list to finish.",
+          "title": "Orders list"
+        },
+        "1": {
+          "body": "Choose which columns the list shows. We remember your choice.",
+          "title": "List columns"
+        }
+      },
+      "title": "Get to know OpenLinker",
+      "why": "See where orders are and how to set the list columns."
+    },
+    "release-center-tour": {
+      "stops": {
+        "0": {
+          "body": "The bell collects releases, things to set up and guides. From here you can go through everything with one button.",
+          "title": "Notifications"
+        },
+        "1": {
+          "body": "The full list of changes for every release lives here, with the steps to set up and their progress beside it.",
+          "title": "What's new"
+        }
+      },
+      "title": "Notifications and What's new",
+      "why": "See where each release's changes and things to set up live."
+    }
+  },
+  "steps": {
+    "inpost-notify-buyer": {
+      "title": "Choose when the marketplace is told \"shipped\"",
+      "tourBody": "The marketplace is told \"shipped\" either shortly after the label is bought or only after you click \"Mark dispatched\". This applies to this InPost account.",
+      "tourTitle": "When is the marketplace told \"shipped\"?",
+      "viewBody": "Here you set when the marketplace is told \"shipped\" after an InPost label is bought.",
+      "why": "Buying a label does not mean the parcel has been handed over, so by default the marketplace is told \"shipped\" only after you click \"Mark dispatched\". If you prefer, it is told shortly after the label is bought."
+    },
+    "packing-owner": {
+      "title": "Say whether another system packs parcels",
+      "tourBody": "Choose who packs orders that arrive in this system. This changes only what OpenLinker shows. Nothing gets blocked.",
+      "tourTitle": "Who packs the orders?",
+      "viewBody": "Here you set who packs orders from this shop: OpenLinker or another system. It only changes what you see in OpenLinker.",
+      "why": "If an external warehouse system packs the orders, tick \"This system packs and ships orders itself\". OpenLinker then hides its own \"Mark as packed\" button."
+    },
+    "shipping-routing": {
+      "title": "Check who ships each delivery method",
+      "tourBody": "Every delivery method has a sender assigned. Check the list, fix what is wrong, then save on the page.",
+      "tourTitle": "Who ships parcels from this channel?",
+      "viewBody": "Here you can see who ships orders for each delivery method of this channel. Open Mappings, Fulfilment tab.",
+      "why": "Go to Mappings, Fulfilment tab. Check who ships each delivery method of this channel, fix the assignments and save."
+    }
+  },
+  "tour": {
+    "away": "You are on a different page than this step. Do what is needed here, then come back with the button below.",
+    "back": "Back",
+    "backToTarget": "Back to the highlighted item",
+    "choices": {
+      "externalPacking": "Another system packs",
+      "notifyLater": "After I mark it dispatched",
+      "notifyNow": "When the label is bought",
+      "ownPacking": "OpenLinker packs"
+    },
+    "close": "Close the tour",
+    "collapse": "Fold to the steps only",
+    "doneToastBody": "That is all. You can return to it from What's new.",
+    "doneToastTitle": "Guide finished",
+    "expand": "Show the text",
+    "finish": "Done",
+    "goToStep": "Back to this step's page",
+    "leave": {
+      "confirm": "Close the guide",
+      "description": "The guide will close and your place will not be remembered. You can start it again from the bell.",
+      "stay": "Keep going",
+      "title": "Close the guide?"
+    },
+    "missing": "I can't find this on the screen. You may have left the page it lives on, or the element is hidden for your role. Go back to the page, or skip this step. If it keeps happening, report it to your administrator.",
+    "next": "Next",
+    "noRelease": "Other",
+    "noReleaseFull": "General, outside any release",
+    "optional": "Optional",
+    "railLabel": "Tour progress",
+    "railState": {
+      "current": "current",
+      "done": "completed",
+      "skipped": "skipped",
+      "todo": "not visited yet"
+    },
+    "railStep": "Step {current} of {total}: {status}",
+    "regionLabel": "Guided tour",
+    "releaseName": "Version {version}",
+    "releaseSteps": "Steps: {n}",
+    "required": "Required",
+    "requiredReason": "Pick an option to continue. This step is required.",
+    "saveFailed": "The setting was not saved. Try again.",
+    "saved": "Saved: {choice}",
+    "searching": "Looking for the element on the screen…",
+    "showcaseChip": "Guide",
+    "skip": "Skip step",
+    "skipConfirm": {
+      "confirm": "Skip the tour",
+      "description": "It will be marked as seen and will not reappear.",
+      "stay": "Keep going",
+      "title": "Skip this tour?"
+    },
+    "skipShowcase": "Skip the tour",
+    "stepOf": "Step {current} of {total}",
+    "stepOfRelease": "Version {version}: step {current} of {total}",
+    "stopLive": "Stop {current} of {total}: {title}",
+    "stopOf": "Stop {current} of {total}",
+    "unsaved": "The change on the page is waiting for “Save changes”.",
+    "viewOnly": "For your information",
+    "viewWhere": "This is where it changed. There is nothing for you to do here."
+  },
+  "whatsNew": {
+    "allSet": "All set",
+    "baselineTitle": "First tracked release",
+    "changelogUnavailable": "The list of changes is not available in this version of the app.",
+    "current": "Current",
+    "done": "Done",
+    "eyebrow": "Updates",
+    "intro": "Everything that changed in OpenLinker, newest first. What is worth setting up after an update is in the \"Still to set up\" block.",
+    "noSteps": "Nothing to set up after this update.",
+    "progress": "{done} of {total}",
+    "releasesNav": "Releases",
+    "setNow": "Set up now",
+    "setupTitle": "Still to set up",
+    "setupTitleView": "What changed",
+    "showWhere": "Show me where",
+    "title": "What's new in OpenLinker"
+  }
+}

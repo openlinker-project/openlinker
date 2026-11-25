@@ -12,9 +12,10 @@ import type { ReactElement } from 'react';
 import { usePlatform } from '../../../shared/plugins';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { Connection } from '../../connections';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 
 export function ProductMasterCard({ connection }: { readonly connection: Connection }): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const platform = usePlatform(connection.platformType);
 
   return (
