@@ -61,6 +61,9 @@ export function OrderImportHealth({
         <div className="order-import-health__stat">
           <dt>{copy.imported}</dt>
           <dd>{format.number(shownImported)}</dd>
+          {orderImport.importedLast24h === 0 && failures.length > 0 ? (
+            <dd className="order-import-health__stat-note">{copy.importedFailedNote}</dd>
+          ) : null}
         </div>
         {waiting > 0 ? (
           <div className="order-import-health__stat order-import-health__stat--attention">

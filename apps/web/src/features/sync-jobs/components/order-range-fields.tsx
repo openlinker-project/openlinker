@@ -21,6 +21,8 @@ interface OrderRangeFieldsProps {
   onChange: (value: OrderRangeValue) => void;
   errors: OrderRangeErrors;
   disabled: boolean;
+  /** Puts the cursor in the first day on mount, for the guided entrance from the Sync tab. */
+  autoFocusFrom?: boolean;
 }
 
 export function OrderRangeFields({
@@ -28,6 +30,7 @@ export function OrderRangeFields({
   onChange,
   errors,
   disabled,
+  autoFocusFrom = false,
 }: OrderRangeFieldsProps): ReactElement {
   const copy = useMessages('sync-jobs').triggerSyncDialog.orderRange;
   return (
@@ -36,6 +39,7 @@ export function OrderRangeFields({
         <FormField label={copy.fromLabel} name="orderRangeFrom" error={errors.from}>
           <Input
             type="date"
+            autoFocus={autoFocusFrom}
             value={value.from}
             min={earliestOrderRangeDate()}
             max={todayOrderRangeDate()}

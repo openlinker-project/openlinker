@@ -151,12 +151,13 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
     );
 
     const fromCursor = parseOrderFeedCursor(input.fromCursor);
-    if (input.fromCursor && fromCursor === null) {
-      // Reading from the beginning is the only safe answer to a cursor we cannot
-      // parse. Starting from now would skip every order in between, silently.
-      this.logger.warn(
-        `Unreadable order-feed cursor "${input.fromCursor}" on connection ${this.connection.id}; ` +
-          `restarting the feed from the beginning.`
+    if (fromCursor === null && (input.fromCursor ?? '').trim() !== '') {
+      // Reading from the beginning after a 'new orders only' seed would import the
+      // whole history without a word, and starting from now would skip orders in
+      // between. A stored cursor that cannot be read is a defect to surface, not
+      // one to paper over; an empty or null cursor still means 'from the beginning'.
+      throw new RangeError(
+        `Unreadable PrestaShop order-feed cursor "${input.fromCursor}" (connection: ${this.connection.id})`
       );
     }
 
@@ -687,12 +688,12 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
    *
    * Cancellation is checked **first**, with precedence over created/updated.
    * This ordering is load-bearing, not cosmetic: an order that stays cancelled
-   * but gets re-touched at the source (admin note, status-history write — any
+   * but gets re-touched at the source (admin note, status-history write - any
    * `date_upd` bump) must keep emitting `cancelled`. If it ever flipped to
    * `updated`, `OrderIngestionService.syncOrderFromSource` would re-enter the
    * create/update path and resurrect a cancelled order as active (#1161). A
    * still-cancelled order therefore re-emits `cancelled` (an idempotent no-op
-   * at the lifecycle relay) on every re-read — never `updated`.
+   * at the lifecycle relay) on every re-read - never `updated`.
    *
    * Cancellation is read from the shop's own state catalogue (#2607). This used
    * to key on the default-install id 6, so a shop that renumbered or added its
@@ -845,7 +846,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
       typeof prestashopOrder.date_upd === 'string'
         ? prestashopOrder.date_upd
         : mapped.updatedAt.toISOString();
-    // PrestaShop `date_add` is when the customer placed the order — the
+    // PrestaShop `date_add` is when the customer placed the order - the
     // buyer-placed time (#926). Undefined when the source row omits it.
     const placedAtIso =
       typeof prestashopOrder.date_add === 'string' ? prestashopOrder.date_add : undefined;
@@ -947,7 +948,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
       return iso;
     } catch (error) {
       this.logger.warn(`Failed to resolve country ${key}: ${(error as Error).message}`);
-      // Do not cache failures — a transient error must not suppress the country
+      // Do not cache failures - a transient error must not suppress the country
       // for the lifetime of the adapter. The next order for the same country retries.
       return '';
     }
@@ -1004,7 +1005,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
    * Fetch the buyer's e-mail from the PrestaShop `customers` resource (#1928).
    *
    * The `orders` resource carries only `id_customer`, so the e-mail needs its
-   * own read — the same reason the outbound provisioner queries `customers`
+   * own read - the same reason the outbound provisioner queries `customers`
    * separately. Without it `IncomingOrder.customerEmail` stays undefined for
    * every PrestaShop-sourced order, which both empties the order snapshot's
    * label recipient and makes `OrderIngestionService.resolveCustomerId` skip

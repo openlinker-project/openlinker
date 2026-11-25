@@ -7886,6 +7886,28 @@ html:has(.login-stage) {
   overflow-y: auto;
 }
 
+/* Why Apply is unavailable, written beside the button instead of leaving it dead. */
+.order-sync-restart-dialog__hint,
+.trigger-sync-dialog__hint {
+  align-self: center;
+  margin: 0 auto 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+/* A standing fact about the connection, quieter than the notes inside the form body. */
+.order-sync-restart-dialog__notice {
+  margin: var(--space-3) 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.trigger-sync-dialog__intro {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 /* ── Connection sync-status panel (#2615) ── */
 .connection-sync-status__headline {
   margin: var(--space-2) 0 0;
@@ -9094,6 +9116,17 @@ html:has(.login-stage) {
   margin: 0;
   font-size: 0.8125rem;
   padding-left: 1.5rem;
+}
+
+.capability-list__hint {
+  color: var(--accent-primary);
+}
+
+/* The code name is for support and docs; the plain label carries the choice. */
+.capability-list__code {
+  margin-left: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .capability-fieldset {
@@ -11311,6 +11344,18 @@ a.kpi-card:focus-visible {
 
 .setup-stepper__dot--done {
   background: var(--accent-primary);
+}
+
+@keyframes setup-stepper-new-step {
+  0% { background: var(--accent-primary-soft); transform: scale(1.06); }
+  100% { background: transparent; transform: none; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .setup-stepper__step--new {
+    border-radius: var(--radius-md);
+    animation: setup-stepper-new-step 900ms ease-out;
+  }
 }
 
 .setup-stepper__dot--current {
@@ -42668,6 +42713,20 @@ button.followers-count:focus-visible {
   margin: 0;
 }
 
+/* Helper text, not body copy: the cards below are what the operator reads. */
+.order-sync-start__helper {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* One-page forms: the section follows credential fields and needs its own start. */
+.order-sync-start--separated {
+  margin-top: var(--space-4);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border-default);
+}
+
 .order-sync-start__cards {
   display: grid;
   gap: var(--space-3);
@@ -42681,11 +42740,80 @@ button.followers-count:focus-visible {
 .order-sync-start__card:focus-visible {
   border-color: var(--accent-primary);
   box-shadow: var(--shadow-focus);
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
+/* A tint alone is easy to miss: a heavier border and a filled radio dot say "chosen". */
 .order-sync-start__card--checked {
   border-color: var(--accent-primary);
   background: var(--accent-primary-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-primary);
+}
+
+.order-sync-start__card-header {
+  display: flex;
+  align-items: center;
+  /* The picker header spreads its children apart; here the dot, title and badge sit together,
+     and the badge drops under the title on a narrow card instead of squeezing it. */
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.order-sync-start__card-header .platform-picker__card-title {
+  /* A small basis keeps a long title beside the dot; only the badge wraps below. */
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.order-sync-start__dot {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-surface);
+}
+
+.order-sync-start__card--checked .order-sync-start__dot {
+  border-color: var(--accent-primary);
+  background: radial-gradient(circle, var(--accent-primary) 0 40%, var(--bg-surface) 45%);
+}
+
+.order-sync-start__badge {
+  padding: 0 var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  border-radius: 999px;
+}
+
+.order-sync-start__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  font-size: 0.8125rem;
+  color: var(--status-warning-strong);
+}
+
+.order-sync-start__warning svg {
+  flex: none;
+  margin-top: 0.125rem;
+}
+
+.subiekt-advanced {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.subiekt-advanced__summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .order-sync-start__card--disabled {
@@ -42821,7 +42949,7 @@ button.followers-count:focus-visible {
 }
 .order-range__hint {
   margin: calc(var(--space-1) * -1) 0 0;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 .order-range__dates {
@@ -42914,6 +43042,15 @@ button.followers-count:focus-visible {
   50% {
     opacity: 0.35;
   }
+}
+
+/* Two classes: `.order-import-health__stat dd` would otherwise win and render the note as a stat value. */
+.order-import-health__stat dd.order-import-health__stat-note {
+  margin: var(--space-1) 0 0;
+  line-height: 1.4;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .order-import-health__alert {
@@ -43064,6 +43201,14 @@ button.followers-count:focus-visible {
 }
 .order-sync-panel__start {
   color: var(--text-primary);
+}
+
+.order-sync-panel__start-row .button--ghost {
+  /* The quietest of the three actions, but still readable as a link: not the muted
+     ghost grey, which on this card reads as a disabled control. */
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 .order-sync-panel__next {

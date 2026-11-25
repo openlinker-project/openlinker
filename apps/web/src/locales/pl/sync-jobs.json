@@ -309,11 +309,12 @@
         "toBeforeFrom": "Ostatni dzień nie może być przed pierwszym",
         "toInvalid": "Wpisz poprawną datę"
       },
+      "firstDayNeeded": "Wybierz pierwszy dzień, aby kontynuować.",
       "fromLabel": "Pierwszy dzień",
       "newestFirst": "Od najnowszych",
       "oldestFirst": "Od najstarszych",
-      "toHelp": "Zostaw puste, żeby pobrać aż do najnowszego zamówienia.",
-      "toLabel": "Ostatni dzień"
+      "toHelp": "Ostatni dzień jest wliczony. Zostaw puste, żeby pobrać aż do najnowszego zamówienia.",
+      "toLabel": "Ostatni dzień (opcjonalnie)"
     },
     "orderScope": {
       "label": "Co synchronizować",
@@ -322,11 +323,15 @@
       "range": "Między dwiema datami",
       "rangeHint": "Jednorazowo pobiera zamówienia złożone między dwoma dniami. Zamówienia, które OpenLinker już ma, są aktualizowane, a nie kopiowane drugi raz."
     },
+    "periodConfirm": "Pobierz zamówienia",
+    "periodIntro": "Ustawione z „Pobierz zamówienia z okresu”. Wybierz daty poniżej.",
+    "periodTitle": "Pobierz zamówienia z okresu",
     "requiredField": "{field} *",
     "title": "Uruchom synchronizację",
     "toast": {
       "description": "Uruchomiono „{job}” dla „{connection}”. ID zadania w tle: {jobId}",
-      "title": "Zadanie synchronizacji dodane do kolejki"
+      "title": "Zadanie synchronizacji dodane do kolejki",
+      "viewJob": "Pokaż zadanie"
     },
     "trigger": "Uruchom",
     "viewAllJobs": "Pokaż wszystkie zadania w tle"

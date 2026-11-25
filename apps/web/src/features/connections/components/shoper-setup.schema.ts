@@ -24,6 +24,13 @@ import {
   type CreateConnectionInput,
 } from '../api/connections.types';
 import { schemaMessage } from '../lib/schema-message';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  addOrderSyncStartIssues,
+  orderSyncStartShape,
+  readsOrders,
+  toOrderSyncStart,
+} from '../lib/order-sync-start';
 
 const msg = schemaMessage('shoperSetupSchema');
 
@@ -44,14 +51,24 @@ export const SHOPER_FALLBACK_CAPABILITIES: CoreCapability[] = [
 
 export const SHOPER_DEFAULT_CAPABILITIES: CoreCapability[] = ['ProductMaster', 'InventoryMaster'];
 
-export const shoperSetupSchema = z.object({
-  name: z.string().trim().min(1, msg('nameRequired')),
-  baseUrl: z.string().trim().min(1, msg('baseUrlRequired')),
-  token: z.string().trim().min(1, msg('tokenRequired')),
-  enabledCapabilities: z.array(z.enum(CORE_CAPABILITY_VALUES)).default(SHOPER_DEFAULT_CAPABILITIES),
-  // The answer to the "Buyer data" question (#4289); set through `setValue`.
-  buyerDataRetention: z.custom<BuyerDataWizardValue>().optional(),
-});
+export const shoperSetupSchema = z
+  .object({
+    name: z.string().trim().min(1, msg('nameRequired')),
+    baseUrl: z.string().trim().min(1, msg('baseUrlRequired')),
+    token: z.string().trim().min(1, msg('tokenRequired')),
+    enabledCapabilities: z.array(z.enum(CORE_CAPABILITY_VALUES)).default(SHOPER_DEFAULT_CAPABILITIES),
+    orderSyncStart: orderSyncStartShape.default(ORDER_SYNC_START_DEFAULT_VALUE),
+    // The answer to the "Buyer data" question (#4289); set through `setValue`.
+    buyerDataRetention: z.custom<BuyerDataWizardValue>().optional(),
+  })
+  .superRefine((values, ctx) => {
+    // The start date is only validated when the step that asks for it exists.
+    // An answer to a hidden question (OrderSource unticked after a date was
+    // typed) must not block the submit, and the payload drops it anyway.
+    if (readsOrders(values.enabledCapabilities)) {
+      addOrderSyncStartIssues(values.orderSyncStart, ctx);
+    }
+  });
 
 export type ShoperSetupFormValues = z.input<typeof shoperSetupSchema>;
 export type ShoperSetupFormSubmission = z.output<typeof shoperSetupSchema>;
@@ -61,6 +78,7 @@ export const SHOPER_SETUP_DEFAULT_VALUES: ShoperSetupFormValues = {
   baseUrl: '',
   token: '',
   enabledCapabilities: SHOPER_DEFAULT_CAPABILITIES,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
   buyerDataRetention: DEFAULT_BUYER_DATA_WIZARD_VALUE,
 };
 
@@ -72,5 +90,8 @@ export function toCreateConnectionInput(values: ShoperSetupFormSubmission): Crea
     credentials: { token: values.token },
     config: { baseUrl: values.baseUrl, ...wizardBuyerDataConfig(values.buyerDataRetention) },
     enabledCapabilities: values.enabledCapabilities,
+    orderSyncStart: readsOrders(values.enabledCapabilities)
+      ? toOrderSyncStart(values.orderSyncStart)
+      : undefined,
   };
 }

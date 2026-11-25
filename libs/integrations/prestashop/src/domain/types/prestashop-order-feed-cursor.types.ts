@@ -75,11 +75,13 @@ export function parseOrderFeedCursor(raw: string | null | undefined): Prestashop
     return null;
   }
 
-  const parsedId = idPart === undefined ? 0 : Number.parseInt(idPart, 10);
+  if (idPart !== undefined && !/^\d+$/.test(idPart)) {
+    return null;
+  }
 
   return {
     updatedAt: normalized,
-    lastOrderId: Number.isFinite(parsedId) && parsedId > 0 ? parsedId : 0,
+    lastOrderId: idPart === undefined ? 0 : Number.parseInt(idPart, 10),
   };
 }
 
@@ -103,6 +105,26 @@ export function normalizeWallClock(value: unknown): string | null {
   }
 
   const [, year, month, day, hours, minutes, seconds] = match;
+  if (year === '0000' && month === '00' && day === '00') {
+    // PrestaShop's own "no date" sentinel; kept as it arrived, as before.
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }
+  const y = Number(year);
+  const mo = Number(month);
+  const d = Number(day);
+  // Real calendar day (rejects 02-30) and a real clock reading, checked in UTC
+  // so the worker's timezone is not an input.
+  const probe = new Date(Date.UTC(y, mo - 1, d));
+  if (
+    probe.getUTCFullYear() !== y ||
+    probe.getUTCMonth() !== mo - 1 ||
+    probe.getUTCDate() !== d ||
+    Number(hours) > 23 ||
+    Number(minutes) > 59 ||
+    Number(seconds) > 59
+  ) {
+    return null;
+  }
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 

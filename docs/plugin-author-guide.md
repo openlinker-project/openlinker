@@ -367,28 +367,91 @@ export class XOrderProcessorManagerAdapter
 Concrete worked example:
 [`libs/integrations/prestashop/src/infrastructure/adapters/prestashop-order-processor-manager.adapter.ts`](../libs/integrations/prestashop/src/infrastructure/adapters/prestashop-order-processor-manager.adapter.ts).
 
-#### Choosing where order sync starts (`OrderFeedBootstrap`, `OrderFeedDateBootstrap`)
+#### Choosing where order sync starts (`OrderFeedBootstrap`, `OrderFeedDateBootstrap`, `OrderWindowReader`)
 
 By default a new `OrderSource` connection must not import the source's whole
-history. Two optional, guard-only sub-capabilities (not in the manifest's
-`supportedCapabilities`) let the first poll start somewhere else:
+history. Three optional, guard-only sub-capabilities (not in the manifest's
+`supportedCapabilities`) let the first poll start somewhere else, and let an
+operator import older orders on demand:
 
 - `OrderFeedBootstrap.headCursor(): Promise<string | null>` returns a cursor at
-  the source's current head ("from now"). Return `null` for a source with no
-  orders yet: core then writes nothing and retries on the next poll.
+  the source's current head ("from now"). Return `null` only when the source has
+  no orders yet: core then writes nothing and retries on the next poll.
 - `OrderFeedDateBootstrap.cursorForDate(date): Promise<string>` returns a cursor
   at the start of an ISO date ("from a date"). Throw
   `OrderSyncStartUnavailableError` (from `@openlinker/core/orders`) for a
   deterministic refusal, e.g. the shop cannot filter by date; core turns it into
   a business failure instead of ten retries. Any other error retries.
+- `OrderWindowReader.listOrdersInWindow({from, to, direction, cursor, limit})`
+  reads one page of a date window without touching the live feed cursor. It
+  backs "import history newest-first" and the manual "import this date range"
+  action (`marketplace.orders.import` jobs).
 
-Declare the modes your adapter supports in the static manifest field
-`orderSyncStartModes` (absent means `['now', 'all']`; add `'from'` only if you
-implement `cursorForDate`). It is static because an OAuth connection has no
-adapter instance until the callback. The operator's choice is stored as a
-one-shot `orders.syncStart` cursor row, which core deletes once consumed; you
-never read it. Connections without that row are legacy and keep reading history,
-so a plugin needs no migration path.
+Declare what your adapter supports in the static manifest (see the example in
+[Static manifest export](#static-manifest-export-575)):
+
+- `orderSyncStartModes`: the modes the operator may pick (`'now'`, `'from'`,
+  `'all'`). Absent means `['now', 'all']`.
+- `orderWindowImport: true` when you implement `OrderWindowReader`. Absent means
+  `false`.
+
+Both are static because an OAuth connection has no adapter instance until the
+callback. The operator's choice is stored as a one-shot `orders.syncStart` cursor
+row (never in `Connection.config`), which core deletes once consumed; you never
+read it. Connections without that row are legacy and keep reading history, so a
+plugin needs no migration path.
+
+**Checklist for an `OrderSource` integrator**
+
+1. **MUST implement `headCursor`.** The default start is "now". An adapter
+   without it fails the first poll of a connection that has a stored start
+   intent with `OrderSyncStartUnavailableError`; core no longer falls back to
+   reading history (that silent fallback imported the whole shop, which is what
+   the choice exists to prevent). A manifest that omits `orderSyncStartModes`
+   still advertises `now` and `all`, so the declaration is only honest if
+   `headCursor` exists.
+2. **SHOULD implement `cursorForDate`** and list `'from'` in
+   `orderSyncStartModes`, if the source can place a cursor at a date. If it
+   cannot (an event journal or an unread inbox has no date position), leave both
+   out: do not fake it with a cursor that means "all" or "now".
+3. **SHOULD implement `listOrdersInWindow`** and set `orderWindowImport: true`,
+   if the source can filter by placement date. It enables "newest first" history
+   and "import a date range".
+4. **Cursor format.** `headCursor` and `cursorForDate` must return a value your
+   own `listOrderFeed` accepts as `fromCursor` and resumes from without a gap.
+   The window cursor is separate and opaque; never reuse the feed cursor for it.
+5. **Throw, never guess.** If you cannot honour a request (a date filter the
+   shop refuses, a scope the token lacks), throw. Never return an unfiltered or
+   reordered page, or a cursor that silently means "all".
+6. **Typed refusal.** A deterministic refusal throws
+   `OrderSyncStartUnavailableError` with an operator-readable message naming the
+   remedy; core records a business failure. Transient errors (network, 5xx, 429)
+   stay plain errors and retry. Auth rejections must still reach your auth
+   classifier so the connection can move to `needs_reauth`.
+7. **`headCursor` returns `null` only for an empty source.** A `null` means the
+   source has no orders, so "only new orders" is the same as "every order": core
+   writes the seeded marker and the applied record, deletes the intent, and the
+   same poll reads from the beginning, so the first orders are not lost. Never
+   return `null` for a source that has orders. (Allegro: an empty event journal
+   on an account that has orders reads the journal from its start, which holds
+   nothing older anyway.)
+8. **`eventKey` is identical in the window and the feed.** The same order must
+   produce the same `eventKey` from `listOrdersInWindow` and from
+   `listOrderFeed`, so the two deduplicate downstream.
+9. **Document your platform limits** in the plugin README: time zone of dates,
+   page caps, history cut-offs, which modes are unavailable and why.
+10. **If you skip a piece**, the operator sees: no `'from'` mode in the wizard
+   (item 2), "import older orders" shown as unavailable (item 3), or, for a
+   missing `headCursor`, a failed first poll with the typed error (item 1).
+
+Enforcement: `scripts/check-order-source-start-declarations.mjs` (run from
+`pnpm lint`) checks that the manifest declarations match the implemented
+capabilities (`now` with `headCursor`, `from` with `cursorForDate`,
+`orderWindowImport` with `listOrdersInWindow`). The shared contract kit
+`runOrderSourceStartContract` (from `@openlinker/core/orders/testing`) exercises
+the behaviour (head then feed round trip, typed refusal, window walk complete
+and disjoint); call it from your adapter spec. There is deliberately no runtime
+cross-check of the manifest: the script and the kit are the guard.
 
 ### Error handling
 
@@ -537,6 +600,9 @@ export const xAdapterManifest: AdapterMetadata = {
   displayName: 'X Public API v1',
   version: '1.0.0',
   isDefault: true,
+  // Only for an OrderSource plugin (see "Choosing where order sync starts"):
+  // orderSyncStartModes: ['now', 'from', 'all'], // absent means ['now', 'all']
+  // orderWindowImport: true,                     // absent means false
 };
 ```
 

@@ -18,7 +18,14 @@ import {
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import { getMessages } from '../../../shared/i18n';
+import type * as ReactRouterDom from 'react-router-dom';
 import { TriggerSyncDialog } from './TriggerSyncDialog';
+
+const navigateMock = vi.hoisted(() => vi.fn());
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal<typeof ReactRouterDom>()),
+  useNavigate: () => navigateMock,
+}));
 
 // jsdom does not implement showModal/close — stub them on HTMLDialogElement
 beforeAll(() => {
@@ -279,6 +286,30 @@ describe('TriggerSyncDialog', () => {
         expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
       });
 
+      it('should flag a last day before the first day as soon as it is entered and keep the button off', async () => {
+        const mockApi = createMockApiClient(adapter(true));
+        renderWithProviders(<TriggerSyncDialog connection={source} open onOpenChange={vi.fn()} />, {
+          apiClient: mockApi,
+        });
+        await screen.findByRole('option', { name: /^sync orders$/i });
+        fireEvent.change(screen.getByRole('combobox', { name: /job type/i }), {
+          target: { value: 'marketplace.orders.poll' },
+        });
+        fireEvent.change(await screen.findByRole('combobox', { name: /what to sync/i }), {
+          target: { value: 'range' },
+        });
+
+        fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-10' } });
+        fireEvent.change(screen.getByLabelText(/^Last day/), { target: { value: '2026-10-01' } });
+
+        expect(screen.getByText('The last day cannot be before the first day')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^trigger$/i })).toBeDisabled();
+
+        fireEvent.change(screen.getByLabelText(/^Last day/), { target: { value: '2026-10-20' } });
+        expect(screen.queryByText('The last day cannot be before the first day')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^trigger$/i })).toBeEnabled();
+      });
+
       it('should require the first day and send the range as one import run', async () => {
         const mockApi = createMockApiClient(adapter(true));
         renderWithProviders(<TriggerSyncDialog connection={source} open onOpenChange={vi.fn()} />, {
@@ -293,12 +324,13 @@ describe('TriggerSyncDialog', () => {
         });
         expect(screen.queryByRole('combobox', { name: /read orders from/i })).not.toBeInTheDocument();
 
-        fireEvent.click(screen.getByRole('button', { name: /^trigger$/i }));
-        expect(await screen.findByText('Choose the first day')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^trigger$/i })).toBeDisabled();
+        expect(screen.getByText('Choose the first day to continue.')).toBeInTheDocument();
         expect(mockApi.syncJobs.enqueue).not.toHaveBeenCalled();
 
         fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-01' } });
-        fireEvent.change(screen.getByLabelText('Order of import'), { target: { value: 'newest-first' } });
+        fireEvent.change(screen.getByLabelText('Import order'), { target: { value: 'newest-first' } });
+        expect(screen.getByRole('button', { name: /^trigger$/i })).toBeEnabled();
         fireEvent.click(screen.getByRole('button', { name: /^trigger$/i }));
         await waitFor(() => {
           expect(mockApi.syncJobs.enqueue).toHaveBeenCalledWith(
@@ -313,6 +345,95 @@ describe('TriggerSyncDialog', () => {
               }),
             })
           );
+        });
+      });
+
+      describe('opened from "Get orders from a period"', () => {
+        function renderGuided(guidedEntrance = true) {
+          const mockApi = createMockApiClient({
+            ...adapter(true),
+            syncJobs: { enqueue: vi.fn().mockResolvedValue({ jobId: 'job_77', status: 'queued' }) },
+          });
+          renderWithProviders(
+            <TriggerSyncDialog
+              connection={source}
+              open
+              onOpenChange={vi.fn()}
+              initialJobType="marketplace.orders.poll"
+              initialOrderScope="range"
+              guidedEntrance={guidedEntrance}
+            />,
+            { apiClient: mockApi },
+          );
+          return mockApi;
+        }
+
+        it('should name the dialog and its confirm button after the period read', async () => {
+          renderGuided();
+
+          expect(await screen.findByRole('heading', { name: 'Get orders from a period' })).toBeInTheDocument();
+          expect(screen.getByRole('button', { name: 'Get orders' })).toBeInTheDocument();
+          expect(screen.queryByRole('button', { name: /^trigger$/i })).not.toBeInTheDocument();
+          expect(screen.getByRole('option', { name: 'Sync orders' })).toBeInTheDocument();
+        });
+
+        it('should keep the generic title when the dialog is not opened for a period', async () => {
+          renderWithProviders(<TriggerSyncDialog connection={source} open onOpenChange={vi.fn()} />, {
+            apiClient: createMockApiClient(adapter(true)),
+          });
+
+          expect(await screen.findByRole('heading', { name: 'Trigger sync' })).toBeInTheDocument();
+          expect(screen.getByRole('button', { name: /^trigger$/i })).toBeInTheDocument();
+        });
+
+        it('should explain where the dialog came from and focus the first day when guided', async () => {
+          renderGuided();
+
+          expect(
+            await screen.findByText(/Set up from .Get orders from a period.\. Pick your dates below\./)
+          ).toBeInTheDocument();
+          await waitFor(() => expect(screen.getByLabelText('First day')).toHaveFocus());
+        });
+
+        it('should not show the guided line when the dialog was opened another way', async () => {
+          renderGuided(false);
+
+          await screen.findByLabelText('First day');
+          expect(screen.queryByText(/Pick your dates below/)).not.toBeInTheDocument();
+        });
+
+        it('should disable the confirm button and say why until the first day is set', async () => {
+          renderGuided();
+          const confirm = await screen.findByRole('button', { name: 'Get orders' });
+
+          expect(confirm).toBeDisabled();
+          expect(screen.getByText('Choose the first day to continue.')).toBeInTheDocument();
+
+          fireEvent.change(screen.getByLabelText('First day'), { target: { value: '2026-10-01' } });
+
+          expect(confirm).toBeEnabled();
+          expect(screen.queryByText('Choose the first day to continue.')).not.toBeInTheDocument();
+        });
+
+        it('should mark the last day optional and say it is included', async () => {
+          renderGuided();
+
+          expect(await screen.findByLabelText('Last day (optional)')).toBeInTheDocument();
+          expect(
+            screen.getByText('The last day is included. Leave empty to read up to the newest order.')
+          ).toBeInTheDocument();
+          expect(screen.getByLabelText('Import order')).toBeInTheDocument();
+        });
+
+        it('should offer a View job action in the success toast that opens the job', async () => {
+          renderGuided();
+          fireEvent.change(await screen.findByLabelText('First day'), { target: { value: '2026-10-01' } });
+
+          fireEvent.click(screen.getByRole('button', { name: 'Get orders' }));
+
+          const action = await screen.findByText('View job', { selector: '.toast__action' });
+          fireEvent.click(action);
+          expect(navigateMock).toHaveBeenCalledWith('/jobs-logs/job_77');
         });
       });
     });

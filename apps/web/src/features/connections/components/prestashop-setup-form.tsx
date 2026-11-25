@@ -58,6 +58,7 @@ import { ShopPackingNextStep } from './shop-packing-next-step';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+import { CapabilityName } from './capability-name';
 
 // Analytics step names, kept in English so events stay comparable across languages.
 // "Verify credentials" rather than "Test connection": the PrestaShop `/test`
@@ -391,7 +392,7 @@ export function PrestashopSetupForm(): ReactElement {
                         value={capability}
                         {...form.register('enabledCapabilities')}
                       />
-                      <span className="capability-list__name mono-text">{capability}</span>
+                      <CapabilityName capability={capability} />
                     </label>
                     <p className="capability-list__help muted-text">
                       {CAPABILITY_HELP[capability]}

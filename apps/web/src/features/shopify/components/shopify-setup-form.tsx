@@ -14,6 +14,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  OrderSyncStartSection,
+  collectFormErrorMessages,
+  toOrderSyncStart,
   useCreateConnectionMutation,
   useTestConnectionMutation,
   type ConnectionTestResult,
@@ -30,8 +34,10 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { useStartShopifyOAuthMutation } from '../hooks/use-start-shopify-oauth-mutation';
 import {
   SHOPIFY_ROLE_CAPABILITIES,
+  SHOPIFY_ADAPTER_KEY,
   SHOPIFY_SETUP_DEFAULT_VALUES,
   ShopifySetupErrorKeyValues,
+  asksOrderSyncStart,
   shopifySetupSchema,
   shopifyOAuthRedirectUri,
   toCreateConnectionInput,
@@ -57,6 +63,7 @@ export function ShopifySetupForm(): ReactElement {
   });
   const mode = form.watch('mode');
   const role = form.watch('role');
+  const orderSyncStart = form.watch('orderSyncStart');
   const errors = form.formState.errors;
   const errorText = (message: string | undefined): string | undefined =>
     message === undefined
@@ -79,6 +86,9 @@ export function ShopifySetupForm(): ReactElement {
 
   const onSubmit = form.handleSubmit(async (values) => {
     if (values.mode === 'oauth') {
+      const orderSyncStart = asksOrderSyncStart(values.role)
+        ? toOrderSyncStart(values.orderSyncStart)
+        : undefined;
       try {
         const { authorizationUrl } = await startOAuth.mutateAsync({
           storeDomain: values.storeDomain,
@@ -88,6 +98,8 @@ export function ShopifySetupForm(): ReactElement {
           connectionName: values.name,
           enabledCapabilities: SHOPIFY_ROLE_CAPABILITIES[values.role],
           ...(values.locationId ? { locationId: values.locationId } : {}),
+          // Carried through the redirect and stored when the callback creates the connection.
+          ...(orderSyncStart ? { orderSyncStart } : {}),
         });
         window.location.assign(authorizationUrl);
       } catch {
@@ -115,8 +127,10 @@ export function ShopifySetupForm(): ReactElement {
     }
   };
 
-  const validationMessages = Object.values(errors).flatMap((fieldError) => {
-    const text = errorText(fieldError?.message === undefined ? undefined : String(fieldError.message));
+  // Nested errors (the start date) sit below the top level; reading only the top
+  // left the summary empty while the submit was refused.
+  const validationMessages = collectFormErrorMessages(errors).flatMap((message) => {
+    const text = errorText(message);
     return text ? [text] : [];
   });
 
@@ -232,6 +246,18 @@ export function ShopifySetupForm(): ReactElement {
           <FormField label={copy.locationId} name="locationId" description={copy.locationIdHint}>
             <Input {...form.register('locationId')} />
           </FormField>
+
+          {asksOrderSyncStart(role) ? (
+            <OrderSyncStartSection
+              adapterKey={SHOPIFY_ADAPTER_KEY}
+              value={orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+              onChange={(next) =>
+                form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+              }
+              error={errors.orderSyncStart?.from?.message}
+              separated
+            />
+          ) : null}
 
           <div className="form-actions">
             <Button type="submit" disabled={createConnection.isPending || startOAuth.isPending}>

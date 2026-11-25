@@ -37,6 +37,8 @@ export interface SetupStepperProps {
   orientation?: 'horizontal' | 'vertical';
   /** A short line under each step's label, shown in the vertical layout. Same order as `steps`. */
   stepMeta?: readonly string[];
+  /** 0-based. A step that has just appeared gets a short colour pulse (not under reduced motion). */
+  highlightStep?: number;
   /** Also render `stepMeta` under the labels of the horizontal layout. */
   metaInline?: boolean;
   /**
@@ -65,6 +67,7 @@ export function SetupStepper({
   testId,
   orientation = 'horizontal',
   stepMeta,
+  highlightStep,
   metaInline = false,
   lockedHint,
   attentionSteps,
@@ -131,7 +134,9 @@ export function SetupStepper({
           return (
             <li
               key={label}
-              className={`setup-stepper__step setup-stepper__step--${modifier}${needsAttention ? ' setup-stepper__step--attention' : ''}`}
+              className={`setup-stepper__step setup-stepper__step--${modifier}${needsAttention ? ' setup-stepper__step--attention' : ''}${
+                index === highlightStep ? ' setup-stepper__step--new' : ''
+              }`}
               aria-current={isCurrent && onSelectStep === undefined ? 'step' : undefined}
               data-testid={testIdFor(testId, `step-${index + 1}`)}
             >

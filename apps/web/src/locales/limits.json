@@ -458,6 +458,7 @@
   "connections:shoperSetupForm.creating": 18,
   "connections:shoperSetupForm.done": 8,
   "connections:shoperSetupForm.steps.capabilities": 20,
+  "connections:shoperSetupForm.steps.orders": 22,
   "connections:shoperSetupForm.steps.review": 24,
   "connections:shoperSetupForm.steps.shop": 8,
   "connections:shoperSetupForm.steps.token": 15,

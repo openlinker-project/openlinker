@@ -269,6 +269,15 @@ async function runScaffoldCheck(slug) {
       //    regardless of whether the hyphen came from substitution or
       //    from the template itself.
       checkHyphenatedIdentifierSyntax(absFile, contents, rel);
+
+      // 8. Order sync start (#4265): a scaffolded manifest declares "no choice"
+      //    explicitly, so the author meets the start contract the day they add
+      //    OrderSource instead of discovering an undeclared key later.
+      if (rel === `src/${slug}-plugin.ts` && !/orderSyncStartModes:\s*\[\s*\]/.test(contents)) {
+        fail(
+          `check-create-adapter[${slug}]: ${rel} must declare \`orderSyncStartModes: []\` (#4265)`,
+        );
+      }
     }
   } finally {
     // Best-effort cleanup. force:true tolerates partial-write states.

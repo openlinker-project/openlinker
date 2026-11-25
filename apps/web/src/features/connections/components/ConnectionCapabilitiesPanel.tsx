@@ -39,6 +39,7 @@ import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+import { CapabilityName } from './capability-name';
 
 interface ConnectionCapabilitiesPanelProps {
   connection: Connection;
@@ -294,7 +295,7 @@ export function ConnectionCapabilitiesPanel({
                     }
                     onChange={(e) => void handleToggle(capability, e.target.checked)}
                   />
-                  <span className="capability-list__name mono-text">{capability}</span>
+                  <CapabilityName capability={capability} />
                 </label>
                 <p className="capability-list__help muted-text">
                   {isBlocked && conflict

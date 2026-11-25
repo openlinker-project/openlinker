@@ -163,6 +163,12 @@ export interface BridgeOrderFeedResponse {
   nextCursor: string | null;
 }
 
+/** `GET /api/orders/feed/head` response (`data`). */
+export interface BridgeOrderFeedHeadResponse {
+  /** Feed cursor of the newest ZK (same format as `nextCursor`), or `null` when there is none. */
+  nextCursor: string | null;
+}
+
 /** One line of a hydrated order (`GET /api/orders/{id}`). */
 export interface BridgeOrderDetailLine {
   symbol: string;

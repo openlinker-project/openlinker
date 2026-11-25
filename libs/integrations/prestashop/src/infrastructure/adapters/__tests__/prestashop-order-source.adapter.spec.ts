@@ -34,7 +34,7 @@ import { PrestashopOrderFeedCapabilityCache } from '../../provisioners/prestasho
 
 /**
  * Stub order-currency resolver (#2277). The adapter's own contract is "ask the
- * resolver, put the answer on `totals`" — the resolution CHAIN is the
+ * resolver, put the answer on `totals`" - the resolution CHAIN is the
  * resolver's own contract and is covered in its dedicated spec. Stubbing it
  * here also keeps the WebService call counts these tests assert on describing
  * hydration only.
@@ -294,10 +294,17 @@ describe('PrestashopOrderSourceAdapter', () => {
         expect(result.nextCursor).toBe('2024-05-02 08:00:00|9');
       });
 
-      it('should restart from the beginning on an unreadable cursor instead of from now', async () => {
+      it('should throw on an unreadable non-empty cursor instead of restarting from the beginning', async () => {
         mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
 
-        await adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 });
+        await expect(adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 })).rejects.toThrow(RangeError);
+        expect(mockHttpClient.listResources).not.toHaveBeenCalled();
+      });
+
+      it('should read from the beginning when the cursor is empty or blank', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+
+        await adapter.listOrderFeed({ fromCursor: '  ', limit: 10 });
 
         expect(mockHttpClient.listResources).toHaveBeenCalledWith(
           'orders',
@@ -321,15 +328,6 @@ describe('PrestashopOrderSourceAdapter', () => {
 
         expect(result.items).toEqual([]);
         expect(result.nextCursor).toBe('2024-05-01 08:00:00|0');
-      });
-
-      it('should answer no cursor at all when the caller cursor was unreadable', async () => {
-        // Echoing it back would keep an unreadable value in place for ever.
-        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
-
-        const result = await adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 });
-
-        expect(result.nextCursor).toBeNull();
       });
 
       it('should skip a row with no usable date_upd rather than stamping the worker clock', async () => {
@@ -631,7 +629,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('listOrderFeed — date_upd sort/filter fallback (#2877)', () => {
+  describe('listOrderFeed - date_upd sort/filter fallback (#2877)', () => {
     /**
      * PrestaShop's own refusal, verified live on 9.0.2: `date_upd` is not on
      * this shop's allowed sort/filter field list for `orders`.
@@ -1317,7 +1315,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — pickupPoint resolution', () => {
+  describe('getOrder - pickupPoint resolution', () => {
     const baseOrder: PrestashopOrder = {
       id: '42',
       reference: 'ORDER-042',
@@ -1332,7 +1330,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
     // Resource-keyed getResource mock. Since #<issue> the adapter also hydrates
     // the buyer address (and its country) inside getOrder, so the call sequence
-    // is no longer "order then address" — these tests dispatch by (resource,id)
+    // is no longer "order then address" - these tests dispatch by (resource,id)
     // instead of relying on call order.
     const keyedGetResource = (address: Record<string, unknown> | Error): void => {
       mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
@@ -1496,7 +1494,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — order line items (PS9 order_details rename)', () => {
+  describe('getOrder - order line items (PS9 order_details rename)', () => {
     it('should fetch order rows from the order_details resource (renamed from order_rows in PS9)', async () => {
       const prestashopOrder: PrestashopOrder = {
         id: '42',
@@ -1575,7 +1573,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — buyer address hydration', () => {
+  describe('getOrder - buyer address hydration', () => {
     const orderWithAddresses: PrestashopOrder = {
       id: '42',
       reference: 'ORDER-042',
@@ -1666,7 +1664,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       expect(incoming.billingAddress).toBeUndefined();
       expect(incoming.shippingAddress).toBeUndefined();
-      // No address/country round-trips — the order plus the buyer e-mail read
+      // No address/country round-trips - the order plus the buyer e-mail read
       // (#1928) are the only calls.
       expect(mockHttpClient.getResource).toHaveBeenCalledTimes(2);
       expect(mockHttpClient.getResource).toHaveBeenCalledWith('orders', '42');
@@ -1775,7 +1773,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — buyer e-mail hydration (#1928)', () => {
+  describe('getOrder - buyer e-mail hydration (#1928)', () => {
     const baseOrder: PrestashopOrder = {
       id: '42',
       reference: 'ORDER-042',

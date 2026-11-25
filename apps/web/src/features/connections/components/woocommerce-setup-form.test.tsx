@@ -271,6 +271,64 @@ describe('WoocommerceSetupForm', () => {
     expect(screen.getByText('Packing and carriers come next')).toBeInTheDocument();
   });
 
+  it('sends the chosen start date in the payload when the shop declares it (#4265)', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Store' });
+    const apiClient = createMockApiClient({
+      connections: { create },
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          {
+            adapterKey: 'woocommerce.restapi.v3',
+            platformType: 'woocommerce',
+            supportedCapabilities: ['ProductMaster', 'InventoryMaster', 'OrderSource'],
+            orderSyncStartModes: ['now', 'from', 'all'],
+          },
+        ]),
+      },
+    });
+    const view = renderWithProviders(<WoocommerceSetupForm />, { apiClient });
+
+    fillStoreDetailsStep(view.container, { name: 'My Store', url: 'https://shop.example.com' });
+    await advanceOneStep(view.container);
+    fillCredentialsStep(view.container, { key: 'ck_test1234567890', secret: 'cs_test1234567890' });
+    await advanceOneStep(view.container);
+    await advanceOneStep(view.container); // capabilities, OrderSource stays on -> order history
+
+    const fromCard = await within(view.container).findByRole('radio', { name: /Orders since a date/ });
+    await waitFor(() => expect(fromCard).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(fromCard);
+    fireEvent.change(within(view.container).getByLabelText('First day to import'), {
+      target: { value: '2024-03-01' },
+    });
+    await advanceOneStep(view.container);
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ orderSyncStart: { mode: 'from', from: '2024-03-01' } }),
+      ),
+    );
+  });
+
+  it('sends the whole-history choice in the payload (#4265)', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Store' });
+    const apiClient = createMockApiClient({ connections: { create } });
+    const view = renderWithProviders(<WoocommerceSetupForm />, { apiClient });
+
+    fillStoreDetailsStep(view.container, { name: 'My Store', url: 'https://shop.example.com' });
+    await advanceOneStep(view.container);
+    fillCredentialsStep(view.container, { key: 'ck_test1234567890', secret: 'cs_test1234567890' });
+    await advanceOneStep(view.container);
+    await advanceOneStep(view.container);
+    fireEvent.click(within(view.container).getByRole('radio', { name: /Every order the shop has/ }));
+    await advanceOneStep(view.container);
+    fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ orderSyncStart: { mode: 'all' } })),
+    );
+  });
+
   it('never submits both InventoryMaster and OfferManager together', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Store' });
     const apiClient = createMockApiClient({ connections: { create } });

@@ -140,8 +140,14 @@ Opt-in: not on by default, because ingesting a shop's orders creates them in eve
 
 - **Feed.** `orders(query: "updated_at:>=...", sortKey: UPDATED_AT)` with an opaque `(updatedAt, id)` keyset cursor
   under `shopify.orders.cursor`, polled every 5 minutes (`OL_SHOPIFY_POLL_SCHEDULER_ENABLED`). Orders updated in the
-  last 30 s wait for the next poll: the search index lags writes by seconds (L-M1, L-S2j). With no cursor yet, the
-  first poll reads the shop's whole order history, as every other source does.
+  last 30 s wait for the next poll: the search index lags writes by seconds (L-M1, L-S2j).
+- **Where it starts (#4228, #4265).** The operator picks `now` (default), `from` a date or `all` when creating the
+  connection, and may restart or import older orders later. `OrderFeedBootstrap.headCursor` seeds at the newest order,
+  `OrderFeedDateBootstrap.cursorForDate` at the start of a day (an `updated_at` keyset, like the feed), and
+  `OrderWindowReader.listOrdersInWindow` reads a window by `created_at`, so a date window means "placed in that
+  range" while the seed means "updated since". A bare date is read in the shop's own time zone (`shop { ianaTimezone }`,
+  UTC if it cannot be read). Without the `read_all_orders` scope Shopify returns only about the last 60 days of
+  orders, so an `all` or old-`from` choice cannot reach further back; see the setup guide. `read_all_orders` is not grantable to custom apps in the admin scope picker and needs Shopify approval, so such a shop may never import older than about 60 days.
 - **Order.** Line prices are what the buyer paid per unit after EVERY discount, the order-level and code-based ones
   included (`discountedUnitPriceAfterAllDiscountsSet`), and shipping is the price after discounts
   (`currentShippingPriceSet`), so lines and shipping add up to the order total and an invoice or receipt can be issued.

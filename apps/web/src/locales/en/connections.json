@@ -100,6 +100,20 @@
     "ProductPublisher": "Publish and manage shop listings owned by this connection (cross-platform listing).",
     "ReturnsAuthority": "Decides what happens to goods a customer sends back - whether they go back on sale, and who approves that."
   },
+  "capabilityLabel": {
+    "AvailabilityAuthority": "Stock availability decisions",
+    "CategoryProvisioner": "Category setup",
+    "Fiscalization": "Fiscal registration",
+    "FulfillmentExecutor": "Order fulfilment",
+    "InventoryMaster": "Stock levels",
+    "Invoicing": "Invoice issuing",
+    "OfferManager": "Marketplace offers",
+    "OrderProcessorManager": "Order destination",
+    "OrderSource": "Order source",
+    "ProductMaster": "Product catalog",
+    "ProductPublisher": "Shop listings",
+    "ReturnsAuthority": "Returns decisions"
+  },
   "capabilityMetadata": {
     "conflict": "Unavailable while {capability} is selected - the inventory source of truth cannot also be a stock write-back target.",
     "conflictMasterPublisher": "Unavailable while {capability} is selected - published products would be read back from this shop as duplicates. Use a separate connection for the other role."
@@ -1134,6 +1148,7 @@
     "checkNowStartedTitle": "Check started",
     "errorTitle": "Could not load order import",
     "getPeriod": "Get orders from a period…",
+    "getPeriodHint": "Reads the orders of one past period, once.",
     "health": {
       "failures": {
         "banner": "{count} could not be imported",
@@ -1169,6 +1184,7 @@
       "fromStart": "from the beginning",
       "importRunning": "History import in progress",
       "imported": "Imported in the last 24 hours",
+      "importedFailedNote": "Orders that failed are not counted here.",
       "lastChecked": "Last check for new orders",
       "neverChecked": "Not checked yet",
       "newestFirst": "Newest first",
@@ -1183,8 +1199,8 @@
     "nextLabel": "What to do:",
     "noCheck": "Not checked yet",
     "orderPhrase": {
-      "newest": "newest first",
-      "oldest": "oldest first"
+      "newest": "starting with the newest",
+      "oldest": "starting with the oldest"
     },
     "paused": {
       "archived": {
@@ -1214,15 +1230,17 @@
       }
     },
     "restart": {
+      "alreadyFollowingHint": "Already reading orders from the shop.",
       "alreadyFollowingNote": "This connection is already reading orders from the shop. To go further back, choose a date or every order.",
       "cancel": "Cancel",
       "confirm": "Apply change",
       "confirming": "Saving…",
       "failedTitle": "Could not change the start",
+      "noChangeHint": "No change yet.",
       "nothingToResetMessage": "OpenLinker is already reading orders from the shop, so there is no start to reset. To get past orders, choose a date range.",
       "nothingToResetTitle": "Nothing to reset",
       "nowNote": "OpenLinker keeps importing new orders from the last check.",
-      "startDescription": "Choose which orders OpenLinker reads from the shop from now on. Orders it already has stay.",
+      "startDescription": "Choose which orders OpenLinker reads from the shop from now on. Orders already in OpenLinker are never removed, and nothing is imported twice.",
       "startTitle": "Change where syncing starts",
       "successMessage": "The next order check uses the new start.",
       "successNowMessage": "Nothing changed. New orders keep coming in.",
@@ -1258,7 +1276,6 @@
     "verdictText": {
       "behind": "Last check of the shop: {when}.",
       "behindQueued": "Checked orders are waiting in the queue to be imported.",
-      "failing": "Some orders could not be imported.",
       "notChecked": "There is no successful check of the shop yet.",
       "ok": "The shop was checked recently and every order came in without errors.",
       "unknown": "Order import figures are not available right now."
@@ -1269,6 +1286,7 @@
       "analytics": "Want exact analytics over your whole history? Every order has to be imported, and this is how.",
       "delay": "New orders wait behind the import and can arrive hours late.",
       "documents": "If automatic invoicing is on, OpenLinker issues invoices and receipts for old sales, dated today.",
+      "longWarning": "Can take a long time with many orders. Every imported order is copied to your other connected systems.",
       "orders": "Each old order is copied again to every connected shop, with its customer.",
       "stock": "Stock is held for orders that already shipped, so available stock can look too low.",
       "summary": "Everything already in the shop is copied and processed.",
@@ -1278,9 +1296,11 @@
     "dateLabel": "First day to import",
     "info": {
       "from": "Orders placed before {date} are not imported.",
-      "now": "Orders already in the shop stay there and are not imported. Only orders placed from now on are."
+      "now": "You can change this later on the connection page."
     },
     "intro": "Every order OpenLinker brings in is copied to your other connected shops and systems. Pick where to start, so you do not copy orders you already handled.",
+    "loadFailed": "We could not load which start options this connection supports, so it will start with new orders only. You can change this later on the connection page.",
+    "loading": "Loading which start options this connection supports...",
     "modes": {
       "all": {
         "description": "All past orders, however old. Choose this only if you want every one of them in OpenLinker.",
@@ -1316,12 +1336,26 @@
       "title": "Which orders come first?",
       "unsupported": "Not available for this connection yet."
     },
+    "recommended": "Recommended",
     "review": {
       "all": "Every order",
       "from": "Since {date}",
       "label": "Orders to import",
       "newestFirst": "newest first",
       "now": "New orders only"
+    },
+    "system": {
+      "all": {
+        "summary": "Everything already in the source system is copied and processed."
+      },
+      "modes": {
+        "all": {
+          "title": "Every order in the source system"
+        },
+        "now": {
+          "description": "Orders placed from now on. Older orders stay in the source system and are never copied."
+        }
+      }
     },
     "title": "Which orders should OpenLinker import?",
     "unsupported": {
@@ -1699,7 +1733,8 @@
     },
     "capabilities": {
       "help": "Pick which roles this connection should fulfil. You can change this later on the connection's detail page. Receiving and ingesting orders are off by default because they start creating or reading orders in the shop.",
-      "legend": "Capabilities"
+      "legend": "Capabilities",
+      "orderSourceHint": "Next you will choose which past orders to import."
     },
     "create": "Create connection",
     "createError": "Unable to create connection",
@@ -1740,6 +1775,7 @@
     },
     "steps": {
       "capabilities": "Capabilities",
+      "orders": "Order history",
       "review": "Review & create",
       "shop": "Shop",
       "token": "API token"
@@ -1826,6 +1862,7 @@
     "title": "Stock and price on this destination"
   },
   "subiektSetupForm": {
+    "advanced": "Advanced",
     "beforeYouStart": {
       "body": "Run the OpenLinker bridge on the Windows machine where <strong>{product}</strong> is installed, give it a token in its <code>appsettings.json</code>, then paste that machine's address and the same token below. OpenLinker talks to {product} only through the bridge - it never connects to it directly.",
       "title": "Before you start"
