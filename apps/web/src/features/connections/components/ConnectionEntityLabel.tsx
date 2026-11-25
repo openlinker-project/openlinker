@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { useLocation } from 'react-router-dom';
+import { displayConnectionName } from '../../../shared/lib/display-connection-name';
 import { EntityLabel } from '../../../shared/ui/entity-label';
 import { useConnectionQuery } from '../hooks/use-connection-query';
 import { isSystemConnectionId, resolveConnectionLinkTarget } from '../lib/connection-link-target';
@@ -46,11 +47,15 @@ export function ConnectionEntityLabel({
     linkToDetail,
   });
 
+  const shortName = target.displayName === null ? null : displayConnectionName(target.displayName);
+  const fullNameTitle =
+    target.displayName !== null && target.displayName !== shortName ? target.displayName : undefined;
+
   return (
     <EntityLabel
       id={connectionId}
-      name={target.displayName}
-      nameTitle={target.title}
+      name={shortName}
+      nameTitle={target.title ?? fullNameTitle}
       loading={target.loading}
       // The caller's showId/showCopy are ignored for System: the all-zero id is
       // a placeholder, not a real connection id - nothing meaningful to show or copy.

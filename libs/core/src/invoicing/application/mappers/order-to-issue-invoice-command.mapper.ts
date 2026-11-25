@@ -10,6 +10,7 @@
  * @module libs/core/src/invoicing/application/mappers
  */
 import type { Address, Order, OrderItem } from '@openlinker/core/orders';
+import { isUnmatchedProductId, readableProductLabel } from '@openlinker/core/identifier-mapping';
 
 import { BuyerProfile } from '../../domain/entities/buyer-profile.entity';
 import type {
@@ -38,6 +39,7 @@ import {
   resolveGiftPresentationFields,
   type GiftLineForm,
   type ResolvedDeliveryLine,
+  splitBundleLineTotal,
 } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -199,8 +201,33 @@ export function toIssueInvoiceCommand(
     }),
     { currency: order.totals.currency },
   );
+  // A bundle that stayed ONE document line (same tax rate on every component)
+  // still has physical goods behind it; carry them so a provider that moves
+  // stock off the document can sell the components (see InvoiceLine.stockComponents).
+  const itemLinesWithStock = itemLines.lines.map((line) => {
+    const components =
+      line.orderLineId === undefined ? undefined : input.bundleDocument?.byLineId[line.orderLineId];
+    if (components === undefined || components.length === 0) return line;
+    // One split, owned by core: the provider books these values instead of dividing the set itself.
+    const shares = splitBundleLineTotal(
+      line.unitPriceGross * line.quantity,
+      components,
+      order.totals.currency,
+    );
+    return {
+      ...line,
+      stockComponents: components.map((component, index) => ({
+        productId: component.productId,
+        variantId: component.variantId,
+        quantity: component.quantity,
+        name: component.name ?? component.sku ?? null,
+        ...(component.giftSlot === true ? { giftSlot: true } : {}),
+        ...(shares !== null ? { totalGross: shares[index] } : {}),
+      })),
+    };
+  });
   const presentedGifts = presentGiftLines(
-    itemLines.lines,
+    itemLinesWithStock,
     resolveGiftDocumentForm(undefined, input.giftConnectionForm, input.giftGlobalForm, {
       connection: input.giftConnectionUnitPrice,
       global: input.giftGlobalUnitPrice,
@@ -457,7 +484,7 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     );
   }
   return {
-    name: item.name?.trim() || item.sku || item.productId,
+    name: item.name?.trim() || item.sku || readableProductLabel(item.productId),
     quantity: item.quantity,
     // `price` alone was right only while every issuable order priced its lines
     // gross. A net-priced source now reports its own gross beside the net one
@@ -470,7 +497,10 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     // Carried so a provider can emit a real catalogue line rather than a
     // free-text one - see `InvoiceLine.productId`. The shipping lines composed
     // below deliberately omit it: a delivery charge is not a catalogue item.
-    productId: item.productId,
+    // #4280: a line accepted without a catalogue match carries a synthetic id that
+    // names no product in any provider; sending it would make the provider count a
+    // defect (an unlinked line) and would put a fake id on a fiscal document.
+    ...(!isUnmatchedProductId(item.productId) && { productId: item.productId }),
     // Present-only, because it genuinely is absent for a simple product. A
     // destination whose catalogue item is the VARIANT rather than the product
     // cannot name the goods without it - see `InvoiceLine.variantId`.

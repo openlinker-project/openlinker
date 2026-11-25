@@ -52,7 +52,7 @@
     "runTest": "Uruchom test",
     "running": "Testowanie…",
     "skipReasons": {
-      "mirrored-before-routing": "Zostało utworzone w systemie głównym produktów, zanim włączono kierowanie.",
+      "mirrored-before-routing": "Zostało utworzone w głównym sklepie, zanim włączono kierowanie.",
       "own-shop-order": "Pochodzi z Twojego sklepu, który już je obsługuje.",
       "shipped-by-other-system": "Inny system otrzymał polecenie jego wysyłki."
     },

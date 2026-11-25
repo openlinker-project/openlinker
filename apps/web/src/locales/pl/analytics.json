@@ -177,10 +177,10 @@
       "returns": {
         "empty": "Zwroty nie są jeszcze śledzone",
         "infotip": "O zwrotach i zwrotach pieniędzy",
-        "label": "Zwroty i zwroty pieniędzy",
+        "label": "Zwroty towaru i pieniędzy",
         "metric": "Odsetek zwrotów",
-        "term": "Zwroty i zwroty pieniędzy",
-        "text": "Zwroty i zwroty pieniędzy nie są jeszcze śledzone w analityce - ta karta nie ma nic do pokazania."
+        "term": "Zwroty towaru i pieniędzy",
+        "text": "Zwroty towaru i pieniędzy nie są jeszcze śledzone w analityce - ta karta nie ma nic do pokazania."
       },
       "revenue": {
         "gmv": {
@@ -222,10 +222,10 @@
       "previousFailed": "Nie udało się wczytać poprzedniego okresu do porównania.",
       "spoken": {
         "downPercent": "spadek o {value} procent wobec poprzedniego okresu",
-        "downPoints": "spadek o {value} punktów procentowych wobec poprzedniego okresu",
+        "downPoints": "spadek o {value} p.p. wobec poprzedniego okresu",
         "flat": "bez zmian wobec poprzedniego okresu",
         "upPercent": "wzrost o {value} procent wobec poprzedniego okresu",
-        "upPoints": "wzrost o {value} punktów procentowych wobec poprzedniego okresu"
+        "upPoints": "wzrost o {value} p.p. wobec poprzedniego okresu"
       }
     },
     "error": {
@@ -253,7 +253,7 @@
         "other": "{n} zamówienia pochodzi sprzed stawek VAT dla pozycji albo zawiera pozycję z nieustaloną stawką i jest pominięte w wartości zamówień netto."
       },
       "netSalesReturns": "Sprzedaż netto powinna też odejmować wartość zwrotów, ale zwroty i zwroty pieniędzy nie są tu jeszcze liczone - ta wartość to wartość zamówień netto, przed zwrotami.",
-      "returnRate": "Zwroty i zwroty pieniędzy nie są jeszcze rejestrowane w analityce, więc nie ma odsetka zwrotów do pokazania.",
+      "returnRate": "Zwroty towaru i pieniędzy nie są jeszcze rejestrowane w analityce, więc nie ma odsetka zwrotów do pokazania.",
       "unconverted": "Wartość zamówień obejmuje tylko zamówienia już przeliczone na walutę raportowania - niedawno zaimportowane zamówienia są pomijane, dopóki nie zostaną przeliczone."
     },
     "loading": {
@@ -314,7 +314,7 @@
       "message": "Ustalanie zapisanej podstawy VAT…",
       "title": "Wczytywanie wskaźników sprzedaży"
     },
-    "description": "Sprzedaż we wszystkich połączonych kanałach z jasną informacją o kompletności danych.",
+    "description": "Sprzedaż ze wszystkich połączonych kanałów. Widzisz też, czy dane są kompletne.",
     "eyebrow": "Operacje",
     "firstOrders": {
       "action": "Zobacz postęp synchronizacji",
@@ -579,7 +579,7 @@
           }
         },
         "modalDescription": "Marża pomija te pozycje, ponieważ brakuje kosztu, koszt wprowadzono po sprzedaży, produkt nie jest dopasowany albo waluta kosztu różni się od waluty zamówienia.",
-        "sub": "Marża uwzględnia tylko pozycje z użytecznym kosztem: brak kosztu, koszt wprowadzony po sprzedaży, niedopasowany produkt albo inna waluta wykluczają pozycję."
+        "sub": "Marża uwzględnia tylko pozycje z kosztem. Pozycja wypada, gdy nie ma kosztu, koszt dodano po sprzedaży, produkt nie jest dopasowany albo waluta jest inna."
       },
       "productMatching": {
         "actionLabel": "Zobacz zamówienia",
@@ -623,20 +623,20 @@
         "actionLabel": "Zobacz produkty",
         "headline": {
           "lines": {
-            "few": "{n} pozycje w ogóle nie mają stawki VAT",
-            "many": "{n} pozycji w ogóle nie ma stawki VAT",
-            "one": "{n} pozycja w ogóle nie ma stawki VAT",
-            "other": "{n} pozycji w ogóle nie ma stawki VAT"
+            "few": "{n} pozycje nie mają stawki VAT",
+            "many": "{n} pozycji nie ma stawki VAT",
+            "one": "{n} pozycja nie ma stawki VAT",
+            "other": "{n} pozycji nie ma stawki VAT"
           },
           "orders": {
-            "few": "{n} zamówienia w ogóle nie mają stawki VAT",
-            "many": "{n} zamówień w ogóle nie ma stawki VAT",
-            "one": "{n} zamówienie w ogóle nie ma stawki VAT",
-            "other": "{n} zamówienia w ogóle nie ma stawki VAT"
+            "few": "{n} zamówienia nie mają stawki VAT",
+            "many": "{n} zamówień nie ma stawki VAT",
+            "one": "{n} zamówienie nie ma stawki VAT",
+            "other": "{n} zamówienia nie ma stawki VAT"
           }
         },
         "modalDescription": "Produkt nie ma ustawionej stawki VAT u źródła. Trzeba to poprawić tam - nie da się jej tu odgadnąć.",
-        "sub": "Produkt nie ma ustawionej stawki VAT u źródła - popraw to tam, nie tutaj."
+        "sub": "Produkt nie ma stawki VAT w systemie źródłowym. Popraw ją tam."
       },
       "taxC": {
         "actionLabel": "Zobacz zamówienia",
@@ -738,15 +738,15 @@
       "caption": "Stan połączeń",
       "columns": {
         "connection": "Połączenie",
-        "failedJobs": "Nieudane zadania w tle",
+        "failedJobs": "Nieudane zadania",
         "platform": "Platforma",
         "status": "Status"
       },
       "failedJobs": {
-        "few": "{n} nieudane zadania w tle",
-        "many": "{n} nieudanych zadań w tle",
-        "one": "{n} nieudane zadanie w tle",
-        "other": "{n} nieudanego zadania w tle"
+        "few": "{n} nieudane zadania",
+        "many": "{n} nieudanych zadań",
+        "one": "{n} nieudane zadanie",
+        "other": "{n} nieudanego zadania"
       },
       "failedJobsOn": {
         "few": "{n} nieudane zadania w tle w połączeniu {name}",
@@ -847,17 +847,17 @@
       "loadingMessage": "Zbieranie nieudanych zadań w tle…",
       "loadingTitle": "Wczytywanie błędów",
       "signatures": {
-        "few": "{n} unikalne sygnatury",
-        "many": "{n} unikalnych sygnatur",
-        "one": "{n} unikalna sygnatura",
-        "other": "{n} unikalnej sygnatury"
+        "few": "{n} rodzaje błędów",
+        "many": "{n} rodzajów błędów",
+        "one": "{n} rodzaj błędu",
+        "other": "{n} rodzaju błędu"
       },
-      "title": "Co jest teraz zepsute",
+      "title": "Co teraz nie działa",
       "totalFailures": {
-        "few": "Łącznie {n} błędy",
-        "many": "Łącznie {n} błędów",
-        "one": "Łącznie {n} błąd",
-        "other": "Łącznie {n} błędu"
+        "few": "łącznie {n} błędy",
+        "many": "łącznie {n} błędów",
+        "one": "łącznie {n} błąd",
+        "other": "łącznie {n} błędu"
       }
     },
     "infraNodeWithName": "{platform} ({name})",
@@ -1024,11 +1024,17 @@
     "addCostPrices": "Dodaj ceny zakupu",
     "goToMargin": "Przejdź do marży",
     "leftOut": "Pominięto {amount}. Marża i marża % są liczone tylko z części objętej kosztami.",
+    "leftOutBecause": "Pominięto {amount}, bo {reason}. Marża i marża % są liczone tylko z części objętej kosztami.",
     "leftOutWithReasons": "Pominięto {amount}: {reasons}. Marża i marża % są liczone tylko z części objętej kosztami.",
     "reasons": {
       "afterSale": "część zamówień wpłynęła przed wprowadzeniem kosztu ({amount})",
       "noCost": "część wariantów nie ma ceny zakupu ({amount})",
       "other": "pozostałe pozycje nie mogą mieć kosztu ({amount})"
+    },
+    "soleReasons": {
+      "afterSale": "część zamówień wpłynęła przed wprowadzeniem kosztu",
+      "noCost": "część wariantów nie ma ceny zakupu",
+      "other": "pozostałe pozycje nie mogą mieć kosztu"
     },
     "title": "Marża obejmuje {ratio} sprzedaży netto w tym zakresie"
   },
@@ -1048,15 +1054,15 @@
     }
   },
   "marginPanel": {
-    "basis": "Marża zawsze korzysta z przychodu netto, bo koszty wprowadza się netto. Anulowane zamówienia są pominięte.",
+    "basis": "Marża jest liczona od przychodu netto, bo koszty wpisuje się netto. Anulowane zamówienia są pominięte.",
     "basisChip": "Przychód netto · bez VAT",
-    "basisGross": "Marża zawsze korzysta z przychodu netto, bo koszty wprowadza się netto, mimo że ta strona jest ustawiona na brutto. Anulowane zamówienia są pominięte.",
+    "basisGross": "Marża jest liczona od przychodu netto, bo koszty wpisuje się netto. Dotyczy to także widoku brutto. Anulowane zamówienia są pominięte.",
     "byChannel": "Marża według kanałów",
     "byChannelFootnote": "Marża brutto i marża % dotyczą tylko pozycji z kosztem. Pokrycie kosztami to udział tych pozycji w przychodzie netto.",
     "byProduct": "Marża według produktów",
     "byProductError": "Nie udało się wczytać marży według produktów",
     "byProductFootnote": "Pierwsze {n} według przychodu netto.",
-    "currency": "Kwoty w {currency}, walucie raportowania.",
+    "currency": "Kwoty w {currency} (waluta raportowania).",
     "error": {
       "message": "Wartości marży są niedostępne.",
       "retry": "Ponów",
@@ -1093,8 +1099,8 @@
     },
     "missingCost": {
       "addCost": "Dodaj koszt",
-      "bestSellers": "<strong>Najlepiej sprzedające się bez kosztu</strong> · według przychodu netto",
-      "body": "Marża wymaga kosztu netto zapłaconego za każdy wariant. OpenLinker nigdy go nie zgaduje i nigdy nie traktuje brakującego kosztu jako zera. Wprowadź koszty na stronie produktu; zamówienia złożone później będą liczone do marży.",
+      "bestSellers": "<strong>Najlepiej sprzedające się produkty bez kosztu</strong> · według przychodu netto",
+      "body": "Do marży potrzebny jest koszt netto każdego wariantu. OpenLinker go nie zgaduje, a brak kosztu nie oznacza zera. Wpisz koszty na stronie produktu; zamówienia złożone później będą liczone do marży.",
       "footnote": {
         "few": "{n} produkty sprzedane w tym zakresie, żaden nie ma zapisanego kosztu.",
         "many": "{n} produktów sprzedanych w tym zakresie, żaden nie ma zapisanego kosztu.",
@@ -1144,7 +1150,7 @@
           "one": "{n} wariant z brakiem oferty w co najmniej jednym kanale",
           "other": "{n} wariantu z brakiem oferty w co najmniej jednym kanale"
         },
-        "sub": "otwórz wystawianie ofert, aby zobaczyć, w którym kanale brakuje każdego z nich"
+        "sub": "otwórz wystawianie ofert, aby sprawdzić, w których kanałach ich brakuje"
       },
       "named": {
         "headline": {
@@ -1223,6 +1229,14 @@
       "units": "Wg sztuk"
     },
     "title": "Najlepsze produkty",
+    "unmatchedDetail": "Ta pozycja nie ma produktu w katalogu, więc nie ma wariantów do rozbicia. Identyfikuje ją numer oferty z marketplace'u.",
+    "unmatchedFootnote": {
+      "few": "{n} pozycje na tej stronie pochodzą z ofert marketplace'u niepowiązanych z produktem w katalogu.",
+      "many": "{n} pozycji na tej stronie pochodzi z ofert marketplace'u niepowiązanych z produktem w katalogu.",
+      "one": "{n} pozycja na tej stronie pochodzi z oferty marketplace'u niepowiązanej z produktem w katalogu.",
+      "other": "{n} pozycji na tej stronie pochodzi z ofert marketplace'u niepowiązanych z produktem w katalogu."
+    },
+    "unmatchedName": "Oferta bez katalogu",
     "unresolved": {
       "few": "{n} produktów na tej stronie nie udało się powiązać z pozycją katalogu.",
       "many": "{n} produktów na tej stronie nie udało się powiązać z pozycją katalogu.",

@@ -43,6 +43,13 @@ export function MarginCoverageBanner({ filters }: { filters: MarginFilters }): R
     .reduce((sum, gap) => sum + gap.netAmount, 0);
   const leftOut = headline.netRevenue - headline.coveredNetRevenue;
 
+  // A single reason accounts for the whole left-out amount, so the banner names
+  // it once instead of repeating the same figure in parentheses.
+  const soleReasons: string[] = [];
+  if (noCost > 0) soleReasons.push(copy.soleReasons.noCost);
+  if (afterSale > 0) soleReasons.push(copy.soleReasons.afterSale);
+  if (other > 0) soleReasons.push(copy.soleReasons.other);
+
   const parts: string[] = [];
   if (noCost > 0) {
     parts.push(interpolate(copy.reasons.noCost, { amount: format.money(noCost, currency) }));
@@ -85,12 +92,14 @@ export function MarginCoverageBanner({ filters }: { filters: MarginFilters }): R
         </>
       }
     >
-      {parts.length > 0
-        ? interpolate(copy.leftOutWithReasons, {
-            amount: leftOutAmount,
-            reasons: format.list(parts),
-          })
-        : interpolate(copy.leftOut, { amount: leftOutAmount })}
+      {soleReasons.length === 1
+        ? interpolate(copy.leftOutBecause, { amount: leftOutAmount, reason: soleReasons[0] ?? '' })
+        : parts.length > 0
+          ? interpolate(copy.leftOutWithReasons, {
+              amount: leftOutAmount,
+              reasons: format.list(parts),
+            })
+          : interpolate(copy.leftOut, { amount: leftOutAmount })}
     </Alert>
   );
 }

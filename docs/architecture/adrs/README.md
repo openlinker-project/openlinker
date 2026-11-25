@@ -177,6 +177,7 @@ One pointer per section, identical format every time.
 | [ADR-083](./083-commercial-and-physical-order-lines.md) | An order has a commercial line list and a physical line list; the expansion is frozen at ingestion | Accepted | 2026-11-04 |
 | [ADR-084](./084-promotions-context.md) | Promotions are their own context; a gift is one benefit kind, not an automation rule | Proposed | 2026-11-10 |
 | [ADR-085](./085-connection-archive-hook-port.md) | A plugin may drop its own per-connection state when a connection is archived | Accepted | 2026-11-17 |
+| [ADR-086](./086-release-center.md) | Release center is a leaf context with two-scope database state and a catalog of setup steps | Proposed | 2026-11-17 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 

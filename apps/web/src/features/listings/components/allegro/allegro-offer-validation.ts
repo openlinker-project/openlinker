@@ -50,6 +50,7 @@ import {
   type ResolvedCopy,
 } from '../../../../shared/i18n';
 import type {
+  CategoryParameterLike,
   OfferBlockerCopy,
   OfferBlockerDescribeContext,
   OfferRowBundleInput,
@@ -68,6 +69,7 @@ export const ALLEGRO_NO_PHOTO_BLOCKER = 'allegro:no-photo';
 export const ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER = 'allegro:siblings-without-card';
 export const ALLEGRO_EAN_UNVERIFIED_BLOCKER = 'allegro:ean-unverified';
 export const ALLEGRO_IN_STORE_BARCODE_BLOCKER = 'allegro:in-store-barcode';
+export const ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER = 'allegro:needs-offer-parameters';
 export const ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER = 'allegro:bundle-component-missing';
 export const ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER =
   'allegro:bundle-component-gpsr-missing';
@@ -80,6 +82,27 @@ export const ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER = 'allegro:bundle-category
 export const ALLEGRO_PRODUCT_SET_UNPUBLISHABLE_CODE = 'PRODUCT_SET_COMPONENT_UNPUBLISHABLE';
 export const ALLEGRO_PRODUCT_SET_GPSR_MISSING_CODE = 'PRODUCT_SET_COMPONENT_GPSR_MISSING';
 export const ALLEGRO_MISSING_SELLER_DEFAULTS_ISSUE = 'allegro:missing-seller-details';
+
+/**
+ * Codes with which Allegro refuses an offer because of the SELLER ACCOUNT, not
+ * the offer (#4004) - seen in the #3928 spike on a sandbox account under a sales
+ * blockade. No edit to an offer changes the answer, so the batch page reports
+ * them once instead of offering a per-row fix.
+ */
+export const ALLEGRO_ACCOUNT_LEVEL_ERROR_CODES = [
+  'OfferAccessDeniedException',
+  'SellerAccountWithSellBlockadeException',
+] as const;
+
+/** Allegro's Sales Center, where a seller sees and resolves an account block. */
+function allegroSalesCenterUrl(connectionConfig: Record<string, unknown>): string | null {
+  // An absent or unreadable environment is NOT sandbox: sending a production
+  // seller to the sandbox panel to fix a real block is worse than no link.
+  const environment = connectionConfig['environment'];
+  if (environment === 'sandbox') return 'https://salescenter.allegro.com.allegrosandbox.pl';
+  if (environment === 'production' || environment === undefined) return 'https://salescenter.allegro.com';
+  return null;
+}
 
 /**
  * Every `sellerDefaults` path Allegro's own create-time gate can report as
@@ -199,6 +222,39 @@ function blockerLabels(): ResolvedCopy<Messages['listings']>['allegroOfferValida
  * reported falsely. What can stop it is each component, and the category: Allegro
  * requires the offer's category to equal that of the FIRST component's card.
  */
+/** Allegro's "Stan" parameter: the adapter sends "new" when it is empty, so it never blocks. */
+const ALLEGRO_CONDITION_PARAMETER_ID = '11323';
+
+type SectionedParameter = CategoryParameterLike & { section?: string; dependsOn?: unknown };
+
+/**
+ * A set publishes only its OWN (offer-section) parameters - the product-section
+ * ones come from the components' cards - so those are the only ones a set row
+ * can be missing. The schema reaches here with `section`/`dependsOn` even though
+ * the neutral `CategoryParameterLike` does not declare them.
+ */
+function hasMissingRequiredOfferParameter(input: OfferRowValidationInput): boolean {
+  const schema = input.categoryParameters as readonly SectionedParameter[] | undefined;
+  if (!schema) return false;
+  const supplied = input.suppliedParameters ?? [];
+  const hasValue = (id: string): boolean =>
+    supplied.some(
+      (p) =>
+        p.id === id &&
+        ((p.values ?? []).some((v) => v.trim() !== '') ||
+          (p.valuesIds ?? []).length > 0 ||
+          p.rangeValue !== undefined),
+    );
+  return schema.some(
+    (p) =>
+      p.required &&
+      p.section === 'offer' &&
+      !p.dependsOn &&
+      p.id !== ALLEGRO_CONDITION_PARAMETER_ID &&
+      !hasValue(p.id),
+  );
+}
+
 function validateBundleRow(
   input: OfferRowValidationInput,
   bundle: OfferRowBundleInput,
@@ -227,6 +283,9 @@ function validateBundleRow(
     bundle.suggestedCategoryId !== bundle.chosenCategoryId
   ) {
     blockers.push(ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER);
+  }
+  if (hasMissingRequiredOfferParameter(input)) {
+    blockers.push(ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER);
   }
   return blockers;
 }
@@ -319,6 +378,15 @@ export const allegroOfferValidation: OfferValidationContribution = {
       describe: () => plainCopy(allegroCopy().siblingsWithoutCard),
     },
     {
+      id: ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER,
+      field: 'parameters',
+      tone: 'error',
+      get label(): string {
+        return blockerLabels().needsOfferParameters;
+      },
+      describe: () => plainCopy(allegroCopy().needsOfferParameters),
+    },
+    {
       id: ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER,
       field: 'bundle',
       tone: 'error',
@@ -363,6 +431,20 @@ export const allegroOfferValidation: OfferValidationContribution = {
       advisory: true,
     },
   ],
+  accountLevelRefusal: {
+    errorCodes: ALLEGRO_ACCOUNT_LEVEL_ERROR_CODES,
+    describe: ({ affected, total, connectionConfig }) => {
+      const copy = getMessages('listings').bulkBatch.allegro.accountRefused;
+      const salesCenterUrl = allegroSalesCenterUrl(connectionConfig);
+      return {
+        title: copy.title,
+        detail: interpolate(formatPlural(affected, copy.detail, getLocale()), {
+          total: total.toLocaleString(getBcp47Locale(getLocale())),
+        }),
+        ...(salesCenterUrl ? { action: { label: copy.action, href: salesCenterUrl } } : {}),
+      };
+    },
+  },
   validateRow: (input) => {
     const blockers: string[] = [];
     if (input.bundle) {

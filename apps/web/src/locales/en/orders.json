@@ -687,14 +687,18 @@
       "description": "Locker size template - required for a locker shipment.",
       "label": "Locker size",
       "options": {
-        "large": "large",
-        "medium": "medium",
-        "small": "small"
+        "large": "Large",
+        "medium": "Medium",
+        "small": "Small"
       }
     },
     "missing": {
       "hint": "Open this order in the source platform to fix the buyer record, then re-poll.",
       "title": "Missing recipient data - cannot generate label:"
+    },
+    "packPieces": {
+      "one": "{n} pc",
+      "other": "{n} pcs"
     },
     "pickup": {
       "buyerSelected": "Buyer-selected - read-only.",
@@ -740,7 +744,8 @@
       "weight": "Weight must be a positive integer",
       "width": "Width must be a positive integer"
     },
-    "weight": "Weight (g)"
+    "weight": "Weight (g)",
+    "weightFromRule": "Weight comes from the delivery rule - check it before buying the label."
   },
   "handledInOpenLinker": {
     "assignedUnknown": "Assigned",
@@ -1648,6 +1653,14 @@
       "status": "Status",
       "statusAtChannel": "Status at {channel}",
       "statusAtUnknownChannel": "Status at channel",
+      "statusValues": {
+        "cancelled": "Cancelled",
+        "delivered": "Delivered",
+        "pending": "Pending",
+        "processing": "Processing",
+        "refunded": "Refunded",
+        "shipped": "Shipped"
+      },
       "title": "Summary",
       "updatedOl": "Updated (OL)"
     },
@@ -2237,10 +2250,13 @@
         "one": "Add cost for {n} variant",
         "other": "Add cost for {n} variants"
       },
+      "addCostFor": "Add cost for: {names}",
       "currencyMismatchTitle": "The cost is in a different currency than the order, so it is not used in margin.",
       "enteredAfterSaleTitle": "Ordered before the cost was entered",
       "footnoteFrozen": "Cost is taken from the product when the order arrives and never changes afterwards.",
       "footnoteNextOrder": "Adding a cost now will not change this order; it counts from the next one.",
+      "fromComponents": "calculated from components",
+      "marginFromComponents": "not calculated for a bundle",
       "marginNotAvailable": "margin not available",
       "noVariant": "no variant",
       "notAvailable": "cost not available",
@@ -2249,7 +2265,9 @@
     },
     "emptyMessage": "The order snapshot does not contain item details.",
     "emptyTitle": "No line items",
+    "idPrefix": "ID:",
     "jumpToNextFlagged": "Jump to next flagged",
+    "offerPrefix": "Offer:",
     "onlyFlagged": "Only flagged",
     "qtyWas": "was {quantity}",
     "taxRate": {
@@ -3023,6 +3041,18 @@
       "whyThisKind": "Why this kind?"
     }
   },
+  "savedViews": {
+    "channelDestination": "Destination",
+    "channelSource": "Source",
+    "customerCity": "City",
+    "customerName": "Name",
+    "customerNote": "Buyer note",
+    "document": "Document",
+    "orderFields": "Number, item, channel, retry",
+    "shipmentCarrier": "Carrier",
+    "shipmentState": "Status and ship-by",
+    "statusFields": "Health, badges, reason"
+  },
   "sendDocumentEmail": {
     "language": "Email language",
     "lastSentVia": "{when} · {via}",
@@ -3073,7 +3103,7 @@
       "cancel": "Cancel",
       "confirm": "Mark dispatched",
       "confirming": "Notifying…",
-      "description": "This fires the source-marketplace notification and updates the destination fulfilment state. Use this only when the automatic dispatch flow has stalled - the normal path is automatic via the carrier's status sync.",
+      "description": "Tells the marketplace the parcel has shipped and updates the fulfilment state. Use it once the parcel has been handed to the carrier, or if the automatic update stalled.",
       "title": "Manually mark as dispatched?"
     }
   },

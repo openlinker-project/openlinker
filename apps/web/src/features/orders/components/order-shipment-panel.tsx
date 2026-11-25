@@ -165,12 +165,16 @@ export function OrderShipmentPanel({
   // The Shipping tab opens the label form straight away, but only where the plain
   // "No shipment yet" empty state would otherwise show: a live own-carrier route, nothing
   // shipped or dispatched outside OpenLinker, and permission to write. Shop-fulfilled,
-  // takeover and dispatched-elsewhere orders keep their own notices (#4286).
+  // takeover and dispatched-elsewhere orders keep their own notices (#4286). It also
+  // honours the payment gate the Generate button applies (#928): a form must never
+  // open behind a button that refuses the identical action. An active hold is the
+  // caller's to withhold through `defaultFormOpen`, since the panel is not given it.
   const earlyActiveShipment = pickActiveShipment(shipmentsQuery.data?.items ?? null);
   const autoOpenAllowed =
     defaultFormOpen &&
     olCarrierRoute &&
     canWrite &&
+    !paymentBlocksDispatch &&
     shipmentsQuery.isSuccess &&
     !earlyActiveShipment &&
     order.fulfillmentState !== 'dispatched' &&

@@ -4,6 +4,12 @@
  * is unknown makes the whole answer unknown: an unknown count is never read as
  * zero, so a set is never advertised as sold out (or in stock) on a guess.
  *
+ * Scope: the input is GLOBAL available-to-promise, with no channel reserve and no pending
+ * orders. The listing wizard Review reads the same rule over CHANNEL scope (after the reserve,
+ * see bundle-offer-preview.service.ts), so the two numbers can differ by design; the bundle
+ * view shows both. The shared fixture in bundle-availability.test.ts pins the rule itself
+ * (min of floor(stock / quantity)) for both: change one side and that table must follow.
+ *
  * @module apps/web/src/features/bundles/lib
  */
 

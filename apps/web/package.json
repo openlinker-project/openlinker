@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "type-check": "tsc -b --pretty false"
+    "type-check": "tsc -b --pretty false",
+    "check:i18n-inspector-build": "node scripts/check-i18n-inspector-not-in-build.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

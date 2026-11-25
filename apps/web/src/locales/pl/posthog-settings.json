@@ -55,6 +55,7 @@
     "apiKeyLabel": "Klucz API",
     "autocaptureLabel": "Autorejestracja",
     "configured": "Skonfigurowany",
+    "description": "Analityka produktowa i nagrywanie sesji w tej instalacji.",
     "disabled": "Wyłączone",
     "disabledMessage": "Nagrywanie sesji i rejestrowanie odsłon są wyłączone. Dla odwiedzających wersję demo nie jest ładowany żaden skrypt PostHog.",
     "edit": "Edytuj",

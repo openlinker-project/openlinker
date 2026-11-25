@@ -53,6 +53,7 @@
     "apiKeyLabel": "API key",
     "autocaptureLabel": "Autocapture",
     "configured": "Configured",
+    "description": "Product analytics and session recording for this installation.",
     "disabled": "Disabled",
     "disabledMessage": "Session recording and pageview capture are off. No PostHog script is loaded for demo visitors.",
     "edit": "Edit",

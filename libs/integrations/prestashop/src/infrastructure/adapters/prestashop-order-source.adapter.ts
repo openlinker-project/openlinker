@@ -34,6 +34,11 @@ import type {
   IncomingOrderItem,
   IncomingOrderAddress,
   OrderPickupPoint,
+  OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
+  OrderWindowReader,
+  OrderWindowInput,
+  OrderWindowPage,
 } from '@openlinker/core/orders';
 import {
   PAYMENT_STATUS,
@@ -41,6 +46,7 @@ import {
   decodeHtmlNoteText,
   readSourceBuyerTaxId,
   toCodToCollect,
+  OrderSyncStartUnavailableError,
 } from '@openlinker/core/orders';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import type {
@@ -83,6 +89,7 @@ import {
   parseOrderFeedCursor,
   shiftWallClockSeconds,
 } from '../../domain/types/prestashop-order-feed-cursor.types';
+import type { PrestashopSort } from '../http/prestashop-query.builder';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -95,7 +102,7 @@ import { Logger } from '@openlinker/shared/logging';
  * why the id is part of the read position and why the timestamp is never
  * interpreted. `null` input means "start from the beginning".
  */
-export class PrestashopOrderSourceAdapter implements OrderSourcePort {
+export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedBootstrap, OrderFeedDateBootstrap, OrderWindowReader {
   private readonly logger = new Logger(PrestashopOrderSourceAdapter.name);
 
   /**
@@ -216,6 +223,193 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
     const echoedCursor = fromCursor === null ? null : formatOrderFeedCursor(fromCursor);
 
     return { items: filtered, nextCursor: nextCursor ?? echoedCursor };
+  }
+
+  /**
+   * Cursor of the shop's newest order, so a fresh connection starts from "now"
+   * (#4228). Mirrors the poll's own two read modes: `date_upd` sort, falling
+   * back to `id` on a shop that refuses it. The row's `id` rides in the cursor
+   * so the same value stays valid if the connection later flips read mode.
+   *
+   * @throws when the read fails or the newest row is unreadable - core retries
+   * the poll rather than importing history.
+   */
+  async headCursor(): Promise<string | null> {
+    let rows: PrestashopOrder[];
+    if (this.orderFeedCapabilityCache.isDateUpdSortKnownUnsupported(this.connection.id)) {
+      rows = await this.readNewestOrderRow(['id_DESC']);
+    } else {
+      try {
+        rows = await this.readNewestOrderRow(['date_upd_DESC', 'id_DESC']);
+      } catch (error) {
+        if (!this.isDateUpdSortUnsupportedError(error)) {
+          throw error;
+        }
+        this.orderFeedCapabilityCache.markDateUpdSortUnsupported(this.connection.id);
+        rows = await this.readNewestOrderRow(['id_DESC']);
+      }
+    }
+
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    const orderId = Number.parseInt(String(row.id), 10);
+    const updatedAt = normalizeWallClock(row.date_upd);
+    if (!Number.isFinite(orderId) || updatedAt === null) {
+      throw new Error(
+        `Cannot seed the order cursor: newest PrestaShop order ${String(row.id)} has an unreadable id/date_upd (connection: ${this.connection.id})`
+      );
+    }
+
+    // Exactly at the newest order, with no lookback. The cursor is the pair
+    // (date_upd, id), so an order written in the same second but with a higher id
+    // is still read; a lookback would instead re-import the orders that sit just
+    // before the newest one - the very history "new orders only" must leave behind.
+    return formatOrderFeedCursor({ updatedAt, lastOrderId: orderId });
+  }
+
+  /**
+   * Read the orders PLACED inside a day window, one id-keyset page at a time
+   * (#4228). It never touches the live feed cursor: the walk position is the
+   * last order id read (`id:<n>`), so the page set cannot shift or repeat while
+   * orders arrive, and `date_add` (when the order was placed) bounds the window.
+   *
+   * A date-only bound means the whole day on the shop's wall clock, so `from`
+   * starts at 00:00:00 and `to` ends at 23:59:59. The webservice offers `>` but
+   * no `>=`, hence the one-second shift on the lower bound.
+   *
+   * Items come from {@link toFeedItem}, so their `eventKey` matches what the live
+   * feed emits and a window read dedupes against it downstream. A failed read is
+   * never swallowed into an empty or unfiltered page.
+   */
+  async listOrdersInWindow(input: OrderWindowInput): Promise<OrderWindowPage> {
+    const newestFirst = input.direction === 'newest-first';
+    const lastId = this.parseWindowCursor(input.cursor);
+
+    const filters: {
+      dateAddBetween?: { from?: string; to?: string };
+      idAfter?: number;
+      idBefore?: number;
+      sort: PrestashopSort[];
+    } = { sort: [newestFirst ? 'id_DESC' : 'id_ASC'] };
+
+    // Inclusive on both ends: a bare day is the whole day in the shop's own time.
+    if (input.from !== undefined || input.to !== undefined) {
+      filters.dateAddBetween = {
+        ...(input.from !== undefined ? { from: this.wallClockOfDay(input.from, '00:00:00') } : {}),
+        ...(input.to !== undefined ? { to: this.wallClockOfDay(input.to, '23:59:59') } : {}),
+      };
+    }
+    if (lastId !== null) {
+      if (newestFirst) {
+        filters.idBefore = lastId;
+      } else {
+        filters.idAfter = lastId;
+      }
+    }
+
+    const orderStates = await this.orderStates.load();
+    const rows = await this.httpClient.listResources<PrestashopOrder>(
+      'orders',
+      filters,
+      input.limit,
+      0
+    );
+
+    const items: OrderFeedItem[] = [];
+    let position = lastId;
+    for (const row of rows) {
+      // The cursor moves by raw row id even when the row is unreadable, or a
+      // page of only malformed rows would be re-read for ever.
+      const rawId = Number.parseInt(String(row.id), 10);
+      if (Number.isFinite(rawId)) {
+        position =
+          position === null ? rawId : newestFirst ? Math.min(position, rawId) : Math.max(position, rawId);
+      }
+      const item = this.toFeedItem(row, orderStates);
+      if (item !== null) {
+        items.push(item.feedItem);
+      }
+    }
+
+    const done = rows.length < input.limit;
+    return {
+      items,
+      nextCursor: done || position === null ? null : `id:${position}`,
+      done,
+    };
+  }
+
+  private parseWindowCursor(cursor: string | null): number | null {
+    if (cursor === null) {
+      return null;
+    }
+    const match = /^id:(\d+)$/.exec(cursor);
+    if (match === null) {
+      throw new Error(`Invalid PrestaShop order window cursor "${cursor}" (connection: ${this.connection.id})`);
+    }
+    return Number(match[1]);
+  }
+
+  /** `YYYY-MM-DD <time>` for the date part of an ISO date or instant. */
+  private wallClockOfDay(value: string, time: string): string {
+    const wallClock = normalizeWallClock(`${value.trim().slice(0, 10)} ${time}`);
+    if (wallClock === null) {
+      throw new Error(`Invalid order window date "${value}" (connection: ${this.connection.id})`);
+    }
+    return wallClock;
+  }
+
+  /**
+   * Cursor at 00:00:00 (the shop's wall clock) of `date`, so a connection the
+   * operator created "from {date}" imports only orders updated since then
+   * (#4228). A full ISO instant is reduced to its date: the shop's zone is not
+   * known here, and "from the start of that day" is what an operator picking a
+   * day means.
+   *
+   * A shop that refuses `date_upd` as a filter (#2877) reads by `id` only, where
+   * a date cursor would resume at id 0 and silently import the whole history.
+   * That is exactly what a dated start must never do, so this THROWS there, and
+   * a probing read finds the refusal on a shop that has not hit it yet.
+   *
+   * @throws when the shop cannot filter by `date_upd`, or the read fails.
+   */
+  async cursorForDate(date: string): Promise<string> {
+    const wallClock = normalizeWallClock(`${date.trim().slice(0, 10)} 00:00:00`);
+    if (wallClock === null) {
+      throw new OrderSyncStartUnavailableError(
+        `Cannot start the order feed from "${date}": expected an ISO date (connection: ${this.connection.id})`
+      );
+    }
+    // Typed so the poll job reports a business failure: a shop that refuses the
+    // filter will refuse it on every retry.
+    const unsupported = new OrderSyncStartUnavailableError(
+      `This PrestaShop shop does not allow filtering orders by \`date_upd\`, so the order feed cannot start from a date. Use "from now" or "all orders" instead (connection: ${this.connection.id})`
+    );
+    if (this.orderFeedCapabilityCache.isDateUpdSortKnownUnsupported(this.connection.id)) {
+      throw unsupported;
+    }
+    try {
+      await this.httpClient.listResources<PrestashopOrder>(
+        'orders',
+        { updatedAfter: wallClock, sort: ['date_upd_ASC', 'id_ASC'] },
+        1,
+        0
+      );
+    } catch (error) {
+      if (this.isDateUpdSortUnsupportedError(error)) {
+        this.orderFeedCapabilityCache.markDateUpdSortUnsupported(this.connection.id);
+        throw unsupported;
+      }
+      throw error;
+    }
+    return formatOrderFeedCursor({ updatedAt: wallClock, lastOrderId: 0 });
+  }
+
+  private readNewestOrderRow(sort: PrestashopSort[]): Promise<PrestashopOrder[]> {
+    return this.httpClient.listResources<PrestashopOrder>('orders', { sort }, 1, 0);
   }
 
   /**

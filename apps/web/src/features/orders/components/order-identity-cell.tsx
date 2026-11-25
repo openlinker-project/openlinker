@@ -114,18 +114,21 @@ function MarkChip({
   text,
   label,
   testId,
+  hint,
 }: {
   kind: 'gift' | 'bundle';
   text: string;
   label: string;
   testId: string;
+  /** Longer explanation for the tooltip; the accessible name stays `label`. */
+  hint?: string;
 }): ReactElement {
   return (
     <span
       className={`orders-mark orders-mark--${kind}`}
       role="img"
       aria-label={label}
-      title={label}
+      title={hint ?? label}
       data-testid={testId}
     >
       {text}
@@ -213,7 +216,7 @@ export function OrderIdentityCell({
         </span>
         {hasBundle || hasGift ? (
           <span className="orders-marks-line">
-            {hasBundle ? <MarkChip kind="bundle" text={bundleCopy.order.bundleMark} label={giftCopy.filter.bundleRowIcon} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
+            {hasBundle ? <MarkChip kind="bundle" text={bundleCopy.order.bundleMark} label={giftCopy.filter.bundleRowIcon} hint={bundleCopy.order.bundleTooltip} testId={`orders-bundle-row-icon-${orderId}`} /> : null}
             {hasGift ? <MarkChip kind="gift" text={bundleCopy.order.giftMark} label={giftCopy.filter.rowIcon} testId={`orders-gift-row-icon-${orderId}`} /> : null}
           </span>
         ) : null}

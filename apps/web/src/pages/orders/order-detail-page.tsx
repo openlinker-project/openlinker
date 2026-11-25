@@ -92,6 +92,8 @@ import { OrderDetailHeader, isChannelStatusStale } from '../../features/orders/c
 import { DestinationRoutingCallout } from '../../features/orders/components/destination-routing-callout';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
 import { MultipackHoldBanner } from '../../features/bundles';
+import { orderStatusLabel } from '../../features/orders/lib/order-status-label';
+import { displayConnectionName } from '../../shared/lib/display-connection-name';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
 import { OrderPaymentPanel } from '../../features/orders/components/order-payment-panel';
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
@@ -441,7 +443,7 @@ export function OrderDetailPage(): ReactElement {
     : null;
   const cancelUnitCount = snapshot.items.reduce((sum, item) => sum + item.quantity, 0);
   const cancelSourceConnection = connectionsQuery.data?.find((c) => c.id === order.sourceConnectionId);
-  const cancelSourceName = cancelSourceConnection?.name ?? null;
+  const cancelSourceName = cancelSourceConnection ? displayConnectionName(cancelSourceConnection.name) : null;
   const handleOrderCancelResult = (result: CancelOrderResult): void => {
     setCancelOutcome({ internalOrderId: order.internalOrderId, result });
     // The cancel voids labels, cancels fulfilment work and opens a credit
@@ -591,9 +593,13 @@ export function OrderDetailPage(): ReactElement {
                 label: sourceName
                   ? interpolate(summary.statusAtChannel, { channel: sourceName })
                   : summary.statusAtUnknownChannel,
-                value: <span className="text-muted">{snapshot.status}</span>,
+                value: <span className="text-muted">{orderStatusLabel(snapshot.status, summary.statusValues)}</span>,
               }
-            : { id: 'status', label: summary.status, value: snapshot.status },
+            : {
+                id: 'status',
+                label: summary.status,
+                value: orderStatusLabel(snapshot.status, summary.statusValues),
+              },
         ]
       : []),
     {
@@ -1101,10 +1107,11 @@ export function OrderDetailPage(): ReactElement {
             bundleLines={order.bundleLines}
             documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
             onOpenProduct={setProductPeekId}
+            documentNumber={order.salesDocument?.document?.identity.documentNumber ?? null}
           />
         </section>
       ) : null}
-        <div className="order-detail__overview-grid">
+        <div className="order-detail__overview-grid" data-tour="order-detail">
           <div className="order-detail__overview-main">
           
           <section className="detail-section">
@@ -1160,7 +1167,8 @@ export function OrderDetailPage(): ReactElement {
               <OrderShipmentPanel
                 order={order}
                 autoOpenForShipmentId={retryShipmentId}
-                defaultFormOpen={!isCancelledOrder}
+                // A held order's Generate button is disabled, so its form must not open by itself either.
+                defaultFormOpen={!isCancelledOrder && !order.activeHold}
               />
             </div>
           </div>

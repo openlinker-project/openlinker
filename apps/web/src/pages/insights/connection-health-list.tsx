@@ -145,7 +145,7 @@ export function ConnectionHealthList({
                         name: connection.name,
                       })}
                     >
-                      {failedText}
+                      <span className="conn-health__failed-text">{failedText}</span>
                       <svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
                         <path d="M4.5 2.5 8 6l-3.5 3.5" />
                       </svg>

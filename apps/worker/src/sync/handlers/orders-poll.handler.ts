@@ -20,7 +20,11 @@ import {
   SCHEDULER_TASK_REGISTRY_TOKEN,
 } from '@openlinker/core/sync';
 import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
-import { IOrderIngestionService, ORDER_INGESTION_SERVICE_TOKEN } from '@openlinker/core/orders';
+import {
+  IOrderIngestionService,
+  ORDER_INGESTION_SERVICE_TOKEN,
+  OrderSyncStartUnavailableError,
+} from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 
 type SyncJob = SyncJobEntity;
@@ -74,6 +78,15 @@ export class OrdersPollHandler implements SyncJobHandler {
 
       return { outcome: 'ok' };
     } catch (error) {
+      if (error instanceof OrderSyncStartUnavailableError) {
+        // The chosen start can never be applied to this connection as it stands, so
+        // retrying ten times only delays the same answer (ADR-007): end the job as a
+        // business failure. The message is operator-readable and names the remedy.
+        this.logger.error(
+          `Order sync cannot start for connection ${job.connectionId}: ${error.message}`
+        );
+        return { outcome: 'business_failure' };
+      }
       const message = error instanceof Error ? error.message : String(error);
       throw new SyncJobExecutionError(
         `Marketplace orders poll failed: ${message}`,

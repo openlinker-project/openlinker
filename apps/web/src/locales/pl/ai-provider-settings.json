@@ -60,6 +60,8 @@
       "updated": "Zmieniono"
     },
     "heading": "Dostawcy",
+    "keyMissing": "Brak klucza",
+    "keySaved": "Klucz zapisany",
     "makeActive": "Ustaw jako aktywny",
     "no": "Nie",
     "notApplicable": "nd.",

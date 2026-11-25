@@ -87,6 +87,7 @@ export function OrderDetailHeader({
   statusPill = null,
 }: OrderDetailHeaderProps): ReactElement {
   const copy = useMessages('orders').orderDetailHeader;
+  const summaryCopy = useMessages('orders').orderDetailPage.summary;
   const paymentLabels: Record<PaymentStatus, string> = copy.payment;
   const format = useFormat();
   const plural = usePlural();

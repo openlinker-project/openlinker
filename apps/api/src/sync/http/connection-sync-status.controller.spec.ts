@@ -28,6 +28,9 @@ function status(overrides: Partial<ConnectionSyncStatus> = {}): ConnectionSyncSt
     averageAttemptDurationMs: null,
     attemptDurationSampleSize: 0,
     lastCursorAdvanceAt: null,
+    orderSyncStartedAt: null,
+    orderImport: null,
+    orderStart: null,
     observationWindowMs: HOUR,
     alertHorizonMs: 24 * HOUR,
     historyWindowMs: 7 * 24 * HOUR,
@@ -60,6 +63,7 @@ describe('ConnectionSyncStatusController', () => {
         averageAttemptDurationMs: 4200,
         attemptDurationSampleSize: 40,
         lastCursorAdvanceAt: new Date('2026-08-27T09:30:00.000Z'),
+        orderSyncStartedAt: new Date('2026-08-20T08:00:00.000Z'),
       })
     );
 
@@ -67,6 +71,7 @@ describe('ConnectionSyncStatusController', () => {
 
     expect(dto.generatedAt).toBe('2026-08-27T10:00:00.000Z');
     expect(dto.lastCursorAdvanceAt).toBe('2026-08-27T09:30:00.000Z');
+    expect(dto.orderSyncStartedAt).toBe('2026-08-20T08:00:00.000Z');
     expect(dto.status).toBe('backlogged');
     expect(dto.alerting).toBe(true);
     expect(dto.alertThresholdJobs).toBe(1320);
@@ -99,6 +104,68 @@ describe('ConnectionSyncStatusController', () => {
     const dto = await controller.getSyncStatus('conn-1');
 
     expect(dto.lastCursorAdvanceAt).toBeNull();
+    expect(dto.orderSyncStartedAt).toBeNull();
     expect(dto.status).toBe('idle');
+  });
+
+  it('should project the order import figures with ISO dates, and keep an unreadable read null', async () => {
+    service.getConnectionSyncStatus.mockResolvedValue(
+      status({
+        orderImport: {
+          importedLast24h: 12,
+          lastPolledAt: new Date('2026-08-20T09:55:00.000Z'),
+          failedLast7d: 1,
+          failures: [
+            {
+              code: 'missing-mapping',
+              count: 1,
+              lastFailedAt: new Date('2026-08-20T09:30:00.000Z'),
+              sampleOrderId: '37',
+              sampleMessage: 'Missing mapping for order item',
+            },
+          ],
+          waiting: 3,
+          lastImportedAt: new Date('2026-08-20T09:00:00.000Z'),
+          activeImport: {
+            runId: 'run-1',
+            direction: 'newest-first',
+            from: '2026-10-01',
+            to: null,
+            pagesDone: 4,
+            startedAt: new Date('2026-08-20T08:00:00.000Z'),
+          },
+        },
+      })
+    );
+
+    const dto = await controller.getSyncStatus('conn-1');
+
+    expect(dto.orderImport).toEqual({
+      importedLast24h: 12,
+      lastPolledAt: '2026-08-20T09:55:00.000Z',
+      failedLast7d: 1,
+      failures: [
+        {
+          code: 'missing-mapping',
+          count: 1,
+          lastFailedAt: '2026-08-20T09:30:00.000Z',
+          sampleOrderId: '37',
+          sampleMessage: 'Missing mapping for order item',
+        },
+      ],
+      waiting: 3,
+      lastImportedAt: '2026-08-20T09:00:00.000Z',
+      activeImport: {
+        runId: 'run-1',
+        direction: 'newest-first',
+        from: '2026-10-01',
+        to: null,
+        pagesDone: 4,
+        startedAt: '2026-08-20T08:00:00.000Z',
+      },
+    });
+
+    service.getConnectionSyncStatus.mockResolvedValue(status());
+    expect((await controller.getSyncStatus('conn-1')).orderImport).toBeNull();
   });
 });

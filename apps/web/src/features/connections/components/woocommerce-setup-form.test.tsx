@@ -73,7 +73,8 @@ async function advanceToReview(
   await advanceOneStep(container);
   fillCredentialsStep(container, { key: values.key, secret: values.secret });
   await advanceOneStep(container);
-  await advanceOneStep(container); // capabilities → review
+  await advanceOneStep(container); // capabilities → order history
+  await advanceOneStep(container); // order history → review
 }
 
 describe('WoocommerceSetupForm', () => {
@@ -266,9 +267,8 @@ describe('WoocommerceSetupForm', () => {
       });
     });
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('location-pathname')).toHaveTextContent('/connections');
-    });
+    expect(await screen.findByRole('link', { name: 'Go to connection' })).toBeInTheDocument();
+    expect(screen.getByText('Packing and carriers come next')).toBeInTheDocument();
   });
 
   it('never submits both InventoryMaster and OfferManager together', async () => {

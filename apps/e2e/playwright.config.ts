@@ -238,6 +238,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      name: 'release-center',
+      testMatch: /release-center\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Access-control coverage — independent of golden-path/full-flow. Depends
       // only on `setup` for the admin storageState the UI-reflection spec's
       // admin-session assertions consume; the viewer/guest browser cases build

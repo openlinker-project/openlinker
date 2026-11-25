@@ -33,7 +33,7 @@ import {
   CORE_ENTITY_TYPE,
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
 } from '@openlinker/core/identifier-mapping';
-import { IIdentifierMappingService } from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, isUnmatchedProductId } from '@openlinker/core/identifier-mapping';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
   type AdapterMetadata,
@@ -187,12 +187,18 @@ export class ReturnsService implements IReturnsService {
           const matched = orderLines.find(
             (candidate) => candidate.id === line.resolvedOrderLineId
           );
+          // #4280: a line accepted without a catalogue match carries a synthetic
+          // product id; copying it onto the return line would denormalise a
+          // value that names no product.
+          const matchedProductId = isUnmatchedProductId(matched?.productId)
+            ? undefined
+            : matched?.productId;
           if (
             matched !== undefined &&
-            (matched.productId !== undefined || matched.variantId !== undefined)
+            (matchedProductId !== undefined || matched.variantId !== undefined)
           ) {
             const backfilled = await this.repository.backfillResolvedCatalogIdentity(line.id, {
-              productId: matched.productId,
+              productId: matchedProductId,
               variantId: matched.variantId,
             });
             if (backfilled) {
@@ -221,7 +227,10 @@ export class ReturnsService implements IReturnsService {
       const claimed = await this.repository.claimOrderLineResolution(
         line.id,
         resolution.orderLineId,
-        { productId: resolution.productId, variantId: resolution.variantId }
+        {
+          productId: isUnmatchedProductId(resolution.productId) ? undefined : resolution.productId,
+          variantId: resolution.variantId,
+        }
       );
       if (claimed) {
         summary.resolved += 1;

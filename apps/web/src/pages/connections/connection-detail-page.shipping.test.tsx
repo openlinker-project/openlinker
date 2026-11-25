@@ -142,25 +142,27 @@ describe('ConnectionDetailPage - carrier "Ships for" card', () => {
     const allegroRow = await screen.findByTestId(`ships-for-row-${ALLEGRO_ID}`);
     expect(await within(allegroRow).findByText('InPost Paczkomat')).toBeInTheDocument();
     expect(within(allegroRow).queryByText(/Courier/)).toBeNull();
-    expect(within(allegroRow).getByRole('button', { name: 'Change' })).toBeInTheDocument();
+    // The carrier page only reports; assignment is edited on the sales channel.
+    expect(
+      within(allegroRow).getByRole('link', { name: 'Open on the sales channel' })
+    ).toHaveAttribute('href', `/connections/${ALLEGRO_ID}/mappings?tab=fulfillment`);
 
     const erliRow = screen.getByTestId(`ships-for-row-${ERLI_ID}`);
     expect(
       await within(erliRow).findByText('No delivery method goes to InPost main yet.')
     ).toBeInTheDocument();
-    expect(within(erliRow).getByRole('button', { name: 'Choose' })).toBeInTheDocument();
+    expect(
+      within(erliRow).getByRole('link', { name: 'Open on the sales channel' })
+    ).toBeInTheDocument();
   });
 
-  it('opens the routing editor for the source whose row was clicked', async () => {
-    const user = userEvent.setup();
+  it('links the row to the assignment tab of the source it belongs to', async () => {
     await renderDetail(inpost, apiFor({ connection: inpost }));
 
     const erliRow = await screen.findByTestId(`ships-for-row-${ERLI_ID}`);
-    await user.click(await within(erliRow).findByRole('button', { name: 'Choose' }));
-
     expect(
-      await screen.findByRole('dialog', { name: 'Who ships Erli shop orders' })
-    ).toBeInTheDocument();
+      await within(erliRow).findByRole('link', { name: 'Open on the sales channel' })
+    ).toHaveAttribute('href', `/connections/${ERLI_ID}/mappings?tab=fulfillment`);
   });
 
   it('does not render the card on a connection that is not a carrier', async () => {
@@ -169,7 +171,6 @@ describe('ConnectionDetailPage - carrier "Ships for" card', () => {
   });
 
   it('after the carrier wizard, says what to do next and opens the first source with no route to it', async () => {
-    const user = userEvent.setup();
     const apiClient = apiFor({
       connection: inpost,
       rulesBySource: { [ALLEGRO_ID]: [rule(ALLEGRO_ID, 'm-locker')] },
@@ -183,11 +184,11 @@ describe('ConnectionDetailPage - carrier "Ships for" card', () => {
       )
     ).toBeInTheDocument();
 
-    await user.click(await screen.findByRole('button', { name: 'Choose delivery methods' }));
     // Allegro already routes a method here, so the next decision is Erli's.
-    expect(
-      await screen.findByRole('dialog', { name: 'Who ships Erli shop orders' })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Choose delivery methods' })).toHaveAttribute(
+      'href',
+      `/connections/${ERLI_ID}/mappings?tab=fulfillment`
+    );
   });
 
   it('shows no success notice on an ordinary visit', async () => {
@@ -221,7 +222,7 @@ describe('ConnectionDetailPage - order source "Shipping" card', () => {
       await screen.findByText(
         (_content, el) =>
           el?.classList.contains('source-shipping__coverage') === true &&
-          el.textContent === '2 of 3 delivery methods get an OpenLinker label',
+          el.textContent === '2 of 3 delivery methods get an OpenLinker label'
       )
     ).toBeInTheDocument();
     expect(

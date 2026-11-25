@@ -17,6 +17,8 @@
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { StickyActionBar } from '../../../../shared/ui/sticky-action-bar';
 import { Link } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import { SNAPPY_SPRING } from '../../../../shared/ui/motion-presets';
 import { interpolate, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, CheckboxCell, Input, ProductThumbnail } from '../../../../shared/ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../../shared/ui/tooltip';
@@ -59,6 +61,7 @@ import {
 import type { AttributeProjectionPreview } from '../../hooks/use-attribute-projection-preview';
 import type { BundleOfferPreview, BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
 import { BundleComposition } from './bundle-composition';
+import { packSizeOf, unsettledBundleVariants, type UnsettledBundles } from './bundle-kind';
 import {
   listParameterNames,
   summarizeProjection,
@@ -243,6 +246,7 @@ export function BulkReviewStep({
   onUseBundleCategory,
 }: BulkReviewStepProps): ReactElement {
   const copy = useMessages('listings').bulkReviewStep;
+  const bundleCopy = useMessages('listings').bundleOffer;
   const plural = usePlural();
   const format = useFormat();
   const blockerChips = useMemo<Record<string, ChipDescriptor>>(
@@ -282,9 +286,28 @@ export function BulkReviewStep({
   const [jumpIndex, setJumpIndex] = useState(-1);
   const [pendingScroll, setPendingScroll] = useState<string | null>(null);
 
+  // Bundles whose composition has not been checked yet (or whose check failed)
+  // are not judged as ordinary products - that read gives them blockers that do
+  // not apply and flips the whole table a moment later.
+  const unsettled = useMemo(
+    () =>
+      bundles
+        ? unsettledBundleVariants(
+            rows,
+            new Set(bundles.bundles.keys()),
+            bundles.failedVariantIds,
+            bundles.isLoading,
+          )
+        : unsettledBundleVariants([], new Set(), new Set(), false),
+    [rows, bundles],
+  );
+  // Only a running check holds rows. A check that failed is reported with a
+  // retry but does not lock the batch: ordinary products never needed it.
+  const held = unsettled.pending;
+
   const counts = useMemo(
-    () => countBatch(rows, blockerChips, alreadyListedVariantIds),
-    [rows, blockerChips, alreadyListedVariantIds],
+    () => countBatch(rows, blockerChips, alreadyListedVariantIds, held),
+    [rows, blockerChips, alreadyListedVariantIds, held],
   );
 
   // Per-variant reading of the rule preview (#3995), checked against the
@@ -379,7 +402,8 @@ export function BulkReviewStep({
     batchIssues.length === 0 &&
     !overExpansionCeiling &&
     !overExclusionCap &&
-    !paramsResolving;
+    !paramsResolving &&
+    held.size === 0;
 
   const filteredRows = useMemo(() => {
     const needle = filter.trim().toLowerCase();
@@ -536,6 +560,22 @@ export function BulkReviewStep({
         />
       ) : null}
 
+      {unsettled.pending.size > 0 ? (
+        <div className="cx-note bulk-review__banner" role="status" data-testid="bundle-checking-banner">
+          <p>{bundleCopy.checkingBanner}</p>
+        </div>
+      ) : unsettled.failed.size > 0 ? (
+        <div className="cx-note cx-note--warn bulk-review__banner" role="alert" data-testid="bundle-failed-banner">
+          <p>{bundleCopy.previewFailedBanner}</p>
+          {bundles ? (
+            <span className="cx-note__a">
+              <Button tone="secondary" className="button--sm" onClick={bundles.retry}>
+                {bundleCopy.previewRetry}
+              </Button>
+            </span>
+          ) : null}
+        </div>
+      ) : (
       <div
         className={
           counts.includedNeedsAttention === 0 &&
@@ -612,6 +652,7 @@ export function BulkReviewStep({
           </span>
         ) : null}
       </div>
+      )}
 
       <div className="bulk-review__table bulk-review__table--with-category">
         {/* Header is announced (not aria-hidden) so screen-reader users get the
@@ -649,6 +690,7 @@ export function BulkReviewStep({
             }}
             category={categoryColumn}
             bundle={bundles?.bundles.get(row.variants[0]?.variantId ?? '')}
+            unsettled={unsettled}
             onUseBundleCategory={onUseBundleCategory}
           />
         ))}
@@ -798,6 +840,8 @@ interface ProductRowProps {
   category: CategoryColumn;
   /** Set when this (single-variant) row publishes as a product-set offer (#3520). */
   bundle?: BundleOfferPreviewOk;
+  /** Variants whose bundle composition is still being checked, or could not be (#3520). */
+  unsettled: UnsettledBundles;
   onUseBundleCategory?: (productId: string, categoryId: string) => void;
 }
 
@@ -816,6 +860,7 @@ function ProductRow({
   onZoom,
   category,
   bundle,
+  unsettled,
   onUseBundleCategory,
 }: ProductRowProps): ReactElement {
   const copy = useMessages('listings').bulkReviewStep;
@@ -839,12 +884,13 @@ function ProductRow({
     let off = 0;
     for (const v of row.variants) {
       const r = variantReadiness(v, chips);
+      if (unsettled.pending.has(v.variantId)) continue;
       if (!r.included || alreadyListedVariantIds.has(v.variantId)) off += 1;
       else if (r.ready) ready += 1;
       else attn += 1;
     }
     return { ready, attn, off };
-  }, [row.variants, chips, alreadyListedVariantIds]);
+  }, [row.variants, chips, alreadyListedVariantIds, unsettled]);
 
   const productPrice =
     row.variants[0]?.masterPrice ?? row.masterPrice ?? null;
@@ -920,6 +966,12 @@ function ProductRow({
           {noVariants ? null : (
             <IncludeToggle
               state={parentState}
+              disabledReason={
+                row.variants.length > 0 &&
+                row.variants.every((v) => alreadyListedVariantIds.has(v.variantId))
+                  ? interpolate(copy.alreadyOn, { destination: destinationName })
+                  : undefined
+              }
               ariaLabel={interpolate(copy.row.includeAllVariants, { name: productName })}
               onToggle={() => {
                 onSetProductIncluded(row.productId, parentState !== 'all');
@@ -961,12 +1013,29 @@ function ProductRow({
           <div className="t">
             <b>{row.product?.name ?? copy.row.loading}</b>
             {bundle ? (
-              <span className="cx-tag" data-testid="bundle-row-tag">
-                <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
-                </svg>
-                {plural(bundle.components.length, bundleCopy.marker)}
-              </span>
+              <button
+                type="button"
+                className={`cx-tag bundle-row-tag${
+                  packSizeOf(bundle) !== null ? ' bundle-row-tag--pack' : ''
+                }`}
+                data-testid="bundle-row-tag"
+                title={packSizeOf(bundle) !== null ? bundleCopy.markerHintPack : bundleCopy.markerHintSet}
+                aria-expanded={open}
+                onClick={onToggleExpand}
+              >
+                {packSizeOf(bundle) !== null ? (
+                  <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 7h12v12H7zM4 4h12v3M4 4v12h3" />
+                  </svg>
+                ) : (
+                  <svg className="pm-ico" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+                  </svg>
+                )}
+                {packSizeOf(bundle) !== null
+                  ? interpolate(bundleCopy.packMarker, { n: packSizeOf(bundle) ?? 0 })
+                  : plural(bundle.components.length, bundleCopy.marker)}
+              </button>
             ) : null}
             <small>
               {row.primaryVariant?.sku ?? ''}
@@ -974,7 +1043,7 @@ function ProductRow({
               {noVariants
                 ? copy.row.noVariants
                 : bundle
-                  ? bundleCopy.noOwnEan
+                  ? bundleSubline(bundle, bundleCopy)
                   : plural(row.variants.length, copy.row.variantCount)}
             </small>
           </div>
@@ -1023,6 +1092,7 @@ function ProductRow({
             <Chip descriptor={NEUTRAL_BLOCKER_CHIPS['no-variant']} />
           ) : isSimple ? (
             <VariantChips
+              hold={holdOf(unsettled, row.variants[0].variantId)}
               variant={row.variants[0]}
               chips={chips}
               label={distinguishingLabel(row.variants[0], 0)}
@@ -1072,12 +1142,21 @@ function ProductRow({
         </div>
       </div>
 
+      <AnimatePresence initial={false}>
       {bundle && open ? (
-        <div className="bundle-comp-panel" data-testid="bundle-panel">
+        <motion.div
+          className="bundle-comp-panel"
+          data-testid="bundle-panel"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0, transition: { duration: 0.12 } }}
+          transition={SNAPPY_SPRING}
+        >
           <BundleComposition
             preview={bundle}
             connectionId={config.connectionId}
             heading={interpolate(bundleCopy.compositionHeading, { destination: destinationName })}
+            destinationName={destinationName}
             showEanNote
             chosenCategoryId={submitCategoryIdOf(row, row.variants[0])}
             onUseSuggestedCategory={
@@ -1088,8 +1167,9 @@ function ProductRow({
                 : undefined
             }
           />
-        </div>
+        </motion.div>
       ) : null}
+      </AnimatePresence>
 
       {isMulti && open ? (
         <div className="bulk-review__vrows">
@@ -1104,6 +1184,7 @@ function ProductRow({
               alreadyListed={alreadyListedVariantIds.has(variant.variantId)}
               destinationName={destinationName}
               projection={projectionSummaries.get(variant.variantId) ?? null}
+              hold={holdOf(unsettled, variant.variantId)}
               onSetVariantIncluded={onSetVariantIncluded}
               onEdit={(focusField) => {
                 onEdit(variant.variantId, focusField);
@@ -1122,11 +1203,21 @@ function IncludeToggle({
   state,
   ariaLabel,
   onToggle,
+  disabledReason,
 }: {
   state: 'all' | 'some' | 'none';
   ariaLabel: string;
   onToggle: () => void;
+  /** When set the switch is off and locked, and this explains why. */
+  disabledReason?: string;
 }): ReactElement {
+  if (disabledReason) {
+    return (
+      <label className="ol-toggle" title={disabledReason}>
+        <input type="checkbox" checked={false} disabled aria-label={`${ariaLabel} - ${disabledReason}`} readOnly />
+      </label>
+    );
+  }
   if (state === 'some') {
     return <CheckboxCell state={state} ariaLabel={ariaLabel} onToggle={onToggle} />;
   }
@@ -1140,15 +1231,49 @@ function IncludeToggle({
 /** What a bundle lists at: the whole sets it can make, and what limits that (#3520). */
 function BundleStock({ preview }: { preview: BundleOfferPreviewOk }): ReactElement {
   const copy = useMessages('listings').bundleOffer;
+  const plural = usePlural();
   const limiting = preview.components.find(
     (component) => component.variantId === preview.limitingComponentVariantId,
   );
+  if (preview.availableSets === null) {
+    return (
+      <span className="bundle-stock bundle-stock--unknown" title={copy.setsUnknownHint}>
+        <span>{copy.setsUnknown}</span>
+      </span>
+    );
+  }
+  const setsLabel = plural(preview.availableSets, copy.sets);
+  const limitLabel = limiting
+    ? interpolate(copy.limitedByUnits, {
+        name: limiting.name,
+        units: limiting.availableUnits ?? 0,
+      })
+    : null;
   return (
-    <span className="bundle-stock">
-      <span>{preview.availableSets ?? '-'}</span>
-      {limiting ? <small title={limiting.name}>{interpolate(copy.limitedBy, { name: limiting.name })}</small> : null}
+    <span
+      className={`bundle-stock${preview.availableSets === 0 ? ' bundle-stock--zero' : ''}`}
+      title={limitLabel ? `${setsLabel}. ${copy.setsExplain} ${limitLabel}` : copy.setsExplain}
+      aria-label={limitLabel ? `${setsLabel}, ${limitLabel}` : setsLabel}
+    >
+      <span>{setsLabel}</span>
+      {limitLabel ? <small>{limitLabel}</small> : null}
     </span>
   );
+}
+
+/** What a collapsed bundle row says about its contents, without opening it. */
+function bundleSubline(
+  bundle: BundleOfferPreviewOk,
+  copy: ReturnType<typeof useMessages<'listings'>>['bundleOffer'],
+): string {
+  const packSize = packSizeOf(bundle);
+  if (packSize !== null) return interpolate(copy.sublinePack, { n: packSize });
+  const names = bundle.components.map((component) => component.name);
+  const shown = names.slice(0, 2).join(', ');
+  const rest = names.length - 2;
+  return interpolate(copy.sublineSet, {
+    names: rest > 0 ? `${shown}, +${rest}` : shown,
+  });
 }
 
 interface VariantRowProps {
@@ -1160,6 +1285,7 @@ interface VariantRowProps {
   alreadyListed: boolean;
   destinationName: string;
   projection: ProjectionSummary | null;
+  hold?: 'pending';
   onSetVariantIncluded: (productId: string, variantId: string, included: boolean) => void;
   onEdit: (focusField?: OfferBlockerField) => void;
   category: CategoryColumn;
@@ -1174,6 +1300,7 @@ function VariantRow({
   alreadyListed,
   destinationName,
   projection,
+  hold,
   onSetVariantIncluded,
   onEdit,
   category,
@@ -1232,6 +1359,7 @@ function VariantRow({
       <div className="bulk-review__c-stock tabular">{stock.value ?? '-'}</div>
       <div className="bulk-review__c-status bulk-review__chips">
         <VariantChips
+          hold={hold}
           variant={variant}
           chips={chips}
           onFix={onEdit}
@@ -1269,7 +1397,10 @@ function VariantChips({
   projection,
   copyContext,
   customFix,
+  hold,
 }: {
+  /** Bundle composition unknown: show a neutral state instead of judging the row. */
+  hold?: 'pending';
   /** In-place fix for a blocker that needs no editor; `undefined` falls back to opening the editor. */
   customFix?: (blocker: string) => (() => void) | undefined;
   variant: BulkVariantRow;
@@ -1297,6 +1428,7 @@ function VariantChips({
       </>
     );
   }
+  if (hold) return <HoldChip />;
   const rulesChips = <ProjectionChips projection={projection} destinationName={destinationName} onFix={onFix} />;
   // The card-vs-mapping disagreement is shown on the category it is about, in
   // the Category column (#3994) - repeating it here as a status chip would say
@@ -1512,10 +1644,28 @@ interface BatchCounts {
   excluded: number;
 }
 
+function holdOf(unsettled: UnsettledBundles, variantId: string): 'pending' | undefined {
+  return unsettled.pending.has(variantId) ? 'pending' : undefined;
+}
+
+function HoldChip(): ReactElement {
+  const copy = useMessages('listings').bundleOffer;
+  return (
+    <span
+      className="bulk-chip bulk-chip--neutral bundle-checking"
+      data-testid="bundle-checking-chip"
+      role="status"
+    >
+      {copy.checking}
+    </span>
+  );
+}
+
 function countBatch(
   rows: BulkWizardRow[],
   chips: Record<string, ChipDescriptor> = {},
   alreadyListed: ReadonlySet<string> = new Set(),
+  held: ReadonlySet<string> = new Set(),
 ): BatchCounts {
   let includedReady = 0;
   let includedNeedsAttention = 0;
@@ -1528,6 +1678,8 @@ function countBatch(
         excluded += 1;
         continue;
       }
+      // Bundle composition not known yet: neither ready nor flagged.
+      if (held.has(v.variantId)) continue;
       if (gatingBlockers(v.blockers, chips).length === 0) includedReady += 1;
       else includedNeedsAttention += 1;
     }
