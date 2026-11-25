@@ -191,4 +191,31 @@ describe('AmazonAccessTokenProvider grantless (#4179)', () => {
     await new AmazonAccessTokenProvider(CREDENTIALS, fetchImpl, undefined, () => 0, memo).getAccessToken();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
+  describe('invalidate', () => {
+    it('should drop a refused token so the next call mints a fresh one', async () => {
+      const cache = memoryCache();
+      const fetchImpl = jest
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, { access_token: 'first', expires_in: 3600 }))
+        .mockResolvedValueOnce(jsonResponse(200, { access_token: 'second', expires_in: 3600 }));
+      const provider = new AmazonAccessTokenProvider(CREDENTIALS, fetchImpl, cache, () => 0, new Map());
+
+      const refused = await provider.getAccessToken();
+      await provider.invalidate(refused);
+
+      expect(cache.store.size).toBe(0);
+      await expect(provider.getAccessToken()).resolves.toBe('second');
+    });
+
+    it('should leave a newer token alone when the refusal was about an older one', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue(jsonResponse(200, { access_token: 'current', expires_in: 3600 }));
+      const provider = new AmazonAccessTokenProvider(CREDENTIALS, fetchImpl, undefined, () => 0, new Map());
+
+      await provider.getAccessToken();
+      await provider.invalidate('an-older-token');
+
+      await expect(provider.getAccessToken()).resolves.toBe('current');
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    });
+  });
 });

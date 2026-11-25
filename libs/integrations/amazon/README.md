@@ -37,6 +37,15 @@ Evidence base: `docs/plans/analysis/SPIKE-2881-amazon-sp-api.md` and the product
   account, so a connection there names exactly one marketplace. A marketplace added later is read
   from the last 7 days: the order feed moves its watermark back for it.
 
+## Where order sync starts
+
+The connection wizard asks where order sync starts: only new orders (`now`, the feed starts two
+minutes behind the clock), from a date (`from`, the feed starts at 00:00 UTC of that day; it reads by
+last update, so an order created earlier but updated since also comes in), or every order the Orders
+API still serves (`all`, about two years). The date window import (newest first, or a manual date
+range) reads `searchOrders` by creation time in 30-day slices and never touches the feed cursor. Amazon
+allows one search per few minutes, so a long window is slow by design.
+
 ## Credentials
 
 ```json

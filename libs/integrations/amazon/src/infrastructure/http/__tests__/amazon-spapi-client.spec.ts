@@ -67,6 +67,59 @@ describe('AmazonSpApiClient', () => {
   });
 });
 
+describe('AmazonSpApiClient 401 handling', () => {
+  function rotatingTokens(): { source: { getAccessToken: jest.Mock; invalidate: jest.Mock }; minted: string[] } {
+    const minted = ['Atza|old', 'Atza|new'];
+    let index = 0;
+    const source = {
+      getAccessToken: jest.fn().mockImplementation(() => Promise.resolve(minted[Math.min(index, minted.length - 1)])),
+      invalidate: jest.fn().mockImplementation(() => {
+        index += 1;
+        return Promise.resolve();
+      }),
+    };
+    return { source, minted };
+  }
+
+  it('should invalidate the refused token and retry once with a fresh one', async () => {
+    const { source } = rotatingTokens();
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(response(401, '{"errors":[{"code":"Unauthorized","message":"expired"}]}'))
+      .mockResolvedValueOnce(response(200, '{"ok":true}'));
+    const client = new AmazonSpApiClient('h', source, fetchImpl);
+
+    const result = await client.put('/x', { a: 1 });
+
+    expect(result.data).toEqual({ ok: true });
+    expect(source.invalidate).toHaveBeenCalledWith('Atza|old');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect((fetchImpl.mock.calls[1] as [string, RequestInit])[1].headers).toMatchObject({
+      'x-amz-access-token': 'Atza|new',
+    });
+  });
+
+  it('should surface a second 401 instead of looping', async () => {
+    const { source } = rotatingTokens();
+    const fetchImpl = jest
+      .fn()
+      .mockImplementation(() => Promise.resolve(response(401, '{"errors":[{"code":"Unauthorized","message":"no"}]}')));
+    const client = new AmazonSpApiClient('h', source, fetchImpl);
+
+    await expect(client.get('/x')).rejects.toMatchObject({ statusCode: 401 });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(source.invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not retry when the token source cannot forget a token', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(response(401, '{"errors":[{"code":"Unauthorized"}]}'));
+    const client = new AmazonSpApiClient('h', tokens, fetchImpl);
+
+    await expect(client.get('/x')).rejects.toBeInstanceOf(AmazonApiError);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('buildAmazonUrl', () => {
   it('should comma-join list parameters and drop undefined ones', () => {
     expect(

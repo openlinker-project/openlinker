@@ -6,7 +6,13 @@
  * Amazon's error code and request id. Constructed per resolution, never a DI
  * singleton, because it closes over one connection's token source and host.
  *
- * Deliberately has no retries, like `ShoperHttpClient`: a failed call surfaces
+ * One exception to "no retries": a 401 means the access token was revoked or
+ * rotated before its stated expiry. The client asks the token source to forget
+ * it and sends the request once more with a fresh token. Amazon refused the
+ * request before acting on it, so the repeat cannot double a write, and a second
+ * 401 is surfaced as it is (the credentials themselves are then the problem).
+ *
+ * Otherwise deliberately has no retries, like `ShoperHttpClient`: a failed call surfaces
  * to the job, whose runner owns the retry ladder and defers a 429 / 503
  * penalty-free through the retry classifier. Back-off never reads
  * `x-amzn-RateLimit-Limit`: Amazon sends it only "when available" and warns
@@ -76,6 +82,7 @@ export class AmazonSpApiClient {
     path: string,
     query?: AmazonQuery,
     body?: unknown,
+    refreshedAfter401 = false,
   ): Promise<AmazonSpApiResponse<T>> {
     const token = await this.tokens.getAccessToken();
     const controller = new AbortController();
@@ -118,6 +125,10 @@ export class AmazonSpApiClient {
     }
 
     const requestId = response.headers.get('x-amzn-requestid') ?? undefined;
+    if (response.status === 401 && !refreshedAfter401 && this.tokens.invalidate !== undefined) {
+      await this.tokens.invalidate(token);
+      return this.request<T>(method, path, query, body, true);
+    }
     if (response.status < 200 || response.status >= 300) {
       const first = parseAmazonJson<AmazonSpApiErrorBody>(text)?.errors?.[0];
       throw new AmazonApiError(response.status, first?.code, first?.message, requestId);

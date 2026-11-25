@@ -75,9 +75,9 @@ export const apiPlugins: PluginEntry[] = [
   // CategoryProvisioner, OrderProcessorManager and OrderSource, plus signed
   // webhooks and one request budget shared by every connection to a shop.
   ShoperIntegrationModule,
-  // #3741: Amazon SP-API - plugin foundation (connection, LWA credentials,
-  // tester, classifiers). No capability yet; OrderSource and OfferManager land
-  // with their own children of the epic.
+  // #3741: Amazon SP-API - connection, LWA credentials, tester and classifiers,
+  // plus OrderSource, OfferManager, ProductMaster, InventoryMaster, returns
+  // and refunds (catalogue, stock, orders, offers).
   AmazonIntegrationModule,
   // #3974: Shopify - connection, token (client credentials, pre-issued token or
   // OAuth install), tester and classifiers, plus ProductMaster, InventoryMaster,
