@@ -131,7 +131,12 @@ describe('BuyerDataPage (#4289)', () => {
         'data-state',
         'active'
       );
-      await waitFor(() => expect(screen.getByTestId('search').textContent).toBe(''));
+      // The URL is corrected only once the connections list has loaded (that is what
+      // proves the id stale), which comes after the tab already shows Defaults. The
+      // default 1 s wait was too tight on a loaded CI runner.
+      await waitFor(() => expect(screen.getByTestId('search').textContent).toBe(''), {
+        timeout: 5000,
+      });
     });
 
     it('should restore the previous scope on browser back', async () => {
