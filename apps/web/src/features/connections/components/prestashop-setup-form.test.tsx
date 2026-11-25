@@ -123,9 +123,8 @@ describe('PrestashopSetupForm', () => {
     fireEvent.click(within(view.container).getByRole('button', { name: 'Create connection' }));
 
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('location-pathname')).toHaveTextContent('/connections');
-    });
+    expect(await screen.findByRole('link', { name: 'Go to connection' })).toBeInTheDocument();
+    expect(screen.getByText('Packing and carriers come next')).toBeInTheDocument();
     expect(create).toHaveBeenCalledWith({
       name: 'Main store',
       platformType: 'prestashop',

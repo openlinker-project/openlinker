@@ -60,6 +60,8 @@
   "saving": "Saving...",
   "screenHint": "The fields and the preview follow the chosen screen.",
   "tile": "Headline, form text, sign-in help and requests for access.",
+  "tileCustomised": "Customised",
+  "tileDefault": "Default text",
   "title": "Login page",
   "tooLong": "Use at most {max} characters.",
   "unsaved": "You have unsaved changes.",

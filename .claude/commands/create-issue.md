@@ -43,6 +43,17 @@ Pick the correct label(s):
 - `security` — security-relevant change
 - `dx` — developer experience
 
+### Step 3b — Operator communication
+
+Decide now, not at review time, whether the change needs to tell operators something. Ask only when the issue changes what an operator sees or must do (a new setting, screen, connection behaviour or failure mode); skip it for pure backend, refactor and DX work and write `Not needed` in the section.
+
+- **Release step**: an operator must make a decision after updating (see the `/work` release-step question).
+- **Message notification**: the feature raises a condition worth a bell entry (an expiring token, a failed import, a stuck job). Name the dedupe key, severity, the real route the action opens, and the plain-language title and body.
+- **Action rule**: a user action should create a notification (`registerNotificationRule`), named by the mutation it watches.
+- **Guide**: a screen or flow is new enough to deserve a tour of 1 to 3 stops. Name the route and the `data-tour` target of each stop, and whether it belongs to a release (`introducedIn`) or stands alone.
+
+If the answer is unclear, put the question under Assumptions instead of guessing.
+
 ### Step 4 — Write the issue
 
 Use the format below. Be specific. Reference actual file paths. Do not repeat architecture docs — reference them.
@@ -66,6 +77,10 @@ Use the format below. Be specific. Reference actual file paths. Do not repeat ar
 **Layer**: [Domain / Application / Infrastructure / Interface / Shared]
 **File(s)**: [key paths]
 
+## Operator communication
+
+[Not needed, or: the release step, message notification (dedupe key, severity, action route, title and body), action rule, or guide (route and `data-tour` target per stop) this work adds. Copy is plain language for the operator, Polish and English.]
+
 ## Dependencies
 
 - [List any issues or work that must be completed first, or none]
@@ -78,6 +93,7 @@ Use the format below. Be specific. Reference actual file paths. Do not repeat ar
 
 - [ ] [Specific, testable criterion]
 - [ ] [Specific, testable criterion]
+- [ ] Notification or guide from Operator communication exists, and `pnpm check:release-center-catalog` passes (omit when Not needed)
 - [ ] Tests added or updated for non-trivial logic
 - [ ] No architecture boundary violations (CORE ↔ Integration)
 ```

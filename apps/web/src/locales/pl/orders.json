@@ -532,7 +532,7 @@
       "awaitingLabel": "Czeka na etykietę",
       "noMethod": "Brak metody dostawy",
       "resolved": "Z etykietą",
-      "shopFulfilled": "Poza OpenLinker"
+      "shopFulfilled": "Poza OpenLinkerem"
     },
     "rider": {
       "disabled": "Przewoźnik wyłączony",
@@ -739,9 +739,9 @@
       "description": "Gabaryt skrytki - wymagany dla przesyłki do automatu paczkowego.",
       "label": "Gabaryt skrytki",
       "options": {
-        "large": "duża",
-        "medium": "średnia",
-        "small": "mała"
+        "large": "Duża",
+        "medium": "Średnia",
+        "small": "Mała"
       }
     },
     "missing": {
@@ -834,7 +834,7 @@
         "label": "Pakowanie"
       },
       "to-pack": {
-        "hint": "Czeka na spakowanie w OpenLinker",
+        "hint": "Czeka na spakowanie w OpenLinkerze",
         "label": "Do spakowania"
       }
     }
@@ -1635,7 +1635,7 @@
       "one": "{n} pozycja",
       "other": "{n} pozycji"
     },
-    "moreItems": "+{count} więcej",
+    "moreItems": "jeszcze {count}",
     "noDestination": "brak kanału docelowego",
     "payment": {
       "awaiting": "Czeka na płatność",
@@ -2436,7 +2436,7 @@
       "refunded": "Zwrócono"
     },
     "taxRateConflict": {
-      "hint": "Faktura użyła stawki ze sklepu; kanał podał inną.",
+      "hint": "Faktura ma stawkę ze sklepu, a kanał podał inną.",
       "label": "Konflikt stawki"
     },
     "unlinkedLines": {
@@ -2644,7 +2644,7 @@
     "removeTag": "Usuń tag {name}"
   },
   "orderTagsSettingsTile": {
-    "description": "Zmieniaj kolory, nazwy i usuwaj tagi zamówień w obszarze roboczym. Do {limit}, tworzone z wyboru tagów w dowolnym zamówieniu.",
+    "description": "Zmieniaj kolory i nazwy tagów zamówień albo je usuwaj. Możesz mieć do {limit} tagów. Nowe tworzysz w wyborze tagów w zamówieniu.",
     "eyebrow": "Zamówienia",
     "manageTags": "Zarządzaj tagami",
     "title": "Tagi zamówień"
@@ -3130,6 +3130,18 @@
       "whyThisKind": "Dlaczego ten rodzaj?"
     }
   },
+  "savedViews": {
+    "channelDestination": "Cel",
+    "channelSource": "Źródło",
+    "customerCity": "Miasto",
+    "customerName": "Imię i nazwisko",
+    "customerNote": "Uwaga kupującego",
+    "document": "Dokument",
+    "orderFields": "Numer, pozycja, kanał, ponów",
+    "shipmentCarrier": "Przewoźnik",
+    "shipmentState": "Status i termin wysyłki",
+    "statusFields": "Stan, znaczniki, powód"
+  },
   "sendDocumentEmail": {
     "language": "Język e-maila",
     "lastSentVia": "{when} · {via}",
@@ -3180,7 +3192,7 @@
       "cancel": "Anuluj",
       "confirm": "Oznacz jako nadane",
       "confirming": "Powiadamianie…",
-      "description": "Wysyła powiadomienie do marketplace źródłowego i aktualizuje stan realizacji w kanale docelowym. Używaj tylko wtedy, gdy automatyczne nadanie się zatrzymało - zwykle dzieje się to automatycznie dzięki synchronizacji statusu przewoźnika.",
+      "description": "Informuje marketplace, że paczka została wysłana, i aktualizuje stan realizacji. Użyj po oddaniu paczki przewoźnikowi albo gdy automatyczna aktualizacja utknęła.",
       "title": "Ręcznie oznaczyć jako nadane?"
     }
   },

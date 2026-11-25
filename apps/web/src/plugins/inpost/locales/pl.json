@@ -66,10 +66,24 @@
       "sandbox": "Sandbox",
       "unset": "- nie ustawiono -"
     },
+    "notifyMarketplace": {
+      "hintLabel": "Jak działa informowanie marketplace",
+      "infoOffTerm": "Wyłączone (domyślnie):",
+      "infoOffText": "Dostaje po kliknięciu „Oznacz jako nadane”.",
+      "infoOnTerm": "Włączone:",
+      "infoOnText": "Dostaje krótko po kupnie etykiety, numer przesyłki dochodzi później. Nie da się cofnąć.",
+      "infoSummary": "Etykietę często kupuje się na kilka godzin przed odbiorem paczki przez kuriera.",
+      "infoTitle": "Kiedy marketplace dostaje „wysłano”",
+      "infoWhyText": "Domyślnie wyłączone.",
+      "label": "Informuj marketplace o wysyłce zaraz po kupnie etykiety",
+      "scope": "Dotyczy etykiet, które OpenLinker kupuje na koncie InPost „{account}”, dla zamówień z każdego kanału sprzedaży. Nie dotyczy zamówień, które marketplace wysyła sam.",
+      "title": "Powiadomienie marketplace o wysyłce"
+    },
     "organizationId": {
       "description": "ID organizacji ShipX - parametr ścieżki URL w każdym punkcie końcowym przesyłek.",
       "label": "ID organizacji"
     },
+    "sectionTitle": "Ustawienia InPost",
     "sender": {
       "buildingNumber": {
         "label": "Numer budynku"

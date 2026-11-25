@@ -28,10 +28,12 @@ import type { ReactElement } from 'react';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
+import { IconWithOnHoverPopoverTooltip, InfoIcon, PopoverCard } from '../../../shared/ui';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
 import { useInpostMessages } from '../messages';
 
 export function InpostStructuredSection({
+  connection,
   form,
   configIsParseable,
   syncStructuredToJson,
@@ -45,6 +47,9 @@ export function InpostStructuredSection({
   function onSenderAddressChange(): void {
     syncInpostSenderAddressToJson?.();
   }
+
+  const notifyCopy = copy.notifyMarketplace;
+  const notifyOnPurchase = form.watch('inpostNotifyOnLabelPurchase') === 'true';
 
   return (
     <>
@@ -251,6 +256,53 @@ export function InpostStructuredSection({
           invalid={Boolean(form.formState.errors.inpostSenderAddress?.address?.countryCode)}
         />
       </FormField>
+
+      <fieldset className="setting-card" disabled={!configIsParseable} data-tour="notify-setting">
+        <legend className="setting-card__legend">{notifyCopy.title}</legend>
+        <div className="setup-lane__toggle setup-lane__toggle--inline">
+          <label className="setup-lane__toggle-label" htmlFor="inpost-notify-on-label-purchase">
+            <input
+              id="inpost-notify-on-label-purchase"
+              type="checkbox"
+              aria-describedby="inpost-notify-on-label-purchase-scope"
+              checked={notifyOnPurchase}
+              onChange={(event) =>
+                syncStructuredToJson(
+                  'inpostNotifyOnLabelPurchase',
+                  event.target.checked ? 'true' : 'false',
+                )
+              }
+            />
+            <span>{notifyCopy.label}</span>
+          </label>
+          <IconWithOnHoverPopoverTooltip
+            icon={<InfoIcon />}
+            tone="neutral"
+            label={notifyCopy.hintLabel}
+            width={320}
+            placement="up"
+          >
+            <PopoverCard
+              tone="neutral"
+              icon={<InfoIcon />}
+              title={notifyCopy.infoTitle}
+              summary={notifyCopy.infoSummary}
+              items={[
+                <>
+                  <strong>{notifyCopy.infoOffTerm}</strong> {notifyCopy.infoOffText}
+                </>,
+                <>
+                  <strong>{notifyCopy.infoOnTerm}</strong> {notifyCopy.infoOnText}
+                </>,
+              ]}
+              footer={notifyCopy.infoWhyText}
+            />
+          </IconWithOnHoverPopoverTooltip>
+        </div>
+        <p className="form-field__description" id="inpost-notify-on-label-purchase-scope">
+          {notifyCopy.scope.replace('{account}', connection.name)}
+        </p>
+      </fieldset>
     </>
   );
 }

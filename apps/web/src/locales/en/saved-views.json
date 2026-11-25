@@ -1,0 +1,142 @@
+{
+  "columnsPanel": {
+    "always": "Always",
+    "announceColumn": "{name} moved to position {to} of {total}.",
+    "announcePart": "{name} is now line {to} of {total} in {column}.",
+    "columns": "Columns",
+    "description": "Choose which columns the list shows, their order and how it is sorted.",
+    "done": "Done",
+    "fieldsDisclosure": "Fields",
+    "fieldsGroup": "Fields in {name}",
+    "fieldsHint": "Shown top to bottom in each cell",
+    "fieldsOf": "Fields of {name}",
+    "gripLabel": "Move {name}. Drag, or use Arrow Up and Arrow Down.",
+    "hidden": "Hidden",
+    "minOneField": "A column keeps at least one field. Untick the column itself to hide it.",
+    "moveDown": "Move {name} down",
+    "moveUp": "Move {name} up",
+    "noCustomViews": "Saved for you on this list. This list has no custom views.",
+    "restoreDefaults": "Restore defaults",
+    "sort": "Sort",
+    "sortHint": "You can also click a field in a column header.",
+    "sortableTitle": "Sortable from the column header",
+    "title": "Columns & sort",
+    "trigger": "Columns & sort"
+  },
+  "deleteDialog": {
+    "body": "Records are not affected. Only the saved filters and columns are removed.",
+    "confirm": "Delete view",
+    "sharedWarning": "It disappears for everyone.",
+    "title": "Delete “{name}”?",
+    "unsavedWarning": "Your unsaved changes will be lost too."
+  },
+  "edited": {
+    "changes": {
+      "columns": "Columns",
+      "fields": "Fields",
+      "filters": "Filters",
+      "sort": "Sort"
+    },
+    "group": "Unsaved view changes",
+    "reset": "Reset",
+    "saveAsMine": "Save as my view…",
+    "saveAsNew": "Save as new…",
+    "saveAsView": "Save as view…",
+    "saveChanges": "Save changes",
+    "status": "View {name} has unsaved changes: {changes}.",
+    "tag": "Edited · {changes}"
+  },
+  "errors": {
+    "conflict": "Someone else changed “{name}” while you were editing. Reload the views and apply your change again.",
+    "conflictAction": "Reload",
+    "generic": "The view could not be saved. Try again."
+  },
+  "repair": {
+    "body": "Missing items are skipped until you fix it.",
+    "dismiss": "Dismiss",
+    "fix": "Remove missing items and save",
+    "issues": {
+      "invalidFilterValue": "Filter “{name}” no longer accepts “{value}”, so this view ignores it.",
+      "unknownColumn": "Column “{name}” no longer exists.",
+      "unknownFilter": "Filter “{name}” no longer exists, so this view ignores it.",
+      "unknownPart": "A field of “{column}” no longer exists.",
+      "unknownSort": "Sort field no longer exists, using “{fallback}”."
+    },
+    "saveAsMine": "Save as my view…",
+    "title": "This view needs repair."
+  },
+  "saveDialog": {
+    "cancel": "Cancel",
+    "createDescription": "Saves the current filters, sort and columns under a name.",
+    "createTitle": "Save as new view",
+    "defaultCheck": "Open {page} in this view by default",
+    "errors": {
+      "required": "Enter a name for this view.",
+      "taken": "A view with this name already exists."
+    },
+    "everyone": "Everyone",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g. Allegro, ready to pack",
+    "onlyMe": "Only me",
+    "renameDescription": "Changes the name of this view. Its filters and columns stay as they are.",
+    "renameTitle": "Rename view",
+    "saveName": "Save name",
+    "saveView": "Save view",
+    "scopeAdminsOnly": "Admins only",
+    "scopeHint": {
+      "personal": "Visible only on your account.",
+      "shared": "Everyone sees it. Only admins can edit or delete it.",
+      "viewer": "Shared views are created by admins. You can duplicate them to your own."
+    },
+    "scopeLabel": "Who can see it",
+    "summary": {
+      "columns": {
+        "one": "{n} column",
+        "other": "{n} columns"
+      },
+      "label": "What is saved",
+      "sort": "Sort: {label}"
+    }
+  },
+  "sortField": {
+    "ascending": "{label}, sorted ascending",
+    "descending": "{label}, sorted descending",
+    "sortable": "{label}, sort"
+  },
+  "toasts": {
+    "copied": "Copied to your views.",
+    "copiedWithChanges": "Copied with your current changes.",
+    "defaultSet": "{page} will open in “{name}”.",
+    "deleted": "Deleted “{name}”.",
+    "deletedDefault": "{page} now opens in {fallback}.",
+    "discarded": "Discarded your changes to “{name}”.",
+    "lockedPin": "This view always stays in the strip.",
+    "pinFull": "The strip holds {max} views. Unpin one first.",
+    "renamed": "Renamed to “{name}”.",
+    "replacedPin": "It replaced “{name}” in the strip.",
+    "savedChanges": "Saved changes to “{name}”.",
+    "savedView": "Saved view “{name}”.",
+    "savedViewShared": "Saved view “{name}” for everyone.",
+    "undo": "Undo"
+  },
+  "viewsBar": {
+    "actionsFor": "Actions for {name}",
+    "builtIn": "Built-in",
+    "copyWord": "copy",
+    "defaultBadge": "Default",
+    "defaultForMe": "Default for me ✓",
+    "delete": "Delete",
+    "duplicate": "Duplicate to mine",
+    "group": "Views",
+    "mine": "Mine",
+    "none": "None yet.",
+    "openByDefault": "Open by default",
+    "pin": "Pin to strip",
+    "rename": "Rename",
+    "saveNew": "Save current filters as new view…",
+    "shared": "Shared",
+    "tab": "{name}, {count}",
+    "unpin": "Unpin from strip",
+    "viewsButton": "Views"
+  }
+}

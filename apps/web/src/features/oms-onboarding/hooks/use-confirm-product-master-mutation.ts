@@ -36,10 +36,10 @@ import {
   STOCK_LOCATION_OVERRIDE_KEY,
   withConfigKey,
 } from '../lib/config-merge';
-import { omsOnboardingCopy } from '../lib/oms-onboarding.copy';
 import { MAIN_LOCATION_CODE } from '../lib/oms-onboarding.constants';
 import { OmsSetupError } from '../lib/oms-setup-error';
 import { PACKING_EXECUTOR_CAPABILITY } from '../lib/onboarding-state';
+import { useOmsOnboardingCopy } from './use-oms-onboarding-copy';
 
 export interface ConfirmProductMasterInput {
   readonly packingConnection: Connection | null;
@@ -66,6 +66,7 @@ export function useConfirmProductMasterMutation(): UseMutationResult<
 > {
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
+  const omsOnboardingCopy = useOmsOnboardingCopy();
 
   async function ensurePackingConnection(input: ConfirmProductMasterInput): Promise<string> {
     try {

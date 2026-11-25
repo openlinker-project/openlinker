@@ -22,6 +22,7 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Order line | Pozycja zamówienia | |
 | Listing / offer | Oferta | marketplace listing |
 | Product | Produkt | |
+| Product master | Główny sklep | the connection that owns the product catalogue; use this form everywhere (`oms-onboarding`, `oms-core`, `returns`). `connections.json` capability copy still says "katalog produktów" for the catalogue itself |
 | Variant | Wariant | |
 | Batch | Partia | a bulk offer-creation run; "ponów partię", never "batch" in Polish copy |
 | Customer | Klient | |

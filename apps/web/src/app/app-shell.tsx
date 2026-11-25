@@ -21,10 +21,11 @@ import {
   useState,
   type PropsWithChildren,
   type ReactElement,
+  type ReactNode,
 } from 'react';
 import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
-import { interpolate, useMessages, useNumberFormat, usePlural } from '../shared/i18n';
+import { interpolate, useMessages, useNumberFormat } from '../shared/i18n';
 import { resolveCrumbFromMatches } from './breadcrumbs';
 import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registry';
 import { useOmsRoutingState } from '../features/fulfillment-authority';
@@ -43,11 +44,13 @@ import {
 } from '../shared/ui/dropdown-menu';
 import { ThemePicker } from '../features/appearance';
 import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
+import { FontSizeToggle, useFontSize } from '../shared/ui/font-size-toggle';
 import { useToast } from '../shared/ui/toast-provider';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
 import { CommandPaletteTrigger } from '../shared/ui/command-palette';
 import { DemoBanner } from '../shared/ui/demo-banner';
 import { useSystemConfigQuery } from '../features/system';
+import { ReleaseBell } from '../features/release-center';
 import { captureDemoEvent, initDemoIntegrations } from '../features/demo';
 
 interface SidebarNavProps {
@@ -274,6 +277,10 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
           <div className="shell-user-chip__menu-section-label">{copy.density}</div>
           <DensityToggle />
         </div>
+        <div className="shell-user-chip__menu-section">
+          <div className="shell-user-chip__menu-section-label">{copy.fontSize}</div>
+          <FontSizeToggle />
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
       </DropdownMenuAnimatedContent>
@@ -299,6 +306,11 @@ export interface ShellTopbarProps {
    * context.
    */
   readonly showSearch?: boolean;
+  /**
+   * The notification bell. Only `AppShell` passes one: the pack bench shares
+   * this bar and must not reach the release center (a packer has no access).
+   */
+  readonly alerts?: ReactNode;
   readonly onLogout: () => void;
 }
 
@@ -312,13 +324,13 @@ export function ShellTopbar({
   onOpenMenu,
   showBrand = false,
   showSearch = true,
+  alerts = null,
   onLogout,
 }: ShellTopbarProps): ReactElement {
   const { session } = useSession();
   const username = session.user?.username;
   const email = session.user?.email ?? null;
   const copy = useMessages('app');
-  const plural = usePlural();
   const crumbs = resolveCrumbFromMatches(useMatches(), copy);
 
   return (
@@ -354,10 +366,7 @@ export function ShellTopbar({
 
       <div className="shell-topbar__spacer" />
 
-      <Button tone="ghost" className="shell-topbar__alerts">
-        {copy.shell.alerts} <span aria-hidden="true">0</span>
-        <span className="sr-only">{plural(0, copy.shell.alertsNew)}</span>
-      </Button>
+      {alerts}
 
       {username ? <UserChip username={username} email={email} onLogout={onLogout} /> : null}
     </header>
@@ -382,6 +391,9 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // users who selected compact). useDensity is a no-op hook for the
   // shell itself — we only call it to drive its useEffect.
   useDensity();
+  // Same boot-time reasoning: apply the saved text size before first paint of
+  // the tables, not when the user menu is first opened.
+  useFontSize();
   const username = session.user?.username;
   const counts = useNavCounts();
   // The session's own role string, and the ONLY place this file reads it.
@@ -502,7 +514,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
         </dialog>
 
         <div className="shell-main">
-          <ShellTopbar onOpenMenu={openDrawer} onLogout={handleLogout} />
+          <ShellTopbar onOpenMenu={openDrawer} onLogout={handleLogout} alerts={<ReleaseBell />} />
 
           {demoMode && isViewerOnly ? <DemoBanner /> : null}
 
