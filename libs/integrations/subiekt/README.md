@@ -45,7 +45,7 @@ adapter ships **five** capabilities, not one.
 
 | Capability | Sub-capabilities |
 |---|---|
-| `ProductMaster` | catalogue read, including models-as-variants |
+| `ProductMaster` | catalogue read, including models-as-variants; `BundleReader` (komplet composition, below, guard-only) |
 | `InventoryMaster` | stock read, plus PW/RW stock adjustment |
 | `OrderSource` | order feed + hydrate, poll-only (see *Ingestion latency* below) |
 | `OrderProcessorManager` | order push as a ZK |
@@ -61,6 +61,29 @@ product images, and the towar's group.
 - Images are read from Subiekt's own `tw_ZdjecieTw` blobs and served back by
   the bridge over HTTP, so OpenLinker never needs direct SQL or file-share
   access to the images.
+
+**Kits (komplet)** (`BundleReader`). A Subiekt komplet is a towar with
+`tw_Rodzaj = 8`, and its components live in `tw_Komplet` (component towar and
+quantity). The adapter reads that through the bridge route
+`GET /api/products/{symbol}/komplet`, which is plain SQL and never touches Sfera
+or writes anything. Behaviour worth knowing:
+
+- A towar that is not a kit answers `null` (OpenLinker reads that as "not a
+  bundle"); an unknown symbol is reported as absent at the master.
+- Each component is keyed the same way its variant is stored (the bare symbol on
+  older installs, otherwise `{symbol}::variant`), so OpenLinker finds the variant
+  without any translation. A component that has not been synced yet is reported
+  by core as an unsynced component, not guessed.
+- The read refuses, rather than quietly shortening the kit, when a component is
+  deleted or missing in Subiekt, or when a quantity is not a positive whole
+  number. Subiekt stores the quantity as money, so a fractional one is possible.
+- Like `ModifiedProductLister`, this capability is guard-only: it is not listed in
+  the manifest and not in the core capability set, it is found by checking the
+  adapter.
+- **Watch for a double decrement.** Subiekt itself takes the components out of
+  stock when a komplet is sold. If OpenLinker also decrements the components for
+  the same sale (because it knows the bundle composition), the same units would be
+  counted twice. Check this with a real sale before relying on both.
 
 **Stock read** (`InventoryMaster`), from `tw_Stan`, for one release warehouse
 per towar. See the multi-warehouse note below - this is the one place where

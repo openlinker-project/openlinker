@@ -107,7 +107,7 @@
         "online": "online",
         "withStation": "{station} · {presence}"
       },
-      "unassignedSubtitle": "Widoczne dla każdego pakowacza, dopóki ktoś go nie przejmie lub nie zostanie przydzielone",
+      "unassignedSubtitle": "Każdy pakowacz widzi te zadania, dopóki ktoś ich nie przejmie albo nie zostaną przydzielone",
       "unassignedTitle": "Nieprzydzielone"
     },
     "loading": {

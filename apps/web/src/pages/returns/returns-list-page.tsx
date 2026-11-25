@@ -52,9 +52,7 @@ import {
   ReturnOrderCell,
   ReturnOrphanBadge,
   ReturnSourceStatus,
-  ReturnSegmentStrip,
   ReturnStageCell,
-  type ReturnSegment,
   clearReturnFilters,
   describeRange,
   describeUnreadableRows,
@@ -70,6 +68,19 @@ import {
   type ReturnBucket,
   type ReturnListItem,
 } from '../../features/returns';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+} from '../../features/saved-views';
+import {
+  ALL_RETURNS_VIEW_ID,
+  createReturnsListRegistry,
+} from '../../features/returns/lib/returns.list-config';
+import { RETURN_SEGMENT_LABELS } from '../../features/returns/lib/return-segments';
 import { describeApiError } from '../../shared/api/describe-api-error';
 
 /** `bucket` absent means "both sides", which is what the All chip selects. */
@@ -112,56 +123,65 @@ export function ReturnsListPage(): ReactElement {
     return map;
   }, [connections]);
 
-  const columns = useMemo<DataTableColumn<ReturnListItem>[]>(
-    () => [
-      {
-        id: 'return',
-        header: copy.row.returnLabel,
-        cell: (item) => <ReturnIdentityCell item={item} />,
-      },
-      {
-        id: 'order',
-        header: copy.row.orderLabel,
-        cell: (item) => <ReturnOrderCell item={item} />,
-      },
-      {
-        id: 'source',
-        header: copy.row.sourceLabel,
-        cell: (item) => (
-          <ConnectionEntityLabel
-            connectionId={item.sourceConnectionId}
-            name={connectionNameById.get(item.sourceConnectionId) ?? null}
-            linkToDetail={false}
-            showCopy={false}
-          />
-        ),
-        hideBelow: 1024,
-      },
-      {
-        id: 'opened',
-        header: copy.row.openedLabel,
-        cell: (item) => <ReturnOpenedCell item={item} />,
-        hideBelow: 768,
-      },
-      {
-        id: 'sourceStatus',
-        header: copy.row.sourceStatusLabel,
-        cell: (item) => <ReturnSourceStatus rawStatus={item.rawStatus} />,
-        hideBelow: 768,
-      },
-      {
-        // #2377 — replaces the Wave-1c `status` column. Not a sibling of it: the
-        // two are renderings of the SAME lifecycle fact (`declined` is stage #1),
-        // and two competing lifecycle signals in one row is exactly what the
-        // #2100 three-independent-parts rule is NOT about — that rule is for
-        // different facts (money, attention, action).
-        id: 'stage',
-        header: copy.row.stageLabel,
-        cell: (item) => <ReturnStageCell item={item} />,
-      },
-    ],
-    [connectionNameById, copy.row],
+  const registry = useMemo(
+    () =>
+      createReturnsListRegistry({
+        labels: {
+          return: copy.row.returnLabel,
+          returnFields: copy.savedViews.returnFields,
+          order: copy.row.orderLabel,
+          orderFields: copy.savedViews.orderFields,
+          source: copy.row.sourceLabel,
+          sourceFields: copy.savedViews.sourceFields,
+          opened: copy.row.openedLabel,
+          sourceStatus: copy.row.sourceStatusLabel,
+          stage: copy.row.stageLabel,
+          stageFields: copy.savedViews.stageFields,
+        },
+        viewNames: { all: copy.segment.allReturnsLabel, ...RETURN_SEGMENT_LABELS },
+        headers: {
+          return: copy.row.returnLabel,
+          order: copy.row.orderLabel,
+          source: copy.row.sourceLabel,
+          opened: copy.row.openedLabel,
+          sourceStatus: copy.row.sourceStatusLabel,
+          stage: copy.row.stageLabel,
+        },
+        cells: {
+          return: (item) => <ReturnIdentityCell item={item} />,
+          order: (item) => <ReturnOrderCell item={item} />,
+          source: (item) => (
+            <ConnectionEntityLabel
+              connectionId={item.sourceConnectionId}
+              name={connectionNameById.get(item.sourceConnectionId) ?? null}
+              linkToDetail={false}
+              showCopy={false}
+            />
+          ),
+          opened: (item) => <ReturnOpenedCell item={item} />,
+          sourceStatus: (item) => <ReturnSourceStatus rawStatus={item.rawStatus} />,
+          // #2377 - replaces the Wave-1c `status` column. Not a sibling of it: the
+          // two are renderings of the SAME lifecycle fact (`declined` is stage #1),
+          // and two competing lifecycle signals in one row is exactly what the
+          // #2100 three-independent-parts rule is NOT about - that rule is for
+          // different facts (money, attention, action).
+          stage: (item) => <ReturnStageCell item={item} />,
+        },
+      }),
+    [connectionNameById, copy.row, copy.savedViews, copy.segment.allReturnsLabel],
   );
+
+  // The strip's counters are the server's segment counts: they are scoped to
+  // every filter except `segment`, which is exactly what a view tab should show.
+  const segmentCounts = query.data?.segmentCounts ?? null;
+  const viewCounts = useMemo<Record<string, number> | undefined>(
+    () => (segmentCounts ? { [ALL_RETURNS_VIEW_ID]: segmentCounts.total, ...segmentCounts.bySegment } : undefined),
+    [segmentCounts],
+  );
+  const view = useListView<ReturnListItem>({ registry, pageTitle: copy.page.title, counts: viewCounts });
+
+  const { toColumns } = view;
+  const columns = useMemo<DataTableColumn<ReturnListItem>[]>(() => toColumns(), [toColumns]);
 
   const bucketChoice: BucketChoice = filters.bucket ?? 'all';
   const counts = query.data?.counts;
@@ -184,19 +204,6 @@ export function ReturnsListPage(): ReactElement {
   function selectBucket(choice: BucketChoice): void {
     setSearchParams((prev) =>
       setReturnFilterParam(new URLSearchParams(prev), 'bucket', choice === 'all' ? '' : choice),
-    );
-  }
-
-  /**
-   * Select a segment, or clear it (`null` — the `All returns` card).
-   *
-   * Writes ONLY `segment`. It must never touch `bucket`: the bucket chips are a
-   * separate, independently-usable surface, and two surfaces fighting over one
-   * param is how they start disagreeing about what is filtered.
-   */
-  function selectSegment(segment: ReturnSegment | null): void {
-    setSearchParams((prev) =>
-      setReturnFilterParam(new URLSearchParams(prev), 'segment', segment ?? ''),
     );
   }
 
@@ -271,11 +278,7 @@ export function ReturnsListPage(): ReactElement {
           right now", the strip below answers "show me a filtered page". */}
       <OrphanReturnsWorklist />
 
-      <ReturnSegmentStrip
-        counts={query.data?.segmentCounts ?? null}
-        selected={filters.segment ?? null}
-        onSelect={selectSegment}
-      />
+      <ViewsBar {...view.viewsBar} />
 
       <div className="toolbar">
         <div className="toolbar__group" role="group" aria-label={copy.filter.bucketGroupLabel}>
@@ -325,12 +328,21 @@ export function ReturnsListPage(): ReactElement {
           ))}
         </Select>
 
+        <ColumnsPanel {...view.columnsPanel} />
+
         {isFiltered ? (
           <Button onClick={clearFilters}>{copy.filter.clear}</Button>
         ) : null}
       </div>
 
-      {query.isLoading || awaitingAvailability ? (
+      {view.editedBar ? (
+        <div className="sv-applied">
+          <EditedBar {...view.editedBar} />
+        </div>
+      ) : null}
+      {view.repairBanner ? <RepairBanner {...view.repairBanner} /> : null}
+
+      {query.isLoading || awaitingAvailability || !view.isReady ? (
         <DataTableSkeleton columns={columns} />
       ) : query.error ? (
         <ErrorState
@@ -483,6 +495,8 @@ export function ReturnsListPage(): ReactElement {
           </div>
         </>
       )}
+
+      <ViewDialogs {...view.dialogs} />
 
       <RecordReturnDialog
         open={isRecordDialogOpen}

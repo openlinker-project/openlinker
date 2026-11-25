@@ -21,8 +21,8 @@ import {
 } from '../../delivery-on-documents';
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import type { AllegroSetupFormValues } from './allegro-setup.schema';
-import { useMessages } from '../../../shared/i18n';
-import type { CatalogueMode } from '../../connections';
+import { useFormat, useMessages } from '../../../shared/i18n';
+import { describeOrderSyncStart, type CatalogueMode } from '../../connections';
 
 interface AllegroSetupSummaryProps {
   values: AllegroSetupFormValues;
@@ -44,6 +44,8 @@ export function AllegroSetupSummary({
   values,
 }: AllegroSetupSummaryProps): ReactElement {
   const copy = useMessages('allegro-core').allegroSetupSummary;
+  const orderCopy = useMessages('connections').orderSyncStart;
+  const format = useFormat();
   const environmentLabel =
     values.environment === 'production'
       ? copy.production
@@ -88,6 +90,18 @@ export function AllegroSetupSummary({
           value={values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE}
           suggestions={suggestions}
         />
+      ) : null}
+
+      {showDelivery && stepIndex >= 4 ? (
+        <section className="wizard-summary__section">
+          <h3 className="wizard-summary__section-title">{orderCopy.review.label}</h3>
+          <dl className="wizard-summary__rows">
+            <WizardSummaryRow
+              label={orderCopy.title}
+              value={describeOrderSyncStart(values.orderSyncStart, orderCopy.review, format.date)}
+            />
+          </dl>
+        </section>
       ) : null}
     </>
   );

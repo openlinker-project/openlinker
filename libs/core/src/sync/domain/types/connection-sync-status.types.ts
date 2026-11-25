@@ -202,10 +202,92 @@ export interface ConnectionSyncStatus {
    * webhook-fed connection legitimately never keeps one.
    */
   lastCursorAdvanceAt: Date | null;
+  /**
+   * When this connection's order sync was started from "now" (#4228), or
+   * null when no start was recorded: a connection that predates the feature,
+   * or one whose adapter has no order feed. Null is an absence, never a date.
+   */
+  orderSyncStartedAt: Date | null;
+  /**
+   * How this connection's ORDER import is doing, read from its own jobs. Null
+   * when the figures could not be read: an unreadable answer is never rendered
+   * as zero orders.
+   */
+  orderImport: OrderImportStatus | null;
+  /**
+   * The start choice that took effect for this connection's order import, or
+   * null when none was recorded (a connection that predates the record).
+   */
+  orderStart: OrderStartStatus | null;
   /** The observation window used, so a consumer can state what the rates are over. */
   observationWindowMs: number;
   /** The alert horizon used, for the same reason. */
   alertHorizonMs: number;
   /** How far back the historical figures look, in ms. */
   historyWindowMs: number;
+}
+
+/**
+ * A history or date-range import that is still running (#4228): the chain of
+ * `marketplace.orders.import` jobs of one run.
+ */
+export interface ActiveOrderImport {
+  runId: string;
+  direction: 'oldest-first' | 'newest-first';
+  /** First day of the window, or null when it starts at the beginning of history. */
+  from: string | null;
+  /** Last day of the window, or null when it runs up to the newest order. */
+  to: string | null;
+  /** Pages already read. The total is unknown: the source does not say how many orders it holds. */
+  pagesDone: number;
+  startedAt: Date;
+}
+
+export const OrderImportFailureCodeValues = ['missing-mapping', 'other'] as const;
+/**
+ * Why an order could not be imported, as a closed code the frontend phrases:
+ * `missing-mapping` is a product in the order that is not linked to a product in
+ * OpenLinker; `other` is everything else, shown with its original message.
+ */
+export type OrderImportFailureCode = (typeof OrderImportFailureCodeValues)[number];
+
+export interface OrderImportFailureReason {
+  code: OrderImportFailureCode;
+  count: number;
+  lastFailedAt: Date;
+  /** Source id of the most recent order that failed for this reason. */
+  sampleOrderId: string | null;
+  /** The stored message of that failure, kept verbatim and in English. */
+  sampleMessage: string;
+}
+
+/** The raw per-connection order-import figures, aggregated from `sync_jobs`. */
+export interface OrderImportStats {
+  /** Distinct orders the feed delivered and OpenLinker processed in the last 24 hours. */
+  importedLast24h: number;
+  /** When the shop was last polled for orders by a poll that succeeded (last 7 days), or null. */
+  lastPolledAt: Date | null;
+  /** Distinct orders whose import ended dead in the last 7 days and has not succeeded since; cancelled jobs excluded. */
+  failedLast7d: number;
+  /** The failures grouped by reason, most frequent first. */
+  failures: OrderImportFailureReason[];
+  /** `marketplace.order.sync` jobs queued or running right now. */
+  waiting: number;
+  /** When an order was last imported (within the last 7 days), or null. */
+  lastImportedAt: Date | null;
+  activeImport: ActiveOrderImport | null;
+}
+
+export type OrderImportStatus = OrderImportStats;
+
+/** What the operator chose for where order import starts, as the screen states it. */
+export interface OrderStartStatus {
+  mode: 'now' | 'from' | 'all';
+  /** First day, for `from`. */
+  from: string | null;
+  order: 'oldest-first' | 'newest-first';
+  /** When the choice took effect, or null for a choice that is still waiting for the next check. */
+  appliedAt: Date | null;
+  /** The choice was made and will take effect on the next check; nothing has been read under it yet. */
+  pending: boolean;
 }

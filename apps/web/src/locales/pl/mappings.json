@@ -177,12 +177,14 @@
   },
   "mappingPanel": {
     "actions": "Akcje",
-    "add": "Dodaj",
+    "add": "Dodaj do listy",
+    "addDisabledHint": "Najpierw wybierz oba pola ({source} i {target}), potem kliknij Dodaj do listy.",
     "allMapped": "Wszystkie wartości źródłowe są zmapowane.",
     "dataErrorTitle": "Nie udało się wczytać mapowań",
     "defaultDynamicSuffix": " - dynamiczne",
-    "defaultEmpty": "Nie skonfigurowano jeszcze mapowań. Zamówienia mogą być synchronizowane z wartościami domyślnymi. Dodaj mapowanie poniżej.",
+    "defaultEmpty": "Nie skonfigurowano jeszcze mapowań. Zamówienia mogą być synchronizowane z wartościami domyślnymi. Wybierz obie wartości poniżej, kliknij Dodaj do listy, a potem Zapisz mapowania.",
     "derivedCue": " - odczytywane jako {value}",
+    "discard": "Odrzuć",
     "duplicateSource": "Mapowanie dla tej wartości źródłowej już istnieje.",
     "eyebrow": "Konfiguracja",
     "focusHint": "Zmapuj <strong>{source}</strong> na {target} poniżej.",
@@ -190,17 +192,32 @@
       "message": "Pobieranie dostępnych wartości…",
       "title": "Wczytywanie opcji: {title}"
     },
+    "notSavedChip": "Jeszcze nie zapisano",
     "optionsErrorTitle": "Nie udało się wczytać opcji",
     "orphanedSource": "osierocona wartość źródłowa",
     "remove": "Usuń",
     "removeLabel": "Usuń mapowanie dla {source}",
     "retry": "Ponów",
     "save": "Zapisz mapowania",
+    "savedCount": {
+      "few": "Zapisano {n} mapowania",
+      "many": "Zapisano {n} mapowań",
+      "one": "Zapisano {n} mapowanie",
+      "other": "Zapisano {n} mapowania"
+    },
+    "savedNone": "Mapowania zapisane.",
     "saving": "Zapisywanie…",
     "select": "Wybierz: {label}",
     "tableLabel": "Mapowania: {title}",
     "tryAgain": "Spróbuj ponownie",
-    "unsaved": "Niezapisane zmiany"
+    "unsaved": "Niezapisane zmiany",
+    "unsavedBarHint": "Nic nie zostanie zapisane, dopóki nie klikniesz Zapisz mapowania.",
+    "unsavedCount": {
+      "few": "{n} niezapisane zmiany",
+      "many": "{n} niezapisanych zmian",
+      "one": "{n} niezapisana zmiana",
+      "other": "{n} niezapisanej zmiany"
+    }
   },
   "orderStatuses": {
     "cancelled": "Anulowane",
@@ -263,9 +280,9 @@
       "source_brokered": "Dostawa przez marketplace"
     },
     "processorSelectLabel": "Obsługa realizacji dla {method}",
-    "save": "Zapisz kierowanie",
+    "save": "Zapisz przypisanie",
     "saving": "Zapisywanie…",
-    "title": "Kierowanie realizacji",
+    "title": "Kto wysyła każdą metodę dostawy",
     "tryAgain": "Spróbuj ponownie",
     "unavailableBucket": "{name} (niedostępne)",
     "unavailableOption": "{kind} · {name} (niedostępne)",

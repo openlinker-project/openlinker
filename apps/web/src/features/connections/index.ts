@@ -25,6 +25,8 @@ export type {
   WebhookSignatureState,
   RateLimitStatus,
   CreateConnectionInput,
+  OrderSyncStart,
+  OrderSyncStartMode,
   UpdateConnectionInput,
   PlatformType,
   CoreCapability,
@@ -45,6 +47,16 @@ export { connectionsQueryKeys } from './api/connections.query-keys';
 export { useConnectionsQuery } from './hooks/use-connections-query';
 export { useConnectionQuery } from './hooks/use-connection-query';
 export { useCreateConnectionMutation } from './hooks/use-create-connection-mutation';
+// #4228 - the order-history choice, shared with the Allegro wizard (its flow leaves for OAuth).
+export { OrderSyncStartField } from './components/order-sync-start-field';
+export {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  describeOrderSyncStart,
+  orderSyncStartSchema,
+  toOrderSyncStart,
+  type OrderSyncStartValue,
+} from './lib/order-sync-start';
 export { useProductMasterConnections } from './hooks/use-product-master-connections';
 export { useConfigureWebhooksMutation } from './hooks/use-configure-webhooks-mutation';
 export { useRotateWebhookSecretMutation } from './hooks/use-rotate-webhook-secret-mutation';
@@ -54,7 +66,10 @@ export { useRateLimitStatusQuery } from './hooks/use-rate-limit-status-query';
 // #2118 - which connections the operator declared as packing and shipping by themselves.
 export { readFulfilmentOwnedByDestination } from './lib/fulfilment-ownership';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
-export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
+export {
+  useUpdateConnectionMutation,
+  UPDATE_CONNECTION_MUTATION_KEY,
+} from './hooks/use-update-connection-mutation';
 export { useTestConnectionMutation } from './hooks/use-test-connection-mutation';
 export { describeConnectionTestFailure } from './lib/describe-connection-test-failure';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';

@@ -65,12 +65,13 @@ export function computeRailGroups(
     const variants = variantMeta.get(productId) ?? meta?.variants ?? [];
     const totalVariants =
       variantCounts.get(productId) ?? meta?.variantCount ?? (variants.length || 1);
+    const isBundle = Boolean(meta?.bundle);
     if (entry === 'ALL') {
       const loadedVariants = variantMeta.get(productId);
       const wholeEan = loadedVariants
         ? {
             loaded: true,
-            needCount: loadedVariants.filter((v) => !variantHasBarcode(v)).length,
+            needCount: isBundle ? 0 : loadedVariants.filter((v) => !variantHasBarcode(v)).length,
           }
         : { loaded: false, needCount: 0 };
       groups.push({
@@ -80,6 +81,7 @@ export function computeRailGroups(
         whole: true,
         totalVariants,
         wholeEan,
+        ...(isBundle ? { isBundle } : {}),
         selected: null,
       });
       continue;
@@ -89,7 +91,7 @@ export function computeRailGroups(
       return {
         id: variantId,
         label: variant ? variantShortLabel(variant) : variantId,
-        hasBarcode: variant ? variantHasBarcode(variant) : true,
+        hasBarcode: isBundle || (variant ? variantHasBarcode(variant) : true),
       };
     });
     groups.push({
@@ -99,6 +101,7 @@ export function computeRailGroups(
       whole: false,
       totalVariants,
       wholeEan: null,
+      ...(isBundle ? { isBundle } : {}),
       selected,
     });
   }
@@ -115,6 +118,7 @@ export function computeNeedEanCount(
 ): number {
   let sum = 0;
   for (const group of railGroups) {
+    if (group.isBundle) continue;
     if (group.selected === null) {
       const variants = variantMeta.get(group.productId) ?? [];
       sum += variants.filter((v) => !variantHasBarcode(v)).length;

@@ -914,11 +914,17 @@
     "addCostPrices": "Add cost prices",
     "goToMargin": "Go to Margin",
     "leftOut": "{amount} is left out. Margin and margin % are calculated only from the covered part.",
+    "leftOutBecause": "{amount} is left out because {reason}. Margin and margin % are calculated only from the covered part.",
     "leftOutWithReasons": "{amount} is left out: {reasons}. Margin and margin % are calculated only from the covered part.",
     "reasons": {
       "afterSale": "some orders came in before their cost was entered ({amount})",
       "noCost": "some variants have no cost price ({amount})",
       "other": "other lines cannot take a cost ({amount})"
+    },
+    "soleReasons": {
+      "afterSale": "some orders came in before their cost was entered",
+      "noCost": "some variants have no cost price",
+      "other": "other lines cannot take a cost"
     },
     "title": "Margin covers {ratio} of net sales in this range"
   },

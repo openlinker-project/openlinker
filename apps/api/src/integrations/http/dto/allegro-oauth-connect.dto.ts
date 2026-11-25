@@ -6,7 +6,18 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsIn, IsString, IsNotEmpty, IsObject, IsOptional, IsUrl, IsUUID } from 'class-validator';
+import {
+  IsIn,
+  IsString,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsUrl,
+  IsUUID,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { OrderSyncStartDto } from './order-sync-start.dto';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -107,4 +118,18 @@ export class AllegroOAuthConnectDto {
   @IsIn(['linked', 'none'])
   @IsOptional()
   catalogueMode?: 'linked' | 'none';
+
+  @ApiPropertyOptional({
+    description:
+      'Where order sync starts for the new connection (#4228): `now` (default, only orders from ' +
+      'now on) or `all` (the whole history). Allegro has no date lookup, so `from` is refused. ' +
+      'Carried through the OAuth round trip and stored when the connection is created. Ignored ' +
+      'when re-authenticating an existing connection.',
+    type: OrderSyncStartDto,
+    example: { mode: 'all' },
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => OrderSyncStartDto)
+  orderSyncStart?: OrderSyncStartDto;
 }

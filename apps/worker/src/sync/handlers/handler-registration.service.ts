@@ -11,6 +11,7 @@ import { Injectable } from '@nestjs/common';
 import { SyncJobHandlerRegistry } from './sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './inventory-propagate-to-marketplaces.handler';
 import { OrdersPollHandler } from './orders-poll.handler';
+import { OrdersImportHandler } from './orders-import.handler';
 import { MarketplaceOrderSyncHandler } from './marketplace-order-sync.handler';
 import { MarketplaceOrderFxStampHandler } from './marketplace-order-fx-stamp.handler';
 import { MarketplaceOrderFxStampSweepHandler } from './marketplace-order-fx-stamp-sweep.handler';
@@ -90,6 +91,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly reservationConsumeHandler: ReservationConsumeHandler,
     private readonly ordersHoldsReconcileHandler: OrdersHoldsReconcileHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
+    private readonly marketplaceOrdersImportHandler: OrdersImportHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
     private readonly marketplaceOrderFxStampSweepHandler: MarketplaceOrderFxStampSweepHandler,
@@ -196,6 +198,13 @@ export class HandlerRegistrationService implements OnModuleInit {
       'marketplace.orders.poll',
       this.marketplaceOrdersPollHandler,
       'fan-out'
+    );
+    // A date-window import page (#4228). `bulk`: a history walk is paced work nobody
+    // waits on, and it must never take a `realtime` slot from a buyer's order.
+    this.handlerRegistry.register(
+      'marketplace.orders.import',
+      this.marketplaceOrdersImportHandler,
+      'bulk'
     );
     this.handlerRegistry.register(
       'marketplace.order.sync',

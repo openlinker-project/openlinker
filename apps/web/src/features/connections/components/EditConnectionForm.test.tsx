@@ -15,6 +15,8 @@ import { ApiError } from '../../../shared/api/api-error';
 import type { PaginatedInventoryLocations } from '../../inventory';
 import type * as ReactRouterDom from 'react-router-dom';
 import { getMessages } from '../../../shared/i18n';
+import type { ReactElement } from 'react';
+import type { OpenLinkerPlugin } from '../../../shared/plugins';
 
 // The form is now read-only without `connections:write`, so these tests must act as an admin
 // (the default noop session holds no permissions) to exercise the editable form.
@@ -966,6 +968,47 @@ describe('EditConnectionForm', () => {
         environment: 'sandbox',
         masterCatalogConnectionId: '',
       });
+    });
+  });
+
+  describe('settings contents (#4133)', () => {
+    const stubPlugin = (
+      sectionTitle: string | undefined,
+      Section: () => ReactElement | null,
+    ): OpenLinkerPlugin => ({
+      id: 'stub',
+      platformType: 'prestashop',
+      platform: {
+        displayName: 'Stub',
+        sectionTitle,
+        StructuredConfigSection: Section,
+      } as OpenLinkerPlugin['platform'],
+    });
+
+    it('lists one generic "Platform settings" entry for a plugin without sectionTitle', () => {
+      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, {
+        plugins: [stubPlugin(undefined, () => <p>stub fields</p>)],
+      });
+
+      expect(screen.getByRole('button', { name: 'Platform settings' })).toBeInTheDocument();
+    });
+
+    it('lists the plugin sectionTitle when it declares one', () => {
+      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, {
+        plugins: [stubPlugin('Stub shop', () => <p>stub fields</p>)],
+      });
+
+      expect(screen.getByRole('button', { name: 'Stub shop' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Platform settings' })).not.toBeInTheDocument();
+    });
+
+    it('leaves a slot that renders nothing out of the contents', () => {
+      renderWithProviders(<EditConnectionForm connection={sampleConnection} />, {
+        plugins: [stubPlugin('Stub shop', () => null)],
+      });
+
+      expect(screen.queryByRole('button', { name: 'Stub shop' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'General' })).toBeInTheDocument();
     });
   });
 

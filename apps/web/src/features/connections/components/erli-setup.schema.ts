@@ -28,6 +28,11 @@ import {
 } from '../../delivery-on-documents';
 import { CatalogueModeValues } from '../lib/catalogue-mode';
 import { schemaMessage } from '../lib/schema-message';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  toOrderSyncStart,
+} from '../lib/order-sync-start';
 
 const msg = schemaMessage('erliSetupSchema');
 
@@ -44,6 +49,7 @@ export const erliSetupSchema = z.object({
   catalogueMode: z.enum(CatalogueModeValues).optional(),
   // The answer to the "Sales documents" step; set through `setValue` (#3911).
   deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),
+  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
 });
 
 export type ErliSetupFormValues = z.input<typeof erliSetupSchema>;
@@ -55,6 +61,7 @@ export const ERLI_SETUP_DEFAULT_VALUES: ErliSetupFormValues = {
   environment: 'sandbox',
   catalogueMode: 'linked',
   deliveryOnDocuments: DEFAULT_DELIVERY_WIZARD_VALUE,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toCreateConnectionInput(
@@ -78,6 +85,7 @@ export function toCreateConnectionInput(
         suggestions,
       ),
     },
+    orderSyncStart: toOrderSyncStart(values.orderSyncStart),
     // enabledCapabilities is OMITTED on purpose: on the omitted path
     // `ConnectionService.create` defaults to the adapter manifest's supported
     // set (`rest.enabledCapabilities ?? [...metadata.supportedCapabilities]`),

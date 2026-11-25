@@ -18,7 +18,15 @@ import { useSearchParams } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
 import { useStartAllegroOAuthMutation } from '../hooks/use-start-allegro-oauth-mutation';
-import { CatalogueModeFieldset, useProductMasterConnections } from '../../connections';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  CatalogueModeFieldset,
+  OrderSyncStartField,
+  describeOrderSyncStart,
+  useProductMasterConnections,
+} from '../../connections';
+import { useAdaptersQuery } from '../../adapters';
 import {
   createAllegroSetupSchema,
   ALLEGRO_SETUP_DEFAULT_VALUES,
@@ -43,19 +51,23 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
-import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 
-const STEP_COUNT = 5;
+const STEP_COUNT = 6;
 
 const SALES_DOCUMENTS_STEP = 3;
+const ORDER_HISTORY_STEP = 4;
+const REVIEW_STEP = 5;
+const ALLEGRO_ADAPTER_KEY = 'allegro.publicapi.v1';
 
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<AllegroSetupFormValues>>> = [
   ['name', 'clientId', 'clientSecret'],
   ['environment'],
   ['masterCatalogConnectionId'],
   [],
+  ['orderSyncStart'],
   [],
 ];
 
@@ -80,8 +92,18 @@ export function AllegroSetupForm(): ReactElement {
     copy.steps.environment,
     copy.steps.productCatalogue,
     copy.steps.salesDocuments,
+    copy.steps.orders,
     copy.steps.review,
   ];
+  const orderStartCopy = useMessages('connections').orderSyncStart;
+  const format = useFormat();
+  const adaptersQuery = useAdaptersQuery();
+  const orderSyncStartModes =
+    adaptersQuery.data?.find((a) => a.adapterKey === ALLEGRO_ADAPTER_KEY)?.orderSyncStartModes ??
+    ORDER_SYNC_START_DEFAULT_MODES;
+  const orderWindowImport =
+    adaptersQuery.data?.find((a) => a.adapterKey === ALLEGRO_ADAPTER_KEY)?.orderWindowImport ??
+    false;
   const strong = { strong: (text: string) => <strong>{text}</strong> };
   const { connectionsQuery, productMasterConnections, autoSelectedConnectionId } =
     useProductMasterConnections();
@@ -152,9 +174,16 @@ export function AllegroSetupForm(): ReactElement {
 
   // Re-authenticating rotates credentials only, so it has no sales-documents
   // question to ask: the step is stepped over in both directions (#3911).
+  // The same goes for the order history: a reauth does not create a connection.
   function nextStep(candidate: number, direction: 1 | -1): number {
-    const bounded = Math.min(Math.max(candidate, 0), STEP_COUNT - 1);
-    return reauthConnectionId && bounded === SALES_DOCUMENTS_STEP ? bounded + direction : bounded;
+    let bounded = Math.min(Math.max(candidate, 0), STEP_COUNT - 1);
+    while (
+      reauthConnectionId &&
+      (bounded === SALES_DOCUMENTS_STEP || bounded === ORDER_HISTORY_STEP)
+    ) {
+      bounded += direction;
+    }
+    return bounded;
   }
 
   // A submit before the last step is Enter in a field, or the click that
@@ -369,7 +398,19 @@ export function AllegroSetupForm(): ReactElement {
           />
         ) : null}
 
-        {stepIndex === 4 ? (
+        {stepIndex === ORDER_HISTORY_STEP ? (
+          <OrderSyncStartField
+            value={values.orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+            onChange={(next) =>
+              form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+            }
+            supportedModes={orderSyncStartModes}
+            windowImport={orderWindowImport}
+            error={form.formState.errors.orderSyncStart?.from?.message}
+          />
+        ) : null}
+
+        {stepIndex === REVIEW_STEP ? (
           <>
             <dl className="wizard-review-list">
               <dt>{copy.review.name}</dt>
@@ -398,6 +439,10 @@ export function AllegroSetupForm(): ReactElement {
                 <>
                   <dt>{copy.review.delivery}</dt>
                   <dd>{deliverySummary}</dd>
+                  <dt>{orderStartCopy.review.label}</dt>
+                  <dd>
+                    {describeOrderSyncStart(values.orderSyncStart, orderStartCopy.review, format.date)}
+                  </dd>
                 </>
               )}
             </dl>

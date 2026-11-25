@@ -25,6 +25,7 @@ describe('ConnectionCursorRepository', () => {
       findOne: jest.fn(),
       upsert: jest.fn(),
       delete: jest.fn(),
+      createQueryBuilder: jest.fn(),
     } as unknown as jest.Mocked<Repository<ConnectionCursorOrmEntity>>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -168,6 +169,44 @@ describe('ConnectionCursorRepository', () => {
       await expect(repository.set(connectionId, cursorKey, cursorValue)).rejects.toThrow(
         'Unexpected database error'
       );
+    });
+  });
+
+  describe('findMostRecentUpdate', () => {
+    it('should ignore the start intent and the seeded markers, which are not feed progress', async () => {
+      const qb = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ updatedAt: new Date('2026-11-01T10:00:00Z') }),
+      };
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findMostRecentUpdate('conn-1');
+
+      expect(result).toEqual(new Date('2026-11-01T10:00:00Z'));
+      expect(qb.andWhere).toHaveBeenCalledWith('c.cursorKey <> :syncStartKey', {
+        syncStartKey: 'orders.syncStart',
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith(expect.stringContaining('NOT LIKE :seededSuffix'), {
+        seededSuffix: '%.seededAt',
+      });
+    });
+
+    it('should return null when the connection holds no feed cursor', async () => {
+      const qb = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue(undefined),
+      };
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await expect(repository.findMostRecentUpdate('conn-1')).resolves.toBeNull();
     });
   });
 

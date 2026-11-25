@@ -307,6 +307,8 @@ Without webhooks, OpenLinker polls Allegro for new orders every 10 minutes. To g
 
 ### 9.2 Place a test order on Allegro sandbox
 
+> A new connection starts importing orders from the moment of its **first poll** (default ~10 minutes after you add it), not from any earlier order. Place your test order AFTER that first poll has run, or choose **From a date** / **All order history** when you connect so earlier orders are imported too.
+
 Use the Allegro sandbox buyer account to place an order on the offer you published in §8:
 
 1. Open the Allegro sandbox storefront (`https://salescenter.allegro.com.allegrosandbox.pl/my-assortment`).

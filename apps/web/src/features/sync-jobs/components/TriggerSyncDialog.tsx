@@ -7,7 +7,7 @@
  *
  * @module apps/web/src/features/sync-jobs/components
  */
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useEnqueueSyncJobMutation } from '../hooks/use-enqueue-sync-job-mutation';
@@ -27,6 +27,20 @@ import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { interpolate, renderRich, useMessages, type Messages } from '../../../shared/i18n';
+import {
+  OrderPositionField,
+  ORDER_POSITION_CUSTOM,
+  ORDER_POSITION_DEFAULT,
+} from './order-position-field';
+import { useAdaptersQuery } from '../../adapters';
+import { OrderRangeFields } from './order-range-fields';
+import { prefersMotion } from '../../../shared/ui/prefers-motion';
+import {
+  ORDER_RANGE_DEFAULT_VALUE,
+  toOrderImportPayload,
+  validateOrderRange,
+  type OrderRangeValue,
+} from '../lib/order-range';
 import type { PayloadField, TriggerableJob, TriggerSyncDialogProps } from './trigger-sync-dialog.types';
 
 type TriggerSyncDialogCopy = Messages['sync-jobs']['triggerSyncDialog'];
@@ -100,18 +114,13 @@ function buildTriggerableJobs(copy: TriggerSyncDialogCopy): TriggerableJob[] {
       description: jobs.pollOrders.description,
       payloadFields: [
         {
-          name: 'cursorKey',
-          label: fields.cursorKey,
-          required: false,
-          defaultValueFactory: ({ platformType }) => `${platformType}.orders.lastEventId`,
-        },
-        {
           name: 'limit',
-          label: fields.pageLimit,
+          label: copy.orderPosition.limitLabel,
           required: false,
           type: 'number',
           defaultValue: '100',
           placeholder: '100',
+          description: copy.orderPosition.limitHelp,
         },
       ],
       // OrderSource, not OfferManager (#1498): this is an order-ingestion job —
@@ -155,15 +164,10 @@ function buildTriggerableJobs(copy: TriggerSyncDialogCopy): TriggerableJob[] {
 }
 
 /** Build initial payload values from field defaults. */
-function buildDefaultValues(
-  fields: PayloadField[],
-  context: { platformType: string },
-): Record<string, string> {
+function buildDefaultValues(fields: PayloadField[]): Record<string, string> {
   const defaults: Record<string, string> = {};
   for (const field of fields) {
-    if (field.defaultValueFactory !== undefined) {
-      defaults[field.name] = field.defaultValueFactory(context);
-    } else if (field.defaultValue !== undefined) {
+    if (field.defaultValue !== undefined) {
       defaults[field.name] = field.defaultValue;
     }
   }
@@ -175,8 +179,17 @@ export function TriggerSyncDialog({
   open,
   onOpenChange,
   submitDisabled = false,
+  initialJobType,
+  initialOrderScope = 'new',
+  guidedEntrance = false,
 }: TriggerSyncDialogProps): ReactElement {
   const copy = useMessages('sync-jobs').triggerSyncDialog;
+  const adapters = useAdaptersQuery();
+  const canImportRange =
+    (
+      adapters.data?.find((a) => a.adapterKey === connection.adapterKey) ??
+      adapters.data?.find((a) => a.platformType === connection.platformType && a.isDefault)
+    )?.orderWindowImport === true;
   const triggerableJobs = useMemo(
     () =>
       buildTriggerableJobs(copy).filter(
@@ -190,6 +203,15 @@ export function TriggerSyncDialog({
   const [selectedJobType, setSelectedJobType] = useState(triggerableJobs[0]?.jobType ?? '');
   const [payloadValues, setPayloadValues] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [positionChoice, setPositionChoice] = useState(ORDER_POSITION_DEFAULT);
+  const [customPositionKey, setCustomPositionKey] = useState('');
+  const [orderRange, setOrderRange] = useState<OrderRangeValue>(ORDER_RANGE_DEFAULT_VALUE);
+  // One "Sync orders" action with two scopes: the new orders since the last check, or
+  // a range of days. They are two different jobs underneath, which an operator never sees.
+  const [orderScope, setOrderScope] = useState<'new' | 'range'>('new');
+  // A period chosen for the operator (from the Sync tab) pulses once so the choice is noticed.
+  const [scopeHighlight, setScopeHighlight] = useState(false);
+  const scopeTouched = useRef(false);
   // Stable idempotency-key suffix for this dialog open cycle. Reused across
   // retries after a failed submit so the backend dedup (Redis SET NX + DB
   // unique index on idempotency_key) collapses rapid double-clicks into a
@@ -201,36 +223,80 @@ export function TriggerSyncDialog({
   const { showToast } = useToast();
 
   const selectedJob = triggerableJobs.find((j) => j.jobType === selectedJobType);
+  const isOrderSync = selectedJob?.jobType === 'marketplace.orders.poll';
+  const isRangeImport = isOrderSync && canImportRange && orderScope === 'range';
+  const submittedJobType = isRangeImport ? 'marketplace.orders.import' : selectedJob?.jobType;
   const hasTriggers = triggerableJobs.length > 0;
 
   useEffect(() => {
     if (open) {
-      const firstJob = triggerableJobs[0];
+      const firstJob =
+        triggerableJobs.find((job) => job.jobType === initialJobType) ?? triggerableJobs[0];
       setSelectedJobType(firstJob?.jobType ?? '');
       setPayloadValues(
-        firstJob ? buildDefaultValues(firstJob.payloadFields, connection) : {},
+        firstJob ? buildDefaultValues(firstJob.payloadFields) : {},
       );
       setFieldErrors({});
+      setPositionChoice(ORDER_POSITION_DEFAULT);
+      setCustomPositionKey('');
+      setOrderRange(ORDER_RANGE_DEFAULT_VALUE);
+      setOrderScope('new');
+      setScopeHighlight(false);
+      scopeTouched.current = false;
       setIntentKey(crypto.randomUUID());
       enqueueSyncJob.reset();
     }
   }, [open]); // enqueueSyncJob.reset and triggerableJobs are intentionally excluded — stable on open only
 
+  // The adapter list may land after the dialog opens, so the preselection waits for it.
+  useEffect(() => {
+    if (!open || !canImportRange || initialOrderScope !== 'range' || scopeTouched.current) return;
+    setOrderScope('range');
+    setScopeHighlight(true);
+  }, [open, canImportRange, initialOrderScope]);
+
+  // The highlight is a one-off cue: its CSS fades by itself, and the flag is dropped after so the
+  // field is plain afterwards. Without motion the static outline stays a little shorter.
+  useEffect(() => {
+    if (!scopeHighlight) return undefined;
+    const timer = window.setTimeout(() => setScopeHighlight(false), prefersMotion() ? 2200 : 1500);
+    return () => window.clearTimeout(timer);
+  }, [scopeHighlight]);
+
   const handleJobTypeChange = (jobType: string): void => {
     const job = triggerableJobs.find((j) => j.jobType === jobType);
     setSelectedJobType(jobType);
-    setPayloadValues(job ? buildDefaultValues(job.payloadFields, connection) : {});
+    setPayloadValues(job ? buildDefaultValues(job.payloadFields) : {});
     setFieldErrors({});
+    setPositionChoice(ORDER_POSITION_DEFAULT);
+    setCustomPositionKey('');
+    setOrderRange(ORDER_RANGE_DEFAULT_VALUE);
+    setOrderScope('new');
+    scopeTouched.current = true;
+    setScopeHighlight(false);
     enqueueSyncJob.reset();
   };
 
   const validate = (): boolean => {
     if (!selectedJob) return false;
     const errors: Record<string, string> = {};
-    for (const field of selectedJob.payloadFields) {
+    for (const field of isRangeImport ? [] : selectedJob.payloadFields) {
       if (field.required && !payloadValues[field.name]?.trim()) {
         errors[field.name] = interpolate(copy.fieldRequired, { field: field.label });
       }
+    }
+    if (
+      isOrderSync &&
+      !isRangeImport &&
+      positionChoice === ORDER_POSITION_CUSTOM &&
+      !customPositionKey.trim()
+    ) {
+      errors.cursorKey = copy.orderPosition.customRequired;
+    }
+    if (isRangeImport) {
+      const problems = validateOrderRange(orderRange);
+      if (problems.from) errors.from = copy.orderRange.errors[problems.from];
+      if (problems.to) errors.to = copy.orderRange.errors[problems.to];
     }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -239,20 +305,26 @@ export function TriggerSyncDialog({
   const handleSubmit = async (): Promise<void> => {
     if (!selectedJob || !validate() || intentKey === null) return;
 
-    const payload: Record<string, unknown> = { schemaVersion: 1 };
-    for (const field of selectedJob.payloadFields) {
+    const payload: Record<string, unknown> =
+      isRangeImport ? toOrderImportPayload(orderRange, intentKey) : { schemaVersion: 1 };
+    for (const field of isRangeImport ? [] : selectedJob.payloadFields) {
       const raw = payloadValues[field.name]?.trim();
       if (raw) {
         payload[field.name] = field.type === 'number' ? Number(raw) : raw;
       }
     }
 
+    if (isOrderSync && !isRangeImport) {
+      const key = positionChoice === ORDER_POSITION_CUSTOM ? customPositionKey.trim() : positionChoice;
+      if (key) payload.cursorKey = key;
+    }
+
     try {
       const result = await enqueueSyncJob.mutateAsync({
         connectionId: connection.id,
-        jobType: selectedJob.jobType,
+        jobType: submittedJobType ?? selectedJob.jobType,
         payload,
-        idempotencyKey: `manual:${connection.id}:${selectedJob.jobType}:${intentKey}`,
+        idempotencyKey: `manual:${connection.id}:${submittedJobType ?? selectedJob.jobType}:${intentKey}`,
       });
 
       onOpenChange(false);
@@ -272,7 +344,9 @@ export function TriggerSyncDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="trigger-sync-dialog">
+      <DialogContent
+        className={guidedEntrance ? 'trigger-sync-dialog trigger-sync-dialog--guided' : 'trigger-sync-dialog'}
+      >
         <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
           {renderRich(
@@ -318,12 +392,57 @@ export function TriggerSyncDialog({
             <p className="trigger-sync-dialog__description muted-text">{selectedJob.description}</p>
           ) : null}
 
-          {selectedJob?.payloadFields.map((field) => (
+          {isOrderSync && canImportRange ? (
+            <div className={scopeHighlight ? 'trigger-sync-dialog__scope--preselected' : undefined}>
+            <FormField
+              label={copy.orderScope.label}
+              name="orderScope"
+              description={isRangeImport ? copy.orderScope.rangeHint : copy.orderScope.newHint}
+            >
+              <Select
+                value={orderScope}
+                onChange={(e) => {
+                  scopeTouched.current = true;
+                  setScopeHighlight(false);
+                  setOrderScope(e.target.value === 'range' ? 'range' : 'new');
+                }}
+                disabled={enqueueSyncJob.isPending}
+              >
+                <option value="new">{copy.orderScope.new}</option>
+                <option value="range">{copy.orderScope.range}</option>
+              </Select>
+            </FormField>
+            </div>
+          ) : null}
+
+          {isOrderSync && !isRangeImport ? (
+            <OrderPositionField
+              connectionId={connection.id}
+              choice={positionChoice}
+              onChoiceChange={setPositionChoice}
+              customKey={customPositionKey}
+              onCustomKeyChange={setCustomPositionKey}
+              customError={fieldErrors.cursorKey}
+              disabled={enqueueSyncJob.isPending}
+            />
+          ) : null}
+
+          {isRangeImport ? (
+            <OrderRangeFields
+              value={orderRange}
+              onChange={setOrderRange}
+              errors={{ from: fieldErrors.from, to: fieldErrors.to }}
+              disabled={enqueueSyncJob.isPending}
+            />
+          ) : null}
+
+          {(isRangeImport ? [] : (selectedJob?.payloadFields ?? [])).map((field) => (
             <FormField
               key={field.name}
               label={field.required ? interpolate(copy.requiredField, { field: field.label }) : field.label}
               name={field.name}
               error={fieldErrors[field.name]}
+              description={field.description}
             >
               <Input
                 value={payloadValues[field.name] ?? ''}

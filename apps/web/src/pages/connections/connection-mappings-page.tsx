@@ -35,6 +35,8 @@ import {
   MAPPING_SOURCE_PICKER_ID,
 } from '../../features/mappings/components/mapping-pairing-bar';
 import { useConnectionQuery } from '../../features/connections';
+import { CarrierMappingsNotice } from '../../features/connections/components/carrier-ships-for-card';
+import { CARRIER_CAPABILITY } from '../../features/connections/components/connection-shipping-routes';
 import { useMappingPairing } from '../../features/mappings/hooks/use-mapping-pairing';
 import { useStatusMappingsQuery, useUpsertStatusMappings } from '../../features/mappings/hooks/use-status-mappings';
 import { useCarrierMappingsQuery, useUpsertCarrierMappings } from '../../features/mappings/hooks/use-carrier-mappings';
@@ -410,15 +412,19 @@ export function ConnectionMappingsPage(): ReactElement {
         description={interpolate(copy.noSource.description, { name: pairing.master.name })}
       >
         <MappingPairingBar pairing={pairing} />
-        <EmptyState
-          title={copy.noSource.title}
-          message={copy.noSource.message}
-          action={
-            <Link className="button button--secondary" to="/connections">
-              {copy.noSource.goToConnections}
-            </Link>
-          }
-        />
+        {pairing.master.enabledCapabilities.includes(CARRIER_CAPABILITY) ? (
+          <CarrierMappingsNotice connection={pairing.master} />
+        ) : (
+          <EmptyState
+            title={copy.noSource.title}
+            message={copy.noSource.message}
+            action={
+              <Link className="button button--secondary" to="/connections">
+                {copy.noSource.goToConnections}
+              </Link>
+            }
+          />
+        )}
       </PageLayout>
     );
   }
@@ -609,6 +615,12 @@ export function ConnectionMappingsPage(): ReactElement {
           {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id}>
               {tab.label}
+              {dirtyTabs.has(tab.id) && (
+                <>
+                  <span className="tabs__unsaved-dot" aria-hidden="true" />
+                  <span className="sr-only">{copy.tabUnsaved}</span>
+                </>
+              )}
             </TabsTrigger>
           ))}
         </TabsList>

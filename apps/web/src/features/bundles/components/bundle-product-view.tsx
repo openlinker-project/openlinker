@@ -20,8 +20,11 @@ import { useTopProductVariantSalesQuery } from '../../analytics';
 import { useConnectionsQuery } from '../../connections';
 import { useListingsQuery, type OfferLifecycle } from '../../listings';
 import { computeBundleAvailability } from '../lib/bundle-availability';
+import { namedPackSize } from '../lib/bundle-form-model';
 import { splitBundlePrice } from '../lib/bundle-price-split';
+import { describeComponents, diffAgainst } from './bundle-history';
 import { BundleComponentList } from './bundle-component-list';
+import { BundleJourney } from './bundle-journey';
 import { useBundleHistoryQuery, useBundleQuery } from '../hooks/use-bundle-queries';
 
 const LIFECYCLE_TONE: Record<OfferLifecycle, StatusBadgeTone> = {
@@ -32,6 +35,10 @@ const LIFECYCLE_TONE: Record<OfferLifecycle, StatusBadgeTone> = {
   Unsynced: 'neutral',
 };
 
+/** Connection names can carry the time they were created, which only crowds the row. */
+const TRAILING_TIMESTAMP = /\s*\(\d{4}-\d{2}-\d{2}T[^)]*\)\s*$/;
+const displayConnectionName = (name: string): string => name.replace(TRAILING_TIMESTAMP, '');
+
 export interface BundleProductViewProps {
   bundleVariantId: string;
   productId: string;
@@ -41,7 +48,8 @@ export function BundleProductView({
   bundleVariantId,
   productId,
 }: BundleProductViewProps): ReactElement {
-  const copy = useMessages('bundles').view;
+  const allCopy = useMessages('bundles');
+  const copy = allCopy.view;
   const { locale } = useLocale();
   const format = useFormat();
   const detail = useBundleQuery(bundleVariantId);
@@ -70,6 +78,28 @@ export function BundleProductView({
       availableToPromise: row.availableToPromise,
     }))
   );
+  // A component the shop no longer returns has neither name nor SKU (the list tags
+  // it "removed"); the set cannot be assembled, whatever the other stocks say.
+  const removedCount = rows.filter(
+    (row) => row.summary.name === null && row.summary.sku === null
+  ).length;
+  const priceable = rows.filter((row) => row.giftSlot !== true);
+  const componentsSum =
+    bundle.bundle.price !== null &&
+    priceable.length > 0 &&
+    priceable.every((row) => row.summary.price !== null)
+      ? priceable.reduce((sum, row) => sum + row.quantity * (row.summary.price ?? 0), 0)
+      : null;
+  const discountToday =
+    componentsSum !== null && componentsSum > 0 && bundle.bundle.price !== null
+      ? componentsSum - bundle.bundle.price
+      : null;
+  // The name promises a pack size the composition does not hold (one product, another quantity).
+  const namedSize = namedPackSize(`${bundle.bundle.name ?? ''} ${bundle.bundle.sku ?? ''}`);
+  const nameMismatch =
+    rows.length === 1 && namedSize !== null && namedSize !== rows[0].quantity
+      ? { named: namedSize, actual: rows[0].quantity }
+      : null;
   const giftCount = rows.filter((row) => row.giftSlot === true).length;
   const split = splitBundlePrice(
     bundle.bundle.price,
@@ -96,6 +126,10 @@ export function BundleProductView({
     return `/listings/bulk-create/wizard?${params.toString()}`;
   };
 
+  const nextAction =
+    availability.kind === 'known' && availability.limitedBy !== null && availability.bundles <= 3
+      ? interpolate(copy.nextRestock, { name: availability.limitedBy, n: availability.bundles })
+      : null;
   const availabilityTone =
     availability.kind === 'known' ? (availability.bundles === 0 ? 'is-zero' : 'is-warn') : 'is-unk';
   const availabilityLine =
@@ -108,23 +142,92 @@ export function BundleProductView({
   return (
     <div className="pm-grid" data-testid="bundle-product-view">
       <div className="pm-col">
+        <BundleJourney
+          componentCount={rows.length}
+          listedCount={listedCount}
+          channelCount={offerRows.length}
+          sold={
+            sold.data
+              ? sold.data.variants
+                  .filter((v) => v.variantId === bundleVariantId)
+                  .reduce((sum, v) => sum + v.units, 0)
+              : null
+          }
+          listHref={wizardTo()}
+        />
+        {removedCount > 0 ? (
+          <div className="ux-removed-banner" role="alert" data-testid="bundle-view-removed-banner">
+            <strong>{copy.removedTitle}</strong>
+            <p>{interpolate(copy.removedBody, { n: removedCount })}</p>
+          </div>
+        ) : null}
+        {nextAction !== null ? (
+          <div className="ux-next-strip" data-testid="bundle-next-action">
+            <span>{nextAction}</span>
+          </div>
+        ) : null}
         <ComposerSection
           title={copy.compositionTitle}
-          aside={`${interpolate(copy.compositionAside, { n: rows.length })}${
+          aside={`${formatPlural(rows.length, allCopy.form.componentsCount, locale)}${
             giftCount > 0 ? ` · ${interpolate(copy.giftCount, { n: giftCount })}` : ''
           }`}
           riseIndex={2}
         >
-          <div
-            className={`cx-avail ${availabilityTone}`}
-            data-testid="bundle-view-availability-line"
-          >
-            {availabilityLine}
-          </div>
+          {/* The rail card already states "N bundles, limited by X"; repeat it
+              here only when it is an alert (zero or unknown). */}
+          {removedCount > 0 ? (
+            <div className="cx-avail is-zero" data-testid="bundle-view-availability-line">
+              {copy.removedAvailabilityLine}
+            </div>
+          ) : availability.kind !== 'known' || availability.bundles === 0 ? (
+            <div
+              className={`cx-avail ${availabilityTone}`}
+              data-testid="bundle-view-availability-line"
+            >
+              {availabilityLine}
+            </div>
+          ) : null}
           <BundleComponentList
             components={rows}
             bundlesAvailable={availability.kind === 'known' ? availability.bundles : null}
           />
+          {listedCount > 0 ? (
+            <p className="pm-help" data-testid="bundle-view-edit-offers-note">
+              {formatPlural(listedCount, copy.editOffersNote, locale)}
+            </p>
+          ) : null}
+          {nameMismatch !== null ? (
+            <p className="pm-help ux-name-mismatch" role="note" data-testid="bundle-view-name-mismatch">
+              {interpolate(copy.nameMismatch, nameMismatch)}{' '}
+              <Link to={`/products/bundles/${encodeURIComponent(bundleVariantId)}`}>
+                {copy.nameMismatchEdit}
+              </Link>
+            </p>
+          ) : null}
+          <p className="pm-help" data-testid="bundle-view-price-stays">
+            {copy.priceStaysNote}
+            {discountToday !== null && componentsSum !== null
+              ? ` ${
+                  discountToday >= 0
+                    ? interpolate(copy.discountToday, {
+                        pct: format.number(Math.round((discountToday / componentsSum) * 100)),
+                      })
+                    : interpolate(copy.discountNegative, {
+                        amount: format.money(-discountToday, currency),
+                      })
+                }`
+              : ''}
+          </p>
+          <p className="bundle-dup">
+            <Link
+              className="button button--secondary button--sm"
+              data-testid="bundle-view-duplicate"
+              to={`/products/bundles/new?from=${encodeURIComponent(bundleVariantId)}`}
+            >
+              {copy.duplicate}
+            </Link>
+            <span className="pm-help">{copy.duplicateHint}</span>
+          </p>
           <div className="pm-disc">
             <button
               type="button"
@@ -165,13 +268,24 @@ export function BundleProductView({
 
         <ComposerSection
           title={copy.offersTitle}
-          aside={interpolate(copy.offersAside, { listed: listedCount, total: offerRows.length })}
+          aside={formatPlural(offerRows.length, copy.offersAside, locale, { listed: listedCount })}
           riseIndex={3}
         >
+          {listedCount === 0 && offerRows.length > 0 ? (
+            <div className="ux-empty-offers" data-testid="bundle-view-offers-empty">
+              <strong>{copy.offersEmptyTitle}</strong>
+              <p>{copy.offersEmptyBody}</p>
+              <Link className="button button--primary button--sm" to={wizardTo()}>
+                {copy.offersEmptyAction}
+              </Link>
+            </div>
+          ) : null}
           <ul className="cx-offers" data-testid="bundle-view-offers">
             {offerRows.map(({ connection, listing }) => (
               <li key={connection.id}>
-                <span>{connection.name}</span>
+                <span className="ux-offer-name" title={connection.name}>
+                  {displayConnectionName(connection.name)}
+                </span>
                 {listing ? (
                   <>
                     <span>
@@ -190,9 +304,34 @@ export function BundleProductView({
                       {listing.commercial?.price
                         ? ` · ${format.money(Number(listing.commercial.price), listing.commercial.currency ?? currency)}`
                         : ''}
+                      {listing.commercial?.availableQuantity != null &&
+                      availability.kind === 'known' &&
+                      listing.commercial.availableQuantity !== availability.bundles ? (
+                        // Below the component count is the normal shape of a channel reserve or
+                        // a pending order, so it is a note; only a channel ABOVE what the
+                        // components allow is a fault a sync could fix.
+                        <span
+                          className={
+                            listing.commercial.availableQuantity > availability.bundles
+                              ? 'ux-offer-mismatch'
+                              : 'ux-offer-mismatch ux-offer-mismatch--note'
+                          }
+                          data-testid="bundle-offer-mismatch"
+                        >
+                          {interpolate(
+                            listing.commercial.availableQuantity > availability.bundles
+                              ? copy.offerMismatch
+                              : copy.offerReserveNote,
+                            {
+                              channel: listing.commercial.availableQuantity,
+                              sets: availability.bundles,
+                            }
+                          )}
+                        </span>
+                      ) : null}
                     </span>
                     <Link
-                      className="button button--ghost button--sm"
+                      className="button button--secondary button--sm"
                       to={`/listings?search=${encodeURIComponent(listing.externalId)}`}
                     >
                       {copy.open}
@@ -224,7 +363,13 @@ export function BundleProductView({
           riseIndex={4}
         >
           <ul className="pm-log" data-testid="bundle-view-history">
-            {(history.data ?? []).map((entry) => (
+            {(history.data ?? []).map((entry, index, all) => {
+              const chips = diffAgainst(entry, all[index + 1], {
+                added: allCopy.form.historyDiffAdded,
+                removed: allCopy.form.historyDiffRemoved,
+                quantity: allCopy.form.historyDiffQuantity,
+              });
+              return (
               <li key={entry.version}>
                 <span>
                   <b>
@@ -234,13 +379,17 @@ export function BundleProductView({
                   </b>
                   <span className="text-muted">
                     {interpolate(copy.since, { date: format.date(entry.createdAt) })} ·{' '}
-                    {entry.components
-                      .map((component, index) => {
-                        const n = entry.componentSummaries[index]?.name ?? component.variantId;
-                        return component.giftSlot ? `${n} (${copy.gift.toLowerCase()})` : n;
-                      })
-                      .join(', ')}
+                    {describeComponents(entry)}
                   </span>
+                  {chips.length > 0 ? (
+                    <span className="bf-history__chips">
+                      {chips.map((chip) => (
+                        <span key={chip.text} className={`bf-history__chip bf-history__chip--${chip.kind}`}>
+                          {chip.text}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
                 </span>
                 {entry.current ? (
                   <StatusBadge compact withDot tone="success">
@@ -252,7 +401,8 @@ export function BundleProductView({
                   </span>
                 ) : null}
               </li>
-            ))}
+              );
+            })}
           </ul>
           {bundle.openOrdersOnOlderComposition > 0 ? (
             <div className="cx-note">
@@ -260,7 +410,7 @@ export function BundleProductView({
                 <circle cx="12" cy="12" r="9" />
                 <path d="M12 8v5M12 16v.5" />
               </svg>
-              <p>{formatPlural(bundle.openOrdersOnOlderComposition, copy.openOrders, locale)}</p>
+              <p>{formatPlural(bundle.openOrdersOnOlderComposition, allCopy.form.openOrdersNote, locale)}</p>
             </div>
           ) : null}
         </ComposerSection>
@@ -268,8 +418,22 @@ export function BundleProductView({
 
       <aside className="pm-col pm-rail">
         <ComposerSection title={copy.availabilityTitle} aside={copy.liveAside} riseIndex={3}>
+          <span
+            className="cx-tag cx-tag--quiet bundle-derived-tag"
+            title={copy.derivedStockHint}
+            data-testid="bundle-view-derived-stock"
+          >
+            {copy.derivedStock}
+          </span>
           <div className={`cx-avail ${availabilityTone}`} style={{ alignItems: 'flex-end' }}>
-            {availability.kind === 'known' ? (
+            {removedCount > 0 ? (
+              <>
+                <span className="cx-big mono tabular">
+                  0 <small>{copy.bundlesWord}</small>
+                </span>
+                <span style={{ paddingBottom: 2 }}>{copy.removedAvailabilityLine}</span>
+              </>
+            ) : availability.kind === 'known' ? (
               <>
                 <span className="cx-big mono tabular">
                   {availability.bundles} <small>{copy.bundlesWord}</small>
@@ -287,6 +451,8 @@ export function BundleProductView({
               <span>{copy.availableLineUnknown}</span>
             )}
           </div>
+          <p className="pm-help" data-testid="bundle-view-stock-rule">{copy.stockRule}</p>
+          <p className="pm-help" data-testid="bundle-view-stock-reserve">{copy.stockRuleReserve}</p>
           <p className="pm-help">{copy.channelsGetNumber}</p>
         </ComposerSection>
         <ComposerSection title={copy.glanceTitle} riseIndex={4}>

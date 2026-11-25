@@ -1,4 +1,4 @@
-import { cleanup, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OfferProductPickerRow } from './offer-product-picker-row';
@@ -73,5 +73,39 @@ describe('OfferProductPickerRow variant thumbnail', () => {
     await waitFor(() => {
       expect(requestBlob).toHaveBeenCalledWith('/products/variants/ol_variant_1/images/0');
     });
+  });
+});
+
+describe('OfferProductPickerRow bundle marker', () => {
+  function renderRow(bundle: Product['bundle']): void {
+    renderWithProviders(
+      <OfferProductPickerRow
+        product={{ ...product, variantCount: 1, bundle }}
+        isExpanded={false}
+        entry={undefined}
+        capBlocked={false}
+        onToggleExpand={vi.fn()}
+        onSelectAll={vi.fn()}
+        onClear={vi.fn()}
+        onToggleVariant={vi.fn()}
+        onVariantsLoaded={vi.fn()}
+      />,
+    );
+  }
+
+  it('should mark a set with its component count instead of a variant count', () => {
+    renderRow({ variantId: 'v', componentCount: 3, limitedBy: null, unknownComponent: null });
+    expect(screen.getByTestId('picker-bundle-chip')).toHaveTextContent('Set · 3 components');
+    expect(screen.queryByText(/1 variant/)).not.toBeInTheDocument();
+  });
+
+  it('should mark a one-component bundle as a multipack', () => {
+    renderRow({ variantId: 'v', componentCount: 1, limitedBy: null, unknownComponent: null });
+    expect(screen.getByTestId('picker-bundle-chip')).toHaveTextContent('Multipack');
+  });
+
+  it('should show no chip for an ordinary product', () => {
+    renderRow(null);
+    expect(screen.queryByTestId('picker-bundle-chip')).not.toBeInTheDocument();
   });
 });

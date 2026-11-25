@@ -7,7 +7,11 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
-import { checkPaymentFactsConsistency, diffOrderAmendment } from '@openlinker/core/orders';
+import {
+  checkPaymentFactsConsistency,
+  diffOrderAmendment,
+  OrderSyncStartUnavailableError,
+} from '@openlinker/core/orders';
 import { PrestashopOrderSourceAdapter } from '../prestashop-order-source.adapter';
 import { DEFAULT_INSTALL_ORDER_STATES } from '../../../__tests__/fixtures/prestashop-order-states.fixture';
 import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.factory';
@@ -501,6 +505,129 @@ describe('PrestashopOrderSourceAdapter', () => {
         // Cursor still advances past the filtered-out cancelled order.
         expect(result.nextCursor).toBe('2024-03-11 09:00:00|12');
       });
+    });
+  });
+
+  describe('headCursor (#4228)', () => {
+    it('should return the newest order itself as the cursor, with no lookback', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([
+          { id: '42', date_add: '2024-06-01 08:00:00', date_upd: '2024-06-01 08:10:00' },
+        ]);
+
+      const head = await adapter.headCursor();
+
+      expect(head).toBe('2024-06-01 08:10:00|42');
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'orders',
+        { sort: ['date_upd_DESC', 'id_DESC'] },
+        1,
+        0
+      );
+    });
+
+    it('should return null when the shop has no orders', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      await expect(adapter.headCursor()).resolves.toBeNull();
+    });
+
+    it('should fall back to id ordering when the shop refuses date_upd sorting', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(
+          new PrestashopApiException(
+            'PrestaShop API server error (500): /api/orders',
+            500,
+            JSON.stringify({ errors: [{ code: 38, message: 'Unable to filter by this field.' }] })
+          )
+        )
+        .mockResolvedValueOnce([
+          { id: '7', date_add: '2024-06-01 08:00:00', date_upd: '2024-06-01 08:00:00' },
+        ]);
+
+      const head = await adapter.headCursor();
+
+      expect(head).toBe('2024-06-01 08:00:00|7');
+      expect(mockHttpClient.listResources).toHaveBeenLastCalledWith(
+        'orders',
+        { sort: ['id_DESC'] },
+        1,
+        0
+      );
+    });
+
+    it('should throw when the newest row is unreadable', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: '9', date_add: 'x', date_upd: 'garbage' }]);
+
+      await expect(adapter.headCursor()).rejects.toThrow('unreadable');
+    });
+
+    it('should propagate a read failure', async () => {
+      mockHttpClient.listResources = jest.fn().mockRejectedValueOnce(new Error('boom'));
+
+      await expect(adapter.headCursor()).rejects.toThrow('boom');
+    });
+  });
+
+  describe('cursorForDate (#4228)', () => {
+    it('should return a cursor at the start of the date after probing the date filter', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const cursor = await adapter.cursorForDate('2026-10-01');
+
+      expect(cursor).toBe('2026-10-01 00:00:00|0');
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'orders',
+        expect.objectContaining({ updatedAfter: '2026-10-01 00:00:00' }),
+        1,
+        0
+      );
+    });
+
+    it('should use the date part of a full instant', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      await expect(adapter.cursorForDate('2026-10-01T22:30:00Z')).resolves.toBe(
+        '2026-10-01 00:00:00|0'
+      );
+    });
+
+    it('should refuse, never falling back to the whole history, when the shop will not filter by date_upd', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(
+          new PrestashopApiException(
+            'PrestaShop API server error (500): /api/orders',
+            500,
+            JSON.stringify({ errors: [{ code: 38, message: 'Unable to filter by this field.' }] })
+          )
+        );
+
+      const refusal = adapter.cursorForDate('2026-10-01');
+      await expect(refusal).rejects.toThrow(/cannot start from a date/);
+      await expect(refusal).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+
+      // The refusal is remembered, so the next attempt fails without a request.
+      mockHttpClient.listResources = jest.fn();
+      await expect(adapter.cursorForDate('2026-10-01')).rejects.toThrow(/cannot start from a date/);
+      expect(mockHttpClient.listResources).not.toHaveBeenCalled();
+    });
+
+    it('should propagate a read failure', async () => {
+      mockHttpClient.listResources = jest.fn().mockRejectedValueOnce(new Error('boom'));
+
+      await expect(adapter.cursorForDate('2026-10-01')).rejects.toThrow('boom');
+    });
+
+    it('should refuse an unreadable date', async () => {
+      await expect(adapter.cursorForDate('soon')).rejects.toBeInstanceOf(
+        OrderSyncStartUnavailableError
+      );
+      await expect(adapter.cursorForDate('soon')).rejects.toThrow('expected an ISO date');
     });
   });
 

@@ -1,6 +1,6 @@
 {
   "attention": {
-    "label": "Do sprawdzenia",
+    "label": "Wymaga uwagi",
     "limitDesc": "Wstrzymana. Podnieś limit i wznów ją.",
     "limitLabel": "Limit wyczerpany",
     "limitShort": "limit",
@@ -294,6 +294,7 @@
     "cap": "Limit to {cap} szt.",
     "channel": "kanał",
     "channelsLabel": "Kanały",
+    "effect": "Gratis zdejmie ze stanu tyle sztuk, ile dodajemy, i pojawi się na dokumencie za 0,00 zł.",
     "eyebrow": "Reguła w jednym zdaniu",
     "from": "Działa od {from}.",
     "fromTo": "Działa od {from} do {to}.",
@@ -302,7 +303,7 @@
     "or": " lub ",
     "product": "Gdy zamówienie z {channels} zawiera {product}, dodajemy gratis: {gift}, {qty} szt.",
     "product_ph": "produkt w zamówieniu",
-    "stackAll": "Łączy się ze wszystkimi promocjami.",
+    "stackAll": "Łączy się z każdą inną promocją.",
     "stackNone": "Nie łączy się z innymi.",
     "stackSelected": "Łączy się tylko z: {names}.",
     "stackSelectedNone": "Łączy się tylko z wybranymi (jeszcze żadna).",
@@ -382,6 +383,7 @@
       "costsYouAfter": " za sztukę",
       "costsYouBefore": "Kosztuje Cię ",
       "customerPays": "Klient płaci",
+      "effectNote": "Gratis trafia do zamówienia z ceną 0,00 zł i schodzi ze stanu jak zwykły towar. Na dokumencie pojawi się według ustawień faktury lub paragonu.",
       "empty": "Nie wybrano gratisu",
       "emptyHelp": "Wybierz produkt, który dodamy do zamówienia.",
       "error": "Wybierz produkt gratisu.",

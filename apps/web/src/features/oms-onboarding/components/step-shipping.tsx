@@ -38,7 +38,8 @@ import {
 } from '../../mappings';
 import type { AutoDispatchSettings } from '../lib/config-merge';
 import { useShippingStepCopy } from '../hooks/use-shipping-setup-copy';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { WIZARD_STEPS } from '../lib/onboarding-state';
 import {
   coverageBadge,
@@ -232,6 +233,7 @@ function SourceRow({
 }
 
 export function StepShipping(props: StepShippingProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const { sources, coverage, saved } = props;
   const step = useShippingStepCopy();
 
@@ -457,7 +459,7 @@ export function StepShipping(props: StepShippingProps): ReactElement {
 
       {props.saveError === null ? null : (
         <Alert tone="error" title={step.saveFailedTitle}>
-          {props.saveError.message}
+          {describeApiError(props.saveError, 'oms-onboarding')}
         </Alert>
       )}
 
@@ -466,7 +468,7 @@ export function StepShipping(props: StepShippingProps): ReactElement {
         onOpenChange={(next) => {
           setLeaving(next);
           // "Go back and save" closes the dialog with the unsaved editor open,
-          // so the Save routing button it asks for is in view.
+          // so the Save assignment button it asks for is in view.
           if (!next && dirtySource !== undefined) {
             const id = dirtySource.id;
             setOpen((previous) => new Set(previous).add(id));

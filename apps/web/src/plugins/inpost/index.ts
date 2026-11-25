@@ -17,6 +17,7 @@ import { definePlugin } from '../define-plugin';
 import { getInpostMessages, inpostMessages } from './messages';
 import { InpostCredentialsPanel } from './components/inpost-credentials-panel';
 import { InpostStructuredSection } from './components/inpost-structured-section';
+import { inpostConnectionConfig } from './inpost-connection-config';
 import { InpostWebhookRunbook } from './components/inpost-webhook-runbook';
 import { inpostSetupRoute } from './inpost-setup.route';
 
@@ -41,7 +42,11 @@ export const inpostPlugin: OpenLinkerPlugin = definePlugin({
         return getInpostMessages().plugin.setupCard.badge;
       },
     },
+    get sectionTitle(): string {
+      return getInpostMessages().settings.sectionTitle;
+    },
     StructuredConfigSection: InpostStructuredSection,
+    connectionConfig: inpostConnectionConfig,
     CredentialsPanel: InpostCredentialsPanel,
     ConnectionActions: InpostWebhookRunbook,
   },

@@ -101,6 +101,7 @@
     "steps": {
       "credentials": "Credentials",
       "environment": "Environment",
+      "orders": "Order history",
       "productCatalogue": "Product catalogue",
       "review": "Review & connect",
       "salesDocuments": "Sales documents"

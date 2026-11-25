@@ -6,6 +6,11 @@ import {
   type DeliveryLineSuggestion,
   type DeliveryWizardValue,
 } from '../../delivery-on-documents';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  toOrderSyncStart,
+} from '../../connections';
 import type { Messages, ResolvedCopy } from '../../../shared/i18n';
 import { CatalogueModeValues } from '../../connections';
 
@@ -43,6 +48,7 @@ export function createAllegroSetupSchema(copy: AllegroSetupSchemaCopy) {
   // The answer to the "Sales documents" step. Structured state rather than a
   // registered input, so it is set through `setValue` (#3911).
   deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),
+  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
   });
 }
 
@@ -59,6 +65,7 @@ export const ALLEGRO_SETUP_DEFAULT_VALUES: AllegroSetupFormValues = {
   masterCatalogConnectionId: '',
   catalogueMode: 'linked',
   deliveryOnDocuments: DEFAULT_DELIVERY_WIZARD_VALUE,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toStartOAuthInput(
@@ -82,6 +89,8 @@ export function toStartOAuthInput(
     // credentials only and must not carry config (#3911).
     ...(values.catalogueMode === 'none' && !reauthConnectionId ? { catalogueMode: 'none' as const } : {}),
     ...(reauthConnectionId ? { connectionId: reauthConnectionId } : {}),
+    // A reauth only rotates credentials, so it carries no order start either.
+    ...(reauthConnectionId ? {} : { orderSyncStart: toOrderSyncStart(values.orderSyncStart) }),
     // A reauth only rotates credentials; it must not carry config (#3911).
     ...(reauthConnectionId
       ? {}

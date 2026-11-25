@@ -14,6 +14,9 @@ export const SNAPPY_SPRING = { type: 'spring', stiffness: 520, damping: 34, mass
 /** A selection thumb sliding to its option: a touch of bounce. */
 export const THUMB_SPRING = { type: 'spring', bounce: 0.18, visualDuration: 0.32 } as const;
 
+/** A segmented control's thumb: a hair of overshoot over a short travel, so it lands crisply. */
+export const SEGMENT_THUMB_SPRING = { type: 'spring', bounce: 0.1, visualDuration: 0.24 } as const;
+
 /** Children of a freshly opened surface come in one after another. */
 export const ENTRANCE_GROUP = {
   show: { transition: { staggerChildren: 0.035, delayChildren: 0.04 } },
@@ -55,3 +58,10 @@ export function popoverEntrance(
     transition: SNAPPY_SPRING,
   };
 }
+
+/**
+ * The out-curve and panel duration the bundle wizard uses for steps, row add/remove and the
+ * summary count-up. Mirrors the CSS token --ux-ease (styles/bundle-ux.css); change both together.
+ */
+export const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+export const DURATION_PANEL = 0.24;

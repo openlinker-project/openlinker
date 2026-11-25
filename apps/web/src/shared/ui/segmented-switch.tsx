@@ -28,6 +28,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ForwardedRef,
   type KeyboardEvent,
   type ReactElement,
@@ -53,6 +54,13 @@ export interface SegmentedSwitchProps<T extends string> {
   labels?: SegmentedSwitchLabels;
   /** Options come in one after another (inside a freshly opened popover). */
   animateIn?: boolean;
+  /**
+   * Slide the thumb by option index with a CSS transition instead of Motion's
+   * shared-layout animation. The layout animation measures boxes with
+   * getBoundingClientRect, which is wrong inside a CSS-zoomed ancestor (the
+   * text-size switch changes the zoom itself), so that switch opts out.
+   */
+  slideThumb?: boolean;
   /** Focus the chosen option on mount. */
   autoFocus?: boolean;
   /** Escape or Tab: close the popover the switch lives in. */
@@ -88,6 +96,7 @@ function SegmentedSwitchInner<T extends string>(
     onChange,
     labels = 'always',
     animateIn = false,
+    slideThumb = false,
     autoFocus = false,
     onDismiss,
     id,
@@ -200,6 +209,15 @@ function SegmentedSwitchInner<T extends string>(
         variants={ENTRANCE_GROUP}
         {...aria}
       >
+        {slideThumb ? (
+          <span
+            className="segmented-switch__thumb segmented-switch__thumb--slide"
+            aria-hidden="true"
+            style={
+              { '--seg-index': activeIndex, '--seg-count': options.length } as CSSProperties
+            }
+          />
+        ) : null}
         {options.map((option, index) => {
           const selected = option.value === value;
           return (
@@ -220,7 +238,7 @@ function SegmentedSwitchInner<T extends string>(
               onPointerEnter={() => setPointing(index)}
               onClick={() => onChange(option.value)}
             >
-              {selected ? (
+              {selected && !slideThumb ? (
                 <motion.span
                   className="segmented-switch__thumb"
                   layoutId={`${groupId}-thumb`}

@@ -68,6 +68,7 @@ export function OfferProductPickerRail({
 }: OfferProductPickerRailProps): ReactElement {
   const copy = useMessages('listings').offerProductPickerRail;
   const plural = usePlural();
+  const bundleCount = railGroups.filter((group) => group.isBundle).length;
   return (
     <aside className="offer-product-picker__rail" aria-label={copy.ariaLabel}>
       <div className="offer-product-picker__rail-head">
@@ -105,6 +106,17 @@ export function OfferProductPickerRail({
           <span className="offer-product-picker__rail-n tabular">{selectionSize}</span>
           <span className="offer-product-picker__rail-lbl">{copy.counts.products}</span>
         </div>
+        {bundleCount > 0 ? (
+          <div>
+            <span
+              className="offer-product-picker__rail-n tabular"
+              data-testid="rail-bundle-count"
+            >
+              {bundleCount}
+            </span>
+            <span className="offer-product-picker__rail-lbl">{copy.counts.bundles}</span>
+          </div>
+        ) : null}
         <div>
           <span className="offer-product-picker__rail-n offer-product-picker__rail-n--warn tabular">
             {needEanCount}
@@ -127,7 +139,12 @@ export function OfferProductPickerRail({
                 <div className="offer-product-picker__selgrp-head">
                   <ProductThumbnail name={group.name} src={group.imageSrc} size="sm" />
                   <b>{group.name}</b>
-                  {group.whole ? (
+                  {group.isBundle ? (
+                    <span className="bulk-chip bulk-chip--neutral" title={copy.chips.bundleTitle}>
+                      <span className="bulk-chip__dot" />
+                      {copy.chips.bundle}
+                    </span>
+                  ) : group.whole ? (
                     group.wholeEan && !group.wholeEan.loaded ? (
                       <span className="bulk-chip bulk-chip--neutral">
                         <span className="bulk-chip__dot" />

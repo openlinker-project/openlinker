@@ -34,6 +34,7 @@ import { useProductMasterConnections } from '../hooks/use-product-master-connect
 import { CatalogueModeFieldset } from './catalogue-mode-fieldset';
 import type { ConnectionTestResult } from '../api/connections.types';
 import {
+  ERLI_ADAPTER_KEY,
   ERLI_SETUP_DEFAULT_VALUES,
   erliSetupSchema,
   toCreateConnectionInput,
@@ -41,6 +42,13 @@ import {
   type ErliSetupFormValues,
 } from './erli-setup.schema';
 import { ErliSetupSummary } from './erli-setup-summary';
+import { OrderSyncStartField } from './order-sync-start-field';
+import { useAdaptersQuery } from '../../adapters';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  describeOrderSyncStart,
+} from '../lib/order-sync-start';
 import {
   DEFAULT_DELIVERY_WIZARD_VALUE,
   DeliveryWizardStep,
@@ -58,6 +66,8 @@ import { Select } from '../../../shared/ui/select';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
+import { TargetShopRow } from './wizard-created-screen';
+import { ShippingNextStep } from './shipping-next-step';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
@@ -71,6 +81,7 @@ const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<ErliSetupFormValues>>> = [
   ['name', 'apiKey', 'environment'],
   [],
   [],
+  ['orderSyncStart'],
   [],
 ];
 
@@ -87,9 +98,17 @@ export function ErliSetupForm(): ReactElement {
     copy.steps.credentials,
     copy.steps.productCatalogue,
     copy.steps.salesDocuments,
+    copy.steps.orders,
     copy.steps.review,
   ];
   const format = useFormat();
+  const orderStartCopy = useMessages('connections').orderSyncStart;
+  const adaptersQuery = useAdaptersQuery();
+  const orderSyncStartModes =
+    adaptersQuery.data?.find((a) => a.adapterKey === ERLI_ADAPTER_KEY)?.orderSyncStartModes ??
+    ORDER_SYNC_START_DEFAULT_MODES;
+  const orderWindowImport =
+    adaptersQuery.data?.find((a) => a.adapterKey === ERLI_ADAPTER_KEY)?.orderWindowImport ?? false;
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -298,6 +317,18 @@ export function ErliSetupForm(): ReactElement {
         ) : null}
 
         {stepIndex === 3 ? (
+          <OrderSyncStartField
+            value={values.orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+            onChange={(next) =>
+              form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+            }
+            supportedModes={orderSyncStartModes}
+            windowImport={orderWindowImport}
+            error={form.formState.errors.orderSyncStart?.from?.message}
+          />
+        ) : null}
+
+        {stepIndex === 4 ? (
           <dl className="wizard-review-list">
             <dt>{copy.review.name}</dt>
             <dd>{values.name || '-'}</dd>
@@ -309,11 +340,17 @@ export function ErliSetupForm(): ReactElement {
             <dd>{catalogueMode === 'none' ? copy.review.noCatalogue : copy.review.linkedLater}</dd>
             <dt>{copy.review.deliveryOnDocuments}</dt>
             <dd>{deliverySummary}</dd>
+            <dt>{orderStartCopy.review.label}</dt>
+            <dd>{describeOrderSyncStart(values.orderSyncStart, orderStartCopy.review, format.date)}</dd>
           </dl>
         ) : null}
 
         {createdConnectionId ? (
           <>
+            <dl className="definition-list">
+              <TargetShopRow connectionId={createdConnectionId} />
+            </dl>
+            <ShippingNextStep connectionId={createdConnectionId} />
             {testResult ? (
               <Alert
                 tone={testResult.success ? 'success' : 'error'}

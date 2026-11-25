@@ -100,10 +100,10 @@ describe('AiProviderSettingsPage', () => {
     expect(screen.getByText(/Fake \(offline stub\)/)).toBeInTheDocument();
 
     // Active badge appears on the active (anthropic) row only.
-    const anthropicRow = screen.getByText('Anthropic').closest('tr');
+    const anthropicRow = screen.getByText('Anthropic').closest('li');
     expect(anthropicRow).not.toBeNull();
     expect(within(anthropicRow as HTMLElement).getByText('Active')).toBeInTheDocument();
-    const openaiRow = screen.getByText('OpenAI').closest('tr');
+    const openaiRow = screen.getByText('OpenAI').closest('li');
     expect(openaiRow).not.toBeNull();
     expect(within(openaiRow as HTMLElement).queryByText('Active')).not.toBeInTheDocument();
   });
@@ -141,7 +141,7 @@ describe('AiProviderSettingsPage', () => {
     await screen.findByText('OpenAI');
 
     // OpenAI has no key — its Make active button must be disabled.
-    const openaiRow = screen.getByText('OpenAI').closest('tr');
+    const openaiRow = screen.getByText('OpenAI').closest('li');
     expect(openaiRow).not.toBeNull();
     const openaiActivate = within(openaiRow as HTMLElement).getByRole('button', {
       name: /make active/i,

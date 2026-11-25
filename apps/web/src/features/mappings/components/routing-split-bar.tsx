@@ -4,7 +4,7 @@
  * Segmented proportion bar for the Fulfillment tab: shows how many delivery
  * methods route to each fulfillment processor, including the default bucket
  * (methods with no rule). A pure derived view — the panel recomputes buckets
- * from its unsaved selections, so the bar moves before "Save routing".
+ * from its unsaved selections, so the bar moves before "Save assignment".
  *
  * Accessibility: the bar itself is decorative (`aria-hidden`); the legend
  * carries every label + count as text.

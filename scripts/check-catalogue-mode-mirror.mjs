@@ -45,6 +45,7 @@ function selfCheck() {
   if (extractValues('nothing') !== null) throw new Error('absent');
   if (extractDefault("export const DEFAULT_CATALOGUE_MODE: CatalogueMode = 'linked';") !== 'linked')
     throw new Error('default');
+  if (extractDefault('export const nothing = 1;') !== null) throw new Error('absent default');
   console.log('check-catalogue-mode-mirror self-check ok');
 }
 
@@ -64,6 +65,11 @@ async function main() {
   }
   const beDefault = extractDefault(be);
   const feDefault = extractDefault(fe);
+  // A default that cannot be found is an error, not a skipped comparison: a
+  // refactor of `readCatalogueMode` or `DEFAULT_CATALOGUE_MODE` must not turn the
+  // guard into one that quietly compares nothing.
+  if (!beDefault) errors.push(`${BACKEND}: DEFAULT_CATALOGUE_MODE not found`);
+  if (!feDefault) errors.push(`${FRONTEND}: the fallback arm of readCatalogueMode not found`);
   if (beDefault && feDefault && beDefault !== feDefault) {
     errors.push(`default differs: core '${beDefault}' vs web '${feDefault}'`);
   }
