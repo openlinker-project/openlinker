@@ -1,4 +1,60 @@
 {
+  "adminOnly": "Only an admin can change the packing setup.",
+  "and": " and ",
+  "back": "Back",
+  "continue": "Continue",
+  "packingConnectionName": "OpenLinker OMS",
+  "page": {
+    "backToConnections": "Add a connection",
+    "errorMessage": "Something went wrong while reading your setup. Try again.",
+    "errorTitle": "Could not load the packing setup",
+    "eyebrow": "Connections",
+    "loadingMessage": "Reading your connections, locations and stock.",
+    "loadingTitle": "Loading packing setup",
+    "retry": "Try again",
+    "statusDescription": "What OpenLinker takes over: packing at the pack bench, then sales documents and automations. You can stop packing at any time.",
+    "statusTitle": "OpenLinker OMS",
+    "wizardDescription": "Pick and pack orders on one screen, with a barcode scanner. Setup takes about 5 minutes. Nothing changes in how your orders are handled until the last step.",
+    "wizardTitle": "OpenLinker OMS"
+  },
+  "salesDocumentsStep": {
+    "addConnection": "Add a connection",
+    "automaticRequiredBody": "Choose what a connection issues, mark it Primary, and set its Trigger to an automatic option (for example Auto on order paid). With the Trigger on Manual, nothing is issued unless someone does it by hand.",
+    "automaticRequiredTitle": "Documents must be issued automatically",
+    "noConnectionBody": "Connect a provider that issues invoices (for example inFakt or Subiekt) or fiscal receipts first. Then come back here to choose what it issues.",
+    "noConnectionTitle": "No invoicing or fiscal receipt connection yet",
+    "openRouting": "Open document routing",
+    "perCountry": "Rules for a particular country, or a default for orders no rule covers, are set on the document routing page.",
+    "why": "Decide which document each order gets: an invoice or a receipt. Connect a provider that issues them, then say what each one issues, which goes first, and whether it issues by itself once an order is paid."
+  },
+  "setupSteps": {
+    "automations": {
+      "detail": "Automations live on their own page. Review them, or add more, whenever you like.",
+      "open": "Open automations",
+      "why": "Automations let OpenLinker act by itself when something happens, for example tell the buyer when an order is packed. Shipping labels are set in the Shipping step. Nothing is set here: this is a look at what exists."
+    },
+    "finish": "Finish",
+    "notNeeded": "Not needed",
+    "review": "Review",
+    "salesDocuments": {
+      "detail": "Document routing is configured on its own page. You can come back here when you are done.",
+      "open": "Open document routing",
+      "why": "Packing works. Next, decide which document each order gets: an invoice or a receipt, country by country."
+    },
+    "state": {
+      "done": "Already set up",
+      "none": "None yet",
+      "pending": "Not set up yet",
+      "skipped": "Marked as not needed",
+      "unknown": "Could not check this right now"
+    },
+    "undo": "Undo",
+    "whoDecides": {
+      "detail": "This is a review, not a form: nothing here changes until you choose an arrangement.",
+      "open": "Open who decides what",
+      "why": "Check which system decides stock, packing and returns. Anything that needs your attention is listed there."
+    }
+  },
   "shippingStatus": {
     "change": "Change",
     "none": "No delivery method goes to a carrier yet. You buy each label yourself.",
@@ -72,6 +128,240 @@
     "yesBody": "One label per parcel, on the carrier account its delivery method goes to.",
     "yesTitle": "Yes, buy it when a parcel is accepted"
   },
+  "status": {
+    "addPackerDialogBody": "They sign in at the pack bench with this login.",
+    "addPackers": "Add packers",
+    "arrivedMeta": {
+      "one": "{n} product · {ago} · any packer can pick it up, or assign it on Fulfilment",
+      "other": "{n} products · {ago} · any packer can pick it up, or assign it on Fulfilment"
+    },
+    "arrivedStock": "Stock goes down in {names}. The order itself stays in OpenLinker.",
+    "arrivedTitle": "Order {reference} arrived as Unassigned.",
+    "closeDialog": "Close",
+    "continueSetup": "Continue setup",
+    "firstOrderTitle": "Your first order",
+    "goToStatus": "Go to status",
+    "offBody": "New orders go to {names} and are packed there, as before. Your stock setup is kept.",
+    "offTitle": "Fulfilment is off",
+    "onBodyCount": {
+      "one": "{n} parcel on Fulfilment{last}",
+      "other": "{n} parcels on Fulfilment{last}"
+    },
+    "onBodyEmpty": "Nothing on Fulfilment yet.",
+    "onBodyLast": " · last one arrived {ago}",
+    "onBodyWaiting": "New orders now go to the pack bench.",
+    "onTitle": "Packing is on",
+    "open": "Open",
+    "openBench": "Open pack bench",
+    "openFulfilment": "Open Fulfilment",
+    "partialTitle": "OMS is partially set up",
+    "setUpTitle": "OMS is set up",
+    "setupTitle": "Setup",
+    "startAgain": "Turn fulfilment back on",
+    "starting": "Starting…",
+    "steps": {
+      "automations": {
+        "done": "At least one automation is set up.",
+        "pending": "None yet. Optional: let OpenLinker act when an order is packed, for example tell the buyer.",
+        "title": "Automations"
+      },
+      "notNeeded": "Not needed",
+      "review": "Review",
+      "salesDocuments": {
+        "done": "Documents are issued automatically.",
+        "pending": "Documents are issued by hand, or not at all. Mark a connection Primary and set its Trigger to automatic.",
+        "title": "Sales documents"
+      },
+      "setUp": "Set up",
+      "skipped": "Marked as not needed.",
+      "undo": "Undo",
+      "unknown": "Could not check this right now.",
+      "whoDecides": {
+        "done": "Nothing needs attention.",
+        "pending": "Something needs your attention in who decides stock, packing and returns.",
+        "title": "Who decides what"
+      }
+    },
+    "stepsLeft": {
+      "one": "Packing works. {n} step is left.",
+      "other": "Packing works. {n} steps are left."
+    },
+    "stockFrom": "{located} of {total} from {names}",
+    "stop": "Turn off fulfilment",
+    "toggleFailedTitle": "Could not change packing",
+    "waitingBody": "It shows up here as soon as OpenLinker downloads it, usually within a few minutes. You can leave this page.",
+    "waitingTitle": "Waiting for the next order…"
+  },
+  "step1": {
+    "capabilityProducts": "Products",
+    "capabilityStock": "Stock",
+    "completeBody": "OpenLinker can now pack every product.",
+    "completeTitle": "All stock is up to date",
+    "confirm": "Confirm",
+    "confirming": "Setting up…",
+    "conflictBody": "{name} already sends its stock to another place. Packing in OpenLinker uses one warehouse for now, so change that in the connection's settings first.",
+    "conflictTitle": "Stock already points somewhere else",
+    "connectMaster": "Connect your product master",
+    "failedHint": "Nothing is lost. Confirm again to continue from where it stopped.",
+    "failedStep": {
+      "connection": "Could not create the packing connection.",
+      "location": "Could not create the warehouse.",
+      "override": "Could not point the stock of {name} at the warehouse."
+    },
+    "failedTitle": "Setup did not finish",
+    "mainInactiveBody": "The warehouse OpenLinker packs from is marked inactive. Turn it back on in Inventory › Locations, then confirm again.",
+    "mainInactiveTitle": "The warehouse is switched off",
+    "masterBadge": "Your product master",
+    "missingBoth": "products and stock",
+    "missingProducts": "products",
+    "missingStock": "stock",
+    "noMasterBody": "Connect the product master that holds your products and stock, for example PrestaShop, WooCommerce or Subiekt GT. Then come back here.",
+    "noMasterTitle": "No product master connected yet",
+    "noMasterWhy": "OpenLinker has no products or stock of its own. It reads them from your product master. Connect it first.",
+    "noStockYetBody": "OpenLinker has not received any stock yet. It arrives with the next stock sync. You don't need to wait here.",
+    "openConnection": "Open connection",
+    "openLocations": "Open locations",
+    "partialBody": "{name} does not share its {missing} with OpenLinker. Turn it on in the connection's settings.",
+    "partialTitle": "Not usable as a product master yet",
+    "progressAria": "Stock up to date",
+    "progressCount": "{located} of {total}",
+    "progressLabel": "Stock from {names} up to date",
+    "syncingBody": "You don't need to wait here. Until it reaches {total}, an order for a product not counted yet is handled the old way.",
+    "syncingTitle": "Filling in with each stock sync from {names}",
+    "tooManyBody": {
+      "one": "You have {n} product master. Packing in OpenLinker works with one or two for now. Turn off the ones you do not need, then come back here.",
+      "other": "You have {n} product masters. Packing in OpenLinker works with one or two for now. Turn off the ones you do not need, then come back here."
+    },
+    "tooManyTitle": "Too many product masters",
+    "twoBody": "Keep each product in one product master only. If the same product is in both, OpenLinker sees two different products with two separate stock counts. A sale lowers the stock only in the product master it came from, so the other one can still sell the last units.",
+    "twoTitle": "Both product masters send stock to this one place",
+    "why": "OpenLinker has no products or stock of its own. It reads them from your product master."
+  },
+  "step2": {
+    "add": "Add packer",
+    "addTitle": "Add a packer",
+    "adding": "Adding…",
+    "copied": "Copied",
+    "copy": "Copy password",
+    "createFailedTitle": "Could not add the packer",
+    "createdBody": "Give them the login {login} and the password below. It is shown only once. They are asked to change it at first sign-in.",
+    "createdTitle": "{name} can sign in now",
+    "emailHint": "Leave empty if the packer has no work email. The role is always Packer.",
+    "emailInvalid": "Enter a valid email address, or leave it empty.",
+    "emailLabel": "Email",
+    "emailOptional": "(optional)",
+    "emailPlaceholder": "anna@example.com",
+    "emailTaken": "That email is already used by another account.",
+    "existingBody": "Change their role to Packer in",
+    "existingSummary": "Someone already has an account?",
+    "listTitle": "Packers ({count})",
+    "loginHint": "What they type at the pack bench to sign in.",
+    "loginLabel": "Login",
+    "loginNoAt": "A login cannot contain \"@\".",
+    "loginPlaceholder": "anna",
+    "loginPrefix": "Login:",
+    "loginRequired": "Enter a login.",
+    "loginTaken": "That login is already taken. Pick another one.",
+    "nameLabel": "Name",
+    "namePlaceholder": "Anna Nowak",
+    "nameRequired": "Enter a name.",
+    "packerBadge": "Packer",
+    "skip": "Skip for now",
+    "tempPasswordLabel": "Temporary password",
+    "unassignedBody": "Any packer can pick up an unassigned order at the pack bench. To give an order to a specific person, assign it on the Fulfilment page.",
+    "unassignedTitle": "New orders start as Unassigned",
+    "usersLink": "Users",
+    "why": "Create a login for each person who packs. They see the pack bench and nothing else. You can skip this and pack yourself: admins and operators can open the pack bench too."
+  },
+  "step3": {
+    "ack": "I understand that marketplace orders stay in OpenLinker, and only stock goes down in {names}.",
+    "after": "After you turn it on",
+    "benchBody": "Arrives as Unassigned. A packer picks it up, scans and packs it.",
+    "benchBoxItems": {
+      "inStock": "When every product is in stock and the order has a delivery address",
+      "newOrders": "New orders from Allegro, Erli and your other marketplaces, placed after you turn it on"
+    },
+    "benchBoxTitle": "Goes to the pack bench",
+    "benchBoxTwo": "An order with products from both shops is packed as one parcel",
+    "benchTitle": "Fulfilment → Pack bench",
+    "buyerBody": "A customer buys",
+    "buyerTitle": "Allegro, Erli",
+    "changes": {
+      "allMarketplaces": {
+        "body": "You can't turn it on for Allegro only.",
+        "title": "It applies to all your marketplaces at once."
+      },
+      "labels": {
+        "body": "At the pack bench or in Orders, or automatically when a parcel is accepted for packing, if you turn that on in the Shipping step. Then Allegro and Erli get the shipped status and the tracking number.",
+        "title": "You buy labels in OpenLinker."
+      },
+      "printing": {
+        "body": "It doesn't create them. Invoices and receipts follow your Sales documents settings, as today.",
+        "title": "The pack bench prints the label and the invoice."
+      },
+      "stayInOpenLinker": {
+        "body": "They no longer appear as orders in {names}, and sales reports there won't include them. Only the stock of the sold products goes down there.",
+        "title": "Marketplace orders stay in OpenLinker."
+      }
+    },
+    "changesTitle": "What changes for you",
+    "flowTitle": "How a marketplace order travels",
+    "masterAfterOne": "Doesn't get the order. Only the stock of the sold products goes down.",
+    "masterAfterTwo": "Don't get the order. Stock goes down in the shop that sells each product.",
+    "masterTodayOne": "Gets the order. Stock goes down there. You pack from {name}.",
+    "masterTodayTwo": "Both get the order. Each shop takes only its own products, so an order with products from both fails in one of them.",
+    "olAfterBody": "Keeps the order",
+    "olTitle": "OpenLinker",
+    "olTodayBody": "Downloads the order and passes it on",
+    "sameBoxItems": {
+      "alreadyIn": "Orders already in {names} before you turn it on",
+      "marketplaceShips": "Orders the marketplace ships itself, for example Allegro One Fulfillment",
+      "ownStore": "Orders from your {names} store. You pack them there."
+    },
+    "sameBoxTitle": "Stays as it is today",
+    "today": "Today",
+    "waitBoxItems": {
+      "noAddress": "An order with no delivery address",
+      "outOfStock": "An order where even one product is out of stock"
+    },
+    "waitBoxTitle": "Waits for you in Orders",
+    "why": "Read this before you turn it on. You can turn it off with one click, but orders already sent to the pack bench stay there."
+  },
+  "step4": {
+    "change": "Change",
+    "failedTitle": "Could not turn packing on",
+    "masters": {
+      "one": "Your product master",
+      "other": "Your product masters"
+    },
+    "noLocationBody": "Go back to step 1 and confirm your product master again. That creates it.",
+    "noLocationTitle": "There is no active warehouse to pack from",
+    "noPackers": "No packers yet, admins and operators can pack",
+    "otherSystemBody": "Turning this on now would leave two systems deciding the same thing, and OpenLinker would stop deciding at all. Check it on the Who decides what page first.",
+    "otherSystemTitle": "Another system already decides where orders are packed",
+    "packers": "Packers",
+    "stillFilling": "still filling in",
+    "stock": "Stock up to date",
+    "turnOn": "Start packing in OpenLinker",
+    "turningOn": "Turning on…",
+    "view": "View",
+    "whoDecidesLink": "Open Who decides what",
+    "why": "Everything is ready. From the moment you turn it on, new orders go to the pack bench."
+  },
+  "stepOf": "Step {step} of {total}",
+  "stopDialog": {
+    "bodyExisting": {
+      "one": "The {n} parcel already at the pack bench stays there. Finish packing it there.",
+      "other": "The {n} parcels already at the pack bench stay there. Finish packing them there."
+    },
+    "bodyExistingNone": "Nothing is on Fulfilment right now.",
+    "bodyKept": "Invoices and receipts are still issued automatically, for new orders too. Your automations keep running. Your stock setup is kept, so you can turn fulfilment back on with one click.",
+    "bodyNewOrders": "New orders will go to {names} and be packed there, as before.",
+    "cancel": "Keep it on",
+    "confirm": "Turn off fulfilment",
+    "stopping": "Turning off…",
+    "title": "Turn off fulfilment in OpenLinker?"
+  },
   "wizardSteps": {
     "automations": {
       "meta": "Review only",
@@ -105,5 +395,6 @@
       "meta": "Review",
       "title": "Who decides what"
     }
-  }
+  },
+  "yourProductMasters": "your product masters"
 }
