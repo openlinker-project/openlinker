@@ -66,20 +66,17 @@ test.describe('access-control: demo mode', () => {
       const page = await context.newPage();
       // First navigation of this context against a possibly-cold web container:
       // wait for the SPA to be interactive before asserting (issue #1513).
-      const heading = page.getByRole('heading', { name: 'Sign in to your account' });
+      // Since #4029 the login card owns the heading ("Sign in" / "Sign in to the
+      // demo") and registration is a tab beside it, not a trailing link.
+      const heading = page.locator('.auth-card__title');
       await gotoWhenAppMounted(page, '/login', { readyLocator: heading });
       await expect(heading).toBeVisible();
 
-      // Resilient to copy tweaks (the trailing arrow, casing, whitespace) by
-      // OR-ing the accessible name against the stable /register anchor.
-      const registerLink = page
-        .getByRole('link', { name: /create a free demo account/i })
-        .or(page.locator('a[href="/register"].guest-form__demo-register'));
+      const registerTab = page.getByRole('tab', { name: /create account|request access/i });
       if (config.demoMode) {
-        await expect(registerLink).toBeVisible();
-        await expect(registerLink).toHaveAttribute('href', '/register');
+        await expect(registerTab).toBeVisible();
       } else {
-        await expect(registerLink).toHaveCount(0);
+        await expect(registerTab).toHaveCount(0);
       }
     } finally {
       await context.close();
