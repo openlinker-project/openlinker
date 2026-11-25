@@ -114,11 +114,11 @@
     "restockTarget": {
       "adapter-unresolved": "OpenLinker nie może teraz połączyć się z systemem, który zarządza Twoim stanem magazynowym, więc nie wie, gdzie trafiłyby te sztuki.",
       "ambiguous-inventory-master": "{n} połączeń zarządza Twoim stanem magazynowym, więc OpenLinker nie będzie zgadywać, do którego zapisać - przyjęcie na stan będzie odrzucane, dopóki nie zostanie skonfigurowane dokładnie jedno.",
-      "ambiguous-owner": "{n} systemów głównych produktów przechowuje stan tego produktu, więc OpenLinker nie będzie zgadywać, do którego przywrócić sztuki.",
+      "ambiguous-owner": "Stan tego produktu przechowują główne sklepy ({n}), więc OpenLinker nie będzie zgadywać, do którego przywrócić sztuki.",
       "no-inventory-master": "Żadne połączenie nie zarządza Twoim stanem magazynowym, więc przyjęcie na stan nie może nigdzie dodać sztuk. Utylizacja nadal działa.",
-      "no-position": "OpenLinker nie ma stanu tego produktu w żadnym podłączonym systemie głównym produktów, więc nie wie, gdzie trafiłyby te sztuki.",
+      "no-position": "OpenLinker nie ma stanu tego produktu w żadnym podłączonym głównym sklepie, więc nie wie, gdzie trafiłyby te sztuki.",
       "resolved": "Towar zostanie dodany na stan w {name}.",
-      "unattributed-owner": "Stan tego produktu nie ma jeszcze znanego właściciela - uruchom synchronizację stanów z systemu głównego produktów, a potem przyjmij na stan."
+      "unattributed-owner": "Stan tego produktu nie ma jeszcze znanego właściciela - uruchom synchronizację stanów z głównego sklepu, a potem przyjmij na stan."
     }
   },
   "detail": {
