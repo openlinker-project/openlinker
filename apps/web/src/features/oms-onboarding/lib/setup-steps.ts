@@ -12,7 +12,7 @@
 import { INVOICE_TRIGGER_MODEL_VALUES, type InvoiceTriggerModel } from '../../connections';
 import { issuedDocumentKinds, type SalesDocumentRow } from '../../sales-documents';
 import { withConfigKey } from './config-merge';
-import { omsOnboardingCopy as COPY } from './oms-onboarding.copy';
+import type { OmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 
 export const SetupStepKeys = ['salesDocuments', 'automations', 'whoDecides'] as const;
 export type SetupStepKey = (typeof SetupStepKeys)[number];
@@ -87,18 +87,19 @@ export function summariseSetup(states: Readonly<Record<SetupStepKey, SetupStepSt
 /** The title and the one-line state of a step, worded once for every list that shows it. */
 export function describeSetupStep(
   key: SetupStepKey,
-  state: SetupStepState
+  state: SetupStepState,
+  copy: OmsOnboardingCopy
 ): { readonly title: string; readonly detail: string } {
-  const copy = COPY.status.steps[key];
+  const step = copy.status.steps[key];
   const detail =
     state === 'done'
-      ? copy.done
+      ? step.done
       : state === 'skipped'
-        ? COPY.status.steps.skipped
+        ? copy.status.steps.skipped
         : state === 'unknown'
-          ? COPY.status.steps.unknown
-          : copy.pending;
-  return { title: copy.title, detail };
+          ? copy.status.steps.unknown
+          : step.pending;
+  return { title: step.title, detail };
 }
 
 // Exhaustive on purpose: a trigger model added to the mirrored union is a compile

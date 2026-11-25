@@ -58,7 +58,14 @@
     "loading": "Loading currency settings…",
     "notConfigured": "Not configured",
     "rateDateRule": "Rate date rule",
+    "rateDateRules": {
+      "prev-business-day": "Previous business day"
+    },
     "rateSource": "Rate source",
+    "rateSources": {
+      "ecb": "ECB",
+      "nbp": "NBP"
+    },
     "reportingIn": "Reporting in",
     "reportingValue": "{currency} ({qualifier})",
     "sourceQualifier": {
