@@ -8657,6 +8657,55 @@ html:has(.login-stage) {
   font-size: 0.875rem;
 }
 
+/* ── Catalogue mode fieldset (#4281) ──
+ * Semantic grouping only: the visible chrome is the inner `.rate-limit-section`,
+ * so the user-agent fieldset border and legend never show. */
+.catalogue-mode-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* The two choices are the shared RadioCardGroup; below them sits what the
+ * chosen one needs. Only opacity and transform move, so the entrance never
+ * shifts the layout around it. */
+.catalogue-mode__panel {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.catalogue-mode__panel--enter {
+  animation: catalogue-mode-panel-in var(--duration-normal) var(--ease-out) both;
+}
+
+@keyframes catalogue-mode-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.catalogue-mode__note {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .catalogue-mode__panel--enter {
+    animation: none;
+  }
+}
+
 /* ── Guided setup: capability choice + lanes (#3769) ────────────────
  * A setup wizard that lets the operator pick what a connection does, then
  * groups the fields each choice needs. A lane opens with a rule, so the

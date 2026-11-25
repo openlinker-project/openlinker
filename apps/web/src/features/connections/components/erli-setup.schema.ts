@@ -12,7 +12,9 @@
  * connections. `enabledCapabilities` is intentionally omitted from the payload
  * so the API defaults it to the adapter manifest's supported set (#984/#993
  * ship `OfferManager` / `OrderSource`). The wizard's "Sales documents" step adds
- * `config.deliveryOnDocuments` (#3911, ADR-082).
+ * `config.deliveryOnDocuments` (#3911, ADR-082). The credentials step also asks
+ * whether the connection has a product catalogue (#4281); only an explicit
+ * `none` is persisted as `config.catalogueMode`.
  *
  * @module features/connections/components
  */
@@ -24,6 +26,7 @@ import {
   type DeliveryLineSuggestion,
   type DeliveryWizardValue,
 } from '../../delivery-on-documents';
+import { CatalogueModeValues } from '../lib/catalogue-mode';
 import { schemaMessage } from '../lib/schema-message';
 import {
   ORDER_SYNC_START_DEFAULT_VALUE,
@@ -41,6 +44,9 @@ export const erliSetupSchema = z.object({
   name: z.string().trim().min(1, msg('nameRequired')),
   apiKey: z.string().trim().min(1, msg('apiKeyRequired')),
   environment: z.enum(ErliEnvironmentValues),
+  // Whether this connection expects its order lines to resolve to catalogue
+  // products (#4281); set through `setValue`.
+  catalogueMode: z.enum(CatalogueModeValues).optional(),
   // The answer to the "Sales documents" step; set through `setValue` (#3911).
   deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),
   orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
@@ -53,6 +59,7 @@ export const ERLI_SETUP_DEFAULT_VALUES: ErliSetupFormValues = {
   name: '',
   apiKey: '',
   environment: 'sandbox',
+  catalogueMode: 'linked',
   deliveryOnDocuments: DEFAULT_DELIVERY_WIZARD_VALUE,
   orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
@@ -71,6 +78,8 @@ export function toCreateConnectionInput(
     // sandbox-URL change can't leave a stale literal in this connection's config.
     config: {
       environment: values.environment,
+      // linked is the default and an absent key already reads as linked.
+      ...(values.catalogueMode === 'none' ? { catalogueMode: 'none' } : {}),
       deliveryOnDocuments: wizardConfig(
         values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE,
         suggestions,

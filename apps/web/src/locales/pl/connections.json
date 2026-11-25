@@ -825,6 +825,15 @@
       "staleBody": "To połączenie wskazuje usunięte lub wyłączone połączenie z katalogiem. Wybierz nowe poniżej albo usuń powiązanie.",
       "staleTitle": "Brak powiązanego katalogu"
     },
+    "catalogueMode": {
+      "help": "Zamówienia i oferty działają bez katalogu. Łączenie po kodach kreskowych i mapowanie produktów są wyłączone, dopóki katalog nie jest używany.",
+      "legend": "Katalog produktów",
+      "linkedBody": "Dopasowuje zamówienia i oferty do produktów po kodzie kreskowym.",
+      "linkedTitle": "Powiązany z katalogiem",
+      "noneBody": "Zamówienia przychodzą z własnymi pozycjami marketplace'u (oferta, SKU, nazwa, cena) i nie są dopasowywane do produktów. Stany magazynowe, oferty z katalogu i raporty per produkt nie dotyczą tych zamówień.",
+      "noneHint": "Tylko ten marketplace. Pozycje zamówień zostają takie, jak je przysłał marketplace.",
+      "noneTitle": "Bez katalogu"
+    },
     "errorTitle": "Nie udało się zaktualizować połączenia",
     "eyebrow": "Edytuj połączenie",
     "fields": {
@@ -963,6 +972,9 @@
         "description": "Klucz Shop API {platform} - wygenerowany w panelu sprzedawcy {platform}.",
         "label": "Klucz API"
       },
+      "catalogue": {
+        "linkedHint": "Połączenie z katalogiem wybierzesz na stronie edycji tego połączenia, po jego utworzeniu."
+      },
       "environment": {
         "description": "Wybierz Sandbox, aby przetestować połączenie ze środowiskiem testowym {platform} przed przejściem na produkcję.",
         "label": "Środowisko",
@@ -978,11 +990,15 @@
     "platformFallback": "marketplace",
     "review": {
       "deliveryOnDocuments": "Dostawa na dokumentach",
-      "name": "Nazwa"
+      "linkedLater": "Powiązany (wybierzesz po utworzeniu)",
+      "name": "Nazwa",
+      "noCatalogue": "Bez katalogu (tylko marketplace)",
+      "productCatalogue": "Katalog produktów"
     },
     "steps": {
       "credentials": "Dane dostępowe",
       "orders": "Historia zamówień",
+      "productCatalogue": "Katalog produktów",
       "review": "Sprawdź i połącz",
       "salesDocuments": "Dokumenty sprzedaży"
     },
@@ -1009,7 +1025,10 @@
       "production": "Produkcja",
       "sandbox": "Sandbox"
     },
-    "name": "Nazwa"
+    "linkedLater": "Powiązany",
+    "name": "Nazwa",
+    "noCatalogue": "Brak (tylko marketplace)",
+    "productCatalogue": "Katalog produktów"
   },
   "fulfilmentOwnershipSection": {
     "description": "Decyduje, czy OpenLinker pokazuje własne elementy pakowania dla zamówień trafiających do tego systemu. Nie wybiera przewoźnika ani nie generuje etykiet.",

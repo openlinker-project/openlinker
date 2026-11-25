@@ -1,15 +1,19 @@
 /**
  * Erli Setup Form
  *
- * Three-step wizard for creating an Erli connection:
+ * Four-step wizard for creating an Erli connection:
  *   1. Credentials - collects:
  *   - Connection name
  *   - Shop API key (the only credential — sent as a Bearer token by the BE)
  *   - Environment (Production/Sandbox, #1377) — persisted as the neutral
  *     `config.environment` choice; the BE resolves it to a base URL
- *   2. Sales documents - how delivery appears on receipts and invoices
+ *   2. Product catalogue (#4281) - Linked / None, a step of its own like the
+ *      Allegro wizard's. None is preselected when the installation has no
+ *      ProductMaster at all, so a marketplace-only install is one click; the
+ *      catalogue itself is picked later on the connection page
+ *   3. Sales documents - how delivery appears on receipts and invoices
  *      (`config.deliveryOnDocuments`, #3911)
- *   3. Review & connect
+ *   4. Review & connect
  *
  * Simpler than the WooCommerce form — one credential, no capabilities step
  * (capabilities default silently to the adapter manifest's supported set on
@@ -20,12 +24,14 @@
  *
  * @module features/connections/components
  */
-import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
+import { useProductMasterConnections } from '../hooks/use-product-master-connections';
+import { CatalogueModeFieldset } from './catalogue-mode-fieldset';
 import type { ConnectionTestResult } from '../api/connections.types';
 import {
   ERLI_ADAPTER_KEY,
@@ -74,6 +80,7 @@ const PRODUCTION_URL = 'https://erli.pl';
 const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<ErliSetupFormValues>>> = [
   ['name', 'apiKey', 'environment'],
   [],
+  [],
   ['orderSyncStart'],
   [],
 ];
@@ -89,6 +96,7 @@ export function ErliSetupForm(): ReactElement {
   const platform = usePlatform('erli')?.displayName ?? copy.platformFallback;
   const STEP_LABELS = [
     copy.steps.credentials,
+    copy.steps.productCatalogue,
     copy.steps.salesDocuments,
     copy.steps.orders,
     copy.steps.review,
@@ -114,11 +122,25 @@ export function ErliSetupForm(): ReactElement {
     mode: 'onBlur',
   });
 
+  const { connectionsQuery, productMasterConnections } = useProductMasterConnections();
+  // Set once the operator picks a catalogue mode, so the "no ProductMaster yet"
+  // preselection below never overrides an explicit choice.
+  const catalogueModeTouched = useRef(false);
+
   const suggestionsQuery = useDeliveryLineSuggestionsQuery();
   const suggestions = suggestionsQuery.data?.suggestions ?? [];
 
   const [stepIndex, setStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
+
+  // An installation with no catalogue connection at all is the marketplace-only
+  // case this mode exists for, so it starts on "None" (#4281).
+  useEffect(() => {
+    if (catalogueModeTouched.current) return;
+    if (connectionsQuery.isSuccess && productMasterConnections.length === 0) {
+      form.setValue('catalogueMode', 'none');
+    }
+  }, [connectionsQuery.isSuccess, productMasterConnections.length, form]);
 
   // Abandon-prevention.
   useEffect(() => {
@@ -193,6 +215,7 @@ export function ErliSetupForm(): ReactElement {
   };
 
   const values = form.watch();
+  const catalogueMode = values.catalogueMode ?? 'linked';
   const deliveryValue = values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE;
   const deliverySummary = wizardSummaryRows(wizardRules(deliveryValue, suggestions))
     .map((row) => `${row.label}: ${row.value}`)
@@ -273,6 +296,19 @@ export function ErliSetupForm(): ReactElement {
         ) : null}
 
         {stepIndex === 1 ? (
+          <CatalogueModeFieldset
+            value={catalogueMode}
+            disabled={false}
+            onChange={(next) => {
+              catalogueModeTouched.current = true;
+              form.setValue('catalogueMode', next, { shouldDirty: true });
+            }}
+          >
+            <p className="rate-limit-section__help">{copy.fields.catalogue.linkedHint}</p>
+          </CatalogueModeFieldset>
+        ) : null}
+
+        {stepIndex === 2 ? (
           <DeliveryWizardStep
             value={deliveryValue}
             suggestions={suggestions}
@@ -280,7 +316,7 @@ export function ErliSetupForm(): ReactElement {
           />
         ) : null}
 
-        {stepIndex === 2 ? (
+        {stepIndex === 3 ? (
           <OrderSyncStartField
             value={values.orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
             onChange={(next) =>
@@ -292,7 +328,7 @@ export function ErliSetupForm(): ReactElement {
           />
         ) : null}
 
-        {stepIndex === 3 ? (
+        {stepIndex === 4 ? (
           <dl className="wizard-review-list">
             <dt>{copy.review.name}</dt>
             <dd>{values.name || '-'}</dd>
@@ -300,6 +336,8 @@ export function ErliSetupForm(): ReactElement {
             <dd className="mono-text">{values.apiKey ? maskSecret(values.apiKey) : '-'}</dd>
             <dt>{copy.fields.environment.label}</dt>
             <dd>{values.environment === 'production' ? copy.environments.production : copy.environments.sandbox}</dd>
+            <dt>{copy.review.productCatalogue}</dt>
+            <dd>{catalogueMode === 'none' ? copy.review.noCatalogue : copy.review.linkedLater}</dd>
             <dt>{copy.review.deliveryOnDocuments}</dt>
             <dd>{deliverySummary}</dd>
             <dt>{orderStartCopy.review.label}</dt>
