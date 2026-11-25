@@ -206,14 +206,84 @@ Click **Test connection**. It passes (**The connection works**) when the credent
 
 Check the LWA client id and secret, or authorize the app again in Seller Central for a new refresh token, then replace them in the connection's credentials panel. **Open the connection** takes you to the connection page.
 
-### Step 6 — Turn on the background tasks
+### After the connection is created
 
-Amazon's background tasks (importing orders, linking listings, refreshing stock and prices, returns) are **off by default** and switched on in the worker's environment. The list and what each one does is in the [setup guide, section 7](../../libs/integrations/amazon/docs/setup-guide.md#7-background-tasks).
+The connection works with its defaults, but most accounts need a few settings on the connection page before orders and offers flow the way you want. The buttons at the top of the connection page lead to each of them: **Edit connection**, **Mappings** and **Pricing & sync**.
+
+### Step 6 — Amazon settings (Edit connection)
+
+<!-- screenshot: Edit connection for an Amazon sales channel - Marketplaces, Merchant token, VAT rates of Amazon tax codes, SQS queue URL, Send refunds to Amazon, Product catalog connection -->
+![Amazon connection — edit settings](./images/02-amazon-edit-settings.png)
+
+| Setting | What it does |
+|---|---|
+| **Marketplaces** | Add or remove marketplaces. The order feed shares one position across marketplaces, so adding one re-reads the history of all of them (already imported orders are updated, not duplicated). |
+| **Merchant token** | Needed for offers and the catalogue master. |
+| **VAT rates of Amazon tax codes** | Amazon gives a listing a product tax code (e.g. `A_GEN_STANDARD`), not a rate. Add a row for each code your account uses with its VAT rate: OpenLinker reads a product's rate from it and sends the code with every offer it publishes. |
+| **SQS queue URL** | Optional queue for order notifications (Step 8). |
+| **Send refunds to Amazon** | When on, a refund you confirm in OpenLinker is sent to Amazon for orders you ship yourself. When off, OpenLinker only records that you refunded in Seller Central. |
+| **Product catalog connection** | For a sales channel: the catalogue (for example your shop) OpenLinker uses to match Amazon listings to your products by EAN/GTIN. If the connection page shows **Product catalogue not linked**, pick one here. |
+| **Outbound rate limit** / **Stock and price on this destination** | Optional: pace requests, publish less stock than you hold, or publish a different price than your catalogue. |
+
+Region, environment and (in the Far East) the marketplace are shown but cannot be changed: another region is another seller account and needs another connection.
+
+### Step 7 — Stock locations and Multi-Channel Fulfillment (catalogue master)
+
+When the connection is the **Catalogue master**, the edit page also asks where Amazon's stock goes:
+
+<!-- screenshot: Edit connection for an Amazon catalogue master - Location of the stock you ship (FBM), FBA stock location, Multi-Channel Fulfillment shipping speed -->
+![Amazon connection — stock locations](./images/02-amazon-edit-stock-locations.png)
+
+- **Location of the stock you ship (FBM)**: the warehouse location your own stock is kept in.
+- **FBA stock location**: stock Amazon keeps in its warehouses is read into this location and never written from OpenLinker. FBA stock counts toward what other channels may sell, so until Amazon ships those orders for you (Multi-Channel Fulfillment), keep it at a location you do not sell from. **Do not read FBA stock** leaves it out.
+- **Multi-Channel Fulfillment shipping speed**: Standard, Expedited or Priority for orders OpenLinker hands to Amazon to ship. Faster costs more. Details are in the [setup guide, section 6](../../libs/integrations/amazon/docs/setup-guide.md#6-multi-channel-fulfillment-optional).
+
+Create the locations first: **Settings**, tile **Inventory locations** (`/inventory/locations`).
+
+### Step 8 — Enabled roles and order notifications
+
+The **Overview** tab lists what the connection does:
+
+<!-- screenshot: Amazon connection Overview - Enabled roles: Order source and Marketplace offers ticked, Stock levels unavailable while OfferManager is selected -->
+![Amazon connection — enabled roles](./images/02-amazon-enabled-roles.png)
+
+Tick or untick **Order source**, **Marketplace offers**, **Product catalog**, **Stock levels** and **Order fulfilment** here. **Stock levels** and **Marketplace offers** cannot both be on: a connection that is the source of stock is never also a target OpenLinker writes stock to.
+
+Order notifications make order changes arrive within a minute instead of at the next scheduled check. Save the **SQS queue URL** (Step 6), enter the AWS access keys under **Credentials > Re-authorize** on the same edit page (or in **Order notifications** when you create the connection), then open the **Actions** tab and click **Register queue**:
+
+<!-- screenshot: Amazon connection Actions tab - Test connection, Edit connection, Order notifications (Register queue), Trigger sync, Disable connection -->
+![Amazon connection — Actions tab](./images/02-amazon-actions-tab.png)
+
+Registering is safe to run again. The **Actions** tab also has **Test connection**, **Trigger sync** (run any sync job now) and **Disable connection**.
+
+### Step 9 — Mappings
+
+**Mappings** sets how Amazon orders land in the system they are sent to:
+
+<!-- screenshot: Mapping configuration Amazon -> Shopify - Fulfilment tab "Who ships each delivery method" with the Amazon delivery methods and a carrier per method -->
+![Amazon connection — mappings](./images/02-amazon-mappings.png)
+
+- **Fulfilment**: who ships each Amazon delivery method (`STANDARD`, `EXPEDITED`, `NEXT_DAY`, ...). Anything you leave unchanged is shipped the way it is today.
+- **Order statuses**, **Carriers**, **Payments**, **Order states**: how Amazon's values are named in the destination.
+- **Attribute rules**, **Delivery on documents**, **Gifts on documents**: listing attributes and what invoices and receipts show.
+
+An order Amazon ships itself (FBA) is recorded as sent and needs no carrier.
+
+### Step 10 — Pricing & sync
+
+<!-- screenshot: Pricing & sync for an Amazon connection - Default pricing rule, Manual Review / Automatic, Give one source its own settings -->
+![Amazon connection — pricing and sync](./images/02-amazon-pricing-sync.png)
+
+The price published to Amazon is your catalogue price unless you set a rule here. **Manual Review** holds new prices on the **Price changes** page until you approve them; **Automatic** publishes them at once. **Give one source its own settings** sets a different margin for one supplier or warehouse.
+
+### Step 11 — Turn on the background tasks
+
+Amazon's background tasks (importing orders, linking listings, refreshing stock and prices, returns) are **off by default** and switched on in the worker's environment, for example `OL_AMAZON_ORDERS_POLL_SCHEDULER_ENABLED=true` for importing orders every 5 minutes. The full list and what each one does is in the [setup guide, section 7](../../libs/integrations/amazon/docs/setup-guide.md#7-background-tasks).
 
 <!-- screenshot: Amazon connection page - Sync tab, Order import panel: "Not checked yet", "Starts on the next check: orders since 1 Nov 2026", Check for new orders -->
 ![Amazon connection — Sync tab](./images/02-amazon-orders-tab.png)
 
-The connection's **Sync** tab (**Order import**) shows where syncing starts, the last check, orders imported in the last 24 hours and anything that could not be imported. **Check for new orders** runs the import at once instead of waiting for the next scheduled check.
+The connection's **Sync** tab (**Order import**) shows where syncing starts, the last check, orders imported in the last 24 hours and anything that could not be imported. **Check for new orders** runs the import at once instead of waiting for the next scheduled check; **Change where syncing starts...** moves the start to a date or the whole history.
 
 ---
 
