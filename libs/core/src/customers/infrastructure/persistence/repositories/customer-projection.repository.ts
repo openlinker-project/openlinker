@@ -184,7 +184,11 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
        RETURNING c."internalCustomerId"`,
       [input.sourceConnectionId, input.lastSeenBefore, input.limit],
     );
-    return Array.isArray(rows) ? rows.length : 0;
+    // For an UPDATE ... RETURNING, TypeORM's raw `query()` answers `[rows, affectedCount]`
+    // rather than the rows, so counting the outer array reads 2 for any batch (and
+    // 2 for an empty one, which would keep the pass looping until its cap).
+    const returned = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+    return Array.isArray(returned) ? returned.length : 0;
   }
 
   async findAddressesByCustomerId(

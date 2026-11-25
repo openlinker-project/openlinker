@@ -111,7 +111,10 @@ jobs:
       - name: Fetch origin/main (baseline for migration-ordering + ADR-number invariants)
         run: |
           if command -v git >/dev/null 2>&1; then
-            git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+            # No --depth: this checkout is already full (fetch-depth: 0 above), and a
+            # depth-1 fetch would re-shallow it at main's tip, hiding the older commits
+            # the release highlight check looks up.
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           else
             echo "git not available on this runner — migration-ordering guard will skip (#1020/#662)"
           fi
