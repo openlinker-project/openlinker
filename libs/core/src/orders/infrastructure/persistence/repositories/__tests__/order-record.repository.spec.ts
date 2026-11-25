@@ -1864,8 +1864,13 @@ describe('OrderRecordRepository', () => {
       for (const column of columns) {
         // `orderEdits` is a read-only guard: the DO UPDATE CASE branches read it
         // to keep an operator-edited address, and the statement never writes it.
-        // `personalDataErasedAt` (#4289) is read-only the same way.
-        if (column === 'orderEdits' || column === 'personalDataErasedAt') {
+        // `personalDataErasedAt` (#4289) and `buyerDataRedactedAt` (#4178) are
+        // read-only the same way: the buyer-data-gone guards read them.
+        if (
+          column === 'orderEdits' ||
+          column === 'personalDataErasedAt' ||
+          column === 'buyerDataRedactedAt'
+        ) {
           continue;
         }
         const named = sql.includes(`"${column}"`);
@@ -1945,7 +1950,7 @@ describe('OrderRecordRepository', () => {
         const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
         expect(insertHalf).toContain('"searchText"');
         expect(updateHalf).toMatch(
-          /"searchText" = CASE WHEN "order_records"\."orderEdits" \? 'address'\s+OR "order_records"\."personalDataErasedAt" IS NOT NULL\s+THEN "order_records"\."searchText" ELSE EXCLUDED\."searchText" END/
+          /"searchText" = CASE WHEN "order_records"\."orderEdits" \? 'address'\s+OR \("order_records"\."personalDataErasedAt" IS NOT NULL OR "order_records"\."buyerDataRedactedAt" IS NOT NULL\)\s+THEN "order_records"\."searchText" ELSE EXCLUDED\."searchText" END/
         );
         expect(writeSet.has('searchText')).toBe(true);
         expect(params).toContain('ord-001 sku-1');

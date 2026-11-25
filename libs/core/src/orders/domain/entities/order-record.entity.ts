@@ -580,8 +580,23 @@ export class OrderRecord {
      * When the buyer's personal data was erased (#4289); `null` = not erased.
      * Sole writer `erasePersonalDataForRetention`. Appended LAST.
      */
-    public readonly personalDataErasedAt: Date | null = null
+    public readonly personalDataErasedAt: Date | null = null,
+    /**
+     * When the source's retention period removed the buyer's data (#4178);
+     * `null` = not redacted. Sole writer `redactBuyerData`. Appended LAST.
+     */
+    public readonly buyerDataRedactedAt: Date | null = null
   ) {}
+
+  /**
+   * Whether the buyer's personal data is already gone from this order, by an
+   * erasure (#4289) or a source retention redaction (#4178). Pure derivation of
+   * two loaded fields (ADR-011); the one predicate a caller asks instead of
+   * naming either column, so a third way to lose the data cannot be forgotten.
+   */
+  get isBuyerDataGone(): boolean {
+    return this.personalDataErasedAt !== null || this.buyerDataRedactedAt !== null;
+  }
 
   /**
    * The buyer note in its three domain states, decoded from the column's

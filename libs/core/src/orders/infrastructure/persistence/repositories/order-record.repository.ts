@@ -237,6 +237,15 @@ const SHIPPED_FULFILLMENT_STATES = ['dispatched', 'delivered'] as const;
  * The retention anchor (#4178), text-identical to the partial index
  * `IDX_order_records_buyer_data_retention` so the planner can use it.
  */
+/**
+ * "This order's buyer data is already gone" as seen by the upsert's own
+ * `ON CONFLICT` clauses: erased by a retention rule or an erasure (#4289), or
+ * redacted by the source's retention period (#4178). The redaction now sets
+ * `personalDataErasedAt` too, so the second arm only covers orders redacted
+ * before it did; one definition keeps the clauses from drifting apart.
+ */
+const BUYER_DATA_GONE_SQL = `("order_records"."personalDataErasedAt" IS NOT NULL OR "order_records"."buyerDataRedactedAt" IS NOT NULL)`;
+
 const BUYER_DATA_RETENTION_ANCHOR_SQL = `COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt" AT TIME ZONE 'UTC')`;
 
 @Injectable()
@@ -1758,6 +1767,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
         sourceConnectionId: input.sourceConnectionId,
       })
       .andWhere('rec."buyerDataRedactedAt" IS NULL')
+      // An order whose personal data a retention rule (#4289) or an erasure
+      // already removed has nothing left to redact.
+      .andWhere('rec."personalDataErasedAt" IS NULL')
       .andWhere(`${BUYER_DATA_RETENTION_ANCHOR_SQL} < :anchorBefore`, {
         anchorBefore: input.anchorBefore,
       })
@@ -1787,14 +1799,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
         orderSnapshot: () => 'CAST(:orderSnapshot AS jsonb)',
         searchText: redaction.searchText,
         buyerNote: null,
+        // The note is gone, so the flag that drives the list badge and the
+        // `hasBuyerNote` filter must say so, or the order claims a note nobody can read.
+        hasBuyerNote: false,
         buyerTaxId: null,
         orderEdits: () => `CASE WHEN "orderEdits" ? 'address' THEN "orderEdits" - 'address' ELSE "orderEdits" END`,
         buyerDataRedactedAt: () => 'now()',
+        // The same fact as an erasure: every guard keyed on `personalDataErasedAt`
+        // (the upsert, the customer-projection write, the amendment diff) then
+        // protects a redacted order as well, with no second definition to keep.
+        personalDataErasedAt: () => 'now()',
         updatedAt: () => '"updatedAt"',
       })
       .setParameter('orderSnapshot', JSON.stringify(redaction.orderSnapshot))
       .where('"internalOrderId" = :internalOrderId', { internalOrderId: redaction.internalOrderId })
       .andWhere('"buyerDataRedactedAt" IS NULL')
+      .andWhere('"personalDataErasedAt" IS NULL')
       .execute();
     return (result.affected ?? 0) > 0;
   }
@@ -4474,7 +4494,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
     // with no billing address does not gain a phantom null one.
     add('orderSnapshot', JSON.stringify(entity.orderSnapshot ?? {}), {
       cast: '::jsonb',
-      update: `"orderSnapshot" = CASE WHEN "order_records"."personalDataErasedAt" IS NOT NULL
+      update: `"orderSnapshot" = CASE WHEN ${BUYER_DATA_GONE_SQL}
            THEN (EXCLUDED."orderSnapshot" - 'customerEmail' - 'shippingAddress' - 'billingAddress')
              || jsonb_strip_nulls(jsonb_build_object(
                   'shippingAddress', "order_records"."orderSnapshot"->'shippingAddress',
@@ -4494,7 +4514,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
     add('searchText', entity.searchText ?? '', {
       // #4289: an erased order keeps its erased (name-free) search text.
       update: `"searchText" = CASE WHEN "order_records"."orderEdits" ? 'address'
-             OR "order_records"."personalDataErasedAt" IS NOT NULL
+             OR ${BUYER_DATA_GONE_SQL}
            THEN "order_records"."searchText" ELSE EXCLUDED."searchText" END`,
     });
     add('recordStatus', entity.recordStatus);
@@ -4520,7 +4540,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
       // previous ready-path write settled.
       add('buyerTaxId', entity.buyerTaxId ?? null, {
         // #4289: erased personal data stays erased.
-        update: `"buyerTaxId" = CASE WHEN "order_records"."personalDataErasedAt" IS NOT NULL
+        update: `"buyerTaxId" = CASE WHEN ${BUYER_DATA_GONE_SQL}
            THEN "order_records"."buyerTaxId" ELSE EXCLUDED."buyerTaxId" END`,
       });
       // #2395, added here for exactly the reason `buyerTaxId` is: this
@@ -4554,12 +4574,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
       const incomingNoteUnknown = `(EXCLUDED."buyerNote" IS NULL AND EXCLUDED."hasBuyerNote" = false)`;
       add('buyerNote', entity.buyerNote ?? null, {
         update: `"buyerNote" = CASE WHEN ${incomingNoteUnknown}
-             OR "order_records"."personalDataErasedAt" IS NOT NULL
+             OR ${BUYER_DATA_GONE_SQL}
            THEN "order_records"."buyerNote" ELSE EXCLUDED."buyerNote" END`,
       });
       add('hasBuyerNote', entity.hasBuyerNote ?? false, {
         update: `"hasBuyerNote" = CASE WHEN ${incomingNoteUnknown}
-             OR "order_records"."personalDataErasedAt" IS NOT NULL
+             OR ${BUYER_DATA_GONE_SQL}
            THEN "order_records"."hasBuyerNote" ELSE EXCLUDED."hasBuyerNote" END`,
       });
       // N-22: a DIFFERENT note text is a note the operator has not read. The
@@ -4999,7 +5019,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGi
       readPaymentWriteback(entity.paymentWriteback),
       readSalesDocumentBlockParams(entity.salesDocumentBlockParams),
       entity.hiddenAt ?? null,
-      entity.personalDataErasedAt ?? null
+      entity.personalDataErasedAt ?? null,
+      entity.buyerDataRedactedAt ?? null
     );
   }
 

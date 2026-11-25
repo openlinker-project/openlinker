@@ -890,13 +890,13 @@ export class OrderIngestionService implements IOrderIngestionService {
     // item resolution subsequently succeeds. The destination-echo early return
     // above is untouched: an echo is not an amendment.
     //
-    // Buyer-data retention (#4289): an ERASED order's stored snapshot carries
+    // Buyer-data retention (#4289, #4178): an ERASED or REDACTED order's stored snapshot carries
     // placeholders, so (a) the diff would report a `shipping-address-changed`
     // amendment on every re-poll, and (b) resolving the buyer / syncing the
     // projections below would write the buyer's email, name and address back
     // into the customer projection. Both are skipped; the order keeps the
     // customer id it already carries and only non-personal fields refresh.
-    const erased = existing?.personalDataErasedAt != null;
+    const erased = existing?.isBuyerDataGone === true;
     if (!erased) {
       await this.recordSourceAmendment(existing, incoming, internalOrderId, connectionId);
     }

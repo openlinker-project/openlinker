@@ -1317,9 +1317,11 @@ export interface OrderRecordRepositoryPort {
   /**
    * Remove an order's buyer data (#4178): the redacted snapshot and search text
    * are written, the buyer note and tax id are cleared, an operator's address
-   * edit is dropped from the overlay, and `buyerDataRedactedAt` is stamped.
-   * Guarded on `buyerDataRedactedAt IS NULL`, so it happens once; returns
-   * whether it did. `updatedAt` is left alone (the order did not change).
+   * edit is dropped from the overlay, `hasBuyerNote` is cleared, and
+   * `buyerDataRedactedAt` and `personalDataErasedAt` are stamped (a redaction
+   * is an erasure, so every guard keyed on the latter covers it). Guarded on
+   * both being NULL, so it happens once and an already erased order is left
+   * alone; returns whether it did. `updatedAt` is left alone (the order did not change).
    */
   redactBuyerData(redaction: OrderBuyerDataRedaction): Promise<boolean>;
 

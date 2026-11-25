@@ -58,6 +58,15 @@ interface ErasePass {
   findCustomerIdsWithoutPersonalDataOrders(ids: readonly string[]): Promise<string[]>;
 }
 
+/** The source-retention redaction seam (#4178), restated structurally for the same reason. */
+interface RedactPass {
+  redactBuyerData(redaction: {
+    internalOrderId: string;
+    orderSnapshot: Record<string, unknown>;
+    searchText: string;
+  }): Promise<boolean>;
+}
+
 describe('Buyer data retention: re-ingestion of an erased order (#4289)', () => {
   let harness: WorkerIntegrationTestHarness;
   let dataSource: DataSource;
@@ -214,6 +223,59 @@ describe('Buyer data retention: re-ingestion of an erased order (#4289)', () => 
     const text = JSON.stringify(after.orderSnapshot);
     expect(text).not.toContain('jan.kowalski@example.com');
     expect(text).not.toContain('Kowalski');
+    expect(text).not.toContain('Brand New Street');
+    expect((after.orderSnapshot as { status?: string }).status).toBe('shipped');
+  });
+  it('should keep a REDACTED order free of buyer data when the source re-delivers it (#4178)', async () => {
+    const connectionId = await seedSourceWithVariant();
+    const ingestion = harness.get(ORDER_INGESTION_SERVICE_TOKEN);
+    const orders = harness.get(ORDER_RECORD_REPOSITORY_TOKEN) as RedactPass;
+    const customers = harness.get(CUSTOMER_PROJECTION_SERVICE_TOKEN) as ICustomerProjectionService;
+    const base = await source.getOrder({ externalOrderId: 'ret-2' });
+
+    (source.getOrder as jest.Mock).mockResolvedValue(buyerOrder(base, 'Old Street 1', 'pending'));
+    await ingestion.syncOrderFromSource(connectionId, 'ret-2');
+    const internalId = (await identifierMapping.getInternalId(
+      CORE_ENTITY_TYPE.Order,
+      'ret-2',
+      connectionId
+    )) as string;
+    const recordRepo = dataSource.getRepository(OrderRecordOrmEntity);
+    const customerId = (await recordRepo.findOneByOrFail({ internalOrderId: internalId }))
+      .customerId as string;
+
+    const redacted = await orders.redactBuyerData({
+      internalOrderId: internalId,
+      orderSnapshot: eraseBuyerPersonalDataFromSnapshot(
+        (await recordRepo.findOneByOrFail({ internalOrderId: internalId })).orderSnapshot as Record<
+          string,
+          unknown
+        >,
+        internalId
+      ),
+      searchText: 'x',
+    });
+    expect(redacted).toBe(true);
+    await customers.clearPersonalData([customerId]);
+
+    (source.getOrder as jest.Mock).mockResolvedValue(
+      buyerOrder(base, 'Brand New Street 9', 'shipped')
+    );
+    await ingestion.syncOrderFromSource(connectionId, 'ret-2');
+
+    const projection = (
+      await dataSource.query(
+        `SELECT "normalizedEmail", "firstName" FROM customer_projections WHERE "internalCustomerId" = $1`,
+        [customerId]
+      )
+    )[0];
+    expect(projection.normalizedEmail).toBeNull();
+    expect(projection.firstName).toBeNull();
+    const after = await recordRepo.findOneByOrFail({ internalOrderId: internalId });
+    expect(after.personalDataErasedAt).not.toBeNull();
+    expect(after.hasBuyerNote).toBe(false);
+    const text = JSON.stringify(after.orderSnapshot);
+    expect(text).not.toContain('jan.kowalski@example.com');
     expect(text).not.toContain('Brand New Street');
     expect((after.orderSnapshot as { status?: string }).status).toBe('shipped');
   });
