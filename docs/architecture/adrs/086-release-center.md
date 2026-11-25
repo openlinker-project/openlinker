@@ -76,7 +76,7 @@ The catalog check required every commit hash in `RELEASE_HIGHLIGHTS` to appear i
 
 The proof is now the repository itself: a hash must be 7 or more hex characters and `git cat-file -e <hash>^{commit}` must succeed (`execFileSync`, no shell, only a hex string reaches git). The list for a minor is written on main as soon as its changes are merged, and the release PR then passes without a manual step. Everything else is unchanged: a non-empty list per minor from `HIGHLIGHTS_REQUIRED_FROM`, the `## [<version>]` heading, and `--release` bounding `introducedIn`.
 
-- **Consequence for CI.** The jobs that run the check need full history. The `Lint` job and the `release-center-catalog` workflow check out with `fetch-depth: 0`; in a one-commit clone every older hash would read as missing.
+- **Consequence for CI.** The proof needs a git repository with full history. The `release-center-catalog` workflow (GitHub-hosted, has git) checks out with `fetch-depth: 0`, and `--release` refuses to run without git. The `Lint` job's self-hosted runner has no git binary and checks out a tarball, so there the guard skips only the hash proof, with a warning, and still runs every other rule; the release PR is where the proof is enforced.
 - **Runtime is untouched.** The dialog still reads the changelog, matches each curated hash against its entries and falls back to the release's own entries when none matches, so a typo that survives the check (a real commit that is not in that changelog) degrades to a generic dialog and never to an empty one.
 
 ## References

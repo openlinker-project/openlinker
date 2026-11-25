@@ -25,6 +25,8 @@
  *      hand-made commit on the bot's branch. The changelog is still what the
  *      dialog reads at runtime, and a hash it does not list simply shows
  *      nothing (the dialog falls back to the release's own entries).
+ *      A runner with no git (a tarball checkout) skips only this proof, with a
+ *      warning; `--release` refuses to run without git.
  *   6. CHANGELOG.md has a heading for the package.json version.
  *   7. Every `to: '/path'` a notification action points at (a file that publishes a notification or
  *      registers a notification rule) matches a route declared in the router, so a bell link can
@@ -146,6 +148,20 @@ export function gitCommitExists(hash) {
   if (!COMMIT_HASH.test(hash)) return false;
   try {
     execFileSync('git', ['cat-file', '-e', `${hash}^{commit}`], { cwd: root, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether this checkout has a git repository to ask. A runner without a git
+ * binary checks out a tarball (the Lint job's self-hosted runner does), so the
+ * history proof cannot run there; `main` decides whether that is a skip or a failure.
+ */
+export function gitHistoryAvailable() {
+  try {
+    execFileSync('git', ['rev-parse', '--git-dir'], { cwd: root, stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -290,7 +306,7 @@ async function collect() {
     routes,
     tourTargets,
     changelog,
-    commitExists: gitCommitExists,
+    commitExists: gitHistoryAvailable() ? gitCommitExists : null,
   };
 }
 
@@ -357,7 +373,20 @@ function selfCheck() {
 
 async function main() {
   if (process.argv.includes('--self-check')) return selfCheck();
-  const errors = validate({ ...(await collect()), strict: process.argv.includes('--release') });
+  const strict = process.argv.includes('--release');
+  const collected = await collect();
+  let commitExists = collected.commitExists;
+  if (commitExists === null) {
+    // No git (tarball checkout): the other rules still run. The release PR job
+    // has git and runs with --release, so there an unprovable hash is an error.
+    if (strict) {
+      console.error('check-release-center-catalog failed: --release needs a git checkout to prove the highlight hashes');
+      process.exit(1);
+    }
+    console.warn('check-release-center-catalog: no git repository here, highlight commit hashes not verified');
+    commitExists = () => true;
+  }
+  const errors = validate({ ...collected, commitExists, strict });
   if (errors.length > 0) {
     console.error('check-release-center-catalog failed:');
     for (const e of errors) console.error(`  - ${e}`);
