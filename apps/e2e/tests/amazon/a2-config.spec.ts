@@ -256,7 +256,7 @@ test('P045 test connection with a fake LWA refusal reports a bounded failure', a
 test('P046 re-authorize after a failure and a green test return the connection to Active', async ({ ol, region, fake, evidence }) => {
   await fake.reset();
   const c = await createConn(ol, { name: `t46 ${region.region} ${STAMP}`, region, capabilities: ['OrderSource'] });
-  const put = await ol.call('PUT', `/connections/${c.body.id}/credentials`, { credentials: { clientId: 'amzn1.application-oa2-client.new', clientSecret: 'new-secret', refreshToken: 'Atzr|new-refresh' } });
+  const put = await ol.call('PUT', `/connections/${c.body.id}/credentials`, { credentials: { clientId: `amzn1.application-oa2-client.new${STAMP}`, clientSecret: 'new-secret', refreshToken: 'Atzr|new-refresh' } });
   const test1 = await ol.call('POST', `/connections/${c.body.id}/test`);
   const status = (await ol.call('GET', `/connections/${c.body.id}`)).body.status;
   await evidence('PUT credentials then POST test', { put: put.status, test: test1.body, status });

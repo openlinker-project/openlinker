@@ -323,6 +323,12 @@ async function control(req, res, url, port) {
       for (const [region, stock] of Object.entries(body.fbaStock ?? {})) Object.assign(fx.fbaStock[region], stock);
       for (const [region, text] of Object.entries(body.returnsReport ?? {})) fx.returnsReport[region] = text;
       if (body.dropListing) delete fx.listings[body.dropListing.region][body.dropListing.key];
+      if (body.patchOrder) {
+        for (const list of Object.values(fx.orders)) {
+          const o = list.find((x) => x.orderId === body.patchOrder.orderId);
+          if (o) Object.assign(o, body.patchOrder, { lastUpdatedTime: new Date(Date.now() - 2.5 * 60 * 1000).toISOString() });
+        }
+      }
     }
     return json(res, 200, {
       orders: Object.fromEntries(Object.entries(fx.orders).map(([r, o]) => [r, o.map((x) => x.orderId)])),
