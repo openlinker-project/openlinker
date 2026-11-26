@@ -13,6 +13,7 @@ export { TERMINAL_BULK_BATCH_STATUSES } from './api/bulk-listings.types';
 export type { BulkBatchSummary, BulkBatchStatus } from './api/bulk-listings.types';
 export {
   selectPublishDestinations,
+  isOfferPublishDestination,
   publishDestinationKind,
   publishDestinationKindHint,
   publishDestinationGroupLabel,
@@ -27,6 +28,9 @@ export type {
 export { PublishDestinationRail } from './components/publish-destination-rail';
 export { ErliBulkConfigSection } from './components/erli/erli-bulk-config-section';
 export { erliBulkConfigIsComplete } from './components/erli/erli-offer-fields.schema';
+export { empikBulkConfigIsComplete } from './components/empik/empik-offer-settings';
+export { EmpikBulkConfigSection } from './components/empik/empik-bulk-config-section';
+export { empikOfferValidation } from './components/empik/empik-offer-validation';
 export { ErliBulkRowSection } from './components/erli/erli-bulk-row-section';
 export { erliOfferValidation } from './components/erli/erli-offer-validation';
 export { AllegroBulkConfigSection } from './components/allegro/allegro-bulk-config-section';

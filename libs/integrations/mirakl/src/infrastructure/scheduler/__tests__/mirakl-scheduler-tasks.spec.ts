@@ -25,7 +25,7 @@ describe('buildMiraklSchedulerTasks', () => {
       cursorKey: 'empik.orders.lastUpdateDate',
     });
     expect(task.generateIdempotencyKey({ id: 'conn-1' } as Connection, '2026-11-23T12:00')).toBe(
-      'marketplace:conn-1:orders:poll:2026-11-23T12:00',
+      'marketplace:conn-1:orders:poll:2026-11-23T12:00'
     );
   });
 
@@ -36,18 +36,44 @@ describe('buildMiraklSchedulerTasks', () => {
     expect([...byId.keys()]).toEqual([
       'empik-orders-poll',
       'empik-offer-writes',
+      'empik-master-stock-writes',
       'empik-offers-sync',
       'empik-offer-status-sync',
+      'empik-returns-poll',
+      'empik-returns-status-sync',
     ]);
+    expect(byId.get('empik-returns-poll')?.generatePayload({} as Connection)).toEqual({
+      schemaVersion: 1,
+      cursorKey: 'empik.returns.lastUpdateDate',
+      limit: 100,
+    });
+    expect(byId.get('empik-returns-status-sync')).toMatchObject({
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.returns.statusSync',
+      enabledEnvVar: 'OL_EMPIK_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED',
+    });
+    // One RT11 call per re-read return, so the hourly page stays small.
+    expect(byId.get('empik-returns-status-sync')?.generatePayload({} as Connection)).toEqual({
+      schemaVersion: 1,
+      limit: 10,
+      cursorKey: 'empik.returns.scanOffset',
+      lookbackDays: 90,
+    });
     expect(byId.get('empik-offer-writes')).toMatchObject({
       requiredCapability: 'OfferManager',
       jobType: 'marketplace.offerQuantity.reconcile',
       enabledEnvVar: 'OL_EMPIK_OFFER_WRITES_SCHEDULER_ENABLED',
     });
+    expect(byId.get('empik-master-stock-writes')).toMatchObject({
+      requiredCapability: 'InventoryMaster',
+      jobType: 'marketplace.offerQuantity.reconcile',
+      cronExpression: '* * * * *',
+      enabledEnvVar: 'OL_EMPIK_MASTER_STOCK_WRITES_SCHEDULER_ENABLED',
+    });
     expect(
-      byId
-        .get('empik-offers-sync')
-        ?.generatePayload({ config: { masterCatalogConnectionId: 'master-1' } } as unknown as Connection),
+      byId.get('empik-offers-sync')?.generatePayload({
+        config: { masterCatalogConnectionId: 'master-1' },
+      } as unknown as Connection)
     ).toEqual({
       schemaVersion: 1,
       limit: 100,

@@ -30,7 +30,7 @@ import { useBundleProbeQuery } from '../../features/bundles/hooks/use-bundle-que
 import { BundleGuide, BundleGuideButton } from '../../features/bundles/components/bundle-guide';
 import { useBundleUsedInManyQuery } from '../../features/bundles/hooks/use-bundle-queries';
 import { BundleProductView } from '../../features/bundles/components/bundle-product-view';
-import { SalesChannelsSection } from '../../features/listings';
+import { isOfferPublishDestination, SalesChannelsSection } from '../../features/listings';
 import { ProductOverview, ConnectionChips } from './product-overview';
 import { VariantStockTable, VariantDetailPanel } from './variant-stock-table';
 import { MarketplacePickerModal } from './marketplace-picker-modal';
@@ -127,7 +127,7 @@ export function ProductDetailPage(): ReactElement {
   const offerCreatorConnections = useMemo<Connection[]>(
     () =>
       (connectionsQuery.data ?? [])
-        .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferCreator'))
+        .filter((c) => c.status === 'active' && isOfferPublishDestination(c))
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name)),
     [connectionsQuery.data]

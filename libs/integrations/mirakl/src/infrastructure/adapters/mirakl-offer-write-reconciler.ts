@@ -5,11 +5,12 @@
  * (#4277), run by the `marketplace.offerQuantity.reconcile` job:
  *
  * 1. **Settle.** For each import still waiting, read its status (STO01 / PRI01
- *    status endpoints). An import that finished is not trusted on its status
- *    alone: Mirakl reports `COMPLETE` with failed lines, so when it lists
- *    lines in error the error report is read and those offers fail, each with
- *    Mirakl's reason. A report line that names no SKU cannot be told apart, so
- *    the whole import fails rather than marking an offer applied that was not.
+ *    status endpoints, and OF01 for an offer create, #4278). An import that
+ *    finished is not trusted on its status alone: Mirakl reports `COMPLETE`
+ *    with failed lines, so when it lists lines in error the error report is
+ *    read and those offers fail, each with Mirakl's reason. A report line that
+ *    names no SKU cannot be told apart, so the whole import fails rather than
+ *    marking an offer applied that was not.
  * 2. **Send.** Every pending change of a kind goes out as ONE file, so a busy
  *    connection imports at the job's pace, not once per stock change. Mirakl
  *    asks sellers not to import more often than every few minutes.
@@ -30,7 +31,8 @@ import { buildMiraklOfferFile } from '../../domain/policies/mirakl-offer-file.po
 import type { MiraklOfferWriteRepositoryPort } from '../../domain/ports/mirakl-offer-write-repository.port';
 import type { MiraklImportKind } from '../../domain/types/mirakl-import.types';
 import {
-  MiraklOfferWriteKindValues,
+  MiraklBufferedWriteKindValues,
+  type MiraklBufferedWriteKind,
   type MiraklOfferWriteKind,
 } from '../../domain/types/mirakl-offer-write.types';
 import type { IMiraklHttpClient } from '../http/mirakl-http-client.interface';
@@ -44,9 +46,10 @@ const SETTLED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const IMPORT_KIND: Readonly<Record<MiraklOfferWriteKind, MiraklImportKind>> = {
   stock: 'stock',
   price: 'prices',
+  offer: 'offers',
 };
 
-const SUBMIT_PATH: Readonly<Record<MiraklOfferWriteKind, string>> = {
+const SUBMIT_PATH: Readonly<Record<MiraklBufferedWriteKind, string>> = {
   stock: '/api/offers/stock/imports',
   price: '/api/offers/pricing/imports',
 };
@@ -65,7 +68,7 @@ export class MiraklOfferWriteReconciler {
   async reconcile(limit: number): Promise<PendingQuantityAckReconcileResult> {
     const settled = await this.settleImports(limit);
     let stillPending = settled.stillPending;
-    for (const kind of MiraklOfferWriteKindValues) {
+    for (const kind of MiraklBufferedWriteKindValues) {
       stillPending += await this.send(kind);
     }
     await this.writes.deleteSettledBefore(
@@ -141,7 +144,7 @@ export class MiraklOfferWriteReconciler {
   }
 
   /** Send every pending change of one kind as one file; returns the lines sent. */
-  private async send(kind: MiraklOfferWriteKind): Promise<number> {
+  private async send(kind: MiraklBufferedWriteKind): Promise<number> {
     const pending = await this.writes.findPending(this.connectionId, kind, MAX_LINES_PER_FILE);
     if (pending.length === 0) {
       return 0;
@@ -177,7 +180,7 @@ export class MiraklOfferWriteReconciler {
   }
 
   private async failRefused(
-    kind: MiraklOfferWriteKind,
+    kind: MiraklBufferedWriteKind,
     pending: readonly MiraklOfferWrite[],
     error: MiraklApiException
   ): Promise<void> {

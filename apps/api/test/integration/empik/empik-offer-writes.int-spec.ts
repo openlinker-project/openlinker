@@ -1,5 +1,5 @@
 /**
- * Empik Offer Writes Integration Test (#4277)
+ * Empik Offer Writes Integration Test (#4277, #4278)
  *
  * Runs Empik stock and price writes end to end: core's inventory write-back
  * and the quantity-ack reconcile service, the production adapter-resolution
@@ -27,6 +27,7 @@ import {
   type IInventorySyncService,
 } from '@openlinker/core/inventory';
 import {
+  isOfferCreator,
   isOfferFieldUpdater,
   isOfferStatusReader,
   OFFER_QUANTITY_ACK_RECONCILE_SERVICE_TOKEN,
@@ -204,6 +205,44 @@ describe('Empik Offer Writes Integration (#4277)', () => {
       validationErrors: [{ code: 'NO_MIN_SHIPPING_RATE', scope: 'account' }],
       commercial: { availableQuantity: 5 },
     });
+  });
+
+  it('O7: an offer on an existing card is created through OF24 and followed until it lists (#4278)', async () => {
+    empik.fake.putCard('9788380082113', '1124653798', '8-853-1');
+    const offers = await adapter();
+    if (!isOfferCreator(offers) || !isOfferStatusReader(offers)) throw new Error('not a creator');
+
+    const created = await offers.createOffer({
+      internalVariantId: 'ol_variant_e4b98e91340a44edb4892905db8810b1',
+      connectionId,
+      price: { amount: 49.9, currency: 'PLN' },
+      stock: 5,
+      publishImmediately: true,
+      variantBarcode: '9788380082113',
+    });
+
+    const sku = 'OL-e4b98e91340a44edb4892905db8810b1';
+    expect(created).toEqual({ externalOfferId: sku, status: 'validating' });
+    expect(empik.fake.offerImports).toHaveLength(1);
+    expect(await offers.getOfferStatus(sku)).toEqual({
+      publicationStatus: 'activating',
+      validationErrors: [],
+    });
+
+    empik.fake.setOutcome('imp-1', { status: 'COMPLETE', linesInError: 0 });
+    await reconcile();
+    expect((await rows()).map((row) => [row.kind, row.offerSku, row.status])).toEqual([
+      ['offer', sku, 'applied'],
+    ]);
+
+    empik.fake.putOffer({
+      shop_sku: sku,
+      active: true,
+      quantity: 5,
+      price: 49.9,
+      currency_iso_code: 'PLN',
+    });
+    expect(await offers.getOfferStatus(sku)).toMatchObject({ publicationStatus: 'active' });
   });
 });
 

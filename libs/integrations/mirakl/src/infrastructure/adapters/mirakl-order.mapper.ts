@@ -67,7 +67,24 @@ const AWAITING_PAYMENT_STATES: readonly string[] = [
 ];
 const PAID_STATES: readonly string[] = ['SHIPPING', 'SHIPPED', 'TO_COLLECT', 'RECEIVED', 'CLOSED'];
 
-export function mapMiraklOrderToIncomingOrder(order: MiraklOrder): IncomingOrder {
+/** How a line names what was sold; see {@link MiraklOrderLineRefKind}. */
+export interface MiraklOrderMappingOptions {
+  /**
+   * `product` when the connection is the catalogue master (#4284): its offers
+   * were read in as products keyed by `shop_sku`, so there is no `Offer`
+   * mapping to resolve and the line names the product. `offer` otherwise.
+   */
+  readonly lineRef?: MiraklOrderLineRefKind;
+}
+
+/** The two ways an order line names what was sold. */
+export type MiraklOrderLineRefKind = 'offer' | 'product';
+
+export function mapMiraklOrderToIncomingOrder(
+  order: MiraklOrder,
+  options: MiraklOrderMappingOptions = {}
+): IncomingOrder {
+  const lineRef = options.lineRef ?? 'offer';
   const orderId = order.order_id ?? '';
   const state = order.order_state;
   const fields = order.order_additional_fields ?? [];
@@ -80,7 +97,7 @@ export function mapMiraklOrderToIncomingOrder(order: MiraklOrder): IncomingOrder
     paymentStatus === 'cod' ? toCodToCollect(totals.total, totals.currency) : undefined;
   const buyerTaxId = readSourceBuyerTaxId(
     readField(fields, MIRAKL_ORDER_FIELD.BuyerTaxId) ??
-      order.customer?.organization?.tax_identification_number,
+      order.customer?.organization?.tax_identification_number
   );
   const shippingAddress = mapAddress(order.customer?.shipping_address);
   const billingAddress = mapAddress(order.customer?.billing_address);
@@ -93,7 +110,7 @@ export function mapMiraklOrderToIncomingOrder(order: MiraklOrder): IncomingOrder
     status: mapStatus(state),
     ...(order.customer?.customer_id ? { customerExternalId: order.customer.customer_id } : {}),
     ...readCustomerEmail(order, fields),
-    items: lines.map((line) => mapLine(line, taxTreatment)),
+    items: lines.map((line) => mapLine(line, taxTreatment, lineRef)),
     totals,
     ...withTaxId(shippingAddress, billingAddress, buyerTaxId),
     ...optional('shipping', mapShipping(order)),
@@ -181,7 +198,11 @@ function selectActiveLines(lines: readonly MiraklOrderLine[]): readonly MiraklOr
   return active.length > 0 ? active : lines;
 }
 
-function mapLine(line: MiraklOrderLine, taxTreatment: PriceTaxTreatment): IncomingOrderItem {
+function mapLine(
+  line: MiraklOrderLine,
+  taxTreatment: PriceTaxTreatment,
+  lineRef: MiraklOrderLineRefKind
+): IncomingOrderItem {
   const quantity = line.quantity ?? 0;
   const unitPrice =
     line.price_unit ?? (line.price !== undefined && quantity > 0 ? line.price / quantity : 0);
@@ -189,7 +210,7 @@ function mapLine(line: MiraklOrderLine, taxTreatment: PriceTaxTreatment): Incomi
   const imageUrl = line.product_medias?.find((media) => media.media_url)?.media_url;
   return {
     id: line.order_line_id ?? '',
-    productRef: { type: 'offer', externalId: line.offer_sku ?? '' },
+    productRef: { type: lineRef, externalId: line.offer_sku ?? '' },
     quantity,
     price: unitPrice,
     ...(taxTreatment === 'inclusive' ? { unitPriceGross: unitPrice } : {}),
@@ -210,7 +231,7 @@ export function singleTaxRate(taxes: readonly MiraklTax[] | undefined): string |
     (taxes ?? [])
       .map((tax) => tax.rate)
       .filter((rate): rate is number => typeof rate === 'number' && Number.isFinite(rate))
-      .map((rate) => String(Math.round(rate * 100) / 100)),
+      .map((rate) => String(Math.round(rate * 100) / 100))
   );
   return rates.size === 1 ? [...rates][0] : undefined;
 }
@@ -218,7 +239,7 @@ export function singleTaxRate(taxes: readonly MiraklTax[] | undefined): string |
 function mapTotals(
   order: MiraklOrder,
   lines: readonly MiraklOrderLine[],
-  taxTreatment: PriceTaxTreatment,
+  taxTreatment: PriceTaxTreatment
 ): IncomingOrderTotals {
   const shipping = round2(order.shipping_price ?? sum(lines.map((line) => line.shipping_price)));
   const productTotal = order.price ?? sum(lines.map((line) => line.price));
@@ -234,8 +255,8 @@ function mapTotals(
       sum(
         lines
           .flatMap((line) => [...(line.taxes ?? []), ...(line.shipping_taxes ?? [])])
-          .map((entry) => entry.amount),
-      ),
+          .map((entry) => entry.amount)
+      )
     );
     return {
       subtotal: round2(Math.max(0, orderTotal - shipping)),
@@ -303,7 +324,7 @@ function mapAddress(address: MiraklAddress | undefined): IncomingOrderAddress | 
 function withTaxId(
   shippingAddress: IncomingOrderAddress | undefined,
   billingAddress: IncomingOrderAddress | undefined,
-  taxId: string | null | undefined,
+  taxId: string | null | undefined
 ): Pick<IncomingOrder, 'shippingAddress' | 'billingAddress'> {
   if (taxId === undefined) {
     return {
@@ -322,9 +343,10 @@ function withTaxId(
 
 function readCustomerEmail(
   order: MiraklOrder,
-  fields: readonly MiraklAdditionalField[],
+  fields: readonly MiraklAdditionalField[]
 ): Pick<IncomingOrder, 'customerEmail'> {
-  const email = readField(fields, MIRAKL_ORDER_FIELD.CustomerEmail) ?? order.customer_notification_email;
+  const email =
+    readField(fields, MIRAKL_ORDER_FIELD.CustomerEmail) ?? order.customer_notification_email;
   return email ? { customerEmail: email } : {};
 }
 
@@ -340,7 +362,7 @@ function mapShipping(order: MiraklOrder): OrderShipping | undefined {
 
 function mapPickupPoint(
   order: MiraklOrder,
-  fields: readonly MiraklAdditionalField[],
+  fields: readonly MiraklAdditionalField[]
 ): OrderPickupPoint | undefined {
   const name = readField(fields, MIRAKL_ORDER_FIELD.DeliveryPointName);
   const id = order.shipping_pudo_id?.trim() || name;
@@ -362,7 +384,7 @@ function mapDispatchTime(shippingDeadline: string | undefined): OrderDispatchWin
 /** An additional field's value as trimmed text; blank or absent is undefined. */
 export function readField(
   fields: readonly MiraklAdditionalField[],
-  code: string,
+  code: string
 ): string | undefined {
   const value = fields.find((field) => field.code === code)?.value;
   if (typeof value === 'string') {

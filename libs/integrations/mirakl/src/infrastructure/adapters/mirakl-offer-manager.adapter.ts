@@ -15,10 +15,16 @@
  *   and EAN, for `marketplace.offers.sync` to match OL variants.
  * - **Status** (`OfferStatusReader`): `active` and `inactivity_reasons` from
  *   OF21 filtered by SKU (the same offer resource OF22 returns, without
- *   needing Mirakl's numeric offer id).
+ *   needing Mirakl's numeric offer id). An offer whose create import is still
+ *   running reads `activating`, and one the import refused reads `inactive`
+ *   with the import's reason (#4278).
+ * - **Listing** (#4278): categories, category parameters and EAN-to-card
+ *   matching (`MiraklCatalog`), the taxonomy identity, and offer creation on
+ *   an existing card (`MiraklOfferCreator`).
  *
- * **Never OF24 for stock or price.** OF24 resets every field it does not
- * receive; a partial write on staging zeroed the quantity. Nothing here posts
+ * **Never OF24 for stock or price changes.** OF24 resets every field it does
+ * not receive; a partial write on staging zeroed the quantity. It is used once
+ * per offer, by the creator, with the full field set; this class never posts
  * to `/api/offers`.
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters
@@ -27,7 +33,20 @@
 import {
   CONSERVATIVE_DESCRIPTION_FORMAT,
   OfferNotFoundOnMarketplaceException,
+  type BatchCategoryByEanInput,
+  type CategoryBarcodeMatcher,
+  type CategoryBrowser,
+  type CategoryParameter,
+  type CategoryParametersReader,
+  type CreateOfferCommand,
+  type CreateOfferResult,
   type DescriptionFormat,
+  type EanCategoryMatcher,
+  type EanMatchResult,
+  type OfferCategory,
+  type OfferCreator,
+  type TaxonomyIdentityProvider,
+  type TaxonomyOwner,
   type OfferFeedInput,
   type OfferFeedItem,
   type OfferFeedOutput,
@@ -47,19 +66,35 @@ import {
 import { MiraklConfigException } from '../../domain/exceptions/mirakl-config.exception';
 import { MiraklUnsupportedFieldException } from '../../domain/exceptions/mirakl-unsupported-field.exception';
 import { mapMiraklInactivityReasons } from '../../domain/policies/mirakl-inactivity-reason.policy';
+import { pickMiraklBarcode } from '../../domain/policies/mirakl-offer-reference.policy';
 import {
   formatMiraklPrice,
   formatMiraklQuantity,
 } from '../../domain/policies/mirakl-offer-file.policy';
 import type { MiraklOfferWriteRepositoryPort } from '../../domain/ports/mirakl-offer-write-repository.port';
+import type { MiraklOfferDefaults } from '../../domain/types/mirakl-connection.types';
 import type { MiraklOffer, MiraklOffersPage } from '../../domain/types/mirakl-offer.types';
 import type { IMiraklHttpClient } from '../http/mirakl-http-client.interface';
 import { MIRAKL_MAX_PAGE_SIZE } from '../http/mirakl-pagination';
 import type { IMiraklImportTracker } from '../imports/mirakl-import-tracker.interface';
+import { MiraklCatalog } from './mirakl-catalog';
+import { MiraklOfferCreator } from './mirakl-offer-creator';
 import { MiraklOfferWriteReconciler } from './mirakl-offer-write-reconciler';
 
 const OFFERS_PATH = '/api/offers';
-const EAN_REFERENCE_TYPES = new Set(['EAN', 'EAN13', 'GTIN', 'ISBN']);
+
+/** What one connection's offer manager is built from. */
+export interface MiraklOfferManagerSettings {
+  readonly connectionId: string;
+  readonly adapterKey: string;
+  readonly brand: string;
+  readonly httpClient: IMiraklHttpClient;
+  readonly importTracker: IMiraklImportTracker;
+  /** Absent in a process without the database (unit wiring); writes then refuse. */
+  readonly writes: MiraklOfferWriteRepositoryPort | undefined;
+  readonly taxonomyOwner: TaxonomyOwner;
+  readonly offerDefaults?: MiraklOfferDefaults;
+}
 
 export class MiraklOfferManagerAdapter
   implements
@@ -68,16 +103,72 @@ export class MiraklOfferManagerAdapter
     PendingQuantityAckReconciler,
     OfferLister,
     OfferStatusReader,
-    OfferFieldUpdater
+    OfferFieldUpdater,
+    OfferCreator,
+    CategoryBrowser,
+    CategoryParametersReader,
+    EanCategoryMatcher,
+    CategoryBarcodeMatcher,
+    TaxonomyIdentityProvider
 {
-  constructor(
-    private readonly connectionId: string,
-    private readonly httpClient: IMiraklHttpClient,
-    private readonly importTracker: IMiraklImportTracker,
-    private readonly brand: string,
-    /** Absent in a process without the database (unit wiring); writes then refuse. */
-    private readonly writes: MiraklOfferWriteRepositoryPort | undefined
-  ) {}
+  private readonly connectionId: string;
+  private readonly httpClient: IMiraklHttpClient;
+  private readonly importTracker: IMiraklImportTracker;
+  private readonly brand: string;
+  private readonly writes: MiraklOfferWriteRepositoryPort | undefined;
+  private readonly catalog: MiraklCatalog;
+  private readonly creator: MiraklOfferCreator;
+
+  constructor(private readonly settings: MiraklOfferManagerSettings) {
+    this.connectionId = settings.connectionId;
+    this.httpClient = settings.httpClient;
+    this.importTracker = settings.importTracker;
+    this.brand = settings.brand;
+    this.writes = settings.writes;
+    this.catalog = new MiraklCatalog(settings.connectionId, settings.httpClient);
+    this.creator = new MiraklOfferCreator({
+      connectionId: settings.connectionId,
+      adapterKey: settings.adapterKey,
+      brand: settings.brand,
+      httpClient: settings.httpClient,
+      catalog: this.catalog,
+      writes: (): MiraklOfferWriteRepositoryPort => this.store(),
+      offerDefaults: settings.offerDefaults ?? {},
+    });
+  }
+
+  getTaxonomyIdentity(): TaxonomyOwner {
+    return this.settings.taxonomyOwner;
+  }
+
+  fetchCategories(parentId?: string): Promise<OfferCategory[]> {
+    return this.catalog.fetchCategories(parentId);
+  }
+
+  fetchCategoryParameters(input: { categoryId: string }): Promise<CategoryParameter[]> {
+    return this.catalog.fetchCategoryParameters(input);
+  }
+
+  resolveCategoriesForBatchByEan(
+    input: BatchCategoryByEanInput
+  ): Promise<Map<string, EanMatchResult>> {
+    return this.catalog.resolveCategoriesForBatchByEan(input);
+  }
+
+  /**
+   * The category of the card this EAN points to, for the offer build. The
+   * wizard matches cards in batches (`EanCategoryMatcher`) but submits a
+   * card-linked row without a category, and the build resolves it again one
+   * EAN at a time through this method; without it every Empik offer on a
+   * card needed a category picked by hand.
+   */
+  matchCategoryByBarcode(barcode: string): Promise<string | null> {
+    return this.catalog.matchCategoryByBarcode(barcode);
+  }
+
+  createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
+    return this.creator.createOffer(cmd);
+  }
 
   async updateOfferQuantity(cmd: UpdateOfferQuantityCommand): Promise<void> {
     await this.store().recordPending(this.connectionId, 'stock', [
@@ -162,6 +253,10 @@ export class MiraklOfferManagerAdapter
     });
     const offer = (data?.offers ?? []).find((candidate) => candidate.shop_sku === externalOfferId);
     if (!offer) {
+      const pending = await this.statusOfCreateImport(externalOfferId);
+      if (pending) {
+        return pending;
+      }
       throw new OfferNotFoundOnMarketplaceException(externalOfferId, this.connectionId);
     }
     return {
@@ -180,6 +275,36 @@ export class MiraklOfferManagerAdapter
     };
   }
 
+  /**
+   * An offer OpenLinker just created is not in OF21 until its OF24 import has
+   * run. While it runs the offer reads `activating`; if the import refused the
+   * offer, `inactive` with the import's reason. `null` when OpenLinker did not
+   * create it, which leaves the not-found answer to the caller.
+   */
+  private async statusOfCreateImport(offerSku: string): Promise<OfferStatusReadResult | null> {
+    const created = await this.writes?.findLatest(this.connectionId, 'offer', offerSku);
+    if (!created?.importId) {
+      return null;
+    }
+    if (created.status === 'failed') {
+      return refused(created.error ?? 'The offer import failed');
+    }
+    const status = await this.importTracker.getStatus('offers', created.importId);
+    if (status.state === 'failed') {
+      return refused(`The offer import ended as ${status.rawStatus ?? 'failed'}`);
+    }
+    if (status.state === 'done' && ((status.linesInError ?? 0) > 0 || status.hasErrorReport)) {
+      const lines = await this.importTracker.getErrorReport('offers', created.importId);
+      const line =
+        lines.find((candidate) => candidate.sku === offerSku) ??
+        (lines.length === 1 ? lines[0] : undefined);
+      if (line) {
+        return refused(line.reason);
+      }
+    }
+    return { publicationStatus: 'activating', validationErrors: [] };
+  }
+
   private store(): MiraklOfferWriteRepositoryPort {
     if (!this.writes) {
       throw new MiraklConfigException(
@@ -191,6 +316,13 @@ export class MiraklOfferManagerAdapter
   }
 }
 
+function refused(reason: string): OfferStatusReadResult {
+  return {
+    publicationStatus: 'inactive',
+    validationErrors: [{ code: 'MIRAKL_OFFER_IMPORT_FAILED', message: reason }],
+  };
+}
+
 function parseOffset(cursor: string | null | undefined): number {
   const parsed = Number(cursor ?? 0);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
@@ -200,16 +332,13 @@ function toFeedItem(offer: MiraklOffer): OfferFeedItem[] {
   if (!offer.shop_sku) {
     return [];
   }
-  const ean = (offer.product_references ?? []).find(
-    (reference) =>
-      reference.reference && EAN_REFERENCE_TYPES.has((reference.reference_type ?? '').toUpperCase())
-  )?.reference;
+  const ean = pickMiraklBarcode(offer.product_references);
   return [
     {
       offerId: offer.shop_sku,
       externalRef: offer.shop_sku,
       sku: offer.shop_sku,
-      ean: ean ?? null,
+      ean,
       raw: {
         offerId: offer.offer_id,
         productSku: offer.product_sku,

@@ -1,5 +1,5 @@
 /**
- * Empik Orders Vertical-Slice Integration Test (#4275, #4276)
+ * Empik Orders Vertical-Slice Integration Test (#4275, #4276, #4279)
  *
  * Runs Empik order ingestion end to end through the REAL
  * `MiraklOrderSourceAdapter` (acceptance, feed windows, mapper) over an
@@ -42,6 +42,11 @@ import {
   type OrderSourcePort,
 } from '@openlinker/core/orders';
 import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
+import {
+  RETURN_INGESTION_SERVICE_TOKEN,
+  type IReturnIngestionService,
+} from '@openlinker/core/returns';
+import { ReturnLineOrmEntity, ReturnOrmEntity } from '@openlinker/core/returns/orm-entities';
 import { SYNC_JOB_QUEUE_TOKEN, type SyncJobQueuePort } from '@openlinker/core/sync';
 import { MiraklApiException } from '@openlinker/integrations-mirakl';
 import type { MiraklOrder } from '@openlinker/integrations-mirakl/domain/types/mirakl-order.types';
@@ -49,6 +54,7 @@ import {
   buildMiraklOrder,
   buildMiraklOrderLine,
 } from '@openlinker/integrations-mirakl/infrastructure/adapters/__tests__/mirakl-order.fixture';
+import { buildMiraklReturn } from '@openlinker/integrations-mirakl/infrastructure/adapters/__tests__/mirakl-return.fixture';
 
 import type { IntegrationTestHarness } from '../setup';
 import { getTestHarness, resetTestHarness, teardownTestHarness } from '../setup';
@@ -124,21 +130,26 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
     const variantId = `ol_variant_${randomUUID().replace(/-/g, '')}`;
     await dataSource.query(
       `INSERT INTO products (id, name, "createdAt", "updatedAt") VALUES ($1, $2, now(), now())`,
-      [productId, 'Empik Test Product'],
+      [productId, 'Empik Test Product']
     );
     await dataSource.query(
       `INSERT INTO product_variants (id, "productId", attributes, "createdAt", "updatedAt")
        VALUES ($1, $2, $3::jsonb, now(), now())`,
-      [variantId, productId, JSON.stringify({})],
+      [variantId, productId, JSON.stringify({})]
     );
-    await identifierMapping().createMapping(CORE_ENTITY_TYPE.Offer, OFFER_SKU, connectionId, variantId);
+    await identifierMapping().createMapping(
+      CORE_ENTITY_TYPE.Offer,
+      OFFER_SKU,
+      connectionId,
+      variantId
+    );
   }
 
   async function findOrderRecord(externalOrderId: string): Promise<OrderRecordOrmEntity | null> {
     const internalOrderId = await identifierMapping().getInternalId(
       CORE_ENTITY_TYPE.Order,
       externalOrderId,
-      connectionId,
+      connectionId
     );
     return internalOrderId
       ? dataSource.getRepository(OrderRecordOrmEntity).findOne({ where: { internalOrderId } })
@@ -190,7 +201,7 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
     await poll();
 
     const keys = enqueueBulk.mock.calls.flatMap(([requests]) =>
-      requests.map((request) => request.options?.dedupeKey),
+      requests.map((request) => request.options?.dedupeKey)
     );
     expect(keys.length).toBeGreaterThanOrEqual(2);
     expect(new Set(keys).size).toBe(1);
@@ -200,7 +211,7 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
     expect(
       await dataSource.getRepository(OrderRecordOrmEntity).count({
         where: { sourceConnectionId: connectionId },
-      }),
+      })
     ).toBe(1);
   });
 
@@ -219,7 +230,7 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
     connectionId = await seedEmpikConnection(dataSource, {});
     empik.fake.putOrder(waitingOrder('E4-A'));
     empik.fake.failNextAccept(
-      new MiraklApiException('invalid state', 400, 'ORDER_INVALID_STATE', 'Order is not waiting'),
+      new MiraklApiException('invalid state', 400, 'ORDER_INVALID_STATE', 'Order is not waiting')
     );
 
     await expect(poll()).resolves.toMatchObject({ committed: true });
@@ -229,7 +240,7 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
     connectionId = await seedEmpikConnection(dataSource, {});
     await seedOfferMapping();
     empik.fake.putOrder(
-      waitingOrder('E5-A', { shipping_type_code: 'COURIER_POD', shipping_pudo_id: undefined }),
+      waitingOrder('E5-A', { shipping_type_code: 'COURIER_POD', shipping_pudo_id: undefined })
     );
 
     await poll();
@@ -254,7 +265,7 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
         order_state: 'CANCELED',
         created_date: minutesAgo(20),
         last_updated_date: minutesAgo(5),
-      }),
+      })
     );
     const queue = harness.getApp().get<SyncJobQueuePort>(SYNC_JOB_QUEUE_TOKEN);
     const enqueueBulk = jest.spyOn(queue, 'enqueueBulk');
@@ -262,11 +273,74 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
     await poll();
 
     const payloads = enqueueBulk.mock.calls.flatMap(([requests]) =>
-      requests.map((request) => request.payload),
+      requests.map((request) => request.payload)
     );
     expect(payloads).toEqual([
       expect.objectContaining({ externalOrderId: 'E6-A', eventType: 'cancelled' }),
     ]);
+  });
+
+  describe('Empik returns (#4279)', () => {
+    function returns(): IReturnIngestionService {
+      return harness.getApp().get<IReturnIngestionService>(RETURN_INGESTION_SERVICE_TOKEN);
+    }
+
+    async function ingestOrder(orderId: string): Promise<void> {
+      await seedOfferMapping();
+      empik.fake.putOrder(waitingOrder(orderId));
+      await poll();
+      await ingestion().syncOrderFromSource(connectionId, orderId);
+    }
+
+    it('E11: a return opened on Empik is polled, ingested with its lines and reason, and attributed to the order', async () => {
+      connectionId = await seedEmpikConnection(dataSource, {});
+      await ingestOrder('E11-A');
+      empik.fake.putReturn(
+        buildMiraklReturn({
+          id: 'R-E11',
+          order_id: 'E11-A',
+          last_updated: minutesAgo(5),
+          return_lines: [
+            { order_line_id: 'E11-A-1', quantity: 1, reason_code: 'RETURN_BROKEN_ITEM' },
+          ],
+        })
+      );
+
+      const polled = await returns().ingestReturns(connectionId, {
+        cursorKey: 'empik.returns.lastUpdateDate',
+        limit: 100,
+      });
+      expect(polled).toMatchObject({ fetched: 1, enqueued: 1, committed: true });
+
+      const synced = await returns().syncReturnFromSource(connectionId, 'R-E11');
+      expect(synced.attributed).toBe(true);
+      const stored = await dataSource
+        .getRepository(ReturnOrmEntity)
+        .findOneOrFail({ where: { sourceConnectionId: connectionId, externalReturnId: 'R-E11' } });
+      expect(stored).toMatchObject({ externalOrderId: 'E11-A', rawStatus: 'WAITING_ACCEPTANCE' });
+      expect(stored.internalOrderId).not.toBeNull();
+      const lines = await dataSource
+        .getRepository(ReturnLineOrmEntity)
+        .find({ where: { returnId: stored.id } });
+      expect(lines).toEqual([
+        expect.objectContaining({ externalLineId: 'E11-A-1', sku: OFFER_SKU, quantityAdvised: 1 }),
+      ]);
+    });
+
+    it('E12: a re-read follows the return to a terminal state', async () => {
+      connectionId = await seedEmpikConnection(dataSource, {});
+      await ingestOrder('E12-A');
+      empik.fake.putReturn(buildMiraklReturn({ id: 'R-E12', order_id: 'E12-A' }));
+      await returns().syncReturnFromSource(connectionId, 'R-E12');
+
+      empik.fake.putReturn(buildMiraklReturn({ id: 'R-E12', order_id: 'E12-A', state: 'CLOSED' }));
+      await returns().syncReturnFromSource(connectionId, 'R-E12');
+
+      const stored = await dataSource
+        .getRepository(ReturnOrmEntity)
+        .findOneOrFail({ where: { sourceConnectionId: connectionId, externalReturnId: 'R-E12' } });
+      expect(stored.rawStatus).toBe('CLOSED');
+    });
   });
 
   describe('Empik order way back (#4276)', () => {
@@ -312,11 +386,11 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
       if (!isOrderStatusWriteback(adapter)) throw new Error('not a writeback');
 
       expect((await adapter.write({ type: 'cancelled', externalOrderId: 'E8-A' })).outcome).toBe(
-        'applied',
+        'applied'
       );
       expect(empik.fake.orderState('E8-A')).toBe('CANCELED');
       expect((await adapter.write({ type: 'cancelled', externalOrderId: 'E8-B' })).outcome).toBe(
-        'rejected',
+        'rejected'
       );
       expect(empik.fake.orderState('E8-B')).toBe('SHIPPED');
     });
@@ -329,7 +403,7 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
           shipping_tracking: 'DPD-1',
           shipping_carrier_code: 'dpd',
           shipping_company: 'DPD',
-        }),
+        })
       );
       const adapter = await orderSource();
       if (!isOrderFulfillmentReadback(adapter)) throw new Error('not a readback');
@@ -365,7 +439,7 @@ describe('Empik Orders Vertical Slice Integration (#4275)', () => {
 
 async function seedEmpikConnection(
   dataSource: DataSource,
-  config: Record<string, unknown>,
+  config: Record<string, unknown>
 ): Promise<string> {
   const credentialsRef = `test-empik-${randomUUID()}`;
   const { key } = loadEncryptionKey(process.env);
@@ -374,8 +448,11 @@ async function seedEmpikConnection(
     credRepo.create({
       ref: credentialsRef,
       platformType: EMPIK_ORDER_SOURCE_TEST_PLATFORM_TYPE,
-      credentialsCiphertext: encryptWithKey(key, JSON.stringify({ apiKey: 'test-empik-key-not-real' })),
-    }),
+      credentialsCiphertext: encryptWithKey(
+        key,
+        JSON.stringify({ apiKey: 'test-empik-key-not-real' })
+      ),
+    })
   );
   const connRepo = dataSource.getRepository(ConnectionOrmEntity);
   const connection = await connRepo.save(
@@ -387,7 +464,7 @@ async function seedEmpikConnection(
       credentialsRef: `db:${credentialsRef}`,
       adapterKey: EMPIK_ORDER_SOURCE_TEST_ADAPTER_KEY,
       enabledCapabilities: ['OrderSource'],
-    }),
+    })
   );
   return connection.id;
 }

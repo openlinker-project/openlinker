@@ -13,8 +13,11 @@
  *   (`/api/offers/pricing/imports?import_id=`) and both error reports, from
  *   an outcome a test sets per import.
  *
- * Everything else rejects, so an unexpected call (an OF24 above all) fails the
- * test loudly.
+ * - `GET /api/products` (P31) by `product_references`, from cards a test adds,
+ *   and `POST /api/offers` (OF24, #4278): keeps the body and answers an
+ *   `import_id` whose status is read at `/api/offers/imports/{id}`.
+ *
+ * Everything else rejects, so an unexpected call fails the test loudly.
  *
  * @module apps/api/test/integration/helpers
  */
@@ -40,13 +43,25 @@ interface ImportOutcome {
 }
 
 const STOCK_STATUS = /^\/api\/offers\/stock\/imports\/([^/]+)\/status$/;
-const ERROR_REPORT = /^\/api\/offers\/(?:stock|pricing)\/imports\/([^/]+)\/error_report$/;
+const OFFER_IMPORT_STATUS = /^\/api\/offers\/imports\/([^/]+)$/;
+const ERROR_REPORT = /^\/api\/offers\/(?:stock\/|pricing\/)?imports\/([^/]+)\/error_report$/;
 
 export class MiraklFakeOfferApi implements IMiraklHttpClient {
   readonly imports: SubmittedImport[] = [];
+  /** OF24 bodies, in order. */
+  readonly offerImports: unknown[] = [];
+  private readonly cards: Array<{
+    product_id: string;
+    product_sku: string;
+    category_code: string;
+  }> = [];
   private readonly offers: MiraklOffer[] = [];
   private readonly outcomes = new Map<string, ImportOutcome>();
   private nextImport = 1;
+
+  putCard(ean: string, cardSku: string, categoryCode: string): void {
+    this.cards.push({ product_id: ean, product_sku: cardSku, category_code: categoryCode });
+  }
 
   putOffer(offer: MiraklOffer): void {
     this.offers.push(offer);
@@ -59,6 +74,8 @@ export class MiraklFakeOfferApi implements IMiraklHttpClient {
 
   reset(): void {
     this.imports.length = 0;
+    this.offerImports.length = 0;
+    this.cards.length = 0;
     this.offers.length = 0;
     this.outcomes.clear();
     this.nextImport = 1;
@@ -73,6 +90,16 @@ export class MiraklFakeOfferApi implements IMiraklHttpClient {
       const offset = Number(query.offset ?? 0);
       const max = Number(query.max ?? 10);
       return ok({ offers: matching.slice(offset, offset + max), total_count: matching.length });
+    }
+    if (path === '/api/products') {
+      const eans = String(query.product_references ?? '')
+        .split(',')
+        .map((reference) => reference.replace(/^EAN\|/, ''));
+      return ok({ products: this.cards.filter((card) => eans.includes(card.product_id)) });
+    }
+    const offerImport = OFFER_IMPORT_STATUS.exec(path);
+    if (offerImport) {
+      return ok(this.rawStatus(decodeURIComponent(offerImport[1])));
     }
     const stock = STOCK_STATUS.exec(path);
     if (stock) {
@@ -103,8 +130,13 @@ export class MiraklFakeOfferApi implements IMiraklHttpClient {
     return ok({ import_id: importId });
   }
 
-  post<T>(path: string): Promise<MiraklHttpResponse<T>> {
-    return Promise.reject(new MiraklApiException(`Mirakl fake: no POST ${path}`, 404));
+  post<T>(path: string, body?: unknown): Promise<MiraklHttpResponse<T>> {
+    if (path !== '/api/offers') {
+      return Promise.reject(new MiraklApiException(`Mirakl fake: no POST ${path}`, 404));
+    }
+    const importId = `imp-${this.nextImport++}`;
+    this.offerImports.push(body);
+    return ok({ import_id: importId });
   }
 
   put<T>(path: string): Promise<MiraklHttpResponse<T>> {

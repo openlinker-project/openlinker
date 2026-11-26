@@ -53,6 +53,45 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
       .execute();
   }
 
+  async recordSubmitted(
+    connectionId: string,
+    kind: MiraklOfferWriteKind,
+    values: readonly MiraklOfferWriteValue[],
+    importId: string,
+  ): Promise<void> {
+    if (values.length === 0) return;
+    await this.repository.insert(
+      values.map((value) => ({
+        connectionId,
+        kind,
+        offerSku: value.offerSku,
+        value: value.value,
+        currency: value.currency ?? null,
+        status: 'submitted' as const,
+        importId,
+      })),
+    );
+  }
+
+  /**
+   * Newest row by `createdAt`. Correct only because an offer has at most one
+   * `pending` row (`recordPending` upserts into it, keeping its `createdAt`) and
+   * a new pending row is created only after the previous one was submitted, so
+   * the pending row is always the newest. Changing that index or this ordering
+   * would make the stock master read an older target (#4284).
+   */
+  async findLatest(
+    connectionId: string,
+    kind: MiraklOfferWriteKind,
+    offerSku: string,
+  ): Promise<MiraklOfferWrite | null> {
+    const row = await this.repository.findOne({
+      where: { connectionId, kind, offerSku },
+      order: { createdAt: 'DESC' },
+    });
+    return row ? toDomain(row) : null;
+  }
+
   async findPending(
     connectionId: string,
     kind: MiraklOfferWriteKind,

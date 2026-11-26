@@ -21,6 +21,21 @@ export interface MiraklOfferWriteRepositoryPort {
     values: readonly MiraklOfferWriteValue[],
   ): Promise<void>;
 
+  /** Record writes already sent in `importId` (an OF24 create). */
+  recordSubmitted(
+    connectionId: string,
+    kind: MiraklOfferWriteKind,
+    values: readonly MiraklOfferWriteValue[],
+    importId: string,
+  ): Promise<void>;
+
+  /** The newest write of one kind for one offer, whatever its status. */
+  findLatest(
+    connectionId: string,
+    kind: MiraklOfferWriteKind,
+    offerSku: string,
+  ): Promise<MiraklOfferWrite | null>;
+
   /** Pending writes of one kind, oldest first. */
   findPending(
     connectionId: string,

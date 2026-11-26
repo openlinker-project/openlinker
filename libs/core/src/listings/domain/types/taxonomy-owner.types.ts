@@ -51,6 +51,13 @@
  * `getTaxonomyIdentity()` returns. Getting it wrong is a data migration of every
  * `DestinationCategory` row, so weigh a new value here accordingly.
  */
-export const TaxonomyOwnerValues = ['allegro', 'allegro:sandbox'] as const;
+export const TaxonomyOwnerValues = [
+  'allegro',
+  'allegro:sandbox',
+  // Empik's Mirakl hierarchy (#4278). Staging runs a separate catalogue on its
+  // own host, so it is a distinct tree, as for Allegro's sandbox.
+  'empik',
+  'empik:staging',
+] as const;
 
 export type TaxonomyOwner = (typeof TaxonomyOwnerValues)[number];

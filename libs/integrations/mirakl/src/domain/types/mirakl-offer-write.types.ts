@@ -10,9 +10,16 @@
  * @module libs/integrations/mirakl/src/domain/types
  */
 
-/** `stock` goes through STO01, `price` through PRI01. */
-export const MiraklOfferWriteKindValues = ['stock', 'price'] as const;
+/**
+ * `stock` goes through STO01, `price` through PRI01. `offer` is an OF24 create
+ * (#4278): recorded already submitted, so the status read can follow it.
+ */
+export const MiraklOfferWriteKindValues = ['stock', 'price', 'offer'] as const;
 export type MiraklOfferWriteKind = (typeof MiraklOfferWriteKindValues)[number];
+
+/** The kinds recorded first and sent as one file per pass. */
+export const MiraklBufferedWriteKindValues = ['stock', 'price'] as const;
+export type MiraklBufferedWriteKind = (typeof MiraklBufferedWriteKindValues)[number];
 
 /**
  * - `pending`: recorded, not sent yet. At most one per offer and kind; a newer

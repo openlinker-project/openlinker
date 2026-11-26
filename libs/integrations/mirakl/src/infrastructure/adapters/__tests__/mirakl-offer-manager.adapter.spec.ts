@@ -44,13 +44,18 @@ function setup(
 } {
   const get = jest.fn().mockResolvedValue({ status: 200, data: { offers, total_count: total } });
   const recordPending = jest.fn().mockResolvedValue(undefined);
-  const adapter = new MiraklOfferManagerAdapter(
-    'conn-1',
-    { get } as unknown as IMiraklHttpClient,
-    {} as IMiraklImportTracker,
-    'Empik',
-    { recordPending } as unknown as MiraklOfferWriteRepositoryPort
-  );
+  const adapter = new MiraklOfferManagerAdapter({
+    connectionId: 'conn-1',
+    adapterKey: 'empik.mirakl.v1',
+    brand: 'Empik',
+    httpClient: { get } as unknown as IMiraklHttpClient,
+    importTracker: {} as IMiraklImportTracker,
+    writes: {
+      recordPending,
+      findLatest: jest.fn().mockResolvedValue(null),
+    } as unknown as MiraklOfferWriteRepositoryPort,
+    taxonomyOwner: 'empik',
+  });
   return { adapter, get, recordPending };
 }
 
@@ -159,5 +164,65 @@ describe('MiraklOfferManagerAdapter', () => {
     await expect(adapter.getOfferStatus('GONE')).rejects.toBeInstanceOf(
       OfferNotFoundOnMarketplaceException
     );
+  });
+
+  describe('status of an offer OpenLinker just created (#4278)', () => {
+    function withCreate(
+      created: { status: string; importId: string; error?: string } | null,
+      tracker: Partial<Record<'getStatus' | 'getErrorReport', jest.Mock>> = {},
+    ): MiraklOfferManagerAdapter {
+      return new MiraklOfferManagerAdapter({
+        connectionId: 'conn-1',
+        adapterKey: 'empik.mirakl.v1',
+        brand: 'Empik',
+        httpClient: {
+          get: jest.fn().mockResolvedValue({ status: 200, data: { offers: [], total_count: 0 } }),
+        } as unknown as IMiraklHttpClient,
+        importTracker: tracker as unknown as IMiraklImportTracker,
+        writes: {
+          findLatest: jest.fn().mockResolvedValue(created),
+        } as unknown as MiraklOfferWriteRepositoryPort,
+        taxonomyOwner: 'empik',
+      });
+    }
+
+    it('should read activating while the create import runs', async () => {
+      const adapter = withCreate(
+        { status: 'submitted', importId: '1' },
+        { getStatus: jest.fn().mockResolvedValue({ state: 'pending', hasErrorReport: false }) },
+      );
+
+      expect(await adapter.getOfferStatus('OL-x')).toEqual({
+        publicationStatus: 'activating',
+        validationErrors: [],
+      });
+    });
+
+    it('should read inactive with the import error once the import refused the offer', async () => {
+      const adapter = withCreate(
+        { status: 'submitted', importId: '1' },
+        {
+          getStatus: jest
+            .fn()
+            .mockResolvedValue({ state: 'done', linesInError: 1, hasErrorReport: true }),
+          getErrorReport: jest
+            .fn()
+            .mockResolvedValue([{ sku: 'OL-x', reason: 'The product does not exist' }]),
+        },
+      );
+
+      expect(await adapter.getOfferStatus('OL-x')).toEqual({
+        publicationStatus: 'inactive',
+        validationErrors: [
+          { code: 'MIRAKL_OFFER_IMPORT_FAILED', message: 'The product does not exist' },
+        ],
+      });
+    });
+
+    it('should report not found for an offer OpenLinker did not create', async () => {
+      await expect(withCreate(null).getOfferStatus('OL-x')).rejects.toBeInstanceOf(
+        OfferNotFoundOnMarketplaceException,
+      );
+    });
   });
 });
