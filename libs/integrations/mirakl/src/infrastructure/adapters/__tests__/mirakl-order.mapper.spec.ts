@@ -45,6 +45,12 @@ describe('mapMiraklOrderToIncomingOrder', () => {
     });
   });
 
+  it('should name the product instead of the offer when the connection is the catalogue master', () => {
+    const [item] = mapMiraklOrderToIncomingOrder(buildMiraklOrder(), { lineRef: 'product' }).items;
+
+    expect(item.productRef).toEqual({ type: 'product', externalId: 'SKU-RED-M' });
+  });
+
   it('should map gross totals that add up', () => {
     const { totals } = mapMiraklOrderToIncomingOrder(buildMiraklOrder());
 
@@ -92,7 +98,7 @@ describe('mapMiraklOrderToIncomingOrder', () => {
 
   it('should treat a _POD shipping type as cash on delivery', () => {
     const incoming = mapMiraklOrderToIncomingOrder(
-      buildMiraklOrder({ shipping_type_code: 'COURIER_POD', shipping_pudo_id: undefined }),
+      buildMiraklOrder({ shipping_type_code: 'COURIER_POD', shipping_pudo_id: undefined })
     );
 
     expect(incoming.paymentMethod).toBe('cash_on_delivery');
@@ -118,7 +124,7 @@ describe('mapMiraklOrderToIncomingOrder', () => {
 
   it('should report a fully refunded order as refunded', () => {
     expect(
-      mapMiraklOrderToIncomingOrder(buildMiraklOrder({ fully_refunded: true })).paymentStatus,
+      mapMiraklOrderToIncomingOrder(buildMiraklOrder({ fully_refunded: true })).paymentStatus
     ).toBe('refunded');
   });
 
@@ -149,7 +155,7 @@ describe('mapMiraklOrderToIncomingOrder', () => {
         price: 81.28,
         shipping_price: 10.56,
         total_price: 91.84,
-      }),
+      })
     );
 
     expect(totals).toMatchObject({
@@ -168,7 +174,7 @@ describe('mapMiraklOrderToIncomingOrder', () => {
         shipping_type_code: 'COURIER',
         shipping_pudo_id: undefined,
         order_additional_fields: [],
-      }),
+      })
     );
 
     expect(incoming.pickupPoint).toBeUndefined();

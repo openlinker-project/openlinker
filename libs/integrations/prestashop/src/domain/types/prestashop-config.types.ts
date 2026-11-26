@@ -139,6 +139,15 @@ export interface PrestashopConnectionConfig {
   salesCountryIso2?: string;
 
   /**
+   * PrestaShop tax-rule group (`id_tax_rules_group`) for a published product
+   * whose master catalogue holds no tax rate, e.g. one read from a marketplace
+   * such as Empik, which reports none. The product publisher uses it only when
+   * the catalogue names no rate, so it never overrides one. `null` or absent:
+   * such a product is refused with `TAX_RATE_MISSING`.
+   */
+  defaultTaxRulesGroupId?: number | null;
+
+  /**
    * Default PrestaShop carrier ID applied to incoming orders when no
    * connection-level carrier mapping resolves for the source delivery method.
    *

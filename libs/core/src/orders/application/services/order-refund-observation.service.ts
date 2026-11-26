@@ -9,11 +9,12 @@
  * Idempotency is the key `observed:{connectionId}:{externalRefundId}`, enforced
  * by `OrderRefundService.recordRefund` under the per-order lock, so a re-poll
  * writes nothing. Each observed refund is then mirrored onto destination copies
- * of the order by `OrderRefundRelayService`. A refund OL executed itself cannot be echoed here today: no
- * source adapter implements both `RefundSourceReader` and `RefundExecutor`
- * (Shopify executes as a destination, Allegro only observes), so the two never
- * describe one movement of money. When an adapter ever does both, its executor
- * must record under the same `observed:` key so the echo dedupes.
+ * of the order by `OrderRefundRelayService`. A refund OL executed itself must
+ * not come back here as a new one: an adapter implementing both
+ * `RefundSourceReader` and `RefundExecutor` either records its execution under
+ * the same `observed:` key, or leaves the refunds it sent out of
+ * `listRefunds`. The Mirakl order source (#4284) does the second, because the
+ * line refund id it observes is not known when the refund is recorded.
  *
  * @module application/services
  */

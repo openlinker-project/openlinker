@@ -42,6 +42,25 @@ import { buildMiraklSchedulerTasks } from './infrastructure/scheduler/mirakl-sch
  * number here would be invented. 429s are handled with `Retry-After` in the
  * client; an operator can still set `connection.config.rateLimit`.
  */
+/**
+ * What a new connection enables when the operator picks nothing: a marketplace
+ * connection, as before #4284. Enabling the whole manifest would pair
+ * InventoryMaster with OfferManager, which connection create refuses.
+ */
+export const MIRAKL_DEFAULT_ENABLED_CAPABILITIES = [
+  'OrderSource',
+  'ReturnSourceReader',
+  'OfferManager',
+  'OfferLister',
+  'OfferStatusReader',
+  'OfferQuantityBatchUpdater',
+  'PendingQuantityAckReconciler',
+  'OfferFieldUpdater',
+  'OfferCreator',
+  'CategoryBrowser',
+  'EanCategoryMatcher',
+] as const;
+
 export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): AdapterMetadata {
   return {
     adapterKey: profile.adapterKey,
@@ -63,7 +82,15 @@ export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): Adap
       'OfferCreator',
       'CategoryBrowser',
       'EanCategoryMatcher',
+      // Catalogue and stock master over the seller's offers (#4284). Opt-in:
+      // left out of the defaults below, and InventoryMaster cannot sit beside
+      // OfferManager on one connection (#1498).
+      'ProductMaster',
+      'InventoryMaster',
     ],
+    defaultEnabledCapabilities: [...MIRAKL_DEFAULT_ENABLED_CAPABILITIES],
+    // Readable by every role: the orders UI words a refund confirmation by it.
+    publicConfigKeys: ['refundsThroughMarketplace'],
     displayName: profile.displayName,
     version: profile.version,
     isDefault: true,
@@ -72,7 +99,7 @@ export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): Adap
 
 export function createMiraklPlugin(
   profile: MiraklOperatorProfile,
-  deps: MiraklAdapterFactoryDeps = {},
+  deps: MiraklAdapterFactoryDeps = {}
 ): AdapterPlugin {
   const manifest = buildMiraklAdapterManifest(profile);
   const factory = new MiraklAdapterFactory(profile, deps);
@@ -83,15 +110,15 @@ export function createMiraklPlugin(
     register(host: HostServices): void {
       host.connectionConfigShapeValidatorRegistry.register(
         profile.adapterKey,
-        new MiraklConnectionConfigShapeValidatorAdapter(profile.brand),
+        new MiraklConnectionConfigShapeValidatorAdapter(profile.brand)
       );
       host.connectionCredentialsShapeValidatorRegistry.register(
         profile.adapterKey,
-        new MiraklConnectionCredentialsShapeValidatorAdapter(profile.brand),
+        new MiraklConnectionCredentialsShapeValidatorAdapter(profile.brand)
       );
       host.connectionTesterRegistry.register(
         profile.adapterKey,
-        new MiraklConnectionTesterAdapter(host.http, factory, profile.brand),
+        new MiraklConnectionTesterAdapter(host.http, factory, profile.brand)
       );
       // The runner asks every registered classifier (it holds the raw error, not
       // an adapter key), so the key is a label; each classifier only recognises
@@ -99,7 +126,7 @@ export function createMiraklPlugin(
       host.retryClassifierRegistry.register(profile.adapterKey, new MiraklRetryClassifierAdapter());
       host.authFailureClassifierRegistry.register(
         profile.adapterKey,
-        new MiraklAuthFailureClassifierAdapter(),
+        new MiraklAuthFailureClassifierAdapter()
       );
       host.emailNormalizerRegistry.register(profile.adapterKey, new MiraklEmailNormalizerAdapter());
       // Registered unconditionally; the env gate is re-read at every tick.
@@ -111,7 +138,7 @@ export function createMiraklPlugin(
     async createCapabilityAdapter<T>(
       connection: Connection,
       capability: string,
-      host: HostServices,
+      host: HostServices
     ): Promise<T> {
       const adapters = await factory.createAdapters(
         connection,
@@ -119,11 +146,17 @@ export function createMiraklPlugin(
         // Connection-bound outbound transport (#1810): the operator's own rate
         // limit, if any; the manifest declares no default.
         host.http.forConnection(connection),
+        { identifierMapping: host.identifierMapping, cache: host.cache }
       );
       return dispatchCapability<T>(
         capability,
-        { OrderSource: () => adapters.orderSource, OfferManager: () => adapters.offerManager },
-        profile.brand,
+        {
+          OrderSource: () => adapters.orderSource,
+          OfferManager: () => adapters.offerManager,
+          ProductMaster: () => adapters.productMaster,
+          InventoryMaster: () => adapters.inventoryMaster,
+        },
+        profile.brand
       );
     },
   };

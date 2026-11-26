@@ -56,6 +56,12 @@ export interface MiraklConnectionConfig {
    * batch can override both in the offer wizard.
    */
   offerDefaults?: MiraklOfferDefaults;
+  /**
+   * Whether a refund confirmed in OpenLinker is sent to the marketplace (OR28).
+   * Absent or false: the order source is no refund executor, and a refund is
+   * recorded as made outside OpenLinker.
+   */
+  refundsThroughMarketplace?: boolean;
 }
 
 export interface MiraklOfferDefaults {

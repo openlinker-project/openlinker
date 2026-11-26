@@ -142,7 +142,66 @@ The order source is also a `ReturnSourceReader` over RT11 (`GET /api/returns`):
 Follows Mirakl's RT11 documentation; Empik staging has no return yet, so the
 fixture is to be checked against the first real one.
 
+## Refunds
+
+- **Read** (`RefundSourceReader`, always on): the refunds already paid on an
+  order, from OR11 `order_lines[].refunds` in state `REFUNDED`, one per line
+  refund, with the payment instant (`transaction_date`) or none.
+- **Send** (`RefundExecutor`, OR28 `PUT /api/orders/refund`): only on a
+  connection with `refundsThroughMarketplace: true`; otherwise a confirmed
+  refund is recorded as made outside OpenLinker. Core asks for one amount; it is
+  spread over what is left to refund on the order's lines, product parts first,
+  then shipping, with line taxes in proportion. More than is left is refused
+  before sending. The reason maps to the operator's refund codes (Empik: RE02
+  `REFUND`, in the operator profile).
+- Mirakl takes no idempotency key, so the key is kept in the host cache: a
+  retry answers from the first refund, and a retry of an attempt that did not
+  finish throws (outcome unknown) instead of refunding again. No cache, no
+  refund. A sent refund is `accepted`: the operator pays it out later.
+- A refund OpenLinker sent is not reported by the reader once paid out, or
+  core would record it a second time as made outside OpenLinker and relay it
+  to the order's other channels again. The sender marks the line refunds it
+  created (ids in the OR28 answer, plus ids new on the order when it is read
+  back) in the host cache for 180 days, and the reader skips marked ids.
+
+Not checked live: staging has no orders to refund.
+
+## Catalogue and stock master (#4284)
+
+A connection can treat the seller's Mirakl offers as the catalogue and the
+stock source of truth: enable `ProductMaster` and `InventoryMaster` on it and
+turn `OfferManager` off (a stock master is never also a stock write-back
+target, #1498). Both are off on a new connection, which stays a marketplace.
+
+- **Products**: each offer (OF21) is a product with one variant, keyed by
+  `shop_sku`: title, description, brand, EAN, gross price and category.
+  Images are the catalogue card's pictures, read from P11
+  (`/api/products/offers`, up to 100 cards a call) because OF21 has none; a
+  card without a picture (most Empik book cards) gives none. No VAT rate (not
+  on the offer). A description that is only CSS, which some Empik cards
+  return instead of text, is left out. Writing the catalogue from OpenLinker
+  is refused. An
+  offer that disappears from OF21 is a product deleted at the master, so its
+  listings elsewhere pause.
+- **Stock**: the offer quantity, pooled. A change from OpenLinker (a routed
+  sale, a manual correction) reads the current quantity and queues
+  `current + delta` in `mirakl_offer_writes`, under a per-offer lock, with a
+  seven-day idempotency key. Mirakl takes one STO01 file per shop about every
+  30 seconds (a second one inside the window answers 429, measured on Empik
+  staging), so changes are never sent one by one: the `empik-master-stock-writes`
+  task (every minute, `marketplace.offerQuantity.reconcile`) sends everything
+  queued as one file and settles it from the import report, the #4277 path.
+  Until a write is settled, the queued number stands in for OF21. Known window:
+  a sale made on the marketplace between that read and Mirakl applying the
+  file is written over.
+- **Orders**: on such a connection order lines name the product
+  (`shop_sku`) instead of the offer.
+- The core master sweeps (every 20 / 15 minutes) drive both; OF21 has no
+  multi-sku filter, so a sweep costs one OF21 call per product.
+
 ## Connecting
+
+Step-by-step guide with screenshots: [docs/empik-setup-guide.md](./docs/empik-setup-guide.md).
 
 1. In the operator's seller panel, open the user menu and generate an API key
    (Empik: "Klucz API"). One key per shop.
@@ -155,6 +214,27 @@ fixture is to be checked against the first real one.
 
 Empik's test platform is `https://stg1.marketplace.empik.com`; a staging key
 answers 401 on production.
+
+## Call frequency
+
+Mirakl documents a recommended and a maximum frequency per call (Seller API
+reference, "Call Frequency"); a call above the maximum answers 429 with
+`Retry-After`. What the plugin does against it:
+
+| Call | Mirakl maximum | Plugin |
+|---|---|---|
+| STO01 stock import | once per minute (recommended every 5) | offer writes every 5 min; master stock writes every minute, one file |
+| PRI01 price import | once per minute | with the offer writes, every 5 min |
+| OR11 orders | once per minute | every 5 min |
+| RT11 returns | every 5 minutes | every 15 min |
+| A01 account | once per day | connection test only |
+| OF21 / P31 | per page view | master sweeps: one OF21 per product |
+
+Empik staging refused a second STO01 file inside about 30 seconds. The hourly
+total per shop is not published in the reference, so no connection rate limit
+is set. A 429 that outlives the client's own retries is deferred by the
+retry classifier (Mirakl's `Retry-After`, else one minute) without spending a
+job attempt.
 
 ## Mirakl rules the adapters rely on
 

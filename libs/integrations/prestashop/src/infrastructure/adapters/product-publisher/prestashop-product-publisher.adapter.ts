@@ -362,6 +362,11 @@ export class PrestashopProductPublisherAdapter
    * codes (`zw`, `np`, `oo`) map to PrestaShop's "No tax" group. A shop with
    * taxes switched off stores the gross figure as is.
    *
+   * A product whose catalogue holds no rate at all (a marketplace master such
+   * as Empik reports none) takes the connection's `defaultTaxRulesGroupId`:
+   * the operator's statement of what such products are taxed at here. It is
+   * never used when the catalogue names a rate, so it cannot override one.
+   *
    * Every unresolvable case is a terminal refusal (status 0) naming the fix: a
    * guess here either taxes the buyer twice or not at all. A failed read of
    * the shop's tax setup is NOT a refusal - it propagates, so the job retries.
@@ -402,35 +407,21 @@ export class PrestashopProductPublisherAdapter
     let groupId: number;
     let rate: number;
     if (operatorGroup !== undefined) {
-      const resolution = await this.taxRateResolver.resolveTaxRulesGroupRate(
+      const groupRate = await this.readGroupRate(
         operatorGroup,
-        country.countryId,
-        this.connection.id,
-        this.client
+        country,
+        'set in platformParams'
       );
-      if (resolution.kind === 'unknown') {
-        if (resolution.reason === 'transport') {
-          throw new PrestashopApiException(
-            `Could not read tax-rule group ${operatorGroup}: ${resolution.evidence}`,
-            resolution.statusCode
-          );
-        }
-        throw this.refuse(
-          'TAX_GROUP_UNRESOLVED',
-          `Tax-rule group ${operatorGroup} set in platformParams has no usable rate for ` +
-            `${country.iso2}: ${resolution.evidence}.`
-        );
-      }
-      if (catalogueRate !== undefined && Math.abs(resolution.rate - catalogueRate) > 0.000001) {
+      if (catalogueRate !== undefined && Math.abs(groupRate - catalogueRate) > 0.000001) {
         throw this.refuse(
           'TAX_RATE_CONFLICT',
-          `Tax-rule group ${operatorGroup} charges ${this.percent(resolution.rate)}% in ` +
+          `Tax-rule group ${operatorGroup} charges ${this.percent(groupRate)}% in ` +
             `${country.iso2}, but the catalogue rate for this product is ${cmd.taxRate}%. ` +
             `Pick a group with the catalogue rate, or fix the rate in the master catalogue.`
         );
       }
       groupId = operatorGroup;
-      rate = resolution.rate;
+      rate = groupRate;
     } else if (catalogueRate === 0) {
       groupId = 0;
       rate = 0;
@@ -451,18 +442,24 @@ export class PrestashopProductPublisherAdapter
         throw this.refuse(
           'TAX_GROUP_NOT_FOUND',
           `No active tax-rule group in this shop charges ${cmd.taxRate}% in ${country.iso2}. ` +
-            `Create one, or name a group in platformParams.id_tax_rules_group.`
+            `Create one in the shop's tax settings.`
         );
       }
       groupId = found;
       rate = catalogueRate;
     } else {
-      throw this.refuse(
-        'TAX_RATE_MISSING',
-        'The master catalogue holds no tax rate for this product, so the price a buyer pays ' +
-          'cannot be split into PrestaShop\'s tax-excluded price. Sync the product tax rate in ' +
-          'the master, or name a group in platformParams.id_tax_rules_group.'
-      );
+      const defaultGroup = this.readDefaultTaxGroup();
+      if (defaultGroup === undefined) {
+        throw this.refuse(
+          'TAX_RATE_MISSING',
+          'The master catalogue holds no tax rate for this product, so the price a buyer pays ' +
+            'cannot be split into PrestaShop\'s tax-excluded price. Set the product tax rate in ' +
+            'the master, or choose a default tax group for products without a rate in this ' +
+            'PrestaShop connection\'s settings.'
+        );
+      }
+      groupId = defaultGroup;
+      rate = await this.readGroupRate(defaultGroup, country, 'chosen as the default tax group');
     }
     return {
       netPrice: (gross / (1 + rate)).toFixed(6),
@@ -472,12 +469,58 @@ export class PrestashopProductPublisherAdapter
 
   /** `platformParams.id_tax_rules_group` as a non-negative integer, if set. */
   private readOperatorTaxGroup(cmd: PublishProductCommand): number | undefined {
-    const raw = cmd.platformParams?.['id_tax_rules_group'];
+    return this.readTaxGroupId(cmd.platformParams?.['id_tax_rules_group']);
+  }
+
+  /** The connection's `defaultTaxRulesGroupId`, for products with no catalogue rate. */
+  private readDefaultTaxGroup(): number | undefined {
+    return this.readTaxGroupId(this.connection.config?.['defaultTaxRulesGroupId']);
+  }
+
+  private readTaxGroupId(raw: unknown): number | undefined {
     if (raw === undefined || raw === null || String(raw).trim() === '') {
       return undefined;
     }
     const n = Number.parseInt(String(raw), 10);
     return Number.isFinite(n) && n >= 0 ? n : undefined;
+  }
+
+  /**
+   * The rate a named tax-rule group charges in the sales country. A group the
+   * shop cannot apply there is a refusal naming where the group came from; a
+   * failed read propagates so the job retries.
+   */
+  private async readGroupRate(
+    groupId: number,
+    country: { countryId: number; iso2: string },
+    source: string
+  ): Promise<number> {
+    if (!this.taxRateResolver) {
+      throw this.refuse(
+        'TAX_SETUP_UNAVAILABLE',
+        'This PrestaShop connection cannot read the shop tax setup.'
+      );
+    }
+    const resolution = await this.taxRateResolver.resolveTaxRulesGroupRate(
+      groupId,
+      country.countryId,
+      this.connection.id,
+      this.client
+    );
+    if (resolution.kind === 'unknown') {
+      if (resolution.reason === 'transport') {
+        throw new PrestashopApiException(
+          `Could not read tax-rule group ${groupId}: ${resolution.evidence}`,
+          resolution.statusCode
+        );
+      }
+      throw this.refuse(
+        'TAX_GROUP_UNRESOLVED',
+        `Tax-rule group ${groupId} ${source} has no usable rate for ` +
+          `${country.iso2}: ${resolution.evidence}.`
+      );
+    }
+    return resolution.rate;
   }
 
   /**

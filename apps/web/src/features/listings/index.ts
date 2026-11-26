@@ -13,6 +13,7 @@ export { TERMINAL_BULK_BATCH_STATUSES } from './api/bulk-listings.types';
 export type { BulkBatchSummary, BulkBatchStatus } from './api/bulk-listings.types';
 export {
   selectPublishDestinations,
+  isOfferPublishDestination,
   publishDestinationKind,
   publishDestinationKindHint,
   publishDestinationGroupLabel,

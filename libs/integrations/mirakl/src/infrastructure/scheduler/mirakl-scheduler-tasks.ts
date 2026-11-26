@@ -41,6 +41,12 @@ const ORDERS_POLL_LIMIT = 200;
 const OFFER_WRITES_CRON = '*/5 * * * *';
 /** Imports settled per pass; each costs one status read. */
 const OFFER_WRITES_IMPORT_LIMIT = 50;
+/**
+ * A stock-master connection (#4284) sends its queued stock every minute:
+ * Mirakl takes one STO01 file per shop about every 30 seconds, and the stock
+ * it masters is what every other channel sells against.
+ */
+const MASTER_STOCK_WRITES_CRON = '* * * * *';
 const OFFERS_SYNC_CRON = '20 * * * *';
 /** OF21 page size; the handler follows the cursor through the rest. */
 const OFFERS_SYNC_LIMIT = 100;
@@ -96,6 +102,19 @@ export function buildMiraklSchedulerTasks(profile: MiraklOperatorProfile): Sched
       generatePayload: () => ({ schemaVersion: 1, limit: OFFER_WRITES_IMPORT_LIMIT }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:offerQuantity:reconcile:${timestamp}`,
+    },
+    {
+      // Same pass, for a connection that masters stock instead of receiving it
+      // (#4284): it holds no OfferManager, so the task above never runs for it.
+      taskId: `${platform}-master-stock-writes`,
+      platformType: platform,
+      requiredCapability: 'InventoryMaster',
+      jobType: 'marketplace.offerQuantity.reconcile',
+      cronExpression: MASTER_STOCK_WRITES_CRON,
+      enabledEnvVar: `${env}_MASTER_STOCK_WRITES_SCHEDULER_ENABLED`,
+      generatePayload: () => ({ schemaVersion: 1, limit: OFFER_WRITES_IMPORT_LIMIT }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:masterStock:reconcile:${timestamp}`,
     },
     {
       taskId: `${platform}-offers-sync`,

@@ -25,7 +25,10 @@
  * The same adapter carries the order's way back (#4276), each part in its own
  * class: the status writeback (OR23/OR24 ship, OR29 cancel), the fulfilment
  * readback (OR11), the source options (SH12) and the invoice upload (OR74),
- * and the returns feed (RT11, #4279).
+ * the returns feed (RT11, #4279) and the refunds already paid on an order
+ * (OR11). Sending a refund (OR28) is opt-in and lives in
+ * {@link MiraklRefundingOrderSourceAdapter}, because core finds a refund
+ * executor by the presence of `executeRefund`.
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters
  * @implements {OrderSourcePort}
@@ -34,6 +37,7 @@
  * @implements {SourceOptionsReader}
  * @implements {OrderBillingDocumentUploader}
  * @implements {ReturnSourceReader}
+ * @implements {RefundSourceReader}
  */
 import type {
   IncomingOrder,
@@ -52,12 +56,14 @@ import type {
   UploadBillingDocumentInput,
   ReturnSourceReader,
   UploadBillingDocumentResult,
+  ExecuteRefundCommand,
+  RefundExecutionResult,
+  RefundExecutor,
+  RefundSourceReader,
+  SourceRefundObservation,
 } from '@openlinker/core/orders';
-import type {
-  IncomingReturn,
-  ReturnFeedInput,
-  ReturnFeedOutput,
-} from '@openlinker/core/returns';
+import type { IncomingReturn, ReturnFeedInput, ReturnFeedOutput } from '@openlinker/core/returns';
+import type { CachePort } from '@openlinker/shared/cache';
 import { Logger } from '@openlinker/shared/logging';
 import { MiraklApiException } from '../../domain/exceptions/mirakl-api.exception';
 import {
@@ -77,7 +83,9 @@ import { MiraklOrderAcceptor } from './mirakl-order-acceptor';
 import { MiraklOrderDocumentUploader } from './mirakl-order-document-uploader';
 import { MIRAKL_ORDERS_PATH, readMiraklOrder } from './mirakl-order-reader';
 import { MiraklOrderStatusWriter } from './mirakl-order-status-writer';
-import { mapMiraklOrderToIncomingOrder } from './mirakl-order.mapper';
+import { mapMiraklOrderToIncomingOrder, type MiraklOrderLineRefKind } from './mirakl-order.mapper';
+import type { MiraklRefundExecutor } from './mirakl-refunds';
+import { MiraklRefundReader } from './mirakl-refunds';
 import { MiraklReturnSource } from './mirakl-return-source';
 import { MiraklSourceOptions } from './mirakl-source-options';
 
@@ -95,6 +103,16 @@ export interface MiraklOrderSourceOptions {
   readonly carrierCodes?: Readonly<Record<string, string>>;
   /** The operator profile's OR74 invoice document type. */
   readonly invoiceTypeCode?: string;
+  /**
+   * The connection is the catalogue master (#4284): order lines name the
+   * product (keyed by `shop_sku`) instead of the offer.
+   */
+  readonly catalogMaster?: boolean;
+  /**
+   * Host cache, read to skip refunds OpenLinker sent itself when observing
+   * refunds (see `mirakl-refunds.ts`).
+   */
+  readonly cache?: CachePort;
   readonly now?: () => Date;
 }
 /**
@@ -111,7 +129,8 @@ export class MiraklOrderSourceAdapter
     OrderFulfillmentReadback,
     SourceOptionsReader,
     OrderBillingDocumentUploader,
-    ReturnSourceReader
+    ReturnSourceReader,
+    RefundSourceReader
 {
   private readonly logger = new Logger(MiraklOrderSourceAdapter.name);
   private readonly now: () => Date;
@@ -120,21 +139,24 @@ export class MiraklOrderSourceAdapter
   private readonly options: MiraklSourceOptions;
   private readonly documentUploader: MiraklOrderDocumentUploader;
   private readonly returns: MiraklReturnSource;
+  private readonly refunds: MiraklRefundReader;
+  private readonly lineRef: MiraklOrderLineRefKind;
   readonly terminalRawStatuses: readonly string[];
 
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IMiraklHttpClient,
     private readonly acceptance: MiraklOrderAcceptance,
-    settings: MiraklOrderSourceOptions = {},
+    settings: MiraklOrderSourceOptions = {}
   ) {
     const brand = settings.brand ?? DEFAULT_BRAND;
     this.now = settings.now ?? ((): Date => new Date());
+    this.lineRef = settings.catalogMaster === true ? 'product' : 'offer';
     this.statusWriter = new MiraklOrderStatusWriter(
       connectionId,
       httpClient,
       brand,
-      settings.carrierCodes ?? {},
+      settings.carrierCodes ?? {}
     );
     this.readback = new MiraklFulfillmentReadback(connectionId, httpClient, brand);
     this.options = new MiraklSourceOptions(httpClient);
@@ -142,9 +164,10 @@ export class MiraklOrderSourceAdapter
       connectionId,
       httpClient,
       brand,
-      settings.invoiceTypeCode ?? DEFAULT_INVOICE_TYPE_CODE,
+      settings.invoiceTypeCode ?? DEFAULT_INVOICE_TYPE_CODE
     );
     this.returns = new MiraklReturnSource(connectionId, httpClient, this.now);
+    this.refunds = new MiraklRefundReader(connectionId, httpClient, settings.cache);
     this.terminalRawStatuses = this.returns.terminalRawStatuses;
   }
 
@@ -164,7 +187,7 @@ export class MiraklOrderSourceAdapter
       this.logger.error(
         `Order feed on connection ${this.connectionId} still did not fit ${maxPages} page(s) ` +
           `after ${MAX_WINDOW_HALVINGS} halvings (window ${window.from.toISOString()} - ` +
-          `${window.to.toISOString()}); advancing past it, so orders in it may be missed`,
+          `${window.to.toISOString()}); advancing past it, so orders in it may be missed`
       );
     }
 
@@ -180,10 +203,10 @@ export class MiraklOrderSourceAdapter
       throw new MiraklApiException(
         `Mirakl order ${input.externalOrderId} not found`,
         404,
-        'ORDER_NOT_FOUND',
+        'ORDER_NOT_FOUND'
       );
     }
-    return mapMiraklOrderToIncomingOrder(order);
+    return mapMiraklOrderToIncomingOrder(order, { lineRef: this.lineRef });
   }
 
   write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
@@ -218,9 +241,13 @@ export class MiraklOrderSourceAdapter
     return this.returns.getReturn(input);
   }
 
+  listRefunds(input: { externalOrderId: string }): Promise<SourceRefundObservation[]> {
+    return this.refunds.listRefunds(input);
+  }
+
   private readWindow(
     window: MiraklFeedWindow,
-    maxPages: number,
+    maxPages: number
   ): Promise<{ items: MiraklOrder[]; truncated: boolean }> {
     return listAllOffset<MiraklOrder>(this.httpClient, ORDERS_PATH, {
       itemsKey: 'orders',
@@ -236,7 +263,7 @@ export class MiraklOrderSourceAdapter
   private toFeedItems(
     orders: readonly MiraklOrder[],
     window: MiraklFeedWindow,
-    eventTypes: OrderFeedInput['eventTypes'],
+    eventTypes: OrderFeedInput['eventTypes']
   ): OrderFeedItem[] {
     const items: OrderFeedItem[] = [];
     const seen = new Set<string>();
@@ -245,7 +272,11 @@ export class MiraklOrderSourceAdapter
         this.logger.warn(`Skipping an order without order_id on connection ${this.connectionId}`);
         continue;
       }
-      const eventKey = buildFeedEventKey(order.order_id, order.last_updated_date, order.created_date);
+      const eventKey = buildFeedEventKey(
+        order.order_id,
+        order.last_updated_date,
+        order.created_date
+      );
       const eventType = deriveFeedEventType(order.order_state);
       // Offset paging over a set that changes while it is read can return an
       // order twice; one event per change is enough.
@@ -262,5 +293,31 @@ export class MiraklOrderSourceAdapter
       });
     }
     return items;
+  }
+}
+
+/**
+ * The order source of a connection that opted in to sending refunds
+ * (`config.refundsThroughMarketplace: true`). A class of its own rather than a
+ * flag: core treats any adapter with `executeRefund` as a refund executor.
+ *
+ * @implements {RefundExecutor}
+ */
+export class MiraklRefundingOrderSourceAdapter
+  extends MiraklOrderSourceAdapter
+  implements RefundExecutor
+{
+  constructor(
+    connectionId: string,
+    httpClient: IMiraklHttpClient,
+    acceptance: MiraklOrderAcceptance,
+    settings: MiraklOrderSourceOptions,
+    private readonly refundExecutor: MiraklRefundExecutor
+  ) {
+    super(connectionId, httpClient, acceptance, settings);
+  }
+
+  executeRefund(command: ExecuteRefundCommand): Promise<RefundExecutionResult> {
+    return this.refundExecutor.executeRefund(command);
   }
 }

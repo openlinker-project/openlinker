@@ -1,4 +1,7 @@
 {
+  "connectionConfig": {
+    "defaultTaxGroupInvalid": "Tax group ID must be a whole number."
+  },
   "plugin": {
     "setupCard": {
       "badge": "Webservice API",
@@ -50,6 +53,11 @@
       "description": "OpenLinker's URL from PrestaShop's perspective - used by the PS module to POST webhooks back to OL. Pre-filled with the API address this app uses; override for Docker dev (e.g. http://host.docker.internal:3000) or unusual deploys. Required to use the 'Configure webhooks' action.",
       "label": "OL callback URL",
       "placeholder": "https://api.openlinker.example"
+    },
+    "defaultTaxGroup": {
+      "description": "PrestaShop tax rules group ID (Localization > Taxes > Tax rules) used when a published product has no tax rate in its source, for example a product read from Empik. Leave empty to refuse such products. A product with its own tax rate keeps it.",
+      "label": "Default tax group for products without a tax rate",
+      "placeholder": "e.g. 1"
     },
     "fallbackCarrier": {
       "description": "Used when an Allegro shipping method has no carrier mapping. Leave unset to use the OpenLinker Dynamic carrier (exact Allegro shipping cost) at sync time - works only when the OL PrestaShop module is installed.",
