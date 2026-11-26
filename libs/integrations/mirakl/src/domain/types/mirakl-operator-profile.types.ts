@@ -62,6 +62,8 @@ export interface MiraklCardAttributeCodes {
   readonly category: string;
   /** The seller's own product code; also how an error report names a line. */
   readonly catalogCode: string;
+  /** Longest product code the operator accepts (Empik: 26, from its P44 report). */
+  readonly catalogCodeMaxLength: number;
   readonly title: string;
   readonly description: string;
   readonly ean: string;

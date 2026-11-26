@@ -137,16 +137,21 @@ export function buildMiraklCardRow(input: MiraklCardInput): MiraklCardBuild {
     if (value.kind === 'value') {
       row[attribute.id] = value.value;
     } else if (value.kind === 'not-in-list') {
+      const similar = similarValues(attribute, value.value);
       errors.push({
         field: `parameters.${attribute.id}`,
         code: 'MIRAKL_CARD_VALUE_NOT_IN_LIST',
-        message: `"${value.value}" is not one of the values ${input.brand} accepts for "${attribute.name}".`,
+        message:
+          `"${value.value}" is not one of the values ${input.brand} accepts for "${attribute.name}".` +
+          (similar.length > 0 ? ` Similar values: ${similar.join(', ')}.` : ''),
       });
     }
   }
 
+  const refused = new Set(errors.map((error) => error.field));
   for (const attribute of input.attributes) {
-    if (attribute.required && !row[attribute.id]) {
+    // A value already refused is not reported again as missing.
+    if (attribute.required && !row[attribute.id] && !refused.has(`parameters.${attribute.id}`)) {
       errors.push({
         field: `parameters.${attribute.id}`,
         code: 'MIRAKL_CARD_ATTRIBUTE_REQUIRED',
@@ -233,6 +238,29 @@ function applyProductSet(
       .map((component) => `${component.quantity} x ${component.name}`)
       .join(', ');
   }
+}
+
+/** Up to this many list values are suggested for a value the list lacks. */
+const MAX_SIMILAR_VALUES = 5;
+
+/**
+ * List values whose name contains the typed one (or the reverse), so the
+ * operator can correct a name without opening the operator's panel.
+ */
+function similarValues(attribute: CategoryParameter, typed: string): string[] {
+  const needle = typed.trim().toLowerCase();
+  if (needle === '') return [];
+  const found: string[] = [];
+  for (const entry of attribute.dictionary ?? []) {
+    const label = entry.value.trim().toLowerCase();
+    // The reverse test only for a name long enough to mean something, or
+    // two-letter codes contained in almost any word crowd the answer out.
+    if (label.includes(needle) || (label.length >= 4 && needle.includes(label))) {
+      found.push(`"${entry.value}"`);
+      if (found.length === MAX_SIMILAR_VALUES) break;
+    }
+  }
+  return found;
 }
 
 type ParameterValue =

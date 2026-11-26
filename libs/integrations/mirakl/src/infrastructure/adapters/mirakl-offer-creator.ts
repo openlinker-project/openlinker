@@ -48,7 +48,10 @@ import {
   formatMiraklPrice,
   formatMiraklQuantity,
 } from '../../domain/policies/mirakl-offer-file.policy';
-import { deriveMiraklShopSku } from '../../domain/policies/mirakl-shop-sku.policy';
+import {
+  deriveMiraklCatalogCode,
+  deriveMiraklShopSku,
+} from '../../domain/policies/mirakl-shop-sku.policy';
 import type { MiraklOfferWriteRepositoryPort } from '../../domain/ports/mirakl-offer-write-repository.port';
 import type { MiraklCardRequest, MiraklOfferLine } from '../../domain/types/mirakl-card.types';
 import type { MiraklOfferDefaults } from '../../domain/types/mirakl-connection.types';
@@ -220,13 +223,17 @@ export class MiraklOfferCreator {
         },
       ]);
     }
-    const attributes = await this.deps.catalog.readCardAttributes(categoryId);
+    const codes = this.deps.cardAttributes;
+    const attributes = await this.deps.catalog.readCardAttributes(
+      categoryId,
+      new Set([codes.vat, codes.bundle, ...(cmd.parameters ?? []).map((parameter) => parameter.id)])
+    );
     const built = buildMiraklCardRow({
       brand: this.deps.brand,
       codes: this.deps.cardAttributes,
       attributes,
       categoryId,
-      catalogCode: shopSku,
+      catalogCode: deriveMiraklCatalogCode(shopSku, this.deps.cardAttributes.catalogCodeMaxLength),
       ean,
       title: cmd.overrides?.title,
       description: cmd.overrides?.description ?? undefined,

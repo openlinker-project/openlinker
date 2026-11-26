@@ -38,6 +38,8 @@ export const empikOperatorProfile: MiraklOperatorProfile = {
   cardAttributes: {
     category: 'STR_GOLD',
     catalogCode: 'CATALOG_CODE',
+    // Empik refused a longer one on staging (import 30572, 2026-11-26).
+    catalogCodeMaxLength: 26,
     title: 'PELNY_TYTUL',
     description: 'OPIS_PRODUKTU_PELNY',
     ean: 'EAN',

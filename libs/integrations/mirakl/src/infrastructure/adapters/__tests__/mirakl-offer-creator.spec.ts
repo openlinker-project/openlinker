@@ -305,7 +305,7 @@ describe('MiraklOfferCreator without a card (#4278, part 2)', () => {
     expect(request.ean).toBe('9788380082113');
     expect(request.card).toEqual({
       STR_GOLD: '21-20-1-6',
-      CATALOG_CODE: SHOP_SKU,
+      CATALOG_CODE: SHOP_SKU.slice(0, 26),
       EAN: '9788380082113',
       PELNY_TYTUL: 'Aparat',
       OPIS_PRODUKTU_PELNY: '<p>Opis</p>',

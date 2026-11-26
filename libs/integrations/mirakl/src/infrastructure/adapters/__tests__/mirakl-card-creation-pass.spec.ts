@@ -74,6 +74,7 @@ interface Harness {
   post: jest.Mock;
   postFile: jest.Mock;
   readCards: jest.Mock;
+  deleteMapping: jest.Mock;
 }
 
 function setup(options: {
@@ -105,6 +106,7 @@ function setup(options: {
       )
     )
   );
+  const deleteMapping = jest.fn().mockResolvedValue(undefined);
   const pass = new MiraklCardCreationPass({
     connectionId: 'conn-1',
     brand: 'Empik',
@@ -113,9 +115,10 @@ function setup(options: {
     catalog: { readCards } as unknown as MiraklCatalog,
     writes,
     codes: empikOperatorProfile.cardAttributes,
+    identifierMapping: { deleteMapping },
     now: () => NOW,
   });
-  return { pass, writes, tracker, post, postFile, readCards };
+  return { pass, writes, tracker, post, postFile, readCards, deleteMapping };
 }
 
 describe('MiraklCardCreationPass sending cards', () => {
@@ -208,6 +211,52 @@ describe('MiraklCardCreationPass following sent cards', () => {
     ]);
     expect(writes.settleWrites).toHaveBeenCalledWith([sent[1]], 'failed', 'Brak zdjęcia');
     expect(writes.settleWrites).toHaveBeenCalledTimes(1);
+  });
+
+  it('should drop the offer mapping of a failed card so the variant can be listed again', async () => {
+    const sent = [
+      card('OL-1', '111', 'submitted', '30532'),
+      card('OL-2', '222', 'submitted', '30532'),
+    ];
+    const { pass, tracker, deleteMapping } = setup({ sent });
+    tracker.getStatus.mockResolvedValue(status({ hasTransformationErrorReport: true }));
+    tracker.getProductErrorReports.mockResolvedValue([{ sku: 'OL-2', reason: 'Brak zdjęcia' }]);
+
+    await pass.run();
+
+    expect(deleteMapping).toHaveBeenCalledTimes(1);
+    expect(deleteMapping).toHaveBeenCalledWith('Offer', 'OL-2', 'conn-1');
+  });
+
+  it('should match a report line by the card product code when it is shorter than the SKU', async () => {
+    const long = card('OL-e4b98e91340a44edb4892905db8810b1', '111', 'submitted', '30532');
+    const request = JSON.parse(long.value) as MiraklCardRequest;
+    const shortened = new MiraklOfferWrite(
+      long.id,
+      long.connectionId,
+      'card',
+      long.offerSku,
+      JSON.stringify({
+        ...request,
+        card: { ...request.card, CATALOG_CODE: 'OL-e4b98e91340a44edb48929' },
+      }),
+      null,
+      'submitted',
+      '30532',
+      1,
+      null,
+      NOW,
+      NOW
+    );
+    const { pass, writes, tracker } = setup({ sent: [shortened] });
+    tracker.getStatus.mockResolvedValue(status({ hasTransformationErrorReport: true }));
+    tracker.getProductErrorReports.mockResolvedValue([
+      { sku: 'OL-e4b98e91340a44edb48929', reason: 'Brak producenta' },
+    ]);
+
+    await pass.run();
+
+    expect(writes.settleWrites).toHaveBeenCalledWith([shortened], 'failed', 'Brak producenta');
   });
 
   it('should fail every card of an import whose report names no card', async () => {

@@ -465,6 +465,13 @@ export interface OfferRowValidationInput {
    */
   title: string;
   /**
+   * Whether the submit would carry a description (#4278): the row's own
+   * override, else the master product's description, or AI writes one for the
+   * batch. A destination that builds a product card from the offer needs one.
+   * Absent ⇒ the host did not compute it, which no rule may read as "none".
+   */
+  hasDescription?: boolean;
+  /**
    * The submit category's parameter schema, when the host has it (#2243). Every
    * bound a value is checked against comes from here - the validator carries
    * none of its own. Absent ⇒ the schema is not loaded (or the platform opted

@@ -427,6 +427,10 @@
         "detail": "Fill the required card attributes for the chosen category, for example the producer.",
         "title": "A new Empik product card needs more details."
       },
+      "cardNoDescription": {
+        "detail": "The master product has no description. Write one in this offer's editor or let AI write it.",
+        "title": "A new Empik product card needs a description."
+      },
       "cardNoImage": {
         "detail": "Add at least one image to the product or to this offer. The first image becomes the card cover.",
         "title": "A new Empik product card needs an image."
@@ -1514,6 +1518,7 @@
   "empikOfferValidation": {
     "blockers": {
       "cardMissingParameters": "card details missing",
+      "cardNoDescription": "card needs description",
       "cardNoImage": "card needs image",
       "newCard": "new Empik card"
     }

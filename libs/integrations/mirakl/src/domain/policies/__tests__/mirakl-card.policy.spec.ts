@@ -82,7 +82,6 @@ describe('buildMiraklCardRow', () => {
   it('should refuse a VAT rate the list does not have, and a missing one when required', () => {
     expect(buildMiraklCardRow(input({ taxRate: '7' })).errors.map((e) => e.code)).toEqual([
       'MIRAKL_CARD_VAT_UNKNOWN',
-      'MIRAKL_CARD_ATTRIBUTE_REQUIRED',
     ]);
     expect(buildMiraklCardRow(input({ taxRate: undefined })).errors.map((e) => e.code)).toEqual([
       'MIRAKL_CARD_ATTRIBUTE_REQUIRED',
@@ -127,6 +126,26 @@ describe('buildMiraklCardRow', () => {
         field: 'parameters.COLOUR',
       }),
     ]);
+  });
+
+  it('should suggest list values close to the one the list lacks', () => {
+    const producer = attribute('600', {
+      type: 'dictionary',
+      dictionary: [
+        { id: '1', value: 'OpenLinker Sp. z o.o.' },
+        { id: '2', value: 'Inny' },
+      ],
+    });
+
+    const built = buildMiraklCardRow(
+      input({
+        attributes: [VAT, producer],
+        parameters: [{ id: '600', values: ['OpenLinker'], section: 'product' }],
+      })
+    );
+
+    expect(built.errors).toHaveLength(1);
+    expect(built.errors[0].message).toContain('Similar values: "OpenLinker Sp. z o.o.".');
   });
 
   it('should not let a parameter overwrite an attribute OpenLinker fills', () => {

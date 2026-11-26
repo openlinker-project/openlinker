@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import {
   EMPIK_CARD_MISSING_PARAMETERS_BLOCKER,
+  EMPIK_CARD_NO_DESCRIPTION_BLOCKER,
   EMPIK_CARD_NO_IMAGE_BLOCKER,
   EMPIK_NEW_CARD_NOTICE,
   empikOfferValidation,
@@ -54,6 +55,15 @@ describe('empikOfferValidation', () => {
     ]);
   });
 
+  it('should block a new card without a description, but not when the host did not tell', () => {
+    expect(
+      empikOfferValidation.validateRow(row({ willLinkProductCard: false, hasDescription: false }))
+    ).toEqual([EMPIK_NEW_CARD_NOTICE, EMPIK_CARD_NO_DESCRIPTION_BLOCKER]);
+    expect(
+      empikOfferValidation.validateRow(row({ willLinkProductCard: false, hasDescription: true }))
+    ).toEqual([EMPIK_NEW_CARD_NOTICE]);
+  });
+
   it('should not ask for card attributes on a row that links an existing card', () => {
     expect(
       empikOfferValidation.validateRow(row({ imageCount: 0, needsProductParameters: true }))
@@ -74,6 +84,7 @@ describe('empikOfferValidation', () => {
     expect([...byId.keys()]).toEqual([
       EMPIK_NEW_CARD_NOTICE,
       EMPIK_CARD_NO_IMAGE_BLOCKER,
+      EMPIK_CARD_NO_DESCRIPTION_BLOCKER,
       EMPIK_CARD_MISSING_PARAMETERS_BLOCKER,
     ]);
     expect(byId.get(EMPIK_NEW_CARD_NOTICE)?.advisory).toBe(true);

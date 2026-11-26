@@ -130,6 +130,40 @@ describe('MiraklCatalog.fetchCategoryParameters', () => {
     });
   });
 
+  it('should read a long list whole when a card needs the value of that attribute', async () => {
+    const huge = Array.from({ length: MAX_DICTIONARY_VALUES + 1 }, (_, i) => ({
+      code: `P${i}`,
+      label: `Publisher ${i}`,
+    }));
+    const get = jest.fn((path: string, options?: MiraklRequestOptions) => {
+      if (path === '/api/products/attributes') {
+        return Promise.resolve({
+          status: 200,
+          data: {
+            attributes: [
+              { code: '800', label: 'Wydawca', type: 'LIST', values_list: 'PUB' },
+              { code: '801', label: 'Autor', type: 'LIST', values_list: 'AUT' },
+            ],
+          },
+        });
+      }
+      const code = options?.queryParams?.code;
+      return Promise.resolve({ status: 200, data: { values_lists: [{ code, values: huge }] } });
+    });
+
+    const attributes = await catalog(get).readCardAttributes('8-853-1', new Set(['800']));
+
+    expect(attributes.find((attribute) => attribute.id === '800')).toMatchObject({
+      type: 'dictionary',
+    });
+    expect(attributes.find((attribute) => attribute.id === '800')?.dictionary).toHaveLength(
+      MAX_DICTIONARY_VALUES + 1
+    );
+    expect(attributes.find((attribute) => attribute.id === '801')).toMatchObject({
+      type: 'string',
+    });
+  });
+
   it('should read several value lists at once rather than one after another', async () => {
     let inFlight = 0;
     let peak = 0;

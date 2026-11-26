@@ -879,6 +879,7 @@
   "listings:editOfferDrawer.cancel": 10,
   "listings:editOfferDrawer.save": 20,
   "listings:empikOfferValidation.blockers.cardMissingParameters": 24,
+  "listings:empikOfferValidation.blockers.cardNoDescription": 24,
   "listings:empikOfferValidation.blockers.cardNoImage": 24,
   "listings:empikOfferValidation.blockers.newCard": 24,
   "listings:listingsListPage.columns.channel": 12,

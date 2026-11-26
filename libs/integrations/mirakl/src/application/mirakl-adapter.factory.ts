@@ -126,6 +126,7 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
           ],
         offerDefaults: offerDefaults.kind === 'valid' ? offerDefaults : {},
         cardAttributes: this.profile.cardAttributes,
+        identifierMapping: master.identifierMapping,
       }),
       productMaster: new MiraklProductMasterAdapter(
         connection.id,

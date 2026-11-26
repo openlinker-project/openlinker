@@ -13,6 +13,8 @@
  * - `empik:new-card` (advisory): OpenLinker sends a new product card to Empik
  *   and lists the offer once Empik accepts it, which can take a while.
  * - `empik:card-no-image`: a card needs a main image.
+ * - `empik:card-no-description`: a card needs a description; nothing fills it
+ *   when the master product has none and AI does not write one.
  * - `empik:card-missing-parameters`: the category's required card attributes
  *   are not all filled. The host decides this from the category schema and the
  *   values the operator or an attribute rule supplied; the attributes
@@ -34,8 +36,11 @@ import type {
 export const EMPIK_NEW_CARD_NOTICE = 'empik:new-card';
 export const EMPIK_CARD_NO_IMAGE_BLOCKER = 'empik:card-no-image';
 export const EMPIK_CARD_MISSING_PARAMETERS_BLOCKER = 'empik:card-missing-parameters';
+export const EMPIK_CARD_NO_DESCRIPTION_BLOCKER = 'empik:card-no-description';
 
-function copyOf(key: 'newCard' | 'cardNoImage' | 'cardMissingParameters'): OfferBlockerCopy {
+function copyOf(
+  key: 'newCard' | 'cardNoImage' | 'cardNoDescription' | 'cardMissingParameters',
+): OfferBlockerCopy {
   const copy = getMessages('listings').bulkBlockers.empik[key];
   return { title: copy.title, detail: copy.detail };
 }
@@ -70,6 +75,14 @@ export const empikOfferValidation: OfferValidationContribution = {
       describe: (): OfferBlockerCopy => copyOf('cardNoImage'),
     },
     {
+      id: EMPIK_CARD_NO_DESCRIPTION_BLOCKER,
+      tone: 'error',
+      get label(): string {
+        return getMessages('listings').empikOfferValidation.blockers.cardNoDescription;
+      },
+      describe: (): OfferBlockerCopy => copyOf('cardNoDescription'),
+    },
+    {
       id: EMPIK_CARD_MISSING_PARAMETERS_BLOCKER,
       tone: 'error',
       field: 'parameters',
@@ -86,6 +99,10 @@ export const empikOfferValidation: OfferValidationContribution = {
     const ids = [EMPIK_NEW_CARD_NOTICE];
     if (input.imageCount === 0) {
       ids.push(EMPIK_CARD_NO_IMAGE_BLOCKER);
+    }
+    // Only a computed `false` blocks: an absent answer is not "no description".
+    if (input.hasDescription === false) {
+      ids.push(EMPIK_CARD_NO_DESCRIPTION_BLOCKER);
     }
     if (input.needsProductParameters) {
       ids.push(EMPIK_CARD_MISSING_PARAMETERS_BLOCKER);

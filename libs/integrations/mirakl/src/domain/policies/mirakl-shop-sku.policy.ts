@@ -15,3 +15,15 @@ export function deriveMiraklShopSku(internalVariantId: string): string {
   const hex = VARIANT_HEX.exec(internalVariantId.replace(/-/g, ''))?.[1];
   return hex ? `OL-${hex.toLowerCase()}` : `OL-${internalVariantId}`;
 }
+
+/**
+ * The seller's product code (`CATALOG_CODE`) on a card OpenLinker creates.
+ * It names the card in the operator's error report, so it is derived from the
+ * same variant id. An operator may cap it below the shop SKU (Empik: 26
+ * characters), so the SKU is shortened to the cap by dropping the end of its
+ * hex part; 23 hex characters still leave about 92 bits, so two variants of
+ * one seller do not collide.
+ */
+export function deriveMiraklCatalogCode(shopSku: string, maxLength: number): string {
+  return shopSku.length <= maxLength ? shopSku : shopSku.slice(0, maxLength);
+}

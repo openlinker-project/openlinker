@@ -30,6 +30,7 @@
  * @module libs/integrations/mirakl/src/infrastructure/adapters
  * @implements {OfferManagerPort}
  */
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import {
   CONSERVATIVE_DESCRIPTION_FORMAT,
   OfferNotFoundOnMarketplaceException,
@@ -98,6 +99,8 @@ export interface MiraklOfferManagerSettings {
   readonly offerDefaults?: MiraklOfferDefaults;
   /** The card attributes OpenLinker fills when it creates a card (#4278). */
   readonly cardAttributes: MiraklCardAttributeCodes;
+  /** Lets the card pass drop the offer mapping of a card that failed. */
+  readonly identifierMapping?: Pick<IdentifierMappingPort, 'deleteMapping'>;
 }
 
 export class MiraklOfferManagerAdapter
@@ -226,6 +229,7 @@ export class MiraklOfferManagerAdapter
       catalog: this.catalog,
       writes: this.store(),
       codes: this.settings.cardAttributes,
+      identifierMapping: this.settings.identifierMapping,
     }).run();
     if (firstFailure !== undefined) {
       throw firstFailure;

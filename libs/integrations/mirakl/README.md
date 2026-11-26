@@ -157,13 +157,21 @@ On a Mirakl operator an offer points to a catalogue card, found by EAN.
     job (every 5 minutes) sends queued cards as one P41 file at most every 15
     minutes, follows the import (P42), fails a refused card with Mirakl's
     reason (reports P47 / P44, matched by catalogue code), and sends the
-    queued OF24 once P31 finds the card.
+    queued OF24 once P31 finds the card. A card that fails for good drops
+    the offer mapping the create wrote, so the variant can be listed again.
+  - The catalogue code is the shop SKU cut to the operator's limit
+    (`cardAttributes.catalogCodeMaxLength`; Empik refuses more than 26
+    characters).
+  - The wizard shows a LIST with more than 1 000 values (Empik's producer,
+    size) as free text. The create reads that list whole and sends the code
+    of the value whose name matches what was typed (case-insensitive); a
+    name the list lacks refuses the card before anything is sent, naming
+    similar values. A searchable picker is a follow-up.
 
-Not verified on staging yet: the OF24 after Empik accepts a card (a staging
-card import stayed waiting for the operator), and how Empik reviews and how
-long it takes. A LIST with more than 1 000 values (Empik's producer) is free
-text, sent as typed; a searchable picker is a follow-up. The offer's "draft"
-switch does nothing on Empik, which has no draft offers.
+Verified on staging (2026-11-26): a card file with these fixes passed
+Empik's checks and waits for the operator (import 30573). Not verified yet:
+the OF24 after Empik accepts a card, and how long the review takes. The
+offer's "draft" switch does nothing on Empik, which has no draft offers.
 
 ## Returns (#4279)
 

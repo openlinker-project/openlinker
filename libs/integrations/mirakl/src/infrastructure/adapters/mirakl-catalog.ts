@@ -14,8 +14,9 @@
  *   category names lists of 24 000, 33 000 and 321 000 entries (publishers,
  *   authors), several megabytes each, which made the wizard wait minutes and
  *   no picker can show. Such an attribute is offered as free text, and its
- *   value is sent as typed when OpenLinker creates a card (P41, #4278); a
- *   searchable picker is a follow-up. The attributes OpenLinker fills itself
+ *   name is matched against the whole list when OpenLinker creates a card
+ *   (P41, #4278), and a name the list does not hold refuses the card before
+ *   it is sent; a searchable picker is a follow-up. The attributes OpenLinker fills itself
  *   when it creates a card (category, title, images, VAT, ...) are left out of
  *   what the wizard is shown (`readCardAttributes` keeps them all).
  * - **Card match** (`EanCategoryMatcher` for the wizard, `CategoryBarcodeMatcher`
@@ -97,15 +98,23 @@ export class MiraklCatalog {
       : attributes;
   }
 
-  /** Every card attribute of a category (PM11 + VL11), one per code. */
-  async readCardAttributes(categoryId: string): Promise<CategoryParameter[]> {
+  /**
+   * Every card attribute of a category (PM11 + VL11), one per code. The value
+   * lists of `fullListsFor` are read whatever their length: a card sends a
+   * LIST attribute as the list's code, and the wizard offered a long list as
+   * free text, so the typed name must be matched against the whole list.
+   */
+  async readCardAttributes(
+    categoryId: string,
+    fullListsFor: ReadonlySet<string> = new Set()
+  ): Promise<CategoryParameter[]> {
     const input = { categoryId };
     const { data } = await this.httpClient.get<{ attributes?: readonly MiraklProductAttribute[] }>(
       ATTRIBUTES_PATH,
       { queryParams: { hierarchy: input.categoryId } }
     );
     const attributes = data?.attributes ?? [];
-    const lists = await this.readValueLists(attributes);
+    const lists = await this.readValueLists(attributes, fullListsFor);
     // PM11 lists an attribute once per hierarchy level that declares it (seen
     // on staging: the title three times). One parameter per code, required if
     // any level requires it.
@@ -197,8 +206,15 @@ export class MiraklCatalog {
   }
 
   private async readValueLists(
-    attributes: readonly MiraklProductAttribute[]
+    attributes: readonly MiraklProductAttribute[],
+    fullListsFor: ReadonlySet<string> = new Set()
   ): Promise<Map<string, MiraklValueList>> {
+    const uncapped = new Set(
+      attributes
+        .filter((attribute) => attribute.code && fullListsFor.has(attribute.code))
+        .map((attribute) => attribute.values_list)
+        .filter((code): code is string => Boolean(code))
+    );
     const codes = new Set(
       attributes
         .filter(
@@ -211,7 +227,7 @@ export class MiraklCatalog {
     const pending = [...codes];
     const worker = async (): Promise<void> => {
       for (let code = pending.shift(); code !== undefined; code = pending.shift()) {
-        const list = await this.readValueList(code);
+        const list = await this.readValueList(code, !uncapped.has(code));
         if (list) lists.set(code, list);
       }
     };
@@ -222,14 +238,14 @@ export class MiraklCatalog {
   }
 
   /** One VL11 list, or `undefined` when it cannot be read or is too long to send. */
-  private async readValueList(code: string): Promise<MiraklValueList | undefined> {
+  private async readValueList(code: string, capped = true): Promise<MiraklValueList | undefined> {
     try {
       const { data } = await this.httpClient.get<{ values_lists?: readonly MiraklValueList[] }>(
         VALUE_LISTS_PATH,
         { queryParams: { code } }
       );
       const list = (data?.values_lists ?? []).find((candidate) => candidate.code === code);
-      if (list && (list.values?.length ?? 0) > MAX_DICTIONARY_VALUES) {
+      if (capped && list && (list.values?.length ?? 0) > MAX_DICTIONARY_VALUES) {
         this.logger.debug(
           `Value list ${code} on connection ${this.connectionId} has ` +
             `${list.values?.length} entries; offered as free text`

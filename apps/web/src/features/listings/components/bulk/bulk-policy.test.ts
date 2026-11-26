@@ -16,6 +16,7 @@ import {
   productCategoryIdOf,
   roundHalfUp,
   type ComputeBlockersInput,
+  descriptionPresentFor,
 } from './bulk-policy';
 
 // #1096 - `needs-product-parameters` is emitted by Allegro's row validator
@@ -1267,5 +1268,25 @@ describe('computeBlockers for a bundle (#3520)', () => {
       ({ availableSets }) as unknown as Parameters<typeof bundleStock>[0];
     expect(bundleStock(preview(3), variant)).toBe(3);
     expect(bundleStock(preview(null), variant)).toBe(50);
+  });
+});
+
+describe('descriptionPresentFor', () => {
+  const row = (description: string | null, override?: string | null): BulkWizardRow =>
+    ({
+      product: { description },
+      override: override === undefined ? {} : { overrides: { description: override } },
+    }) as unknown as BulkWizardRow;
+
+  it('should read the override first, a cleared one as none, then the master description', () => {
+    const noAi = { generateDescription: false };
+    expect(descriptionPresentFor(row('<p>Opis</p>'), null, noAi)).toBe(true);
+    expect(descriptionPresentFor(row('<p> </p>'), null, noAi)).toBe(false);
+    expect(descriptionPresentFor(row('Opis', null), null, noAi)).toBe(false);
+    expect(descriptionPresentFor(row(null, 'Nowy opis'), null, noAi)).toBe(true);
+  });
+
+  it('should count a description AI writes for the batch', () => {
+    expect(descriptionPresentFor(row(null), null, { generateDescription: true })).toBe(true);
   });
 });

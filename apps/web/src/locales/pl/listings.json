@@ -467,6 +467,10 @@
         "detail": "Uzupełnij wymagane atrybuty karty dla wybranej kategorii, na przykład producenta.",
         "title": "Nowa karta produktu w Empik wymaga więcej danych."
       },
+      "cardNoDescription": {
+        "detail": "Produkt w katalogu głównym nie ma opisu. Napisz go w edycji tej oferty albo zleć to AI.",
+        "title": "Nowa karta produktu w Empik wymaga opisu."
+      },
       "cardNoImage": {
         "detail": "Dodaj co najmniej jedno zdjęcie do produktu albo do tej oferty. Pierwsze zdjęcie będzie okładką karty.",
         "title": "Nowa karta produktu w Empik wymaga zdjęcia."
@@ -1670,6 +1674,7 @@
   "empikOfferValidation": {
     "blockers": {
       "cardMissingParameters": "brak danych karty",
+      "cardNoDescription": "karta bez opisu",
       "cardNoImage": "karta bez zdjęcia",
       "newCard": "nowa karta Empik"
     }

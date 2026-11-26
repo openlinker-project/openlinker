@@ -22,12 +22,18 @@
  *    queued cards go out as ONE file, and only when the last card file of the
  *    connection is at least that old.
  *
+ * A card that fails for good (refused file, import, card or offer) never
+ * became an offer, so the offer mapping the create wrote is dropped with it:
+ * otherwise the wizard reads the variant as already listed and it can never
+ * be listed again. Dropping is best effort and never holds back the pass.
+ *
  * Each step is guarded on its own; a failure is logged and the first one is
  * thrown at the end, so the job is retried without one step holding back the
  * others.
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters
  */
+import { CORE_ENTITY_TYPE, type IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { MiraklOfferWrite } from '../../domain/entities/mirakl-offer-write.entity';
 import { MiraklApiException } from '../../domain/exceptions/mirakl-api.exception';
@@ -55,6 +61,8 @@ export interface MiraklCardCreationPassDeps {
   readonly catalog: MiraklCatalog;
   readonly writes: MiraklOfferWriteRepositoryPort;
   readonly codes: MiraklCardAttributeCodes;
+  /** Drops the offer mapping of a card that failed; absent leaves it. */
+  readonly identifierMapping?: Pick<IdentifierMappingPort, 'deleteMapping'>;
   readonly now?: () => Date;
 }
 
@@ -139,7 +147,7 @@ export class MiraklCardCreationPass {
     }
     if (status.state === 'failed') {
       const reason = `The product card import ended as ${status.rawStatus ?? 'failed'}`;
-      return { settled: await this.deps.writes.settleWrites(writes, 'failed', reason), open: [] };
+      return { settled: await this.failCards(writes, reason), open: [] };
     }
     const hasErrors =
       (status.linesInError ?? 0) > 0 ||
@@ -160,17 +168,21 @@ export class MiraklCardCreationPass {
         `${this.deps.brand} reported a card error without naming the card in import ${importId}; ` +
           `failing its ${writes.length} card(s) [connectionId=${this.deps.connectionId}]`
       );
-      return { settled: await this.deps.writes.settleWrites(writes, 'failed', reason), open: [] };
+      return { settled: await this.failCards(writes, reason), open: [] };
     }
     const reasons = new Map(lines.map((line) => [line.sku as string, line.reason]));
     let settled = 0;
     const open: MiraklOfferWrite[] = [];
     for (const write of writes) {
-      const reason = reasons.get(write.offerSku);
+      // The report names a card by its product code, which may be shorter
+      // than the offer SKU (an operator caps it); a card sent before the cap
+      // carried the SKU itself.
+      const catalogCode = readRequest(write)?.card[this.deps.codes.catalogCode] ?? write.offerSku;
+      const reason = reasons.get(catalogCode);
       if (reason === undefined) {
         open.push(write);
       } else {
-        settled += await this.deps.writes.settleWrites([write], 'failed', reason);
+        settled += await this.failCards([write], reason);
       }
     }
     return { settled, open };
@@ -215,9 +227,8 @@ export class MiraklCardCreationPass {
     } catch (error) {
       if (error instanceof MiraklApiException && isDefiniteRefusal(error)) {
         const reason = `${this.deps.brand} refused the offer: ${describeMiraklFailure(error.statusCode, error.miraklCode)}`;
-        return this.deps.writes.settleWrites(
+        return this.failCards(
           arrived.map(({ write }) => write),
-          'failed',
           reason
         );
       }
@@ -267,6 +278,7 @@ export class MiraklCardCreationPass {
     const unreadable = queued.filter((write) => readRequest(write) === null);
     if (unreadable.length > 0) {
       await this.deps.writes.failPending(unreadable, 'The queued card could not be read');
+      await this.dropOfferMappings(unreadable);
     }
     if (readable.length === 0) {
       return 0;
@@ -301,6 +313,7 @@ export class MiraklCardCreationPass {
           readable.map(({ write }) => write),
           reason
         );
+        await this.dropOfferMappings(readable.map(({ write }) => write));
         this.logger.warn(`${reason} [connectionId=${this.deps.connectionId}]`);
         return 0;
       }
@@ -315,6 +328,33 @@ export class MiraklCardCreationPass {
       `Sent ${submitted} ${this.deps.brand} product card(s) as import ${importId} [connectionId=${this.deps.connectionId}]`
     );
     return submitted;
+  }
+
+  /** Fails sent cards and drops their offer mappings; returns how many failed. */
+  private async failCards(writes: readonly MiraklOfferWrite[], reason: string): Promise<number> {
+    const failed = await this.deps.writes.settleWrites(writes, 'failed', reason);
+    await this.dropOfferMappings(writes);
+    return failed;
+  }
+
+  /**
+   * The offer behind a failed card was never created on Mirakl, so its
+   * mapping only blocks listing the variant again. A failure to drop one is
+   * logged; the next listing attempt then reports the variant as listed.
+   */
+  private async dropOfferMappings(writes: readonly MiraklOfferWrite[]): Promise<void> {
+    const mappings = this.deps.identifierMapping;
+    if (!mappings) return;
+    for (const write of writes) {
+      try {
+        await mappings.deleteMapping(CORE_ENTITY_TYPE.Offer, write.offerSku, this.deps.connectionId);
+      } catch (error) {
+        this.logger.warn(
+          `Could not drop the offer mapping of failed card ${write.offerSku}: ` +
+            `${error instanceof Error ? error.message : String(error)} [connectionId=${this.deps.connectionId}]`
+        );
+      }
+    }
   }
 }
 
