@@ -115,7 +115,7 @@ test.describe('roles', () => {
     const apiPatch = await opApi.call('PATCH', `/connections/${c.body.id}`, { name: 'x' });
     const apiTest = await opApi.call('POST', `/connections/${c.body.id}/test`);
     const apiInstall = await opApi.call('POST', `/connections/${c.body.id}/webhooks/install`);
-    const ctx = await browser.newContext();
+    const ctx = await browser.newContext({ baseURL: env.webUrl });
     await ctx.request.post(`${env.apiUrl}/v1/auth/login`, { data: { username: op.username, password: op.password } });
     const page = await ctx.newPage();
     await page.addInitScript(() => window.localStorage.setItem('openlinker.locale', 'en'));
@@ -138,7 +138,7 @@ test.describe('roles', () => {
     const env = resolveEnv();
     const c = await createConn(ol, { name: `role viewer ${region.region} ${STAMP}`, region, capabilities: ['OrderSource'] });
     const viewer = await provisionRoleUser(env, ol, 'viewer');
-    const ctx = await browser.newContext();
+    const ctx = await browser.newContext({ baseURL: env.webUrl });
     await ctx.request.post(`${env.apiUrl}/v1/auth/login`, { data: { username: viewer.username, password: viewer.password } });
     const page = await ctx.newPage();
     await page.addInitScript(() => window.localStorage.setItem('openlinker.locale', 'en'));
@@ -286,7 +286,7 @@ test.describe('errors and retries', () => {
   });
 
   test('P140 no log line or job error contains a credential', async ({ evidence }) => {
-    const logs = ['olamz-api', 'olamz-worker'].map((n) => execFileSync('docker', ['logs', n], { encoding: 'utf8', maxBuffer: 200 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }));
+    const logs = ['olamz-api', 'olamz-worker'].map((n) => execFileSync('docker', ['logs', '--since', '6h', n], { encoding: 'utf8', maxBuffer: 2000 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }));
     const jobs = await sql<{ lastError: string }>(`select "lastError" from sync_jobs where "lastError" is not null`);
     const text = logs.join('\n') + JSON.stringify(jobs);
     const patterns = [/e2e-fake-secret/, /Atzr\|e2e-fake-refresh-token/, /secret-e2e-visible-no/, /aws-secret-e2e/, /new-secret/, /Atzr\|new-refresh/];

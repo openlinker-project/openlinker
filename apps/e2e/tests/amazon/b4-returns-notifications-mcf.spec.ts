@@ -14,9 +14,13 @@ const DAY = 24 * 3600 * 1000;
 const STAMP = Date.now();
 
 async function ensureConn(ol: OlApi, name: string, make: () => Promise<{ status: number; body: any }>): Promise<{ id: string }> {
-  const list = (await ol.call('GET', '/connections')).body as { id: string; name: string }[];
+  const list = (await ol.call('GET', '/connections')).body as { id: string; name: string; status?: string }[];
   const hit = list.find((c) => c.name === name);
-  if (hit) return hit;
+  if (hit) {
+    // A reused connection may have been flipped to needs_reauth by an earlier auth-failure test.
+    if (hit.status !== undefined && hit.status !== 'active') await ol.call('PATCH', `/connections/${hit.id}`, { status: 'active' });
+    return hit;
+  }
   const res = await make();
   if (res.status !== 201) throw new Error(`create ${name}: ${res.status} ${JSON.stringify(res.body)}`);
   return res.body;

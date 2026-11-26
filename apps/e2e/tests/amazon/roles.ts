@@ -1,6 +1,6 @@
 /**
  * Provisions throwaway viewer/operator accounts for the Amazon suite
- * (register, then the admin approves with the wanted role).
+ * (admin creates the user with a one-time password, which is changed on first login).
  *
  * @module tests/amazon
  */
@@ -20,19 +20,28 @@ export async function provisionRoleUser(env: E2eEnv, admin: OlApi, role: 'viewer
   if (hit) return hit;
   const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const user = { username: `e2e-amz-${role}-${stamp}`, password: `E2e-Pass-${stamp}-x!`, id: '' };
-  const reg = await fetch(`${env.apiUrl}/v1/auth/register`, {
+  const created = await admin.call('POST', '/users', {
+    displayName: `E2E Amazon ${role}`,
+    username: user.username,
+    email: `${user.username}@example.test`,
+    role,
+  });
+  if (created.status >= 300) throw new Error(`create ${role} failed: ${created.status} ${JSON.stringify(created.body)}`);
+  const temp = created.body.temporaryPassword as string;
+  const login = await fetch(`${env.apiUrl}/v1/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: user.username, email: `${user.username}@example.test`, password: user.password }),
+    body: JSON.stringify({ username: user.username, password: temp }),
   });
-  if (!reg.ok) throw new Error(`register ${role} failed: ${reg.status} ${await reg.text()}`);
-  const list = await admin.call('GET', '/users');
-  const items = (list.body?.users ?? list.body) as { id: string; username: string; status?: string }[];
-  const found = items.find((u) => u.username === user.username);
-  if (!found) throw new Error(`registered ${role} not found in the admin user list`);
-  const approve = await admin.call('POST', `/users/${found.id}/approve`, { role });
-  if (approve.status >= 300) throw new Error(`approve ${role} failed: ${approve.status} ${JSON.stringify(approve.body)}`);
-  user.id = found.id;
+  if (!login.ok) throw new Error(`first login ${role} failed: ${login.status}`);
+  const token = ((await login.json()) as { access_token: string }).access_token;
+  const change = await fetch(`${env.apiUrl}/v1/auth/me/password`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ currentPassword: temp, newPassword: user.password }),
+  });
+  if (!change.ok) throw new Error(`password change ${role} failed: ${change.status} ${await change.text()}`);
+  user.id = created.body.id as string;
   cache.set(role, user);
   return user;
 }

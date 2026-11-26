@@ -169,7 +169,7 @@ test('P014 stored connection has region, environment, marketplaces array and no 
 test('P015 viewer sees Read-only access instead of the form', async ({ browser, ol, region }) => {
   const env = resolveEnv();
   const viewer = await provisionRoleUser(env, ol, 'viewer');
-  const ctx = await browser.newContext();
+  const ctx = await browser.newContext({ baseURL: env.webUrl });
   await ctx.request.post(`${env.apiUrl}/v1/auth/login`, { data: { username: viewer.username, password: viewer.password } });
   const page = await ctx.newPage();
   await page.addInitScript(() => window.localStorage.setItem('openlinker.locale', 'en'));

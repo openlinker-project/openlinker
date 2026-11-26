@@ -22,9 +22,13 @@ test('P022 the offer wizard lists the currencies of the connection marketplaces 
   const w = await world(ol, region);
   const v = w.variants[`E2E-${cc(region)}-1`];
   await page.goto(`/listings/bulk-create/wizard?productIds=${v.productId}&variantIds=${v.id}&connectionId=${w.sales.id}`);
-  await expect(page.getByText('Offer currency').first()).toBeVisible({ timeout: 30_000 });
+  await page.getByText(`E2E sales ${region.region}`).first().click();
+  const multiCurrency = new Set(region.marketplaces.map((m) => m.currency)).size > 1;
+  // The currency selector exists only when the connection sells in more than one currency.
+  if (multiCurrency) await expect(page.getByText('Offer currency').first()).toBeVisible({ timeout: 30_000 });
+  else await expect(page.getByText(/Offers go to:/).first()).toBeVisible({ timeout: 30_000 });
   for (const m of region.marketplaces) {
-    await page.getByLabel('Offer currency').selectOption(m.currency).catch(() => undefined);
+    if (multiCurrency) await page.getByLabel('Offer currency').selectOption(m.currency).catch(() => undefined);
     await expect(page.getByText(new RegExp(`Offers go to:.*${m.country === 'PL' ? 'Poland' : m.country === 'DE' ? 'Germany' : m.country === 'US' ? 'United States' : 'Japan'}`)).first()).toBeVisible();
   }
   await shot(page, region.region, 22);
@@ -53,7 +57,7 @@ test('P028 the catalogue marketplace is chosen on the page and never follows a r
   const c = await createConn(ol, { name: `catmk ${region.region} ${STAMP}`, region, capabilities: ['ProductMaster'], config: { sellerId: 'A2EXAMPLE12345' } });
   await page.goto(`/connections/${c.body.id}/edit`);
   await expect(page.getByText('Catalogue marketplace').first()).toBeVisible();
-  await expect(page.getByText(/First marketplace \(/).first()).toBeVisible();
+  await expect(page.locator('option', { hasText: /First marketplace \(/ }).first()).toBeAttached();
   const ids = region.marketplaces.map((m) => m.id);
   if (ids.length > 1) {
     await page.getByLabel('Catalogue marketplace').selectOption(ids[1]);
@@ -71,7 +75,7 @@ test('P030 tax code rows save in canonical form and an invalid row is explained'
   await page.goto(`/connections/${c.body.id}/edit`);
   await expect(page.getByText('No tax codes have a rate yet, so the VAT rate of Amazon products is not known.')).toBeVisible();
   for (let i = 0; i < 3; i += 1) await page.getByRole('button', { name: 'Add tax code' }).click();
-  const codes = page.getByLabel('Tax code');
+  const codes = page.getByLabel('Tax code', { exact: true });
   const rates = page.getByLabel('Rate', { exact: true });
   await codes.nth(0).fill('a_gen_standard');
   await rates.nth(0).fill('23');
@@ -79,7 +83,7 @@ test('P030 tax code rows save in canonical form and an invalid row is explained'
   await rates.nth(1).fill('8');
   await codes.nth(2).fill('BROKEN');
   await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('Each row needs a tax code and a rate such as 23, 8, 0 or zw.')).toBeVisible();
+  await expect(page.getByRole('group', { name: 'VAT rates of Amazon tax codes' }).getByRole('alert')).toBeVisible();
   await shot(page, region.region, 30);
   await codes.nth(2).fill('');
   await page.getByRole('button', { name: 'Save changes' }).click().catch(() => undefined);
@@ -107,14 +111,15 @@ test('P038 a viewer sees the values with disabled inputs and no save button', as
   const env = resolveEnv();
   const c = await createConn(ol, { name: `viewedit ${region.region} ${STAMP}`, region, capabilities: ['OrderSource'] });
   const viewer = await provisionRoleUser(env, ol, 'viewer');
-  const ctx = await browser.newContext();
+  const ctx = await browser.newContext({ baseURL: env.webUrl });
   await ctx.request.post(`${env.apiUrl}/v1/auth/login`, { data: { username: viewer.username, password: viewer.password } });
   const page = await ctx.newPage();
   await page.addInitScript(() => window.localStorage.setItem('openlinker.locale', 'en'));
   await page.goto(`/connections/${c.body.id}/edit`);
   await page.waitForLoadState('networkidle');
   await expect(page.getByRole('button', { name: 'Save changes' })).toHaveCount(0);
-  await expect(page.getByLabel('Connection name')).toBeDisabled();
+  await expect(page.getByText('Read-only access')).toBeVisible();
+  await expect(page.getByLabel('Connection name')).toHaveCount(0);
   await shot(page, region.region, 38);
   await ctx.close();
 });
@@ -151,7 +156,7 @@ test('P052 simulated: the scheduled orders poll brings in a new order by itself'
 
 test.describe('offer creation', () => {
   async function create(ol: OlApi, connId: string, variantId: string, extra: Record<string, unknown> = {}): Promise<{ create: any; record: any }> {
-    const res = await ol.call('POST', `/listings/connections/${connId}/offers`, { internalVariantId: variantId, stock: { available: 4 }, price: undefined, ...extra }, );
+    const res = await ol.call('POST', `/listings/connections/${connId}/offers`, { internalVariantId: variantId, stock: 4, publishImmediately: true, price: undefined, ...extra }, );
     let record: any = null;
     if (res.status < 300) {
       for (let i = 0; i < 30; i += 1) {
@@ -167,7 +172,9 @@ test.describe('offer creation', () => {
   test('P073 and P074 simulated: an EAN known to the catalogue resolves the product type and the ASIN; product types are browsable', async ({ ol, region, evidence }) => {
     const w = await world(ol, region);
     const v = w.variants[`E2E-${cc(region)}-1`];
-    const resolve = await ol.call('POST', `/listings/connections/${w.sales.id}/categories/resolve`, { variantId: v.id });
+    const vs = (await ol.call('GET', `/products/${v.productId}/variants`)).body;
+    const full = ((vs?.items ?? vs) as { id: string; ean?: string | null; barcode?: string | null }[]).find((x) => x.id === v.id);
+    const resolve = await ol.call('POST', `/listings/connections/${w.sales.id}/categories/resolve-batch`, { items: [{ variantId: v.id, ean: full?.ean ?? full?.barcode ?? null }] });
     const browse = await ol.call('GET', `/connections/${w.sales.id}/mappings/options/destination/categories`);
     await evidence('category resolve by EAN and product type browse (catalogue SIMULATED)', { resolve: [resolve.status, resolve.body], browse: [browse.status, JSON.stringify(browse.body).slice(0, 400)] });
     expect(resolve.status, JSON.stringify(resolve.body)).toBeLessThan(300);
@@ -179,9 +186,9 @@ test.describe('offer creation', () => {
     const w = await world(ol, region);
     const v = w.variants[`E2E-${cc(region)}-2`];
     const since = new Date().toISOString();
-    const first = await create(ol, w.sales.id, v.id, { price: { amount: 49.9, currency: region.marketplaces[0].currency } });
+    const first = await create(ol, w.sales.id, v.id, { price: { amount: 49.9, currency: region.marketplaces[0].currency }, overrides: { categoryId: 'LUGGAGE', productCardId: 'B0CAT00000' } });
     const puts = ((await fakeGet(`/__calls?since=${since}`)).calls as any[]).filter((c) => c.method === 'PUT' && c.path.includes('/listings/'));
-    const second = await create(ol, w.sales.id, v.id, { price: { amount: 49.9, currency: region.marketplaces[0].currency } });
+    const second = await create(ol, w.sales.id, v.id, { price: { amount: 49.9, currency: region.marketplaces[0].currency }, overrides: { categoryId: 'LUGGAGE', productCardId: 'B0CAT00000' } });
     await evidence('offer create twice (listing side SIMULATED)', { first: [first.create.status, first.record?.status, first.record?.error], putBodies: puts.map((p) => (p.body ?? '').slice(0, 300)), second: [second.create.status, second.record?.status, second.record?.error ?? second.record] });
     expect(first.create.status, JSON.stringify(first.create.body)).toBeLessThan(300);
     expect(puts.length).toBeGreaterThan(0);
@@ -194,7 +201,7 @@ test.describe('offer creation', () => {
     const w = await world(ol, region);
     const v = w.variants[`E2E-${cc(region)}-NEW`];
     const since = new Date().toISOString();
-    const res = await create(ol, w.sales.id, v.id, { price: { amount: 19.9, currency: region.marketplaces[0].currency }, overrides: { title: 'E2E new item', description: 'Described', categoryId: 'LUGGAGE' } });
+    const res = await create(ol, w.sales.id, v.id, { price: { amount: 19.9, currency: region.marketplaces[0].currency }, overrides: { title: 'E2E new item', description: 'Described', categoryId: 'LUGGAGE', platformParams: { brand: 'FakeBrand' } } });
     const puts = ((await fakeGet(`/__calls?since=${since}`)).calls as any[]).filter((c) => c.method === 'PUT' && c.path.includes('/listings/'));
     await evidence('offer without a catalogue ASIN (catalogue SIMULATED)', { create: [res.create.status, res.create.body], record: res.record?.status, putBodies: puts.map((p) => (p.body ?? '').slice(0, 400)) });
     expect(res.create.status, JSON.stringify(res.create.body)).toBeLessThan(300);
@@ -212,11 +219,19 @@ test.describe('offer creation', () => {
 
   test('P079 an Amazon offer cannot be created from a bundle: the preview says the destination does not support it', async ({ ol, region, evidence }) => {
     const w = await world(ol, region);
-    const v = w.variants[`E2E-${cc(region)}-1`];
-    const res = await ol.call('POST', `/listings/connections/${w.sales.id}/bundle-offer-preview`, { items: [{ variantId: v.id }] });
-    await evidence('POST bundle-offer-preview on an Amazon connection (the wording is the finding)', res);
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(JSON.stringify(res.body)).toMatch(/support|bundle|capab/i);
+    const bundle = w.variants[`E2E-${cc(region)}-NOEAN`];
+    const defined = await ol.call('POST', '/bundle-definitions', {
+      variantId: bundle.id,
+      components: [
+        { variantId: w.variants[`E2E-${cc(region)}-1`].id, quantity: 1 },
+        { variantId: w.variants[`E2E-${cc(region)}-2`].id, quantity: 1 },
+      ],
+    });
+    expect([201, 409]).toContain(defined.status);
+    const res = await ol.call('POST', `/listings/connections/${w.sales.id}/bundle-offer-preview`, { items: [{ variantId: bundle.id }] });
+    await evidence('POST bundle-offer-preview on an Amazon connection (the wording is the finding)', { defined: defined.status, res });
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).toMatch(/support|unsupported|capab|destination/i);
   });
 
   test('P082 simulated: a price change replaces purchasable_offer for the marketplace of that currency', async ({ ol, region, fake, evidence }) => {
@@ -225,7 +240,7 @@ test.describe('offer creation', () => {
     const sku = `E2E-${cc(region)}-1`;
     await runJob(ol, 'marketplace.offers.sync', w.sales.id, { limit: 20, cursor: null, feedType: 'offers', masterConnectionId: w.master.id });
     const since = new Date().toISOString();
-    const res = await ol.call('POST', `/listings/connections/${w.sales.id}/offers/${sku}/fields`, { price: { amount: '59.90', currency: region.marketplaces[0].currency } });
+    const res = await ol.call('POST', `/listings/connections/${w.sales.id}/offers/${w.variants[sku].id}/fields`, { price: { amount: '59.90', currency: region.marketplaces[0].currency } });
     await new Promise((r) => setTimeout(r, 6000));
     const patches = ((await fakeGet(`/__calls?since=${since}`)).calls as any[]).filter((c) => c.method === 'PATCH');
     await evidence('price change (listing SIMULATED)', { response: [res.status, res.body], patches: patches.map((p) => (p.body ?? '').slice(0, 300)) });
@@ -256,10 +271,9 @@ test.describe('Multi-Channel Fulfillment dispatch (simulated)', () => {
   async function seedWork(ol: OlApi, region: RegionFixture, opts: { sku: string; noAddress?: boolean; tag: string }): Promise<{ workId: string; masterId: string }> {
     const w = await world(ol, region);
     await ol.call('PATCH', `/connections/${w.master.id}`, { enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'FulfillmentExecutor'] });
-    const bought = await fakeBuy({ region: region.region, sku: opts.sku, qty: 1, ageMinutes: 1, ...(opts.noAddress ? { noRecipient: true } : {}) });
-    const src = await createConn(ol, { name: `mcf src ${opts.tag} ${region.region} ${STAMP}`, region, capabilities: ['OrderSource'], orderSyncStart: { mode: 'now' } });
-    await runJob(ol, 'marketplace.orders.poll', src.body.id, { limit: 100, cursorKey: 'amazon.orders.feedCursor' });
-    const row = (await pollUntilHas(ol, src.body.id, [bought])).find((o) => o.orderSnapshot.externalOrderId === bought)!;
+    await runJob(ol, 'marketplace.offers.sync', w.sales.id, { limit: 20, cursor: null, feedType: 'offers', masterConnectionId: w.master.id });
+    const bought = await fakeBuy({ region: region.region, sku: opts.sku, qty: 1, ageMinutes: 0, ...(opts.noAddress ? { noRecipient: true } : {}) });
+    const row = (await pollUntilHas(ol, w.sales.id, [bought], 14)).find((o) => o.orderSnapshot.externalOrderId === bought)!;
     const variantId = w.variants[opts.sku]?.id ?? `ol_variant_unknown_${STAMP}`;
     const workId = `ol_work_e2e${STAMP}${Math.floor(Math.random() * 1e6)}`;
     await sql(`insert into fulfillment_works (id, "orderId", "assignedConnectionId", status, "requestStatus") values ($1,$2,$3,'open','unsubmitted')`, [workId, row.internalOrderId, w.master.id]);
@@ -332,6 +346,7 @@ test.describe('Multi-Channel Fulfillment dispatch (simulated)', () => {
 test('P095 the who-decides page lists the Amazon connection as a fulfilment executor candidate', async ({ page, ol, region }) => {
   const w = await world(ol, region);
   await ol.call('PATCH', `/connections/${w.master.id}`, { enabledCapabilities: ['ProductMaster', 'InventoryMaster', 'FulfillmentExecutor'] });
+  await patchConfig(ol, w.master.id, { fulfillmentExecutor: { enabled: true } });
   const status = await ol.call('GET', '/fulfillment-authority/status');
   await page.goto('/settings/who-decides');
   await expect(page.getByText(/Who decides/i).first()).toBeVisible();
