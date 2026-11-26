@@ -5,6 +5,7 @@
  */
 import { OfferCreateRejectedException, type CreateOfferCommand } from '@openlinker/core/listings';
 import { MiraklApiException } from '../../../domain/exceptions/mirakl-api.exception';
+import { MiraklAuthenticationException } from '../../../domain/exceptions/mirakl-authentication.exception';
 import type { MiraklOfferWriteRepositoryPort } from '../../../domain/ports/mirakl-offer-write-repository.port';
 import type { IMiraklHttpClient } from '../../http/mirakl-http-client.interface';
 import type { MiraklCatalog } from '../mirakl-catalog';
@@ -165,5 +166,15 @@ describe('MiraklOfferCreator', () => {
 
     await expect(creator.createOffer(command())).resolves.toMatchObject({ status: 'validating' });
     expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it('should let a rejected API key through, so the connection is flagged for re-auth', async () => {
+    const { creator, post } = setup();
+    post.mockRejectedValueOnce(new MiraklAuthenticationException('denied', 401));
+
+    const error = await creator.createOffer(command()).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(MiraklAuthenticationException);
+    expect(error).not.toBeInstanceOf(OfferCreateRejectedException);
   });
 });

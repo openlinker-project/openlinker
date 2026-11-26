@@ -64,7 +64,11 @@ export interface MiraklOfferCreatorDeps {
   readonly offerDefaults: MiraklOfferDefaults;
 }
 
-/** A refusal Mirakl answered about the request itself; anything else may pass. */
+/**
+ * A refusal Mirakl answered about the request itself; anything else may pass.
+ * A 401 / 403 never gets here: the client throws `MiraklAuthenticationException`
+ * for those, which passes through so the connection is flagged for re-auth.
+ */
 function isDefiniteRefusal(error: MiraklApiException): boolean {
   const status = error.statusCode;
   return status !== undefined && status >= 400 && status < 500 && status !== 429;
