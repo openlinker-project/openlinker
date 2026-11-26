@@ -45,4 +45,28 @@ export interface MiraklConnectionConfig {
   shopId?: number | string;
   /** Absent means `auto`. */
   orderAcceptance?: MiraklOrderAcceptance;
+  /**
+   * Carrier codes for OR23, keyed by the shipping connection's `platformType`
+   * (e.g. `{ "dpd": "dpd" }`). Overrides the built-in table; a carrier with no
+   * code is sent by name.
+   */
+  carrierCodes?: Record<string, string>;
+  /**
+   * Values every new offer needs that OpenLinker does not hold (#4278). A
+   * batch can override both in the offer wizard.
+   */
+  offerDefaults?: MiraklOfferDefaults;
+  /**
+   * Whether a refund confirmed in OpenLinker is sent to the marketplace (OR28).
+   * Absent or false: the order source is no refund executor, and a refund is
+   * recorded as made outside OpenLinker.
+   */
+  refundsThroughMarketplace?: boolean;
+}
+
+export interface MiraklOfferDefaults {
+  /** Days from order to shipment (`leadtime_to_ship`). */
+  leadTimeToShip?: number;
+  /** Operator logistic class code (`logistic_class`), e.g. Empik's `1`. */
+  logisticClass?: string;
 }

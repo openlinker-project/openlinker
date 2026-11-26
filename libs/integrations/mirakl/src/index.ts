@@ -37,3 +37,4 @@ export { MiraklAuthenticationException } from './domain/exceptions/mirakl-authen
 export { MiraklConfigException } from './domain/exceptions/mirakl-config.exception';
 export { MiraklNetworkException } from './domain/exceptions/mirakl-network.exception';
 export { MiraklRateLimitException } from './domain/exceptions/mirakl-rate-limit.exception';
+export { MiraklNotSupportedException } from './domain/exceptions/mirakl-not-supported.exception';

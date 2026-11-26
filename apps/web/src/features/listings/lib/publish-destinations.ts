@@ -5,7 +5,8 @@
  * *published* to, spanning both kinds of destination the unified "Publish
  * products" flow surfaces:
  *   - **marketplaces** - connections advertising the `OfferCreator`
- *     sub-capability (offer creation, e.g. Allegro / Erli), and
+ *     sub-capability (offer creation, e.g. Allegro / Erli) with `OfferManager`
+ *     enabled, and
  *   - **online shops** - connections that have *enabled* the
  *     `ProductPublisher` capability (a `ShopProductManagerPort`, ADR-024,
  *     e.g. WooCommerce), which is config-gated and therefore keyed off
@@ -28,6 +29,23 @@ export type PublishDestinationKind = 'marketplace' | 'shop';
 export const MARKETPLACE_PUBLISH_CAPABILITY = 'OfferCreator';
 /** Capability that marks a connection as a product-publishing online shop. */
 export const SHOP_PUBLISH_CAPABILITY = 'ProductPublisher';
+/** Base capability an offer marketplace must have enabled to take new offers. */
+export const MARKETPLACE_ENABLED_CAPABILITY = 'OfferManager';
+
+/**
+ * Whether new offers can be created on the connection. `OfferCreator` is
+ * advertised but never enabled (it is a sub-capability of `OfferManager`), so
+ * the advertised list says what the platform can do and `OfferManager` says
+ * whether this connection does it: an Empik connection used only as a
+ * catalogue and stock source advertises `OfferCreator` with `OfferManager`
+ * switched off (#4284), and creating an offer there would fail.
+ */
+export function isOfferPublishDestination(connection: Connection): boolean {
+  return (
+    connection.supportedCapabilities?.includes(MARKETPLACE_PUBLISH_CAPABILITY) === true &&
+    connection.enabledCapabilities?.includes(MARKETPLACE_ENABLED_CAPABILITY) === true
+  );
+}
 
 /** A publish-eligible connection paired with its resolved kind. */
 export interface PublishDestination {
@@ -62,7 +80,7 @@ export const PUBLISH_DESTINATION_KIND_ORDER: readonly PublishDestinationKind[] =
  * (offer creation) wins when a connection somehow advertises both.
  */
 export function publishDestinationKind(connection: Connection): PublishDestinationKind | null {
-  if (connection.supportedCapabilities?.includes(MARKETPLACE_PUBLISH_CAPABILITY)) {
+  if (isOfferPublishDestination(connection)) {
     return 'marketplace';
   }
   if (connection.enabledCapabilities?.includes(SHOP_PUBLISH_CAPABILITY)) {

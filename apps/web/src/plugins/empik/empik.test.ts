@@ -28,10 +28,12 @@ describe('empikPlugin', () => {
     expect(empikPlugin.platform?.setupCard?.badge).toBe('API key');
   });
 
-  it('should contribute a credentials panel and no marketplace slots yet', () => {
+  it('should contribute a credentials panel and the offer wizard slots (#4278)', () => {
     expect(empikPlugin.platform?.CredentialsPanel).toBeDefined();
-    expect(empikPlugin.platform?.bulkOfferConfigSection).toBeUndefined();
-    expect(empikPlugin.platform?.offerValidation).toBeUndefined();
+    expect(empikPlugin.platform?.bulkOfferConfigSection?.isComplete).toBeDefined();
+    expect(empikPlugin.platform?.offerValidation?.blockers.map((blocker) => blocker.id)).toEqual([
+      'empik:no-card',
+    ]);
     expect(empikPlugin.platform?.supportsListingEdit).toBeUndefined();
   });
 });

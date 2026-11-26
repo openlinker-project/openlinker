@@ -76,11 +76,12 @@ interface RefundConfirmationFormProps {
    */
   currency: string | null;
   /**
-   * True when confirming sends the refund to the store (see
-   * `useRefundSentToShopify`), which changes what the preamble may claim. A prop
+   * The connection a confirmed refund is sent through, or null when it is only
+   * recorded (see
+   * `useRefundSentToChannel`), which changes what the preamble may claim. A prop
    * rather than a read here, so the form stays free of server state.
    */
-  sentToShopify?: boolean;
+  sentToChannel?: string | null;
   /** Rendered BESIDE the amount as context. Never placed in the input. */
   orderTotal?: string | null;
   pending: boolean;
@@ -121,7 +122,7 @@ type RefundFormValues = z.infer<ReturnType<typeof createRefundConfirmationSchema
 
 export function RefundConfirmationForm({
   currency,
-  sentToShopify = false,
+  sentToChannel = null,
   orderTotal = null,
   pending,
   error,
@@ -171,7 +172,9 @@ export function RefundConfirmationForm({
       }}
     >
       <p className="refund-confirmation-form__preamble">
-        {sentToShopify ? copy.preambleShopify : copy.preamble}
+        {sentToChannel
+          ? interpolate(copy.preambleChannel, { channel: sentToChannel })
+          : copy.preamble}
       </p>
 
       <FormErrorSummary errors={messages} title={copy.heading} />

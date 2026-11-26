@@ -7,6 +7,8 @@
  * - `environment`: `production` or `staging`.
  * - `shopId`: a positive integer, as a number or a digit string.
  * - `orderAcceptance`: `auto` or `off`.
+ * - `carrierCodes`: an object of non-empty strings (`platformType` -> SH21 code).
+ * - `offerDefaults`: `leadTimeToShip` 0-30 days, `logisticClass` a non-empty code.
  * - `masterCatalogConnectionId`: a UUID (the shared catalogue pairing key).
  * - `baseUrl`: refused. The base URL comes from the operator profile only, so
  *   a connection can never point its key at another host; a stored `baseUrl`
@@ -26,6 +28,8 @@ import {
 import {
   isMiraklEnvironment,
   isMiraklOrderAcceptance,
+  readMiraklCarrierCodes,
+  readMiraklOfferDefaults,
   readMiraklShopId,
 } from '../../domain/policies/mirakl-connection-config.policy';
 import {
@@ -57,6 +61,25 @@ export class MiraklConnectionConfigShapeValidatorAdapter
         path: 'orderAcceptance',
         message: `must be one of: ${MiraklOrderAcceptanceValues.join(', ')}`,
       });
+    }
+    if (readMiraklCarrierCodes(config.carrierCodes).kind === 'invalid') {
+      issues.push({
+        path: 'carrierCodes',
+        message: 'must map shipping platform types to non-empty carrier codes',
+      });
+    }
+    if (readMiraklOfferDefaults(config.offerDefaults).kind === 'invalid') {
+      issues.push({
+        path: 'offerDefaults',
+        message: 'leadTimeToShip must be 0-30 days and logisticClass a non-empty code',
+      });
+    }
+    if (
+      config.refundsThroughMarketplace !== undefined &&
+      config.refundsThroughMarketplace !== null &&
+      typeof config.refundsThroughMarketplace !== 'boolean'
+    ) {
+      issues.push({ path: 'refundsThroughMarketplace', message: 'must be true or false' });
     }
     if (config.baseUrl !== undefined) {
       issues.push({

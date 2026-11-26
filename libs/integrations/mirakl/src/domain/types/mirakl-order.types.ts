@@ -90,6 +90,25 @@ export interface MiraklOrderLine {
   readonly taxes?: readonly MiraklTax[];
   readonly shipping_taxes?: readonly MiraklTax[];
   readonly product_medias?: readonly MiraklProductMedia[];
+  /** Refunds already made on this line (OR28, or by the operator). */
+  readonly refunds?: readonly MiraklOrderRefund[];
+}
+
+/** One refund on an order line, as OR11 returns it. */
+export interface MiraklOrderRefund {
+  readonly id?: string;
+  /** Product part of the refund. */
+  readonly amount?: number;
+  readonly shipping_amount?: number;
+  readonly currency_iso_code?: string;
+  readonly reason_code?: string;
+  readonly created_date?: string;
+  /** When the money was paid back; absent until it was. */
+  readonly transaction_date?: string;
+  /** `WAITING_REFUND_TAX_CONFIRMATION`, `WAITING_REFUND`, `WAITING_REFUND_PAYMENT` or `REFUNDED`. */
+  readonly refund_state?: string;
+  /** Deprecated twin of `refund_state`, read when that is absent. */
+  readonly state?: string;
 }
 
 export interface MiraklOrder {
@@ -110,6 +129,13 @@ export interface MiraklOrder {
   readonly shipping_type_label?: string;
   readonly shipping_pudo_id?: string;
   readonly shipping_deadline?: string;
+  /** The order's one tracking number, set by OR23 or in the operator panel. */
+  readonly shipping_tracking?: string;
+  /** SH21 carrier code of that tracking number, when a known carrier was named. */
+  readonly shipping_carrier_code?: string;
+  /** Carrier name as Mirakl shows it (the SH21 label or a free-text name). */
+  readonly shipping_company?: string;
+  readonly shipping_tracking_url?: string;
   readonly customer?: MiraklCustomer;
   readonly customer_notification_email?: string;
   readonly order_additional_fields?: readonly MiraklAdditionalField[];
@@ -132,4 +158,45 @@ export interface MiraklAcceptanceSummary {
   readonly accepted: number;
   readonly alreadyHandled: number;
   readonly failed: number;
+}
+
+/**
+ * OR23 body. Either a known SH21 `carrier_code`, or a free-text
+ * `carrier_name` (with an optional `carrier_url`) for a carrier the operator
+ * does not list; never both.
+ */
+export type MiraklTrackingBody =
+  | { readonly carrier_code: string; readonly tracking_number: string }
+  | {
+      readonly carrier_name: string;
+      readonly carrier_url?: string;
+      readonly tracking_number: string;
+    };
+
+/** One SH12 shipping type. */
+export interface MiraklShippingType {
+  readonly code?: string;
+  readonly label?: string;
+}
+
+/** One OR72 order document. */
+export interface MiraklOrderDocument {
+  readonly id?: number | string;
+  readonly order_id?: string;
+  readonly file_name?: string;
+  readonly type?: string;
+}
+
+/** OR74 answer: per-file outcome, errors listed separately. */
+export interface MiraklDocumentUploadResult {
+  readonly errors_count?: number;
+  readonly order_documents?: ReadonlyArray<{
+    readonly file_name?: string;
+    readonly type_code?: string;
+  }>;
+  readonly document_errors?: ReadonlyArray<{
+    readonly file_name?: string;
+    readonly message?: string;
+    readonly code?: string;
+  }>;
 }

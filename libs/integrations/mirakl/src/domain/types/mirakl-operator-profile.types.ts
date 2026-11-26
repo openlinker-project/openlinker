@@ -13,6 +13,8 @@
  *
  * @module libs/integrations/mirakl/src/domain/types
  */
+import type { RefundReason } from '@openlinker/core/orders';
+import type { TaxonomyOwner } from '@openlinker/core/listings';
 import type { MiraklEnvironment } from './mirakl-connection.types';
 
 export interface MiraklOperatorProfile {
@@ -31,4 +33,19 @@ export interface MiraklOperatorProfile {
    * `/api/...` prefix themselves. These are the only hosts the client will call.
    */
   readonly baseUrls: Readonly<Record<MiraklEnvironment, string>>;
+  /**
+   * OR74 document type an issued invoice is uploaded as. Operators configure
+   * their own order document types (DO01); Empik lists `CUSTOMER_INVOICE`.
+   */
+  readonly invoiceDocumentTypeCode: string;
+  /**
+   * The category tree a connection reads, per environment (ADR-037). Staging
+   * runs its own catalogue, so it is a tree of its own.
+   */
+  readonly taxonomyOwners: Readonly<Record<MiraklEnvironment, TaxonomyOwner>>;
+  /**
+   * The operator's refund reason code (RE02 `REFUND`) for each OpenLinker
+   * refund reason. Operators configure their own codes.
+   */
+  readonly refundReasonCodes: Readonly<Record<RefundReason, string>>;
 }
