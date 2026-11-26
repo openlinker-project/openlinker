@@ -52,13 +52,18 @@ export interface MiraklHttpResponse<T> {
   data: T;
 }
 
-/** One CSV file sent as `multipart/form-data` (STO01, PRI01, P41, OF01). */
+/**
+ * One file sent as `multipart/form-data`: a CSV import (STO01, PRI01, P41,
+ * OF01) or an order document (OR74, binary, with a JSON description field).
+ */
 export interface MiraklFileUpload {
-  /** Form field name Mirakl expects, `file` for every Seller API import. */
+  /** Form field name Mirakl expects: `file` for imports, `files` for OR74. */
   fieldName: string;
   fileName: string;
   contentType: string;
-  content: string;
+  content: string | Uint8Array;
+  /** Extra text form fields sent next to the file (OR74 `order_documents`). */
+  fields?: Readonly<Record<string, string>>;
 }
 
 /** Offset-paginated list (OR11, OF21, P31): items under a resource key. */

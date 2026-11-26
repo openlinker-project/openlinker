@@ -7,12 +7,13 @@
  * each profile becomes its own adapter key, platform type and connection type
  * (ADR-086).
  *
- * This foundation (#4274) advertises no capabilities yet. It registers what
- * every later capability depends on: config and credentials validators, the
- * connection tester, and the retry and auth-failure classifiers. Each
- * capability is added to `supportedCapabilities` together with the adapter
- * that delivers it (#4275 orders, #4277 offers), in lockstep with the dispatch
- * table below.
+ * It registers what every capability depends on (config and credentials
+ * validators, the connection tester, the retry and auth-failure classifiers)
+ * and advertises `OrderSource` (#4275): the orders poll, which also accepts
+ * new orders, and `OfferManager` (#4277): stock and price for offers listed
+ * on the operator, offer linking and offer status. Each capability is added to
+ * `supportedCapabilities` together with the adapter that delivers it, in
+ * lockstep with the dispatch table below.
  *
  * Mirakl offers sellers no webhooks (they are operator-only), so the plugin
  * registers no webhook decoder or provisioner; capabilities poll.
@@ -22,13 +23,18 @@
 import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
 import type { AdapterMetadata } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { MiraklAdapterFactory } from './application/mirakl-adapter.factory';
+import {
+  MiraklAdapterFactory,
+  type MiraklAdapterFactoryDeps,
+} from './application/mirakl-adapter.factory';
 import type { MiraklOperatorProfile } from './domain/types/mirakl-operator-profile.types';
 import { MiraklAuthFailureClassifierAdapter } from './infrastructure/adapters/mirakl-auth-failure-classifier.adapter';
 import { MiraklConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/mirakl-connection-config-shape-validator.adapter';
 import { MiraklConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/mirakl-connection-credentials-shape-validator.adapter';
 import { MiraklConnectionTesterAdapter } from './infrastructure/adapters/mirakl-connection-tester.adapter';
+import { MiraklEmailNormalizerAdapter } from './infrastructure/adapters/mirakl-email-normalizer.adapter';
 import { MiraklRetryClassifierAdapter } from './infrastructure/adapters/mirakl-retry-classifier.adapter';
+import { buildMiraklSchedulerTasks } from './infrastructure/scheduler/mirakl-scheduler-tasks';
 
 /**
  * Manifest for an operator. No `defaultRateLimit` (#1810): a manifest default
@@ -36,20 +42,67 @@ import { MiraklRetryClassifierAdapter } from './infrastructure/adapters/mirakl-r
  * number here would be invented. 429s are handled with `Retry-After` in the
  * client; an operator can still set `connection.config.rateLimit`.
  */
+/**
+ * What a new connection enables when the operator picks nothing: a marketplace
+ * connection, as before #4284. Enabling the whole manifest would pair
+ * InventoryMaster with OfferManager, which connection create refuses.
+ */
+export const MIRAKL_DEFAULT_ENABLED_CAPABILITIES = [
+  'OrderSource',
+  'ReturnSourceReader',
+  'OfferManager',
+  'OfferLister',
+  'OfferStatusReader',
+  'OfferQuantityBatchUpdater',
+  'PendingQuantityAckReconciler',
+  'OfferFieldUpdater',
+  'OfferCreator',
+  'CategoryBrowser',
+  'EanCategoryMatcher',
+] as const;
+
 export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): AdapterMetadata {
   return {
     adapterKey: profile.adapterKey,
     platformType: profile.platformType,
-    supportedCapabilities: [],
+    // Sub-capabilities are listed for host-side discovery only; they are
+    // resolved by narrowing the dispatched adapter with core's guards.
+    supportedCapabilities: [
+      'OrderSource',
+      // Returns feed over RT11 (#4279), resolved by narrowing the order source.
+      'ReturnSourceReader',
+      'OfferManager',
+      'OfferLister',
+      'OfferStatusReader',
+      'OfferQuantityBatchUpdater',
+      'PendingQuantityAckReconciler',
+      'OfferFieldUpdater',
+      // Listing on an existing catalogue card (#4278). The FE gates offer
+      // creation on `OfferCreator` and the category step on these two.
+      'OfferCreator',
+      'CategoryBrowser',
+      'EanCategoryMatcher',
+      // Catalogue and stock master over the seller's offers (#4284). Opt-in:
+      // left out of the defaults below, and InventoryMaster cannot sit beside
+      // OfferManager on one connection (#1498).
+      'ProductMaster',
+      'InventoryMaster',
+    ],
+    defaultEnabledCapabilities: [...MIRAKL_DEFAULT_ENABLED_CAPABILITIES],
+    // Readable by every role: the orders UI words a refund confirmation by it.
+    publicConfigKeys: ['refundsThroughMarketplace'],
     displayName: profile.displayName,
     version: profile.version,
     isDefault: true,
   };
 }
 
-export function createMiraklPlugin(profile: MiraklOperatorProfile): AdapterPlugin {
+export function createMiraklPlugin(
+  profile: MiraklOperatorProfile,
+  deps: MiraklAdapterFactoryDeps = {}
+): AdapterPlugin {
   const manifest = buildMiraklAdapterManifest(profile);
-  const factory = new MiraklAdapterFactory(profile);
+  const factory = new MiraklAdapterFactory(profile, deps);
 
   return {
     manifest,
@@ -57,15 +110,15 @@ export function createMiraklPlugin(profile: MiraklOperatorProfile): AdapterPlugi
     register(host: HostServices): void {
       host.connectionConfigShapeValidatorRegistry.register(
         profile.adapterKey,
-        new MiraklConnectionConfigShapeValidatorAdapter(profile.brand),
+        new MiraklConnectionConfigShapeValidatorAdapter(profile.brand)
       );
       host.connectionCredentialsShapeValidatorRegistry.register(
         profile.adapterKey,
-        new MiraklConnectionCredentialsShapeValidatorAdapter(profile.brand),
+        new MiraklConnectionCredentialsShapeValidatorAdapter(profile.brand)
       );
       host.connectionTesterRegistry.register(
         profile.adapterKey,
-        new MiraklConnectionTesterAdapter(host.http, factory, profile.brand),
+        new MiraklConnectionTesterAdapter(host.http, factory, profile.brand)
       );
       // The runner asks every registered classifier (it holds the raw error, not
       // an adapter key), so the key is a label; each classifier only recognises
@@ -73,19 +126,38 @@ export function createMiraklPlugin(profile: MiraklOperatorProfile): AdapterPlugi
       host.retryClassifierRegistry.register(profile.adapterKey, new MiraklRetryClassifierAdapter());
       host.authFailureClassifierRegistry.register(
         profile.adapterKey,
-        new MiraklAuthFailureClassifierAdapter(),
+        new MiraklAuthFailureClassifierAdapter()
       );
+      host.emailNormalizerRegistry.register(profile.adapterKey, new MiraklEmailNormalizerAdapter());
+      // Registered unconditionally; the env gate is re-read at every tick.
+      for (const task of buildMiraklSchedulerTasks(profile)) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
-    createCapabilityAdapter<T>(
-      _connection: Connection,
+    async createCapabilityAdapter<T>(
+      connection: Connection,
       capability: string,
-      _host: HostServices,
+      host: HostServices
     ): Promise<T> {
-      // No capability yet. `dispatchCapability` rejects with the standard
-      // "does not support capability" message; the manifest advertises none,
-      // so the host's capability gate stops callers before reaching here.
-      return Promise.resolve().then(() => dispatchCapability<T>(capability, {}, profile.brand));
+      const adapters = await factory.createAdapters(
+        connection,
+        host.credentialsResolver,
+        // Connection-bound outbound transport (#1810): the operator's own rate
+        // limit, if any; the manifest declares no default.
+        host.http.forConnection(connection),
+        { identifierMapping: host.identifierMapping, cache: host.cache }
+      );
+      return dispatchCapability<T>(
+        capability,
+        {
+          OrderSource: () => adapters.orderSource,
+          OfferManager: () => adapters.offerManager,
+          ProductMaster: () => adapters.productMaster,
+          InventoryMaster: () => adapters.inventoryMaster,
+        },
+        profile.brand
+      );
     },
   };
 }

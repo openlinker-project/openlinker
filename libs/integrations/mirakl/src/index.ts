@@ -24,8 +24,12 @@ export type {
   MiraklConnectionConfig,
   MiraklCredentials,
   MiraklEnvironment,
+  MiraklOrderAcceptance,
 } from './domain/types/mirakl-connection.types';
-export type { IMiraklAdapterFactory } from './application/interfaces/mirakl-adapter.factory.interface';
+export type {
+  IMiraklAdapterFactory,
+  MiraklAdapters,
+} from './application/interfaces/mirakl-adapter.factory.interface';
 
 // Exceptions
 export { MiraklApiException } from './domain/exceptions/mirakl-api.exception';
@@ -33,3 +37,4 @@ export { MiraklAuthenticationException } from './domain/exceptions/mirakl-authen
 export { MiraklConfigException } from './domain/exceptions/mirakl-config.exception';
 export { MiraklNetworkException } from './domain/exceptions/mirakl-network.exception';
 export { MiraklRateLimitException } from './domain/exceptions/mirakl-rate-limit.exception';
+export { MiraklNotSupportedException } from './domain/exceptions/mirakl-not-supported.exception';

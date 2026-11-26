@@ -245,3 +245,15 @@ gate - and ADR-026 owns the *principle*.
 [ADR-077](./077-catalogue-prices-are-gross.md) makes `Product.price` / `ProductVariant.price` gross for the master connection's sales country. § 5's "core computes no tax" holds: the master adapters gross up (PrestaShop by transcribing the shop's own figure, WooCommerce with the store's rate), and the shop publishers convert back. Each does so with its own platform's rate and rounding, which § 5 already assigns to the adapter.
 
 The PrestaShop rate read now passes the connection's sales country, so the projected rate and the price describe the same country. `taxRateCountry` is reported only for an exact country match.
+
+## Amendment (#4284, 2026-11-25): a destination's own tax group for products whose master states no rate
+
+A master can be structurally unable to state a rate: Mirakl marketplaces (Empik) give sellers no VAT rate on an offer, so a product read from an Empik master has none. Publishing such a product to a PrestaShop shop needs an `id_tax_rules_group`, and the publisher refused it with `TAX_RATE_MISSING`.
+
+`PrestashopConnectionConfig.defaultTaxRulesGroupId` names the shop's own tax-rule group for that case. It is not the OL-side rate field this ADR rejects, and three limits keep it from becoming one:
+
+- It applies only when the command carries no catalogue rate. A rate the master states is never overridden; a group set in `platformParams` is still checked against it (`TAX_RATE_CONFLICT`).
+- It is a reference to the destination's own configuration, resolved through the shop's tax rules for the sales country like any other group. A group with no rule for that country refuses with `TAX_GROUP_UNRESOLVED`; nothing is guessed.
+- It decides only how the shop stores the product. It never becomes a rate in OpenLinker: it is not written to `products` / `product_variants`, so issuance and the tax-rate gates still see no rate for that product and hold under `OL_TAX_RATE_STRICT_ENABLED` exactly as before.
+
+Unset or `null` keeps the refusal.

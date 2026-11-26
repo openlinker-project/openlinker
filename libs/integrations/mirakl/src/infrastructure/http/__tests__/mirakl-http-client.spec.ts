@@ -142,6 +142,23 @@ describe('MiraklHttpClient', () => {
       expect(await file.text()).toBe('offer-sku;quantity\nSKU-1;7\n');
     });
 
+    it('should send binary content and extra form fields when uploading a document', async () => {
+      fetchMock.mockResolvedValue(fakeResponse({ status: 200, body: '{"errors_count":0}' }));
+      await makeClient(fetchMock).postFile('/api/orders/1001-A/documents', {
+        fieldName: 'files',
+        fileName: 'FV-1.pdf',
+        contentType: 'application/pdf',
+        content: new Uint8Array([37, 80, 68, 70]),
+        fields: { order_documents: '{"order_documents":[]}' },
+      });
+
+      const form = calls(fetchMock)[0][1].body as FormData;
+      const file = form.get('files') as File;
+      expect(file.name).toBe('FV-1.pdf');
+      expect(await file.text()).toBe('%PDF');
+      expect(form.get('order_documents')).toBe('{"order_documents":[]}');
+    });
+
     it('should return the body verbatim when reading text', async () => {
       fetchMock.mockResolvedValue(fakeResponse({ status: 200, body: 'line-number;errors\n2;bad\n' }));
       const response = await makeClient(fetchMock).getText('/api/offers/stock/imports/x/error_report');

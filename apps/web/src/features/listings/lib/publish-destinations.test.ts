@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isOfferPublishDestination,
   publishDestinationKind,
   resolvePublishDestination,
   selectPublishDestinations,
@@ -24,20 +25,36 @@ function makeConnection(overrides: Partial<Connection> = {}): Connection {
   };
 }
 
+/** An offer marketplace: advertises OfferCreator and has OfferManager on. */
+const MARKETPLACE: Partial<Connection> = {
+  supportedCapabilities: ['OfferCreator'],
+  enabledCapabilities: ['OfferManager'],
+};
+
 function dest(id: string, name: string, kind: 'marketplace' | 'shop'): PublishDestination {
   const connection = makeConnection({
     id,
     name,
     supportedCapabilities: kind === 'marketplace' ? ['OfferCreator'] : [],
-    enabledCapabilities: kind === 'shop' ? ['ProductPublisher'] : [],
+    enabledCapabilities: kind === 'shop' ? ['ProductPublisher'] : ['OfferManager'],
   });
   return { connection, kind };
 }
 
 describe('publishDestinationKind', () => {
-  it('resolves marketplace when the connection advertises OfferCreator', () => {
-    const connection = makeConnection({ supportedCapabilities: ['OfferCreator'] });
+  it('resolves marketplace when the connection advertises OfferCreator with OfferManager enabled', () => {
+    const connection = makeConnection(MARKETPLACE);
     expect(publishDestinationKind(connection)).toBe('marketplace');
+  });
+
+  it('returns null for a connection advertising OfferCreator with OfferManager switched off', () => {
+    // An Empik connection used only as catalogue and stock source (#4284).
+    const connection = makeConnection({
+      supportedCapabilities: ['OfferCreator', 'ProductMaster', 'InventoryMaster'],
+      enabledCapabilities: ['ProductMaster', 'InventoryMaster'],
+    });
+    expect(publishDestinationKind(connection)).toBeNull();
+    expect(isOfferPublishDestination(connection)).toBe(false);
   });
 
   it('resolves shop when ProductPublisher is enabled', () => {
@@ -48,7 +65,7 @@ describe('publishDestinationKind', () => {
   it('prefers marketplace when a connection somehow advertises both', () => {
     const connection = makeConnection({
       supportedCapabilities: ['OfferCreator'],
-      enabledCapabilities: ['ProductPublisher'],
+      enabledCapabilities: ['OfferManager', 'ProductPublisher'],
     });
     expect(publishDestinationKind(connection)).toBe('marketplace');
   });
@@ -61,11 +78,11 @@ describe('publishDestinationKind', () => {
 
 describe('selectPublishDestinations', () => {
   it('filters out inactive connections and connections with no publish capability', () => {
-    const active = makeConnection({ id: 'a', supportedCapabilities: ['OfferCreator'] });
+    const active = makeConnection({ id: 'a', ...MARKETPLACE });
     const disabled = makeConnection({
       id: 'b',
       status: 'disabled',
-      supportedCapabilities: ['OfferCreator'],
+      ...MARKETPLACE,
     });
     const ineligible = makeConnection({ id: 'c' });
     const result = selectPublishDestinations([active, disabled, ineligible]);
@@ -81,12 +98,12 @@ describe('selectPublishDestinations', () => {
     const marketplaceB = makeConnection({
       id: 'm-b',
       name: 'B Marketplace',
-      supportedCapabilities: ['OfferCreator'],
+      ...MARKETPLACE,
     });
     const marketplaceA = makeConnection({
       id: 'm-a',
       name: 'A Marketplace',
-      supportedCapabilities: ['OfferCreator'],
+      ...MARKETPLACE,
     });
     const result = selectPublishDestinations([shopB, marketplaceB, marketplaceA]);
     expect(result.map((d) => d.connection.id)).toEqual(['m-a', 'm-b', 's-b']);

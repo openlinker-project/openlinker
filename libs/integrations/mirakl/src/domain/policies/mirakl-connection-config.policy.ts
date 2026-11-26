@@ -10,7 +10,9 @@
  */
 import {
   MiraklEnvironmentValues,
+  MiraklOrderAcceptanceValues,
   type MiraklEnvironment,
+  type MiraklOrderAcceptance,
 } from '../types/mirakl-connection.types';
 import type { MiraklOperatorProfile } from '../types/mirakl-operator-profile.types';
 
@@ -53,4 +55,80 @@ export function readMiraklShopId(value: unknown): MiraklShopIdReading {
     return /^[1-9]\d{0,15}$/.test(trimmed) ? { kind: 'valid', shopId: trimmed } : { kind: 'invalid' };
   }
   return { kind: 'invalid' };
+}
+
+export function isMiraklOrderAcceptance(value: unknown): value is MiraklOrderAcceptance {
+  return (
+    typeof value === 'string' && (MiraklOrderAcceptanceValues as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Acceptance mode for a connection. Only an explicit `off` turns acceptance
+ * off: the validator refuses any other value on save, and a row written around
+ * it should keep the default rather than silently stop accepting.
+ */
+export function resolveMiraklOrderAcceptance(value: unknown): MiraklOrderAcceptance {
+  return value === 'off' ? 'off' : 'auto';
+}
+
+/** Result of reading `offerDefaults` (connection) or the wizard's `platformParams`. */
+export type MiraklOfferDefaultsReading =
+  | { readonly kind: 'valid'; readonly leadTimeToShip?: number; readonly logisticClass?: string }
+  | { readonly kind: 'invalid' };
+
+/**
+ * Lead time is a whole number of days from 0 to 30 (Mirakl's own bound);
+ * the logistic class is a non-empty code. Absent fields stay absent.
+ */
+export function readMiraklOfferDefaults(value: unknown): MiraklOfferDefaultsReading {
+  if (value === undefined || value === null) {
+    return { kind: 'valid' };
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return { kind: 'invalid' };
+  }
+  const record = value as Record<string, unknown>;
+  const lead = record.leadTimeToShip;
+  const logistic = record.logisticClass;
+  const leadValid =
+    lead === undefined || (typeof lead === 'number' && Number.isInteger(lead) && lead >= 0 && lead <= 30);
+  const logisticValid =
+    logistic === undefined ||
+    ((typeof logistic === 'string' || typeof logistic === 'number') && String(logistic).trim() !== '');
+  if (!leadValid || !logisticValid) {
+    return { kind: 'invalid' };
+  }
+  return {
+    kind: 'valid',
+    ...(typeof lead === 'number' && { leadTimeToShip: lead }),
+    ...(logistic !== undefined && { logisticClass: String(logistic).trim() }),
+  };
+}
+
+/** Result of reading `config.carrierCodes`. */
+export type MiraklCarrierCodesReading =
+  | { readonly kind: 'valid'; readonly codes: Readonly<Record<string, string>> }
+  | { readonly kind: 'invalid' };
+
+/**
+ * `carrierCodes` maps a shipping connection's `platformType` to a carrier
+ * code from the operator's SH21 list. Keys are matched lower-cased; an absent
+ * map is an empty one.
+ */
+export function readMiraklCarrierCodes(value: unknown): MiraklCarrierCodesReading {
+  if (value === undefined || value === null) {
+    return { kind: 'valid', codes: {} };
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    return { kind: 'invalid' };
+  }
+  const codes: Record<string, string> = {};
+  for (const [key, code] of Object.entries(value as Record<string, unknown>)) {
+    if (key.trim() === '' || typeof code !== 'string' || code.trim() === '') {
+      return { kind: 'invalid' };
+    }
+    codes[key.trim().toLowerCase()] = code.trim();
+  }
+  return { kind: 'valid', codes };
 }

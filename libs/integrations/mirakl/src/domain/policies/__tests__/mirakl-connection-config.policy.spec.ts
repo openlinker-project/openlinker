@@ -7,6 +7,9 @@ import { empikOperatorProfile } from '../../../operators/empik.profile';
 import {
   isMiraklEnvironment,
   readMiraklShopId,
+  readMiraklCarrierCodes,
+  readMiraklOfferDefaults,
+  resolveMiraklOrderAcceptance,
   resolveMiraklBaseUrl,
 } from '../mirakl-connection-config.policy';
 
@@ -56,6 +59,60 @@ describe('readMiraklShopId', () => {
     'should report invalid when the value is %p',
     (value) => {
       expect(readMiraklShopId(value)).toEqual({ kind: 'invalid' });
+    },
+  );
+});
+
+describe('resolveMiraklOrderAcceptance', () => {
+  it('should return off only for an explicit off', () => {
+    expect(resolveMiraklOrderAcceptance('off')).toBe('off');
+  });
+
+  it.each([undefined, null, 'auto', 'manual', 1])(
+    'should return auto when the value is %p',
+    (value) => {
+      expect(resolveMiraklOrderAcceptance(value)).toBe('auto');
+    },
+  );
+});
+
+describe('readMiraklCarrierCodes', () => {
+  it('should read an absent map as empty', () => {
+    expect(readMiraklCarrierCodes(undefined)).toEqual({ kind: 'valid', codes: {} });
+  });
+
+  it('should lower-case keys and trim codes', () => {
+    expect(readMiraklCarrierCodes({ ' DPD ': ' dpd ' })).toEqual({
+      kind: 'valid',
+      codes: { dpd: 'dpd' },
+    });
+  });
+
+  it.each([[[]], ['dpd'], [{ dpd: '' }], [{ dpd: 3 }], [{ '': 'dpd' }]])(
+    'should refuse %p',
+    (value) => {
+      expect(readMiraklCarrierCodes(value).kind).toBe('invalid');
+    },
+  );
+});
+
+describe('readMiraklOfferDefaults', () => {
+  it('should read a lead time and a logistic class', () => {
+    expect(readMiraklOfferDefaults({ leadTimeToShip: 2, logisticClass: 1 })).toEqual({
+      kind: 'valid',
+      leadTimeToShip: 2,
+      logisticClass: '1',
+    });
+  });
+
+  it('should read absent values as absent', () => {
+    expect(readMiraklOfferDefaults(undefined)).toEqual({ kind: 'valid' });
+  });
+
+  it.each([[{ leadTimeToShip: 31 }], [{ leadTimeToShip: 1.5 }], [{ logisticClass: ' ' }], ['x']])(
+    'should refuse %p',
+    (value) => {
+      expect(readMiraklOfferDefaults(value).kind).toBe('invalid');
     },
   );
 });

@@ -35,6 +35,7 @@ const allegroConnection = {
   status: 'active',
   platformType: 'allegro',
   supportedCapabilities: ['OfferManager', 'OfferCreator'],
+  enabledCapabilities: ['OfferManager'],
 } as const;
 
 const sampleProducts: PaginatedProducts = {
@@ -1062,6 +1063,7 @@ describe('ProductsListPage', () => {
       status: 'active',
       platformType: 'erli',
       supportedCapabilities: ['OfferManager', 'OfferCreator'],
+      enabledCapabilities: ['OfferManager'],
     };
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },
@@ -1358,6 +1360,7 @@ describe('ProductsListPage', () => {
         status: 'active',
         platformType: 'erli',
         supportedCapabilities: ['OfferManager', 'OfferCreator'],
+        enabledCapabilities: ['OfferManager'],
       } as const;
       const wooConnection = {
         id: 'conn_woo',
