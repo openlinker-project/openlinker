@@ -2,9 +2,9 @@ name: CD
 
 on:
   # Manual escape hatch: re-run a deploy for a tag whose automatic run was lost
-  # (see #1891). Deliberately ref-restricted - this job rsyncs to the deploy host
-  # and holds its SSH key, so it must never run from an unreviewed branch. The
-  # `demo` environment's deployment-branch policy allows only `main` + `v*` tags,
+  # (see #1891). Deliberately ref-restricted - this job rsyncs to the deploy hosts
+  # and holds their SSH keys, so it must never run from an unreviewed branch. Each
+  # target environment's deployment-branch policy allows only `main` + `v*` tags,
   # and the `Guard deploy ref` step below re-checks that inside the workflow.
   workflow_dispatch:
   push:
@@ -13,12 +13,33 @@ on:
 
 jobs:
   build-deploy:
-    name: Build and deploy
+    name: Build and deploy (${{ matrix.environment }})
     runs-on: self-hosted
-    environment: demo
+    # Every `vars.*` / `secrets.*` below resolves against this environment first,
+    # so each target gets its own VITE_* values, SSH key, host and paths.
+    environment: ${{ matrix.environment }}
     permissions: {}
+    strategy:
+      fail-fast: false
+      # Both targets build images under the same tags (openlinker-web, ...) and
+      # write the same *.tar files. Running them one after another prevents a
+      # race on a shared Docker daemon / workspace on the self-hosted runner,
+      # which could ship one environment's web build to the other server.
+      max-parallel: 1
+      matrix:
+        include:
+          - environment: demo
+            # Demo server also hosts the PrestaShop / WooCommerce sandboxes.
+            sync_shop_integrations: true
+            # VITE_* build args come from environment/repo variables.
+            vite_from_secrets: false
+          - environment: tests-ext
+            # Separate server: only the openlinker-* images, no shop sandboxes.
+            sync_shop_integrations: false
+            # VITE_* build args come from `production` environment secrets.
+            vite_from_secrets: true
     steps:
-      # Defence in depth for the `workflow_dispatch` path. The `demo` environment's
+      # Defence in depth for the `workflow_dispatch` path. The environment's
       # deployment-branch policy is the primary gate, but it is a repo setting -
       # invisible here and silently removable. This step keeps the guarantee in the
       # workflow itself: a manual deploy runs only from `main` or a `v*` tag, never
@@ -40,14 +61,17 @@ jobs:
       # The VITE_OG_* trio badges the Open Graph share card (#2174) and must be
       # passed as build args: Vite bakes them into index.html at build time, and
       # root .dockerignore excludes `.env.*` so no env file can carry them in.
-      # Unset repo vars expand to empty, which is the plain production card.
-      # VITE_OL_SEO_INDEXABLE (#3709): must be set to `true` on the GitHub
-      # `demo` ENVIRONMENT (not repo vars), together with
+      # Unset vars expand to empty, which is the plain production card.
+      # Values come from the job's environment (`demo` / `production` / other); a var not
+      # set on the environment falls back to the repo-level var of the same name.
+      # VITE_OL_SEO_INDEXABLE (#3709): on `demo` it must be set to `true` on the
+      # ENVIRONMENT (not repo vars), together with
       # VITE_OG_SITE_URL=https://app.demo.openlinker.io, so
       # app.demo.openlinker.io stays in search results. Unset expands to
       # empty, which builds `noindex` without failing the run - see
       # RELEASING.md § Demo deployments for the full list to check.
       - name: Build web
+        if: ${{ !matrix.vite_from_secrets }}
         run: |
           docker build \
             --build-arg VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }} \
@@ -55,6 +79,28 @@ jobs:
             --build-arg VITE_OG_BADGE_TEXT="${{ vars.VITE_OG_BADGE_TEXT }}" \
             --build-arg VITE_OG_SITE_URL="${{ vars.VITE_OG_SITE_URL }}" \
             --build-arg VITE_OL_SEO_INDEXABLE="${{ vars.VITE_OL_SEO_INDEXABLE }}" \
+            -f apps/web/Dockerfile . --tag openlinker-web
+
+      # Same build, but the VITE_* values come from environment secrets. They are
+      # passed through `env` rather than interpolated into the script, so a value
+      # containing quotes or `$(...)` cannot break or inject into the shell.
+      # Note: Vite still bakes them into the public JS bundle - secrets here only
+      # keep the values out of the repo settings UI and the job logs.
+      - name: Build web (from secrets)
+        if: ${{ matrix.vite_from_secrets }}
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_OG_TITLE_PREFIX: ${{ secrets.VITE_OG_TITLE_PREFIX }}
+          VITE_OG_BADGE_TEXT: ${{ secrets.VITE_OG_BADGE_TEXT }}
+          VITE_OG_SITE_URL: ${{ secrets.VITE_OG_SITE_URL }}
+          VITE_OL_SEO_INDEXABLE: ${{ secrets.VITE_OL_SEO_INDEXABLE }}
+        run: |
+          docker build \
+            --build-arg VITE_API_BASE_URL="$VITE_API_BASE_URL" \
+            --build-arg VITE_OG_TITLE_PREFIX="$VITE_OG_TITLE_PREFIX" \
+            --build-arg VITE_OG_BADGE_TEXT="$VITE_OG_BADGE_TEXT" \
+            --build-arg VITE_OG_SITE_URL="$VITE_OG_SITE_URL" \
+            --build-arg VITE_OL_SEO_INDEXABLE="$VITE_OL_SEO_INDEXABLE" \
             -f apps/web/Dockerfile . --tag openlinker-web
 
       - name: Export openlinker-web as tar
@@ -91,12 +137,15 @@ jobs:
         run: rsync -avz -e "ssh -p ${{ secrets.SSH_PORT }}" ./openlinker-{migrate,api,web,worker}.tar ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_IMAGES }}/
 
       - name: Sync prestashop module
+        if: ${{ matrix.sync_shop_integrations }}
         run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./apps/prestashop-module/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_PRESTA_MODULE }}/
 
       - name: Sync prestashop init scripts
+        if: ${{ matrix.sync_shop_integrations }}
         run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./docker/prestashop/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_PRESTA_INITSCRIPTS }}/
 
       - name: Sync woocommerce init scripts
+        if: ${{ matrix.sync_shop_integrations }}
         run: rsync -avz --delete -e "ssh -p ${{ secrets.SSH_PORT }}" ./docker/woocommerce/ ${{ secrets.SSH_HOST }}:${{ secrets.DESTINATION_PATH_WC_INITSCRIPTS }}/
 
       - name: Deploy
