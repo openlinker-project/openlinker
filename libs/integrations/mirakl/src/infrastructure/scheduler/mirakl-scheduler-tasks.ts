@@ -22,6 +22,10 @@
  * - **returns status** (hourly, #4279): `marketplace.returns.statusSync`
  *   re-reads open returns until a terminal state, the backstop for a change
  *   the window missed. One RT11 call per return, so the page is small.
+ * - **source fulfilment** (every 15 min, #4276):
+ *   `marketplace.sourceFulfillment.statusSync`; reads OR11 for orders
+ *   OpenLinker does not track a parcel for, so a shipment entered in the
+ *   operator's panel, with its tracking number, reaches OpenLinker.
  *
  * Registered unconditionally and gated at each tick by its own
  * `OL_{PLATFORM}_..._SCHEDULER_ENABLED`, which turns a task off only on the
@@ -66,6 +70,11 @@ const RETURNS_STATUS_CRON = '50 * * * *';
 const RETURNS_STATUS_LIMIT = 10;
 /** Returns older than this are no longer re-read by the status sync. */
 const RETURNS_STATUS_LOOKBACK_DAYS = 90;
+const SOURCE_FULFILLMENT_CRON = '*/15 * * * *';
+/** Orders read per pass, one OR11 read each; tracked orders are skipped by core. */
+const SOURCE_FULFILLMENT_LIMIT = 100;
+/** Orders updated longer ago than this are no longer read. */
+const SOURCE_FULFILLMENT_UPDATED_SINCE_DAYS = 30;
 
 function envPrefix(profile: MiraklOperatorProfile): string {
   return `OL_${profile.platformType.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
@@ -185,6 +194,25 @@ export function buildMiraklSchedulerTasks(profile: MiraklOperatorProfile): Sched
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:returns:status:sync:${timestamp}`,
+    },
+    {
+      // A parcel the seller shipped in the operator's panel, with its tracking
+      // number, reaches OpenLinker only through this pass (#4276). Core never
+      // reads an order OpenLinker already tracks, so the cost stays bounded.
+      taskId: `${platform}-source-fulfillment-status-sync`,
+      platformType: platform,
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.sourceFulfillment.statusSync',
+      cronExpression: SOURCE_FULFILLMENT_CRON,
+      enabledEnvVar: `${env}_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED`,
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: SOURCE_FULFILLMENT_LIMIT,
+        cursorKey: `${platform}.sourceFulfillmentStatus.scanOffset`,
+        updatedSinceDays: SOURCE_FULFILLMENT_UPDATED_SINCE_DAYS,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:source:fulfillment:status:sync:${timestamp}`,
     },
   ];
 }

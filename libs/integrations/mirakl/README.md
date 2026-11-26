@@ -60,7 +60,10 @@ in its own class behind `MiraklOrderSourceAdapter`:
 - **Delivered, in progress, paid**: `unsupported`. The operator moves an order
   to received itself and collects the payment.
 - **Readback** (`OrderFulfillmentReadback`): the order's state and its tracking
-  number from OR11, including a shipment the seller entered in the panel.
+  number from OR11, including a shipment the seller entered in the panel. The
+  `{platform}-source-fulfillment-status-sync` task reads it every 15 minutes
+  (`OL_EMPIK_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED=false` turns it
+  off); without it a panel shipment would never reach OpenLinker.
 - **Delivery methods** (`SourceOptionsReader`): SH12 shipping types, keyed by
   the same code the order carries (Empik: `STORE`, `DIGITAL` among them).
 - **Invoice** (`OrderBillingDocumentUploader`): OR74 as the profile's invoice
@@ -68,6 +71,21 @@ in its own class behind `MiraklOrderSourceAdapter`:
   retry after a lost answer reads `already-present` instead of a second copy.
 
 Every write reads the order first, so a replayed event does not write again.
+A carrier code Mirakl refuses is resent once by name, so a wrong code (or a
+wrong `carrierCodes` entry) cannot keep an order unshipped; the warning in the
+log names the code to fix.
+
+**Not yet verified on staging.** Only reads were checked (SH12, OR72, DO01,
+OR11 for an unknown order); there was no real staging order to write to. So
+these wait for one:
+
+- OR23 + OR24 (ship with tracking) and OR29 (cancel) on a real order.
+- OR23 on an order already `SHIPPED`, the path a tracking number that arrives
+  after dispatch takes.
+- OR74 invoice upload, and whether Mirakl keeps the file name as sent: the
+  duplicate check before a retry compares file names.
+- Cancelling an order still `WAITING_ACCEPTANCE`: OR29 may be refused there
+  (refusing it is OR21), which is reported as `rejected`.
 
 ## Offers: stock, price, linking, status (#4277)
 

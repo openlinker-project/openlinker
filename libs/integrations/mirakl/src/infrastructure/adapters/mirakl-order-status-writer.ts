@@ -9,7 +9,8 @@
  *   number per order: a second parcel's number is logged and not sent, since
  *   OR23 would overwrite the first. Without a tracking number only OR24 runs.
  *   An order closed without tracking auto-closes as received after 10 days on
- *   Empik, so the number matters.
+ *   Empik, so the number matters. A carrier code Mirakl refuses is retried
+ *   once by name, so a wrong code cannot keep the order from shipping.
  * - **`cancelled`**: OR29 (`PUT /api/orders/{id}/cancel`), the whole order.
  *   Core only ever cancels whole orders; OR30 (line cancellation, with an
  *   operator reason code) has no caller.
@@ -35,7 +36,10 @@ import type {
 } from '@openlinker/core/orders';
 import { Logger } from '@openlinker/shared/logging';
 import { MiraklApiException } from '../../domain/exceptions/mirakl-api.exception';
-import { buildMiraklTrackingBody } from '../../domain/policies/mirakl-carrier.policy';
+import {
+  buildMiraklTrackingBody,
+  buildMiraklTrackingBodyByName,
+} from '../../domain/policies/mirakl-carrier.policy';
 import {
   CANCELLED_ORDER_STATES,
   DISPATCHED_ORDER_STATES,
@@ -156,14 +160,27 @@ export class MiraklOrderStatusWriter implements OrderStatusWriteback {
       );
       return;
     }
-    await this.httpClient.put(
-      miraklOrderPath(orderId, 'tracking'),
-      buildMiraklTrackingBody(trackingNumber, {
-        platformType,
-        shippingTypeCode: order.shipping_type_code,
-        overrides: this.carrierCodes,
-      })
-    );
+    const path = miraklOrderPath(orderId, 'tracking');
+    const body = buildMiraklTrackingBody(trackingNumber, {
+      platformType,
+      shippingTypeCode: order.shipping_type_code,
+      overrides: this.carrierCodes,
+    });
+    try {
+      await this.httpClient.put(path, body);
+    } catch (error) {
+      if (!(error instanceof MiraklApiException) || !('carrier_code' in body)) {
+        throw error;
+      }
+      // A refused carrier code would refuse the same way on every retry and
+      // keep the order unshipped; Mirakl takes a carrier it does not list by name.
+      this.logger.warn(
+        `${this.brand} refused carrier code "${body.carrier_code}" for order ${orderId} on connection ` +
+          `${this.connectionId} (${describeMiraklFailure(error.statusCode, error.miraklCode)}); ` +
+          `sending the carrier by name. Check the connection's carrierCodes.`
+      );
+      await this.httpClient.put(path, buildMiraklTrackingBodyByName(trackingNumber, platformType));
+    }
   }
 
   private async cancel(order: MiraklOrder): Promise<OrderWritebackResult> {

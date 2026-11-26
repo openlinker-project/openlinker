@@ -14,7 +14,8 @@
  *    goes as `paczkomatyinpost`, anything else as `inpostpaczkakurierska`.
  *
  * With no code the carrier is sent by name, which Mirakl accepts for a carrier
- * it does not list. With no hint at all the name is the generic `Carrier`, the
+ * it does not list. A code Mirakl refuses is retried once by name (see
+ * `MiraklOrderStatusWriter`), so a wrong code never keeps an order unshipped. With no hint at all the name is the generic `Carrier`, the
  * same fallback the Allegro writeback uses.
  *
  * @module libs/integrations/mirakl/src/domain/policies
@@ -69,8 +70,19 @@ export function buildMiraklTrackingBody(
   if (code) {
     return { carrier_code: code, tracking_number: trackingNumber };
   }
+  return buildMiraklTrackingBodyByName(trackingNumber, input.platformType);
+}
+
+/**
+ * The OR23 body naming the carrier instead of coding it. Also the fallback
+ * when Mirakl refuses a carrier code, so a wrong code never blocks shipping.
+ */
+export function buildMiraklTrackingBodyByName(
+  trackingNumber: string,
+  platformType: string | undefined
+): MiraklTrackingBody {
   return {
-    carrier_name: input.platformType?.trim() || UNKNOWN_CARRIER_NAME,
+    carrier_name: platformType?.trim() || UNKNOWN_CARRIER_NAME,
     tracking_number: trackingNumber,
   };
 }

@@ -122,6 +122,42 @@ describe('MiraklOrderStatusWriter dispatched', () => {
     });
   });
 
+  it('should resend the carrier by name when Mirakl refuses its code, then ship', async () => {
+    const { writer, put } = setup(buildMiraklOrder({ order_state: 'SHIPPING' }));
+    put.mockRejectedValueOnce(new MiraklApiException('unknown carrier', 400));
+
+    const result = await writer.write({
+      type: 'dispatched',
+      externalOrderId: '1001-A',
+      trackingNumber: 'TRK',
+      carrier: { platformType: 'dpd' },
+    });
+
+    expect(result).toEqual({ outcome: 'applied' });
+    expect(put.mock.calls).toEqual([
+      ['/api/orders/1001-A/tracking', { carrier_code: 'dpd', tracking_number: 'TRK' }],
+      ['/api/orders/1001-A/tracking', { carrier_name: 'dpd', tracking_number: 'TRK' }],
+      ['/api/orders/1001-A/ship'],
+    ]);
+  });
+
+  it('should reject when Mirakl refuses the carrier by name too, without shipping', async () => {
+    const { writer, put } = setup(buildMiraklOrder({ order_state: 'SHIPPING' }));
+    put
+      .mockRejectedValueOnce(new MiraklApiException('unknown carrier', 400))
+      .mockRejectedValueOnce(new MiraklApiException('bad tracking', 400));
+
+    const result = await writer.write({
+      type: 'dispatched',
+      externalOrderId: '1001-A',
+      trackingNumber: 'TRK',
+      carrier: { platformType: 'dpd' },
+    });
+
+    expect(result.outcome).toBe('rejected');
+    expect(put).toHaveBeenCalledTimes(2);
+  });
+
   it('should throw a transport failure so the relay treats it as unknown', async () => {
     const { writer, put } = setup(buildMiraklOrder({ order_state: 'SHIPPING' }));
     put.mockRejectedValueOnce(new MiraklNetworkException('timeout'));

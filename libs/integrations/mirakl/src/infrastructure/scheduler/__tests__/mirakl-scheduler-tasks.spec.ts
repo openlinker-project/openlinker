@@ -41,7 +41,22 @@ describe('buildMiraklSchedulerTasks', () => {
       'empik-offer-status-sync',
       'empik-returns-poll',
       'empik-returns-status-sync',
+      'empik-source-fulfillment-status-sync',
     ]);
+    expect(byId.get('empik-source-fulfillment-status-sync')).toMatchObject({
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.sourceFulfillment.statusSync',
+      cronExpression: '*/15 * * * *',
+      enabledEnvVar: 'OL_EMPIK_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+    });
+    expect(
+      byId.get('empik-source-fulfillment-status-sync')?.generatePayload({} as Connection)
+    ).toEqual({
+      schemaVersion: 1,
+      limit: 100,
+      cursorKey: 'empik.sourceFulfillmentStatus.scanOffset',
+      updatedSinceDays: 30,
+    });
     expect(byId.get('empik-returns-poll')?.generatePayload({} as Connection)).toEqual({
       schemaVersion: 1,
       cursorKey: 'empik.returns.lastUpdateDate',
