@@ -3,7 +3,7 @@
  *
  * Edits one routing rule's default parcel (size template - a listed size or a
  * typed carrier code - box in cm, weight in kg). Values are staged into the panel's draft state on Apply and only sent
- * with "Save routing". An empty draft clears the profile.
+ * with "Save assignment". An empty draft clears the profile.
  *
  * @module apps/web/src/features/mappings/components
  */

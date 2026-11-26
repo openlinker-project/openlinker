@@ -43,6 +43,7 @@ import { useMemo, type ReactElement, type ReactNode } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { z } from 'zod/v4';
 
+import type { RefundSendTarget } from '../lib/refund-send-target';
 import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -76,11 +77,11 @@ interface RefundConfirmationFormProps {
    */
   currency: string | null;
   /**
-   * True when confirming sends the refund to the store (see
-   * `useRefundSentToShopify`), which changes what the preamble may claim. A prop
-   * rather than a read here, so the form stays free of server state.
+   * The marketplace confirming sends the refund to (see `useRefundSendTarget`),
+   * which changes what the preamble may claim. A prop rather than a read here,
+   * so the form stays free of server state.
    */
-  sentToShopify?: boolean;
+  sendTarget?: RefundSendTarget | null;
   /** Rendered BESIDE the amount as context. Never placed in the input. */
   orderTotal?: string | null;
   pending: boolean;
@@ -121,7 +122,7 @@ type RefundFormValues = z.infer<ReturnType<typeof createRefundConfirmationSchema
 
 export function RefundConfirmationForm({
   currency,
-  sentToShopify = false,
+  sendTarget = null,
   orderTotal = null,
   pending,
   error,
@@ -171,7 +172,11 @@ export function RefundConfirmationForm({
       }}
     >
       <p className="refund-confirmation-form__preamble">
-        {sentToShopify ? copy.preambleShopify : copy.preamble}
+        {sendTarget === 'shopify'
+          ? copy.preambleShopify
+          : sendTarget === 'amazon'
+            ? copy.preambleAmazon
+            : copy.preamble}
       </p>
 
       <FormErrorSummary errors={messages} title={copy.heading} />

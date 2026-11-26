@@ -70,7 +70,7 @@ export function AmazonSetupForm(): ReactElement {
   const selected = form.watch('marketplaceIds');
   const role = form.watch('role');
   const offers = form.watch('offers') && role !== 'master';
-  const orders = form.watch('orders');
+  const readsOrders = form.watch('orders');
   const orderSyncStart = form.watch('orderSyncStart');
   const errors = form.formState.errors;
 
@@ -282,7 +282,7 @@ export function AmazonSetupForm(): ReactElement {
         ) : null}
       </fieldset>
 
-      {orders ? (
+      {readsOrders ? (
         <OrderSyncStartSection
           adapterKey={AMAZON_ADAPTER_KEY}
           value={orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}

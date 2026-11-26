@@ -82,7 +82,7 @@
       "copy": "Kopiuj ID klienta",
       "copyFor": "Kopiuj ID klienta {name}"
     },
-    "description": "Tożsamości klientów - przeglądaj rozpoznanych klientów i historię adresów.",
+    "description": "Przeglądaj rozpoznanych klientów i historię ich adresów.",
     "empty": {
       "browseOrders": "Przeglądaj zamówienia",
       "clearFilters": "Wyczyść filtry",
@@ -106,6 +106,16 @@
       "label": "Brak imienia i nazwiska",
       "srPrefix": "Klient,"
     },
-    "title": "Klienci"
+    "title": "Klienci",
+    "views": {
+      "lockedDescription": "Imię i nazwisko lub skrót",
+      "sorts": {
+        "lastSeenDesc": "Ostatnio widziani, najnowsi",
+        "nameAsc": "Klient, od A do Z"
+      },
+      "systemViews": {
+        "all": "Wszyscy klienci"
+      }
+    }
   }
 }

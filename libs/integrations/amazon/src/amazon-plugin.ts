@@ -81,13 +81,21 @@ export const amazonAdapterManifest: AdapterMetadata = {
   defaultEnabledCapabilities: [],
   // Amazon's Data Protection Policy: buyer personal data is deleted no later
   // than 30 days after delivery. Enforced by the order buyer-data retention
-  // pass (#4178). The order source reads an order already past it without the
-  // buyer's data (`amazon-buyer-data-window.policy.ts`).
+  // pass (#4178).
   buyerDataRetentionDays: AMAZON_BUYER_DATA_RETENTION_DAYS,
-  // Where order sync starts (#4228): from now (the default), from a date, or
-  // the whole history. No date-window import: `listOrdersInWindow` is not
-  // implemented, so the import dialog's range choice stays unavailable.
-  orderSyncStartModes: ['now', 'from', 'all'],
+  // The operator chooses where order sync starts (#4262): only new orders or
+  // from a date. There is no "all": a feed with no position starts a 7-day
+  // bootstrap (the Orders API is read by a date window), so "every order the
+  // shop has" would silently import only the last week. History is reached
+  // with "from" and an early date, or the date-range import. The date window
+  // import also backs "newest first" and a manual date-range run.
+  orderSyncStartModes: ['now', 'from'],
+  orderWindowImport: true,
+  // Non-secret keys the UI may read under any role: the bulk offer wizard
+  // needs the marketplaces and merchant token, and the refund dialogs need to
+  // know whether a confirmed refund is sent to Amazon. The notification queue
+  // URL is deliberately absent.
+  publicConfigKeys: ['sellerId', 'refundsEnabled', 'marketplaceIds'],
   displayName: 'Amazon Selling Partner API',
   version: '0.1.0',
   isDefault: true,

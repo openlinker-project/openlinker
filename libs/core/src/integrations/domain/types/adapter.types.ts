@@ -287,8 +287,9 @@ export interface AdapterMetadata {
    * whole config from non-admins, which also hid facts the UI needs to tell the
    * truth - KSeF's QR code points at a different portal per environment, so an
    * operator was shown a TEST-portal code for a production invoice. Only keys
-   * an adapter declares here, and only scalar values, are exposed as
-   * `publicConfig`; never a secret, URL or identifier. Absent means none.
+   * an adapter declares here, and only scalar values or a list of strings (an
+   * id list), are exposed as `publicConfig`; never a secret or a URL. Absent
+   * means none.
    */
   publicConfigKeys?: string[];
 

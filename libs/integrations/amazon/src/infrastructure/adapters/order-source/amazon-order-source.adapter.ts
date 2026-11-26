@@ -45,6 +45,8 @@
 import type {
   IncomingOrder,
   MappingOption,
+  OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
   OrderFeedInput,
   OrderFeedItem,
   OrderFeedOutput,
@@ -52,14 +54,15 @@ import type {
   OrderSourcePort,
   OrderFulfillmentReadback,
   OrderStatusWriteback,
+  OrderWindowInput,
+  OrderWindowPage,
+  OrderWindowReader,
   OrderWritebackResult,
-  OrderFeedBootstrap,
-  OrderFeedDateBootstrap,
   ReturnSourceReader,
   SourceFulfillmentReadback,
   SourceOptionsReader,
 } from '@openlinker/core/orders';
-import { OrderSyncStartUnavailableError, unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
+import { unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
 import type { IncomingReturn, ReturnFeedInput, ReturnFeedOutput } from '@openlinker/core/returns';
 import { Logger } from '@openlinker/shared/logging';
 import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
@@ -67,16 +70,21 @@ import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared
 import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
 import type { AmazonConnectionConfig } from '../../../domain/types/amazon-config.types';
 import {
-  AMAZON_ORDER_FEED_HISTORY_START,
-  AMAZON_ORDER_FEED_OVERLAP_MS,
-  amazonOrderFeedStartCursor,
   decodeAmazonOrderFeedCursor,
   encodeAmazonOrderFeedCursor,
   nextAmazonOrderFeedCursor,
-  parseAmazonOrderSyncStartDate,
   scopeAmazonOrderFeedCursor,
 } from '../../../domain/policies/amazon-order-feed-cursor.policy';
 import { isWithinAmazonBuyerDataWindow } from '../../../domain/policies/amazon-buyer-data-window.policy';
+import {
+  amazonLatestQueryableMs,
+  amazonOrderWindowSlice,
+  decodeAmazonOrderWindowCursor,
+  encodeAmazonOrderWindowCursor,
+  nextAmazonWindowSlice,
+  parseAmazonStartDate,
+  resolveAmazonOrderWindow,
+} from '../../../domain/policies/amazon-order-window.policy';
 import { amazonPackageReferenceId } from '../../../domain/policies/amazon-package-reference.policy';
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
 import { AmazonNetworkError } from '../../../domain/exceptions/amazon-network.error';
@@ -131,7 +139,8 @@ export class AmazonOrderSourceAdapter
     OrderStatusWriteback,
     OrderFulfillmentReadback,
     SourceOptionsReader,
-    ReturnSourceReader
+    ReturnSourceReader,
+    OrderWindowReader
 {
   private readonly logger = new Logger(AmazonOrderSourceAdapter.name);
 
@@ -198,6 +207,78 @@ export class AmazonOrderSourceAdapter
     return { items, nextCursor: encodeAmazonOrderFeedCursor(next) };
   }
 
+  // --- Order sync start (#4262) ------------------------------------------
+
+  /**
+   * Cursor at "now", never null: Amazon always has a position to start from.
+   * It sits one overlap behind the clock, because `searchOrders` refuses a
+   * `lastUpdatedAfter` closer than two minutes, so an order updated in that
+   * gap is read once rather than missed. The one cheap read proves the shop
+   * answers before the operator's choice is stored as a seed.
+   */
+  async headCursor(): Promise<string | null> {
+    const since = new Date(amazonLatestQueryableMs(this.now())).toISOString();
+    await this.client.get<AmazonSearchOrdersResponse>(SEARCH_ORDERS_PATH, {
+      marketplaceIds: this.config.marketplaceIds,
+      lastUpdatedAfter: since,
+      maxResultsPerPage: 1,
+    });
+    return encodeAmazonOrderFeedCursor({ since, marketplaceIds: [...this.config.marketplaceIds] });
+  }
+
+  /**
+   * Cursor at the start of `date` (a bare day is read in UTC). The feed reads
+   * by last update, so an order created earlier but updated since also comes
+   * in: re-reading it is safe. A date in the future clamps to "now".
+   */
+  cursorForDate(date: string): Promise<string> {
+    const startMs = parseAmazonStartDate(date, 'start', 'Amazon order sync start');
+    const since = new Date(Math.min(startMs, amazonLatestQueryableMs(this.now()))).toISOString();
+    return Promise.resolve(encodeAmazonOrderFeedCursor({ since, marketplaceIds: [...this.config.marketplaceIds] }));
+  }
+
+  /**
+   * One page of orders created in `[from, to]`. Never touches the feed cursor.
+   * Walked in 30-day slices in the requested direction (see the window policy);
+   * an empty slice is skipped inside the call so a page is short only when the
+   * walk is done.
+   */
+  async listOrdersInWindow(input: OrderWindowInput): Promise<OrderWindowPage> {
+    const now = this.now();
+    const window = resolveAmazonOrderWindow({ from: input.from, to: input.to }, now);
+    const newestFirst = input.direction === 'newest-first';
+    const limit = Math.min(Math.max(Math.trunc(input.limit), 1), MAX_RESULTS_PER_PAGE);
+    let cursor = decodeAmazonOrderWindowCursor(input.cursor, window, newestFirst, now);
+
+    for (;;) {
+      const { createdAfter, createdBefore } = amazonOrderWindowSlice(window, cursor.slice);
+      const response = await this.client.get<AmazonSearchOrdersResponse>(SEARCH_ORDERS_PATH, {
+        marketplaceIds: this.config.marketplaceIds,
+        createdAfter,
+        createdBefore,
+        maxResultsPerPage: limit,
+        ...(cursor.paginationToken ? { paginationToken: cursor.paginationToken } : {}),
+      });
+      const orders = [...(response.data.orders ?? [])].sort((a, b) =>
+        newestFirst ? b.createdTime.localeCompare(a.createdTime) : a.createdTime.localeCompare(b.createdTime),
+      );
+      const nextToken = response.data.pagination?.nextToken;
+      const sameSlice = nextToken !== undefined && nextToken.length > 0;
+      const nextSlice = sameSlice ? cursor.slice : nextAmazonWindowSlice(window, cursor.slice, newestFirst);
+
+      if (nextSlice === null) {
+        return { items: orders.map((order) => toFeedItem(order)), nextCursor: null, done: true };
+      }
+      const next = sameSlice
+        ? encodeAmazonOrderWindowCursor({ slice: nextSlice, paginationToken: nextToken, tokenIssuedAt: now.toISOString() })
+        : encodeAmazonOrderWindowCursor({ slice: nextSlice });
+      if (orders.length > 0) {
+        return { items: orders.map((order) => toFeedItem(order)), nextCursor: next, done: false };
+      }
+      cursor = decodeAmazonOrderWindowCursor(next, window, newestFirst, now);
+    }
+  }
+
   /**
    * The buyer's personal data is fetched only while the order is inside the
    * buyer-data window (`amazon-buyer-data-window.policy.ts`): the first read
@@ -220,50 +301,6 @@ export class AmazonOrderSourceAdapter
     }
     const order = await this.readOrder(input.externalOrderId);
     return mapAmazonOrderToIncomingOrder(order, this.orderLineRef);
-  }
-
-  /**
-   * The "from now" start (#4228): a watermark at now minus the feed's overlap,
-   * so orders updated in the last two minutes are read once more rather than
-   * missed (Amazon's `lastUpdatedAfter` must be at least that far in the past).
-   * `null` when the account has no order at all, so core reads from the start
-   * and nothing placed before the next poll is skipped. A failed read throws.
-   */
-  async headCursor(): Promise<string | null> {
-    const response = await this.client.get<AmazonSearchOrdersResponse>(SEARCH_ORDERS_PATH, {
-      marketplaceIds: this.config.marketplaceIds,
-      lastUpdatedAfter: AMAZON_ORDER_FEED_HISTORY_START,
-      maxResultsPerPage: 1,
-    });
-    if ((response.data.orders ?? []).length === 0) {
-      return null;
-    }
-    return amazonOrderFeedStartCursor(
-      new Date(this.now().getTime() - AMAZON_ORDER_FEED_OVERLAP_MS),
-      this.config.marketplaceIds,
-    );
-  }
-
-  /**
-   * The "from a date" start (#4228): a watermark at the start of `date` (a bare
-   * day is midnight UTC). The feed reads by `lastUpdatedAfter`, so an order
-   * placed before the date and changed after it is read too. A value that is
-   * not a date, or a date in the future, is refused with the typed error core
-   * shows the operator.
-   */
-  cursorForDate(date: string): Promise<string> {
-    const since = parseAmazonOrderSyncStartDate(date);
-    if (since === null) {
-      return Promise.reject(
-        new OrderSyncStartUnavailableError(`"${date}" is not a date Amazon order sync can start from`),
-      );
-    }
-    if (since.getTime() > this.now().getTime()) {
-      return Promise.reject(
-        new OrderSyncStartUnavailableError(`Amazon order sync cannot start from a future date (${date})`),
-      );
-    }
-    return Promise.resolve(amazonOrderFeedStartCursor(since, this.config.marketplaceIds));
   }
 
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {

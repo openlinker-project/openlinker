@@ -1,5 +1,6 @@
 import { cleanup, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionChip } from './ConnectionChip';
 import { SYSTEM_CONNECTION_ID } from '../api/connections.types';
 import { renderWithProviders } from '../../../test/test-utils';
@@ -154,5 +155,36 @@ describe('ConnectionChip', () => {
     expect(link).toHaveClass('connection-chip--name-only');
     expect(link.querySelector('.connection-chip__reveal')).toBeNull();
     expect(link).not.toHaveAttribute('data-channel');
+  });
+
+  it('should render the face alone as a plain element when static, with no slide-out and no link', () => {
+    renderWithProviders(
+      <ConnectionChip static connectionId={CONNECTION_ID} name="Erli Demo" channel={CHANNEL} />,
+    );
+
+    expect(screen.queryByRole('link')).toBeNull();
+    const chip = screen.getByText('Erli Demo').closest('.connection-chip');
+    expect(chip).toHaveClass('connection-chip--static');
+    expect(chip?.querySelector('.connection-chip__reveal')).toBeNull();
+    expect(chip).toHaveAttribute('data-channel', 'erli');
+  });
+
+  it('should link to the given path with the given label and report the navigation', async () => {
+    const onNavigate = vi.fn();
+    renderWithProviders(
+      <ConnectionChip
+        connectionId={CONNECTION_ID}
+        name="Erli Demo"
+        channel={CHANNEL}
+        to="/x?scope=1"
+        linkLabel="Open Erli Demo"
+        onNavigate={onNavigate}
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: 'Open Erli Demo' });
+    expect(link).toHaveAttribute('href', '/x?scope=1');
+    await userEvent.click(link);
+    expect(onNavigate).toHaveBeenCalledTimes(1);
   });
 });

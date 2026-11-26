@@ -9,7 +9,8 @@
  *
  * @module apps/api/src/orders/http/dto
  */
-import { IsOptional, IsUUID, IsString, IsDateString } from 'class-validator';
+import { IsOptional, IsUUID, IsString, IsDateString, IsBoolean } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class OrderHealthSummaryQueryDto {
@@ -32,4 +33,16 @@ export class OrderHealthSummaryQueryDto {
   @IsOptional()
   @IsDateString()
   createdTo?: string;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Buyer data retention (#4289): true counts only orders hidden by the retention rule, ' +
+      'false or omitted excludes them - the same scope `GET /orders?hidden=` applies, so the ' +
+      'counts agree with the rows.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  hidden?: boolean;
 }

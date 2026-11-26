@@ -24,7 +24,10 @@ export function AmazonBulkConfigSection({ connection, form }: BulkOfferConfigSec
   const copy = messages.bulk;
   const countries = messages.setup.countries;
 
-  const marketplaces = (Array.isArray(connection.config.marketplaceIds) ? connection.config.marketplaceIds : [])
+  // The role-safe projection first: `config` is `{}` for every role but admin,
+  // and an operator runs the bulk wizard too.
+  const marketplaceIds = connection.publicConfig?.marketplaceIds ?? connection.config.marketplaceIds;
+  const marketplaces = (Array.isArray(marketplaceIds) ? marketplaceIds : [])
     .filter((id): id is string => typeof id === 'string')
     .map((id) => findMarketplace(id))
     .filter((marketplace) => marketplace !== undefined);
@@ -44,7 +47,8 @@ export function AmazonBulkConfigSection({ connection, form }: BulkOfferConfigSec
   const reached = marketplaces
     .filter((marketplace) => marketplace.currency === currency)
     .map((marketplace) => countries[marketplace.country as keyof typeof countries] ?? marketplace.country);
-  const sellerId = typeof connection.config.sellerId === 'string' ? connection.config.sellerId.trim() : '';
+  const sellerIdValue = connection.publicConfig?.sellerId ?? connection.config.sellerId;
+  const sellerId = typeof sellerIdValue === 'string' ? sellerIdValue.trim() : '';
 
   return (
     <div className="bulk-config__platform-section">

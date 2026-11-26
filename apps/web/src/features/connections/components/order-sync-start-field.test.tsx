@@ -199,7 +199,7 @@ describe('OrderSyncStartField', () => {
     it('should keep newest first when a date is typed', () => {
       const onValue = vi.fn();
       renderWithProviders(
-        <Harness initial={{ mode: 'from', from: '', order: 'newest-first' }} onValue={onValue} />,
+        <Harness initial={{ mode: 'from', from: '', order: 'newest-first' }} onValue={onValue} />
       );
       fireEvent.change(screen.getByLabelText('First day to import'), {
         target: { value: '2026-01-05' },

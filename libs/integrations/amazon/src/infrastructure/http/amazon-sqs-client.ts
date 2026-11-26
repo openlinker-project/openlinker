@@ -15,6 +15,7 @@
 import type { FetchLike } from '@openlinker/shared/http';
 import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
 
+import { amazonTestOverride } from '../../amazon.constants';
 import { AmazonApiError } from '../../domain/exceptions/amazon-api.error';
 import { AmazonNetworkError } from '../../domain/exceptions/amazon-network.error';
 import type { AmazonNotificationQueue } from '../../domain/types/amazon-config.types';
@@ -71,7 +72,8 @@ export class AmazonSqsClient {
   }
 
   private async call<T>(action: string, payload: Record<string, unknown>): Promise<T> {
-    const url = `https://sqs.${this.queue.region}.amazonaws.com/`;
+    // Test seam (ignored in production): the fake SQS of the automated E2E.
+    const url = `${amazonTestOverride('OL_AMAZON_SQS_BASE_URL') ?? `https://sqs.${this.queue.region}.amazonaws.com`}/`;
     const body = JSON.stringify(payload);
     const headers = signAwsRequest({
       method: 'POST',

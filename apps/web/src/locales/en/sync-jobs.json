@@ -58,11 +58,14 @@
     "masterProductSyncDelta": "Sync changed products",
     "masterProductSyncFromSweep": "Sync one product (scheduled)",
     "masterVariantsAutoMatch": "Match variants to offers",
+    "orderPaymentWritebackPush": "Tell the shop an order was paid",
     "ordersExport": "Export orders",
     "ordersHoldsReconcile": "Repair order holds",
     "ordersTaxRateBackfill": "Fill in order tax rates",
     "pricingPropagateToMarketplaces": "Send price change to channels",
     "returnsOrphanReconcile": "Match returns to orders",
+    "salesDocumentBatchRun": "Issue batched sales documents",
+    "salesDocumentBatchTick": "Check batched issuing schedules",
     "shippingPickupPointRefreshFrequent": "Refresh pickup points",
     "shippingShipmentNotifyDispatched": "Tell marketplace parcel was sent",
     "shopProductPublish": "Publish product to shop",
@@ -208,6 +211,25 @@
       "range": "Showing {from}-{to} of {total}"
     },
     "retry": "Retry",
+    "savedViews": {
+      "jobTypeFields": "Label, key",
+      "sorts": {
+        "attempts": "Attempts",
+        "createdNewest": "Created, newest",
+        "createdOldest": "Created, oldest",
+        "duration": "Duration",
+        "jobType": "Job type",
+        "status": "Status"
+      },
+      "statusFields": "State, outcome",
+      "views": {
+        "all": "All jobs",
+        "businessFailures": "Business failures",
+        "dead": "Gave up",
+        "queued": "Queued",
+        "running": "Running"
+      }
+    },
     "title": "Sync Jobs"
   },
   "triggerSyncDialog": {

@@ -7,6 +7,15 @@
  *
  * @module libs/core/src/orders/domain/ports
  */
+import type {
+  BuyerDataAgeHistogramRows,
+  BuyerDataRetentionCounts,
+  BuyerDataRetentionSample,
+  BuyerDataRetentionScope,
+  ErasableOrderRow,
+  PersonalDataErasure,
+  PersonalDataErasureResult,
+} from '../types/buyer-data-retention.types';
 import type { LineExpansion } from '@openlinker/core/products';
 import type { OrderRecord } from '../entities/order-record.entity';
 import type { OrderLineItemDraft } from '../order-analytics-projection';
@@ -36,7 +45,10 @@ import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
 import type { DeliveryCountryFact } from '../types/delivery-country-facts.types';
-import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
+import type {
+  DailyOrderAggregateRow,
+  SalesAnalyticsFilters,
+} from '../types/order-sales-analytics.types';
 import type { ApplyOrderEditInput } from '../types/order-edits.types';
 import type {
   CoverageDetectionPagination,
@@ -334,9 +346,7 @@ export interface OrderRecordRepositoryPort {
    * label claiming to count cancellations). `lifecyclePhase` itself is likewise
    * not a valid input.
    */
-  countByLifecyclePhase(
-    filters: OrderHealthSummaryFilters
-  ): Promise<OrderLifecyclePhaseSummary>;
+  countByLifecyclePhase(filters: OrderHealthSummaryFilters): Promise<OrderLifecyclePhaseSummary>;
 
   /**
    * "Value stuck in failed syncs" — the needs-attention aggregate (#1983).
@@ -688,10 +698,7 @@ export interface OrderRecordRepositoryPort {
    *
    * No-op (no throw) when the order row doesn't exist.
    */
-  updateFulfillmentBlock(
-    internalOrderId: string,
-    block: FulfillmentBlock | null
-  ): Promise<void>;
+  updateFulfillmentBlock(internalOrderId: string, block: FulfillmentBlock | null): Promise<void>;
 
   /**
    * Persist how a routing decision narrowed this order's destination fan-out
@@ -860,11 +867,7 @@ export interface OrderRecordRepositoryPort {
    * row matches the id at all. It never throws, so a caller that must tell
    * those two apart re-reads via {@link findById}.
    */
-  markPacked(
-    internalOrderId: string,
-    packedAt: Date,
-    packedByUserId: string
-  ): Promise<boolean>;
+  markPacked(internalOrderId: string, packedAt: Date, packedByUserId: string): Promise<boolean>;
 
   /**
    * Mark this order's buyer note read (#3538) - writes `buyerNoteReadAt` +
@@ -873,11 +876,76 @@ export interface OrderRecordRepositoryPort {
    * wrote, `false` for an already-read order or an absent row (never throws;
    * the caller re-reads to tell them apart, as with {@link markPacked}).
    */
-  markBuyerNoteRead(
-    internalOrderId: string,
-    readAt: Date,
-    readByUserId: string
-  ): Promise<boolean>;
+  markBuyerNoteRead(internalOrderId: string, readAt: Date, readByUserId: string): Promise<boolean>;
+
+  /**
+   * Buyer data retention (#4289): count the orders a scope would hide and
+   * erase, apart from the ones it must skip. Reads only; the trial run and the
+   * live sweep share this predicate, so what the operator is shown is what the
+   * sweep will act on.
+   */
+  countBuyerDataRetentionCandidates(
+    scope: BuyerDataRetentionScope
+  ): Promise<BuyerDataRetentionCounts>;
+
+  /**
+   * Buyer data retention (#4289): every order still on the list (not hidden)
+   * in the scope's connection, or in all of them. The candidate counts only
+   * cover orders past the shortest period, so "what stays" needs this.
+   */
+  countVisibleOrdersForBuyerData(connectionId?: string): Promise<number>;
+
+  /**
+   * Buyer data retention (#4289): the order book grouped by age in 30-day
+   * months (capped at 120), split visible / hidden / erased. Sparse - months
+   * with no orders are absent; the service fills them in.
+   */
+  getBuyerDataAgeHistogram(now: Date, connectionId?: string): Promise<BuyerDataAgeHistogramRows>;
+
+  /**
+   * Up to `limit` example orders the scope would touch, newest first. Carries
+   * no personal data: the reference and date are the order's own, the buyer
+   * is always a masked placeholder.
+   */
+  findBuyerDataRetentionSamples(
+    scope: BuyerDataRetentionScope,
+    limit: number
+  ): Promise<BuyerDataRetentionSample[]>;
+
+  /**
+   * Hide up to `limit` eligible orders of one connection - one narrow UPDATE
+   * writing `hiddenAt` and nothing else, skipping rows a peer holds locked and
+   * every protected order. Returns how many were hidden.
+   */
+  hideOrdersForBuyerDataRetention(
+    connectionId: string,
+    before: Date,
+    limit: number,
+    now: Date
+  ): Promise<number>;
+
+  /** One bounded page of orders whose personal data is due for erasure. */
+  findErasableOrdersForBuyerDataRetention(
+    connectionId: string,
+    before: Date,
+    limit: number
+  ): Promise<ErasableOrderRow[]>;
+
+  /**
+   * Erase the buyer's personal data on each given order. Per row, one guarded
+   * UPDATE (`personalDataErasedAt IS NULL`, not protected), so a replay or a
+   * concurrent erase is a no-op. Sole writer of `personalDataErasedAt`.
+   */
+  erasePersonalDataForRetention(
+    erasures: readonly PersonalDataErasure[],
+    now: Date
+  ): Promise<PersonalDataErasureResult>;
+
+  /**
+   * Of the given customer ids, those that no longer have ANY order still
+   * holding personal data - the only customers whose projection may be cleared.
+   */
+  findCustomerIdsWithoutPersonalDataOrders(customerIds: readonly string[]): Promise<string[]>;
 
   /**
    * Count the OTHER orders `customerId` placed before `before` (#3538, D7),
@@ -1249,9 +1317,11 @@ export interface OrderRecordRepositoryPort {
   /**
    * Remove an order's buyer data (#4178): the redacted snapshot and search text
    * are written, the buyer note and tax id are cleared, an operator's address
-   * edit is dropped from the overlay, and `buyerDataRedactedAt` is stamped.
-   * Guarded on `buyerDataRedactedAt IS NULL`, so it happens once; returns
-   * whether it did. `updatedAt` is left alone (the order did not change).
+   * edit is dropped from the overlay, `hasBuyerNote` is cleared, and
+   * `buyerDataRedactedAt` and `personalDataErasedAt` are stamped (a redaction
+   * is an erasure, so every guard keyed on the latter covers it). Guarded on
+   * both being NULL, so it happens once and an already erased order is left
+   * alone; returns whether it did. `updatedAt` is left alone (the order did not change).
    */
   redactBuyerData(redaction: OrderBuyerDataRedaction): Promise<boolean>;
 

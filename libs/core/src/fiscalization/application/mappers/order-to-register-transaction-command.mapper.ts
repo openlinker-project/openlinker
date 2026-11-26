@@ -20,6 +20,7 @@
 // `@Inject()` decorator in `SalesDocumentViewService`. `Order` / `OrderItem`
 // are type-only and erase, so they may come from either.
 import type { Order, OrderItem } from '@openlinker/core/orders';
+import { isUnmatchedProductId, readableProductLabel } from '@openlinker/core/identifier-mapping';
 import { decodeBuyerTaxIdColumn } from '@openlinker/core/orders/types';
 import {
   describeNetPricedOrderRefusal,
@@ -374,7 +375,7 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
     );
   }
   return {
-    name: item.name?.trim() || item.sku || item.productId,
+    name: item.name?.trim() || item.sku || readableProductLabel(item.productId),
     quantity: item.quantity,
     // See the invoicing twin: the source's own gross when it reported one
     // (#3365), otherwise `price`, which is already gross on a gross-priced
@@ -384,8 +385,10 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
     taxRate: item.taxRate?.trim() ?? '',
     sku: item.sku ?? null,
     // Carried so the post-registration stock re-read knows what moved; the
-    // shipping lines below deliberately omit it.
-    productId: item.productId,
+    // shipping lines below deliberately omit it. Omitted for a line accepted
+    // without a catalogue match (#4280): its synthetic id names no product, so
+    // there is nothing for the re-read to find.
+    ...(!isUnmatchedProductId(item.productId) && { productId: item.productId }),
   };
 }
 

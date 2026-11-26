@@ -14,7 +14,13 @@ import { AmazonBulkConfigSection, amazonBulkConfigIsComplete } from './amazon-bu
 
 let currentCurrency = '';
 
-function Harness({ config }: { config: Record<string, unknown> }): ReactElement {
+function Harness({
+  config,
+  publicConfig,
+}: {
+  config: Record<string, unknown>;
+  publicConfig?: Record<string, string | number | boolean | string[]>;
+}): ReactElement {
   const form = useForm<BulkConfigFormValues>({
     defaultValues: {
       pricingMode: 'use-master',
@@ -32,7 +38,7 @@ function Harness({ config }: { config: Record<string, unknown> }): ReactElement 
   currentCurrency = form.watch('currency');
   return (
     <AmazonBulkConfigSection
-      connection={{ ...sampleConnection, platformType: 'amazon', config } as Connection}
+      connection={{ ...sampleConnection, platformType: 'amazon', config, publicConfig } as Connection}
       form={form}
     />
   );
@@ -57,6 +63,15 @@ describe('AmazonBulkConfigSection', () => {
     fireEvent.change(await screen.findByLabelText('Offer currency'), { target: { value: 'EUR' } });
 
     expect(await screen.findByText('Offers go to: Germany, France.')).toBeInTheDocument();
+  });
+
+  it('should read the marketplaces and merchant token from publicConfig when the config is hidden', async () => {
+    renderWithProviders(
+      <Harness config={{}} publicConfig={{ marketplaceIds: ['ATVPDKIKX0DER'], sellerId: 'A2EXAMPLE12345' }} />,
+    );
+
+    expect(await screen.findByText('Offers go to: United States.')).toBeInTheDocument();
+    expect(screen.queryByText(/Without the merchant token/)).toBeNull();
   });
 
   it('should warn when the merchant token is missing', async () => {

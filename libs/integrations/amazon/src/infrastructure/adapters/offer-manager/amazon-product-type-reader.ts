@@ -16,6 +16,7 @@
  */
 import type { FetchLike } from '@openlinker/shared/http';
 
+import { isAmazonTestOrigin } from '../../../amazon.constants';
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
 import type {
   AmazonProductTypeDefinition,
@@ -86,6 +87,9 @@ export function safeSchemaUrl(resource: string): string {
     url = new URL(resource);
   } catch {
     throw new AmazonApiError(502, 'SchemaLinkInvalid', 'product type schema link is not a URL', undefined);
+  }
+  if (isAmazonTestOrigin(url.origin) && url.username === '' && url.password === '') {
+    return url.toString();
   }
   if (url.protocol !== 'https:' || url.username !== '' || url.password !== '' || !SCHEMA_HOST_PATTERN.test(url.hostname)) {
     throw new AmazonApiError(502, 'SchemaLinkInvalid', `product type schema link is not on an Amazon host (${url.hostname})`, undefined);

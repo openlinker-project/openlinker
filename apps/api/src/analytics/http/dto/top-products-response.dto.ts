@@ -23,6 +23,7 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import type { ProductChannelBreakdownRow, TopProductView } from '@openlinker/core/orders';
+import { readUnmatchedOfferId } from '@openlinker/core/identifier-mapping';
 
 export class ProductChannelBreakdownDto {
   @ApiProperty()
@@ -132,6 +133,14 @@ export class TopProductRowDto {
   channels!: ProductChannelBreakdownDto[];
 
   @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Set when this row is a marketplace line accepted WITHOUT a catalogue match (catalogue-less mode, #4280): the marketplace\u2019s own offer id. productId is then a synthetic id, not a catalogue product; name is null and sku carries the offer id. Null for an ordinary catalogue product.',
+  })
+  unmatchedOfferId!: string | null;
+
+  @ApiProperty({
     type: [String],
     description:
       'Listing-capable connection ids where this product has sales but no variant is currently listed.',
@@ -168,6 +177,7 @@ export class TopProductRowDto {
     dto.currency = view.currency;
     dto.unconvertedCurrency = view.unconvertedCurrency;
     dto.channels = view.channels.map((row) => ProductChannelBreakdownDto.fromDomain(row));
+    dto.unmatchedOfferId = readUnmatchedOfferId(view.productId);
     dto.missingFromConnectionIds = missingFromConnectionIds;
     dto.netRevenue = view.netRevenue;
     dto.netExcludedRevenue = view.netExcludedRevenue;
@@ -188,6 +198,12 @@ export class TopProductsResponseDto {
       'Count of items in this page whose productId could not be resolved to a live catalogue entry (name/sku are null for those rows) — never silently dropped.',
   })
   unresolvedProductCount!: number;
+
+  @ApiProperty({
+    description:
+      'Count of items in this page that are marketplace lines accepted without a catalogue match (catalogue-less mode, #4280). Reported separately from unresolvedProductCount: these are not catalogue products that went missing, they never had one.',
+  })
+  unmatchedOfferCount!: number;
 
   @ApiProperty({
     description:

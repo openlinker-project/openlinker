@@ -40,7 +40,9 @@ describe('PrestashopOrderSourceAdapter.listOrdersInWindow', () => {
       client,
       new PrestashopOrderMapper(),
       createTestConnection(),
-      { resolveOrderCurrencyIso: jest.fn().mockResolvedValue('PLN') } as unknown as PrestashopOrderCurrencyResolver
+      {
+        resolveOrderCurrencyIso: jest.fn().mockResolvedValue('PLN'),
+      } as unknown as PrestashopOrderCurrencyResolver
     );
   });
 

@@ -1,0 +1,55 @@
+# Amazon E2E overlay (layer 1: fake SP-API). Used TOGETHER with the base and
+# demo files:
+#   docker compose -p olamz --env-file amazon-stack/amazon-e2e.env \
+#     -f docker-compose.yml -f docker-compose.demo.yml \
+#     -f apps/e2e/amazon-stack/docker-compose.amazon-e2e.yml up -d --build \
+#     postgres redis migrate api worker web amazon-fake
+#
+# NODE_ENV is NOT production on api/worker: the Amazon host / LWA overrides
+# (OL_AMAZON_SPAPI_BASE_URL_*, OL_AMAZON_LWA_URL) are ignored under production.
+x-amazon-env: &amazon-env
+  NODE_ENV: e2e
+  OL_AMAZON_LWA_URL: http://amazon-fake:4100
+  OL_AMAZON_SPAPI_BASE_URL_EU: http://amazon-fake:4101
+  OL_AMAZON_SPAPI_BASE_URL_NA: http://amazon-fake:4102
+  OL_AMAZON_SPAPI_BASE_URL_FE: http://amazon-fake:4103
+  OL_AMAZON_SQS_BASE_URL: http://amazon-fake:4104
+  OL_AMAZON_ORDERS_POLL_SCHEDULER_ENABLED: 'true'
+  OL_AMAZON_RETURNS_POLL_SCHEDULER_ENABLED: 'true'
+  OL_AMAZON_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED: 'true'
+  OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED: 'true'
+  OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED: 'true'
+  OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'true'
+  # Test seam (ignored in production): tick the slow tasks every minute so a run can watch them.
+  OL_AMAZON_RETURNS_POLL_CRON: '* * * * *'
+  OL_AMAZON_RETURNS_STATUS_SYNC_CRON: '* * * * *'
+  OL_AMAZON_OFFERS_SYNC_CRON: '* * * * *'
+  OL_AMAZON_OFFER_STATUS_SYNC_CRON: '* * * * *'
+
+services:
+  api:
+    environment:
+      <<: *amazon-env
+  worker:
+    environment:
+      <<: *amazon-env
+  amazon-fake:
+    image: node:22-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-openlinker}-amazon-fake
+    working_dir: /fake
+    # ajv for the contract checks is installed at start (pinned); the official
+    # Amazon models are fetched on the host by fetch-models.mjs into .models/.
+    command:
+      - sh
+      - -c
+      - mkdir -p /deps && cd /deps && npm init -y >/dev/null && npm i --silent --no-audit --no-fund ajv@8.17.1 ajv-formats@3.0.1 && cd /fake && node server.mjs
+    volumes:
+      - ./apps/e2e/src/fakes/amazon-spapi:/fake:ro
+    environment:
+      FAKE_PUBLIC_HOST: amazon-fake
+    ports:
+      - '127.0.0.1:${AMAZON_FAKE_HOST_PORT_BASE:-58100}:4100'
+      - '127.0.0.1:${AMAZON_FAKE_EU_HOST_PORT:-58101}:4101'
+      - '127.0.0.1:${AMAZON_FAKE_NA_HOST_PORT:-58102}:4102'
+      - '127.0.0.1:${AMAZON_FAKE_FE_HOST_PORT:-58103}:4103'
+      - '127.0.0.1:${AMAZON_FAKE_SQS_HOST_PORT:-58104}:4104'

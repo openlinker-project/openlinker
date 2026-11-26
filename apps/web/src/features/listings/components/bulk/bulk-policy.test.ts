@@ -1208,6 +1208,16 @@ describe('computeBlockers for a bundle (#3520)', () => {
     expect(computeBlockers(input({ bundle: bundle(null, null) }))).toEqual(['no-match']);
   });
 
+  it('should say the catalogue card names no category rather than "not in the catalogue"', () => {
+    // The composition panel reports the component as a catalogue card, so the
+    // row must not claim the catalogue has no match.
+    const blockers = computeBlockers(
+      input({ bundle: bundle(null, null), bundleCardWithoutCategory: true }),
+    );
+    expect(blockers).toEqual(['bundle-card-no-category']);
+    expect(blockers).not.toContain('no-match');
+  });
+
   it('should name a category that differs from the first component card', () => {
     expect(computeBlockers(input({ bundle: bundle('74035', '110886'), productCategoryId: '110886' }))).toEqual([
       'allegro:bundle-category-mismatch',

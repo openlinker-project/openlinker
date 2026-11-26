@@ -28,11 +28,10 @@
  *
  * @module apps/web/src/pages/customers
  */
-import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
-import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
-import { useTableSort } from '../../shared/ui/use-table-sort';
+import { DataTable } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
@@ -48,6 +47,16 @@ import type { ConnectionCellFacts } from '../../features/connections';
 import { useCustomerRowsQuery } from '../../features/customers/hooks/use-customers-query';
 import { useCustomersTotal } from '../../features/customers/hooks/use-customers-total';
 import type { CustomerFilters, CustomerProjection } from '../../features/customers/api/customers.types';
+import { createCustomersListRegistry } from '../../features/customers/lib/customers.list-config';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+  type ViewSort,
+} from '../../features/saved-views';
 import { interpolate, useMessages } from '../../shared/i18n';
 import { describeApiError } from '../../shared/api/describe-api-error';
 
@@ -78,9 +87,28 @@ function customerIdentity(c: CustomerProjection): CustomerIdentity {
   return name ? { label: name, isHashFallback: false } : { label: c.emailHash, isHashFallback: true };
 }
 
+/**
+ * Rows are one server page, sorted here: `GET /customers` takes no sort, so a
+ * view's sort orders the page on screen, not the whole list.
+ */
+function sortCustomers(rows: readonly CustomerProjection[], sort: ViewSort): CustomerProjection[] {
+  const sign = sort.dir === 'asc' ? 1 : -1;
+  const value = (c: CustomerProjection): string => {
+    if (sort.key === 'name') {
+      const { label, isHashFallback } = customerIdentity(c);
+      return isHashFallback ? NAMELESS_SORT_KEY : label;
+    }
+    return c.lastSeenAt;
+  };
+  return [...rows].sort((a, b) => {
+    const x = value(a);
+    const y = value(b);
+    return x === y ? 0 : (x < y ? -1 : 1) * sign;
+  });
+}
+
 export function CustomersListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { sort, setSort } = useTableSort([{ id: 'lastSeenAt', desc: true }]);
   const copy = useMessages('customers').customersListPage;
   // Row-level fact, never a deployment claim: a projection is born nameless and
   // is only backfilled once an order carries a shipping/billing name, so this is
@@ -93,6 +121,10 @@ export function CustomersListPage(): ReactElement {
 
   const [searchInput, setSearchInput] = useState(urlSearch);
   const [connectionIdInput, setConnectionIdInput] = useState(urlConnectionId);
+  // A view (or Back) rewrites the address under the box; keep the box in step with it.
+  useEffect(() => {
+    setConnectionIdInput(urlConnectionId);
+  }, [urlConnectionId]);
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   const debouncedConnectionId = useDebouncedValue(connectionIdInput, SEARCH_DEBOUNCE_MS);
 
@@ -123,16 +155,10 @@ export function CustomersListPage(): ReactElement {
     return map;
   }, [connectionsQuery.data]);
 
-  const columns: DataTableColumn<CustomerProjection>[] = useMemo(
-    () => [
-      {
-        // `name` unchanged since before #2093: `useTableSort` round-trips the
-        // column id through `?sort=`, and an id nothing derives from the header
-        // is pure churn — a bookmarked `?sort=name:asc` would resolve to no
-        // column and sort by NOTHING, not by the default.
-        id: 'name',
-        header: copy.columns.customer,
-        cell: (c): ReactNode => {
+  const registry = useMemo(
+    () =>
+      createCustomersListRegistry(copy, {
+        customer: (c): ReactNode => {
           const { label, isHashFallback } = customerIdentity(c);
           // A hash alone in a column headed "Customer" reads as a bug, so the
           // fallback states the row-level fact that no name was recorded.
@@ -162,18 +188,7 @@ export function CustomersListPage(): ReactElement {
             <span>{label}</span>
           );
         },
-        // Sort by what the column renders — but a nameless row renders a hash,
-        // which would scatter those rows through the alphabet at random.
-        accessor: (c): string => {
-          const { label, isHashFallback } = customerIdentity(c);
-          return isHashFallback ? NAMELESS_SORT_KEY : label;
-        },
-        sortable: true,
-      },
-      {
-        id: 'internalCustomerId',
-        header: copy.columns.customerId,
-        cell: (c): ReactNode => {
+        customerId: (c): ReactNode => {
           const { label, isHashFallback } = customerIdentity(c);
           // Named after the person where there is one; a hash spelled out into a
           // screen reader is worse than the generic phrase (the same rule
@@ -195,13 +210,7 @@ export function CustomersListPage(): ReactElement {
             />
           );
         },
-      },
-      {
-        id: 'lastSourceConnectionId',
-        // #2538 - ConnectionCell stacks the connection name over its status (#2093).
-        lines: 2,
-        header: copy.columns.lastSource,
-        cell: (c): ReactNode =>
+        lastSource: (c): ReactNode =>
           c.lastSourceConnectionId ? (
             <ConnectionCell
               connectionId={c.lastSourceConnectionId}
@@ -215,20 +224,14 @@ export function CustomersListPage(): ReactElement {
           ) : (
             <EmptyValue />
           ),
-        // Unchanged at 768 (#1996): the column survives at tablet width, so this
-        // page needs no tablet fold and is out of #2094's scope.
-        hideBelow: 768,
-      },
-      {
-        id: 'lastSeenAt',
-        header: copy.columns.lastSeen,
-        cell: (c): ReactNode => <TimeDisplay iso={c.lastSeenAt} format="date" />,
-        accessor: (c) => c.lastSeenAt,
-        sortable: true,
-      },
-    ],
+        lastSeen: (c): ReactNode => <TimeDisplay iso={c.lastSeenAt} format="date" />,
+      }),
     [connectionsById, connectionsQuery.isLoading, copy, namelessLabel],
   );
+  const view = useListView<CustomerProjection>({ registry, pageTitle: copy.title });
+
+  const columns = view.toColumns();
+  const rows = useMemo(() => sortCustomers(query.data?.items ?? [], view.sort), [query.data, view.sort]);
 
   function handleFilterChange(key: string, value: string): void {
     if (key === 'search') setSearchInput(value);
@@ -277,6 +280,8 @@ export function CustomersListPage(): ReactElement {
       title={copy.title}
       description={copy.description}
     >
+      <ViewsBar {...view.viewsBar} />
+
       <div className="toolbar toolbar--compact">
         <Input
           aria-label={copy.filters.searchLabel}
@@ -290,7 +295,16 @@ export function CustomersListPage(): ReactElement {
           value={connectionIdInput}
           onChange={(e) => { handleFilterChange('lastSourceConnectionId', e.target.value); }}
         />
+        <ColumnsPanel {...view.columnsPanel} />
       </div>
+
+      {view.editedBar ? (
+        <div className="sv-applied">
+          <EditedBar {...view.editedBar} />
+        </div>
+      ) : null}
+      {view.repairBanner ? <RepairBanner {...view.repairBanner} /> : null}
+      <ViewDialogs {...view.dialogs} />
 
       {query.isLoading ? (
         <DataTableSkeleton columns={columns} label={copy.loading} />
@@ -328,7 +342,7 @@ export function CustomersListPage(): ReactElement {
             // when another column sets the row height you align the whole row.
             className="customers-table"
             columns={columns}
-            rows={query.data?.items ?? []}
+            rows={rows}
             rowKey={(c) => c.internalCustomerId}
             rowHref={(c) => c.internalCustomerId}
             // The `Customer` cell is the row link, and on a nameless row it is a
@@ -337,8 +351,6 @@ export function CustomersListPage(): ReactElement {
             // middle around a composite (see the style guide's listings
             // carve-out); an atomic inline-level box makes it one fragment.
             rowLinkDisplay="block"
-            sort={sort}
-            onSortChange={setSort}
             cardView={{
               // TEXT-ONLY, and it has to be: `DataTableCard` wraps `title` and
               // `subtitle` in the row's own `<Link>` whenever `rowHref` is set,

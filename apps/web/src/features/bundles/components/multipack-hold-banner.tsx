@@ -44,72 +44,123 @@ export function MultipackHoldBanner({
   const name = hold.productName ?? hold.lineName ?? hold.sku ?? '';
   const productsHref = `/products?${new URLSearchParams({ search: hold.sku ?? name }).toString()}`;
   const variantId = hold.variantId;
-
-  if (released !== null) {
-    return (
-      <Alert
-        tone="success"
-        title={copy.order.multipackConfirmedTitle}
-        data-testid="order-multipack-created"
-      >
-        {otherLinesHeld
-          ? copy.order.multipackConfirmedOthers
-          : formatPlural(released, copy.order.multipackContinue, locale)}
-      </Alert>
-    );
-  }
-
   const unavailableReason = !write.canWrite
     ? copy.order.viewOnlyReason
     : variantId === null
       ? copy.order.multipackNoProduct
       : undefined;
 
+  // One Alert instance for both states, so the tone change cross-fades through
+  // the CSS transition instead of swapping a warning box for a success box.
+  const isReleased = released !== null;
+  const bundleHref = `/products/bundles/new?${new URLSearchParams({
+    component: variantId ?? '',
+    quantity: String(hold.packQuantity),
+  }).toString()}`;
+
   return (
     <Alert
-      tone="warning"
-      title={interpolate(copy.order.multipackTitle, { n: hold.packQuantity })}
-      data-testid="order-multipack-banner"
+      tone={isReleased ? 'success' : 'warning'}
+      className="ux-hold-banner"
+      title={
+        isReleased
+          ? copy.order.multipackConfirmedTitle
+          : interpolate(copy.order.multipackTitle, { n: hold.packQuantity })
+      }
+      data-testid={isReleased ? 'order-multipack-created' : 'order-multipack-banner'}
       action={
-        <span className="button-group">
-          <Button
-            tone="primary"
-            className="button--sm"
-            data-testid="order-multipack-create-bundle"
-            disabled={unavailableReason !== undefined || confirm.isPending}
-            title={unavailableReason}
-            onClick={() => {
-              if (variantId === null) return;
-              confirm.mutate(
-                { variantId, packQuantity: hold.packQuantity },
-                {
-                  onSuccess: (result) => {
-                    setReleased(result.releasedOrders);
+        isReleased ? undefined : (
+          <span className="button-group ux-hold-banner__actions">
+            <Button
+              tone="primary"
+              className="button--sm"
+              data-testid="order-multipack-create-bundle"
+              disabled={unavailableReason !== undefined || confirm.isPending}
+              aria-describedby={unavailableReason ? 'order-multipack-reason' : undefined}
+              title={unavailableReason}
+              onClick={() => {
+                if (variantId === null) return;
+                confirm.mutate(
+                  { variantId, packQuantity: hold.packQuantity },
+                  {
+                    onSuccess: (result) => {
+                      setReleased(result.releasedOrders);
+                    },
                   },
-                },
-              );
-            }}
-          >
-            {interpolate(copy.order.confirmMultipack, { n: hold.packQuantity, name })}
-          </Button>
-          <Link
-            className="button button--ghost button--sm"
-            data-testid="order-multipack-open-products"
-            to={productsHref}
-          >
-            {copy.order.openProducts}
-          </Link>
-        </span>
+                );
+              }}
+            >
+              {confirm.isPending
+                ? copy.order.multipackSaving
+                : interpolate(copy.order.confirmMultipack, { n: hold.packQuantity, name })}
+            </Button>
+            <Link
+              className="button button--ghost button--sm"
+              data-testid="order-multipack-open-products"
+              to={productsHref}
+            >
+              {copy.order.openProducts}
+            </Link>
+          </span>
+        )
       }
     >
-      <p>{interpolate(copy.order.multipackBody, { n: hold.packQuantity })}</p>
-      <p data-testid="order-multipack-confirm-text">
-        {interpolate(
-          otherLinesHeld ? copy.order.multipackConfirmTextLine : copy.order.multipackConfirmText,
-          { n: hold.packQuantity, name },
-        )}
-      </p>
-      {confirm.isError ? <p role="alert">{copy.order.multipackFailed}</p> : null}
+      {isReleased ? (
+        <>
+          <p>
+            {otherLinesHeld
+              ? copy.order.multipackConfirmedOthers
+              : formatPlural(released, copy.order.multipackContinue, locale)}
+          </p>
+          <p className="ux-hold-banner__rule">
+            {copy.order.multipackRuleSaved}{' '}
+            <Link to={productsHref} data-testid="order-multipack-rule-link">
+              {copy.order.multipackRuleLink}
+            </Link>
+          </p>
+        </>
+      ) : (
+        <>
+          <p data-testid="order-multipack-confirm-text">
+            {interpolate(
+              otherLinesHeld
+                ? copy.order.multipackConfirmTextLine
+                : copy.order.multipackConfirmText,
+              { n: hold.packQuantity, name },
+            )}
+          </p>
+          <p className="ux-hold-banner__preview" data-testid="order-multipack-preview">
+            <span>{copy.order.multipackPreviewSale}</span>
+            <span aria-hidden="true">{'\u2192'}</span>
+            <strong>{interpolate(copy.list.compositionLine, { n: hold.packQuantity, name })}</strong>
+          </p>
+          <p className="ux-hold-banner__lead">{copy.order.multipackWhatHappens}</p>
+          <ul className="ux-hold-banner__list" data-testid="order-multipack-effects">
+            <li>{copy.order.multipackEffectRule}</li>
+            <li>{interpolate(copy.order.multipackEffectStock, { n: hold.packQuantity })}</li>
+            <li>{copy.order.multipackEffectOrders}</li>
+          </ul>
+          <p className="ux-hold-banner__alt">
+            {copy.order.multipackNotSet}{' '}
+            {variantId !== null ? (
+              <Link to={bundleHref} data-testid="order-multipack-make-bundle">
+                {copy.order.multipackMakeBundle}
+              </Link>
+            ) : null}
+          </p>
+          {unavailableReason ? (
+            <p id="order-multipack-reason" className="ux-hold-banner__reason">
+              {unavailableReason}
+            </p>
+          ) : null}
+          {confirm.isPending ? (
+            <p className="sr-only" aria-live="polite">
+              {copy.order.multipackSaving}
+            </p>
+          ) : null}
+          {confirm.isError ? <p role="alert">{copy.order.multipackFailed}</p> : null}
+        </>
+      )}
     </Alert>
   );
 }

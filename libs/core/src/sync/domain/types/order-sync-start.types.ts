@@ -101,7 +101,8 @@ export function canonicalOrderSyncStartDate(from: string): string {
 export function serializeOrderSyncStart(start: OrderSyncStart): string {
   // `oldest-first` is the default and is never written, so an intent stored by an
   // older build and one stored today for the same choice are the same string.
-  const order = start.mode !== 'now' && start.order === 'newest-first' ? { order: start.order } : {};
+  const order =
+    start.mode !== 'now' && start.order === 'newest-first' ? { order: start.order } : {};
   return JSON.stringify(
     start.mode === 'from'
       ? { mode: 'from', from: canonicalOrderSyncStartDate(start.from), ...order }
@@ -153,7 +154,9 @@ export function serializeOrderSyncStarted(start: OrderSyncStart, at: Date): stri
 }
 
 /** Read the applied-start record back; anything unreadable is null, never a guess. */
-export function parseOrderSyncStarted(raw: string | null | undefined): OrderSyncStartedRecord | null {
+export function parseOrderSyncStarted(
+  raw: string | null | undefined
+): OrderSyncStartedRecord | null {
   const start = parseOrderSyncStart(raw);
   if (start === null || !raw) return null;
   try {

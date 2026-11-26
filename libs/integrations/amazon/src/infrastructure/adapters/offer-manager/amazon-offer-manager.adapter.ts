@@ -291,6 +291,13 @@ export class AmazonOfferManagerAdapter
   }
 
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
+    // A bundle is a product set on the marketplaces that have one. Amazon
+    // lists a bundle as its own catalogue item, which this integration does
+    // not compose; refusing before any read keeps a bundle from being listed
+    // as its first component, or reported as already listed under that SKU.
+    if (cmd.productSet !== undefined && cmd.productSet.length > 0) {
+      throw new AmazonNotSupportedException('listing a bundle (a product set) as one offer');
+    }
     const sku = resolveAmazonSku(cmd);
     const existing = await this.findListing(sku);
     if (existing !== null) {

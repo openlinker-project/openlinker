@@ -115,7 +115,7 @@ test.describe('G05 golden path 4 - bench acknowledgement (#3546)', () => {
     });
     expect(login.ok()).toBe(true);
 
-    await page.goto(`/orders/${internalOrderId}`);
+    await page.goto(`/orders/${internalOrderId}?tab=history`);
     await expect(page.getByText('Buyer note read at the bench')).toBeVisible();
     await expect(page.getByTestId('order-buyer-note-bench-ack')).toBeVisible();
   });

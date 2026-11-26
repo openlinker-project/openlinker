@@ -347,3 +347,15 @@ This ADR makes the source price authoritative **for ingestion**: the lines OpenL
 4. **What it does to money follows what the buyer has done.** Unpaid or cash on delivery: the amount to collect falls, no refund exists. Paid: a refund intent for the difference is opened (`order.discount_refund`), bounded by the per-order refund ceiling (#3289); payment stays "Paid" until the seller confirms they refunded on the channel, which records the `RefundRecord` (OpenLinker executes no refund, ADR-056). A document not yet issued is issued at the discounted price; an issued invoice gets a correction proposal (`order.discount_correction`) the operator confirms, because a correction sent to a tax authority cannot be withdrawn. A fiscal receipt cannot be corrected (ADR-042), so a discount on a paid order with a registered receipt is refused.
 
 What this does NOT change: Decision 1 still binds destinations (`createOrder` prices at the lines it is given - which, after an operator discount, are the discounted ones, deliberately), and the per-line tax-rate amendment above is untouched. A line-level price override is out of scope; the discount is order-level.
+
+## Amendment (#4280): a line may be stored without a catalogue match
+
+This ADR makes the source authoritative for what an order line costs and is called, and says a destination never substitutes its own catalogue price. It did not say whether a line may exist at all without a catalogue product behind it, because until now ingestion refused one: an unmapped line ended in `awaiting_mapping` before `persistOrder`.
+
+With `Connection.config.catalogueMode = 'none'` on the SOURCE connection that refusal is lifted, on these terms:
+
+1. **The line is still the channel's statement.** Name, SKU, quantity, gross unit price and the channel's own tax rate are stored as reported. Nothing about pricing changes; only the identity of the product behind the line is absent.
+2. **The identity is a placeholder, not a product.** `productId = unmatched:<connectionId>:<externalOfferId>`, no `variantId`. It satisfies the `NOT NULL` column and the unified line type with no migration, and is deterministic so re-ingestion reproduces it. Every consumer that looks a product up by id skips it through the single `isUnmatchedProductId` predicate.
+3. **Only a mapping gap is accepted.** A line whose variant exists and was removed at its master (`source_deleted`) stays a hold, and an install that never sets the key keeps today's self-healing `awaiting_mapping`.
+4. **The catalogue rate is not consulted.** The shop rung of the per-line tax-rate chain has no product to read, so the channel's rate (or none) stands, and no provenance journal row is written for a product that does not exist.
+5. **Assumption: no product-mapped destination.** `catalogueMode: none` presumes every destination is catalogue-less too. A destination whose `OrderProcessor` needs a product mapping (for example a Subiekt ERP) throws not-mapped for the synthetic id, so such a connection must not be a destination of a `none` source. Guarding that at configuration time is a follow-up.

@@ -54,6 +54,16 @@ export const AMAZON_RETURNS_CURSOR_KEY = 'amazon.returns.reportCursor';
 /** `searchListingsItems` and the status reads page by 20. */
 const AMAZON_OFFERS_PAGE_LIMIT = 20;
 
+/**
+ * Test seam (ignored when NODE_ENV=production): a five-field cron expression in
+ * `envName` replaces the task's cadence, so the automated E2E can watch a task
+ * tick within a minute. Anything else keeps the declared cadence.
+ */
+function testCron(envName: string, fallback: string): string {
+  const value = process.env.NODE_ENV === 'production' ? undefined : process.env[envName]?.trim();
+  return value !== undefined && /^(\S+\s+){4}\S+$/.test(value) ? value : fallback;
+}
+
 export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
   return [
     {
@@ -61,7 +71,7 @@ export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
       platformType: AMAZON_PLATFORM_TYPE,
       requiredCapability: 'OrderSource',
       jobType: 'marketplace.orders.poll',
-      cronExpression: AMAZON_ORDERS_POLL_CRON,
+      cronExpression: testCron('OL_AMAZON_ORDERS_POLL_CRON', AMAZON_ORDERS_POLL_CRON),
       enabledEnvVar: 'OL_AMAZON_ORDERS_POLL_SCHEDULER_ENABLED',
       enabledDefault: false,
       generatePayload: () => ({
@@ -81,7 +91,7 @@ export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
       platformType: AMAZON_PLATFORM_TYPE,
       requiredCapability: 'OrderSource',
       jobType: 'marketplace.returns.poll',
-      cronExpression: '*/15 * * * *',
+      cronExpression: testCron('OL_AMAZON_RETURNS_POLL_CRON', '*/15 * * * *'),
       enabledEnvVar: 'OL_AMAZON_RETURNS_POLL_SCHEDULER_ENABLED',
       enabledDefault: false,
       generatePayload: () => ({
@@ -99,7 +109,7 @@ export function buildAmazonSchedulerTasks(): SchedulerTaskConfig[] {
       platformType: AMAZON_PLATFORM_TYPE,
       requiredCapability: 'OrderSource',
       jobType: 'marketplace.returns.statusSync',
-      cronExpression: '20 * * * *',
+      cronExpression: testCron('OL_AMAZON_RETURNS_STATUS_SYNC_CRON', '20 * * * *'),
       enabledEnvVar: 'OL_AMAZON_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED',
       enabledDefault: false,
       generatePayload: () => ({
@@ -187,9 +197,9 @@ export function buildAmazonNotificationsDrainTask(
       );
     },
     jobType: 'marketplace.notifications.drain',
-    cronExpression: '* * * * *',
+    cronExpression: testCron('OL_AMAZON_NOTIFICATIONS_DRAIN_CRON', '* * * * *'),
     enabledEnvVar: 'OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED',
-    enabledDefault: false,
+      enabledDefault: false,
     generatePayload: () => ({ schemaVersion: 1, maxMessages: AMAZON_NOTIFICATIONS_DRAIN_MAX_MESSAGES }),
     generateIdempotencyKey: (connection, timestamp) => `marketplace:${connection.id}:notifications:drain:${timestamp}`,
   };
@@ -224,7 +234,7 @@ export function buildAmazonOfferTasks(
       taskId: 'amazon-offers-sync',
       connectionFilter,
       jobType: 'marketplace.offers.sync',
-      cronExpression: '15 * * * *',
+      cronExpression: testCron('OL_AMAZON_OFFERS_SYNC_CRON', '15 * * * *'),
       enabledEnvVar: 'OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED',
       enabledDefault: false,
       generatePayload: (connection): Record<string, unknown> => ({
@@ -240,7 +250,7 @@ export function buildAmazonOfferTasks(
       taskId: 'amazon-offer-status-sync',
       connectionFilter,
       jobType: 'marketplace.offer.statusSync',
-      cronExpression: '45 * * * *',
+      cronExpression: testCron('OL_AMAZON_OFFER_STATUS_SYNC_CRON', '45 * * * *'),
       enabledEnvVar: 'OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED',
       enabledDefault: false,
       generatePayload: (): Record<string, unknown> => ({

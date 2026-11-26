@@ -25,9 +25,9 @@
     "backfillComplete": "Uzupełnianie pochodzenia zakończone",
     "backfillRemaining": "Wierszy wciąż bez pochodzenia: {n}",
     "backfillStuck": "Wierszy wciąż bez pochodzenia: {n} - uzupełnianie zablokowało się {date} i przestało działać. Nie wznowi się samo - poproś inżyniera o jego ponowne uruchomienie.",
-    "caption": "Zduplikowane pozycje magazynowe",
+    "caption": "Zdublowane pozycje stanów",
     "cardMeta": "Wiersze: {rows} (aktywne: {live})",
-    "caution": "Pozycje mogą się zmienić między tym skanem a ręczną poprawką wykonaną gdzie indziej - uruchom raport ponownie tuż przed działaniem, nigdy nie korzystaj ze strony wczytanej dawno temu.",
+    "caution": "Dane mogą się zmienić od tego skanu. Przed ręczną poprawką uruchom raport ponownie.",
     "collapseRows": "Zwiń wiersze produktu {product}",
     "columns": {
       "allStale": "wszystkie nieaktualne",
@@ -43,7 +43,7 @@
       "sourceConnection": "Połączenie źródłowe",
       "variant": "Wariant"
     },
-    "description": "Wiersze stanu magazynowego, które pokrywają się dla tego samego produktu, wariantu, lokalizacji i źródła. To raport, a nie narzędzie naprawcze - wykrywa, nigdy nie zapisuje. Stanowi warunek włączenia ostrzejszej reguły unikalności dla całej instalacji.",
+    "description": "Wiersze stanu magazynowego, które pokrywają się dla tego samego produktu, wariantu, lokalizacji i źródła. Raport tylko wykrywa duplikaty i niczego nie zmienia w danych. Jest warunkiem włączenia ostrzejszej reguły unikalności w całej instalacji.",
     "detail": {
       "available": "Dostępne",
       "distorting": "<strong>Obecnie zniekształca ilość możliwą do obiecania.</strong> Aktywne wiersze tej pozycji sumują się do <strong>{n}</strong> dostępnych - odczyt dostępności nie wie, że prawdziwy jest tylko jeden wiersz, więc publikuje {n}, podczas gdy prawdziwą wartością jest ta z wiersza, który zostanie. Nigdy nie sumuj zduplikowanych ilości przy uzgadnianiu; po porządkach odczytaj wartość pozostałego wiersza z systemu głównego.",
@@ -114,7 +114,7 @@
     "remediationLink": "Instrukcja naprawy: jak wybrać wiersz, który zostaje, i usunąć resztę →",
     "retry": "Ponów",
     "stuck": "Zablokowane",
-    "title": "Zduplikowane pozycje magazynowe",
+    "title": "Zdublowane pozycje stanów",
     "truncated": {
       "apply": "Zastosuj",
       "body": {

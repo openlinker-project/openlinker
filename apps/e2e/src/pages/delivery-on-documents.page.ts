@@ -180,7 +180,19 @@ export class ErliWizardPage {
   async fillCredentials(name: string, apiKey: string): Promise<void> {
     await this.page.getByLabel('Connection name').fill(name);
     await this.page.getByLabel('API key').fill(apiKey);
+    // Credentials, Product catalogue, then Sales documents: the catalogue step
+    // sits between the key and the step this method lands on.
+    await this.page.getByRole('button', { name: 'Next', exact: true }).click();
     await this.page.getByRole('button', { name: 'Next', exact: true }).click();
     await expect(this.step.root).toBeVisible();
+  }
+
+  /** From the Sales documents step to Review & connect (Order history, Buyer data, Review). */
+  async continueToReview(): Promise<void> {
+    const connect = this.page.getByRole('button', { name: 'Connect Erli' });
+    for (let i = 0; i < 4 && !(await connect.isVisible()); i += 1) {
+      await this.page.getByRole('button', { name: 'Next', exact: true }).click();
+    }
+    await expect(connect).toBeVisible();
   }
 }

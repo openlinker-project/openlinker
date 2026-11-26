@@ -244,6 +244,30 @@ export async function stubWizardApi(page: Page, opts: StubOptions = {}): Promise
       })),
     })
   );
+  // The Review step also asks which rows are bundles (#3520) and what the
+  // attribute rules would fill (#1841). Unstubbed, both reach a server that is
+  // not there, so the page reads "could not check" and every row waits on a
+  // retry the test never presses - which masks the blocker under test. Nothing
+  // here is a bundle and no rule fires.
+  await page.route('**/v1/listings/connections/*/bundle-offer-preview', (route) =>
+    json(route, { entries: [] })
+  );
+  await page.route('**/v1/listings/connections/*/attribute-projection/preview', (route) => {
+    const body = route.request().postDataJSON() as {
+      items?: { variantId: string; categoryId: string }[];
+    };
+    return json(route, {
+      entries: (body.items ?? []).map((item) => ({
+        variantId: item.variantId,
+        categoryId: item.categoryId,
+        status: 'ok',
+        parameters: [],
+        unresolvedRequired: [],
+        restrictionIssues: [],
+        origins: [],
+      })),
+    });
+  });
   await page.route('**/v1/listings/connections/*/categories/*/path', (route) =>
     json(route, { path: [{ id: MATCHED_CATEGORY_ID, name: 'Doniczki i osłonki' }] })
   );

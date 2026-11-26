@@ -513,6 +513,20 @@ describe('AmazonOfferManagerAdapter.createOffer', () => {
     });
   });
 
+  it('should refuse a bundle before any call, even when a listing exists under the SKU', async () => {
+    const { adapter, get, put } = createSetup();
+    get.mockResolvedValue({ status: 200, data: fbmListing({ sku: 'OL-abc' }), requestId: 'r' });
+
+    await expect(
+      adapter.createOffer({
+        ...cmd,
+        productSet: [{ product: { id: 'B0MUG00001' }, quantity: { value: 2 } }],
+      } as never),
+    ).rejects.toThrow(/bundle/);
+    expect(get).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+  });
+
   it('should not overwrite a listing that already exists under the SKU', async () => {
     const { adapter, get, put } = createSetup();
     get.mockResolvedValue({ status: 200, data: fbmListing({ sku: 'OL-abc' }), requestId: 'r' });
@@ -544,7 +558,7 @@ describe('AmazonOfferManagerAdapter.createOffer', () => {
     expect(body.attributes).toMatchObject({
       brand: [{ value: 'Acme', language_tag: 'de_DE', marketplace_id: 'A1PA6795UKMFR9' }, {}],
       externally_assigned_product_identifier: [{ type: 'ean', value: '5901234123457' }, {}],
-      // A text attribute goes to every marketplace of the connection, each with its language.
+      // A required attribute is copied to every marketplace the listing goes to.
       color: [
         { value: 'Blue', language_tag: 'de_DE', marketplace_id: 'A1PA6795UKMFR9' },
         { value: 'Blue', language_tag: 'fr_FR', marketplace_id: 'A13V1IB3VIYZZH' },

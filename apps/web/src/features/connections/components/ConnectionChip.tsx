@@ -22,7 +22,7 @@
  * @module features/connections/components
  */
 import { interpolate, useMessages } from '../../../shared/i18n';
-import type { ReactElement } from 'react';
+import type { FocusEvent, PointerEvent, ReactElement } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import type { ConnectionEnvironment } from '../lib/connection-environment';
 import { resolveConnectionLinkTarget } from '../lib/connection-link-target';
@@ -59,7 +59,42 @@ export interface ConnectionChipProps {
    * show it twice.
    */
   lead?: 'name' | 'platform';
+  /**
+   * Renders the face alone, as a plain element: no link, nothing that slides
+   * out on hover or focus, and the same width at rest and under the pointer.
+   * For a host that is itself the control (a tab) and so cannot nest a link.
+   */
+  static?: boolean;
+  /** Link to this path instead of the connection's detail page (a host's own view of it). */
+  to?: string;
+  /** Called when a linked chip is followed, before the navigation. */
+  onNavigate?: () => void;
+  /** Accessible name of a linked chip; defaults to "name, platform". */
+  linkLabel?: string;
   className?: string;
+  /**
+   * Lay the slide-out on the viewport instead of inside the chip. For a chip
+   * inside a container that clips its overflow (a collapsing card), where the
+   * absolutely positioned slide-out is cut off. It opens to the right, or to
+   * the left when the right edge of the screen would cut it.
+   */
+  floatReveal?: boolean;
+}
+
+/** Places the floating slide-out beside the face, on whichever side fits the screen. */
+function placeFloatingReveal(chip: HTMLElement): void {
+  const face = chip.querySelector<HTMLElement>('.connection-chip__face');
+  const reveal = chip.querySelector<HTMLElement>('.connection-chip__reveal');
+  if (!face || !reveal) return;
+  const rect = face.getBoundingClientRect();
+  const width = reveal.offsetWidth;
+  const overlap = 12;
+  const margin = 8;
+  const fitsRight = rect.right - overlap + width <= window.innerWidth - margin;
+  chip.dataset.side = fitsRight ? 'right' : 'left';
+  const x = fitsRight ? rect.right - overlap : Math.max(margin, rect.left + overlap - width);
+  chip.style.setProperty('--reveal-x', `${x}px`);
+  chip.style.setProperty('--reveal-y', `${rect.top}px`);
 }
 
 export function ConnectionChip({
@@ -68,7 +103,12 @@ export function ConnectionChip({
   loading = false,
   channel,
   lead = 'name',
+  static: staticFace = false,
+  to,
+  onNavigate,
+  linkLabel,
   className = '',
+  floatReveal = false,
 }: ConnectionChipProps): ReactElement {
   const copy = useMessages('connections').connectionChip;
   const location = useLocation();
@@ -78,7 +118,8 @@ export function ConnectionChip({
     loading,
     pathname: location.pathname,
   });
-  const { linked, unknown, text: nameText } = target;
+  const { unknown, text: nameText } = target;
+  const linked = !staticFace && (to !== undefined ? !target.system && !target.loading && !unknown : target.linked);
 
   // Only sandbox is marked: production is the norm, and a suffix on every
   // production row would be noise that hides the one row that differs.
@@ -113,6 +154,8 @@ export function ConnectionChip({
     linked ? 'connection-chip--link' : null,
     label ? null : 'connection-chip--name-only',
     unknown ? 'connection-chip--unknown' : null,
+    staticFace ? 'connection-chip--static' : null,
+    floatReveal ? 'connection-chip--float' : null,
     className,
   ]
     .filter(Boolean)
@@ -130,7 +173,15 @@ export function ConnectionChip({
     </svg>
   ) : null;
 
-  const body = nameFirst ? (
+  const body = staticFace ? (
+    <span className="connection-chip__face">
+      <span className="connection-chip__dot" aria-hidden="true" />
+      <span className="connection-chip__label" aria-busy={target.loading ? true : undefined}>
+        {nameText}
+      </span>
+      {sandbox ? <span className="connection-chip__env">{copy.sandboxTag}</span> : null}
+    </span>
+  ) : nameFirst ? (
     <>
       <span className="connection-chip__face">
         <span className="connection-chip__dot" aria-hidden="true" />
@@ -171,6 +222,9 @@ export function ConnectionChip({
     </span>
   );
 
+  const onFloatEnter = (e: PointerEvent<HTMLElement> | FocusEvent<HTMLElement>): void =>
+    placeFloatingReveal(e.currentTarget);
+
   if (!linked) {
     return (
       <span className={classes} data-channel={channel.platformType ?? undefined} title={title}>
@@ -181,14 +235,20 @@ export function ConnectionChip({
 
   return (
     <Link
-      to={target.targetPath}
+      to={to ?? target.targetPath}
+      onClick={onNavigate}
       className={classes}
       data-channel={channel.platformType ?? undefined}
       title={title}
+      onPointerEnter={floatReveal ? onFloatEnter : undefined}
+      onFocus={floatReveal ? onFloatEnter : undefined}
       // Face and slide-out are adjacent inline boxes, so the computed name would
       // run them together ("e-boxShoper"). Name first: it is what tells two rows
       // apart.
-      aria-label={label ? interpolate(copy.ariaLabel, { name: nameText, platform: label }) : undefined}
+      aria-label={
+        linkLabel ??
+        (label ? interpolate(copy.ariaLabel, { name: nameText, platform: label }) : undefined)
+      }
     >
       {body}
     </Link>

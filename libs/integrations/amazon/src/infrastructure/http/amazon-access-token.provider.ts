@@ -10,6 +10,9 @@
  *   - an in-process memo shared by every resolution (the adapter bag is built
  *     per call, so a per-instance memo alone would mint a token per job);
  *   - the host `CachePort` when wired, so replicas share one token.
+ *   A 401 from SP-API means the token was revoked or rotated before its stated
+ *   expiry: the client calls `invalidate(token)` and retries once with a fresh
+ *   one, rather than replaying a dead token until the margin passes.
  *   Concurrent callers that find no valid token share ONE mint in flight, so
  *   a token expiring under several parallel jobs costs a single LWA call.
  *   The cache key is a FINGERPRINT of the three credential values, never a
@@ -42,7 +45,7 @@ import type { CachePort } from '@openlinker/shared';
 import type { FetchLike } from '@openlinker/shared/http';
 import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
 
-import { AMAZON_LWA_TOKEN_URL } from '../../amazon.constants';
+import { resolveAmazonLwaUrl } from '../../amazon.constants';
 import { AmazonApiError } from '../../domain/exceptions/amazon-api.error';
 import { AmazonAuthenticationError } from '../../domain/exceptions/amazon-authentication.error';
 import { AmazonNetworkError } from '../../domain/exceptions/amazon-network.error';
@@ -116,6 +119,26 @@ export class AmazonAccessTokenProvider implements AmazonAccessTokenSource {
     }
   }
 
+  /**
+   * Drop `token` from the memo and the shared cache, but only while it is still
+   * the current one: a peer that already replaced it must not lose its fresh
+   * token to a late 401 about the old one.
+   */
+  async invalidate(token: string): Promise<void> {
+    const memoed = this.memo.get(this.fingerprint);
+    if (memoed !== undefined && memoed.token === token) {
+      this.memo.delete(this.fingerprint);
+    }
+    if (this.cache === undefined) {
+      return;
+    }
+    const key = `${CACHE_KEY_PREFIX}${this.fingerprint}`;
+    const cached = await this.readCache(key);
+    if (cached !== null && cached.token === token) {
+      await this.cache.delete(key).catch(() => undefined);
+    }
+  }
+
   private async resolveToken(nowMs: number): Promise<AmazonAccessTokenEntry> {
     const cacheKey = `${CACHE_KEY_PREFIX}${this.fingerprint}`;
     const cached = await this.readCache(cacheKey);
@@ -150,7 +173,7 @@ export class AmazonAccessTokenProvider implements AmazonAccessTokenSource {
     let response: Response;
     let text: string;
     try {
-      response = await this.fetchImpl(AMAZON_LWA_TOKEN_URL, {
+      response = await this.fetchImpl(resolveAmazonLwaUrl(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',

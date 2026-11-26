@@ -16,7 +16,6 @@
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
 import { useAdaptersQuery } from '../../adapters';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import { CORE_CAPABILITY_VALUES, type CoreCapability } from '../api/connections.types';
@@ -50,7 +49,14 @@ import { Input } from '../../../shared/ui/input';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
+import {
+  BuyerDataWizardReviewRows,
+  BuyerDataWizardStep,
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+} from '../../buyer-data';
 import { captureDemoEvent } from '../../demo';
+import { WizardCreatedScreen } from './wizard-created-screen';
+import { ShopPackingNextStep } from './shop-packing-next-step';
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { describeApiError } from '../../../shared/api/describe-api-error';
@@ -86,7 +92,6 @@ export function WoocommerceSetupForm(): ReactElement {
   const platform = usePlatform('woocommerce')?.displayName ?? copy.platformFallback;
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
-  const navigate = useNavigate();
   const adaptersQuery = useAdaptersQuery();
 
   const form = useForm<WoocommerceSetupFormValues, undefined, WoocommerceSetupFormSubmission>({
@@ -102,6 +107,7 @@ export function WoocommerceSetupForm(): ReactElement {
     : ['store', 'credentials', 'capabilities', 'review'];
   const STEP_LABELS = stepIds.map((id) => copy.steps[id]);
 
+  const [created, setCreated] = useState<{ id: string; name: string } | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const stepId = stepIds[Math.min(stepIndex, stepIds.length - 1)];
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
@@ -167,20 +173,44 @@ export function WoocommerceSetupForm(): ReactElement {
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
+      const result = await createConnection.mutateAsync(toCreateConnectionInput(values));
       form.reset(values, { keepValues: true, keepDirty: false });
       showToast({
         tone: 'success',
         title: copy.createdTitle,
-        description: interpolate(copy.createdDescription, { platform, name: created.name }),
+        description: interpolate(copy.createdDescription, { platform, name: result.name }),
       });
-      void navigate('/connections');
+      setCreated({ id: result.id, name: result.name });
     } catch {
       return;
     }
   });
 
   const selectedCapabilities = values.enabledCapabilities ?? [];
+  const buyerDataValue = values.buyerDataRetention ?? DEFAULT_BUYER_DATA_WIZARD_VALUE;
+  const takesOrders = selectedCapabilities.includes('OrderSource');
+
+  if (created) {
+    return (
+      <WizardLayout
+        stepper={
+          <SetupStepper
+            steps={STEP_LABELS}
+            currentStep={STEP_LABELS.length - 1}
+            completedSteps={new Set(STEP_LABELS.map((_, index) => index))}
+          />
+        }
+      >
+        <WizardCreatedScreen
+          connectionId={created.id}
+          connectionName={created.name}
+          title={copy.createdTitle}
+        >
+          <ShopPackingNextStep connectionId={created.id} />
+        </WizardCreatedScreen>
+      </WizardLayout>
+    );
+  }
 
   return (
     <WizardLayout
@@ -323,6 +353,13 @@ export function WoocommerceSetupForm(): ReactElement {
         ) : null}
 
         {stepId === 'review' ? (
+          <>
+          {takesOrders ? (
+            <BuyerDataWizardStep
+              value={buyerDataValue}
+              onChange={(next) => form.setValue('buyerDataRetention', next, { shouldDirty: true })}
+            />
+          ) : null}
           <dl className="wizard-review-list">
             <dt>{copy.review.name}</dt>
             <dd>{values.name || '—'}</dd>
@@ -334,6 +371,7 @@ export function WoocommerceSetupForm(): ReactElement {
             <dd>
               {selectedCapabilities.length > 0 ? selectedCapabilities.join(', ') : copy.review.noneSelected}
             </dd>
+            {takesOrders ? <BuyerDataWizardReviewRows value={buyerDataValue} /> : null}
             {readsOrders(values.enabledCapabilities) ? (
               <>
                 <dt>{orderStartCopy.review.label}</dt>
@@ -341,6 +379,7 @@ export function WoocommerceSetupForm(): ReactElement {
               </>
             ) : null}
           </dl>
+          </>
         ) : null}
 
         <div className="wizard-actions">

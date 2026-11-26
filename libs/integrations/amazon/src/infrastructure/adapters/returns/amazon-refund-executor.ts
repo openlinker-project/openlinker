@@ -15,7 +15,9 @@
  *      second one, and a retry that finds `submitting` (a run that died
  *      between the two writes) throws: Amazon may have the feed, so the
  *      outcome is unknown. Without a cache this cannot be guaranteed, and
- *      core only retries after a terminal `denied` anyway.
+ *      core only retries after a terminal `denied` anyway. So without a cache
+ *      the executor refuses (`denied`) instead of sending a refund it could
+ *      send twice.
  *   2. `refundedAt` is Amazon's `processingEndTime` of the feed, never this
  *      process's clock.
  *   3. `denied` only when Amazon moved nothing: every row refused, the feed
@@ -90,6 +92,13 @@ export class AmazonRefundExecutor {
   }
 
   async executeRefund(command: ExecuteRefundCommand): Promise<RefundExecutionResult> {
+    // Fail closed: the per-key state is the only guard against a second feed,
+    // and money moves twice if it is missing. Nothing has been sent here.
+    if (this.deps.cache === undefined) {
+      return denied(
+        'refunds through Amazon need the shared cache that guards against sending one twice, and this host has none',
+      );
+    }
     const key = `amazon:refund:${this.deps.connectionId}:${command.idempotencyKey}`;
     const known = await this.readKey(key);
     if (known?.state === 'submitted') {

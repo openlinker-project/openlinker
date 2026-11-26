@@ -100,8 +100,8 @@ export const amazonSetupSchema = z
     if ((values.awsAccessKeyId === '') !== (values.awsSecretAccessKey === '')) {
       fail('awsAccessKeyId', 'awsKeysPaired');
     }
-    // Asked only when the connection reads orders: a stale date typed before
-    // unticking orders must not block the submit.
+    // Only a question the form asks can be answered wrongly: a stale date typed
+    // before orders were switched off must not block the submit.
     if (values.orders) {
       addOrderSyncStartIssues(values.orderSyncStart, ctx);
     }
@@ -156,7 +156,6 @@ export function toCreateConnectionInput(values: AmazonSetupFormSubmission): Crea
         : {}),
     },
     enabledCapabilities,
-    // Where order sync starts (#4228); "from now" unless the operator chose otherwise.
     orderSyncStart: values.orders ? toOrderSyncStart(values.orderSyncStart) : undefined,
   };
 }

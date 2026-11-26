@@ -169,12 +169,14 @@ describe('ShopifyOrderSourceAdapter', () => {
       expect((query.mock.calls[0] as unknown[])[1]).toMatchObject({ query: "updated_at:>='1970-01-01T00:00:00Z'" });
     });
 
-    it('should refuse a cursor-less read when read_all_orders is missing instead of truncating to 60 days', async () => {
-      const query = jest.fn().mockResolvedValue({ currentAppInstallation: { accessScopes: [] } });
-      await expect(build(query).listOrderFeed({ fromCursor: null, limit: 10 })).rejects.toBeInstanceOf(
-        OrderSyncStartUnavailableError,
-      );
-      expect(query).toHaveBeenCalledTimes(1);
+    it('should keep polling a cursor-less connection when read_all_orders is missing instead of failing every poll', async () => {
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce({ currentAppInstallation: { accessScopes: [] } })
+        .mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } });
+      const out = await build(query).listOrderFeed({ fromCursor: null, limit: 10 });
+      expect(out.items).toEqual([]);
+      expect(query).toHaveBeenCalledTimes(2);
     });
 
     it('should rethrow an auth rejection from the scope check so the connection can move to needs_reauth', async () => {
@@ -184,17 +186,21 @@ describe('ShopifyOrderSourceAdapter', () => {
     });
 
     it('should run the whole-history scope check when the cursor is blank', async () => {
-      const query = jest.fn().mockResolvedValue({ currentAppInstallation: { accessScopes: [] } });
-      await expect(build(query).listOrderFeed({ fromCursor: '  ', limit: 10 })).rejects.toBeInstanceOf(
-        OrderSyncStartUnavailableError,
-      );
+      const query = jest
+        .fn()
+        .mockResolvedValueOnce({ currentAppInstallation: { accessScopes: [] } })
+        .mockResolvedValue({ orders: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } });
+      await build(query).listOrderFeed({ fromCursor: '  ', limit: 10 });
+      expect((query.mock.calls[0] as unknown[])[0]).toContain('OlOrderSourceScopes');
     });
 
-    it('should refuse a cursor-less read when the scopes cannot be read', async () => {
+    it('should fail a cursor-less poll with a retryable error when the scopes cannot be read', async () => {
       const query = jest.fn().mockRejectedValue(new Error('boom'));
-      await expect(build(query).listOrderFeed({ fromCursor: null, limit: 10 })).rejects.toBeInstanceOf(
-        OrderSyncStartUnavailableError,
-      );
+      const failure = await build(query)
+        .listOrderFeed({ fromCursor: null, limit: 10 })
+        .catch((e: unknown) => e);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).not.toBeInstanceOf(OrderSyncStartUnavailableError);
     });
 
     it('should not check the scope on the live feed', async () => {

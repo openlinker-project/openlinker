@@ -3,7 +3,7 @@
  *
  * Proves against real Postgres the statements the retention pass relies on,
  * which unit tests only mock: the candidate read (per source, by the
- * `COALESCE(dispatchByAt, placedAt, createdAt)` anchor, unredacted only), the
+ * `COALESCE(dispatchByAt, placedAt, createdAt AT TIME ZONE 'UTC')` anchor, unredacted only), the
  * one-shot order redaction (snapshot, columns, the operator's address edit),
  * the recipient clears on both email delivery tables, and the two-table
  * customer projection redaction with its batch and stop condition.
@@ -95,6 +95,7 @@ describe('buyer data retention SQL (integration)', () => {
       await seedOrder({ dispatchByAt: AFTER, placedAt: BEFORE });
       await seedOrder({ placedAt: BEFORE, sourceConnectionId: OTHER });
       await seedOrder({ placedAt: BEFORE, buyerDataRedactedAt: BEFORE });
+      await seedOrder({ placedAt: BEFORE, personalDataErasedAt: BEFORE });
 
       const candidates = await orders.findBuyerDataRetentionCandidates({
         sourceConnectionId: AMAZON,
@@ -125,6 +126,7 @@ describe('buyer data retention SQL (integration)', () => {
       const seeded = await seedOrder({
         placedAt: BEFORE,
         buyerNote: 'leave at the door',
+        hasBuyerNote: true,
         buyerTaxId: 'DE123',
         orderEdits: { address: { address1: 'Edited 2' }, rev: 1 },
       });
@@ -164,6 +166,10 @@ describe('buyer data retention SQL (integration)', () => {
       expect(row.buyerTaxId).toBeNull();
       expect(row.orderEdits).toEqual({ rev: 1 });
       expect(row.buyerDataRedactedAt).not.toBeNull();
+      // Redaction is also an erasure, so the upsert and ingestion guards that key
+      // on `personalDataErasedAt` protect the order, and no badge claims a note.
+      expect(row.personalDataErasedAt).not.toBeNull();
+      expect(row.hasBuyerNote).toBe(false);
       expect(row.updatedAt.getTime()).toBe(before.updatedAt.getTime());
       expect(await orders.isBuyerDataRedacted(seeded.internalOrderId)).toBe(true);
     });

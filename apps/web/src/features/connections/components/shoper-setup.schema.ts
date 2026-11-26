@@ -13,7 +13,16 @@
  * @module features/connections/components
  */
 import { z } from 'zod';
-import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
+import {
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+  wizardBuyerDataConfig,
+  type BuyerDataWizardValue,
+} from '../../buyer-data';
+import {
+  CORE_CAPABILITY_VALUES,
+  type CoreCapability,
+  type CreateConnectionInput,
+} from '../api/connections.types';
 import { schemaMessage } from '../lib/schema-message';
 import {
   ORDER_SYNC_START_DEFAULT_VALUE,
@@ -49,6 +58,8 @@ export const shoperSetupSchema = z
     token: z.string().trim().min(1, msg('tokenRequired')),
     enabledCapabilities: z.array(z.enum(CORE_CAPABILITY_VALUES)).default(SHOPER_DEFAULT_CAPABILITIES),
     orderSyncStart: orderSyncStartShape.default(ORDER_SYNC_START_DEFAULT_VALUE),
+    // The answer to the "Buyer data" question (#4289); set through `setValue`.
+    buyerDataRetention: z.custom<BuyerDataWizardValue>().optional(),
   })
   .superRefine((values, ctx) => {
     // The start date is only validated when the step that asks for it exists.
@@ -68,6 +79,7 @@ export const SHOPER_SETUP_DEFAULT_VALUES: ShoperSetupFormValues = {
   token: '',
   enabledCapabilities: SHOPER_DEFAULT_CAPABILITIES,
   orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
+  buyerDataRetention: DEFAULT_BUYER_DATA_WIZARD_VALUE,
 };
 
 export function toCreateConnectionInput(values: ShoperSetupFormSubmission): CreateConnectionInput {
@@ -76,7 +88,7 @@ export function toCreateConnectionInput(values: ShoperSetupFormSubmission): Crea
     platformType: 'shoper',
     adapterKey: SHOPER_ADAPTER_KEY,
     credentials: { token: values.token },
-    config: { baseUrl: values.baseUrl },
+    config: { baseUrl: values.baseUrl, ...wizardBuyerDataConfig(values.buyerDataRetention) },
     enabledCapabilities: values.enabledCapabilities,
     orderSyncStart: readsOrders(values.enabledCapabilities)
       ? toOrderSyncStart(values.orderSyncStart)

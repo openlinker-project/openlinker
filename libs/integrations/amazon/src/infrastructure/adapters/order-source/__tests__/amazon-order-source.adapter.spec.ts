@@ -144,48 +144,6 @@ describe('AmazonOrderSourceAdapter.getOrder', () => {
   });
 });
 
-describe('AmazonOrderSourceAdapter order sync start (#4228)', () => {
-  it('should start "from now" two minutes back for the connection\'s marketplaces', async () => {
-    const { client, get } = clientStub();
-    get.mockResolvedValue({ status: 200, requestId: 'r', data: { orders: [amazonFbmOrder()] } });
-
-    const head = await adapter(client).headCursor();
-
-    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders', {
-      marketplaceIds: ['A1PA6795UKMFR9'],
-      lastUpdatedAfter: '2000-01-01T00:00:00.000Z',
-      maxResultsPerPage: 1,
-    });
-    expect(JSON.parse(head ?? '')).toEqual({ since: '2026-11-17T11:58:00.000Z', marketplaceIds: ['A1PA6795UKMFR9'] });
-  });
-
-  it('should answer null for an account with no orders', async () => {
-    const { client, get } = clientStub();
-    get.mockResolvedValue({ status: 200, requestId: 'r', data: { orders: [] } });
-
-    await expect(adapter(client).headCursor()).resolves.toBeNull();
-  });
-
-  it('should start a bare day at midnight UTC', async () => {
-    const { client } = clientStub();
-
-    const cursor = await adapter(client).cursorForDate('2026-11-01');
-
-    expect(JSON.parse(cursor)).toEqual({ since: '2026-11-01T00:00:00.000Z', marketplaceIds: ['A1PA6795UKMFR9'] });
-  });
-
-  it('should refuse a future date and a value that is not a date', async () => {
-    const { client } = clientStub();
-
-    await expect(adapter(client).cursorForDate('2026-12-01')).rejects.toMatchObject({
-      name: 'OrderSyncStartUnavailableError',
-    });
-    await expect(adapter(client).cursorForDate('yesterday')).rejects.toMatchObject({
-      name: 'OrderSyncStartUnavailableError',
-    });
-  });
-});
-
 describe('AmazonOrderSourceAdapter.write', () => {
   it('should confirm the shipment with the carrier code and every line', async () => {
     const { client, get, post } = clientStub();

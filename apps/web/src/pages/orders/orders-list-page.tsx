@@ -86,6 +86,7 @@ import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk
 import { OrderOpenReturnBadge } from '../../features/orders/components/order-open-return-badge';
 import { OrderRefundStateBadge } from '../../features/orders/components/order-refund-state-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
+import { OrderHiddenBadge } from '../../features/orders/components/order-hidden-badge';
 import { OrderBuyerNoteHint } from '../../features/orders/components/order-buyer-note-hint';
 import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
 import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
@@ -117,6 +118,24 @@ import type {
   OrderTag,
 } from '../../features/orders/api/orders.types';
 import { ORDER_LIST_COLUMN_IDS } from '../../features/orders/api/orders.types';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+} from '../../features/saved-views';
+import {
+  ORDER_VIEW_IDS,
+  createOrdersListRegistry,
+} from '../../features/orders/lib/orders.list-config';
+import { isOrdersSavedViewsEnabled } from '../../features/orders/lib/orders-saved-views.flag';
+import {
+  clearLegacyVisibleColumns,
+  hasLegacyVisibleColumnsKey,
+  readLegacyVisibleColumns,
+} from '../../features/orders/lib/legacy-visible-columns';
 import { useOrderListFilters } from '../../features/orders/hooks/use-order-list-filters';
 import { GiftsGuide } from '../../features/gifts';
 import { OrderListFilterBar } from '../../features/orders/components/order-list-filter-bar';
@@ -208,6 +227,8 @@ function renderStatusBadges(order: OrderRecord): ReactElement {
       <StatusBadge tone={h.tone} withDot compact>
         {h.label}
       </StatusBadge>
+      {/* #4289 - only visible on the Hidden view; beside health, never inside it. */}
+      <OrderHiddenBadge hiddenAt={order.hiddenAt} personalDataErasedAt={order.personalDataErasedAt} />
       {/* #2310 — the phase says what stage it is at (ADR-059). */}
       <OrderPhaseOrWaitingBadge order={order} compact />
       {/* #2350 — a stock shortfall is an exception, so a Status badge. */}
@@ -239,7 +260,17 @@ function renderStatusBadges(order: OrderRecord): ReactElement {
   );
 }
 
+/**
+ * The flag is a build-time constant, so `savedViews` never changes while a body
+ * is mounted; keying on it makes that explicit rather than assumed, which is
+ * what lets the body call `useListView` on one path only.
+ */
 export function OrdersListPage(): ReactElement {
+  const savedViews = isOrdersSavedViewsEnabled();
+  return <OrdersListPageBody key={savedViews ? 'views' : 'legacy'} savedViews={savedViews} />;
+}
+
+function OrdersListPageBody({ savedViews }: { savedViews: boolean }): ReactElement {
   const locale = useActiveLocale();
   const format = useFormat();
   const plural = usePlural();
@@ -829,6 +860,86 @@ export function OrdersListPage(): ReactElement {
     [items, peekIndex],
   );
 
+  /** The Order cell, shared by the legacy column and the saved-views locked column. */
+  const renderOrderCell = useCallback(
+    (order: OrderRecord): ReactElement => {
+      const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
+      const source = channelLabel(sourcePlatform);
+      const destPlatform = order.syncStatus[0]
+        ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
+        : undefined;
+      const dest = channelLabel(destPlatform);
+      // Multi-destination indicator (#1713): an order fanned out to more than
+      // one destination shows `→ Dest +N` where N is the extra destinations.
+      const extraDests = order.syncStatus.length > 1 ? order.syncStatus.length - 1 : 0;
+      // The inline Retry lives under the order name rather than in its own
+      // trailing column (#1713): a column that only ever renders for failed
+      // rows widened the table past the viewport for every other row.
+      const failed = order.syncStatus.find((s) => s.status === 'failed');
+      const canRetry =
+        failed !== undefined &&
+        order.recordStatus !== 'awaiting_mapping' &&
+        order.recordStatus !== 'source_deleted' &&
+        retryWrite.visible;
+      const isRetrying =
+        retryMutation.isPending &&
+        retryMutation.variables?.internalOrderId === order.internalOrderId;
+      return (
+        <span className="orders-cell-stack">
+          {/* Thumbnail + order ref + item name/`+N`, all owned by the shared
+              cell since #2091. The channel fold and the inline Retry stay
+              siblings BELOW it: both are row affordances rather than part of
+              the order's identity, and #2094 owns relocating the fold. */}
+          {renderOrderIdentity(order)}
+          {/* Channel folds under the order name below the Channel column's
+              hide breakpoint (#1713) — hidden on wide screens where the
+              standalone Channel column is visible. */}
+          {source ? (
+            <span className="orders-order-channel">
+              <ConnectionChip
+                connectionId={order.sourceConnectionId}
+                name={connectionNames.get(order.sourceConnectionId) ?? null}
+                loading={connectionsQuery.isLoading}
+                channel={sourceChipChannel(order.sourceConnectionId, source)}
+              />
+              {dest ? (
+                <span className="text-muted orders-cell-sub">
+                  → {dest}
+                  {extraDests > 0 ? ` +${extraDests}` : ''}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+          {canRetry && failed ? (
+            <ReadOnlyLock active={retryWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
+              <Button
+                tone="ghost"
+                className="button--sm orders-row-retry"
+                disabled={isRetrying || retryWrite.demoReadOnly}
+                onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
+              >
+                {isRetrying ? copy.retry.retrying : copy.retry.action}
+              </Button>
+            </ReadOnlyLock>
+          ) : null}
+        </span>
+      );
+    },
+    [
+      platforms,
+      platformByConnection,
+      environmentByConnection,
+      connectionNames,
+      connectionsQuery.isLoading,
+      renderOrderIdentity,
+      retryMutation.isPending,
+      retryMutation.variables,
+      retryWrite.visible,
+      retryWrite.demoReadOnly,
+      copy,
+    ],
+  );
+
   const columns: DataTableColumn<OrderRecord>[] = useMemo(
     () => [
       {
@@ -853,69 +964,7 @@ export function OrdersListPage(): ReactElement {
         // #2538 - OrderIdentityCell stacks a thumbnail, the order number and a meta line.
         lines: 2,
         header: copy.columns.order,
-        cell: (order) => {
-          const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
-          const source = channelLabel(sourcePlatform);
-          const destPlatform = order.syncStatus[0]
-            ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
-            : undefined;
-          const dest = channelLabel(destPlatform);
-          // Multi-destination indicator (#1713): an order fanned out to more than
-          // one destination shows `→ Dest +N` where N is the extra destinations.
-          const extraDests = order.syncStatus.length > 1 ? order.syncStatus.length - 1 : 0;
-          // The inline Retry lives under the order name rather than in its own
-          // trailing column (#1713): a column that only ever renders for failed
-          // rows widened the table past the viewport for every other row.
-          const failed = order.syncStatus.find((s) => s.status === 'failed');
-          const canRetry =
-            failed !== undefined &&
-            order.recordStatus !== 'awaiting_mapping' &&
-            order.recordStatus !== 'source_deleted' &&
-            retryWrite.visible;
-          const isRetrying =
-            retryMutation.isPending &&
-            retryMutation.variables?.internalOrderId === order.internalOrderId;
-          return (
-            <span className="orders-cell-stack">
-              {/* Thumbnail + order ref + item name/`+N`, all owned by the shared
-                  cell since #2091. The channel fold and the inline Retry stay
-                  siblings BELOW it: both are row affordances rather than part of
-                  the order's identity, and #2094 owns relocating the fold. */}
-              {renderOrderIdentity(order)}
-              {/* Channel folds under the order name below the Channel column's
-                  hide breakpoint (#1713) — hidden on wide screens where the
-                  standalone Channel column is visible. */}
-              {source ? (
-                <span className="orders-order-channel">
-                  <ConnectionChip
-                    connectionId={order.sourceConnectionId}
-                    name={connectionNames.get(order.sourceConnectionId) ?? null}
-                    loading={connectionsQuery.isLoading}
-                    channel={sourceChipChannel(order.sourceConnectionId, source)}
-                  />
-                  {dest ? (
-                    <span className="text-muted orders-cell-sub">
-                      → {dest}
-                      {extraDests > 0 ? ` +${extraDests}` : ''}
-                    </span>
-                  ) : null}
-                </span>
-              ) : null}
-              {canRetry && failed ? (
-                <ReadOnlyLock active={retryWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
-                  <Button
-                    tone="ghost"
-                    className="button--sm orders-row-retry"
-                    disabled={isRetrying || retryWrite.demoReadOnly}
-                    onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
-                  >
-                    {isRetrying ? copy.retry.retrying : copy.retry.action}
-                  </Button>
-                </ReadOnlyLock>
-              ) : null}
-            </span>
-          );
-        },
+        cell: renderOrderCell,
       },
       {
         id: 'customer',
@@ -1106,6 +1155,7 @@ export function OrdersListPage(): ReactElement {
       retryMutation.variables,
       retryWrite.visible,
       retryWrite.demoReadOnly,
+      renderOrderCell,
       // Selection state — the select column re-renders as checkboxes toggle (#1109).
       selectedIds,
       headerCheckboxState,
@@ -1149,6 +1199,266 @@ export function OrdersListPage(): ReactElement {
     const trailing = byId.get('peek');
     return [...structural, ...optional, ...(trailing ? [trailing] : [])];
   }, [columns, visibleColumnIds, selectionEnabled]);
+
+  // ── Saved views (#4241) ──────────────────────────────────────────────────────
+  // The registry's cells close over query data (connections, packers, retry
+  // state), so it is rebuilt only when that data changes: `useListView` memoizes
+  // everything it derives on the registry's identity.
+  const savedViewsCopy = orders.savedViews;
+  const registry = useMemo(
+    () =>
+      createOrdersListRegistry({
+        labels: {
+          order: copy.columns.order,
+          orderFields: savedViewsCopy.orderFields,
+          customer: orders.listColumns.customer,
+          customerName: savedViewsCopy.customerName,
+          customerCity: savedViewsCopy.customerCity,
+          customerNote: savedViewsCopy.customerNote,
+          channel: orders.listColumns.channel,
+          channelSource: savedViewsCopy.channelSource,
+          channelDestination: savedViewsCopy.channelDestination,
+          status: orders.listColumns.status,
+          statusFields: savedViewsCopy.statusFields,
+          shipment: orders.listColumns.shipment,
+          shipmentState: savedViewsCopy.shipmentState,
+          shipmentCarrier: savedViewsCopy.shipmentCarrier,
+          shipBy: copy.columns.shipBy,
+          money: orders.listColumns.money,
+          total: copy.columns.total,
+          payment: copy.columns.payment,
+          document: savedViewsCopy.document,
+          placed: copy.columns.placed,
+          created: copy.columns.created,
+        },
+        viewNames: {
+          [ORDER_VIEW_IDS.all]: orders.listFilters.anyStatus,
+          ...orders.listFilters.healthLabels,
+        },
+        sortLabels: orders.listFilters.sortOptions,
+        cells: {
+          order: renderOrderCell,
+          customerName: (order) => {
+            const name = customerName(parsedFor(order));
+            if (name) return <span className="orders-cell-stack"><span>{name}</span></span>;
+            // A buyer with no name but a note leaves the note to speak for the row.
+            return order.hasBuyerNote === true ? null : <span className="text-muted">—</span>;
+          },
+          customerCity: (order) => {
+            const city = parsedFor(order).shippingAddress?.city;
+            return city ? (
+              <span className="orders-cell-stack">
+                <span className="text-muted orders-cell-sub">{city}</span>
+              </span>
+            ) : null;
+          },
+          customerNote: (order) =>
+            order.hasBuyerNote === true ? (
+              <span className="orders-cell-stack">
+                <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} preview={order.buyerNotePreview} />
+              </span>
+            ) : null,
+          channelSource: (order) => {
+            const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
+            if (!source) return <span className="text-muted">—</span>;
+            return (
+              <span className="orders-cell-stack">
+                <ConnectionChip
+                  connectionId={order.sourceConnectionId}
+                  name={connectionNames.get(order.sourceConnectionId) ?? null}
+                  loading={connectionsQuery.isLoading}
+                  channel={sourceChipChannel(order.sourceConnectionId, source)}
+                />
+              </span>
+            );
+          },
+          channelDestination: (order) => {
+            const destPlatform = order.syncStatus[0]
+              ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
+              : undefined;
+            // An order OpenLinker handles itself has no destination row; say where it
+            // goes rather than leaving the target empty (#3482).
+            const dest = isHandledInOpenLinker(order)
+              ? orders.handledInOpenLinker.channelDestination
+              : channelLabel(destPlatform);
+            return dest ? (
+              <span className="orders-cell-stack">
+                <span className="text-muted orders-cell-sub">→ {dest}</span>
+              </span>
+            ) : null;
+          },
+          status: (order) => (
+            <CappedBadges onMore={() => { openPeek(order.internalOrderId); }}>
+              {renderStatusBadges(order)}
+            </CappedBadges>
+          ),
+          shipmentState: (order) => {
+            const generateLabelHref = labelHrefFor(order);
+            return (
+              <span className="orders-cell-stack">
+                <CappedBadges onMore={() => { openPeek(order.internalOrderId); }}>
+                  {renderShipmentBadges(order)}
+                </CappedBadges>
+                {generateLabelHref ? (
+                  <Link className="orders-row-cta" to={generateLabelHref}>
+                    <span className="orders-row-cta__plus" aria-hidden="true">
+                      +
+                    </span>{' '}
+                    {copy.generateLabel}
+                  </Link>
+                ) : null}
+              </span>
+            );
+          },
+          shipmentCarrier: (order) => {
+            const carrier = carrierFor(order);
+            return carrier ? (
+              <span className="orders-cell-stack">
+                <span className="text-muted orders-cell-sub orders-carrier" title={carrier}>
+                  {carrier}
+                </span>
+              </span>
+            ) : null;
+          },
+          moneyTotal: (order) => {
+            const parsed = parsedFor(order);
+            return (
+              <span className="orders-cell-stack orders-cell-stack--end">
+                {parsed.totals ? (
+                  <span className="mono tabular orders-money-total">
+                    {format.money(parsed.totals.total, parsed.totals.currency)}
+                  </span>
+                ) : (
+                  <span className="text-muted">—</span>
+                )}
+              </span>
+            );
+          },
+          moneyPayment: (order) => {
+            const pay = paymentBadge(parsedFor(order).paymentStatus, orders);
+            return pay ? (
+              <span className="orders-cell-stack orders-cell-stack--end">
+                <StatusBadge tone={pay.tone} withDot compact>
+                  {pay.label}
+                </StatusBadge>
+              </span>
+            ) : null;
+          },
+          moneyDocument: (order) => {
+            const parsed = parsedFor(order);
+            return (
+              <span className="orders-cell-stack orders-cell-stack--end">
+                <CappedBadges align="end" onMore={() => { openPeek(order.internalOrderId); }}>
+                  {/* The routed sales document (#2552, ADR-065), shared verbatim with the mobile card. */}
+                  <SalesDocumentCell
+                    internalOrderId={order.internalOrderId}
+                    view={order.salesDocument}
+                    layout="stack"
+                    hasIssuingCapability={hasIssuingCapability}
+                    connectionNames={connectionNames}
+                  />
+                  {/* #2254 - its own line: a conflict does not stop the invoice. */}
+                  {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
+                  <UnlinkedCatalogueLinesBadge invoice={parsed.invoice} />
+                  <WarehouseReleaseBadge invoice={parsed.invoice} />
+                </CappedBadges>
+              </span>
+            );
+          },
+          moneyPlaced: (order) => {
+            const placedAt = parsedFor(order).placedAt;
+            return placedAt ? (
+              <span className="orders-cell-stack orders-cell-stack--end">
+                <span className="text-muted orders-cell-sub mono tabular">
+                  <TimeDisplay iso={placedAt} format="datetime" />
+                </span>
+              </span>
+            ) : null;
+          },
+          moneyCreated: (order) => (
+            <span className="orders-cell-stack orders-cell-stack--end">
+              <span className="text-muted orders-cell-sub mono tabular">
+                <TimeDisplay iso={order.createdAt} format="datetime" />
+              </span>
+            </span>
+          ),
+        },
+      }),
+    // `channelLabel` and `sourceChipChannel` close over these lookups (see the
+    // legacy columns memo above for why the registry array is a safe dep).
+    [
+      orders,
+      copy,
+      savedViewsCopy,
+      format,
+      platforms,
+      platformByConnection,
+      environmentByConnection,
+      connectionNames,
+      connectionsQuery.isLoading,
+      parsedFor,
+      renderOrderCell,
+      renderShipmentBadges,
+      labelHrefFor,
+      carrierFor,
+      openPeek,
+      hasIssuingCapability,
+    ],
+  );
+  const viewCounts = useMemo<Record<string, number | undefined>>(
+    () => ({
+      [ORDER_VIEW_IDS.all]: summary?.total,
+      [ORDER_VIEW_IDS.needsAttention]: summary?.needsAttention,
+      [ORDER_VIEW_IDS.awaitingMapping]: summary?.awaitingMapping,
+      [ORDER_VIEW_IDS.awaitingDispatch]: summary?.awaitingDispatch,
+      [ORDER_VIEW_IDS.sourceDeleted]: summary?.sourceDeleted,
+      [ORDER_VIEW_IDS.synced]: summary?.synced,
+    }),
+    [summary],
+  );
+  // The flag is constant for this body's lifetime (the wrapper keys on it), so
+  // the hook is called on the same path every render.
+  const view = savedViews
+    ? useListView<OrderRecord>({ registry, pageTitle: copy.title, counts: viewCounts })
+    : null;
+
+  // A selection belongs to the rows of one view: switching view swaps the rows underneath it.
+  const activeViewId = view?.activeView.id;
+  useEffect(() => {
+    setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+  }, [activeViewId]);
+
+  // One-time hand-over of the column choice the list used to keep in
+  // localStorage: it seeds the draft (visible as an edit the operator can save
+  // as a view) and the key is removed either way, so there is one source of
+  // truth. A viewer who already has a view of their own keeps it untouched.
+  const legacyColumnsHandled = useRef(false);
+  const viewReady = view?.isReady === true;
+  useEffect(() => {
+    if (!view || !viewReady || legacyColumnsHandled.current) return;
+    legacyColumnsHandled.current = true;
+    if (!hasLegacyVisibleColumnsKey()) return;
+    const remembered = readLegacyVisibleColumns();
+    clearLegacyVisibleColumns();
+    if (!remembered || view.activeView.scope !== 'system' || view.isEdited) return;
+    const known = new Set<string>(ORDER_LIST_COLUMN_IDS);
+    const ids = remembered.filter((id, index) => known.has(id) && remembered.indexOf(id) === index);
+    if (ids.length === 0 || ids.join() === view.current.columns.join()) return;
+    view.columnsPanel.onColumnsChange(ids);
+  }, [view, viewReady]);
+
+  const toViewColumns = view?.toColumns;
+  const viewColumns = useMemo<DataTableColumn<OrderRecord>[]>(() => {
+    if (!toViewColumns) return [];
+    const select = columns.find((c) => c.id === 'select');
+    const peek = columns.find((c) => c.id === 'peek');
+    return [
+      ...(selectionEnabled && select ? [select] : []),
+      ...toViewColumns(),
+      ...(peek ? [peek] : []),
+    ];
+  }, [toViewColumns, columns, selectionEnabled]);
+  const tableColumns = view ? viewColumns : visibleColumns;
 
   function handleRetry(internalOrderId: string, destinationConnectionId: string): void {
     retryMutation.mutate(
@@ -1339,11 +1649,16 @@ export function OrdersListPage(): ReactElement {
               </Button>
             </ReadOnlyLock>
           ) : null}
-          {/* The control hides itself on a phone — cards ignore columns. */}
-          <OrderColumnVisibilityControl
-            visibleColumnIds={visibleColumnIds}
-            onVisibleColumnIdsChange={setVisibleColumnIds}
-          />
+          {/* The control hides itself on a phone — cards ignore columns. With
+              saved views the Columns panel in the filter row replaces it. */}
+          {view ? null : (
+            <span className="tour-anchor" data-tour="orders-columns">
+              <OrderColumnVisibilityControl
+                visibleColumnIds={visibleColumnIds}
+                onVisibleColumnIdsChange={setVisibleColumnIds}
+              />
+            </span>
+          )}
           <Button tone="ghost" className="button--sm" onClick={refreshAll}>
             {copy.refresh}
             <span className="button__shortcut">R</span>
@@ -1353,16 +1668,25 @@ export function OrdersListPage(): ReactElement {
     >
       {/* Status bar (#4026): the health partition as tabs, and "Needs a look"
           as one line beside them. */}
-      <div className="list-statusbar">
-        <OrderStatusTabs
-          value={health}
-          summary={summary}
-          onChange={(next) => {
-            filtersApi.setHealth(next);
-          }}
-        />
-        <OrderAttentionSummary filtersApi={filtersApi} summary={summary} slaSummary={slaSummary} />
-      </div>
+      {view ? (
+        // The views strip replaces the health tabs: its built-in views ARE the
+        // five health buckets, with the same counts.
+        <div className="list-statusbar list-statusbar--views">
+          <ViewsBar {...view.viewsBar} />
+          <OrderAttentionSummary filtersApi={filtersApi} summary={summary} slaSummary={slaSummary} />
+        </div>
+      ) : (
+        <div className="list-statusbar">
+          <OrderStatusTabs
+            value={health}
+            summary={summary}
+            onChange={(next) => {
+              filtersApi.setHealth(next);
+            }}
+          />
+          <OrderAttentionSummary filtersApi={filtersApi} summary={summary} slaSummary={slaSummary} />
+        </div>
+      )}
 
       <OrderListFilterBar
         filtersApi={filtersApi}
@@ -1375,10 +1699,18 @@ export function OrdersListPage(): ReactElement {
         resultCount={resultCount}
         storesPersonalData={storesPersonalData}
         formatDay={formatDay}
+        trailing={view ? <ColumnsPanel {...view.columnsPanel} /> : undefined}
       />
 
-      {query.isLoading ? (
-        <DataTableSkeleton columns={visibleColumns} rowAction label={copy.loading} />
+      {view?.editedBar ? (
+        <div className="sv-applied">
+          <EditedBar {...view.editedBar} />
+        </div>
+      ) : null}
+      {view?.repairBanner ? <RepairBanner {...view.repairBanner} /> : null}
+
+      {query.isLoading || (view !== null && !view.isReady) ? (
+        <DataTableSkeleton columns={tableColumns} rowAction label={copy.loading} />
       ) : query.error ? (
         <ErrorState
           title={copy.loadError}
@@ -1543,9 +1875,10 @@ export function OrdersListPage(): ReactElement {
               internalOrderIds={(query.data?.items ?? []).map((order) => order.internalOrderId)}
             />
           ) : null}
+          <div data-tour="orders-table">
           <DataTable
             caption={copy.tableCaption}
-            columns={visibleColumns}
+            columns={tableColumns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
             // Top-aligns every cell in the row (#2091, `.orders-table td`). Row
@@ -1920,6 +2253,10 @@ export function OrdersListPage(): ReactElement {
                     <StatusBadge tone={h.tone} withDot compact>
                       {h.label}
                     </StatusBadge>
+                    <OrderHiddenBadge
+                      hiddenAt={order.hiddenAt}
+                      personalDataErasedAt={order.personalDataErasedAt}
+                    />
                     <OrderPhaseOrWaitingBadge order={order} compact />
                     <OrderHoldBadge reason={order.activeHoldReason} compact />
                     <OrderDestinationRoutingBadge
@@ -1977,6 +2314,7 @@ export function OrdersListPage(): ReactElement {
               },
             }}
           />
+          </div>
 
           <ListPagination
             offset={offset}
@@ -2028,6 +2366,8 @@ export function OrdersListPage(): ReactElement {
         orders={selectedOrders}
         onComplete={clearSelection}
       />
+
+      {view ? <ViewDialogs {...view.dialogs} /> : null}
 
       <OrderExportDialog
         open={exportOpen}

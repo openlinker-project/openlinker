@@ -6,7 +6,13 @@
  * Amazon's error code and request id. Constructed per resolution, never a DI
  * singleton, because it closes over one connection's token source and host.
  *
- * Deliberately has no retries, like `ShoperHttpClient`: a failed call surfaces
+ * One exception to "no retries": a 401 means the access token was revoked or
+ * rotated before its stated expiry. The client asks the token source to forget
+ * it and sends the request once more with a fresh token. Amazon refused the
+ * request before acting on it, so the repeat cannot double a write, and a second
+ * 401 is surfaced as it is (the credentials themselves are then the problem).
+ *
+ * Otherwise deliberately has no retries, like `ShoperHttpClient`: a failed call surfaces
  * to the job, whose runner owns the retry ladder and defers a 429 / 503
  * penalty-free through the retry classifier. Back-off never reads
  * `x-amzn-RateLimit-Limit`: Amazon sends it only "when available" and warns
@@ -76,6 +82,7 @@ export class AmazonSpApiClient {
     path: string,
     query?: AmazonQuery,
     body?: unknown,
+    refreshedAfter401 = false,
   ): Promise<AmazonSpApiResponse<T>> {
     const token = await this.tokens.getAccessToken();
     const controller = new AbortController();
@@ -118,8 +125,19 @@ export class AmazonSpApiClient {
     }
 
     const requestId = response.headers.get('x-amzn-requestid') ?? undefined;
+    const errorBody = response.status >= 400 ? parseAmazonJson<AmazonSpApiErrorBody>(text) : null;
+    // Amazon answers a revoked, expired or malformed access token with 401 on
+    // some hosts and with 403 "Unauthorized" on others (seen on the sandbox), so
+    // both renew the token once. A 403 for a missing role carries the same code:
+    // the retry then fails the same way and is surfaced, at the cost of one LWA call.
+    const tokenRefused =
+      response.status === 401 || (response.status === 403 && errorBody?.errors?.[0]?.code === 'Unauthorized');
+    if (tokenRefused && !refreshedAfter401 && this.tokens.invalidate !== undefined) {
+      await this.tokens.invalidate(token);
+      return this.request<T>(method, path, query, body, true);
+    }
     if (response.status < 200 || response.status >= 300) {
-      const first = parseAmazonJson<AmazonSpApiErrorBody>(text)?.errors?.[0];
+      const first = errorBody?.errors?.[0];
       throw new AmazonApiError(response.status, first?.code, first?.message, requestId);
     }
 
@@ -146,5 +164,6 @@ export function buildAmazonUrl(host: string, path: string, query?: AmazonQuery):
     params.append(key, Array.isArray(value) ? value.join(',') : String(value));
   }
   const search = params.toString();
-  return `https://${host}${normalisedPath}${search.length > 0 ? `?${search}` : ''}`;
+  const base = /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return `${base}${normalisedPath}${search.length > 0 ? `?${search}` : ''}`;
 }

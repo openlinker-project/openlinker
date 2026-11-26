@@ -211,11 +211,71 @@ export const OPERATIONAL_SETTING_BOUNDS: Readonly<
     recommendedReason:
       'How long a stock figure may go without a fresh read from the master before the stock view flags it as stale. Beyond two days the flag stops catching a sync that has quietly died.',
     absoluteMax: 168,
-    absoluteReason: 'One week - past that the flag would never fire on a sync that stopped last weekend.',
+    absoluteReason:
+      'One week - past that the flag would never fire on a sync that stopped last weekend.',
     default: 6,
     envVar: 'OL_STOCK_STALE_SYNC_THRESHOLD_HOURS',
   },
 };
+
+/**
+ * Buyer data retention vocabulary (#4289).
+ *
+ * Periods are whole DAYS and `0` is the explicit "never" sentinel, because
+ * `resolveOperationalSetting` never returns `null` and a missing value must stay
+ * distinguishable from "do not do this". The pure rules live here, beside the
+ * types they are the rules for, so the settings service, the per-connection
+ * validator in `ConnectionService` and the retention service read ONE bound.
+ */
+export const BUYER_DATA_ERASE_MODES = ['personal-data', 'whole-order'] as const;
+export type BuyerDataEraseMode = (typeof BUYER_DATA_ERASE_MODES)[number];
+
+export const BUYER_DATA_PERIOD_MIN_DAYS = 30;
+export const BUYER_DATA_PERIOD_MAX_DAYS = 3650;
+
+export const BUYER_DATA_RETENTION_DEFAULTS = {
+  enabled: false,
+  hideAfterDays: 0,
+  eraseAfterDays: 0,
+  mode: 'personal-data',
+} as const satisfies {
+  enabled: boolean;
+  hideAfterDays: number;
+  eraseAfterDays: number;
+  mode: BuyerDataEraseMode;
+};
+
+export function isBuyerDataEraseMode(value: unknown): value is BuyerDataEraseMode {
+  return typeof value === 'string' && (BUYER_DATA_ERASE_MODES as readonly string[]).includes(value);
+}
+
+/** `0` (never) or a whole number of days within the allowed range. */
+export function isValidBuyerDataPeriod(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    (value === 0 || (value >= BUYER_DATA_PERIOD_MIN_DAYS && value <= BUYER_DATA_PERIOD_MAX_DAYS))
+  );
+}
+
+/**
+ * Whether two periods may coexist: when both are active, personal data may not
+ * be erased BEFORE the order is hidden. `0` on either side means that rule is
+ * off, so there is nothing to order.
+ */
+export function isBuyerDataPeriodOrderValid(
+  hideAfterDays: number,
+  eraseAfterDays: number
+): boolean {
+  return hideAfterDays === 0 || eraseAfterDays === 0 || eraseAfterDays >= hideAfterDays;
+}
+
+export interface BuyerDataRetentionRule {
+  readonly enabled: boolean;
+  readonly hideAfterDays: number;
+  readonly eraseAfterDays: number;
+  readonly mode: BuyerDataEraseMode;
+}
 
 /** Hourly - the cadence `CORE_CAPABILITY_TASKS` ships for `master.product.reconcile`. */
 export const DELETION_AUDIT_CADENCE_DEFAULT = '0 * * * *';
@@ -300,6 +360,23 @@ export interface OperationalSettingsView {
   readonly stockStaleSyncThresholdHours: ResolvedOperationalNumber;
   readonly deletionAuditCadence: ResolvedOperationalSetting<string>;
   /**
+   * Buyer data retention defaults (#4289). Master switch: nothing is hidden or
+   * erased until an operator turns it on. Row-or-default only - there is no env
+   * rung - so `source` is `setting` or `default` and the value is the same in
+   * every process (`workerMayDiffer` is always `false`).
+   */
+  readonly buyerDataRetentionEnabled: ResolvedOperationalSetting<boolean>;
+  /** Days after the order date an order is hidden from lists. `0` = never. */
+  readonly buyerDataHideAfterDays: ResolvedOperationalSetting<number>;
+  /** Days after the order date the buyer's personal data is erased. `0` = never. */
+  readonly buyerDataEraseAfterDays: ResolvedOperationalSetting<number>;
+  readonly buyerDataEraseMode: ResolvedOperationalSetting<BuyerDataEraseMode>;
+  /**
+   * Release center on/off (#4143). A separate boolean kind, not a numeric key:
+   * it has no bounds, so it takes none of the numeric machinery.
+   */
+  readonly releaseCenterEnabled: ResolvedOperationalSetting<boolean>;
+  /**
    * How often each sweep runs (#2660 review).
    *
    * Read-only here - there is no input for either - but reported so a consumer
@@ -350,6 +427,12 @@ export interface OperationalSettingsInput {
   readonly inventoryMovementRetentionDays?: number | null;
   readonly stockStaleSyncThresholdHours?: number | null;
   readonly deletionAuditCadence?: string | null;
+  readonly buyerDataRetentionEnabled?: boolean | null;
+  readonly buyerDataHideAfterDays?: number | null;
+  readonly buyerDataEraseAfterDays?: number | null;
+  readonly buyerDataEraseMode?: BuyerDataEraseMode | null;
+  /** `null` clears the stored value back to the env or default rung. */
+  readonly releaseCenterEnabled?: boolean | null;
   /**
    * Permission to exceed a RECOMMENDED ceiling on this request.
    *
@@ -394,6 +477,12 @@ export const OperationalSettingRuleValues = [
   'cadence-invalid',
   /** The deletion-audit cadence fires less than once every 7 days. */
   'cadence-too-rare',
+  /** A buyer data period is not `0` or a whole number of days in the allowed range (#4289). */
+  'buyer-data-period',
+  /** The erase period is shorter than the hide period (#4289). */
+  'buyer-data-order',
+  /** The buyer data mode is not a known mode (#4289). */
+  'buyer-data-mode',
 ] as const;
 
 export type OperationalSettingRule = (typeof OperationalSettingRuleValues)[number];
@@ -442,7 +531,9 @@ export function checkOperationalSettingBound(
   value: number,
   acknowledgeAboveRecommended = false
 ): string | null {
-  return findOperationalSettingBoundBreach(key, value, acknowledgeAboveRecommended)?.message ?? null;
+  return (
+    findOperationalSettingBoundBreach(key, value, acknowledgeAboveRecommended)?.message ?? null
+  );
 }
 
 /**
@@ -538,4 +629,43 @@ export function resolveOperationalSetting(
  */
 export function exceedsAdapterPageSize(requested: number, adapterMax: number): boolean {
   return requested > adapterMax;
+}
+
+export const RELEASE_CENTER_ENABLED_ENV_VAR = 'OL_RELEASE_CENTER_ENABLED';
+
+/** On by default: an install that sets nothing keeps the release center. */
+export const RELEASE_CENTER_ENABLED_DEFAULT = true;
+
+/**
+ * Reads the env rung. Only the literal `true` / `false` (case-insensitive,
+ * trimmed) count; anything else falls through to the default, because a typo
+ * must not silently switch the feature off.
+ */
+export function readReleaseCenterEnabledEnv(raw: string | undefined): boolean | null {
+  if (raw === undefined) {
+    return null;
+  }
+  const normalised = raw.trim().toLowerCase();
+  if (normalised === 'true') {
+    return true;
+  }
+  if (normalised === 'false') {
+    return false;
+  }
+  return null;
+}
+
+/** `setting -> OL_RELEASE_CENTER_ENABLED -> default on`, reported with its rung. */
+export function resolveReleaseCenterEnabled(
+  stored: boolean | null,
+  env: string | undefined
+): ResolvedOperationalSetting<boolean> {
+  if (stored !== null) {
+    return { value: stored, source: 'setting', workerMayDiffer: false };
+  }
+  const fromEnv = readReleaseCenterEnabledEnv(env);
+  if (fromEnv !== null) {
+    return { value: fromEnv, source: 'env', workerMayDiffer: true };
+  }
+  return { value: RELEASE_CENTER_ENABLED_DEFAULT, source: 'default', workerMayDiffer: true };
 }

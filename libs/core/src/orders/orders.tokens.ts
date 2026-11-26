@@ -15,9 +15,7 @@ export const ORDER_RECORD_REPOSITORY_TOKEN = Symbol('OrderRecordRepositoryPort')
 export const ORDER_RECORD_SERVICE_TOKEN = Symbol('IOrderRecordService');
 export const ORDER_DESTINATION_RETRY_SERVICE_TOKEN = Symbol('IOrderDestinationRetryService');
 // Re-enqueues the source-side provisioning run a released hold had suppressed (#2341).
-export const ORDER_PROVISIONING_RESUME_SERVICE_TOKEN = Symbol(
-  'IOrderProvisioningResumeService'
-);
+export const ORDER_PROVISIONING_RESUME_SERVICE_TOKEN = Symbol('IOrderProvisioningResumeService');
 // Re-routes a held order on an operator retry or a stock change (#3558).
 export const ORDER_ROUTING_RETRY_SERVICE_TOKEN = Symbol('IOrderRoutingRetryService');
 export const ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN = Symbol('IOrderItemRefResolverService');
@@ -59,6 +57,7 @@ export const ORDER_EXPORT_REPOSITORY_TOKEN = Symbol('OrderExportRepositoryPort')
 export const ORDER_EXPORT_SERVICE_TOKEN = Symbol('IOrderExportService');
 // `order_records.searchText` re-derivation under the current PII mode (#3507 G03-14).
 export const ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN = Symbol('IOrderSearchTextReindexService');
+export const BUYER_DATA_RETENTION_SERVICE_TOKEN = Symbol('IBuyerDataRetentionService');
 export const ORDER_BUYER_DATA_RETENTION_SERVICE_TOKEN = Symbol('IOrderBuyerDataRetentionService');
 
 
@@ -81,9 +80,7 @@ export const ORDER_HOLD_REPOSITORY_TOKEN = Symbol('OrderHoldRepositoryPort');
 export const ORDER_HOLD_SERVICE_TOKEN = Symbol('IOrderHoldService');
 
 /** #2340 — the `order_records.activeHoldReason` cache's only write statement. */
-export const ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN = Symbol(
-  'OrderHoldProjectionRepositoryPort'
-);
+export const ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN = Symbol('OrderHoldProjectionRepositoryPort');
 
 /** #2340 — the bounded `orders.holds.reconcile` repair pass. */
 export const ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN = Symbol(
@@ -92,7 +89,9 @@ export const ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN = Symbol(
 
 /** Cleanup a cancelled order owes, shared by the operator and observed paths (#3540). */
 export const ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN = Symbol('IOrderCancellationEffectsService');
-export const ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN = Symbol('IOrderSourceAmendmentEffectsService');
+export const ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN = Symbol(
+  'IOrderSourceAmendmentEffectsService'
+);
 
 /**
  * Voids a cancelled order's bought labels (#3540, 4a). Bound by `ShippingModule`
@@ -106,7 +105,9 @@ export const FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN = Symbol('IFulfillmentDisp
 // One per-order sales-document read (#2516, ADR-065).
 export const SALES_DOCUMENT_VIEW_SERVICE_TOKEN = Symbol('ISalesDocumentViewService');
 // Batch issuing (#3583): run records + queue read, and the service that runs a queue.
-export const SALES_DOCUMENT_BATCH_RUN_REPOSITORY_TOKEN = Symbol('SalesDocumentBatchRunRepositoryPort');
+export const SALES_DOCUMENT_BATCH_RUN_REPOSITORY_TOKEN = Symbol(
+  'SalesDocumentBatchRunRepositoryPort'
+);
 export const SALES_DOCUMENT_BATCH_SERVICE_TOKEN = Symbol('ISalesDocumentBatchService');
 // Data Coverage tax A/B/C detector (#2465).
 export const TAX_COVERAGE_DETECTION_SERVICE_TOKEN = Symbol('ITaxCoverageDetectionService');
@@ -133,7 +134,7 @@ export const DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN = Symbol(
  * boot spec guards).
  */
 export const INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN = Symbol(
-  'InvoiceMarketplaceUploadRepositoryPort',
+  'InvoiceMarketplaceUploadRepositoryPort'
 );
 
 /** Binding token for the {@link IInvoiceMarketplaceUploadService} (#3549). */

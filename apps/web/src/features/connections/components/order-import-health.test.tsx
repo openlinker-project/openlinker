@@ -106,7 +106,11 @@ describe('OrderImportHealth', () => {
       const onSyncProducts = vi.fn();
       const onRetry = vi.fn();
       renderWithProviders(
-        <OrderImportHealth orderImport={failing} onSyncProducts={onSyncProducts} onRetry={onRetry} />
+        <OrderImportHealth
+          orderImport={failing}
+          onSyncProducts={onSyncProducts}
+          onRetry={onRetry}
+        />
       );
 
       await user.click(screen.getByRole('button', { name: 'View' }));

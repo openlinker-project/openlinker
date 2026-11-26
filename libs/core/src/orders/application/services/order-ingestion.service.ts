@@ -45,6 +45,9 @@ import {
   IDENTIFIER_MAPPING_SERVICE_TOKEN,
   CORE_ENTITY_TYPE,
   CONNECTION_PORT_TOKEN,
+  buildUnmatchedProductId,
+  isUnmatchedProductId,
+  readCatalogueMode,
   type Connection,
   type ConnectionPort,
 } from '@openlinker/core/identifier-mapping';
@@ -154,6 +157,7 @@ import {
   type FulfillmentRoutingSkipReason,
 } from '../../domain/types/fulfillment-routing-eligibility.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
+import { splitBundleLineTotal } from '@openlinker/core/sales-documents';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
 import type { ItemResolutionFailureKind } from './order-item-ref-resolver.types';
@@ -885,20 +889,21 @@ export class OrderIngestionService implements IOrderIngestionService {
     // The fact is an observation about the SOURCE and is true whether or not
     // item resolution subsequently succeeds. The destination-echo early return
     // above is untouched: an echo is not an amendment.
-    await this.recordSourceAmendment(existing, incoming, internalOrderId, connectionId);
+    //
+    // Buyer-data retention (#4289, #4178): an ERASED or REDACTED order's stored snapshot carries
+    // placeholders, so (a) the diff would report a `shipping-address-changed`
+    // amendment on every re-poll, and (b) resolving the buyer / syncing the
+    // projections below would write the buyer's email, name and address back
+    // into the customer projection. Both are skipped; the order keeps the
+    // customer id it already carries and only non-personal fields refresh.
+    const erased = existing?.isBuyerDataGone === true;
+    if (!erased) {
+      await this.recordSourceAmendment(existing, incoming, internalOrderId, connectionId);
+    }
 
-    // An order whose buyer data was removed because its source's retention
-    // period passed (#4178) writes no personal data back on a re-import: the
-    // order snapshot is handled by `OrderRecordService`, and the customer
-    // projections are left alone here (identity is still resolved). A first
-    // sight cannot have been redacted. Read from the record already loaded above.
-    const buyerDataRemoved = (existing?.buyerDataRedactedAt ?? null) !== null;
-    const internalCustomerId = await this.resolveCustomerId(
-      incoming,
-      connectionId,
-      internalOrderId,
-      buyerDataRemoved
-    );
+    const internalCustomerId = erased
+      ? existing?.customerId ?? undefined
+      : await this.resolveCustomerId(incoming, connectionId, internalOrderId);
 
     // Step 2: persist raw snapshot immediately — operator can see the order even if item resolution fails
     const snapshotRecord = await this.orderRecordService.persistIncomingSnapshot(
@@ -991,6 +996,12 @@ export class OrderIngestionService implements IOrderIngestionService {
       kind: ItemResolutionFailureKind;
     }> = [];
 
+    // #4280: read lazily and at most once, only when a line actually fails to
+    // map, so an install that never sets `catalogueMode` pays no extra lookup.
+    let unmatchedAccepted: boolean | undefined;
+    const acceptsUnmatchedItems = async (): Promise<boolean> =>
+      (unmatchedAccepted ??= await this.readAcceptsUnmatchedItems(connectionId));
+
     for (const item of incoming.items) {
       const result = await this.orderItemRefResolver.tryResolve(connectionId, item.productRef);
       // A ready order with a frozen expansion was already decided: re-asking the
@@ -1056,6 +1067,17 @@ export class OrderIngestionService implements IOrderIngestionService {
           ...(item.gift !== undefined ? { gift: item.gift } : {}),
           ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
         });
+      } else if (
+        result.kind === 'missing_mapping' &&
+        (await acceptsUnmatchedItems())
+      ) {
+        // #4280: this source has no catalogue to map against (`catalogueMode:
+        // 'none'`), so a mapping gap is not a transient state waiting for a
+        // ProductMaster sweep - nothing will ever heal it. Accept the line as an
+        // unmatched one so the order can reach `ready`. Only `missing_mapping`:
+        // a `source_deleted` ref names a variant that EXISTS and was removed at
+        // its master, which is a different fact and stays a hold.
+        resolvedItems.push(this.buildUnmatchedItem(connectionId, item));
       } else {
         unresolvedRefs.push({ itemId: item.id, reason: result.reason, kind: result.kind });
       }
@@ -1273,7 +1295,8 @@ export class OrderIngestionService implements IOrderIngestionService {
           });
           this.logger.log(
             `Cancellation relayed for order ${internalOrderId} on update: ` +
-              (relayed.targets.map((t) => `${t.connectionId}=${t.outcome}`).join(', ') || 'no targets')
+              (relayed.targets.map((t) => `${t.connectionId}=${t.outcome}`).join(', ') ||
+                'no targets')
           );
         } catch (error) {
           this.logger.error(
@@ -1286,10 +1309,8 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     // Step 6: best-effort customer-projection sync. Runs before destination dispatch so
     // a destination failure can't drop projection updates. Failure here is swallowed —
-    // projections are non-authoritative and must never block order sync. A
-    // redacted order (#4178) skips it: the projections would take the buyer's
-    // names and addresses back and restart the retention clock.
-    if (internalCustomerId && !buyerDataRemoved) {
+    // projections are non-authoritative and must never block order sync.
+    if (internalCustomerId && !erased) {
       try {
         await this.customerProjectionUpdater.updateProjectionsForOrder(
           order,
@@ -1366,7 +1387,16 @@ export class OrderIngestionService implements IOrderIngestionService {
           ...(physicalItems.some(
             (item) => 'parentLineId' in item && item.parentLineId !== undefined
           )
-            ? { physicalProductIds: physicalItems.map((item) => item.productId) }
+            ? {
+                physicalProductIds: physicalItems
+                  .map((item) => item.productId)
+                  .filter((productId) => !isUnmatchedProductId(productId)),
+                physicalItems: await this.withBundleShares(
+                  order,
+                  physicalItems.filter((item) => !isUnmatchedProductId(item.productId)),
+                  connectionId
+                ),
+              }
             : {}),
         });
       } catch (error) {
@@ -1476,7 +1506,8 @@ export class OrderIngestionService implements IOrderIngestionService {
           result.status === 'skipped_cancelled' &&
           existing?.syncStatus.some(
             (entry) =>
-              entry.destinationConnectionId === result.destinationConnectionId && entry.status === 'synced'
+              entry.destinationConnectionId === result.destinationConnectionId &&
+              entry.status === 'synced'
           )
         ) {
           // The destination already holds this order. "Cancelled before the
@@ -1595,7 +1626,14 @@ export class OrderIngestionService implements IOrderIngestionService {
         // `persisted`; reading `existing` here would silently answer
         // "not asserted" for every order's first ingestion.
         persisted.buyerTaxId,
-        await this.bundleDocuments.resolveForDocuments(persisted, connectionId)
+        // The bundle lines come from the FROZEN expansion, which is written
+        // after `persistOrder` returned: `persisted` of a first-seen order
+        // still has none, so the document would be composed as if no bundle
+        // existed (the set's own towar sold, with no stock behind it). Re-read.
+        await this.bundleDocuments.resolveForDocuments(
+          (await this.orderRecordService.getOrderRecord(order.id)) ?? persisted,
+          connectionId
+        )
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
       // the outcome and this service — which owns the order record — writes it,
@@ -1718,6 +1756,48 @@ export class OrderIngestionService implements IOrderIngestionService {
           `error=${errorName} orderId=${orderId}`
       );
       return { kind: 'indeterminate' };
+    }
+  }
+
+  /**
+   * Attach to each expanded component the gross share core assigned it out of its
+   * set line, so a destination that books the components prices them from the same
+   * split the documents use instead of dividing the set itself. Best-effort: a
+   * component with no computable share is left without one.
+   */
+  private async withBundleShares(
+    order: Order,
+    physicalItems: readonly Order['items'][number][],
+    connectionId: string
+  ): Promise<Array<Order['items'][number] & { shareGross?: number }>> {
+    try {
+      const record = await this.orderRecordService.getOrderRecord(order.id);
+      const presentation =
+        record === null || record === undefined
+          ? undefined
+          : await this.bundleDocuments.resolveForDocuments(record, connectionId);
+      if (presentation === undefined) return [...physicalItems];
+      const shareByLineId = new Map<string, number>();
+      for (const parent of order.items) {
+        const components = presentation.byLineId[parent.id];
+        if (components === undefined || components.length === 0) continue;
+        const shares = splitBundleLineTotal(
+          (parent.unitPriceGross ?? parent.price) * parent.quantity,
+          components,
+          order.totals.currency
+        );
+        if (shares === null) continue;
+        components.forEach((component, index) => shareByLineId.set(component.lineId, shares[index]));
+      }
+      return physicalItems.map((item) => {
+        const share = shareByLineId.get(item.id);
+        return share === undefined ? item : { ...item, shareGross: share };
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Bundle shares not computed for order ${order.id}: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return [...physicalItems];
     }
   }
 
@@ -2880,6 +2960,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     const items = await Promise.all(
       order.items.map(async (item) => {
         if (item.gift === undefined || item.taxRate !== undefined) return item;
+        // #4280: no catalogue to read a rate from for a synthetic id.
+        if (isUnmatchedProductId(item.productId)) return item;
         const tax = await this.resolveLineTaxRate(item.productId, item.variantId, {});
         return { ...item, ...tax };
       })
@@ -2923,6 +3005,72 @@ export class OrderIngestionService implements IOrderIngestionService {
       });
     }
     return candidates;
+  }
+
+  /**
+   * Whether the source connection accepts order lines that match no catalogue
+   * product (`config.catalogueMode === 'none'`, #4280).
+   *
+   * Fails SAFE: a connection that cannot be read answers `false`, i.e. the
+   * historical `awaiting_mapping` behaviour. Guessing `true` on a read failure
+   * would persist unmatched lines for an install that never asked for them.
+   */
+  private async readAcceptsUnmatchedItems(connectionId: string): Promise<boolean> {
+    try {
+      // Config only: `getAdapter` would throw for a disabled connection and
+      // silently fall back to awaiting_mapping.
+      const connection = await this.connections.get(connectionId);
+      return readCatalogueMode(connection.config) === 'none';
+    } catch (error) {
+      this.logger.warn(
+        `Could not read catalogueMode for connection ${connectionId}; treating unmapped lines as awaiting_mapping: ${(error as Error).message}`
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Build an order line that carries no catalogue match (#4280).
+   *
+   * `productId` is the deterministic synthetic id (`unmatched:<connection>:<offer>`),
+   * no `variantId`. The tax rate is the CHANNEL's own statement and nothing else:
+   * there is no catalogue to read a shop rate from, and journalling the channel
+   * rate against a synthetic product id would write evidence for a product that
+   * does not exist.
+   */
+  private buildUnmatchedItem(
+    connectionId: string,
+    item: IncomingOrderItem
+  ): Order['items'][number] {
+    const channelCode = item.taxRate?.trim();
+    return {
+      id: item.id,
+      // An adapter may report a blank external id (Erli's wire type only demands a
+      // string); the line id keeps the synthetic id from collapsing to
+      // `unmatched:<connection>:` and every blank line into one product.
+      productId: buildUnmatchedProductId(
+        connectionId,
+        item.productRef.externalId.trim() || item.id
+      ),
+      quantity: item.quantity,
+      price: item.price,
+      sku: item.sku,
+      name: item.name,
+      imageUrl: item.imageUrl,
+      ...(item.unitPriceGross !== undefined && Number.isFinite(item.unitPriceGross)
+        ? { unitPriceGross: item.unitPriceGross }
+        : {}),
+      ...(channelCode
+        ? {
+            taxRate: channelCode,
+            ...(item.taxRateCountry ? { taxRateCountry: item.taxRateCountry } : {}),
+            taxSource: 'channel' as const,
+            taxRateReadAt: new Date().toISOString(),
+          }
+        : {}),
+      ...(item.gift !== undefined ? { gift: item.gift } : {}),
+      ...(item.packQuantity !== undefined ? { packQuantity: item.packQuantity } : {}),
+    };
   }
 
   private async resolveLineTaxRate(
@@ -3024,7 +3172,13 @@ export class OrderIngestionService implements IOrderIngestionService {
       if (order.status === 'cancelled' || alreadyCancelled) return;
 
       const lines: ReserveOrderLineInput[] = physicalItems
-        .filter((item) => Boolean(item.productId) && item.quantity > 0)
+        // #4280: an unmatched line has no catalogue product and so no stock
+        // position to hold; asking the ledger to find one for a synthetic id is
+        // a wasted query on the hot path of every such order.
+        .filter(
+          (item) =>
+            Boolean(item.productId) && !isUnmatchedProductId(item.productId) && item.quantity > 0
+        )
         .map((item) => ({
           orderLineId: item.id,
           productId: item.productId,

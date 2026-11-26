@@ -745,6 +745,7 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
           WHERE ok."connectionId" = $1
             AND ok."jobType" = 'marketplace.order.sync'
             AND ok.status = 'succeeded'
+            AND ok."createdAt" >= $2
             AND ok."payloadJson"->>'externalOrderId' = sync_jobs."payloadJson"->>'externalOrderId'
             AND ok."updatedAt" > sync_jobs."updatedAt"
         )
@@ -817,7 +818,9 @@ export class SyncJobRepository implements SyncJobRepositoryPort {
     }));
     return {
       importedLast24h: Number(o.imported_24h ?? 0),
-      lastPolledAt: pollRows[0]?.last_polled_at ? new Date(pollRows[0].last_polled_at as string) : null,
+      lastPolledAt: pollRows[0]?.last_polled_at
+        ? new Date(pollRows[0].last_polled_at as string)
+        : null,
       failedLast7d: failures.reduce((sum, f) => sum + f.count, 0),
       failures,
       waiting: Number(o.waiting ?? 0),

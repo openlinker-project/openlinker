@@ -37,7 +37,12 @@ describe('OrdersImportHandler', () => {
   });
 
   it('should delegate one page to core and succeed', async () => {
-    importOrderWindow.mockResolvedValue({ fetched: 3, enqueued: 3, done: false, skippedDueToLock: false });
+    importOrderWindow.mockResolvedValue({
+      fetched: 3,
+      enqueued: 3,
+      done: false,
+      skippedDueToLock: false,
+    });
 
     await expect(handler.execute(makeJob(validPayload))).resolves.toEqual({ outcome: 'ok' });
     expect(importOrderWindow).toHaveBeenCalledWith(
@@ -47,7 +52,12 @@ describe('OrdersImportHandler', () => {
   });
 
   it('should defer penalty-free rather than succeed when another page holds the lock, so the chain is not dropped', async () => {
-    importOrderWindow.mockResolvedValue({ fetched: 0, enqueued: 0, done: false, skippedDueToLock: true });
+    importOrderWindow.mockResolvedValue({
+      fetched: 0,
+      enqueued: 0,
+      done: false,
+      skippedDueToLock: true,
+    });
 
     const failure = await handler.execute(makeJob(validPayload)).catch((error: unknown) => error);
 
@@ -66,7 +76,9 @@ describe('OrdersImportHandler', () => {
   it('should retry on any other failure', async () => {
     importOrderWindow.mockRejectedValue(new Error('shop down'));
 
-    await expect(handler.execute(makeJob(validPayload))).rejects.toBeInstanceOf(SyncJobExecutionError);
+    await expect(handler.execute(makeJob(validPayload))).rejects.toBeInstanceOf(
+      SyncJobExecutionError
+    );
   });
 
   it('should reject a payload without a run id or direction', async () => {

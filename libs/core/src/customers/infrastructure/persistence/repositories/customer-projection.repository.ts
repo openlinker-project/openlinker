@@ -184,7 +184,11 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
        RETURNING c."internalCustomerId"`,
       [input.sourceConnectionId, input.lastSeenBefore, input.limit],
     );
-    return Array.isArray(rows) ? rows.length : 0;
+    // For an UPDATE ... RETURNING, TypeORM's raw `query()` answers `[rows, affectedCount]`
+    // rather than the rows, so counting the outer array reads 2 for any batch (and
+    // 2 for an empty one, which would keep the pass looping until its cap).
+    const returned = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+    return Array.isArray(returned) ? returned.length : 0;
   }
 
   async findAddressesByCustomerId(
@@ -202,6 +206,24 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
     // TypeORM save() performs upsert on composite primary key
     const saved = await this.addressRepository.save(entity);
     return this.toDomainAddress(saved);
+  }
+
+  async clearPersonalData(internalCustomerIds: readonly string[]): Promise<number> {
+    if (internalCustomerIds.length === 0) {
+      return 0;
+    }
+    const ids = [...internalCustomerIds];
+    // `.update()` with an `@UpdateDateColumn` would stamp updatedAt; that is
+    // the truthful answer here - the row did change.
+    await this.addressRepository.update(
+      { internalCustomerId: In(ids) },
+      { address1: null, address2: null, city: null, postcode: null }
+    );
+    const result = await this.customerRepository.update(
+      { internalCustomerId: In(ids) },
+      { normalizedEmail: null, firstName: null, lastName: null }
+    );
+    return result.affected ?? 0;
   }
 
   async findDestinationAddressMapping(

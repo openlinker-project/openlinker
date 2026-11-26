@@ -142,6 +142,24 @@ describe('AmazonRefundExecutor', () => {
     });
   });
 
+  it('should refuse, sending nothing, when the host has no cache to guard against a second submission', async () => {
+    const { feeds } = setup();
+    const executor = new AmazonRefundExecutor({
+      connectionId: 'conn-amz',
+      marketplaceIds: ['A1PA6795UKMFR9'],
+      feeds: feeds as never,
+      returns: { cached: jest.fn() } as never,
+      readOrder: jest.fn(),
+    });
+
+    const result = await executor.executeRefund(command());
+
+    expect(result.outcome).toBe('denied');
+    expect(result.providerMessage).toMatch(/shared cache/);
+    expect(feeds.uploadFeedDocument).not.toHaveBeenCalled();
+    expect(feeds.createFeed).not.toHaveBeenCalled();
+  });
+
   it('should not submit twice under one key', async () => {
     const { executor, feeds } = setup();
 

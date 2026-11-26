@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
@@ -56,6 +56,41 @@ function renderDetail(apiClient: ReturnType<typeof createMockApiClient>): void {
 
 describe('OrderDetailPage', () => {
   afterEach(cleanup);
+
+  it('should render a hidden, erased order without a hooks-order error (#4289)', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const erased = {
+      ...sampleOrder,
+      customerId: null,
+      orderSnapshot: {
+        orderNumber: 'ER-1',
+        buyer: { firstName: '[REDACTED]', lastName: 'KUPUJACY-192918', email: null },
+        billingAddress: {
+          firstName: '[REDACTED]',
+          lastName: 'KUPUJACY-192918',
+          address1: '[REDACTED]',
+          city: '[REDACTED]',
+          postalCode: '[REDACTED]',
+          country: '',
+        },
+        items: [{ id: 'l1', sku: 'SKU-1', name: 'Item', quantity: 1, unitPrice: 10 }],
+      },
+      hiddenAt: '2026-04-21T10:00:00.000Z',
+      personalDataErasedAt: '2026-04-21T10:00:00.000Z',
+    } as unknown as OrderRecord;
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(erased) },
+    });
+
+    renderDetail(api);
+
+    expect((await screen.findAllByText('ol_order_abc123')).length).toBeGreaterThan(0);
+    const hooksErrors = consoleError.mock.calls.filter((call) =>
+      call.some((arg) => typeof arg === 'string' && /order of Hooks|Rendered (more|fewer) hooks/.test(arg)),
+    );
+    consoleError.mockRestore();
+    expect(hooksErrors).toEqual([]);
+  });
 
   it('renders key order fields and resolves the source connection name', async () => {
     const api = createMockApiClient({
@@ -191,7 +226,8 @@ describe('OrderDetailPage', () => {
     it('renders the buyer-selected pickup point and delivery method', async () => {
       const api = createMockApiClient({ orders: { getById: vi.fn().mockResolvedValue(richOrder) } });
       renderDetail(api);
-      expect(await screen.findByText('POP-WAW-04412')).toBeInTheDocument();
+      // The pickup point shows in the Delivery panel and in the Shipping tab's ship-to tile.
+      expect((await screen.findAllByText('POP-WAW-04412')).length).toBeGreaterThanOrEqual(1);
       // Appears twice: the "Method" field, and the "Carrier" field falling back
       // to the same method name (#1617, no shipment exists for this order).
       expect(screen.getAllByText('InPost Paczkomat').length).toBeGreaterThanOrEqual(1);
@@ -228,7 +264,10 @@ describe('OrderDetailPage', () => {
       renderDetail(api);
       // Header + summary both show "Received" (the OL ingestion clock); no "Placed" anywhere.
       expect((await screen.findAllByText(/Received/)).length).toBeGreaterThan(0);
-      expect(screen.queryByText(/Placed/)).toBeNull();
+      // The progress line has its own "Placed" step; only the header's placed time must be absent.
+      expect(
+        screen.queryAllByText(/Placed/).filter((el) => !el.closest('.order-progress')),
+      ).toHaveLength(0);
     });
   });
 
@@ -280,7 +319,8 @@ describe('OrderDetailPage', () => {
       renderDetail(api);
 
       expect(await screen.findByText('Carrier')).toBeInTheDocument();
-      expect(screen.getByText('InPost')).toBeInTheDocument();
+      // The header's delivery line names the carrier too.
+      expect(screen.getAllByText(/InPost/).length).toBeGreaterThan(0);
     });
 
     it('falls back to the snapshot delivery method name when no shipment exists', async () => {
@@ -291,9 +331,10 @@ describe('OrderDetailPage', () => {
       renderDetail(api);
 
       expect(await screen.findByText('Carrier')).toBeInTheDocument();
-      // Appears twice: the "Method" field and the "Carrier" field's fallback
-      // to the same value (no shipment record exists for this order).
-      expect(screen.getAllByText('InPost Paczkomat').length).toBe(2);
+      // Appears four times: the "Method" field, the "Carrier" field's fallback
+      // to the same value (no shipment record exists for this order), the
+      // header's delivery line and the Shipping tab's method row.
+      expect(screen.getAllByText('InPost Paczkomat').length).toBe(4);
     });
 
     it('renders "-" for carrier when neither a shipment nor a delivery method is present', async () => {
@@ -520,7 +561,7 @@ describe('OrderDetailPage', () => {
       expect(await screen.findByDisplayValue('POZ08A')).toBeInTheDocument();
     });
 
-    it('leaves the form collapsed when no retryShipmentId param is present', async () => {
+    it('opens the label form on the Shipping tab when nothing has shipped and no retryShipmentId param is present (#4286)', async () => {
       const api = createMockApiClient({
         orders: { getById: vi.fn().mockResolvedValue(orderWithPaczkomatRoute) },
         connections: { list: vi.fn().mockResolvedValue([shippingConnection]) },
@@ -531,8 +572,10 @@ describe('OrderDetailPage', () => {
 
       renderWithRoute(api, '/orders/ol_order_abc123');
 
-      await screen.findByText('No shipment yet');
-      expect(screen.queryByText('Recipient')).toBeNull();
+      // The Shipping tab shows the label form straight away (the mockup's shipment card),
+      // instead of the "No shipment yet" empty state; nothing is submitted until the operator clicks.
+      await screen.findByText('Recipient');
+      expect(screen.queryByText('No shipment yet')).toBeNull();
     });
 
     it('should strip retryShipmentId from the URL after consuming it while preserving from (#1905)', async () => {
@@ -883,6 +926,82 @@ describe('OrderDetailPage — buyer tax id in the Summary block (#3180)', () => 
       expect(await screen.findByRole('heading', { name: 'Fulfilment tasks' })).toBeInTheDocument();
       expect(await screen.findByText(/No fulfilment tasks/)).toBeInTheDocument();
     });
+
+    it('should show the Packing tab when fulfilment routing is on (#4286)', async () => {
+      const listByOrder = vi.fn().mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 });
+      renderWithRouting('resolved', listByOrder);
+      await screen.findByText('ol_order_abc123');
+      expect(await screen.findByRole('tab', { name: /Packing/ })).toBeInTheDocument();
+    });
+
+    it('should hide the Packing tab and keep packing and hold on Overview when OpenLinker takes no part in packing (#4286)', async () => {
+      const listByOrder = vi.fn().mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 });
+      renderWithRouting('default', listByOrder);
+      await screen.findByText('ol_order_abc123');
+      await waitFor(() => {
+        expect(listByOrder).toHaveBeenCalled();
+      });
+      expect(screen.queryByRole('tab', { name: /Packing/ })).toBeNull();
+      // The packing control and the hold panel are still on the page, inside Overview.
+      const overview = document.getElementById('panel-overview') ?? document.body;
+      expect(overview.querySelector('#packing')).not.toBeNull();
+    });
+  });
+});
+
+describe('OrderDetailPage - tabs (#4286)', () => {
+  afterEach(cleanup);
+
+  function renderAt(route: string): void {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection]) },
+    });
+    renderWithProviders(
+      <Routes>
+        <Route path="/orders/:internalOrderId" element={<OrderDetailPage />} />
+      </Routes>,
+      { apiClient: api, route },
+    );
+  }
+
+  it('should open the Overview tab by default and list every section as a tab, without Packing when OpenLinker takes no part in packing', async () => {
+    renderAt('/orders/ol_order_abc123');
+    await screen.findByText('ol_order_abc123');
+    const tabs = within(screen.getByRole('tablist')).getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent?.replace(/\d+$/, ''))).toEqual([
+      'Overview',
+      'Shipping',
+      'Sales documents',
+      'Returns',
+      'Notes',
+      'History',
+      'Technical',
+    ]);
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('data-state', 'active');
+  });
+
+  it('should open the tab named by ?tab=', async () => {
+    renderAt('/orders/ol_order_abc123?tab=notes');
+    await screen.findByText('ol_order_abc123');
+    expect(screen.getByRole('tab', { name: 'Notes' })).toHaveAttribute('data-state', 'active');
+  });
+
+  it('should open the tab that holds a legacy anchor', async () => {
+    renderAt('/orders/ol_order_abc123#invoicing');
+    await screen.findByText('ol_order_abc123');
+    expect(screen.getByRole('tab', { name: /Sales documents/ })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+  });
+
+  it('should keep inactive panels mounted so their state survives a tab change', async () => {
+    renderAt('/orders/ol_order_abc123');
+    await screen.findByText('ol_order_abc123');
+    expect(document.getElementById('shipment')).not.toBeNull();
+    expect(document.getElementById('invoicing')).not.toBeNull();
+    expect(document.getElementById('packing')).not.toBeNull();
   });
 });
 
@@ -898,7 +1017,8 @@ describe('OrderDetailPage - packing affordance for a destination that packs itse
     renderDetail(api);
 
     await screen.findByText('ol_order_abc123');
-    expect(await screen.findByText('Packing')).toBeInTheDocument();
+    // The tab strip also carries a "Packing" label (#4286), so the control is looked up inside its own anchor.
+    expect(await within(document.getElementById('packing') as HTMLElement).findByText('Packing')).toBeInTheDocument();
   });
 
   it('hides the Mark packed control when the order went to a destination that packs itself', async () => {
@@ -916,7 +1036,11 @@ describe('OrderDetailPage - packing affordance for a destination that packs itse
     renderDetail(api);
 
     await screen.findByText('ol_order_abc123');
-    await waitFor(() => expect(screen.queryByText('Packing')).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        within(document.getElementById('packing') as HTMLElement).queryByText('Packing'),
+      ).not.toBeInTheDocument(),
+    );
   });
 });
 
@@ -978,7 +1102,7 @@ describe('OrderDetailPage — buyer note (#3539)', () => {
       expect(screen.queryByText('Status')).toBeNull();
       const label = await screen.findByText(`Status at ${sampleConnection.name}`);
       expect(label).toBeInTheDocument();
-      expect(screen.getByText('processing')).toBeInTheDocument();
+      expect(screen.getByText('Processing')).toBeInTheDocument();
     });
 
     it('should keep the plain Status row when the channel also says cancelled (C-23)', async () => {

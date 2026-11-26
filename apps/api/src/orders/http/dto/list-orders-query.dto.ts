@@ -402,6 +402,17 @@ export class ListOrdersQueryDto extends PaginatedReadQueryDto {
   hasBuyerNote?: boolean;
 
   @ApiPropertyOptional({
+    type: Boolean,
+    description:
+      'Buyer data retention (#4289): true shows only orders hidden by the retention rule, false or omitted ' +
+      'excludes them (the default list and search). Hidden orders are never deleted and still open by id.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  hidden?: boolean;
+
+  @ApiPropertyOptional({
     description:
       'Free-text search (#3527/#3528/#4229): order number, buyer name, buyer email, any line SKU, ' +
       'a shipment tracking number, or an OpenLinker order id (`ol_order_*`, substring). Matched against a denormalized, diacritic-folded ' +

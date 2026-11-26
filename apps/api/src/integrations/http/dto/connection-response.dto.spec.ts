@@ -257,6 +257,23 @@ describe('ConnectionResponseDto.fromDomain publicConfig (DEF-02)', () => {
     expect(dto.publicConfig).toEqual({});
   });
 
+  it('should expose a list of strings, copied, and drop a list holding anything else', () => {
+    const amazon: Connection = {
+      ...baseConnection,
+      platformType: 'amazon',
+      config: { marketplaceIds: ['A1PA6795UKMFR9', 'A1C3SOZRARQ6R3'], mixed: ['a', 1], nested: [['a']] },
+    };
+
+    const dto = ConnectionResponseDto.fromDomain(
+      amazon, [], 'parent-child', null, 'operator', false, true, true, undefined,
+      ['marketplaceIds', 'mixed', 'nested'],
+    );
+
+    expect(dto.config).toEqual({});
+    expect(dto.publicConfig).toEqual({ marketplaceIds: ['A1PA6795UKMFR9', 'A1C3SOZRARQ6R3'] });
+    expect(dto.publicConfig.marketplaceIds).not.toBe(amazon.config.marketplaceIds);
+  });
+
   it('should default to an empty publicConfig', () => {
     const dto = ConnectionResponseDto.fromDomain(ksef, [], 'parent-child', null, 'operator');
 

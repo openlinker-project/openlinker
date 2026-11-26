@@ -18,15 +18,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import { captureDemoEvent } from '../../demo';
-import {
-  OrderSortDirectionValues,
-  OrderSortValues,
-  type OrderFilters,
-  type OrderHealthValue,
-  type OrderHealthSummaryFilters,
-  type OrderSortDirection,
-  type OrderSortValue,
+import type {
+  OrderFilters,
+  OrderHealthValue,
+  OrderHealthSummaryFilters,
+  OrderSortDirection,
+  OrderSortValue,
 } from '../api/orders.types';
+import {
+  DEFAULT_ORDER_SORT,
+  DEFAULT_ORDER_SORT_DIR,
+  isOrderDir,
+  isOrderSort,
+} from '../lib/orders.list-config';
 import {
   ORDER_FILTER_DESCRIPTORS,
   ORDER_FILTER_PARAMS,
@@ -46,36 +50,7 @@ export const ORDER_SEARCH_DEBOUNCE_MS = 300;
 /** "Breaching soon" window — orders due within this horizon (or already overdue). */
 const BREACHING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Default ordering (#4026): most recently synced into OpenLinker first. Placed
- * date (#4025) and ship-by soonest stay one click away in the Sort menu and on
- * their column headers.
- */
-export const DEFAULT_ORDER_SORT: OrderSortValue = 'createdAt';
-
-/**
- * First-click direction per sort key (#944): the operator-intuitive default
- * when a column is newly selected. Re-clicking the active column flips it.
- */
-export const DEFAULT_ORDER_SORT_DIR: Record<OrderSortValue, OrderSortDirection> = {
-  dispatchBy: 'asc',
-  createdAt: 'desc',
-  placedAt: 'desc',
-  customer: 'asc',
-  items: 'desc',
-  status: 'asc',
-  total: 'desc',
-  fulfillment: 'asc',
-  payment: 'asc',
-};
-
-function isOrderSort(value: string | null): value is OrderSortValue {
-  return value !== null && (OrderSortValues as readonly string[]).includes(value);
-}
-
-function isOrderDir(value: string | null): value is OrderSortDirection {
-  return value !== null && (OrderSortDirectionValues as readonly string[]).includes(value);
-}
+export { DEFAULT_ORDER_SORT, DEFAULT_ORDER_SORT_DIR };
 
 /** `{ tag }` one tag, `{ untagged: true }` "No tags", `null` any tag. */
 export type OrderTagFilterValue = { tag: string } | { untagged: true } | null;
@@ -292,8 +267,10 @@ export function useOrderListFilters(): UseOrderListFiltersResult {
       sourceConnectionId: filters.sourceConnectionId,
       createdFrom: filters.createdFrom,
       createdTo: filters.createdTo,
+      // #4289: the KPI cards describe the view the rows show, hidden or not.
+      hidden: filters.hidden,
     }),
-    [filters.sourceConnectionId, filters.createdFrom, filters.createdTo],
+    [filters.sourceConnectionId, filters.createdFrom, filters.createdTo, filters.hidden],
   );
 
   return {

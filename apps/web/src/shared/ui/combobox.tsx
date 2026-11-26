@@ -76,7 +76,9 @@ export interface ComboboxProps {
   'data-testid'?: string;
 }
 
-const DEFAULT_FILTER_FIRST_THRESHOLD = 50;
+// Lists shorter than this open with every option visible (virtualized from
+// VIRTUALIZE_THRESHOLD); only genuinely huge dictionaries need typing first.
+const DEFAULT_FILTER_FIRST_THRESHOLD = 500;
 const VIRTUALIZE_THRESHOLD = 200;
 const OPTION_ROW_HEIGHT = 32;
 // Touch density (40px) is applied via CSS @media (pointer: coarse). The

@@ -18,11 +18,12 @@ import {
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import { getMessages } from '../../../shared/i18n';
+import type * as ReactRouterDom from 'react-router-dom';
 import { TriggerSyncDialog } from './TriggerSyncDialog';
 
 const navigateMock = vi.hoisted(() => vi.fn());
 vi.mock('react-router-dom', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('react-router-dom')>()),
+  ...(await importOriginal<typeof ReactRouterDom>()),
   useNavigate: () => navigateMock,
 }));
 

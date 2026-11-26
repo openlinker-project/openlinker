@@ -10,15 +10,18 @@
 import type { ReactElement } from 'react';
 import { formatPlural, interpolate, useFormat, useLocale, useMessages } from '../../../shared/i18n';
 import type { BundleHistoryEntry } from '../api/bundles.types';
+import { BundleLoadError } from './bundle-load-error';
 
 export interface BundleHistoryProps {
   entries: BundleHistoryEntry[] | undefined;
   isLoading: boolean;
   isError: boolean;
+  /** Re-reads the history after a failed load. */
+  onRetry?: () => void;
   currency?: string;
 }
 
-function describeComponents(entry: BundleHistoryEntry): string {
+export function describeComponents(entry: BundleHistoryEntry): string {
   return entry.components
     .map((component, index) => {
       const name = entry.componentSummaries[index]?.name ?? component.variantId;
@@ -27,13 +30,68 @@ function describeComponents(entry: BundleHistoryEntry): string {
     .join(', ');
 }
 
-export function BundleHistory({ entries, isLoading, isError }: BundleHistoryProps): ReactElement {
+export interface DiffChip {
+  kind: 'added' | 'removed' | 'quantity';
+  text: string;
+}
+
+/** What changed from the older version to this one, by component variant. */
+export function diffAgainst(
+  entry: BundleHistoryEntry,
+  older: BundleHistoryEntry | undefined,
+  texts: { added: string; removed: string; quantity: string }
+): DiffChip[] {
+  if (older === undefined) return [];
+  const nameOf = (source: BundleHistoryEntry, index: number): string =>
+    source.componentSummaries[index]?.name ?? source.components[index]?.variantId ?? '';
+  const before = new Map(
+    older.components.map((c, i) => [c.variantId, { qty: c.quantity, name: nameOf(older, i) }] as const)
+  );
+  const chips: DiffChip[] = [];
+  entry.components.forEach((component, index) => {
+    const name = nameOf(entry, index);
+    const prev = before.get(component.variantId);
+    if (prev === undefined) {
+      chips.push({ kind: 'added', text: interpolate(texts.added, { name }) });
+    } else if (prev.qty !== component.quantity) {
+      chips.push({
+        kind: 'quantity',
+        text: interpolate(texts.quantity, { name, from: prev.qty, to: component.quantity }),
+      });
+    }
+  });
+  const now = new Set(entry.components.map((c) => c.variantId));
+  older.components.forEach((component, index) => {
+    if (!now.has(component.variantId)) {
+      chips.push({ kind: 'removed', text: interpolate(texts.removed, { name: nameOf(older, index) }) });
+    }
+  });
+  return chips;
+}
+
+export function BundleHistory({
+  entries,
+  isLoading,
+  isError,
+  onRetry,
+}: BundleHistoryProps): ReactElement {
   const copy = useMessages('bundles');
   const { locale } = useLocale();
   const format = useFormat();
 
-  if (isLoading) return <p className="pm-help">{copy.form.saving}</p>;
-  if (isError || entries === undefined) return <p role="alert">{copy.form.loadFailed}</p>;
+  if (isLoading) {
+    return (
+      <div className="bf-skeleton" role="status" aria-live="polite" data-testid="bundle-form-history-loading">
+        <span className="sr-only">{copy.form.historyLoading}</span>
+        <span className="bf-skeleton__row" aria-hidden="true" />
+        <span className="bf-skeleton__row" aria-hidden="true" />
+        <span className="bf-skeleton__row" aria-hidden="true" />
+      </div>
+    );
+  }
+  if (isError || entries === undefined) {
+    return <BundleLoadError onRetry={onRetry ?? (() => undefined)} testId="bundle-form-history-error" />;
+  }
   if (entries.length === 0) return <p className="pm-help">{copy.form.historyEmpty}</p>;
 
   const openOlder = entries
@@ -46,9 +104,16 @@ export function BundleHistory({ entries, isLoading, isError }: BundleHistoryProp
         {entries.map((entry, index) => {
           const isFirst = index === entries.length - 1;
           const date = format.date(entry.createdAt);
+          const chips = diffAgainst(entry, entries[index + 1], {
+            added: copy.form.historyDiffAdded,
+            removed: copy.form.historyDiffRemoved,
+            quantity: copy.form.historyDiffQuantity,
+          });
           return (
             <li
               key={entry.version}
+              className={entry.current ? 'bf-history__current' : undefined}
+              aria-current={entry.current ? 'true' : undefined}
               data-testid={`bundle-form-history-entry-${String(entry.version)}`}
             >
               <span>
@@ -56,8 +121,20 @@ export function BundleHistory({ entries, isLoading, isError }: BundleHistoryProp
                   {interpolate(isFirst ? copy.form.historyCreated : copy.form.historyEntryChanged, {
                     date,
                   })}
+                  {entry.current ? (
+                    <span className="cx-tag bf-history__badge">{copy.form.historyCurrent}</span>
+                  ) : null}
                 </b>
                 <span className="text-muted">{describeComponents(entry)}</span>
+                {chips.length > 0 ? (
+                  <span className="bf-history__chips" data-testid={`bundle-form-history-diff-${String(entry.version)}`}>
+                    {chips.map((chip) => (
+                      <span key={chip.text} className={`bf-history__chip bf-history__chip--${chip.kind}`}>
+                        {chip.text}
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
               </span>
               {entry.openOrders > 0 ? (
                 <span className="cx-tag cx-tag--quiet">

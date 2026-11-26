@@ -1825,7 +1825,9 @@ describe('OrderRecordRepository', () => {
         }
         // `orderEdits` (#3542) is the one non-written column that is deliberately
         // NOT reset: the overlay it carries has to reach the domain mapping.
-        if (column === 'orderEdits') {
+        // `personalDataErasedAt` (#4289) is read-only here for the same reason:
+        // the erased-order guards read it, and only the retention writer sets it.
+        if (column === 'orderEdits' || column === 'personalDataErasedAt') {
           continue;
         }
         // `lineExpansion` (#3607) is kept for the same reason: the frozen
@@ -1862,13 +1864,19 @@ describe('OrderRecordRepository', () => {
       for (const column of columns) {
         // `orderEdits` is a read-only guard: the DO UPDATE CASE branches read it
         // to keep an operator-edited address, and the statement never writes it.
-        if (column === 'orderEdits') {
+        // `personalDataErasedAt` (#4289) and `buyerDataRedactedAt` (#4178) are
+        // read-only the same way: the buyer-data-gone guards read them.
+        if (
+          column === 'orderEdits' ||
+          column === 'personalDataErasedAt' ||
+          column === 'buyerDataRedactedAt'
+        ) {
           continue;
         }
         const named = sql.includes(`"${column}"`);
         const inWriteSet = UPSERT_WRITE_SET.includes(column);
         // The write set the test asserts against must stay the statement's own.
-        expect(named).toBe(inWriteSet);
+        expect({ column, named }).toEqual({ column, named: inWriteSet });
       }
     });
   });
@@ -1942,7 +1950,7 @@ describe('OrderRecordRepository', () => {
         const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
         expect(insertHalf).toContain('"searchText"');
         expect(updateHalf).toMatch(
-          /"searchText" = CASE WHEN "order_records"\."orderEdits" \? 'address'\s+THEN "order_records"\."searchText" ELSE EXCLUDED\."searchText" END/
+          /"searchText" = CASE WHEN "order_records"\."orderEdits" \? 'address'\s+OR \("order_records"\."personalDataErasedAt" IS NOT NULL OR "order_records"\."buyerDataRedactedAt" IS NOT NULL\)\s+THEN "order_records"\."searchText" ELSE EXCLUDED\."searchText" END/
         );
         expect(writeSet.has('searchText')).toBe(true);
         expect(params).toContain('ord-001 sku-1');

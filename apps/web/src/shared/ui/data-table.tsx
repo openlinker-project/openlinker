@@ -27,7 +27,15 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { useMediaQuery } from './use-media-query';
 import { useMessages } from '../i18n/use-messages';
+import { SortArrow } from './sort-field';
 import { interpolate } from '../i18n/interpolate';
+
+/** A cell's width in layout pixels, so it stays right under the text size zoom. */
+function layoutWidth(el: HTMLElement): number {
+  const rect = el.getBoundingClientRect().width;
+  const zoom = rect / el.offsetWidth;
+  return Number.isFinite(zoom) && zoom > 0 ? rect / zoom : rect;
+}
 
 export type DataTableHideBreakpoint = 480 | 768 | 1024 | 1280;
 
@@ -44,6 +52,11 @@ export interface DataTableColumn<Row> {
    */
   accessor?: (row: Row) => string | number | boolean | null | undefined;
   sortable?: boolean;
+  /**
+   * `aria-sort` for a column that draws its own sort controls in `header` and
+   * so is not `sortable` here (saved views, #4241). Ignored when `sortable`.
+   */
+  ariaSort?: 'ascending' | 'descending';
   /**
    * How many text lines this column's cell renders at its tallest (#2538).
    * Read only by `DataTableSkeleton`, so a two-line identity cell reserves its
@@ -426,7 +439,7 @@ export function DataTable<Row>({
       let acc = 0;
       for (let i = 0; i < frozenCellCount && i < cells.length; i += 1) {
         offsets.push(acc);
-        acc += cells[i].getBoundingClientRect().width;
+        acc += layoutWidth(cells[i]);
       }
       setStickyOffsets((prev) =>
         prev.length === offsets.length && prev.every((v, i) => v === offsets[i]) ? prev : offsets,
@@ -436,7 +449,7 @@ export function DataTable<Row>({
       let accRight = 0;
       for (let i = 0; i < frozenRightCount && i < cells.length; i += 1) {
         right.push(accRight);
-        accRight += cells[cells.length - 1 - i].getBoundingClientRect().width;
+        accRight += layoutWidth(cells[cells.length - 1 - i]);
       }
       setStickyRightOffsets((prev) =>
         prev.length === right.length && prev.every((v, i) => v === right[i]) ? prev : right,
@@ -564,13 +577,15 @@ export function DataTable<Row>({
         return;
       }
       rail.style.visibility = 'visible';
+      // Rects are screen pixels; the rail is styled inside the zoomed subtree.
+      const zoom = box.width / wrap.offsetWidth || 1;
       const barHeight = rail.offsetHeight;
-      const bottomAnchored = window.innerHeight - barHeight - GAP;
+      const bottomAnchored = window.innerHeight / zoom - barHeight - GAP;
       // Clamp between the table's top edge and bottom edge.
-      const top = Math.min(Math.max(bottomAnchored, box.top), box.bottom - barHeight);
+      const top = Math.min(Math.max(bottomAnchored, box.top / zoom), box.bottom / zoom - barHeight);
       rail.style.top = `${Math.round(top)}px`;
-      rail.style.left = `${Math.round(box.left)}px`;
-      rail.style.width = `${Math.round(box.width)}px`;
+      rail.style.left = `${Math.round(box.left / zoom)}px`;
+      rail.style.width = `${Math.round(box.width / zoom)}px`;
     };
 
     update();
@@ -829,7 +844,7 @@ export function DataTable<Row>({
                         : sortDir === 'desc'
                           ? 'descending'
                           : 'none'
-                      : undefined
+                      : column?.ariaSort
                   }
                 >
                   {canSort ? (
@@ -839,9 +854,7 @@ export function DataTable<Row>({
                       onClick={header.column.getToggleSortingHandler()}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
-                      <span className="data-table__sort-indicator" aria-hidden="true">
-                        {sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : '↕'}
-                      </span>
+                      <SortArrow active={sortDir !== false} dir={sortDir === 'desc' ? 'desc' : 'asc'} />
                     </button>
                   ) : (
                     flexRender(header.column.columnDef.header, header.getContext())

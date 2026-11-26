@@ -143,4 +143,13 @@ export interface CustomerProjectionRepositoryPort {
   upsertDestinationAddressMapping(
     mapping: DestinationAddressMapping
   ): Promise<DestinationAddressMapping>;
+
+  /**
+   * Null the personal fields of these customers' projections (#4289): the
+   * normalized email, the names and the address lines. The email HASH and the
+   * country are kept - the hash is what links a returning buyer's next order to
+   * a customer id, and neither identifies a person on its own. Returns how many
+   * customer projections were cleared.
+   */
+  clearPersonalData(internalCustomerIds: readonly string[]): Promise<number>;
 }

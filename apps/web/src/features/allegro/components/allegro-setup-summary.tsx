@@ -22,18 +22,21 @@ import {
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import type { AllegroSetupFormValues } from './allegro-setup.schema';
 import { useFormat, useMessages } from '../../../shared/i18n';
-import { describeOrderSyncStart } from '../../connections';
+import { describeOrderSyncStart, type CatalogueMode } from '../../connections';
 
 interface AllegroSetupSummaryProps {
   values: AllegroSetupFormValues;
   stepIndex: number;
   selectedCatalogName: string | null;
+  /** `none` reads as "no catalog" rather than as a link nobody has picked yet (#4281). */
+  catalogueMode?: CatalogueMode;
   suggestions?: readonly DeliveryLineSuggestion[];
   /** False when re-authenticating: that flow never touches delivery settings. */
   showDelivery?: boolean;
 }
 
 export function AllegroSetupSummary({
+  catalogueMode = 'linked',
   selectedCatalogName,
   showDelivery = true,
   stepIndex,
@@ -77,7 +80,7 @@ export function AllegroSetupSummary({
         <section className="wizard-summary__section">
           <h3 className="wizard-summary__section-title">{copy.productCatalogue}</h3>
           <dl className="wizard-summary__rows">
-            <WizardSummaryRow label={copy.linkedTo} value={selectedCatalogName ?? copy.notLinked} />
+            <WizardSummaryRow label={copy.linkedTo} value={catalogueMode === 'none' ? copy.noCatalogue : (selectedCatalogName ?? copy.notLinked)} />
           </dl>
         </section>
       ) : null}

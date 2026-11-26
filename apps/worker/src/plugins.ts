@@ -77,8 +77,9 @@ export const workerPlugins: PluginEntry[] = [
   // #3639: Shoper shop platform, registered worker-side so its sync jobs
   // (catalogue, stock, orders, publish) and auth failure classifier run here.
   ShoperIntegrationModule,
-  // #3741: Amazon SP-API foundation, registered worker-side so its retry and
-  // auth-failure classifiers see the errors its future sync jobs raise.
+  // #3741: Amazon SP-API, registered worker-side so its capability jobs
+  // (orders, offers, catalogue, stock, returns) and its retry and auth-failure
+  // classifiers run here.
   AmazonIntegrationModule,
   // #3974: Shopify, registered worker-side so its capability jobs (catalogue,
   // stock, orders, returns, publish) and its retry and auth-failure

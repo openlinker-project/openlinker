@@ -54,8 +54,14 @@ describe('ConnectionSyncStatusService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionSyncStatusService,
-        { provide: SYNC_JOB_REPOSITORY_TOKEN, useValue: { getConnectionBacklogStats, getOrderImportStats } },
-        { provide: SYNC_CURSORS_SERVICE_TOKEN, useValue: { getMostRecentCursorUpdate, getCursorValuesByKeySuffix, getCursor }, },
+        {
+          provide: SYNC_JOB_REPOSITORY_TOKEN,
+          useValue: { getConnectionBacklogStats, getOrderImportStats },
+        },
+        {
+          provide: SYNC_CURSORS_SERVICE_TOKEN,
+          useValue: { getMostRecentCursorUpdate, getCursorValuesByKeySuffix, getCursor },
+        },
       ],
     }).compile();
 
@@ -229,7 +235,9 @@ describe('ConnectionSyncStatusService', () => {
 
   describe('order start (#4228)', () => {
     const cursors = (values: Record<string, string>): void => {
-      getCursor.mockImplementation((_c: string, key: string) => Promise.resolve(values[key] ?? null));
+      getCursor.mockImplementation((_c: string, key: string) =>
+        Promise.resolve(values[key] ?? null)
+      );
     };
 
     it('should report the applied start with its mode, date and order', async () => {

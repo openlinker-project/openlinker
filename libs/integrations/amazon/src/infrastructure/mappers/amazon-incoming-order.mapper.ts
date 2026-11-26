@@ -5,10 +5,13 @@
  * Pure: no I/O, no clock.
  *
  * Rules worth knowing:
- *   - **Lines are keyed by seller SKU**, through the reference the caller
- *     names (`resolveAmazonOrderLineRef`): the variant when the connection is
- *     the catalogue, the offer when Amazon only carries offers. A line without
- *     a SKU falls back to the ASIN under the same reference.
+ *   - **Lines are keyed by an offer reference** (`productRef: offer`) carrying
+ *     the seller SKU, because a seller SKU is the id of Amazon's own listing
+ *     (the offer mapping's external id), not the master catalogue's variant
+ *     SKU, and core resolves a `sku` ref against the master. A line without a
+ *     SKU falls back to the ASIN. The plain SKU is still reported in `sku`.
+ *     Only a connection that IS the catalogue names the variant instead
+ *     (`resolveAmazonOrderLineRef`); the default is the offer.
  *   - **Money comes from the item proceeds.** Amazon reports `ITEM`,
  *     `SHIPPING`, `TAX`, `DISCOUNT` and the smaller charges per order item
  *     (`orderItems[].proceeds.breakdowns`); the order-level breakdowns, when

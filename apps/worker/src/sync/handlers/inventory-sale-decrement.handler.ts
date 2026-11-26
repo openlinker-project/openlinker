@@ -38,6 +38,7 @@ import {
   type SaleDecrementLineInput,
 } from '@openlinker/core/inventory';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
+import { isUnmatchedProductId } from '@openlinker/core/identifier-mapping';
 import type {
   InventorySaleDecrementPayloadV1,
   SyncJob,
@@ -105,6 +106,12 @@ export class InventorySaleDecrementHandler implements SyncJobHandler {
         );
         continue;
       }
+
+      // #4280: a line accepted without a catalogue match has no product whose
+      // stock could be lowered. Without this the decrement resolves to `blocked`
+      // and records an unclaimed row plus an attention flag for a sale that never
+      // touched OpenLinker's inventory.
+      if (isUnmatchedProductId(item.productId)) continue;
 
       lines.push({
         orderLineId: line.orderLineId,

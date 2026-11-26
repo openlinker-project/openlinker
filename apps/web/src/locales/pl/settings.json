@@ -215,6 +215,54 @@
     "suggestedMax": "zalecane ≤ {max}",
     "valueWithSource": "{value} ({source})"
   },
+  "releaseCenterPage": {
+    "adminOnly": {
+      "message": "Te ustawienia zmienia administrator.",
+      "title": "Wymagana rola administratora"
+    },
+    "back": "Wróć do ustawień",
+    "description": "Zdecyduj, czy po aktualizacji użytkownicy widzą okno ze zmianami, karty nowości w dzwonku i przewodniki po nowych funkcjach.",
+    "error": {
+      "retry": "Spróbuj ponownie",
+      "title": "Nie udało się wczytać ustawień"
+    },
+    "eyebrow": "Dostęp i wygląd",
+    "loading": {
+      "message": "To potrwa chwilę.",
+      "title": "Wczytuję ustawienia"
+    },
+    "title": "Nowości po aktualizacji"
+  },
+  "releaseCenterRow": {
+    "description": "Okno z listą zmian po aktualizacji, karty wydań w dzwonku i przewodniki po nowych funkcjach.",
+    "off": "Wyłączone",
+    "on": "Włączone",
+    "open": "Otwórz ustawienia nowości po aktualizacji",
+    "title": "Nowości po aktualizacji"
+  },
+  "releaseCenterSection": {
+    "backToEnv": "Wróć do ustawienia serwera",
+    "field": {
+      "ariaLabel": "Nowości po aktualizacji włączone lub wyłączone",
+      "description": "Po wyłączeniu po aktualizacji nie pojawi się okno ze zmianami, a w dzwonku zniknie karta nowości z krokami do ustawienia i przewodnikami po nowych funkcjach. Dzwonek i pozostałe powiadomienia zostają. Lista zmian nadal jest na stronie „Nowości i powiadomienia”.",
+      "label": "Pokazuj nowości po aktualizacji"
+    },
+    "lead": "Dotyczy wszystkich użytkowników instalacji.",
+    "newChip": "Nowe",
+    "reset": "Cofnij",
+    "save": "Zapisz zmiany",
+    "saveFailed": "Nie udało się zapisać ustawienia.",
+    "savedToast": {
+      "description": "U Ciebie działa od razu, u pozostałych użytkowników po odświeżeniu strony.",
+      "title": "Zapisano ustawienie"
+    },
+    "sourceLine": {
+      "default": "Teraz obowiązuje ustawienie domyślne: włączone.",
+      "env": "Teraz obowiązuje ustawienie serwera. Zapisz tutaj, żeby je zastąpić.",
+      "setting": "Ustawione tutaj."
+    },
+    "title": "Nowości po aktualizacji"
+  },
   "salesDocumentsPage": {
     "adminOnly": {
       "description": "Dostęp tylko dla administratora.",
@@ -236,52 +284,27 @@
     "account": {
       "anonymous": "Brak aktywnej sesji.",
       "email": "E-mail",
-      "eyebrow": "Sesja",
       "loading": "Wczytywanie sesji…",
-      "meta": "Tylko do odczytu",
       "role": "Rola",
+      "signedInAs": "Zalogowano jako",
       "title": "Konto",
       "username": "Nazwa użytkownika"
     },
-    "chips": {
-      "account": "Konto",
-      "buyerEmails": "E-maile kupujących",
-      "currency": "Waluta",
-      "environment": "Środowisko",
-      "inventoryLocations": "Lokalizacje magazynowe",
-      "mailer": "Poczta",
-      "mcpTokens": "Tokeny MCP",
-      "orderTags": "Tagi zamówień",
-      "posthog": "PostHog",
-      "salesDocuments": "Kierowanie dokumentów sprzedaży",
-      "sourcingRules": "Reguły lokalizacji",
-      "syncPacing": "Tempo synchr.",
-      "upcoming": "Wkrótce",
-      "whoDecides": "Kto o czym decyduje"
-    },
-    "comingSoon": "Wkrótce",
-    "description": "Konfiguracja platformy, kontekst sesji i nadchodzące preferencje operatora.",
+    "description": "Wszystkie obszary konfiguracji, pogrupowane według tego, do czego służą.",
     "environment": {
-      "apiBaseUrl": "Bazowy adres URL API",
+      "apiBaseUrl": "Adres API",
       "environment": "Środowisko",
-      "eyebrow": "Środowisko uruchomieniowe",
-      "meta": "Konfiguracja z kompilacji",
-      "title": "Środowisko"
+      "title": "Środowisko",
+      "version": "Wersja aplikacji"
     },
-    "eyebrow": "Ustawienia",
     "notifications": {
-      "body": "Tu będzie można skonfigurować alerty o błędach synchronizacji, wyzwalacze ręcznej weryfikacji i powiadomienia o progach.",
-      "eyebrow": "Alerty",
       "title": "Powiadomienia"
     },
     "organization": {
-      "body": "Tu będzie można zarządzać członkami zespołu, rolami i ustawieniami obszaru roboczego.",
-      "eyebrow": "Obszar roboczy",
       "title": "Organizacja"
     },
+    "plannedLine": "W planach także: {items}.",
     "preferences": {
-      "body": "Tu pojawią się opcje strefy czasowej, formatu daty i gęstości wyświetlania.",
-      "eyebrow": "Wyświetlanie",
       "title": "Preferencje"
     },
     "title": "Ustawienia"
@@ -445,6 +468,105 @@
     "sourceSetting": "ustawione ręcznie",
     "title": "Tempo synchronizacji",
     "valueWithSource": "{value} ({source})"
+  },
+  "template": {
+    "aiProvider": {
+      "hint": "Klucze dla każdego dostawcy i aktywny dostawca.",
+      "short": "Dostawca AI",
+      "title": "Dostawcy AI"
+    },
+    "batch": {
+      "hint": "Kiedy i jak dokumenty są wystawiane razem dla tego połączenia.",
+      "short": "Wystawianie zbiorcze",
+      "title": "Wystawianie zbiorcze"
+    },
+    "buyerEmailEditor": {
+      "hint": "Nadawca, temat i treść tego e-maila.",
+      "short": "E-mail do kupującego",
+      "title": "Treść e-maila"
+    },
+    "buyerEmails": {
+      "hint": "Wybierz połączenie i ustaw, jakie e-maile dostają kupujący.",
+      "short": "E-maile do kupujących",
+      "title": "E-maile według połączenia"
+    },
+    "inventoryLocations": {
+      "hint": "Magazyny i inne miejsca, w których leży towar.",
+      "short": "Lokalizacje",
+      "title": "Lokalizacje magazynowe"
+    },
+    "loginPage": {
+      "hint": "Co goście widzą na ekranie logowania tej instalacji.",
+      "short": "Strona logowania",
+      "title": "Treść strony logowania"
+    },
+    "mcpTokens": {
+      "hint": "Dane dostępowe, którymi klient MCP łączy się z tą instalacją.",
+      "short": "Tokeny MCP",
+      "title": "Tokeny dostępu"
+    },
+    "orderTags": {
+      "hint": "Etykiety, które zespół nadaje zamówieniom.",
+      "short": "Tagi zamówień",
+      "title": "Tagi zamówień"
+    },
+    "salesGifts": {
+      "hint": "Jak darmowe gratisy wyglądają na wystawionych dokumentach.",
+      "short": "Gratisy",
+      "title": "Gratisy na dokumentach"
+    },
+    "salesMarkets": {
+      "hint": "Jaki dokument dostaje każdy kraj dostawy.",
+      "short": "Rynki",
+      "title": "Rynki"
+    },
+    "salesProviders": {
+      "hint": "Połączenia wystawiające dokumenty i moment ich wystawiania.",
+      "short": "Dostawcy",
+      "title": "Dostawcy dokumentów"
+    },
+    "settingsEnv": {
+      "hint": "Instalacja, do której jesteś zalogowany.",
+      "short": "Środowisko",
+      "title": "Środowisko i konto"
+    },
+    "settingsGroups": {
+      "access": {
+        "hint": "Kto może łączyć się z tą instalacją i co widzą odwiedzający.",
+        "short": "Dostęp",
+        "title": "Dostęp i wygląd"
+      },
+      "data": {
+        "hint": "Jak często czytamy katalog i stany oraz w jakiej walucie raportujemy.",
+        "short": "Dane",
+        "title": "Dane i synchronizacja"
+      },
+      "orders": {
+        "hint": "Jak zamówienia są rozstrzygane, dokumentowane i komunikowane.",
+        "short": "Zamówienia",
+        "title": "Zamówienia i dokumenty"
+      }
+    },
+    "settingsHome": {
+      "hint": "Każdy obszar, który możesz skonfigurować.",
+      "short": "Ustawienia",
+      "title": "Obszary ustawień"
+    },
+    "sourcingRules": {
+      "hint": "Uporządkowane reguły wybierające, skąd realizowane jest zamówienie.",
+      "short": "Reguły źródeł",
+      "title": "Reguły źródeł"
+    },
+    "syncPacing": {
+      "hint": "Jak mocno OpenLinker pracuje na katalogu sklepu.",
+      "short": "Tempo synchronizacji",
+      "title": "Tempo synchronizacji"
+    },
+    "whoDecides": {
+      "hint": "Który system odpowiada za stany, zamówienia, zwroty, zwroty pieniędzy i dokumenty.",
+      "short": "Kto decyduje",
+      "title": "Kto o czym decyduje"
+    }
   },
   "tickBudgetBar": {
     "ariaHostLimit": "Hosting zatrzymuje procesy po {limit}.",

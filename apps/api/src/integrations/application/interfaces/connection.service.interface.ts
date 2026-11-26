@@ -8,10 +8,7 @@
  * @see {@link ConnectionService} for the implementation
  */
 import type { OrderSyncStart } from '@openlinker/core/sync';
-import type {
-  Connection,
-  ConnectionFilters,
-} from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionFilters } from '@openlinker/core/identifier-mapping';
 import type {
   ConnectionTestResult,
   WebhookProvisioningResult,
@@ -23,7 +20,12 @@ import type {
   OrderSyncRestartResult,
 } from './connection.service.types';
 
-export type { ConnectionCreateInput, ConnectionUpdateInput, OrderImportRequest, OrderSyncRestartResult };
+export type {
+  ConnectionCreateInput,
+  ConnectionUpdateInput,
+  OrderImportRequest,
+  OrderSyncRestartResult,
+};
 
 export const CONNECTION_SERVICE_TOKEN = Symbol('IConnectionService');
 

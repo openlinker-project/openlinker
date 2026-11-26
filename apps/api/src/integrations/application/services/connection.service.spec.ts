@@ -363,7 +363,10 @@ describe('ConnectionService', () => {
           'orders.syncStart',
           '{"mode":"all"}'
         );
-        const created = connectionPort.create.mock.calls[0][0] as unknown as Record<string, unknown>;
+        const created = connectionPort.create.mock.calls[0][0] as unknown as Record<
+          string,
+          unknown
+        >;
         expect(created).not.toHaveProperty('orderSyncStart');
         expect(created.config).toEqual(payload.config);
       });
@@ -1429,6 +1432,62 @@ describe('ConnectionService', () => {
                 batchSchedules: { invoice: { frequency: 'daily', time: '6pm' } },
               },
             },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('catalogue mode validation (#4280)', () => {
+      it('should accept none, linked and a cleared null on create', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        for (const catalogueMode of ['none', 'linked', null]) {
+          await expect(
+            service.create({ ...payload, config: { ...payload.config, catalogueMode } })
+          ).resolves.toEqual(mockConnection);
+        }
+      });
+
+      it('should accept a create with the key absent - an existing install is unchanged', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalledWith(
+          expect.objectContaining({ config: payload.config })
+        );
+      });
+
+      it('should name the field, the rule and the allowed values on a refusal', async () => {
+        const error = await service
+          .create({ ...payload, config: { ...payload.config, catalogueMode: 'None' } })
+          .catch((caught: unknown) => caught);
+
+        expect((error as BadRequestException).getResponse()).toEqual({
+          statusCode: 400,
+          code: 'CONNECTION_CONFIG_INVALID',
+          message: 'config.catalogueMode must be one of: linked, none',
+          params: { field: 'config.catalogueMode', rule: 'one-of', allowed: 'linked, none' },
+        });
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a non-string value on create', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, catalogueMode: true as unknown as string },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject an unrecognised value on update', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', catalogueMode: 'off' },
           })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
@@ -2762,7 +2821,18 @@ describe('ConnectionService', () => {
 
   describe('restartOrderSync (#4228)', () => {
     const orderConnection = (): Connection =>
-      new Connection('connection-123', 'prestashop', 'Shop', 'active', {}, 'db:ref', new Date(), new Date(), undefined, ['OrderSource']);
+      new Connection(
+        'connection-123',
+        'prestashop',
+        'Shop',
+        'active',
+        {},
+        'db:ref',
+        new Date(),
+        new Date(),
+        undefined,
+        ['OrderSource']
+      );
 
     it('should drop the order cursors and store the new start', async () => {
       connectionPort.get.mockResolvedValue(orderConnection());
@@ -2787,7 +2857,10 @@ describe('ConnectionService', () => {
       expect(result).toEqual({ applied: false, reason: 'already-following-feed' });
       expect(syncCursors.deleteOrderFeedCursors).not.toHaveBeenCalled();
       expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
-      expect(lock.release).toHaveBeenCalledWith('marketplace:orders:poll:connection-123', 'lock-token');
+      expect(lock.release).toHaveBeenCalledWith(
+        'marketplace:orders:poll:connection-123',
+        'lock-token'
+      );
     });
 
     it('should write the intent before it deletes the cursors and report applied', async () => {
@@ -2806,7 +2879,10 @@ describe('ConnectionService', () => {
 
       expect(result).toEqual({ applied: true });
       expect(calls).toEqual(['store', 'delete']);
-      expect(lock.release).toHaveBeenCalledWith('marketplace:orders:poll:connection-123', 'lock-token');
+      expect(lock.release).toHaveBeenCalledWith(
+        'marketplace:orders:poll:connection-123',
+        'lock-token'
+      );
     });
 
     it('should leave the cursors intact and release the lock when storing the intent fails', async () => {
@@ -2816,7 +2892,10 @@ describe('ConnectionService', () => {
       await expect(service.restartOrderSync('connection-123', { mode: 'all' })).rejects.toThrow();
 
       expect(syncCursors.deleteOrderFeedCursors).not.toHaveBeenCalled();
-      expect(lock.release).toHaveBeenCalledWith('marketplace:orders:poll:connection-123', 'lock-token');
+      expect(lock.release).toHaveBeenCalledWith(
+        'marketplace:orders:poll:connection-123',
+        'lock-token'
+      );
     });
 
     it('should answer 409 ORDER_SYNC_BUSY and touch nothing while an order poll holds the lock', async () => {
@@ -2828,7 +2907,9 @@ describe('ConnectionService', () => {
         .catch((error: unknown) => error);
 
       expect(failure).toBeInstanceOf(ConflictException);
-      expect((failure as ConflictException).getResponse()).toMatchObject({ code: 'ORDER_SYNC_BUSY' });
+      expect((failure as ConflictException).getResponse()).toMatchObject({
+        code: 'ORDER_SYNC_BUSY',
+      });
       expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
       expect(syncCursors.deleteOrderFeedCursors).not.toHaveBeenCalled();
       expect(lock.release).not.toHaveBeenCalled();
@@ -2867,8 +2948,22 @@ describe('ConnectionService', () => {
       supportedCapabilities: ['OrderSource'],
       orderWindowImport: true,
     };
-    const importConnection = (status: 'active' | 'disabled' = 'active', caps = ['OrderSource']): Connection =>
-      new Connection('connection-123', 'prestashop', 'Shop', status, {}, 'db:ref', new Date(), new Date(), undefined, caps);
+    const importConnection = (
+      status: 'active' | 'disabled' = 'active',
+      caps = ['OrderSource']
+    ): Connection =>
+      new Connection(
+        'connection-123',
+        'prestashop',
+        'Shop',
+        status,
+        {},
+        'db:ref',
+        new Date(),
+        new Date(),
+        undefined,
+        caps
+      );
 
     beforeEach(() => {
       integrationsService.resolveAdapterMetadata.mockResolvedValue(windowMetadata as never);
@@ -2883,7 +2978,9 @@ describe('ConnectionService', () => {
         to: '2026-10-31',
         direction: 'newest-first',
       });
-      const second = await service.startOrderImport('connection-123', { direction: 'oldest-first' });
+      const second = await service.startOrderImport('connection-123', {
+        direction: 'oldest-first',
+      });
 
       expect(first.runId).toMatch(/^manual:connection-123:[a-z0-9]+$/);
       expect(second.runId).not.toBe(first.runId);
@@ -2992,9 +3089,31 @@ describe('ConnectionService', () => {
 
   describe('enabling OrderSource later (#4228)', () => {
     const withoutOrders = (): Connection =>
-      new Connection('connection-123', 'prestashop', 'Shop', 'active', {}, 'db:ref', new Date(), new Date(), undefined, ['ProductMaster']);
+      new Connection(
+        'connection-123',
+        'prestashop',
+        'Shop',
+        'active',
+        {},
+        'db:ref',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster']
+      );
     const withOrders = (): Connection =>
-      new Connection('connection-123', 'prestashop', 'Shop', 'active', {}, 'db:ref', new Date(), new Date(), undefined, ['ProductMaster', 'OrderSource']);
+      new Connection(
+        'connection-123',
+        'prestashop',
+        'Shop',
+        'active',
+        {},
+        'db:ref',
+        new Date(),
+        new Date(),
+        undefined,
+        ['ProductMaster', 'OrderSource']
+      );
     const dateModes = {
       adapterKey: 'prestashop.webservice.v1',
       platformType: 'prestashop',
@@ -3010,9 +3129,15 @@ describe('ConnectionService', () => {
     });
 
     it('should store a now intent when OrderSource is turned on and nothing exists yet', async () => {
-      await service.update('connection-123', { enabledCapabilities: ['ProductMaster', 'OrderSource'] });
+      await service.update('connection-123', {
+        enabledCapabilities: ['ProductMaster', 'OrderSource'],
+      });
 
-      expect(syncCursors.advanceCursor).toHaveBeenCalledWith('connection-123', 'orders.syncStart', '{"mode":"now"}');
+      expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+        'connection-123',
+        'orders.syncStart',
+        '{"mode":"now"}'
+      );
     });
 
     it('should store the chosen start and keep it out of the persisted patch', async () => {
@@ -3021,7 +3146,11 @@ describe('ConnectionService', () => {
         orderSyncStart: { mode: 'all' },
       });
 
-      expect(syncCursors.advanceCursor).toHaveBeenCalledWith('connection-123', 'orders.syncStart', '{"mode":"all"}');
+      expect(syncCursors.advanceCursor).toHaveBeenCalledWith(
+        'connection-123',
+        'orders.syncStart',
+        '{"mode":"all"}'
+      );
       expect(connectionPort.update.mock.calls[0][1]).not.toHaveProperty('orderSyncStart');
     });
 
@@ -3036,7 +3165,9 @@ describe('ConnectionService', () => {
     it('should never overwrite an existing feed position', async () => {
       syncCursors.hasOrderFeedCursor.mockResolvedValue(true);
 
-      await service.update('connection-123', { enabledCapabilities: ['ProductMaster', 'OrderSource'] });
+      await service.update('connection-123', {
+        enabledCapabilities: ['ProductMaster', 'OrderSource'],
+      });
 
       expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
     });
@@ -3044,7 +3175,9 @@ describe('ConnectionService', () => {
     it('should never overwrite an existing intent', async () => {
       syncCursors.getCursor.mockResolvedValue('{"mode":"all"}');
 
-      await service.update('connection-123', { enabledCapabilities: ['ProductMaster', 'OrderSource'] });
+      await service.update('connection-123', {
+        enabledCapabilities: ['ProductMaster', 'OrderSource'],
+      });
 
       expect(syncCursors.advanceCursor).not.toHaveBeenCalled();
     });

@@ -102,16 +102,21 @@ export function Popover({
   );
 }
 
-export const PopoverContent = forwardRef<
-  HTMLDivElement,
-  ComponentPropsWithoutRef<typeof RadixPopover.Content>
->(function PopoverContent(
-  { className = '', sideOffset = 6, collisionPadding = 8, children, ...props },
+export interface PopoverContentProps extends ComponentPropsWithoutRef<typeof RadixPopover.Content> {
+  /**
+   * Where to portal to. A modal `<dialog>` sits in the browser's top layer above
+   * anything in `<body>`, so a popover opened from inside one passes the dialog.
+   */
+  container?: HTMLElement | null;
+}
+
+export const PopoverContent = forwardRef<HTMLDivElement, PopoverContentProps>(function PopoverContent(
+  { className = '', sideOffset = 6, collisionPadding = 8, container, children, ...props },
   ref,
 ) {
   const classes = ['popover__content', className].filter(Boolean).join(' ');
   return (
-    <RadixPopover.Portal>
+    <RadixPopover.Portal container={container ?? undefined}>
       <RadixPopover.Content
         ref={ref}
         data-slot={CONTENT_SLOT}

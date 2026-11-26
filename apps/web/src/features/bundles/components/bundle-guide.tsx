@@ -15,10 +15,10 @@ import { GuideProvider, useGuide, type GuideContent } from '../../../shared/ui/g
 
 export function BundleGuide({
   children,
-  defaultOpen = 'what',
+  defaultOpen = 'kind',
 }: {
   children: ReactNode;
-  /** Section open first: `what`, `avail`, `gift`, `ver`, `new` or `offer`. */
+  /** Section open first: `kind`, `what`, `avail`, `gift`, `ver`, `new` or `offer`. */
   defaultOpen?: string;
 }): ReactElement {
   const g = useMessages('bundles').guide;
@@ -41,15 +41,39 @@ export function BundleGuide({
       defaultOpen: [defaultOpen],
       sections: [
         {
-          id: 'what',
+          id: 'kind',
           number: '01',
+          title: g.kind.title,
+          summary: g.kind.summary,
+          items: [
+            item('g-kind-set', g.kind.setName, g.kind.setBody),
+            item('g-kind-pack', g.kind.packName, g.kind.packBody),
+            item('g-kind-gift', g.kind.giftName, g.kind.giftBody),
+          ],
+          extra: (
+            <ol className="ux-flow" aria-label={g.flow.label}>
+              {[g.flow.s1, g.flow.s2, g.flow.s3].map((step, index) => (
+                <li key={step.title} style={{ animationDelay: `${index * 80}ms` }}>
+                  <span className="ux-flow__n" aria-hidden="true">
+                    {index + 1}
+                  </span>
+                  <strong>{step.title}</strong>
+                  <small>{step.body}</small>
+                </li>
+              ))}
+            </ol>
+          ),
+        },
+        {
+          id: 'what',
+          number: '02',
           title: g.what.title,
           summary: g.what.summary,
           items: [item('g-what', g.what.i1n, g.what.i1t), item('g-price', g.what.i2n, g.what.i2t)],
         },
         {
           id: 'avail',
-          number: '02',
+          number: '03',
           title: g.avail.title,
           summary: g.avail.summary,
           items: [item('g-avail', g.avail.i1n, g.avail.i1t)],
@@ -74,31 +98,42 @@ export function BundleGuide({
         },
         {
           id: 'gift',
-          number: '03',
+          number: '04',
           title: g.gift.title,
           summary: g.gift.summary,
           items: [item('g-gift', g.gift.i1n, g.gift.i1t)],
         },
         {
           id: 'ver',
-          number: '04',
+          number: '05',
           title: g.ver.title,
           summary: g.ver.summary,
           items: [item('g-ver', g.ver.i1n, g.ver.i1t)],
         },
         {
           id: 'new',
-          number: '05',
+          number: '06',
           title: g.new.title,
           summary: g.new.summary,
           items: [item('g-new', g.new.i1n, g.new.i1t), item('g-steps', g.new.i2n, g.new.i2t)],
         },
         {
           id: 'offer',
-          number: '06',
+          number: '07',
           title: g.offer.title,
           summary: g.offer.summary,
           items: [item('g-offer', g.offer.i1n, g.offer.i1t)],
+        },
+        {
+          id: 'next',
+          number: '08',
+          title: g.next.title,
+          summary: g.next.summary,
+          items: [
+            item('g-next-offer', g.next.offerName, g.next.offerBody),
+            item('g-next-order', g.next.orderName, g.next.orderBody),
+            item('g-next-doc', g.next.docName, g.next.docBody),
+          ],
         },
       ],
     };
