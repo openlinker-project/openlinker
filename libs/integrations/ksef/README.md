@@ -24,7 +24,9 @@ Connects OpenLinker to the **KSeF REST API v2** to:
 
 | Capability | Sub-capabilities |
 |---|---|
-| `Invoicing` | `RegulatoryTransmitter` (submit for clearance + read status; extends `RegulatoryStatusReader`, so read-status-only is covered too), `RegulatoryDocumentReader` (download the UPO receipt), `CorrectionIssuer` (issue FA(3) KOR corrections) |
+| `Invoicing` | `RegulatoryTransmitter` (submit for clearance + read status; extends `RegulatoryStatusReader`, so read-status-only is covered too), `RegulatoryDocumentReader` (download the UPO receipt), `CorrectionIssuer` (issue FA(3) KOR corrections), `BuyerIdentityCorrector` (correct the buyer identity on an issued document), `OfflineResubmitter` (retransmit a `pending-submission` document after a KSeF outage), `RegulatoryRecordLocator` (last-resort authority lookup by original idempotency key after a crash mid-submit) |
+
+The manifest advertises `Invoicing`, `OfflineResubmitter` and `RegulatoryRecordLocator`; the other sub-capabilities are resolved by narrowing the dispatched `Invoicing` adapter with their guards.
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
@@ -40,7 +42,8 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 ```
 
 `authType` is either `"ksef-token"` (API token from the KSeF portal) or `"qualified-seal"`
-(qualified electronic seal — requires a certificate flow not covered by the wizard).
+(qualified electronic seal). Only `ksef-token` works today: the connection tester rejects
+`qualified-seal` as not yet supported, and the XAdES handshake it needs is deferred.
 `secret` is the raw authentication secret for the selected mode; it is write-only and
 never echoed back.
 
@@ -67,6 +70,9 @@ never echoed back.
 | `env` | `"test"` \| `"demo"` \| `"prod"` | `test` → `api-test.ksef.mf.gov.pl/v2`; `demo` → `api-demo.ksef.mf.gov.pl/v2`; `prod` → `api.ksef.mf.gov.pl/v2` |
 | `seller` | Object | Seller identity (`Podmiot1`) stamped on every FA(3): `nip`, `name`, `address { line1, line2?, city, postalCode, countryIso2 }`. Optional at create time, required before the connection can issue. (`defaultTaxRate` was retired in #2257 — the rate comes from the ProductMaster and no adapter substitutes one; a leftover value is ignored.) |
 | `payment` | Object (optional) | Default payment details emitted as the FA(3) `Platnosc` block: `formaPlatnosci`, `paymentTermDays`, `bankAccount { nrRb, bankName?, swift? }`, `skonto { amount, conditions }`. See [docs/setup-guide.md](./docs/setup-guide.md) |
+| `invoiceDefaults` | Object (optional) | `lineUnit` (default unit of measure on lines) and `numberingTimeZone` (time zone used to derive the invoice number's period) |
+| `allowCrossBorder` | boolean (optional) | Lets the connection issue an original invoice to a buyer in another country. Off by default; corrections are never blocked by it |
+| `annotationsDefault` | Object (optional) | Defaults stamped on every invoice: `cashAccounting`, `selfBilling`, `marginScheme` + `marginKind`, `exemptionBasis { kind, text }` |
 
 ## Documentation
 

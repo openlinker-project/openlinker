@@ -1074,7 +1074,7 @@ interface OfferManagerPort {
 
 Each is an independent interface + co-located `is{Capability}(adapter)` type guard. Adapters declare the capabilities they support via `implements OfferManagerPort, OfferLister, OfferCreator, …`; call sites narrow via the guard before invoking the method — after the guard TypeScript knows the method is present.
 
-> The table below is a curated highlight. The **complete, code-synced inventory of all 49 sub-capabilities across every port** (with descriptions and guards) lives in [`docs/capabilities.md`](./capabilities.md).
+> The table below is a curated highlight. The **complete, code-synced inventory of all 84 sub-capabilities across every port** (with descriptions and guards) lives in [`docs/capabilities.md`](./capabilities.md).
 
 | Capability | Method |
 |---|---|
@@ -1091,7 +1091,7 @@ Each is an independent interface + co-located `is{Capability}(adapter)` type gua
 | `SellerPoliciesReader` | `fetchSellerPolicies()` |
 | `CatalogProductReader` | `findProductsByBarcode(input)`, `getProduct(input)` |
 
-**Current Implementations**: `AllegroOfferManagerAdapter` (implements every capability except `OfferQuantityBatchUpdater`); `AmazonOfferManagerAdapter` (#4180/#4181: links listings by SKU or EAN, FBM stock and price writes, offer-only and new-catalogue-item creation, product types as categories); `ErliOfferManagerAdapter` (registered at `erli.shopapi.v1`, reconciliation-first posture per [ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md), #984); `WooCommerceOfferManagerAdapter` (#1498 — base-port-only stock write-back to published shop products: `updateOfferQuantity` → `PUT /products/{id}` with `manage_stock: true`. No offer-creation sub-capabilities; the propagation fan-out reaches it via `ShopProduct` mappings (second fan-out branch in `InventoryPropagateToMarketplacesHandler`), not `Offer` mappings. Write-back defaults OFF on new WC connections and is mutually exclusive with `InventoryMaster` per connection — the inventory master is never a write-back target).
+**Current Implementations**: `AllegroOfferManagerAdapter` (implements the broadest sub-capability set, including `OfferQuantityBatchUpdater`); `AmazonOfferManagerAdapter` (#4180/#4181: links listings by SKU or EAN, FBM stock and price writes, offer-only and new-catalogue-item creation, product types as categories); `ErliOfferManagerAdapter` (registered at `erli.shopapi.v1`, reconciliation-first posture per [ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md), #984); `WooCommerceOfferManagerAdapter` (#1498 — base-port-only stock write-back to published shop products: `updateOfferQuantity` → `PUT /products/{id}` with `manage_stock: true`. No offer-creation sub-capabilities; the propagation fan-out reaches it via `ShopProduct` mappings (second fan-out branch in `InventoryPropagateToMarketplacesHandler`), not `Offer` mappings. Write-back defaults OFF on new WC connections and is mutually exclusive with `InventoryMaster` per connection — the inventory master is never a write-back target).
 
 `ShopifyOfferManagerAdapter` (#3980) is the same base-port-only stock write-back as WooCommerce, reached through `ShopProduct` mappings.
 

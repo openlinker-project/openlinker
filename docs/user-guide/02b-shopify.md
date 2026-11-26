@@ -122,6 +122,9 @@ When the store receives marketplace orders (**Order destination**), open **Mappi
 - **Prices**: catalogue prices in OpenLinker are gross. A store whose prices exclude tax is converted with each product's VAT rate, which needs the `write_draft_orders` permission; a product whose rate cannot be read gets no price.
 - **Orders from marketplaces** are created at the price the buyer paid, tagged `openlinker`, and Shopify sends the buyer no receipt. A locker pickup point goes into the order note and the shipping line title, because Shopify has no pickup-point field.
 - **Dispatch**: when OpenLinker ships an order, Shopify gets the tracking number, carrier and link.
+- **Products deleted in your catalogue** are hidden in Shopify (set to draft, kept with their history), and a hidden product can be shown again.
+- **Published product status** (active, draft, archived, removed) is re-read hourly. This and the other background checks (orders every 5 minutes, fulfilments made in the Shopify admin, returns) run in the worker and are switched off with `OL_SHOPIFY_*_SCHEDULER_ENABLED=false`; the returns checks are off unless set to `true`. The list is in the [Shopify adapter README](../../libs/integrations/shopify/README.md#scheduler-tasks).
+- **Returns** requested in Shopify are read in, and a requested return can be declined from OpenLinker.
 - **Archived products** count as removed from sale, so their offers are paused. Draft products sync normally. Gift cards are skipped.
 
 For the full behaviour see the [Shopify adapter README](../../libs/integrations/shopify/README.md).

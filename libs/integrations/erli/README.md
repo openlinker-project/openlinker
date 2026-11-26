@@ -14,7 +14,7 @@ Erli marketplace adapter for OpenLinker — offer management and order ingestion
 
 | Capability | Key sub-capabilities |
 |---|---|
-| `OfferManager` | `OfferCreator`, `OfferFieldUpdater`, `OfferStatusReader`, `OfferStockRestorer`, `TaxonomyBorrower` |
+| `OfferManager` | `OfferCreator`, `OfferFieldUpdater`, `OfferReader`, `OfferStatusReader`, `OfferStockRestorer`, `TaxonomyBorrower`, `ResponsibleProducerReader`, `DeliveryPriceListReader`, `OfferCurrencyDeclarer` |
 | `OrderSource` | `listOrderFeed` (cursor-based), `getOrder` |
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
@@ -28,9 +28,15 @@ Authentication uses a **static API key** (no OAuth).
 **Credentials**:
 ```json
 {
-  "apiKey": "<Erli seller API key>"
+  "apiKey": "<Erli seller API key>",
+  "allegroClientId": "<optional Allegro app client id>",
+  "allegroClientSecret": "<optional Allegro app client secret>"
 }
 ```
+
+`allegroClientId` / `allegroClientSecret` are an optional, separate Allegro app credential pair
+(both or neither) that let the connection browse Allegro's public category/parameter catalog
+(ADR-031). They are unrelated to the Erli `apiKey`.
 
 **Config** (all fields optional - an empty config is valid):
 ```json
@@ -39,9 +45,12 @@ Authentication uses a **static API key** (no OAuth).
 
 | Field | Values | Notes |
 |---|---|---|
+| `environment` | `"sandbox"` \| `"production"` (optional) | Erli Shop API environment chosen in the create wizard; the adapter maps it to the sandbox or production host. `baseUrl` overrides it |
 | `baseUrl` | HTTPS URL (optional) | Override of the Erli Shop API base URL; must target an Erli-owned host |
 | `defaultDispatchTime` | Object (optional) | `{ "period": <non-negative int>, "unit": "hour" \| "day" \| "month" }` - dispatch time applied to created offers when no per-offer value is given |
 | `callbackBaseUrl` | http(s) URL (optional) | Public base URL Erli calls back for inbound webhooks (e.g. a tunnel in dev) |
+| `allegroEnvironment` | `"sandbox"` \| `"production"` (optional, default `production`) | Which Allegro environment the category catalog client uses. Only meaningful when the Allegro credential pair is set. A different axis from `environment` |
+| `allegroCategoryAccessEnabled` | boolean (optional) | Non-secret mirror of "the Allegro credential pair is configured", kept in step with the credentials. Set it to `false` to opt this connection out of Allegro catalog access (borrowed-catalogue EAN lookup and category browsing) |
 
 ## Notable implementation details
 

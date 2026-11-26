@@ -14,9 +14,11 @@ Allegro Public API v1 adapter for OpenLinker — marketplace offer management an
 
 | Capability | Key sub-capabilities |
 |---|---|
-| `OrderSource` | `listOrderFeed` (cursor-based event journal), `getOrder` |
-| `OfferManager` | `OfferLister`, `OfferEventReader`, `OfferCreator`, `OfferFieldUpdater`, `OfferStatusReader`, `OfferSmartClassificationReader`, `CategoryBrowser`, `CategoryBarcodeMatcher`, `CatalogProductReader`, `SellerPoliciesReader` |
+| `OrderSource` | `listOrderFeed` (cursor-based event journal), `getOrder`; sub-capabilities `OrderStatusWriteback`, `OrderFulfillmentReadback`, `OrderFeedBootstrap`, `OrderWindowReader`, `ReturnSourceReader` (customer returns, read-only), `RefundSourceReader` (seller payment refunds, observed only), `ReturnDecliner` (the one customer-returns write), `OrderBillingDocumentUploader` / `OrderBillingDocumentLinker` |
+| `OfferManager` | `OfferLister`, `OfferEventReader`, `OfferCreator`, `OfferFieldUpdater`, `OfferStatusReader`, `OfferSmartClassificationReader`, `CategoryBrowser`, `CategoryPathReader`, `CategoryBarcodeMatcher`, `EanCategoryMatcher`, `EanCategoryMatcherStreaming`, `CatalogProductReader`, `SellerPoliciesReader` |
 | `ShippingProviderManager` | Allegro carrier mapping |
+
+`ReturnSourceReader`, `RefundSourceReader` and `ReturnDecliner` are advertised in the manifest but resolved by narrowing the dispatched `OrderSource` adapter with their `is*` guards, never through `getCapabilityAdapter`.
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
@@ -41,6 +43,7 @@ Allegro's consent screen). Credentials are stored as an encrypted token set
 | `apiBaseUrl` | URL (optional) | Explicit API base-URL override; defaults from `environment` |
 | `masterCatalogConnectionId` | UUID (optional) | Master-catalog connection used for barcode-scoped offer linking |
 | `sellerDefaults` | Object (optional) | Offer-creation defaults: ship-from `location`, `responsibleProducerId`, GPSR `safetyInformation` |
+| `senderAddress` | Object (optional) | Sender for Allegro Delivery shipments: `name?`, `company?`, `email`, `phone` (international format with prefix), `address`. Needed only to generate labels; generating one without it is refused before any call to Allegro |
 | `sellerId` | String (optional) | Allegro seller/account id captured at OAuth completion; used by the same-seller re-auth guard |
 
 ## Notable implementation details

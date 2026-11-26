@@ -129,6 +129,8 @@ Run it again after turning on another role. Each run creates a new secret, and e
 - **Stock**: one pooled number per variant. A shop with the multi-warehouse module on is refused for stock, so keep such a connection to **Product catalog** only.
 - **Marketplace orders** are created at the price the buyer paid. Shoper lowers its own stock for each line; OpenLinker never lowers it a second time. If the marketplace has not shown the buyer's phone yet, the order gets the placeholder `100000000` and the real number is filled in on the next sync.
 - **Dispatch**: when OpenLinker ships an order, Shoper gets a parcel with the tracking number.
+- **Products deleted in your catalogue** are hidden in Shoper (set inactive, kept with their history).
+- **Background checks** (orders, fulfilments, published product status) run in the worker and each can be switched off with its `OL_SHOPER_*_SCHEDULER_ENABLED=false`. The list is in the [Shoper adapter README](../../libs/integrations/shoper/README.md#scheduler-tasks).
 - **Tax rate** is read from the product's tax row in Shoper; a row whose name and value disagree is treated as unknown, never guessed.
 
 Not supported yet: locker pickup points on orders created in the shop (the warehouse reads the point from the source order), and cancelling a Shoper order from OpenLinker, so a cancelled marketplace order keeps its units taken in Shoper until you cancel it in the shop.

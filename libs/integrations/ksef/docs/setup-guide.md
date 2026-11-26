@@ -490,7 +490,7 @@ OpenLinker's KSeF support targets outbound issuance + clearance of FA(3)
 
 | Not supported | Rationale |
 |---|---|
-| Receipts / paragony (B2C fiscal receipts) | KSeF covers structured invoices; receipts are a separate fiscal regime. An invoice to a buyer without a NIP **is** planned (FA(3) `BrakID`) as a follow-up. |
+| Receipts / paragony (B2C fiscal receipts) | KSeF covers structured invoices; receipts are a separate fiscal regime. An invoice to a buyer without a NIP is supported: the FA(3) mapper emits `<BrakID>1</BrakID>` (`fa3-buyer-id.mapper.ts`). |
 | Batch (wsadowa) submission pipeline | OpenLinker issues via the online (interactive) session flow (`/sessions/online`); the batch pipeline (`/sessions/batch`) is a separate, deferred path. |
 | Inbound invoice retrieval | OpenLinker is a transmitter, not a KSeF inbox reader; pulling received invoices is out of scope. |
 | FA_PEF / PEF documents | Only the FA(3) VAT/KOR schema is planned. |

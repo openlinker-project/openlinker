@@ -36,14 +36,15 @@ Region, environment and (in the Far East) the marketplace cannot be changed afte
 
 When **Orders** is ticked, the form asks where order sync starts:
 
-<!-- screenshot: Connect Amazon form - "Which orders should OpenLinker import?" with the three cards, New orders only selected (Recommended) -->
+<!-- screenshot: Connect Amazon form - "Which orders should OpenLinker import?" with the two cards, New orders only selected (Recommended) -->
 ![Amazon connection form — order history](./images/02-amazon-order-history.png)
 
 - **New orders only** (recommended): nothing placed before the connection is copied to your other shops and systems.
-- **Orders since a date**: for Amazon this reads every order **updated** since that day (midnight UTC), so an older order that changed after it comes too.
-- **Every order the shop has**: the whole account history. Amazon allows about one order search every three minutes, so a large history takes a long time.
+- **Orders since a date**: for Amazon this reads every order **updated** since that day (midnight UTC), so an older order that changed after it comes too. Choose an early date to bring in history.
 
-Orders past Amazon's 30-day limit for buyer data arrive without the buyer's name, email and address. You can move the start or import older orders later from the connection's **Sync** tab (**Change where syncing starts...**).
+Amazon has no "every order" choice. Amazon allows about one order search every three minutes, so a long history takes a long time.
+
+Orders past Amazon's 30-day limit for buyer data arrive without the buyer's name, email and address. You can move the start later from the connection's **Sync** tab (**Change where syncing starts...**), or import a date range there, newest first or for dates you pick, without touching the running feed.
 
 ## Step 4 — Credentials
 
@@ -84,7 +85,7 @@ The connection works with its defaults, but most accounts need a few settings on
 | **VAT rates of Amazon tax codes** | Amazon gives a listing a product tax code (e.g. `A_GEN_STANDARD`), not a rate. Add a row for each code your account uses with its VAT rate: OpenLinker reads a product's rate from it and sends the code with every offer it publishes. |
 | **SQS queue URL** | Optional queue for order notifications (Step 8). |
 | **Send refunds to Amazon** | When on, a refund you confirm in OpenLinker is sent to Amazon for orders you ship yourself. When off, OpenLinker only records that you refunded in Seller Central. |
-| **Product catalog connection** | For a sales channel: the catalogue (for example your shop) OpenLinker uses to match Amazon listings to your products by EAN/GTIN. If the connection page shows **Product catalogue not linked**, pick one here. |
+| **Product catalog connection** | For a sales channel: the catalogue (for example your shop) OpenLinker uses to match Amazon listings to your products by SKU, or by EAN/GTIN when the listing carries one. If the connection page shows **Product catalogue not linked**, pick one here. |
 | **Outbound rate limit** / **Stock and price on this destination** | Optional: pace requests, publish less stock than you hold, or publish a different price than your catalogue. |
 
 Region, environment and (in the Far East) the marketplace are shown but cannot be changed: another region is another seller account and needs another connection.

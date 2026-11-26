@@ -3,7 +3,7 @@
 [![CI](https://github.com/openlinker-project/openlinker/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/openlinker-project/openlinker/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/package-json/v/openlinker-project/openlinker?label=version)](./CHANGELOG.md)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
-[![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](https://github.com/openlinker-project/openlinker/issues/670)
+[![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](./CHANGELOG.md)
 
 **[openlinker.io](https://openlinker.io)** · [Docs](https://docs.openlinker.io) · [Live demo](https://app.demo.openlinker.io) · [Architecture](https://openlinker.io/en/architecture) · [Integrations](https://openlinker.io/en/integrations) · [vs BaseLinker](https://openlinker.io/en/vs/baselinker)
 
@@ -29,6 +29,10 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 - **Create listings without copy-pasting.** Pick a product, pick a category (or look it up by EAN), get an Allegro offer up with images, parameters, GPSR data, and your saved seller policies — from one wizard. AI can draft the description if you let it.
 - **Run multiple stores from one dashboard.** Each connection has its own encrypted credentials and config. Two PrestaShop stores plus three Allegro accounts? One OpenLinker instance.
 - **Work in English or Polish.** Pick the language from the switch at the bottom of the sidebar or in the corner of the sign-in page; a deployment sets its default with `VITE_DEFAULT_UI_LOCALE` ([details](./docs/frontend-architecture.md#internationalization-i18n)). Polish is in **beta**: some screens may still show English text while the translation is finished. Progress is tracked in the [Interface language milestone](https://github.com/openlinker-project/openlinker/milestone/6).
+- **Route and fulfil orders.** The built-in OL-OMS routes each order to a stock location and fulfilment holder, with a pack bench and an assign-work board for warehouse staff ([`libs/oms`](./libs/oms/)).
+- **Issue the right fiscal document.** Per-market routing rules decide invoice vs fiscal receipt for each order ([how routing decides](./docs/sales-documents-how-routing-decides.md)).
+- **Automate and report.** "When X, do Y" automation rules, an `/analytics` dashboard with multi-currency reporting (NBP/ECB rates), stock reservations with available-to-promise, promotions/bundles/gifts, and a release center.
+- **Let agents drive it.** OpenLinker is also an MCP server, with per-user access tokens, for AI agents.
 - **You own everything.** Self-hosted, Apache 2.0. No subscription, no per-order pricing, no vendor that can shut you off. You host it; that's the trade.
 
 <p align="center">
@@ -51,13 +55,16 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
 | **[InPost](./libs/integrations/inpost/)** *([guide](./libs/integrations/inpost/docs/setup-guide.md))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | ✅ Live |
 | **[DPD](./libs/integrations/dpd-polska/)** *([guide](./libs/integrations/dpd-polska/docs/setup-guide.md))* | Shipping *(REST labels + protocols, SOAP tracking)* | ✅ Live |
+| **[Shopify](./libs/integrations/shopify/)** | Shop *(source + destination + inventory, product publish, stock write-back, returns)* | Available *(maturity label pending)* |
+| **[Amazon](./libs/integrations/amazon/)** *([guide](./libs/integrations/amazon/docs/setup-guide.md))* | Marketplace *(orders, offers, catalogue, stock, returns, Multi-Channel Fulfillment)* | 🧪 Beta / Preview *(verified against a static sandbox and a fake SP-API E2E only; no real-account run yet)* |
+| **[OL-OMS](./libs/oms/)** | Built-in fulfilment executor *(no credentials; routes and executes work inside OpenLinker)* | ✅ Live |
 | **[Subiekt GT](./libs/integrations/subiekt/)** *([guide](./libs/integrations/subiekt/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt/docs/tutorial.md))* | Invoicing · Catalogue · Stock · Order ingestion · Order creation *(via the Sfera GT bridge, COM automation)* | ✅ Live |
 | **[Subiekt nexo](./libs/integrations/subiekt-nexo/)** *([guide](./libs/integrations/subiekt-nexo/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt-nexo/docs/tutorial.md))* | Invoicing *(via the Sfera bridge — first `InvoicingPort` adapter)* | ✅ Live |
 | **[KSeF](./libs/integrations/ksef/)** *([guide](./libs/integrations/ksef/docs/setup-guide.md) · [tutorial](./libs/integrations/ksef/docs/tutorial.md))* | Invoicing *(Polish national e-invoicing)* | ✅ Live |
 | **[Infakt](./libs/integrations/infakt/)** *([guide](./libs/integrations/infakt/docs/setup-guide.md))* | Invoicing *(accounting SaaS — issues invoices and relays them to KSeF on the seller's behalf)* | ✅ Live |
 | **[eparagony.pl](./libs/integrations/eparagony/)** *([guide](./libs/integrations/eparagony/docs/setup-guide.md))* | Fiscal receipts · Invoicing *(the vendor drives the seller's fiscal printer and relays invoices to KSeF)* | ✅ Live |
-| Shopify · BigCommerce · Magento | Shop | 📋 Planned |
-| eBay · Amazon · OLX · Empik · Bol | Marketplace | 📋 Planned |
+| BigCommerce · Magento | Shop | 📋 Planned |
+| eBay · OLX · Empik · Bol | Marketplace | 📋 Planned |
 | DHL · FedEx · ORLEN Paczka · GLS | Shipping *(siblings under `ShippingProviderManagerPort`)* | 📋 Planned |
 | Fakturownia · iFirma · wFirma | Invoicing *(siblings under `InvoicingPort`)* | 📋 Planned |
 
@@ -71,16 +78,17 @@ OpenLinker is built around a small set of capability ports. Each integration imp
 
 | Capability | What it does | Integrations |
 |---|---|---|
-| **Catalog & inventory** | Read products, variants, and stock from a master shop | PrestaShop · WooCommerce · Shoper |
-| **Orders** | Ingest from any source *(event journal or watermark)*; create + manage them in a destination shop | PrestaShop *(source + destination)* · WooCommerce *(source + destination)* · Shoper *(source + destination)* · Allegro *(source)* · Erli *(source)* |
-| **Offers / listings** | Manage marketplace offers — categories, prices, quantities, seller policies, GPSR data | Allegro · Erli |
+| **Catalog & inventory** | Read products, variants, and stock from a master shop | PrestaShop · WooCommerce · Shoper · Shopify · Amazon · Subiekt GT |
+| **Orders** | Ingest from any source *(event journal or watermark)*; create + manage them in a destination shop | PrestaShop *(source + destination)* · WooCommerce *(source + destination)* · Shoper *(source + destination)* · Shopify *(source + destination)* · Subiekt GT *(source + destination)* · Allegro *(source)* · Erli *(source)* · Amazon *(source)* |
+| **Offers / listings** | Manage marketplace offers - categories, prices, quantities, seller policies, GPSR data | Allegro · Erli · Amazon *(beta)* · WooCommerce / Shoper / Shopify *(stock write-back and shop publish)* |
 | **Shipping** | Generate labels + handover protocols, fetch tracking *(via `ShippingProviderManagerPort`)* | Allegro · InPost · DPD |
+| **Fulfilment execution** | Hand a routed work object to whoever fulfils it *(via `FulfillmentExecutorPort`)* | OL-OMS · Amazon *(Multi-Channel Fulfillment)* |
 | **Invoicing** | Issue fiscal documents and, where supported, submit them to a tax authority for clearance *(via `InvoicingPort`)* | Subiekt GT · Subiekt nexo · KSeF · Infakt · eparagony.pl |
 | **Fiscal receipts** | Register a sale as a fiscal receipt through a provider that drives the fiscal device *(via `FiscalizationPort`)* | eparagony.pl |
 | **Content suggestion** | Provider-agnostic AI completions with editable, versioned prompts | AI router *(Anthropic, OpenAI)* |
 | **Auth & ops** | Per-integration connection testers, webhook provisioners, OAuth, retry classifiers, credentials/config validators | All integrations |
 
-See [`docs/capabilities.md`](./docs/capabilities.md) for the full, code-synced vocabulary — every capability port, its base contract, and all 31 sub-capabilities with descriptions and guards — and [`docs/architecture-overview.md`](./docs/architecture-overview.md) for the contracts plugin authors implement against.
+See [`docs/capabilities.md`](./docs/capabilities.md) for the full, code-synced vocabulary - every capability port, its base contract, and all 84 sub-capability guards with descriptions and guards - and [`docs/architecture-overview.md`](./docs/architecture-overview.md) for the contracts plugin authors implement against.
 
 **Host-provided, regardless of integration:** encrypted credentials store · multi-connection per platform type *(two PrestaShop stores from one instance)* · identifier mapping with a single unified seed *(`ol_product_*`, `ol_order_*`, `ol_variant_*`, …)* · customer identity resolution with optional email-fallback · PII-aware storage *(full or hash-only)* · sync-job orchestration with retry classification + outcome tracking · browser-based admin UI.
 
@@ -88,29 +96,23 @@ See [`docs/capabilities.md`](./docs/capabilities.md) for the full, code-synced v
 
 ## Implementations
 
-### PrestaShop · WebService v1
+Capabilities below come from each package's plugin manifest (`libs/integrations/<name>/src/*-plugin.ts`); the per-package README has the detail.
 
-**Role:** shop / destination
-
-OpenLinker's PrestaShop integration. Implements the full shop surface: catalog and inventory reads, order ingestion via the `date_upd` watermark, order creation with auto-provisioned guest customers, status lifecycle, cancellations, and returns. Ships the **OL Dynamic Carrier** PrestaShop module so buyer-paid shipping costs from marketplaces round-trip correctly into PrestaShop orders without breaking existing carriers. Registers connection tester, webhook provisioner, and connection-config + credentials shape validators with the host.
-
-**~7.6k LOC source** · [`libs/integrations/prestashop/`](./libs/integrations/prestashop/) · [README](./libs/integrations/prestashop/README.md) · *also the recommended starting point when adding a new shop or marketplace plugin*
-
-### Allegro · Public API
-
-**Role:** marketplace / source
-
-OpenLinker's Allegro integration. Implements every offer sub-capability the `OfferManager` port defines — `OfferLister`, `OfferEventReader`, `OfferFieldUpdater`, `CategoryBrowser`, `CategoryBarcodeMatcher`, `CategoryParametersReader`, `CatalogProductReader`, `OfferCreator`, `OfferStatusReader`, `OfferReader`, `SellerPoliciesReader`, `ResponsibleProducerReader`, `SafetyAttachmentUploader`. Order ingestion via the Allegro event journal with cursor persistence. Full OAuth flow with shared token state, refresh-on-401 retry, and a plugin-owned migration. Email normalization for Allegro's masked-buyer-email format.
-
-**~7.5k LOC source** · [`libs/integrations/allegro/`](./libs/integrations/allegro/) · *also a useful template for any marketplace plugin that needs OAuth*
-
-### AI · Anthropic, OpenAI
-
-**Role:** content suggestion
-
-OpenLinker's AI router for content generation. Wraps Anthropic and OpenAI behind a single `AiCompletionPort`, with per-provider encrypted key storage, admin-switchable active provider, and Anthropic prompt-caching wired in. Drives the offer-description suggestion flow in the create-offer wizard.
-
-**~572 LOC source** · [`libs/integrations/ai/`](./libs/integrations/ai/) · *also a useful template for plugins that route through an external SaaS rather than per-connection*
+- **[PrestaShop](./libs/integrations/prestashop/)** *(`prestashop.webservice.v1`, ~20k LOC)* - shop source and destination: catalogue, inventory, order ingestion via the `date_upd` watermark, order creation with auto-provisioned guest customers, status lifecycle, product publish and category provisioning. Ships the **OL Dynamic Carrier** module so buyer-paid marketplace shipping round-trips correctly. The recommended starting point for a new shop plugin.
+- **[Allegro](./libs/integrations/allegro/)** *(`allegro.publicapi.v1`, ~14.8k LOC)* - marketplace: order event journal with cursor persistence, the full offer surface (create, fields, categories, EAN category match, seller policies, GPSR), shipping, returns and refunds, OAuth with refresh-on-401. A template for any OAuth marketplace plugin.
+- **[WooCommerce](./libs/integrations/woocommerce/)** *(`woocommerce.restapi.v3`)* - shop: catalogue, stock, orders, product publish with variations and global attributes, status read, stock write-back.
+- **[Shoper](./libs/integrations/shoper/)** *(`shoper.restapi.v1`)* - shop: catalogue, stock, orders, product publish, category provisioning, visibility and status.
+- **[Shopify](./libs/integrations/shopify/)** *(`shopify.admin.v1`)* - shop: catalogue, stock, orders, product publish, stock write-back, returns source and decline, visibility and status.
+- **[Amazon](./libs/integrations/amazon/)** *(`amazon.spapi.v1`, beta)* - marketplace via SP-API: orders, offers, catalogue, stock, returns, Multi-Channel Fulfillment, category browse, EAN match and offer creation. No real-account run yet.
+- **[Erli](./libs/integrations/erli/)** *(`erli.shopapi.v1`)* - marketplace: offers, order source, offer creation, responsible-producer and delivery price-list reads.
+- **[InPost](./libs/integrations/inpost/)** *(`inpost.shipx.v1`)* and **[DPD](./libs/integrations/dpd-polska/)** *(`dpd.polska.rest.v1`)* - shipping providers: labels, protocols, tracking.
+- **[Subiekt GT](./libs/integrations/subiekt/)** *(`subiekt.gt.v1`)* and **[Subiekt nexo](./libs/integrations/subiekt-nexo/)** *(`subiekt.nexo.v1`)* - InsERT accounting via the Sfera bridges. GT also covers catalogue, stock and orders; nexo is invoicing only. The two are separate products and never share code.
+- **[KSeF](./libs/integrations/ksef/)** *(`ksef.publicapi.v2`)* - Polish national e-invoicing: FA(3) invoices and corrections cleared through KSeF, offline resubmission.
+- **[Infakt](./libs/integrations/infakt/)** *(`infakt.accounting.v1`)* - accounting SaaS: invoices relayed to KSeF by the vendor, payment status, email.
+- **[eparagony.pl](./libs/integrations/eparagony/)** *(`eparagony.documents.v3`)* - fiscal receipts and invoices through the vendor's fiscal printer and KSeF relay.
+- **[AI router](./libs/integrations/ai/)** - Anthropic and OpenAI behind one `AiCompletionPort`; drives offer-description suggestions.
+- **[FX](./libs/integrations/fx/)** - NBP and ECB reference-rate providers for multi-currency reporting.
+- **[OL-OMS](./libs/oms/)** *(`openlinker.oms.v1`)* - the first-party OMS as a credential-less connection: routes orders to locations and auto-accepts work as a `FulfillmentExecutor`.
 
 ---
 
@@ -138,13 +140,14 @@ How OpenLinker measures against the standard set of multichannel-orchestration f
 | **Inventory & catalog** | | |
 | Read products, variants, attributes | ✅ | `ProductMasterPort` |
 | Read inventory levels | ✅ | `InventoryMasterPort` |
-| Multi-location / multi-warehouse stock | 🛣️ | `InventoryMasterPort` accepts `locationId`; not yet exercised by an adapter |
-| Bulk offer creation | ✅ | Bulk offer-creation batch *(Allegro)* + bulk shop-publish *(WooCommerce)* |
-| Bulk quantity batch-update | ⚠️ | `OfferQuantityBatchUpdater` sub-capability defined; no adapter implements it yet |
+| Multi-location / multi-warehouse stock | ⚠️ | Locations CRUD and a per-connection `stockLocationOverride` ship; adapters still do not report a location themselves |
+| Bulk offer creation | ✅ | Bulk offer-creation batch *(Allegro)* + bulk shop-publish *(WooCommerce, Shoper, Shopify)* |
+| Bulk quantity batch-update | ✅ | `OfferQuantityBatchUpdater` *(implemented by the Allegro adapter)* |
 | **Marketplace listings** | | |
 | Create + update offers *(categories, policies, GPSR)* | ✅ | `OfferManagerPort` + sub-capability ports |
 | AI offer descriptions | ✅ | `AiCompletionPort` |
-| Repricing / dynamic pricing rules | 🛣️ | `PricingAuthorityPort` planned |
+| Repricing / dynamic pricing rules | ⚠️ | Per-connection markup / margin rules ship; a dynamic repricing authority (`PricingAuthorityPort`) is still planned |
+| Promotions, bundles, gifts, price changes | ✅ | Shipped in core and the admin UI |
 | **Customers** | | |
 | Identity resolution across channels | ✅ | Customer-identity service + plugin-provided email normalizer |
 | GDPR-friendly PII modes *(full or hash-only)* | ✅ | Host-provided storage policy |
@@ -157,16 +160,18 @@ How OpenLinker measures against the standard set of multichannel-orchestration f
 | Fetch tracking + push status back to marketplace | ✅ | `ShippingProviderManagerPort` tracking + order-status writeback *(ADR-027)* |
 | **Payments** | | |
 | Payment status from order data | ✅ | Part of the `IncomingOrder` shape from `OrderSourcePort` |
-| Refunds / returns lifecycle | 🛣️ | OL-owned order-status state machine deferred (#1032); the `refunded` payment status is read-only forward-compat *(no source emits it in v1)* |
+| Returns: receive, dispose, restock, refund tracking, credit-note proposal | ✅ | OL-owned returns aggregate *(see [architecture overview](./docs/architecture-overview.md))*; Allegro, Amazon, Shopify are return sources |
+| Fulfilment routing, pack bench, stock reservations / ATP | ✅ | OL-OMS, `FulfillmentExecutorPort`, advisory reservation ledger |
 | Payment provider integrations *(Stripe, P24, …)* | 🛣️ | `PaymentProcessorPort` planned |
 | **Operations** | | |
 | Multiple shops + marketplaces in one instance | ✅ | Host-provided connection model |
-| Multi-user with roles | ⚠️ | Host-provided JWT + admin role gate; finer-grained roles are a known gap |
+| Multi-user with roles | ✅ | `admin` / `operator` / `viewer` / `packer`; every route declares its audience, undecorated routes are denied |
 | Encrypted credentials store | ✅ | Host-provided crypto service |
 | Webhooks *(HMAC + replay + dedup)* | ✅ | Host-provided webhook pipeline |
 | Sync-job retry + outcome tracking | ✅ | Host-provided sync-job service + plugin-provided retry classifier |
-| Workflow automation *("when X, do Y" rules)* | — | *Out of scope; write a worker handler instead* |
-| Reporting / analytics dashboard | — | *Out of scope; export via the API* |
+| Workflow automation *("when X, do Y" rules)* | ⚠️ | 8 triggers x 6 actions with a legality matrix; only `send-email` and `relay-status-to-source` execute today, the other four actions are declared but unavailable (`AUTOMATION_ACTION_AVAILABILITY`) |
+| Reporting / analytics dashboard | ✅ | `/analytics` sales and channel aggregates with multi-currency reporting |
+| AI-agent access *(MCP)* | ✅ | MCP server with user-issued access tokens |
 
 Spot a gap that's on your evaluation checklist? Open a [feature request](./.github/ISSUE_TEMPLATE/feature_request.md) — the table is a living scorecard, not a fixed roadmap.
 
@@ -188,7 +193,7 @@ Marketplace (Allegro)                           Shop (PrestaShop)
               (identifier mapping · retries · dedup · projections)
 ```
 
-Every platform — shop or marketplace — implements the same set of typed capability ports (`OrderSourcePort`, `OrderProcessorManagerPort`, `ProductMasterPort`, `InventoryMasterPort`, `OfferManagerPort`). Core orchestration is platform-agnostic; per-platform behaviour lives in self-registering plugin packages. Full picture in [Architecture Overview](./docs/architecture-overview.md).
+Every platform - shop or marketplace - implements the same set of typed capability ports (`OrderSourcePort`, `OrderProcessorManagerPort`, `ProductMasterPort`, `InventoryMasterPort`, `OfferManagerPort`, `ShippingProviderManagerPort`, `InvoicingPort`, `FiscalizationPort`, `FulfillmentExecutorPort`). Core orchestration is platform-agnostic; per-platform behaviour lives in self-registering plugin packages. The worker is one artifact with selectable roles (`OL_WORKER_ROLE`: `jobs`, `events`, `scheduler`, `maintenance`) and runs jobs in concurrency lanes; the scheduler is a fleet singleton held by a lease. Full picture in [Architecture Overview](./docs/architecture-overview.md).
 
 ---
 
@@ -202,8 +207,8 @@ A new integration is a workspace package under `libs/integrations/<name>/`. The 
 
 1. **Scaffold.** `pnpm create-adapter <your-platform>` generates the package skeleton — `package.json`, `tsconfig`, a stub plugin descriptor, and the canonical hexagonal layout.
 2. **Pick your roles.** Shop, marketplace, content suggestion, or something new entirely? That decides which capability ports you'll implement. Implement only the ports your platform supports; capability guards handle the rest at runtime.
-3. **Implement.** Each port has 1–10 methods. PrestaShop is the multi-port reference (~7.6k LOC across catalog, inventory, orders). Allegro is the OAuth + marketplace reference (~7.5k LOC, every offer sub-capability). The AI router is the thin single-port example (572 LOC). Effort scales with how much of a platform you cover.
-4. **Register.** Add your plugin to `apps/api/src/plugins.ts` (and `apps/web/src/plugins/index.ts` for any FE contributions — routes, nav, wizards, error renderers).
+3. **Implement.** Each port has 1–10 methods. PrestaShop is the multi-port shop reference. Allegro is the OAuth + marketplace reference. The AI router is the thin single-port example. Effort scales with how much of a platform you cover.
+4. **Register.** Add your plugin to `apps/api/src/plugins.ts` **and** `apps/worker/src/plugins.ts` (`workerPlugins`; without it the worker cannot resolve your adapter and jobs fail), plus `apps/web/src/plugins/index.ts` for any FE contributions - routes, nav, wizards, error renderers.
 5. **Test.** Use [`@openlinker/test-kit`](./libs/test-kit/) for integration tests against real Postgres + Redis + a real shop install via Testcontainers. Use the in-memory fakes from each context's `/testing` subpath for unit tests.
 
 Full walkthrough in the [Plugin Author Guide](./docs/plugin-author-guide.md). The [PrestaShop reference adapter README](./libs/integrations/prestashop/README.md) is the closest thing to a worked example.
@@ -212,27 +217,27 @@ Full walkthrough in the [Plugin Author Guide](./docs/plugin-author-guide.md). Th
 
 - **Capabilities are open-world.** `Capability`, `EntityType`, and `PlatformType` are open strings at the registry boundary. Add `ShippingProvider`, `PricingAuthority`, or anything else without a core PR — the well-known set is a hint, not a gate.
 
-- **Framework-free domain.** `libs/core/src/**/domain/` has zero NestJS / TypeORM imports. Runtime-enforced: `@openlinker/core` exposes only 28 explicit subpaths via `package.json#exports`, ESLint blocks deep imports in plugin packages, and `package exports` block the runtime path entirely.
+- **Framework-free domain.** `libs/core/src/**/domain/` has zero NestJS / TypeORM imports. Runtime-enforced: `@openlinker/core` exposes only 58 explicit subpaths via `package.json#exports`, ESLint blocks deep imports in plugin packages, and `package exports` block the runtime path entirely.
 
 - **Framework-neutral plugin SDK.** [`@openlinker/plugin-sdk`](./libs/plugin-sdk/) ships the `AdapterPlugin` contract, the `HostServices` bag, and the typed `dispatchCapability<T>` helper. Plugins compile against the SDK, not against the host's NestJS / TypeORM.
 
-- **Frontend is pluggable too.** Routes, nav items, the typed `ApiClient`, offer-creation wizards, structured error renderers — all extension points populated from a per-platform plugin folder under `apps/web/src/plugins/`. Allegro and PrestaShop are the in-tree examples.
+- **Frontend is pluggable too.** Routes, nav items, the typed `ApiClient`, offer-creation wizards, structured error renderers - all extension points populated from a per-platform plugin folder under `apps/web/src/plugins/`. Allegro, PrestaShop, Amazon and Shopify are among the in-tree examples.
 
 - **Real tests, exported.** Integration tests run against real Postgres + Redis + a real PrestaShop install via Testcontainers. The harness ships as [`@openlinker/test-kit`](./libs/test-kit/). Each context exports in-memory fakes from a `/testing` sub-barrel for plugin unit tests.
 
 ### Wanted
 
-Any **📋 Planned** row in the [Integrations table](#integrations) is open for community contribution — or propose something not listed via the [`new_integration` issue template](./.github/ISSUE_TEMPLATE/new_integration.md). The [Plugin Author Guide](./docs/plugin-author-guide.md) walks through port selection, package layout, registry wiring, OAuth, and tests.
+Any **📋 Planned** row in the [Integrations table](#integrations) (BigCommerce, Magento, eBay, OLX, Empik, Bol, more carriers and accounting systems) is open for community contribution - or propose something not listed via the [`new_integration` issue template](./.github/ISSUE_TEMPLATE/new_integration.md). The [Plugin Author Guide](./docs/plugin-author-guide.md) walks through port selection, package layout, registry wiring, OAuth, and tests.
 
 ### Where we're at
 
-OpenLinker is moving fast and publicly. See [recent activity](https://github.com/openlinker-project/openlinker/pulse) for what's landed lately, the [modularity audit (#546)](https://github.com/openlinker-project/openlinker/issues/546) for the architectural thread making the codebase plugin-ready, and the [OSS launch epic (#670)](https://github.com/openlinker-project/openlinker/issues/670) for what's blocking the first public release.
+OpenLinker is alpha and moving fast; the latest release is v0.20.0 (see the [changelog](./CHANGELOG.md)). See [recent activity](https://github.com/openlinker-project/openlinker/pulse) for what has landed lately and the [modularity audit (#546)](https://github.com/openlinker-project/openlinker/issues/546) for the architectural thread making the codebase plugin-ready.
 
 ---
 
 ## One-command demo
 
-Want to click through OpenLinker without setting up a dev environment? The demo overlay boots the **entire stack in Docker** — PostgreSQL, Redis, MySQL, a seeded PrestaShop, and the full OpenLinker app tier (API + Worker + admin UI) — from a clean checkout:
+Want to click through OpenLinker without setting up a dev environment? The demo overlay boots the **entire stack in Docker** - PostgreSQL, Redis, MySQL, a seeded PrestaShop, WooCommerce, a Postgres backup job, and the full OpenLinker app tier (API + Worker + admin UI) - from a clean checkout:
 
 > For a full step-by-step walkthrough (example `.env`, PrestaShop + Allegro connection wiring, end-to-end verification, and troubleshooting) see the [One-Command Demo Setup Guide](./docs/one-command-demo-setup-guide.md).
 
@@ -263,6 +268,10 @@ Database migrations run automatically (one-shot `migrate` container) before the 
 | OpenLinker API | http://localhost:3000 | — |
 | PrestaShop storefront | http://localhost:8080 | — |
 | PrestaShop admin | http://localhost:8080/admin-dev | `demo@prestashop.com` / `prestashop_demo` |
+| WooCommerce storefront | http://localhost:8082 | credentials via `pnpm dev:stack:wc-credentials` |
+| `migrate` / `backup` | no UI | one-shot migration job and a periodic Postgres backup container |
+
+Published ports bind to `127.0.0.1` by default; set `OL_BIND_ADDRESS` (for example `0.0.0.0`) to expose them on the network.
 
 phpMyAdmin (PrestaShop MySQL browser, http://localhost:8081, `root` / `root`) is a devtools-only auxiliary service — it's gated behind a Compose `devtools` profile rather than always-on. Opt in with `pnpm dev:stack:devtools:up` (plain dev stack) or `pnpm demo:devtools:up` (demo overlay).
 
@@ -289,8 +298,9 @@ pnpm install
 cp apps/api/.env.example apps/api/.env.local
 cp apps/worker/.env.example apps/worker/.env.local
 # apps/web/.env.example ships safe defaults; copy only if you need to override VITE_API_BASE_URL
+# OPENLINKER_CREDENTIALS_ENCRYPTION_KEY is optional in dev (a deterministic fallback key is used with a warning); required in production and for the demo
 
-pnpm dev:stack:up                                    # PostgreSQL · Redis · MySQL · PrestaShop · WooCommerce in Docker
+pnpm dev:stack:up                                    # PostgreSQL · Redis · MySQL · PrestaShop in Docker (WooCommerce is separate: pnpm dev:stack:wc:up)
 pnpm --filter @openlinker/api migration:run          # Create database tables
 pnpm start:dev:api                                   # NestJS API on :3000
 pnpm start:dev:worker                                # Background job worker
@@ -318,7 +328,7 @@ The exact versions the Docker images and Compose files are built/tested against:
 | Redis | 8.4 (`redis:8.4-alpine`) |
 | MySQL | 8.4.7 (`mysql:8.4.7-oraclelinux9`) |
 
-The dev stack starts PostgreSQL, Redis, MySQL, PrestaShop, and WooCommerce in containers — you do not need any of those installed locally.
+The dev stack starts PostgreSQL, Redis, MySQL, and PrestaShop in containers (WooCommerce on request via `pnpm dev:stack:wc:up`) - you do not need any of those installed locally.
 
 > ⚠️ **Upgrading an existing checkout (one-time, #1411).**
 >
@@ -340,7 +350,7 @@ The dev stack starts PostgreSQL, Redis, MySQL, PrestaShop, and WooCommerce in co
 >
 > Adjust the `openlinker_` prefix if you set `COMPOSE_PROJECT_NAME`. This affects local dev/demo data only — there is no production deployment to migrate.
 
-**WooCommerce** is available at **http://localhost:8082** (PrestaShop uses 8080). Run `pnpm dev:stack:wc-credentials` after startup to retrieve the auto-generated consumer key and secret. See the [WooCommerce Setup Guide](./libs/integrations/woocommerce/docs/setup-guide.md) for full configuration steps.
+**WooCommerce** is available at **http://localhost:8082** (PrestaShop uses 8080) after `pnpm dev:stack:wc:up`. Run `pnpm dev:stack:wc-credentials` once it is up to retrieve the auto-generated consumer key and secret. See the [WooCommerce Setup Guide](./libs/integrations/woocommerce/docs/setup-guide.md) for full configuration steps.
 
 ---
 
@@ -370,6 +380,13 @@ For schema changes, also run `pnpm --filter @openlinker/api migration:show` to c
 - [Testing Guide](./docs/testing-guide.md) — Testcontainers + harness usage
 - [Plugin Author Guide](./docs/plugin-author-guide.md) — adding a new integration
 - [Connections & Adapter Resolution](./docs/connections-and-adapter-resolution.md) — per-connection runtime model
+- [Capabilities reference](./docs/capabilities.md) - every capability port and sub-capability guard
+- [Architecture Decision Records](./docs/architecture/adrs/) - why the big decisions went the way they did
+- [Operations notes](./docs/operations/) - runbooks (Redis retention, duplicate positions, and more)
+- [Manual testing](./docs/manual-testing/README.md) - manual test plans per integration
+- [Frontend UI Style Guide](./docs/frontend-ui-style-guide.md) - visual and interaction conventions
+- [Code Review Guide](./docs/code-review-guide.md) - review standards
+- [Dev Environment](./docs/dev-environment.md) - local environment details
 - [Public API Contract](./PUBLIC_API.md) — what's stable for plugin authors and downstream consumers; versioning policy.
 
 

@@ -4,8 +4,9 @@ End-to-end walkthrough: from a clean machine to a fully-configured OpenLinker in
 
 > **Using WooCommerce instead of PrestaShop?** Both shop adapters are fully supported.
 > See the **[WooCommerce Setup Guide](../libs/integrations/woocommerce/docs/setup-guide.md)** for a
-> WooCommerce-specific walkthrough. The dev stack includes WooCommerce at **http://localhost:8082**
-> — run `pnpm dev:stack:wc-credentials` after startup to get the API credentials.
+> WooCommerce-specific walkthrough. `pnpm dev:stack:up` does not start WooCommerce: run
+> `pnpm dev:stack:wc:up` to bring it up at **http://localhost:8082**, then
+> `pnpm dev:stack:wc-credentials` to get the API credentials.
 
 ## Prerequisites
 
@@ -83,6 +84,8 @@ Copy the example env file and adjust if needed (defaults match the dev stack):
 cp apps/api/.env.example apps/api/.env.local
 cp apps/worker/.env.example apps/worker/.env.local
 ```
+
+Both apps load `.env.local` first and fall back to `.env` (each app reads the file in its own directory).
 
 Build the workspace, run migrations, then start the API and the web app (in separate terminals):
 
@@ -205,7 +208,7 @@ every product. You should see products appear in OpenLinker within a minute or
 two of the worker starting.
 
 Recurring catalog re-sync runs every 20 minutes by default (configurable via
-`OL_PRODUCT_SYNC_CRON` / `OL_PRODUCT_SYNC_ENABLED` in `apps/api/.env`).
+`OL_PRODUCT_SYNC_CRON` / `OL_PRODUCT_SYNC_ENABLED`). The scheduler runs in the worker, so set these in `apps/worker/.env.local`; `apps/api/.env.example` still documents them in full.
 
 **Products — manual:** on the connection detail page, click **Sync products now**
 to enqueue a catalog discovery pass on demand. Safe to run anytime; subsequent

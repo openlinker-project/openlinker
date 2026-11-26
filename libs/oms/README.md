@@ -27,7 +27,9 @@ TypeORM dependency and no migration, and injects nothing (so `OmsModule` stays o
 `createNestAdapterModule`). It deliberately does **not** implement `FulfillmentStatusSource`: that
 pull serves a POLLING holder, and here it would read core's own counters and report them back to
 core as observed progress. `OmsPluginDeps` still declares the five core services and still injects
-none; the router (#2408) lands next.
+none. The fulfilment router has since shipped (`src/routing/`: `OlFulfillmentRouter`, the
+`createOmsFulfillmentRouterResolver` host binding, the `oms_routing_rules` ruleset and its admin
+port, and the optional `DraftRuleEvaluator` dry-run capability).
 
 **No `enabledCapabilities` retro-fill ships, deliberately.** That column is stamped at create and
 never back-filled, so an OMS connection created before #2409 does not gain `FulfillmentExecutor` on
@@ -37,11 +39,10 @@ migration dead code on every real install while spending a scarce migration time
 *authority*, so granting it silently would assign "who holds fulfilment work" on the operator's
 behalf. An operator ticks the capability on the connection instead.
 
-The OMS ships no migrations and is therefore deliberately absent from
-`apps/api/src/plugin-migrations.ts` and `scripts/plugin-migration-dirs.json` — #2390 deferred that
-registration here on the premise that #2405 would carry a table, and it does not (routing lives on
-`Connection.config`, work objects in core `fulfillment_works`). The first `libs/oms` migration
-registers both lists in its own PR.
+The OMS ships one migration, `src/migrations/1869000000200-create-oms-routing-rules.ts`, which
+creates the `oms_routing_rules` table backing the operator-authored sourcing ruleset. The directory
+is registered in `apps/api/src/plugin-migrations.ts` and `scripts/plugin-migration-dirs.json`. The
+executor itself still needs no table (work objects live in core `fulfillment_works`).
 
 ## How it plugs in
 

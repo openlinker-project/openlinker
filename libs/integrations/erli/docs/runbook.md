@@ -45,9 +45,11 @@ Read these before relying on the integration in production.
   back to the master shop's categories, and otherwise list uncategorised.
 - **Frozen fields.** If a seller manually edits an offer in the Erli panel, Erli
   marks those fields `frozen`. OpenLinker excludes frozen **content** fields
-  (price/name/description) on field updates. Honoring frozen **stock** on the hot
-  quantity path is a follow-up; enable the offer-status reconciliation scheduler
-  to populate the frozen-stock cache.
+  (price/name/description) on field updates. Frozen **stock** is honored on the hot
+  quantity path too: `updateOfferQuantity` skips the push (with a warning) when
+  `isStockFrozenCached` reports the offer's stock as seller-frozen, which means a drop
+  to 0 is not propagated either. The flag lives in the frozen-stock cache populated by
+  the offer-status reconciliation scheduler, and a cache miss fails open (pushes).
 - **Static API key.** No OAuth/refresh — rotate by replacing the key in the Erli
   seller panel and updating the connection credentials in OpenLinker.
 - **Estimated ship-by on orders.** Erli's order payload has no per-order dispatch

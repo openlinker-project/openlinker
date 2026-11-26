@@ -1,6 +1,6 @@
 # Connecting a Platform
 
-OpenLinker works by connecting to your existing platforms — a **master shop** (PrestaShop, WooCommerce, Shoper or Shopify) that is the source of truth for products and inventory, and one or more **marketplace** connections (Allegro) where offers are created and orders are ingested. This section walks you through the full connection flow using PrestaShop and Allegro as worked examples. Amazon, Shopify and Shoper have their own pages: [Connecting Amazon](./02a-amazon.md), [Connecting Shopify](./02b-shopify.md) and [Connecting Shoper](./02c-shoper.md).
+OpenLinker works by connecting to your existing platforms — a **master shop** (PrestaShop, WooCommerce, Shoper or Shopify) that is the source of truth for products and inventory, and one or more **marketplace** connections (Allegro, Erli, Amazon) where offers are created and orders are ingested. This section walks you through the full connection flow using PrestaShop and Allegro as worked examples. Amazon, Shopify and Shoper have their own pages: [Connecting Amazon](./02a-amazon.md), [Connecting Shopify](./02b-shopify.md) and [Connecting Shoper](./02c-shoper.md).
 
 For WooCommerce-specific wizard steps, see the **[WooCommerce Setup Guide](../../libs/integrations/woocommerce/docs/setup-guide.md)**.
 
@@ -184,6 +184,7 @@ Beyond the PrestaShop/Allegro worked example above:
 | **WooCommerce** | `woocommerce.restapi.v3` | ProductMaster, InventoryMaster, OrderProcessorManager, OrderSource, ProductPublisher, CategoryProvisioner, OfferManager | See the **[WooCommerce Setup Guide](../../libs/integrations/woocommerce/docs/setup-guide.md)** |
 | **Shoper** | `shoper.restapi.v1` | ProductMaster, InventoryMaster, ProductPublisher, CategoryProvisioner, OrderProcessorManager, OrderSource, ShopCategoryBrowser, ShopAttributeReader, ShopProductStatusReader | Polish SaaS shop platform. Only ProductMaster and InventoryMaster are enabled by default; enable the rest on the connection when Shoper should also receive orders, send its own orders or take published products. Every connection to one shop shares that shop's request budget. No invoices: the Shoper API has none. See **[Connecting Shoper](./02c-shoper.md)** |
 | **Shopify** | `shopify.admin.v1` | ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager, ProductPublisher, CategoryProvisioner, OfferManager | Admin GraphQL API. ProductMaster and InventoryMaster are enabled by default; publishing needs a separate connection. See **[Connecting Shopify](./02b-shopify.md)** |
+| **Amazon** | `amazon.spapi.v1` | OrderSource, OfferManager, ProductMaster, InventoryMaster, ReturnSourceReader, FulfillmentExecutor, CategoryBrowser, EanCategoryMatcher, OfferCreator | Amazon seller account (SP-API). See **[Connecting Amazon](./02a-amazon.md)** |
 | **Erli** | `erli.shopapi.v1` | OfferManager, OrderSource, OfferCreator | Reconciliation-first marketplace adapter; reuses an existing PrestaShop → Allegro category/attribute mapping rather than requiring a separate one (borrowed-taxonomy model). Static API-key auth — no OAuth step. |
 | **InPost** | `inpost.shipx.v1` | ShippingProviderManager | Generates shipment labels and paczkomat (parcel-locker) tracking, surfaced in the order's [Shipment panel](./06-orders.md#shipment-panel) |
 | **DPD Polska** | `dpd.polska.rest.v1` | ShippingProviderManager | Same shipment-panel integration point as InPost |
@@ -192,6 +193,18 @@ Beyond the PrestaShop/Allegro worked example above:
 | **Subiekt nexo** (Sfera bridge) | `subiekt.nexo.v1` | Invoicing | A **different** InsERT product on a **different** bridge — not a variant of Subiekt GT. Invoicing only; see the **[Subiekt nexo setup guide](../../libs/integrations/subiekt-nexo/docs/setup-guide.md)** |
 | **inFakt** | `infakt.accounting.v1` | Invoicing | Alternative invoicing provider; see [Invoices](./04-invoices.md) |
 | **eparagony.pl** | `eparagony.documents.v3` | Fiscalization, Invoicing | Registers Polish fiscal e-receipts with your own fiscal printer; see [Fiscal receipts](./04a-fiscal-receipts.md). Since #3192 the same connection can also issue invoices (the vendor relays them to KSeF); the invoice lane is enabled separately |
+
+### Per-platform setup guides
+
+Beyond the pages above, these platforms have their own step-by-step guides in the repository:
+
+- [Erli](../../libs/integrations/erli/docs/setup-guide.md)
+- [InPost](../../libs/integrations/inpost/docs/setup-guide.md)
+- [DPD Polska](../../libs/integrations/dpd-polska/docs/setup-guide.md)
+- [KSeF](../../libs/integrations/ksef/docs/setup-guide.md)
+- [inFakt](../../libs/integrations/infakt/docs/setup-guide.md)
+- [Subiekt GT](../../libs/integrations/subiekt/docs/setup-guide.md) and [Subiekt nexo](../../libs/integrations/subiekt-nexo/docs/setup-guide.md)
+- [eparagony.pl](../../libs/integrations/eparagony/docs/setup-guide.md)
 
 ### Invoicing providers
 

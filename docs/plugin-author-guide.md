@@ -20,7 +20,9 @@ the API host.
 
 1. **Pick a capability port** in `libs/core/src/<context>/domain/ports/`.
 2. **Use PrestaShop as your starting point** — copy
-   `libs/integrations/prestashop/` as your reference adapter.
+   `libs/integrations/prestashop/` as your reference adapter. Newer
+   in-tree adapters (`shopify`, `shoper`, `amazon`) are further patterns
+   to read alongside it.
 3. **Package layout** — set up `libs/integrations/<platform>/` with the
    standard tree.
 4. **Implement a capability port** as an adapter class.
@@ -36,8 +38,9 @@ the API host.
    (optional, #599).
 10. **Add tests** — unit specs colocated with the adapter, optional
     integration spec under `apps/api/test/integration/`.
-11. **Enable the plugin** in the API host (`apps/api/src/plugins.ts` —
-    a single-line edit).
+11. **Enable the plugin** in the API host (`apps/api/src/plugins.ts`), in
+    the worker (`apps/worker/src/plugins.ts`) and, if it has UI, in the
+    web app (`apps/web/src/plugins/index.ts`).
 
 Each numbered item is one section below.
 
@@ -1109,8 +1112,7 @@ if any of the three fails.
 ## Step 11 — Enable the plugin in the host
 
 Edit [`apps/api/src/plugins.ts`](../apps/api/src/plugins.ts) — append
-your `XIntegrationModule` to the `apiPlugins` array. That's the entire
-host-enablement step.
+your `XIntegrationModule` to the `apiPlugins` array (and to `workerPlugins`, see below).
 
 ```typescript
 import { XIntegrationModule } from '@openlinker/integrations-x';
@@ -1127,6 +1129,12 @@ export const apiPlugins: PluginEntry[] = [
 [`apps/api/src/integrations/integrations.module.ts`](../apps/api/src/integrations/integrations.module.ts))
 imports every plugin module; each plugin's `onModuleInit` runs at
 boot and self-registers against the host registries.
+
+The worker has its own list: also append the module to `workerPlugins` in
+[`apps/worker/src/plugins.ts`](../apps/worker/src/plugins.ts), or its job
+handlers cannot resolve your adapter. A plugin with frontend contributions
+is additionally registered in the `plugins` array of
+[`apps/web/src/plugins/index.ts`](../apps/web/src/plugins/index.ts).
 
 ---
 

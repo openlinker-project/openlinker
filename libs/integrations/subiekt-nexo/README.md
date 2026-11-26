@@ -24,14 +24,14 @@ to Invoice (faktura) and does not derive the type from the NIP.
 | Property | Value |
 |---|---|
 | **Adapter key** | `subiekt.nexo.v1` |
-| **Platform type** | `subiekt` |
+| **Platform type** | `subiekt-nexo` |
 | **Package** | `@openlinker/integrations-subiekt-nexo` |
 
 ## Capabilities
 
 | Capability | Sub-capabilities |
 |---|---|
-| `Invoicing` | `RegulatoryStatusReader` (read the bridge-reported KSeF regulatory status), `CorrectionIssuer` (issue corrections of an already-issued document) |
+| `Invoicing` | `RegulatoryStatusReader` (read the bridge-reported KSeF regulatory status), `CorrectionIssuer` (issue corrections of an already-issued document), `BankAccountsReader` / `BankAccountDefaultSetter` (list and default the seller's payable bank accounts), `RegulatoryRecordLocator` (locate a document by its original idempotency key when a prior issuance's outcome is unknown) |
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
@@ -60,6 +60,10 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 | Field | Values | Notes |
 |---|---|---|
 | `bridgeBaseUrl` | HTTPS URL **without** `/api` | The adapter appends `/api/...` paths. If OpenLinker runs on a different host than the bridge, use the bridge machine's address, e.g. `https://192.168.1.50:5005` |
+| `timeoutMs` | positive integer (ms) | Optional per-request timeout |
+| `defaultPaymentMethod` | `"cash"` \| `"transfer"` | Optional. When unset the adapter sends no payment method (it does not default to cash). `transfer` also needs `bankAccountId`; the bridge enforces it |
+| `bankAccountId` | integer | Optional. Bridge-native seller bank-account id (from `GET /api/bank-accounts`), used with `defaultPaymentMethod: "transfer"` |
+| `defaultStanowiskoKasoweId` | integer | Optional. Bridge-native cash-register station id (from `GET /api/cash-registers`) stamped on issued documents |
 | `salesDocument.triggerModels.invoice` (legacy fallback: `invoicing.triggerModel`) | `"manual"` \| `"auto-on-paid"` \| `"auto-on-shipped"` \| `"batched"` | `manual` = operator clicks Issue; others = worker-driven auto-issuance |
 
 ## Running the bridge

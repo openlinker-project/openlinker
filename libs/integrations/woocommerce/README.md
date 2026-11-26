@@ -22,6 +22,9 @@ WooCommerce REST API v3 adapter for OpenLinker — product catalog, inventory, a
 | `CategoryProvisioner` | Create / ensure a category exists in WooCommerce before publishing |
 | `ShopCategoryBrowser` | Browse the store's existing category tree (drill-down by parent) so an operator can pick a placement |
 | `ShopAttributeReader` | Read the store's global product attributes (`pa_*`) + their predefined terms so an operator can pick a structured attribute; linked on publish |
+| `ShopProductStatusReader` | Read a published product's live status (`publish` / `draft` / `pending` / `private` / `trash`, or a 404) for the `shop.product.statusSync` reconcile |
+| `ShopProductVisibilityWriter` | Take a product off sale (draft) when it was deleted at the master, instead of relying on a stock write (#3962) |
+| `OfferManager` | Quantity-only stock write-back to published products (`updateOfferQuantity`, `PUT /products/{id}` with `manage_stock`). No offer-creation sub-capabilities. Mutually exclusive with `InventoryMaster` on one connection; off by default on new connections |
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
@@ -33,10 +36,10 @@ Because that is a fact about the order rather than the store, the adapter answer
 when it takes a line out of stock. Anything else - and an adapter that created no order, since core also asks after
 a skipped create - answers `false`, keeping the order's holds until dispatch.
 
-`ShopCategoryBrowser`, `ShopAttributeReader`, and `CategoryProvisioner` are
+`ShopCategoryBrowser`, `ShopAttributeReader`, `ShopProductStatusReader`, `ShopProductVisibilityWriter` and `CategoryProvisioner` are
 sub-capabilities of `ShopProductManagerPort` implemented on the same
 `ProductPublisher` adapter instance; call sites narrow with
-`isShopCategoryBrowser` / `isShopAttributeReader` / `isCategoryProvisioner`.
+`isShopCategoryBrowser` / `isShopAttributeReader` / `isShopProductStatusReader` / `isShopProductVisibilityWriter` / `isCategoryProvisioner`.
 `ShopCategoryBrowser` reads `GET /wp-json/wc/v3/products/categories` scoped by
 `parent` (root when omitted), paged at the WooCommerce maximum `per_page=100`,
 and returns neutral `ShopCategory` nodes (`{ id, name, parentId }`) — every node
@@ -81,6 +84,7 @@ Generate at **WooCommerce → Settings → Advanced → REST API**.
 | Field | Values | Notes |
 |---|---|---|
 | `siteUrl` | HTTPS URL (**required**) | The store's base URL. Must include the `https://` protocol (Basic Auth would leak credentials over plain http); the adapter appends the `wc/v3` REST paths itself |
+| `masterCatalogConnectionId` | UUID (optional) | Master-catalog connection used for barcode-scoped offer linking and publish defaults. A blank value counts as "not configured" |
 | `inventory` | Object (optional) | Inventory tuning: `unmanagedStockQuantity` (integer >= 0, default 1000) - the quantity reported for in-stock products with stock management disabled |
 | `orders` | Object (optional) | Order-ingestion tuning: `initialSyncFrom` (parseable date string, e.g. `"2024-01-01"`) - the earliest order date picked up by an `all` history read. It no longer decides where a new connection starts: the operator's explicit choice (`now` by default, `from` a date, or `all`) does, and `now` seeds at the real newest order. `from` dates are read in UTC because the REST API exposes no site time zone, so a site east of UTC can miss the first hours of the chosen day. `from` filters by last MODIFIED time, so it also brings older orders changed since the chosen day. There is no window import (`OrderWindowReader`) on WooCommerce. |
 

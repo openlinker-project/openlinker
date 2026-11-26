@@ -8,7 +8,9 @@ six capabilities: `ProductMaster` (#3640: products, variants, categories, tax ra
 `OrderSource` (#3711), `ProductPublisher` (#3712) and `CategoryProvisioner` (#3713). Only `ProductMaster` and
 `InventoryMaster` are enabled by default on a new connection; the other four are opt-in. #3806 completed the
 capability map on top of that: the shop's category tree, attributes and product status for the publish pickers
-(`ShopCategoryBrowser`, `ShopAttributeReader`, `ShopProductStatusReader`), delta and bulk catalogue reads,
+(`ShopCategoryBrowser`, `ShopAttributeReader`, `ShopProductStatusReader`), hide/show of a product taken off
+sale at the master (`ShopProductVisibilityWriter`, #3962; sets the product's `active` flag in the shop's default
+language and nothing else), delta and bulk catalogue reads,
 fulfilment read-back, signed webhooks (#3644), one shared request budget per shop and product GPSR data. A guided
 setup wizard is in the web UI (#3702). See "Known gaps" for what is still open. Evidence base:
 `docs/plans/analysis/SPIKE-3638-shoper-rest-api.md` and the live findings recorded in
@@ -497,6 +499,18 @@ webhook secret. A delivery is accepted only when BOTH checks pass:
 A webhook installed before the URL token was derived still carries the raw secret as `?token=`. Its deliveries are
 still accepted (the signature still has to verify), but each one logs a warning: re-run "Configure webhooks" on the
 connection to rotate the secret, since the old URL has already shown it to anyone who could read it.
+
+## Scheduler tasks
+
+Read by the worker (`src/infrastructure/scheduler/shoper-scheduler-tasks.ts`); each runs unless its variable is
+`false`.
+
+| Task | Needs | Cadence | Env var |
+|---|---|---|---|
+| `shoper-orders-poll` | `OrderSource` | 10 min | `OL_SHOPER_POLL_SCHEDULER_ENABLED` |
+| `shoper-fulfillment-status-sync` | `OrderProcessorManager` | 15 min | `OL_SHOPER_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED` |
+| `shoper-source-fulfillment-status-sync` | `OrderSource` | 15 min | `OL_SHOPER_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED` |
+| `shoper-product-status-sync` | `ProductPublisher` | hourly | `OL_SHOPER_SHOP_STATUS_SYNC_SCHEDULER_ENABLED` |
 
 ## Known gaps
 

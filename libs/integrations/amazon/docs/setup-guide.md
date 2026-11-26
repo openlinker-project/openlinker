@@ -64,10 +64,10 @@ moves to **Needs reauth**: authorize again and paste the new token on the connec
 4. The **LWA client id**, **client secret** and **refresh token** from steps 1-2.
 5. **Order history** (shown when **Orders** is ticked): where order sync starts. **New orders
    only** (the default) imports nothing placed before the connection; **Orders since a date** reads
-   every order updated since that day (midnight UTC), so an older order changed after it comes too;
-   **Every order** reads the whole account history at the order search quota, which takes long on
-   a busy account. You can import older orders later from the connection's **Sync** tab; importing
-   a date range is not available for Amazon yet.
+   every order updated since that day (midnight UTC), so an older order changed after it comes too.
+   There is no "every order" choice: for history pick an early date. You can also import older
+   orders later from the connection's **Sync** tab, newest first or for a date range (read by
+   creation date in 30-day slices, at the order search quota, so a long range takes long).
 6. **Test connection**: it passes when the credentials work and the account sells in every
    marketplace you listed. If it names a marketplace, remove it or enable selling there.
 
@@ -168,7 +168,7 @@ Every Amazon task is off by default; turn on what you use in the worker's enviro
 |---|---|
 | `OL_AMAZON_ORDERS_POLL_SCHEDULER_ENABLED` | imports orders every 5 minutes |
 | `OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED` | reads the SQS queue every minute |
-| `OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED` | links your listings to OpenLinker variants by SKU or EAN, hourly |
+| `OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED` | links your listings to OpenLinker variants by SKU, or by EAN when the listing carries one, hourly |
 | `OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED` | refreshes each listing's status, price and stock, hourly |
 | `OL_AMAZON_RETURNS_POLL_SCHEDULER_ENABLED` | reads the returns report |
 | `OL_AMAZON_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED` | refreshes open returns, hourly |

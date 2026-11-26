@@ -23,6 +23,8 @@ invoking, and degrade gracefully when an adapter doesn't implement it.
 
 ## Capability ports
 
+**Total: 84 sub-capabilities** (one `*.capability.ts` file each under `libs/core/src/*/domain/ports/capabilities/`).
+
 | Port | Context | Registry capability | What it does | Base method(s) |
 |---|---|---|---|---|
 | `ProductMasterPort` | products | `ProductMaster` | Source of truth for the product catalog — read/write products, variants, and categories. | `getProduct` · `getProducts` · `createProduct` · `updateProduct` · `deleteProduct` · `getProductVariants` · `upsertProductVariant` · `getProductCategories` · `assignCategories` · `searchProducts` · `listExternalIds` |
@@ -87,7 +89,7 @@ runtime gate validates a connection's request against the adapter's
 Each is an independent interface + co-located `is{Capability}` guard. Adapters
 declare what they support via `implements <BasePort>, <SubCapability>, …`.
 
-### `OfferManagerPort` (listings) — 21
+### `OfferManagerPort` (listings) — 26
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -112,9 +114,13 @@ declare what they support via `implements <BasePort>, <SubCapability>, …`.
 | `SafetyAttachmentUploader` | Upload a GPSR safety attachment (manual, label, …). | `uploadSafetyAttachment` | `isSafetyAttachmentUploader` |
 | `TaxonomyBorrower` | Reuse another platform's resolved taxonomy for a destination. | `getBorrowedTaxonomy`, `allowsBorrowedCatalogueLookup` (optional) | `isTaxonomyBorrower` |
 | `OfferCurrencyDeclarer` | Declare the connection's real settlement currency, a pure/synchronous adapter-declared value (#3203, mirroring `getDescriptionFormat`) consumed by `DestinationCurrencyResolutionService` to answer the price-change currency-mismatch guard. The declared value is a FALLBACK — the operator-set `Connection.config.currency` key wins when set (#3159 review, BLOCKING), so a wrong fixed assumption (e.g. a non-PL Allegro storefront) always has a remedy. | `getDestinationCurrency` | `isOfferCurrencyDeclarer` |
+| `AdapterSuppliedParametersReader` | Declare required category parameters the adapter derives itself from neutral `CreateOfferCommand` fields, so core does not demand them from the operator. Implemented by: Allegro. | `getAdapterSuppliedParameterIds` | `isAdapterSuppliedParametersReader` |
+| `CategoryPathReader` | Resolve one category id to its full ancestor breadcrumb. Implemented by: Allegro. | `fetchCategoryPath` | `isCategoryPathReader` |
+| `DeliveryPriceListReader` | List the seller-configured delivery price lists needed to make an offer buyable (#1530). Implemented by: Erli. | `listDeliveryPriceLists` | `isDeliveryPriceListReader` |
+| `ProductSetPlanner` | Preview how a destination would publish one offer made of several products (a bundle), without creating anything (#3520). Implemented by: Allegro. | `previewProductSet` | `isProductSetPlanner` |
+| `TaxonomyIdentityProvider` | Declare WHICH distinct taxonomy tree the connection owns (ADR-037); distinct from `TaxonomyBorrower`. Implemented by: Allegro, Amazon. | `getTaxonomyIdentity` | `isTaxonomyIdentityProvider` |
 
-**Adapter coverage:** Allegro implements every sub-capability except
-`OfferQuantityBatchUpdater`, including `EanCategoryMatcherStreaming` (#2208, epic
+**Adapter coverage:** Allegro implements the broadest set (including `OfferQuantityBatchUpdater`) and `EanCategoryMatcherStreaming` (#2208, epic
 #2205); an adapter that ships only `EanCategoryMatcher` keeps working, because
 `CategoryResolutionService` falls back to the batch method
 (see the [README Implementations](../README.md#implementations)
@@ -123,7 +129,7 @@ section); Erli implements a reconciliation-first subset
 `OfferCurrencyDeclarer` (both Allegro and Erli declare `'PLN'`, matching the
 PL-first / PLN-only assumptions already baked into each adapter).
 
-### `ShopProductManagerPort` (listings) — 6
+### `ShopProductManagerPort` (listings) — 7
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -142,12 +148,13 @@ read) on its `ProductPublisher` adapter. Shoper implements `CategoryProvisioner`
 (write, #3713), `ShopCategoryBrowser`, `ShopAttributeReader` and
 `ShopProductStatusReader` (read, #3806) on its `ProductPublisher` adapter.
 WooCommerce, Shoper and PrestaShop (as a publisher) implement
-`ShopProductVisibilityWriter` (#3962). No shop adapter implements
-`ShopCurrencyDeclarer` yet — a WooCommerce destination still falls back to
+`ShopProductVisibilityWriter` (#3962). Shopify implements
+`ShopCurrencyDeclarer`; a WooCommerce destination still falls back to
 `Connection.config.currency` (or an operator-set value) for the price-change
 currency-mismatch guard.
 
-### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) - 8
+
+### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) - 18
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -161,12 +168,20 @@ currency-mismatch guard.
 | `OrderFeedBootstrap` | Report where the source's order feed stands now, so a connection with no order cursor starts from "now" instead of importing history (#4228). Guard-only (advertised-without-dispatch, never a manifest entry). Returns `null` only when the source has no orders (core then treats "only new orders" as every order and reads from the start). Throws on a failed read; core retries the poll and never falls back to history. Every shipped order source implements it: Allegro (`/order/event-stats`), Erli, PrestaShop, WooCommerce, Shopify, Shoper and Subiekt. An adapter without it fails a connection's first poll when a start intent is stored (`OrderSyncStartUnavailableError`); core never falls back to history. | `headCursor` | `isOrderFeedBootstrap` |
 | `OrderFeedDateBootstrap` | Report the feed cursor at the start of a date, so a connection the operator created "from {date}" imports only orders since then (#4228). Guard-only, like `OrderFeedBootstrap`; the manifest instead declares `orderSyncStartModes` so create-time validation needs no adapter instance. Must throw rather than return a cursor that silently means all or now. PrestaShop (refuses on a shop that cannot filter by `date_upd`), WooCommerce, Shopify, Shoper and Subiekt implement it; Allegro and Erli do not (an event journal and an unread inbox have no date position). | `cursorForDate` | `isOrderFeedDateBootstrap` |
 | `OrderWindowReader` | Read one page of a date window (`from`/`to`, `oldest-first` or `newest-first`) with its own opaque cursor and without touching the live feed cursor. Backs "import history newest-first" and the manual date-range import (`marketplace.orders.import`). Guard-only; the manifest declares `orderWindowImport: true`. Must throw rather than return an unfiltered page; items carry the same `eventKey` as the feed. Allegro, PrestaShop, Shopify and Shoper implement it; WooCommerce, Erli and Subiekt do not. | `listOrdersInWindow` | `isOrderWindowReader` |
+| `OrderBillingDocumentUploader` | Attach an issued sales document (file) to the marketplace order it came from (#3549). Implemented by: Allegro order source. | `uploadBillingDocument` | `isOrderBillingDocumentUploader` |
+| `OrderBillingDocumentLinker` | Show the buyer a LINK to a sales document on the marketplace order, for a marketplace that does not hold the file (#3549). Implemented by: Allegro order source. | `attachBillingDocumentLink` | `isOrderBillingDocumentLinker` |
+| `OrderDeliveryUpdater` | Edit the delivery (shipping line, pickup-point details) of an order the destination already holds. Implemented by: Shopify order processor. | `updateOrderDelivery` | `isOrderDeliveryUpdater` |
+| `OrderFulfillmentReadback` | Report the source's own view of an order's fulfilment back to OpenLinker (#3365). Implemented by: Allegro, Amazon, Shoper, Shopify order sources. | `readFulfillment` | `isOrderFulfillmentReadback` |
+| `RefundExecutor` | Ask a party to execute a refund; the source channel, and since #4100 also a destination order processor (#2371, ADR-056). Implemented by: Amazon, Shopify order sources. | `executeRefund` | `isRefundExecutor` |
+| `RefundSourceReader` | Read-only observation of payment refunds a source channel made on an order it sold. Implemented by: Allegro order source. | `listRefunds` | `isRefundSourceReader` |
+| `ReturnSourceReader` | Cursor-capable, read-only ingestion of customer returns from an order source (ADR-060). Guard-only, advertised-without-dispatch. Implemented by: Allegro, Amazon, Shopify order sources. | `listReturnFeed` · `getReturn` | `isReturnSourceReader` |
+| `ReturnDecliner` | Ask the source to decline (reject) a customer return's refund (#2333, ADR-044). Implemented by: Allegro, Shopify order sources. | `declineReturn` | `isReturnDecliner` |
 
 The canonical OL-owned order-lifecycle state machine (authoritative
 `updateOrderStatus` / `cancelOrder` / `processReturn` / `getOrders`) is
 **deferred** — see [#1032](https://github.com/openlinker-project/openlinker/issues/1032).
 
-### `ShippingProviderManagerPort` (shipping) — 4
+### `ShippingProviderManagerPort` (shipping) — 6
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -174,8 +189,10 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 | `DispatchProtocolReader` | Generate a handover / dispatch protocol for a batch of shipments. | `generateProtocol` | `isDispatchProtocolReader` |
 | `PickupPointFinder` | Search the carrier's pickup points / lockers (e.g. Paczkomat). | `findPickupPoints` | `isPickupPointFinder` |
 | `ShipmentCanceller` | Cancel / void a registered shipment. | `cancelShipment` | `isShipmentCanceller` |
+| `ParcelRequirementsReader` | Declare what a parcel must carry for this carrier (explicit dimensions, size template, weight only) so core holds no carrier rule (#3651). Implemented by: Allegro delivery shipping. | `getParcelRequirements` | `isParcelRequirementsReader` |
+| `ShipmentReferenceReconciler` | Find a shipment at the carrier by the `reference` OL stamped at creation, for crash recovery (#1917). Implemented by: InPost. | `findShipmentByReference` | `isShipmentReferenceReconciler` |
 
-### `InvoicingPort` (invoicing) — 13
+### `InvoicingPort` (invoicing) — 15
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -192,6 +209,8 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 | `PaymentMarker` | Push an authoritative "paid" state to the provider for an order settled elsewhere (e.g. a marketplace order the seller's bank statement can't auto-match). | `markPaid` | `isPaymentMarker` |
 | `InvoiceEmailSender` | Trigger the provider to render and email the already-issued invoice to the buyer. | `sendByEmail` | `isInvoiceEmailSender` |
 | `DocumentNumberConsumer` | Marker: the adapter relies on OpenLinker to allocate the legal, sequential document number from the connection's numbering series (OL-numbered provider, e.g. KSeF FA(3) `P_2`). Providers that number documents themselves (inFakt/Subiekt) do NOT implement it. | `consumesDocumentNumber` (marker) · `numberingTimeZone` · `maxDocumentNumberLength?` | `isDocumentNumberConsumer` |
+| `BuyerIdentityCorrector` | Marker: the `CorrectionIssuer` really puts `IssueCorrectionCommand.buyerOverride` on the correcting document (DEF-09). Implemented by: KSeF. | *(marker, no method)* | `isBuyerIdentityCorrector` |
+| `RegulatoryVerificationLinkReader` | Return the public authority-portal link that opens a cleared document (PL/KSeF "KOD I", #3648). Implemented by: KSeF. | `getVerificationLink` | `isRegulatoryVerificationLinkReader` |
 
 **Adapter coverage:** KSeF implements `RegulatoryTransmitter` and
 `CorrectionIssuer`; Infakt implements `RegulatoryStatusReader` (it relays to
@@ -230,12 +249,15 @@ adapter, not yet implemented by any shipped one.
 See [ADR-042](./architecture/adrs/042-fiscalization-capability.md) for the
 fiscalization capability design.
 
-### `ProductMasterPort` (products) — 2
+### `ProductMasterPort` (products) — 5
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
 | `ModifiedProductLister` | The **modified-since rung** of the master capability ladder — enumerate only the external ids whose product record changed after a caller-supplied watermark, instead of the whole catalog. | `listExternalIdsModifiedSince` | `isModifiedProductLister` |
 | `ProductTaxRateReader` | State the tax rate a product (or variant) carries in the master (ADR-063). MUST answer `unknown` rather than a `'0'` code when the read did not establish the rate; `inherited` says a variant defers to its product. Optional `readsTaxRatePerVariant` says whether the master keys tax per variant (PrestaShop does not). Guard-only, resolved by narrowing the dispatched `ProductMaster` adapter. | `readProductTaxRate`, `readsTaxRatePerVariant?` | `isProductTaxRateReader` |
+| `BulkProductReader` | The bulk-read rung of the master capability ladder: warm a cache for MANY products in a few requests, a prefetch and never a second sync path (ADR-048 decision 1). Implemented by: Amazon, PrestaShop, Shoper, Shopify. | `prefetchProducts` | `isBulkProductReader` |
+| `BundleReader` | State the composition of a product the master sells as a bundle (PrestaShop pack, Subiekt komplet, #3932). Implemented by: PrestaShop, Subiekt GT. | `readBundleComposition` | `isBundleReader` |
+| `ProductCreator` | The master can create a new product from OpenLinker (#3935); declared by an adapter whose `createProduct` really works. Implemented by: WooCommerce, PrestaShop, Subiekt GT. | `createProduct` | `isProductCreator` |
 
 **Adapter coverage:** WooCommerce only (`modified_after` + `dates_are_gmt=true`,
 WC ≥ 5.8). PrestaShop deliberately does **not** declare it: a combination write
@@ -259,6 +281,30 @@ variation edit does not bump the parent's `date_modified`
 ([WC #19562](https://github.com/woocommerce/woocommerce/issues/19562)), and stock
 is not on this rung at all. See
 [ADR-048](./architecture/adrs/048-incremental-catalog-replication.md).
+
+### `InventoryMasterPort` (inventory) — 2
+
+| Sub-capability | What it does | Method(s) | Guard |
+|---|---|---|---|
+| `BulkInventoryReader` | Prefetch stock for MANY products in a handful of requests, the inventory twin of `BulkProductReader` (#2648). Implemented by: Amazon, PrestaShop, Shoper, Shopify. | `prefetchInventory` | `isBulkInventoryReader` |
+| `InventoryEventTargetResolver` | Resolve a stock webhook keyed by something other than the product (Shopify `inventory_levels/update`) to the product external id. Implemented by: Shopify. | `resolveEventProductExternalId` | `isInventoryEventTargetResolver` |
+
+### `FulfillmentExecutorPort` (fulfillment) — 1
+
+| Sub-capability | What it does | Method(s) | Guard |
+|---|---|---|---|
+| `FulfillmentStatusSource` | The pull-shaped progress read that serves a polling holder (#2398). Guard-only, absent from `CoreCapabilityValues`. Implemented by: Amazon MCF. | `getWorkFulfillmentStatus` | `isFulfillmentStatusSource` |
+
+`FulfillmentExecutor` itself is advertised by two manifests: the first-party OMS (`libs/oms`, `openlinker.oms.v1`) and Amazon (MCF).
+
+### Sales-document provider declarations (sales-documents) — 2
+
+Shared by the invoicing and fiscalization providers; declared in `sales-documents` because both mappers need the same answer.
+
+| Sub-capability | What it does | Method(s) | Guard |
+|---|---|---|---|
+| `SelfRoutingDocumentKind` | A destination that decides its OWN originating-document kind at issuance time (ADR-041 decision 9, #2158). Declared, no adapter implements it yet. | `selfRoutesDocumentKind` | `isSelfRoutingDocumentKind` |
+| `ZeroValueLineSupport` | Declare whether the provider accepts a line priced 0,00 (#3930). Implemented by: eparagony, inFakt, Subiekt GT, KSeF. | `acceptsZeroValueLine` | `isZeroValueLineSupport` |
 
 ---
 

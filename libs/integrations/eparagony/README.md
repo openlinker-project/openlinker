@@ -21,6 +21,9 @@ independently on the connection (`enabledCapabilities` is stamped at connection 
 and never retro-filled, so an existing receipts-only connection does **not** silently
 gain the invoicing lane) — enabling one role never routes anything to it by itself; a
 sales-document routing rule still decides which orders reach which connection.
+The manifest's `defaultEnabledCapabilities` is `Fiscalization`, `FiscalRegistrationLocator` and
+`RegulatoryStatusReader` (no `Invoicing`), so a connection created without an explicit capability
+list gets the receipts lane only.
 
 ## What this adapter is, and is not
 
@@ -32,8 +35,10 @@ fronting vendor-proprietary software that drives a physical online fiscal printe
 (Posnet / Novitus / Elzab); this adapter hands a completed sale to that hub and reads
 back the outcome. It never performs fiscal registration itself. See
 [ADR-042](../../../docs/architecture/adrs/042-fiscalization-capability.md) for the full
-design rationale — this package is the first (and, at time of writing, only) adapter
-against the neutral `FiscalizationPort` in `libs/core/src/fiscalization/`.
+design rationale — this package is the first adapter against the neutral
+`FiscalizationPort` in `libs/core/src/fiscalization/` and the only one the manifest advertises
+(the Subiekt GT package carries a fiscalization adapter too, deliberately unadvertised because it
+has never been run against a real fiscal printer).
 
 ## Capabilities
 
@@ -92,14 +97,17 @@ legal event, not a safe "try again."
 
 ## Credentials & config
 
-Ten of the eleven config keys below have a form field on the connection's Edit page
-(`apps/web/src/plugins/eparagony/`, #3266) — `environment` / `posId` on the guided setup
-wizard, and `print` / `paymentForm` / `paymentName` / `defaultTaxRateCode` /
-`statusPollTimeoutMs` / `fiscalDeviceUniqueNumber` / `apiBaseUrl` / `authBaseUrl` on the
-connection's structured section. Only `taxRates` remains raw-JSON-only, deliberately: it
-describes the seller's physical device programming rather than a product's VAT rate, and
-OpenLinker cannot observe the device to validate it. The JSON below is still the ground
-truth for what each key means and accepts.
+Every config key below except `taxRates` has a form field in the web UI
+(`apps/web/src/plugins/eparagony/`, #3266). The guided setup wizard collects `environment`,
+`posId`, the seller keys (`merchantTIN` / `merchantName` / `merchantAddress`) and
+`eInvoicingHubEnabled`. The Edit page's structured section covers `print` / `paymentForm` /
+`paymentName` / `defaultTaxRateCode` / `statusPollTimeoutMs` / `fiscalDeviceUniqueNumber` /
+`apiBaseUrl` / `authBaseUrl` plus the seller section (`merchantTIN` / `merchantName` /
+`merchantAddress`); `environment` and `posId` are not edited there, and `eInvoicingHubEnabled` has
+no Edit-page control (change it through the raw config JSON). `taxRates` is raw-JSON-only,
+deliberately: it describes the seller's physical device programming rather than a product's VAT
+rate, and OpenLinker cannot observe the device to validate it. The JSON below is the ground truth
+for what each key means and accepts.
 
 **Credentials**:
 ```json
@@ -156,9 +164,10 @@ invoices.
 
 Invoice-only. Every connection that exists today is receipts-only and carries none of
 them, which is why all four are optional on the type — making `merchantTIN` required
-would break the config shape of every shipped connection. **The connection form does not
-render these**, so today the raw JSON editor is the route to all four; the shape
-validator is the only check in front of it.
+would break the config shape of every shipped connection. The wizard and the Edit page's seller section have
+form fields for `merchantTIN`, `merchantName` and `merchantAddress`; `eInvoicingHubEnabled` is set in
+the wizard and, afterwards, only through the raw JSON editor, where the shape validator is the only
+check in front of it.
 
 | Field | Values | Notes |
 |---|---|---|

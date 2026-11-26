@@ -505,11 +505,12 @@ To see an end-to-end change: edit a product's stock in WooCommerce admin, run `m
 
 ## § 7: Known Limitations / Not Yet Supported
 
-*Accurate as of 2026-06-10 — revisit as the WooCommerce integration chain (#947–#972) evolves.*
+*Refreshed 2026-11-26 against the current code; revisit as the integration evolves.*
 
-- **WooCommerce order ingestion is outside this flow.** The `OrderSource` capability (#876, `modified_after` watermark polling) ships with the integration chain, but the master-shop flow documented here ingests orders from **Allegro**, not from WooCommerce. If your checkout predates the chain, the capability may be advertised in the manifest without being wired — verify before relying on it.
-- **No shop→shop product or inventory sync.** OpenLinker does not push products or stock from one shop into another. Inventory propagation targets marketplace **offers** (Allegro), not other shops. WooCommerce's catalog/stock is read-only from OpenLinker's perspective.
-- **No cross-platform category/attribute mapping.** Mapping categories and attributes between platforms (the subject of a *Proposed* ADR) is not implemented. Offers are created from raw product data; category/attribute mismatches may cause offer rejection on strict marketplaces.
+- **WooCommerce order ingestion is a separate flow from the one documented here.** `OrderSource` is advertised in the manifest and implemented (`WooCommerceOrderSourceAdapter`: `modified_after` watermark polling plus the webhook trigger), so a WooCommerce store can be an order source. The master-shop flow in this guide ingests orders from **Allegro** into WooCommerce, which is the opposite direction.
+- **No shop-to-shop stock sync.** OpenLinker does not push stock from one shop into another shop's inventory. Stock propagation targets marketplace **offers** (Allegro). WooCommerce can also receive a quantity-only write-back to its published products through the `OfferManager` capability, which is mutually exclusive with `InventoryMaster` on the same connection; with `InventoryMaster` enabled (this guide's setup) WooCommerce stock is read-only from OpenLinker's perspective.
+- **Products can be published to a shop.** The `ProductPublisher` capability publishes a catalogue product (including multi-variant products as WooCommerce variable products) to WooCommerce; that is a separate flow from this guide.
+- **Category and attribute mapping is implemented, but it needs setup.** Cross-platform category and attribute projection ([ADR-023](../../../docs/architecture/adrs/023-cross-platform-category-and-attribute-projection.md), accepted) is live: operators author category and attribute mappings per connection pair, offers resolve their category through them (a destination that borrows another platform's taxonomy, such as Erli, reuses the owner's mappings), and operator attribute mapping rules (fixed, copy-remap, place-value; #1841) apply on top. An offer whose category cannot be resolved is not guessed: it needs a mapping or a manual category. See the Mappings page of the connection.
 - **No inventory reservation.** The WooCommerce adapter does not support `reserveInventory` / `releaseInventory` (the WooCommerce REST API does not expose reservation).
 
 ---

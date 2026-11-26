@@ -2,7 +2,10 @@
 
 OpenLinker adapter for [Shopify](https://shopify.dev/docs/api/admin-graphql), Admin GraphQL API **2026-10**.
 
-**Status:** plugin foundation (#3974), **ProductMaster** (#3975), **InventoryMaster** (#3976), **OrderSource**
+**Status:** manifest capabilities `ProductMaster`, `InventoryMaster`, `OrderSource`, `OrderProcessorManager`,
+`ProductPublisher`, `OfferManager`, `CategoryProvisioner`, plus the advertised-without-dispatch
+`ReturnSourceReader`, `ReturnDecliner`, `ShopCategoryBrowser`, `ShopAttributeReader`,
+`ShopProductVisibilityWriter` and `ShopProductStatusReader` (`src/shopify-plugin.ts`). Built in slices: plugin foundation (#3974), **ProductMaster** (#3975), **InventoryMaster** (#3976), **OrderSource**
 with returns (#3977), **OrderProcessorManager** (#3978), **ProductPublisher** (#3979), **OfferManager** stock
 write-back (#3980), **inbound webhooks** (#3981) and the connection page (#3982). Each capability entered
 `supportedCapabilities` together with the adapter that delivers it. Evidence base: spike #3928
@@ -272,6 +275,13 @@ published product back as a new master product (#3985). Use a separate connectio
 - **Images**: only public URLs; a host Shopify cannot reach (docker name, private address) is a warning. Images go
   only to a product with none, so a re-publish does not duplicate them.
 - **Visibility**: `published` sets `ACTIVE` and publishes to the Online Store channel; `draft` sets `DRAFT`.
+- **Hide and show** (`ShopProductVisibilityWriter`, #3962): when a product is deleted at the master, OpenLinker
+  sets the Shopify product to `DRAFT` (hidden everywhere, product and history kept); showing it again sets `ACTIVE`
+  and republishes it to the Online Store. It writes the status and nothing else.
+- **Live status** (`ShopProductStatusReader`, #4192): the `shopify-product-status-sync` task (`shop.product.statusSync`,
+  hourly) reads each published product into `shop_product_status_snapshots`: `ACTIVE` is published, `DRAFT` draft,
+  `ARCHIVED` unpublished, a missing product removed. For a grouped publish the variant id is read through
+  `node(id:)`.
 - **Categories**: collections. The picker lists the manual collections (flat); provisioning makes one collection per
   category path, handle from the whole path, and adds the product to it.
 - **Parameters**: product metafields - linked to the store's metafield definition when the id is `namespace.key`,
@@ -295,6 +305,23 @@ Opt-in. Keeps the stock of products this connection PUBLISHED in step with the m
 - Not together with InventoryMaster: the propagation never writes back to the stock master, so on a connection
   with both nothing is written back. Use a separate publish-only connection.
 
+## Scheduler tasks
+
+Read by the worker (`src/infrastructure/scheduler/shopify-scheduler-tasks.ts`). The first four run unless their
+variable is `false`; the two returns passes are off unless `true`.
+
+| Task | Needs | Cadence | Env var |
+|---|---|---|---|
+| `shopify-orders-poll` | `OrderSource` | 5 min | `OL_SHOPIFY_POLL_SCHEDULER_ENABLED` |
+| `shopify-fulfillment-status-sync` | `OrderProcessorManager` | 15 min | `OL_SHOPIFY_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED` |
+| `shopify-source-fulfillment-status-sync` | `OrderSource` | hourly | `OL_SHOPIFY_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED` |
+| `shopify-product-status-sync` | `ProductPublisher` | hourly | `OL_SHOPIFY_PRODUCT_STATUS_SYNC_SCHEDULER_ENABLED` |
+| `shopify-returns-poll` | `OrderSource` | 15 min | `OL_SHOPIFY_RETURNS_POLL_SCHEDULER_ENABLED` |
+| `shopify-returns-status-sync` | `OrderSource` | hourly | `OL_SHOPIFY_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED` |
+
+`shopify-fulfillment-status-sync` reads a fulfilment made in the Shopify admin on an order OpenLinker pushed
+there back into a shipment.
+
 ## Connection page (#3982)
 
 The connection edit page carries a Shopify section and a "Configure webhooks" action:
@@ -316,7 +343,6 @@ location reader share one OAuth token memo.
 
 - `defaultEnabledCapabilities` turns ProductMaster on for every new connection, so a publish-only connection must
   have it turned off by hand before enabling the publisher (the connection settings refuse the pair).
-- No `ShopProductStatusReader`: the publish status reconcile does not run for Shopify yet.
 
 - Delivery and payment mappings are keyed by the SOURCE connection only, so one source sending orders to Shopify and
   to another shop shares one mapping for both destinations.

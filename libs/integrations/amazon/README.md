@@ -3,12 +3,15 @@
 OpenLinker adapter for the [Amazon Selling Partner API](https://developer-docs.amazon.com/sp-api)
 (SP-API). Target markets for the first release: **DE first, then FR and PL** (#3741).
 
-**Status:** foundation (#4177) and `OrderSource` (#4178): the order feed over Orders API v2026-01-01
-`searchOrders`, the order read over `getOrder`, the tracking write-back over v0 `confirmShipment`, the
-option lists for the mapping UI and the `amazon-orders-poll` task (off by default,
-`OL_AMAZON_ORDERS_POLL_SCHEDULER_ENABLED`). `OrderSource` is opt-in on a connection. The remaining
-capabilities arrive with their own children of the epic (#4176). `OfferManager` (#4180) links the seller's
-listings by SKU and writes stock and price to them; see "Offers" below.
+**Status: Beta.** Checked only against Amazon's static sandbox and a fake SP-API end-to-end run; no
+real-account run yet. The adapter declares these capabilities in its manifest
+(`src/amazon-plugin.ts`): `OrderSource` (order feed, tracking write-back, mapping options),
+`OfferManager` (link, stock, price, status) with `OfferCreator`, `CategoryBrowser` and
+`EanCategoryMatcher` (advertised-without-dispatch, resolved by narrowing the `OfferManager`
+adapter), `ProductMaster` (your listings as a catalogue), `InventoryMaster` (FBM stock from the
+listings, FBA stock at an operator-chosen location), `ReturnSourceReader` (returns report) and
+`FulfillmentExecutor` (Multi-Channel Fulfillment). `OrderSource` is opt-in on a connection. First
+markets: **DE first, then FR and PL** (#3741). See "Offers" below.
 Evidence base: `docs/plans/analysis/SPIKE-2881-amazon-sp-api.md` and the product spec
 `docs/specs/product-spec-2881-amazon-marketplace-integration.md`.
 
@@ -42,12 +45,14 @@ Evidence base: `docs/plans/analysis/SPIKE-2881-amazon-sp-api.md` and the product
 
 ## Where order sync starts
 
-The connection wizard asks where order sync starts: only new orders (`now`, the feed starts two
-minutes behind the clock), from a date (`from`, the feed starts at 00:00 UTC of that day; it reads by
-last update, so an order created earlier but updated since also comes in), or every order the Orders
-API still serves (`all`, about two years). The date window import (newest first, or a manual date
-range) reads `searchOrders` by creation time in 30-day slices and never touches the feed cursor. Amazon
-allows one search per few minutes, so a long window is slow by design.
+The manifest declares `orderSyncStartModes: ['now', 'from']` and `orderWindowImport: true`. The
+connection wizard asks where order sync starts: only new orders (`now`, the feed starts two minutes
+behind the clock) or from a date (`from`, the feed starts at 00:00 UTC of that day; it reads by last
+update, so an order created earlier but updated since also comes in). There is no "every order" mode:
+reach history with `from` and an early date, or with the date window import, which reads
+`searchOrders` by creation time in 30-day slices (newest first, or a manual date range, started from
+the connection's **Sync** tab) and never touches the feed cursor. Amazon allows one search per few
+minutes, so a long window is slow by design.
 
 ## Credentials
 
@@ -84,8 +89,10 @@ connections with `OfferManager` enabled and a valid `sellerId`, so a connection 
 scheduled at all.
 
 - **Linking**: `amazon-offers-sync` (hourly, off by default, `OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED`)
-  lists the listings and the offer mapping sync links them to variants by SKU. Linking by EAN is not
-  done: listings carry no EAN, only the ASIN.
+  lists the listings and the offer mapping sync links them to variants by SKU, and by EAN when the
+  listing carries one in its `externally_assigned_product_identifier` attribute (`listingEan`) and a
+  single `ProductMaster` connection can be resolved for the barcode lookup. The ASIN is kept as the
+  offer's external reference, not used for linking.
 - **Stock**: `patchListingsItem` replacing `fulfillment_availability` on the seller channel (`DEFAULT`).
   A listing Amazon fulfils (FBA) is skipped with a warning, never written (its stock is Amazon's); the
   listing sync marks it `fulfilledByAmazon`. Quantity 0 pauses a listing; listings are never deleted.
@@ -165,7 +172,23 @@ printed on it.
 it. No `defaultRateLimit` is declared, because SP-API quotas are per operation; the capability adapters
 will pace each operation.
 
+## Scheduler tasks
+
+All off by default (`enabledDefault: false` in `src/infrastructure/scheduler/amazon-scheduler-tasks.ts`),
+read by the worker. Eight tasks. Outside production six also take an `OL_AMAZON_*_CRON` override of their cadence
+(the file's `testCron` helper); production always uses the declared cadence. The source fulfilment sync (30 min) and the MCF poll (15 min) have fixed cadences.
+
+| Task | Job | Env var |
+|---|---|---|
+| `amazon-orders-poll` | `marketplace.orders.poll` | `OL_AMAZON_ORDERS_POLL_SCHEDULER_ENABLED` |
+| `amazon-returns-poll` | `marketplace.returns.poll` | `OL_AMAZON_RETURNS_POLL_SCHEDULER_ENABLED` |
+| `amazon-returns-status-sync` | `marketplace.returns.statusSync` | `OL_AMAZON_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED` |
+| `amazon-source-fulfillment-status-sync` | `marketplace.sourceFulfillment.statusSync` | `OL_AMAZON_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED` |
+| `amazon-mcf-status-poll` | `fulfillment.work.statusPoll` | `OL_AMAZON_MCF_STATUS_POLL_SCHEDULER_ENABLED` |
+| `amazon-notifications-drain` | `marketplace.notifications.drain` | `OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED` |
+| `amazon-offers-sync` | `marketplace.offers.sync` | `OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED` |
+| `amazon-offer-status-sync` | `marketplace.offer.statusSync` | `OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED` |
+
 ## Not yet built
 
-Creating new listings (#4181), EventBridge delivery, the public-app OAuth
-flow and a web setup form. Epic #4176 lists them.
+EventBridge delivery, the public-app OAuth flow and a web setup form. Epic #4176 lists them.

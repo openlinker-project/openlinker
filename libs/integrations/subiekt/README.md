@@ -324,7 +324,9 @@ for.
   redeploys it to the actual bridge machine by hand.
 
 - A cold Sfera attach was measured at roughly 81 seconds - well past
-  OpenLinker's 30-second HTTP timeout. That is why the bridge attaches to
+  a typical HTTP timeout (OpenLinker's own client timeout is now 150 s,
+  `SUBIEKT_BRIDGE_TIMEOUT_MS` in `src/bridge/subiekt-bridge-timeout.ts`, sized above the bridge's
+  Sfera budgets; it was 30 s before #3365). That is why the bridge attaches to
   Sfera once at process startup rather than on the first incoming request:
   attaching lazily would mean the first real request after every bridge
   restart times out.
