@@ -111,7 +111,9 @@ describe('MiraklOfferWriteReconciler send', () => {
       '/api/offers/pricing/imports',
       expect.objectContaining({ content: 'offer-sku;price\nSKU-1;44.99\n' })
     );
-    expect(postFile.mock.calls.map((call: unknown[]) => call[0] as string)).not.toContain('/api/offers');
+    expect(postFile.mock.calls.map((call: unknown[]) => call[0] as string)).not.toContain(
+      '/api/offers'
+    );
   });
 
   it('should send nothing when nothing is pending', async () => {
@@ -131,6 +133,33 @@ describe('MiraklOfferWriteReconciler send', () => {
 
     expect(store.failPending).toHaveBeenCalledWith(pending, expect.stringContaining('(400)'));
     expect(store.markSubmitted).not.toHaveBeenCalled();
+  });
+
+  it('should keep lines pending when Mirakl answers without an import id', async () => {
+    const pending = [write('stock', 'SKU-1', '3')];
+    const { reconciler, store, postFile } = setup({ stock: pending });
+    postFile.mockResolvedValueOnce({ status: 201, data: {} });
+
+    const result = await reconciler.reconcile(50);
+
+    expect(store.failPending).not.toHaveBeenCalled();
+    expect(store.markSubmitted).not.toHaveBeenCalled();
+    expect(result).toEqual({ reconciled: 0, stillPending: 1 });
+  });
+
+  it('should still send prices and prune when the stock file cannot go out, then throw', async () => {
+    const networkError = new Error('socket hang up');
+    const { reconciler, store, postFile } = setup({
+      stock: [write('stock', 'SKU-1', '3')],
+      price: [write('price', 'SKU-1', '44.99')],
+    });
+    postFile.mockRejectedValueOnce(networkError);
+
+    await expect(reconciler.reconcile(50)).rejects.toBe(networkError);
+
+    expect(postFile).toHaveBeenCalledWith('/api/offers/pricing/imports', expect.anything());
+    expect(store.failPending).not.toHaveBeenCalled();
+    expect(store.deleteSettledBefore).toHaveBeenCalled();
   });
 });
 

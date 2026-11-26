@@ -95,7 +95,16 @@ STO01, PRI01 and order lines use.
   `ZERO_QUANTITY` per offer, and an unknown reason verbatim.
 
 A value written twice is harmless (stock and price are absolute), so a file
-whose answer was lost is simply sent again on the next pass.
+whose answer was lost, or that Mirakl answered without an import id, is simply
+sent again on the next pass. The stock file and the price file are sent
+independently, so one that cannot go out does not hold back the other.
+
+**Known gap: recorded, not applied.** The adapter reports success once a change
+is recorded, so core moves its freshness mark (#2617) before Mirakl has
+applied anything (the Allegro shape, ADR-067 amendment #2621). A line Mirakl
+later fails is marked `failed` with its reason and is not re-sent
+automatically: the offer keeps the old value until the next stock or price
+change, or until the inventory sweep sends the stock again.
 
 ## Listing from OpenLinker (#4278, part 1: existing cards)
 

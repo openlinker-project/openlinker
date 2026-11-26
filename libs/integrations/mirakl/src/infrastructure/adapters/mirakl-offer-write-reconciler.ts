@@ -18,8 +18,10 @@
  *
  * Values are absolute (a quantity, a price), so a file sent twice applies the
  * same state twice: a submit whose answer was lost and which is sent again on
- * the next pass is harmless. A file Mirakl refuses outright (4xx) fails its
- * changes instead of resending them forever.
+ * the next pass is harmless. So is an answer without an import id: those
+ * lines stay pending. A file Mirakl refuses outright (4xx) fails its changes
+ * instead of resending them forever. A stock file and a price file are sent
+ * independently, so a failure of one does not hold back the other.
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters
  */
@@ -68,13 +70,27 @@ export class MiraklOfferWriteReconciler {
   async reconcile(limit: number): Promise<PendingQuantityAckReconcileResult> {
     const settled = await this.settleImports(limit);
     let stillPending = settled.stillPending;
+    // Each kind is sent on its own: a stock file that could not go out must
+    // not hold back the price file, nor the prune. The first failure is still
+    // thrown at the end so the job is retried and the rows stay pending.
+    let firstFailure: unknown;
     for (const kind of MiraklBufferedWriteKindValues) {
-      stillPending += await this.send(kind);
+      try {
+        stillPending += await this.send(kind);
+      } catch (error) {
+        firstFailure ??= error;
+        this.logger.warn(
+          `Could not send the ${kind} file on connection ${this.connectionId}: ${describeError(error)}`
+        );
+      }
     }
     await this.writes.deleteSettledBefore(
       this.connectionId,
       new Date(this.now().getTime() - SETTLED_RETENTION_MS)
     );
+    if (firstFailure !== undefined) {
+      throw firstFailure;
+    }
     return { reconciled: settled.reconciled, stillPending };
   }
 
@@ -162,7 +178,13 @@ export class MiraklOfferWriteReconciler {
         }
       );
       if (data?.import_id === undefined || data.import_id === null || data.import_id === '') {
-        throw new MiraklApiException(`Mirakl answered the ${kind} import without an import_id`);
+        // Mirakl probably took the file but gave no id to follow. The values
+        // are absolute, so the lines stay pending and go out again next pass
+        // rather than being failed for an import that may have applied.
+        this.logger.warn(
+          `Mirakl answered the ${kind} import without an import_id; ${pending.length} line(s) stay pending [connectionId=${this.connectionId}]`
+        );
+        return pending.length;
       }
       importId = String(data.import_id);
     } catch (error) {
