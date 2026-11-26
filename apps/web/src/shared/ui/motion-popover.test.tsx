@@ -6,7 +6,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { anchoredPosition, MotionPopover, useAnchoredPopover } from './motion-popover';
+import { anchoredPosition, measureZoom, MotionPopover, useAnchoredPopover } from './motion-popover';
 
 afterEach(cleanup);
 
@@ -73,5 +73,27 @@ describe('anchoredPosition', () => {
       left: 520,
       bottom: window.innerHeight - 10 + 8,
     });
+  });
+});
+
+describe('anchoredPosition under zoom', () => {
+  it('divides screen-pixel measurements by the zoom', () => {
+    const trigger = { left: 405, width: 90, top: 100, bottom: 136 } as DOMRect;
+    const pos = anchoredPosition(trigger, 200, 'down', 'center', 1.125);
+    expect(pos).toEqual({ left: (405 + 45) / 1.125, top: 136 / 1.125 + 8 });
+  });
+
+  it('clamps against the zoomed viewport', () => {
+    const trigger = { left: 5000, width: 10, top: 0, bottom: 10 } as DOMRect;
+    const pos = anchoredPosition(trigger, 200, 'down', 'center', 2);
+    expect(pos.left).toBe(window.innerWidth / 2 - 8 - 100);
+  });
+
+  it('measures zoom as rendered over layout width, 1 when unmeasurable', () => {
+    const el = document.createElement('div');
+    expect(measureZoom(el)).toBe(1);
+    Object.defineProperty(el, 'offsetWidth', { value: 100 });
+    el.getBoundingClientRect = () => ({ width: 125 }) as DOMRect;
+    expect(measureZoom(el)).toBe(1.25);
   });
 });

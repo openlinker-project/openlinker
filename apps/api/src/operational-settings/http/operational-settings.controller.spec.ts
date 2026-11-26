@@ -43,6 +43,11 @@ const view = (overrides: Partial<OperationalSettingsView> = {}): OperationalSett
   inventoryMovementRetentionDays: number(365, 730, 1825),
   stockStaleSyncThresholdHours: number(6, 48, 168),
   deletionAuditCadence: { value: '0 * * * *', source: 'default', workerMayDiffer: true },
+  buyerDataRetentionEnabled: { value: false, source: 'default', workerMayDiffer: false },
+  buyerDataHideAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
+  buyerDataEraseAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
+  buyerDataEraseMode: { value: 'personal-data', source: 'default', workerMayDiffer: false },
+  releaseCenterEnabled: { value: true, source: 'default', workerMayDiffer: true },
   catalogueSweepCadence: { value: '*/20 * * * *', source: 'default', workerMayDiffer: true },
   inventorySweepCadence: { value: '*/15 * * * *', source: 'default', workerMayDiffer: true },
   deletionAuditAlwaysEnabled: true,
@@ -170,6 +175,7 @@ describe('OperationalSettingsController', () => {
           sweepPageSize: undefined,
           deletionAuditBudget: undefined,
           deletionAuditCadence: undefined,
+          releaseCenterEnabled: undefined,
           acknowledgeAboveRecommended: undefined,
         },
         'user-1'
@@ -199,6 +205,11 @@ describe('OperationalSettingsController', () => {
         inventoryMovementRetentionDays: 777,
         stockStaleSyncThresholdHours: 777,
         deletionAuditCadence: '*/7 * * * *',
+        buyerDataRetentionEnabled: true,
+        buyerDataHideAfterDays: 180,
+        buyerDataEraseAfterDays: 365,
+        buyerDataEraseMode: 'whole-order',
+        releaseCenterEnabled: false,
         acknowledgeAboveRecommended: true,
       };
 

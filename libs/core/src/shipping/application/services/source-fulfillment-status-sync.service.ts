@@ -56,7 +56,14 @@
  *  - a dispatch with no waybill at all is ignored, because OL relays
  *    tracking-less dispatches too (a destination that shipped without a
  *    number, a fulfilment work) and a bare "sent" cannot be told apart from
- *    that echo.
+ *    that echo. The one exception is an order the source ships ITSELF
+ *    (`OrderRecord.isFulfilledBySource`: Amazon FBA, Allegro One
+ *    Fulfillment): OL never routes nor ships such an order, so a bare "sent"
+ *    cannot be OL's own, and it is recorded as a source-observed row without
+ *    a tracking number. Nothing is relayed for it (there is no waybill). A
+ *    waybill the source adds later still fills the row in, but only within
+ *    `SOURCE_SHIPPED_WAYBILL_WAIT_MS` of the dispatch: some sources (Amazon
+ *    FBA) never report one, and the row is then not read again.
  *
  * The reverse loop - this relay reaching a destination whose own branch-1
  * read-back then reports the parcel and relays it back to the source - is
@@ -163,6 +170,15 @@ interface RecordOutcome {
 }
 
 const SKIPPED: RecordOutcome = { kind: 'skipped', relayed: false };
+
+/**
+ * How long a source-observed row without a waybill, on an order the source
+ * ships itself, is still read for a late waybill. A carrier number normally
+ * follows the dispatch within hours (Allegro One Fulfillment); some sources
+ * never report one (Amazon FBA), and reading those for the whole scan window
+ * would spend the source's request quota for nothing.
+ */
+export const SOURCE_SHIPPED_WAYBILL_WAIT_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
  * Waybills are compared trimmed and case-folded: two spellings of one parcel
@@ -299,6 +315,17 @@ export class SourceFulfillmentStatusSyncService implements ISourceFulfillmentSta
       return { kind: 'skipped', relayed: redriven };
     }
 
+    // An order the source ships itself, already recorded as sent without a
+    // waybill: past the wait window nothing more is expected from the source.
+    if (
+      record.isFulfilledBySource &&
+      sourceRow !== null &&
+      sourceRow.dispatchedAt !== null &&
+      Date.now() - sourceRow.dispatchedAt.getTime() > SOURCE_SHIPPED_WAYBILL_WAIT_MS
+    ) {
+      return SKIPPED;
+    }
+
     // OL already knows a live parcel for this order (its own label, a
     // destination's branch-1 dispatch): whatever the source shows is that
     // parcel, so the readback is not worth a marketplace call.
@@ -324,7 +351,7 @@ export class SourceFulfillmentStatusSyncService implements ISourceFulfillmentSta
 
     const waybill = this.firstUnknownWaybill(readback.waybills, orderShipments);
     if (waybill === null) {
-      return SKIPPED;
+      return this.recordSourceShippedWithoutWaybill(connectionId, record, sourceRow);
     }
 
     let row: Shipment;
@@ -354,6 +381,33 @@ export class SourceFulfillmentStatusSyncService implements ISourceFulfillmentSta
     }
 
     return { kind, relayed: await this.relayIfOwed(record, row, waybill) };
+  }
+
+  /**
+   * A dispatch the source reports with no waybill OL does not already know.
+   * Recorded only for an order the source ships itself (see the echo guard in
+   * the header), and only once: an existing source-observed row already says
+   * the order left. Nothing is relayed, because there is no waybill to relay.
+   */
+  private async recordSourceShippedWithoutWaybill(
+    connectionId: string,
+    record: OrderRecord,
+    sourceRow: Shipment | null,
+  ): Promise<RecordOutcome> {
+    if (!record.isFulfilledBySource || sourceRow !== null) {
+      return SKIPPED;
+    }
+    await this.shipments.create({
+      orderId: record.internalOrderId,
+      connectionId,
+      shippingMethod: SHIPPING_METHOD.Omp,
+      initialStatus: SHIPMENT_STATUS.Dispatched,
+      // OL's clock: the readback carries no dispatch instant.
+      dispatchedAt: new Date(),
+    });
+    // A new dispatched shipment moves the order rollup (#1108).
+    await this.fulfillmentProjection.recompute(record.internalOrderId);
+    return { kind: 'created', relayed: false };
   }
 
   /**

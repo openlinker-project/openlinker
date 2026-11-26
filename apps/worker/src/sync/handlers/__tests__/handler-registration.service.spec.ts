@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (19 realtime / 39 bulk / 5 fiscal / 7 fan-out across 70 job types -
+ * table (19 realtime / 40 bulk / 5 fiscal / 8 fan-out across 71 job types -
  * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
  * Subiekt connection's own reachability on a cron, nobody is waiting on any
  * one tick of it, and a late check costs nothing beyond a delayed log line;
@@ -39,7 +39,7 @@
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 64 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 66 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -50,13 +50,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 65 handler instances.
+    // The constructor takes the registry followed by 66 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology;
     // the partition under test keys on jobType, so they are otherwise
     // interchangeable.
     const handlers = Array.from(
-      { length: 65 },
+      { length: 66 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -68,7 +68,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 69 job types 20/37/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 72 job types 20/40/5/7 per ADR-050 decision 1', () => {
     // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -163,9 +163,15 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // #3583's `salesDocument.batch.tick` and `salesDocument.batch.run` are the
     // thirty-eighth and thirty-ninth: cron-paced orchestration whose documents
     // are the `fiscal`-lane jobs a run enqueues.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(39);
+    // #4228's `marketplace.orders.import` is the fortieth: a paced history walk
+    // nobody waits on, which must never take a `realtime` slot from a buyer's order.
+    // `fulfillment.work.statusPoll` is the forty-first: a cron-paced read of a
+    // polling holder's accepted work.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(41);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
-    expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
+    // #4179's `marketplace.notifications.drain` is the eighth: like the orders
+    // poll it shortens, one cron-paced read that enqueues `realtime` children.
+    expect(registry.getJobTypesByLane('fan-out')).toHaveLength(8);
   });
 
   it('should lane the routing reaper bulk and its re-route child realtime (#2731)', () => {
@@ -250,6 +256,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(registry.getLane('marketplace.sourceFulfillment.statusSync')).toBe('bulk');
     // Enumerators are fan-out.
     expect(registry.getLane('marketplace.orders.poll')).toBe('fan-out');
+    expect(registry.getLane('marketplace.notifications.drain')).toBe('fan-out');
     // #2330 returns: the lanes mirror the order path they were modelled on.
     // Discovery fans out; the per-return child is what a buyer waits on; the
     // lifecycle re-read is a paced sweep whose lateness costs nobody a request.

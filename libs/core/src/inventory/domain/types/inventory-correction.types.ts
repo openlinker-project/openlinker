@@ -20,6 +20,12 @@ export const InventoryCorrectionTargetRefusalReasonValues = [
   'no-position',
   'unattributed-owner',
   'adapter-unresolved',
+  /**
+   * The owner holds the variant at more than one location (an Amazon FBM row
+   * and an FBA row, two warehouses). The master takes one quantity, so a
+   * correction cannot say which row it changes; correct it in the master.
+   */
+  'multiple-locations',
 ] as const;
 export type InventoryCorrectionTargetRefusalReason =
   (typeof InventoryCorrectionTargetRefusalReasonValues)[number];

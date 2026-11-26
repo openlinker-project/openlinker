@@ -99,11 +99,10 @@ function parseRetryAfterMs(header: string | null): number | null {
 
 /**
  * Mutable holder so a cached closure always reads the latest connection
- * object (and the caller's latest `defaultRateLimit` argument) for its id.
+ * object for its id.
  */
 interface ConnectionRef {
   current: RateLimitedConnection;
-  defaultRateLimit: ConnectionRateLimit | undefined;
 }
 
 /**
@@ -125,6 +124,13 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
   /** Keyed by {@link cacheKeyFor}: the bare connection id for the default bucket. */
   private readonly cache = new Map<string, FetchLike>();
   private readonly connectionRefs = new Map<string, ConnectionRef>();
+  /**
+   * The caller's `defaultRateLimit`, keyed by {@link cacheKeyFor} - per BUCKET,
+   * not per connection. A plugin pacing several operations of one connection
+   * against separate shared buckets passes a different ceiling for each; one
+   * value per connection id would let the last caller overwrite the others.
+   */
+  private readonly bucketDefaults = new Map<string, ConnectionRateLimit | undefined>();
   /** Shared-bucket cache keys per connection id, so `evict()` can find them. */
   private readonly sharedCacheKeys = new Map<string, Set<string>>();
   /** Connection ids drawing from each shared bucket, so the last one out evicts it. */
@@ -156,21 +162,6 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
     // bucket - one bucket per connection, never per host. See the port doc +
     // ADR-038 § "The cap is per connection" and § Amendment.
     //
-    // Keep the ref fresh on every forConnection() call so a cached closure (below)
-    // never reads a stale `config.rateLimit` from the connection object it
-    // happened to be built with — an operator's config edit must take effect
-    // on the very next call through the same cached FetchLike. `defaultRateLimit`
-    // is per-connection-id, not per-call: a caller that omits it (e.g. a second
-    // call site resolving the same connection) must never clobber the value a
-    // prior caller established, since every caller shares one cached FetchLike.
-    const ref = this.connectionRefs.get(connection.id);
-    if (ref) {
-      ref.current = connection;
-      ref.defaultRateLimit = defaultRateLimit ?? ref.defaultRateLimit;
-    } else {
-      this.connectionRefs.set(connection.id, { current: connection, defaultRateLimit });
-    }
-
     // An empty string is no bucket name at all; treating it as one would pool
     // every connection that passed it by mistake into one silent bucket.
     const sharedBucketKey =
@@ -178,6 +169,21 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
         ? options.bucketKey
         : undefined;
     const cacheKey = cacheKeyFor(connection.id, sharedBucketKey);
+
+    // Keep the ref fresh on every forConnection() call so a cached closure (below)
+    // never reads a stale `config.rateLimit` from the connection object it
+    // happened to be built with — an operator's config edit must take effect
+    // on the very next call through the same cached FetchLike. `defaultRateLimit`
+    // is per-bucket, not per-call: a caller that omits it (e.g. a second call
+    // site resolving the same connection) must never clobber the value a prior
+    // caller established, since every caller shares one cached FetchLike.
+    const ref = this.connectionRefs.get(connection.id);
+    if (ref) {
+      ref.current = connection;
+    } else {
+      this.connectionRefs.set(connection.id, { current: connection });
+    }
+    this.bucketDefaults.set(cacheKey, defaultRateLimit ?? this.bucketDefaults.get(cacheKey));
 
     const cached = this.cache.get(cacheKey);
     if (cached) {
@@ -190,10 +196,11 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
       init?: RequestInit
     ): Promise<Response> => {
       const configured = connectionRef.current.config?.rateLimit;
+      const bucketDefault = this.bucketDefaults.get(cacheKey);
       const rawPolicy: ConnectionRateLimit =
         sharedBucketKey === undefined
-          ? configured ?? connectionRef.defaultRateLimit ?? {}
-          : tightenRateLimit(connectionRef.defaultRateLimit, configured);
+          ? configured ?? bucketDefault ?? {}
+          : tightenRateLimit(bucketDefault, configured);
       const policy = dividePolicy(rawPolicy, this.replicas);
       const limiter = this.registry.get(sharedBucketKey ?? connectionRef.current.id, policy);
       const priority = getCurrentPriority();
@@ -238,10 +245,12 @@ export class HttpTransportFactory implements HttpTransportFactoryPort {
   evict(connectionId: string): void {
     this.cache.delete(connectionId);
     this.connectionRefs.delete(connectionId);
+    this.bucketDefaults.delete(connectionId);
     this.registry.evict(connectionId);
 
     for (const cacheKey of this.sharedCacheKeys.get(connectionId) ?? []) {
       this.cache.delete(cacheKey);
+      this.bucketDefaults.delete(cacheKey);
     }
     this.sharedCacheKeys.delete(connectionId);
 

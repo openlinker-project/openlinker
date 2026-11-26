@@ -1,8 +1,8 @@
 /**
  * ErliSetupForm Tests
  *
- * Coverage for the three-step Erli setup wizard (credentials, sales documents,
- * review). Tests form validation,
+ * Coverage for the four-step Erli setup wizard (credentials, product catalogue,
+ * sales documents, review). Tests form validation,
  * submission via the generic create-connection mutation, and the post-create
  * "Test connection" flow that surfaces a ConnectionTestResult.
  */
@@ -35,8 +35,8 @@ const PL_SUGGESTION = {
   disclaimer: 'Not legal advice.',
 };
 
-/** Fills the credentials step and walks to the review step. */
-async function fillAndReachReview(
+/** Fills the credentials step and moves on to the product catalogue step. */
+async function fillCredentialsAndReachCatalogue(
   overrides: { name?: string; apiKey?: string; environment?: string } = {},
 ): Promise<void> {
   fireEvent.change(screen.getByLabelText('Connection name'), {
@@ -51,7 +51,22 @@ async function fillAndReachReview(
     });
   }
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByRole('radiogroup', { name: 'Product catalog' });
+}
+
+/** Fills the credentials step and walks to the review step (catalogue left as the wizard chose it). */
+async function fillAndReachReview(
+  overrides: { name?: string; apiKey?: string; environment?: string } = {},
+): Promise<void> {
+  await fillCredentialsAndReachCatalogue(overrides);
+  await walkFromCatalogueToReview();
+}
+
+async function walkFromCatalogueToReview(): Promise<void> {
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await screen.findByText('How should delivery appear on receipts and invoices?');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('Which orders should OpenLinker import?');
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await screen.findByRole('button', { name: 'Connect Erli' });
 }
@@ -115,6 +130,69 @@ describe('ErliSetupForm', () => {
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
 
+  it('sends the whole-history choice and keeps the date start unavailable (#4265)', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+    renderWithProviders(<ErliSetupForm />, {
+      apiClient: createMockApiClient({
+        connections: { create },
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'erli.shopapi.v1',
+              platformType: 'erli',
+              supportedCapabilities: ['OfferManager', 'OrderSource'],
+              orderSyncStartModes: ['now', 'all'],
+            },
+          ]),
+        },
+      }),
+    });
+
+    await fillCredentialsAndReachCatalogue({ name: 'My Erli Store', apiKey: 'sk_test_123' });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('How should delivery appear on receipts and invoices?');
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Which orders should OpenLinker import?');
+
+    // Erli has no date lookup, so the card stays visible but cannot be chosen.
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: /Orders since a date/ })).toHaveAttribute('aria-disabled', 'true'),
+    );
+    fireEvent.click(screen.getByRole('radio', { name: /Every order the shop has/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect Erli' }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ orderSyncStart: { mode: 'all' } })),
+    );
+  });
+
+  it('should keep the date card disabled with its reason on the orders step for an Erli-shaped manifest', async () => {
+    renderWithProviders(<ErliSetupForm />, { apiClient: createMockApiClient({}) });
+    await fillCredentialsAndReachCatalogue({ name: 'E', apiKey: 'sk' });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('How should delivery appear on receipts and invoices?');
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Which orders should OpenLinker import?');
+
+    const card = screen.getByRole('radio', { name: /Orders since a date/ });
+    expect(card).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText(/not available for this connection yet/)).toBeInTheDocument();
+  });
+
+  it('should leave the order start out of the payload when the operator does not choose one', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+    renderWithProviders(<ErliSetupForm />, {
+      apiClient: createMockApiClient({ connections: { create } }),
+    });
+
+    await fillAndReachReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create.mock.calls[0][0].orderSyncStart).toBeUndefined();
+  });
+
   it('submits the neutral sandbox environment in config when Sandbox is selected', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
     const apiClient = createMockApiClient({ connections: { create } });
@@ -130,6 +208,69 @@ describe('ErliSetupForm', () => {
           config: { environment: 'sandbox', deliveryOnDocuments: { countries: {}, default: SHIPPING_DEFAULT } },
         }),
       );
+    });
+  });
+
+  describe('product catalogue (#4281)', () => {
+    it('preselects None and persists it when the installation has no catalogue connection', async () => {
+      const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+      const apiClient = createMockApiClient({
+        connections: { create, list: vi.fn().mockResolvedValue([]) },
+      });
+
+      renderWithProviders(<ErliSetupForm />, { apiClient });
+
+      expect(screen.queryByRole('radiogroup', { name: 'Product catalog' })).toBeNull();
+      await fillCredentialsAndReachCatalogue();
+      await waitFor(() => expect(screen.getByRole('radio', { name: /^No catalog/ })).toBeChecked());
+      await walkFromCatalogueToReview();
+      expect(screen.getByText('No catalog (marketplace only)')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+      await waitFor(() => {
+        expect(create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            config: {
+              environment: 'sandbox',
+              catalogueMode: 'none',
+              deliveryOnDocuments: { countries: {}, default: SHIPPING_DEFAULT },
+            },
+          }),
+        );
+      });
+    });
+
+    it('stays on Linked and writes no key when a catalogue connection exists', async () => {
+      const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+      const apiClient = createMockApiClient({ connections: { create } });
+
+      renderWithProviders(<ErliSetupForm />, { apiClient });
+
+      await fillCredentialsAndReachCatalogue();
+      expect(await screen.findByRole('radio', { name: /^Linked to a catalog/ })).toBeChecked();
+      await walkFromCatalogueToReview();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(create.mock.calls[0][0].config).not.toHaveProperty('catalogueMode');
+    });
+
+    it('does not override an explicit Linked choice with the no-catalogue preselection', async () => {
+      const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Erli Store' });
+      const apiClient = createMockApiClient({
+        connections: { create, list: vi.fn().mockResolvedValue([]) },
+      });
+
+      renderWithProviders(<ErliSetupForm />, { apiClient });
+
+      await fillCredentialsAndReachCatalogue();
+      await waitFor(() => expect(screen.getByRole('radio', { name: /^No catalog/ })).toBeChecked());
+      fireEvent.click(screen.getByRole('radio', { name: /^Linked to a catalog/ }));
+      await walkFromCatalogueToReview();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Erli' }));
+
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect(create.mock.calls[0][0].config).not.toHaveProperty('catalogueMode');
     });
   });
 
@@ -292,6 +433,8 @@ describe('ErliSetupForm', () => {
     renderWithProviders(<ErliSetupForm />, { apiClient });
     fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'Erli' } });
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk_test_123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByRole('radiogroup', { name: 'Product catalog' });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await screen.findByText('How should delivery appear on receipts and invoices?');
 

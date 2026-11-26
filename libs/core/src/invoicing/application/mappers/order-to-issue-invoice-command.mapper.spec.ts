@@ -1165,6 +1165,24 @@ describe('toIssueInvoiceCommand - bundle components (#3934)', () => {
     expect(cmd.lines.map((l) => l.name)).toEqual(['Gift set']);
   });
 
+  it('should carry the components of a set kept as one line, with the share core split out and the gift at zero', () => {
+    const sameRate = {
+      byLineId: {
+        set: bundleDocument.byLineId.set.map((c) => ({ ...c, taxRate: '23' })),
+      },
+    };
+    const cmd = toIssueInvoiceCommand({ order: bundleOrder(), connectionId: 'c', bundleDocument: sameRate });
+    expect(cmd.lines[0].stockComponents).toEqual([
+      expect.objectContaining({ variantId: 'a', quantity: 1, totalGross: 100 }),
+      expect.objectContaining({ variantId: 'g', quantity: 1, giftSlot: true, totalGross: 0 }),
+    ]);
+  });
+
+  it('should leave stockComponents off a line that is no bundle', () => {
+    const cmd = toIssueInvoiceCommand({ order: bundleOrder(), connectionId: 'c' });
+    expect(cmd.lines[0].stockComponents).toBeUndefined();
+  });
+
   it('should keep the set as one line when the order carries no bundle data', () => {
     const cmd = toIssueInvoiceCommand({ order: bundleOrder(), connectionId: 'c' });
     expect(cmd.lines.map((l) => l.name)).toEqual(['Gift set']);

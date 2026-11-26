@@ -25,6 +25,7 @@ import {
   taxRateState,
   type StoredTaxRate,
 } from '@openlinker/core/products';
+import { isUnmatchedProductId } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type {
   ITaxRateBackfillService,
@@ -118,6 +119,11 @@ export class TaxRateBackfillService implements ITaxRateBackfillService {
     productId: string;
     variantId: string | null;
   }): Promise<boolean> {
+    // #4280: defensive twin of the sweep query's exclusion - an explicit
+    // `backfillOrders` call can name an order that carries an unmatched line.
+    if (isUnmatchedProductId(line.productId)) {
+      return false;
+    }
     let rate: StoredTaxRate;
     try {
       rate = await this.productsService.getEffectiveTaxRate(

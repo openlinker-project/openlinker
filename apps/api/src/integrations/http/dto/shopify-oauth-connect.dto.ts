@@ -8,9 +8,11 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString, IsUrl, IsUUID } from 'class-validator';
+import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString, IsUrl, IsUUID, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CoreCapabilityValues, type CoreCapability } from '@openlinker/core/integrations';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { OrderSyncStartDto } from './order-sync-start.dto';
 
 export class ShopifyOAuthConnectDto {
   @ApiProperty({ description: 'The store\'s permanent domain', example: 'my-shop.myshopify.com' })
@@ -70,4 +72,17 @@ export class ShopifyOAuthConnectDto {
   @IsIn(CoreCapabilityValues, { each: true })
   @IsOptional()
   enabledCapabilities?: CoreCapability[];
+
+  @ApiPropertyOptional({
+    description:
+      'Where order sync starts for the new connection (#4265): `now` (default), `from` a date, or `all`. ' +
+      'Carried through the OAuth round trip and stored when the connection is created, so it only applies ' +
+      'when the capability set includes OrderSource. Ignored when re-authenticating an existing connection.',
+    type: OrderSyncStartDto,
+    example: { mode: 'from', from: '2026-10-01' },
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => OrderSyncStartDto)
+  orderSyncStart?: OrderSyncStartDto;
 }

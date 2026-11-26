@@ -255,6 +255,12 @@ export * from './domain/types/fulfillment-relay-reconcile.types';
 export type { IFulfillmentRelayReconcileService } from './application/interfaces/fulfillment-relay-reconcile.service.interface';
 export * from './application/types/fulfillment-relay-reconcile-sweep.types';
 
+// The status poll of a POLLING holder: the pure snapshot-to-events rule and
+// the page seam the worker drives.
+export * from './domain/types/fulfillment-status-poll.types';
+export type { IFulfillmentStatusPollService } from './application/interfaces/fulfillment-status-poll.service.interface';
+export * from './application/types/fulfillment-status-poll.types';
+
 // The sale-decrement reconcile read (#3629). The enqueue is the worker's:
 // `fulfillment` may not import `@openlinker/core/sync`.
 export * from './domain/types/fulfillment-sale-decrement-reconcile.types';

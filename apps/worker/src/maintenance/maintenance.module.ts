@@ -12,7 +12,8 @@
  * file-retention sweep; and since #3507 G03-14 the `order_records.searchText`
  * reindex that takes buyer personal data out of the search index once
  * `OL_STORE_PII` is off; and since #3565 the `inventory_movements` ledger
- * retention sweep (`CoreOrdersModule` already pulls `InventoryModule` into this
+ * retention sweep, and since #4289 the buyer data retention sweep (hide and
+ * erase on the operator's schedule; `CoreOrdersModule` already pulls `InventoryModule` into this
  * role, so importing it directly adds no providers).
  *
  * @module apps/worker/src/maintenance
@@ -27,6 +28,8 @@ import { OrderExportRetentionService } from './order-export-retention.service';
 import { OrderSearchTextReindexSweepService } from './order-search-text-reindex-sweep.service';
 import { SyncJobRetentionService } from './sync-job-retention.service';
 import { InventoryMovementRetentionService } from './inventory-movement-retention.service';
+import { BuyerDataRetentionSweepService } from './buyer-data-retention.service';
+import { OrderBuyerDataRetentionSweepService } from './order-buyer-data-retention-sweep.service';
 
 @Module({
   imports: [CoreSyncModule, CoreOrdersModule, OperationalSettingsModule, CoreInventoryModule],
@@ -34,8 +37,10 @@ import { InventoryMovementRetentionService } from './inventory-movement-retentio
     StuckJobRecoveryService,
     SyncJobRetentionService,
     InventoryMovementRetentionService,
+    BuyerDataRetentionSweepService,
     OrderExportRetentionService,
     OrderSearchTextReindexSweepService,
+    OrderBuyerDataRetentionSweepService,
   ],
 })
 export class MaintenanceModule {}

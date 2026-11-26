@@ -50,6 +50,7 @@
     "@openlinker/integrations-fx": "workspace:*",
     "@openlinker/integrations-infakt": "workspace:*",
     "@openlinker/integrations-eparagony": "workspace:*",
+    "@openlinker/integrations-amazon": "workspace:*",
     "@openlinker/integrations-shoper": "workspace:*",
     "@openlinker/integrations-shopify": "workspace:*",
     "@openlinker/integrations-inpost": "workspace:*",

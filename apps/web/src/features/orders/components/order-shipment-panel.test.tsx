@@ -811,6 +811,54 @@ describe('OrderShipmentPanel — persisted rejection (#1800)', () => {
   });
 });
 
+describe('OrderShipmentPanel — default-open form on the Shipping tab (#4286)', () => {
+  function emptyShipmentsClient(): ReturnType<typeof createMockApiClient> {
+    return createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+  }
+
+  it('should open the label form by itself when nothing is shipped and dispatch is allowed', async () => {
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} defaultFormOpen />, {
+      apiClient: emptyShipmentsClient(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Generate label', level: 4 })).toBeInTheDocument();
+  });
+
+  it('should not open the form by itself on a payment-blocked order, the Generate button refuses it too (#928)', async () => {
+    const order = makeOrder({
+      orderSnapshot: {
+        ...(makeOrder().orderSnapshot as Record<string, unknown>),
+        paymentStatus: 'awaiting',
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={order} defaultFormOpen />, {
+      apiClient: emptyShipmentsClient(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    // The empty state renders (the shipments read finished) and the form stays closed.
+    await screen.findByText('No shipment yet');
+    expect(screen.queryByRole('heading', { name: 'Generate label', level: 4 })).toBeNull();
+  });
+
+  it('should not open the form by itself when the caller withholds it (a held order)', async () => {
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} defaultFormOpen={false} />, {
+      apiClient: emptyShipmentsClient(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('No shipment yet');
+    expect(screen.queryByRole('heading', { name: 'Generate label', level: 4 })).toBeNull();
+  });
+});
+
 describe('OrderShipmentPanel — deep-link auto-open (#1826)', () => {
   /**
    * A pre-waybill failed shipment — the only shape the retry deep-link may

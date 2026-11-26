@@ -106,6 +106,20 @@ export {
   unavailableSourceFulfillmentReadback,
   unsupportedSourceFulfillmentReadback,
 } from './domain/types/source-fulfillment-readback.types';
+export type { OrderFeedBootstrap } from './domain/ports/capabilities/order-feed-bootstrap.capability';
+export { isOrderFeedBootstrap } from './domain/ports/capabilities/order-feed-bootstrap.capability';
+export type { OrderFeedDateBootstrap } from './domain/ports/capabilities/order-feed-date-bootstrap.capability';
+export { isOrderFeedDateBootstrap } from './domain/ports/capabilities/order-feed-date-bootstrap.capability';
+export type {
+  OrderImportDirection,
+  OrderWindowInput,
+  OrderWindowPage,
+  OrderWindowReader,
+} from './domain/ports/capabilities/order-window-reader.capability';
+export {
+  OrderImportDirectionValues,
+  isOrderWindowReader,
+} from './domain/ports/capabilities/order-window-reader.capability';
 export type { ReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 export { isReturnSourceReader } from './domain/ports/capabilities/return-source-reader.capability';
 // The one return WRITE (#2333, ADR-060/ADR-044) — a capability of its own, NOT a
@@ -426,6 +440,7 @@ export {
   IOrderIngestionService,
   OrderIngestionOptions,
   OrderIngestionResult,
+  OrderImportPageResult,
 } from './application/interfaces/order-ingestion.service.interface';
 
 // #2408: the fulfilment-router resolution seam moved OUT of this context and
@@ -743,11 +758,34 @@ export type { OrderExportColumnId, OrderExportCellValue } from './domain/order-e
 export { buildOrderExportCsv } from './domain/order-export-csv';
 // `searchText` re-derivation under the current PII mode (#3507 G03-14).
 export type { IOrderSearchTextReindexService } from './application/services/order-search-text-reindex.service.interface';
+export type { IOrderBuyerDataRetentionService } from './application/services/order-buyer-data-retention.service.interface';
+export type {
+  OrderBuyerDataRetentionRunResult,
+  OrderBuyerDataRetentionConnectionResult,
+} from './domain/types/order-buyer-data-retention.types';
+export { redactOrderSnapshotBuyerData } from './domain/order-buyer-data-redaction';
 export type {
   OrderSearchTextReindexRow,
   OrderSearchTextRewrite,
   OrderSearchTextReindexRunResult,
 } from './domain/types/order-search-text-reindex.types';
+// Buyer data retention (#4289).
+export type { IBuyerDataRetentionService } from './application/services/buyer-data-retention.service.interface';
+export type {
+  BuyerDataAgeBucket,
+  BuyerDataAgeHistogram,
+  BuyerDataSkippedByReason,
+  BuyerDataRetentionCounts,
+  BuyerDataRetentionPreview,
+  BuyerDataRetentionPreviewInput,
+  BuyerDataRetentionRunResult,
+  BuyerDataRetentionSample,
+} from './domain/types/buyer-data-retention.types';
+export {
+  BUYER_PLACEHOLDER_PREFIX,
+  buildBuyerPlaceholder,
+  eraseBuyerPersonalDataFromSnapshot,
+} from './domain/buyer-data-retention';
 export * from './orders.tokens';
 export type {
   OrderLabelVoiderPort,
@@ -765,6 +803,7 @@ export {
 
 // Domain exceptions
 export { OrderRecordNotFoundException } from './domain/exceptions/order-record-not-found.exception';
+export { OrderSyncStartUnavailableError } from './domain/exceptions/order-sync-start-unavailable.error';
 export { NoBuyerNoteException } from './domain/exceptions/no-buyer-note.exception';
 export { MissingOrderItemMappingError } from './domain/exceptions/missing-order-item-mapping.error';
 export { OrderDestinationNotFoundException } from './domain/exceptions/order-destination-not-found.exception';

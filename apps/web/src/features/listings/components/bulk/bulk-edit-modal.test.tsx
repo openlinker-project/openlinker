@@ -11,6 +11,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderWithProviders, createMockApiClient } from '../../../../test/test-utils';
 import { BulkEditModal } from './bulk-edit-modal';
 import type * as CategoryParametersStepModule from '../category-parameters-step';
@@ -1279,6 +1280,53 @@ describe('BulkEditModal', () => {
       expect(screen.getByLabelText('Zalezny for Rozmiar: M')).toBeInTheDocument();
     });
 
+    // #4038 - the bulk editor reuses the shared combobox converter, so a
+    // dictionary pick on a custom-values parameter must reach the save as the
+    // entry id in `valuesIds`, never as the id sent for free text.
+    it('saves a dictionary pick on a custom-values parameter as valuesIds (#4038)', async () => {
+      const onSave = vi.fn();
+      const user = userEvent.setup();
+      mockCategoryParameters = [
+        {
+          id: '201017',
+          name: 'Materiał dominujący',
+          type: 'dictionary',
+          required: true,
+          restrictions: { customValuesEnabled: true },
+          section: 'product',
+          dictionary: [
+            { id: '201017_2317', value: 'bawełna' },
+            { id: '201017_2318', value: 'len' },
+          ],
+        },
+      ];
+      renderWithProviders(
+        <BulkEditModal
+          open
+          onOpenChange={() => undefined}
+          row={{ ...makeMultiRow(), override: { overrides: { categoryId: 'cat_men' } } }}
+          connection={connection}
+          canBrowseCategories={true}
+          currency="PLN"
+          defaults={DEFAULTS}
+          focusVariantId="var_m"
+          onSave={onSave}
+        />,
+      );
+
+      await user.click(
+        await screen.findByRole('combobox', { name: 'Materiał dominujący for Rozmiar: M' }),
+      );
+      await user.click(within(screen.getByRole('listbox')).getByText('bawełna'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save all' }));
+      await waitFor(() => { expect(onSave).toHaveBeenCalledTimes(1); });
+
+      expect(savedVariantParams(onSave, 'var_m')).toContainEqual(
+        expect.objectContaining({ id: '201017', valuesIds: ['201017_2317'] }),
+      );
+    });
+
     describe('attribute prefill (#3851)', () => {
       // `S` deliberately has no entry: a value with no exact match stays empty.
       const sizeParam = {
@@ -2477,7 +2525,7 @@ describe('BulkEditModal for a bundle (#3520)', () => {
     renderBundle();
     expect(screen.getByText('Set contents on Allegro')).toBeInTheDocument();
     expect(screen.getByText('Kubek 350 ml')).toBeInTheDocument();
-    expect(screen.getByText('own offer 778')).toBeInTheDocument();
+    expect(screen.getByText('your offer 778')).toBeInTheDocument();
     expect(screen.getByText('new product')).toBeInTheDocument();
   });
 

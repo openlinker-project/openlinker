@@ -1147,13 +1147,17 @@ describe('ListingsController', () => {
       });
     });
 
-    it('propagates upstream errors that are not CategoryNotFoundException', async () => {
+    it('should answer 502 with a code when the marketplace fails to give the parameters', async () => {
       const fetch = jest.fn().mockRejectedValue(new Error('upstream-503'));
       integrationsService.getCapabilityAdapter.mockResolvedValue(makeAdapter(true, fetch));
 
-      await expect(controller.getCategoryParameters('conn-1', '257933')).rejects.toThrow(
-        'upstream-503'
-      );
+      await expect(controller.getCategoryParameters('conn-1', '257933')).rejects.toMatchObject({
+        response: {
+          statusCode: 502,
+          code: 'MARKETPLACE_CATEGORY_PARAMETERS_UNAVAILABLE',
+          params: { categoryId: '257933', connectionId: 'conn-1' },
+        },
+      });
     });
   });
 

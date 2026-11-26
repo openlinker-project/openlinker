@@ -8,7 +8,7 @@ offers, receive orders and keep stock in step.
 Empik runs on Mirakl, so the connection is served by the shared Mirakl plugin
 (`@openlinker/integrations-mirakl`, adapter key `empik.mirakl.v1`, platform type
 `empik`). For the design, see
-[ADR-086](../../../../docs/architecture/adrs/086-mirakl-plugin-with-operator-profiles.md);
+[ADR-088](../../../../docs/architecture/adrs/088-mirakl-plugin-with-operator-profiles.md);
 for what each capability does call by call, see the [package README](../README.md).
 
 ## Prerequisites
@@ -352,5 +352,5 @@ Mirakl Seller API calls the plugin uses:
 ## Additional Resources
 
 - [Mirakl plugin README](../README.md)
-- [ADR-086: Mirakl plugin with operator profiles](../../../../docs/architecture/adrs/086-mirakl-plugin-with-operator-profiles.md)
+- [ADR-088: Mirakl plugin with operator profiles](../../../../docs/architecture/adrs/088-mirakl-plugin-with-operator-profiles.md)
 - Mirakl Seller API reference (from the Empik seller panel help)

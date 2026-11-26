@@ -1,6 +1,10 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import {
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+} from '../../../test/test-utils';
 import { AllegroSetupForm } from './AllegroSetupForm';
 import { getMessages } from '../../../shared/i18n';
 
@@ -94,14 +98,18 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Environment');
     expect(within(container).getByLabelText(/environment/i)).toBeInTheDocument();
 
+    // An installation with no catalogue connection is the marketplace-only case
+    // (#4281): the step opens on "None" and the picker is not offered.
     await advanceOneStep(container, 'Product catalogue');
-    expect(within(container).getByLabelText(/product catalogue connection/i)).toBeInTheDocument();
+    expect(within(container).getByRole('radio', { name: /^No catalog/ })).toBeChecked();
+    expect(within(container).queryByLabelText(/product catalogue connection/i)).toBeNull();
 
     await advanceOneStep(container, 'Sales documents');
     expect(
       within(container).getByText('How should delivery appear on receipts and invoices?')
     ).toBeInTheDocument();
 
+    await advanceOneStep(container, 'Order history');
     await advanceOneStep(container, 'Review & connect');
     expect(
       within(container).getByRole('button', { name: /connect with allegro/i })
@@ -118,6 +126,7 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
+    await advanceOneStep(container, 'Order history');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -134,6 +143,7 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
+    await advanceOneStep(container, 'Order history');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -153,6 +163,7 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
+    await advanceOneStep(container, 'Order history');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -163,8 +174,81 @@ describe('AllegroSetupForm', () => {
         redirectUri: 'http://localhost:5173/integrations/allegro/connect/callback',
         environment: 'sandbox',
         connectionName: 'Allegro sandbox',
+        catalogueMode: 'none',
         deliveryOnDocuments: { countries: {}, default: SHIPPING_DEFAULT },
       });
+    });
+  });
+
+  describe('product catalogue step (#4281)', () => {
+    const CATALOGUE_ID = '123e4567-e89b-42d3-a456-426614174000';
+    const withMaster = (): ReturnType<typeof createMockApiClient> =>
+      createMockApiClient({
+        connections: {
+          list: vi.fn().mockResolvedValue([{ ...sampleConnection, id: CATALOGUE_ID }]),
+        },
+      });
+
+    it('starts on Linked with the picker when a catalogue connection exists', async () => {
+      const { container } = renderWithProviders(<AllegroSetupForm />, {
+        apiClient: withMaster(),
+      });
+      fillCredentialsStep(container);
+      await advanceOneStep(container, 'Environment');
+      await advanceOneStep(container, 'Product catalogue');
+
+      expect(within(container).getByRole('radio', { name: /^Linked to a catalog/ })).toBeChecked();
+      expect(
+        await within(container).findByLabelText(/product catalogue connection/i)
+      ).toBeInTheDocument();
+    });
+
+    it('does not preselect None over an explicit Linked choice', async () => {
+      const startOAuth = vi.fn().mockResolvedValue({ authorizationUrl: 'https://allegro.pl/auth', state: 's' });
+      vi.stubGlobal('location', { origin: 'http://localhost:5173', assign: vi.fn() });
+      const apiClient = createMockApiClient({
+        allegro: { startOAuth },
+        connections: { list: vi.fn().mockResolvedValue([]) },
+      });
+      const { container } = renderWithProviders(<AllegroSetupForm />, { apiClient });
+      fillCredentialsStep(container);
+      await advanceOneStep(container, 'Environment');
+      await advanceOneStep(container, 'Product catalogue');
+      fireEvent.click(within(container).getByRole('radio', { name: /^Linked to a catalog/ }));
+      await advanceOneStep(container, 'Sales documents');
+      await advanceOneStep(container, 'Order history');
+      await advanceOneStep(container, 'Review & connect');
+      fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
+
+      await waitFor(() => expect(startOAuth).toHaveBeenCalledTimes(1));
+      expect(startOAuth.mock.calls[0][0]).not.toHaveProperty('catalogueMode');
+    });
+
+    it('hides the barcode-linking explanation while None is selected', async () => {
+      const { container } = renderWithProviders(<AllegroSetupForm />, {
+        apiClient: defaultApiClient(),
+      });
+      fillCredentialsStep(container);
+      await advanceOneStep(container, 'Environment');
+      await advanceOneStep(container, 'Product catalogue');
+
+      expect(within(container).queryByText('Link the product catalogue')).toBeNull();
+      fireEvent.click(within(container).getByRole('radio', { name: /^Linked to a catalog/ }));
+      expect(await within(container).findByText('Link the product catalogue')).toBeInTheDocument();
+    });
+
+    it('shows the choice on the review step', async () => {
+      const { container } = renderWithProviders(<AllegroSetupForm />, {
+        apiClient: defaultApiClient(),
+      });
+      fillCredentialsStep(container);
+      await advanceOneStep(container, 'Environment');
+      await advanceOneStep(container, 'Product catalogue');
+      await advanceOneStep(container, 'Sales documents');
+      await advanceOneStep(container, 'Order history');
+      await advanceOneStep(container, 'Review & connect');
+
+      expect(container.textContent).toContain('No catalog (marketplace only)');
     });
   });
 
@@ -215,6 +299,7 @@ describe('AllegroSetupForm', () => {
         await within(container).findByText(/Orders to Poland say “Koszt dostawy”/)
       ).toBeInTheDocument();
       expect(within(container).getByText('Receipt for an order from Poland')).toBeInTheDocument();
+      await advanceOneStep(container, 'Order history');
       await advanceOneStep(container, 'Review & connect');
       fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 
@@ -256,6 +341,7 @@ describe('AllegroSetupForm', () => {
         container.querySelector('aside[aria-label="Setup summary"]')
       ).toHaveTextContent('Delivery on documents');
 
+      await advanceOneStep(container, 'Order history');
       await advanceOneStep(container, 'Review & connect');
       fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
       await waitFor(() => {
@@ -326,6 +412,7 @@ describe('AllegroSetupForm', () => {
     await advanceOneStep(container, 'Environment');
     await advanceOneStep(container, 'Product catalogue');
     await advanceOneStep(container, 'Sales documents');
+    await advanceOneStep(container, 'Order history');
     await advanceOneStep(container, 'Review & connect');
     fireEvent.click(within(container).getByRole('button', { name: /connect with allegro/i }));
 

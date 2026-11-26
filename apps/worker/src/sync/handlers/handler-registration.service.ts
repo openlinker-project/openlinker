@@ -11,6 +11,8 @@ import { Injectable } from '@nestjs/common';
 import { SyncJobHandlerRegistry } from './sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './inventory-propagate-to-marketplaces.handler';
 import { OrdersPollHandler } from './orders-poll.handler';
+import { NotificationsDrainHandler } from './notifications-drain.handler';
+import { OrdersImportHandler } from './orders-import.handler';
 import { MarketplaceOrderSyncHandler } from './marketplace-order-sync.handler';
 import { MarketplaceOrderFxStampHandler } from './marketplace-order-fx-stamp.handler';
 import { MarketplaceOrderFxStampSweepHandler } from './marketplace-order-fx-stamp-sweep.handler';
@@ -70,6 +72,7 @@ import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.hand
 import { FulfillmentWorkAutoDispatchHandler } from './fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './fulfillment-work-relay-sweep.handler';
+import { FulfillmentWorkStatusPollHandler } from './fulfillment-work-status-poll.handler';
 import { FulfillmentWorkRerouteSweepHandler } from './fulfillment-work-reroute-sweep.handler';
 import { MarketplaceSourceFulfillmentStatusSyncHandler } from './marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
@@ -90,6 +93,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly reservationConsumeHandler: ReservationConsumeHandler,
     private readonly ordersHoldsReconcileHandler: OrdersHoldsReconcileHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
+    private readonly notificationsDrainHandler: NotificationsDrainHandler,
+    private readonly marketplaceOrdersImportHandler: OrdersImportHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
     private readonly marketplaceOrderFxStampSweepHandler: MarketplaceOrderFxStampSweepHandler,
@@ -146,6 +151,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly salesDocumentBatchTickHandler: SalesDocumentBatchTickHandler,
     private readonly salesDocumentBatchRunHandler: SalesDocumentBatchRunHandler,
     private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler,
+    private readonly fulfillmentWorkStatusPollHandler: FulfillmentWorkStatusPollHandler,
     private readonly inventorySaleDecrementHandler: InventorySaleDecrementHandler,
     private readonly fulfillmentWorkRerouteSweepHandler: FulfillmentWorkRerouteSweepHandler,
     private readonly inventorySaleDecrementReconcileSweepHandler: InventorySaleDecrementReconcileSweepHandler,
@@ -197,10 +203,25 @@ export class HandlerRegistrationService implements OnModuleInit {
       this.marketplaceOrdersPollHandler,
       'fan-out'
     );
+    // A date-window import page (#4228). `bulk`: a history walk is paced work nobody
+    // waits on, and it must never take a `realtime` slot from a buyer's order.
+    this.handlerRegistry.register(
+      'marketplace.orders.import',
+      this.marketplaceOrdersImportHandler,
+      'bulk'
+    );
     this.handlerRegistry.register(
       'marketplace.order.sync',
       this.marketplaceOrderSyncHandler,
       'realtime'
+    );
+    // Pull-based inbound notifications (#4179). 'fan-out', like the orders poll
+    // it shortens: cron-paced, makes one queue read and enqueues children; the
+    // children it routes ('marketplace.order.sync') run in 'realtime'.
+    this.handlerRegistry.register(
+      'marketplace.notifications.drain',
+      this.notificationsDrainHandler,
+      'fan-out'
     );
     // Per-order reporting-currency stamp: bounded retry + hourly reconcile (#2125).
     this.handlerRegistry.register(
@@ -702,6 +723,16 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'fulfillment.work.relaySweep',
       this.fulfillmentWorkRelaySweepHandler,
+      'bulk'
+    );
+
+    // The status poll of a polling holder (Amazon MCF). 'bulk': a cron-paced
+    // read of work already accepted, one holder call per work, nothing a buyer
+    // waits on in seconds; the dispatch relay it triggers is best-effort and
+    // backstopped by the relay sweep above.
+    this.handlerRegistry.register(
+      'fulfillment.work.statusPoll',
+      this.fulfillmentWorkStatusPollHandler,
       'bulk'
     );
 

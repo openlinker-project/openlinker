@@ -59,10 +59,7 @@ import {
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
   DELIVERY_RIDER_SERVICE_TOKEN,
 } from '@openlinker/core/mappings';
-import type {
-  IFulfillmentRoutingService,
-  IDeliveryRiderService,
-} from '@openlinker/core/mappings';
+import type { IFulfillmentRoutingService, IDeliveryRiderService } from '@openlinker/core/mappings';
 import { SHIPMENT_QUERY_SERVICE_TOKEN } from '@openlinker/core/shipping';
 import { RETURNS_SERVICE_TOKEN } from '@openlinker/core/returns';
 import { PROMOTION_APPLICATION_LOG_TOKEN } from '@openlinker/core/promotions';
@@ -212,6 +209,16 @@ describe('OrdersController', () => {
       stampPreRolloutEraForTesting: jest.fn(),
       findSearchTextReindexPage: jest.fn(),
       rewriteSearchText: jest.fn(),
+      countBuyerDataRetentionCandidates: jest.fn(),
+      countVisibleOrdersForBuyerData: jest.fn(),
+      findBuyerDataRetentionSamples: jest.fn(),
+      hideOrdersForBuyerDataRetention: jest.fn(),
+      findErasableOrdersForBuyerDataRetention: jest.fn(),
+      erasePersonalDataForRetention: jest.fn(),
+      findCustomerIdsWithoutPersonalDataOrders: jest.fn(),
+      findBuyerDataRetentionCandidates: jest.fn(),
+      redactBuyerData: jest.fn(),
+      isBuyerDataRedacted: jest.fn().mockResolvedValue(false),
       claimShippedNotification: jest.fn(),
       freezeLineExpansion: jest.fn(),
       countOpenOrdersByBundleVersion: jest.fn(),
@@ -220,6 +227,7 @@ describe('OrdersController', () => {
       recordPaymentWriteback: jest.fn().mockResolvedValue(undefined),
       markPaymentWritebackHandled: jest.fn().mockResolvedValue(0),
       countOrdersMatchingSearchSince: jest.fn(),
+      getBuyerDataAgeHistogram: jest.fn(),
     };
 
     const mockOrderRecordService = {
@@ -262,7 +270,7 @@ describe('OrdersController', () => {
     };
 
     const mockSourceFulfillment = { read: jest.fn() };
-  const mockDeliveryRider: jest.Mocked<IDeliveryRiderService> = {
+    const mockDeliveryRider: jest.Mocked<IDeliveryRiderService> = {
       // Default: no actionable hint. Batch mirrors the input length so the
       // controller's positional zip stays aligned.
       resolve: jest.fn().mockResolvedValue({ rider: 'none' }),
@@ -288,9 +296,11 @@ describe('OrdersController', () => {
 
     const mockRoutingRetry = { retryRouting: jest.fn(), rerouteHeldOrdersForVariant: jest.fn() };
     const mockProvisioningResume = {
-      resume: jest
-        .fn()
-        .mockResolvedValue({ status: 'enqueued', jobId: 'job-1', jobType: 'marketplace.order.sync' }),
+      resume: jest.fn().mockResolvedValue({
+        status: 'enqueued',
+        jobId: 'job-1',
+        jobType: 'marketplace.order.sync',
+      }),
     } as unknown as jest.Mocked<IOrderProvisioningResumeService>;
     const mockSalesDocumentView: jest.Mocked<ISalesDocumentViewService> = {
       getForOrders: jest.fn().mockResolvedValue(new Map()),
@@ -431,7 +441,10 @@ describe('OrdersController', () => {
         },
         {
           provide: PAYMENT_WRITEBACK_SERVICE_TOKEN,
-          useValue: { retry: jest.fn().mockResolvedValue(1), markHandled: jest.fn().mockResolvedValue(1) },
+          useValue: {
+            retry: jest.fn().mockResolvedValue(1),
+            markHandled: jest.fn().mockResolvedValue(1),
+          },
         },
         {
           provide: ORDER_REFUND_SERVICE_TOKEN,
@@ -499,7 +512,12 @@ describe('OrdersController', () => {
 
     it('should accept on behalf of the session user, never a body field', async () => {
       orderRecordService.getOrderRecord.mockResolvedValue({} as never);
-      sourceAmendment.accept.mockResolvedValue({ ...result, outcome: 'accepted', cause: null, closedParcels: [] });
+      sourceAmendment.accept.mockResolvedValue({
+        ...result,
+        outcome: 'accepted',
+        cause: null,
+        closedParcels: [],
+      });
 
       await controller.acceptSourceChange('ol_order_1', { id: 'user-1' } as never);
 
@@ -538,7 +556,17 @@ describe('OrdersController', () => {
         const other = orderRecordWith({ internalOrderId: 'ol_order_002' });
         repository.findMany.mockResolvedValue({ items: [mockOrder, other], total: 2 });
         fulfillmentWork.summarizeWorkForOrders.mockResolvedValue(
-          new Map([['ol_order_001', { stage: 'packing' as const, workCount: 1, assignment: 'single' as const, assignedToUserId: null }]])
+          new Map([
+            [
+              'ol_order_001',
+              {
+                stage: 'packing' as const,
+                workCount: 1,
+                assignment: 'single' as const,
+                assignedToUserId: null,
+              },
+            ],
+          ])
         );
 
         const result = await controller.listOrders({ limit: 20, offset: 0 });
@@ -580,7 +608,12 @@ describe('OrdersController', () => {
     it('should forward ?waitingInOpenLinker and ?onPackBench to the repository filters (#3482)', async () => {
       repository.findMany.mockResolvedValue({ items: [], total: 0 });
 
-      await controller.listOrders({ limit: 20, offset: 0, waitingInOpenLinker: true, onPackBench: false });
+      await controller.listOrders({
+        limit: 20,
+        offset: 0,
+        waitingInOpenLinker: true,
+        onPackBench: false,
+      });
 
       expect(repository.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ waitingInOpenLinker: true, onPackBench: false }),
@@ -821,18 +854,30 @@ describe('OrdersController', () => {
       await controller.listOrders({ withGift: false, limit: 20, offset: 0 });
       await controller.listOrders({ limit: 20, offset: 0 });
 
-      expect(repository.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({ withGift: true }), {
-        limit: 20,
-        offset: 0,
-      });
-      expect(repository.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({ withGift: false }), {
-        limit: 20,
-        offset: 0,
-      });
-      expect(repository.findMany).toHaveBeenNthCalledWith(3, expect.objectContaining({ withGift: undefined }), {
-        limit: 20,
-        offset: 0,
-      });
+      expect(repository.findMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ withGift: true }),
+        {
+          limit: 20,
+          offset: 0,
+        }
+      );
+      expect(repository.findMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ withGift: false }),
+        {
+          limit: 20,
+          offset: 0,
+        }
+      );
+      expect(repository.findMany).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({ withGift: undefined }),
+        {
+          limit: 20,
+          offset: 0,
+        }
+      );
     });
 
     it('should pass the dispatch-SLA sort and dueBefore filter through to the repository (#927)', async () => {
@@ -911,7 +956,13 @@ describe('OrdersController', () => {
         null,
         'conn-source-001',
         null,
-        { dispatchTime: { from: '2026-04-01T00:00:00Z', to: '2026-04-03T00:00:00Z', estimated: true } },
+        {
+          dispatchTime: {
+            from: '2026-04-01T00:00:00Z',
+            to: '2026-04-03T00:00:00Z',
+            estimated: true,
+          },
+        },
         [],
         'ready',
         new Date('2026-04-01T00:00:00Z'),
@@ -942,7 +993,13 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true, parcelProfile: null },
+        {
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'conn-inpost',
+          source: 'rule',
+          processorAvailable: true,
+          parcelProfile: null,
+        },
       ]);
 
       const result = await controller.listOrders({ limit: 20, offset: 0 });
@@ -983,7 +1040,13 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
+        {
+          processorKind: 'omp_fulfilled',
+          processorConnectionId: null,
+          source: 'default',
+          processorAvailable: true,
+          parcelProfile: null,
+        },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([
         { rider: 'unmapped', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
@@ -1026,7 +1089,13 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod], total: 1 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
+        {
+          processorKind: 'omp_fulfilled',
+          processorConnectionId: null,
+          source: 'default',
+          processorAvailable: true,
+          parcelProfile: null,
+        },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([{ rider: 'none' }]);
 
@@ -1043,7 +1112,9 @@ describe('OrdersController', () => {
       totalAmount: 100,
       currency: 'PLN',
     });
-    const summaries = (amount: string): Map<string, { count: number; totalAmount: string; currency: string }> =>
+    const summaries = (
+      amount: string
+    ): Map<string, { count: number; totalAmount: string; currency: string }> =>
       new Map([['ol_order_001', { count: 1, totalAmount: amount, currency: 'PLN' }]]);
 
     it('should carry a partial refundState on a list row from one batched read', async () => {
@@ -1067,7 +1138,11 @@ describe('OrdersController', () => {
 
       const result = await controller.getOrder('ol_order_001');
 
-      expect(result.refundState).toEqual({ state: 'full', refundedAmount: '100.00', currency: 'PLN' });
+      expect(result.refundState).toEqual({
+        state: 'full',
+        refundedAmount: '100.00',
+        currency: 'PLN',
+      });
     });
 
     it('should leave refundState absent on both reads when nothing was refunded', async () => {
@@ -1101,9 +1176,25 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
-        waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, giftNotAdded: 0, giftShopRejected: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        salesDocumentBlocked: 0,
+        taxRateConflict: 0,
+        salesDocumentBlockedOldestAt: null,
+        salesDocumentIssuedOnRequest: 0,
+        omsAttention: 0,
+        paymentNotSent: 0,
+        destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        onPackBench: 0,
+        openReturn: 0,
+        hasBuyerNote: 0,
+        withGift: 0,
+        withBundle: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -1121,9 +1212,25 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 1,
         awaitingDispatch: 4,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
-        waitingInOpenLinker: 3, waitingInOpenLinkerOldestAt: new Date('2026-10-23T07:00:00Z'), onPackBench: 14,
-        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, giftNotAdded: 0, giftShopRejected: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        salesDocumentBlocked: 0,
+        taxRateConflict: 0,
+        salesDocumentBlockedOldestAt: null,
+        salesDocumentIssuedOnRequest: 0,
+        omsAttention: 0,
+        paymentNotSent: 0,
+        destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 3,
+        waitingInOpenLinkerOldestAt: new Date('2026-10-23T07:00:00Z'),
+        onPackBench: 14,
+        openReturn: 0,
+        hasBuyerNote: 0,
+        withGift: 0,
+        withBundle: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -1141,9 +1248,25 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
-        waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, giftNotAdded: 0, giftShopRejected: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        salesDocumentBlocked: 0,
+        taxRateConflict: 0,
+        salesDocumentBlockedOldestAt: null,
+        salesDocumentIssuedOnRequest: 0,
+        omsAttention: 0,
+        paymentNotSent: 0,
+        destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        onPackBench: 0,
+        openReturn: 0,
+        hasBuyerNote: 0,
+        withGift: 0,
+        withBundle: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       await controller.statusSummary({
@@ -1159,13 +1282,63 @@ describe('OrdersController', () => {
       );
     });
 
+    it('should scope the summary to hidden orders when asked (#4289)', async () => {
+      repository.countByHealth.mockResolvedValue({
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+        salesDocumentBlockedOldestAt: null,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        taxRateConflict: 0,
+        omsAttention: 0,
+        reservationShortfalls: 0,
+        openReturn: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+      } as never);
+
+      await controller.statusSummary({ hidden: true });
+
+      expect(repository.countByHealth).toHaveBeenCalledWith(
+        expect.objectContaining({ hidden: true })
+      );
+    });
+
     it('should pass the open-return id list to the repository and report the new counts (#4025)', async () => {
       listOpenReturnOrderIds.mockResolvedValue(['ol_order_a', 'ol_order_b']);
       repository.countByHealth.mockResolvedValue({
-        total: 4, sourceDeleted: 0, awaitingMapping: 0, needsAttention: 0, synced: 1, awaitingDispatch: 3,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
-        waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 2, hasBuyerNote: 1, withGift: 0, withBundle: 0, giftNotAdded: 0, giftShopRejected: 0, dueWithin24h: 3, bySource: { 'conn-001': 4 },
+        total: 4,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 1,
+        awaitingDispatch: 3,
+        salesDocumentBlocked: 0,
+        taxRateConflict: 0,
+        salesDocumentBlockedOldestAt: null,
+        salesDocumentIssuedOnRequest: 0,
+        omsAttention: 0,
+        paymentNotSent: 0,
+        destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        onPackBench: 0,
+        openReturn: 2,
+        hasBuyerNote: 1,
+        withGift: 0,
+        withBundle: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 3,
+        bySource: { 'conn-001': 4 },
         attention: { lateToShip: 3, stuck: 0, toHandle: 2 },
       });
 
@@ -1182,10 +1355,31 @@ describe('OrdersController', () => {
     it('should omit the open-return counts, not report 0, when the returns read fails (#4025)', async () => {
       listOpenReturnOrderIds.mockRejectedValue(new Error('returns down'));
       repository.countByHealth.mockResolvedValue({
-        total: 0, sourceDeleted: 0, awaitingMapping: 0, needsAttention: 0, synced: 0, awaitingDispatch: 0,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0, paymentNotSent: 0, destinationRoutingBlocked: 0,
-        waitingInOpenLinker: 0, waitingInOpenLinkerOldestAt: null, onPackBench: 0,
-        openReturn: 0, hasBuyerNote: 0, withGift: 0, withBundle: 0, giftNotAdded: 0, giftShopRejected: 0, dueWithin24h: 0, bySource: {}, attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+        taxRateConflict: 0,
+        salesDocumentBlockedOldestAt: null,
+        salesDocumentIssuedOnRequest: 0,
+        omsAttention: 0,
+        paymentNotSent: 0,
+        destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        onPackBench: 0,
+        openReturn: 0,
+        hasBuyerNote: 0,
+        withGift: 0,
+        withBundle: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -1294,8 +1488,18 @@ describe('OrdersController', () => {
         },
         rawMultipackLines: {
           value: [
-            { itemId: 'L1', name: 'A', packQuantity: 2, productRef: { type: 'offer', externalId: 'O1' } },
-            { itemId: 'L2', name: 'B', packQuantity: 3, productRef: { type: 'offer', externalId: 'O2' } },
+            {
+              itemId: 'L1',
+              name: 'A',
+              packQuantity: 2,
+              productRef: { type: 'offer', externalId: 'O1' },
+            },
+            {
+              itemId: 'L2',
+              name: 'B',
+              packQuantity: 3,
+              productRef: { type: 'offer', externalId: 'O2' },
+            },
           ],
         },
       }) as OrderRecord;
@@ -1328,7 +1532,17 @@ describe('OrdersController', () => {
     it('should carry the same handledInOpenLinker projection as the list row (#3482)', async () => {
       repository.findById.mockResolvedValue(mockOrder);
       fulfillmentWork.summarizeWorkForOrders.mockResolvedValue(
-        new Map([['ol_order_001', { stage: 'packed' as const, workCount: 2, assignment: 'single' as const, assignedToUserId: null }]])
+        new Map([
+          [
+            'ol_order_001',
+            {
+              stage: 'packed' as const,
+              workCount: 2,
+              assignment: 'single' as const,
+              assignedToUserId: null,
+            },
+          ],
+        ])
       );
 
       const result = await controller.getOrder('ol_order_001');
@@ -1783,7 +1997,9 @@ describe('OrdersController', () => {
       });
 
       it('should answer 409 with a distinguishable code when the hold is already released', async () => {
-        holdService.release.mockRejectedValue(new HoldAlreadyReleasedError('hold-1', new Date('2026-08-21T10:00:00.000Z')));
+        holdService.release.mockRejectedValue(
+          new HoldAlreadyReleasedError('hold-1', new Date('2026-08-21T10:00:00.000Z'))
+        );
 
         await expect(
           controller.releaseHold('ol_order_001', 'hold-1', {}, USER)
@@ -2169,7 +2385,9 @@ describe('OrdersController', () => {
 
     it('should project a pending cancel request with its reason and note', async () => {
       repository.findById.mockResolvedValue(mockOrder);
-      orderChanges.listOperatorChangesByOrder.mockResolvedValue([{ change: change({}), open: true }]);
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([
+        { change: change({}), open: true },
+      ]);
 
       const [row] = await controller.listOrderChanges('ol_order_001');
 
@@ -2338,7 +2556,12 @@ describe('OrdersController', () => {
         cancelledAt: null,
       });
 
-      const result = await controller.cancelOrder('ol_order_001', { reason: 'fraud' }, USER, response);
+      const result = await controller.cancelOrder(
+        'ol_order_001',
+        { reason: 'fraud' },
+        USER,
+        response
+      );
 
       expect(response.status).toHaveBeenCalledWith(202);
       expect(result.status).toBe('pending');
@@ -2428,7 +2651,12 @@ describe('OrdersController', () => {
         refundRecordId: 'refund-1',
       });
 
-      await controller.confirmChange('ol_order_001', 'change-9', { acknowledgeAboveCeiling: true }, USER);
+      await controller.confirmChange(
+        'ol_order_001',
+        'change-9',
+        { acknowledgeAboveCeiling: true },
+        USER
+      );
 
       expect(orderCancellation.confirmChange).toHaveBeenCalledWith(
         expect.objectContaining({ acknowledgeAboveCeiling: true })
@@ -2440,9 +2668,7 @@ describe('OrdersController', () => {
         new RefundCeilingExceededException('ol_order_001', '50.00', '45.00', '12.50', 'PLN')
       );
 
-      await expect(
-        controller.confirmChange('ol_order_001', 'x', {}, USER)
-      ).rejects.toMatchObject({
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
         response: expect.objectContaining({
           code: 'refund_ceiling_exceeded',
           ceiling: '50.00',
@@ -2458,9 +2684,7 @@ describe('OrdersController', () => {
         new RefundRecordContendedException('ol_order_001')
       );
 
-      await expect(
-        controller.confirmChange('ol_order_001', 'x', {}, USER)
-      ).rejects.toMatchObject({
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
         response: expect.objectContaining({ code: 'refund_record_contended' }),
         status: 409,
       });
@@ -2471,9 +2695,7 @@ describe('OrdersController', () => {
         new RefundLockUnavailableException('ol_order_001')
       );
 
-      await expect(
-        controller.confirmChange('ol_order_001', 'x', {}, USER)
-      ).rejects.toMatchObject({
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
         response: expect.objectContaining({ code: 'refund_lock_unavailable' }),
         status: 503,
       });
@@ -2513,7 +2735,11 @@ describe('OrdersController', () => {
   describe('operator edits on the DTO (#3542)', () => {
     it('should flag an edited order on the list row and read no edit history for it', async () => {
       repository.findMany.mockResolvedValue({
-        items: [orderRecordWith({ orderEdits: { v: 1, rev: 1, address: { address1: 'New 1', city: 'Warsaw' } } as never })],
+        items: [
+          orderRecordWith({
+            orderEdits: { v: 1, rev: 1, address: { address1: 'New 1', city: 'Warsaw' } } as never,
+          }),
+        ],
         total: 1,
       });
 
@@ -2530,7 +2756,14 @@ describe('OrdersController', () => {
             orderEdits: {
               v: 1,
               rev: 1,
-              lines: { 'no-such-line': { changeId: 'c', editedAt: '2026-10-26T10:00:00.000Z', editedBy: null, quantity: 1 } },
+              lines: {
+                'no-such-line': {
+                  changeId: 'c',
+                  editedAt: '2026-10-26T10:00:00.000Z',
+                  editedBy: null,
+                  quantity: 1,
+                },
+              },
             } as never,
           }),
         ],
@@ -2552,8 +2785,14 @@ describe('OrdersController', () => {
     });
 
     it('should attach the edits view on the detail read only', async () => {
-      const view = { editedAt: '2026-10-26T10:00:00.000Z', lines: [], unmatchedLineEdits: [], history: [] };
-      const editService = (controller as unknown as { orderEdit: { getEditsView: jest.Mock } }).orderEdit;
+      const view = {
+        editedAt: '2026-10-26T10:00:00.000Z',
+        lines: [],
+        unmatchedLineEdits: [],
+        history: [],
+      };
+      const editService = (controller as unknown as { orderEdit: { getEditsView: jest.Mock } })
+        .orderEdit;
       editService.getEditsView.mockResolvedValue(view);
       repository.findById.mockResolvedValue(mockOrder);
 
@@ -2614,9 +2853,11 @@ describe('OrdersController', () => {
   });
 
   describe('buyer note on the DTO (#3538)', () => {
-    const actor = { id: 'user-op-001', email: 'op@example.com', role: 'operator' } as unknown as Parameters<
-      typeof controller.markBuyerNoteRead
-    >[1];
+    const actor = {
+      id: 'user-op-001',
+      email: 'op@example.com',
+      role: 'operator',
+    } as unknown as Parameters<typeof controller.markBuyerNoteRead>[1];
 
     it('keeps the note text off every LIST row but carries the flag and the scalars', async () => {
       repository.findMany.mockResolvedValue({
@@ -2682,7 +2923,9 @@ describe('OrdersController', () => {
       repository.findById.mockResolvedValue(
         orderRecordWith({ buyerNoteChangedAt: new Date('2026-10-02T10:00:00Z') })
       );
-      expect((await controller.getOrder('ol_order_001')).buyerNoteChangedAt).toBe('2026-10-02T10:00:00.000Z');
+      expect((await controller.getOrder('ol_order_001')).buyerNoteChangedAt).toBe(
+        '2026-10-02T10:00:00.000Z'
+      );
 
       repository.findById.mockResolvedValue(orderRecordWith({ buyerNoteChangedAt: null }));
       expect((await controller.getOrder('ol_order_001')).buyerNoteChangedAt).toBeNull();
@@ -2708,13 +2951,22 @@ describe('OrdersController', () => {
       expect(result.buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
       expect(result.buyerNoteReadByUserId).toBe('user-1');
       expect(result.buyerNoteAcknowledgements).toEqual([
-        { workId: 'work-1', acknowledgedAt: '2026-10-01T09:00:00.000Z', acknowledgedByUserId: 'packer-1' },
+        {
+          workId: 'work-1',
+          acknowledgedAt: '2026-10-01T09:00:00.000Z',
+          acknowledgedByUserId: 'packer-1',
+        },
       ]);
     });
 
     it('should carry the read marker on list rows when listing orders (B-3)', async () => {
       repository.findMany.mockResolvedValue({
-        items: [orderRecordWith({ hasBuyerNote: true, buyerNoteReadAt: new Date('2026-10-01T08:00:00Z') })],
+        items: [
+          orderRecordWith({
+            hasBuyerNote: true,
+            buyerNoteReadAt: new Date('2026-10-01T08:00:00Z'),
+          }),
+        ],
         total: 1,
       });
 
@@ -2733,7 +2985,10 @@ describe('OrdersController', () => {
 
       const result = await controller.markBuyerNoteRead('ol_order_001', actor);
 
-      expect(orderRecordService.markBuyerNoteRead).toHaveBeenCalledWith('ol_order_001', 'user-op-001');
+      expect(orderRecordService.markBuyerNoteRead).toHaveBeenCalledWith(
+        'ol_order_001',
+        'user-op-001'
+      );
       expect(result.buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
       expect(result.buyerNoteReadByUserId).toBe('user-op-001');
     });
@@ -2834,9 +3089,9 @@ describe('OrdersController', () => {
     it('404s without calling the service when the order does not exist', async () => {
       repository.findById.mockResolvedValue(null);
 
-      await expect(
-        controller.markPreRolloutEra('ol_order_missing', USER)
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.markPreRolloutEra('ol_order_missing', USER)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
       expect(testFixtureService.markPreRolloutEraForTesting).not.toHaveBeenCalled();
     });
 
@@ -2916,7 +3171,9 @@ describe('OrdersController', () => {
     it('should queue the writes again and report how many', async () => {
       paymentWritebackMock.retry.mockResolvedValue(2);
 
-      await expect(controller.retryPaymentWriteback({ internalOrderIds: ['ol_order_001'] })).resolves.toEqual({
+      await expect(
+        controller.retryPaymentWriteback({ internalOrderIds: ['ol_order_001'] })
+      ).resolves.toEqual({
         enqueued: 2,
       });
       expect(paymentWritebackMock.retry).toHaveBeenCalledWith(['ol_order_001']);
@@ -2931,4 +3188,3 @@ describe('OrdersController', () => {
     });
   });
 });
-

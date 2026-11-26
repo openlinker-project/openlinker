@@ -10,7 +10,13 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { RedisClientType } from 'redis';
 import { createClient } from 'redis';
-import { SyncModule } from '@openlinker/core/sync';
+import {
+  SyncModule,
+  InboundRoutingPolicyService,
+  InboundQueueDrainService,
+  INBOUND_ROUTING_POLICY_TOKEN,
+  INBOUND_QUEUE_DRAIN_SERVICE_TOKEN,
+} from '@openlinker/core/sync';
 import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
@@ -37,6 +43,8 @@ import { SyncJobRunner } from './sync-job.runner';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './handlers/inventory-propagate-to-marketplaces.handler';
 import { OrdersPollHandler } from './handlers/orders-poll.handler';
+import { NotificationsDrainHandler } from './handlers/notifications-drain.handler';
+import { OrdersImportHandler } from './handlers/orders-import.handler';
 import { MarketplaceOrderSyncHandler } from './handlers/marketplace-order-sync.handler';
 import { MarketplaceOrderFxStampHandler } from './handlers/marketplace-order-fx-stamp.handler';
 import { MarketplaceOrderFxStampSweepHandler } from './handlers/marketplace-order-fx-stamp-sweep.handler';
@@ -94,6 +102,7 @@ import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-disp
 import { FulfillmentWorkAutoDispatchHandler } from './handlers/fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-relay-sweep.handler';
+import { FulfillmentWorkStatusPollHandler } from './handlers/fulfillment-work-status-poll.handler';
 import { InventorySaleDecrementHandler } from './handlers/inventory-sale-decrement.handler';
 import { FulfillmentWorkRerouteSweepHandler } from './handlers/fulfillment-work-reroute-sweep.handler';
 import { InventorySaleDecrementReconcileSweepHandler } from './handlers/inventory-sale-decrement-reconcile-sweep.handler';
@@ -147,6 +156,15 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     SyncJobHandlerRegistry,
     InventoryPropagateToMarketplacesHandler,
     OrdersPollHandler,
+    // #4179 — pull-based inbound notifications. The routing policy is bound
+    // host-side, as the API's WebhooksModule binds it; its only dependency is
+    // JOB_ENQUEUE_TOKEN from SyncModule.
+    InboundRoutingPolicyService,
+    { provide: INBOUND_ROUTING_POLICY_TOKEN, useExisting: InboundRoutingPolicyService },
+    InboundQueueDrainService,
+    { provide: INBOUND_QUEUE_DRAIN_SERVICE_TOKEN, useExisting: InboundQueueDrainService },
+    NotificationsDrainHandler,
+    OrdersImportHandler,
     MarketplaceOrderSyncHandler,
     MarketplaceOrderFxStampHandler,
     MarketplaceOrderFxStampSweepHandler,
@@ -212,6 +230,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     FulfillmentWorkTimeoutSweepHandler,
     FulfillmentRoutingReapSweepHandler,
     FulfillmentWorkRelaySweepHandler,
+    FulfillmentWorkStatusPollHandler,
     SalesDocumentBatchTickHandler,
     SalesDocumentBatchRunHandler,
     InventorySaleDecrementHandler,

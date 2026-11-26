@@ -9,8 +9,23 @@
  * `db:<uuid>` reference automatically.
  */
 import { z } from 'zod';
-import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
+import {
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+  wizardBuyerDataConfig,
+  type BuyerDataWizardValue,
+} from '../../buyer-data';
+import {
+  CORE_CAPABILITY_VALUES,
+  type CoreCapability,
+  type CreateConnectionInput,
+} from '../api/connections.types';
 import { schemaMessage } from '../lib/schema-message';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  readsOrders,
+  toOrderSyncStart,
+} from '../lib/order-sync-start';
 
 const msg = schemaMessage('prestashopSetupSchema');
 
@@ -41,7 +56,7 @@ export const prestashopSetupSchema = z.object({
     .url(msg('baseUrlInvalid'))
     .refine(
       (value) => value.startsWith('http://') || value.startsWith('https://'),
-      msg('baseUrlProtocol'),
+      msg('baseUrlProtocol')
     ),
   webserviceKey: z.string().trim().min(1, msg('webserviceKeyRequired')),
   shopId: z.string().trim().optional(),
@@ -55,7 +70,7 @@ export const prestashopSetupSchema = z.object({
         .url(msg('storefrontUrlInvalid'))
         .refine(
           (value) => value.startsWith('http://') || value.startsWith('https://'),
-          msg('storefrontUrlProtocol'),
+          msg('storefrontUrlProtocol')
         ),
       z.literal(''),
     ])
@@ -82,6 +97,9 @@ export const prestashopSetupSchema = z.object({
   enabledCapabilities: z
     .array(z.enum(CORE_CAPABILITY_VALUES))
     .default(PRESTASHOP_FALLBACK_CAPABILITIES),
+  // The answer to the "Buyer data" question (#4289); set through `setValue`.
+  buyerDataRetention: z.custom<BuyerDataWizardValue>().optional(),
+  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
 });
 
 export type PrestashopSetupFormValues = z.input<typeof prestashopSetupSchema>;
@@ -95,10 +113,12 @@ export const PRESTASHOP_SETUP_DEFAULT_VALUES: PrestashopSetupFormValues = {
   storefrontBaseUrl: '',
   currency: '',
   enabledCapabilities: PRESTASHOP_FALLBACK_CAPABILITIES,
+  buyerDataRetention: DEFAULT_BUYER_DATA_WIZARD_VALUE,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toCreateConnectionInput(
-  values: PrestashopSetupFormSubmission,
+  values: PrestashopSetupFormSubmission
 ): CreateConnectionInput {
   const config: Record<string, unknown> = { baseUrl: values.baseUrl };
   if (values.shopId && values.shopId.length > 0) {
@@ -115,7 +135,10 @@ export function toCreateConnectionInput(
     platformType: 'prestashop',
     adapterKey: PRESTASHOP_ADAPTER_KEY,
     credentials: { webserviceApiKey: values.webserviceKey },
-    config,
+    config: { ...config, ...wizardBuyerDataConfig(values.buyerDataRetention) },
     enabledCapabilities: values.enabledCapabilities,
+    orderSyncStart: readsOrders(values.enabledCapabilities)
+      ? toOrderSyncStart(values.orderSyncStart)
+      : undefined,
   };
 }

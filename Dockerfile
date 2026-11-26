@@ -41,6 +41,7 @@ COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
 COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
 COPY libs/integrations/shoper/package.json ./libs/integrations/shoper/
+COPY libs/integrations/amazon/package.json ./libs/integrations/amazon/
 COPY libs/integrations/shopify/package.json ./libs/integrations/shopify/
 COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
 # Subiekt nexo is a SEPARATE package for a separate InsERT product. This list is
@@ -99,6 +100,7 @@ COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
 COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
 COPY libs/integrations/shoper/package.json ./libs/integrations/shoper/
+COPY libs/integrations/amazon/package.json ./libs/integrations/amazon/
 COPY libs/integrations/shopify/package.json ./libs/integrations/shopify/
 COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
 # Subiekt nexo is a SEPARATE package for a separate InsERT product. This list is
@@ -143,6 +145,7 @@ COPY --from=base --chown=node:node /app/libs/integrations/inpost/dist ./libs/int
 COPY --from=base --chown=node:node /app/libs/integrations/ksef/dist ./libs/integrations/ksef/dist
 COPY --from=base --chown=node:node /app/libs/integrations/prestashop/dist ./libs/integrations/prestashop/dist
 COPY --from=base --chown=node:node /app/libs/integrations/shoper/dist ./libs/integrations/shoper/dist
+COPY --from=base --chown=node:node /app/libs/integrations/amazon/dist ./libs/integrations/amazon/dist
 COPY --from=base --chown=node:node /app/libs/integrations/shopify/dist ./libs/integrations/shopify/dist
 COPY --from=base --chown=node:node /app/libs/integrations/subiekt/dist ./libs/integrations/subiekt/dist
 COPY --from=base --chown=node:node /app/libs/integrations/subiekt-nexo/dist ./libs/integrations/subiekt-nexo/dist

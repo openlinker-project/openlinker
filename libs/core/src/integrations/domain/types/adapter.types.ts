@@ -226,6 +226,32 @@ export interface AdapterMetadata {
   requiresCredentials?: boolean;
 
   /**
+   * Where an operator may start this adapter's ORDER feed when creating a
+   * connection (#4228): `now` (only orders from here on), `from` (from a date,
+   * needs the adapter's `OrderFeedDateBootstrap`) or `all` (the whole history).
+   * Absent means `['now', 'all']`. Declared statically because the wizard and
+   * `ConnectionService.create` must decide BEFORE any adapter instance exists
+   * (an OAuth connection has no credentials yet); the poll still probes the
+   * capability at run time and fails loudly if a declaration lied: a
+   * chosen `now`, `from` or newest-first start the adapter cannot apply ends the
+   * poll with an error naming the remedy (it never falls back to reading the
+   * whole history). Read it
+   * through `resolveOrderSyncStartModes` in `@openlinker/core/sync`. The union is
+   * spelled inline so this context takes no edge on `sync`.
+   */
+  orderSyncStartModes?: readonly ('now' | 'from' | 'all')[];
+
+  /**
+   * Whether this adapter implements `OrderWindowReader` (#4228): importing
+   * history newest-first, and importing a chosen date range on demand. Absent
+   * means `false`; the UI then shows both choices as unavailable. Declared
+   * statically for the same reason as `orderSyncStartModes`, and the import
+   * job still probes the capability at run time and fails loudly if the
+   * declaration lied.
+   */
+  orderWindowImport?: boolean;
+
+  /**
    * Whether an operator may ARCHIVE a connection on this adapter (#3657).
    * Absent means `true`; an adapter that declares `false` can be disabled but
    * never archived.
@@ -261,8 +287,9 @@ export interface AdapterMetadata {
    * whole config from non-admins, which also hid facts the UI needs to tell the
    * truth - KSeF's QR code points at a different portal per environment, so an
    * operator was shown a TEST-portal code for a production invoice. Only keys
-   * an adapter declares here, and only scalar values, are exposed as
-   * `publicConfig`; never a secret, URL or identifier. Absent means none.
+   * an adapter declares here, and only scalar values or a list of strings (an
+   * id list), are exposed as `publicConfig`; never a secret or a URL. Absent
+   * means none.
    */
   publicConfigKeys?: string[];
 
@@ -290,6 +317,21 @@ export interface AdapterMetadata {
    * unset and falls through to the sane, capability-driven default.
    */
   defaultEnabledCapabilities?: string[];
+
+  /**
+   * How long OpenLinker may keep buyer personal data on orders from this
+   * source, in days (#4178). Absent means the platform imposes no limit, which
+   * is every source except those whose terms require deletion (Amazon's Data
+   * Protection Policy: 30 days after delivery).
+   *
+   * Counted from the order's ship-by deadline, or its placement when it has
+   * none, both of which precede delivery, so deleting at that point is never
+   * later than the platform's own limit. After that the buyer's addresses,
+   * email, note and tax id are removed from the order
+   * (`IOrderBuyerDataRetentionService`), and a later re-import of the order
+   * stores none of them again. At least one day; a shorter value is ignored.
+   */
+  buyerDataRetentionDays?: number;
 
   /**
    * Config keys that must be unique across every ACTIVE connection sharing

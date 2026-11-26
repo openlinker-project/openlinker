@@ -1,8 +1,8 @@
 /**
- * Subiekt Orders Bridge HTTP Client — unit tests (#3373)
+ * Subiekt Orders Bridge HTTP Client - unit tests (#3373)
  *
  * Before this file existed, this client's transport/classification code had
- * zero direct or indirect coverage — `subiekt-order-processor.adapter.spec.ts`
+ * zero direct or indirect coverage - `subiekt-order-processor.adapter.spec.ts`
  * / `subiekt-order-source.adapter.spec.ts` never simulate a transport
  * failure. This is also the client whose own consumer (#3369) had no error
  * translation at all, silently discarding the phase this file proves is
@@ -55,7 +55,7 @@ describe('SubiektOrdersBridgeClient', () => {
       });
     });
 
-    it("classifies ECONNRESET -> retryability 'indeterminate' — the ambiguous case createOrder must never auto-retry", async () => {
+    it("classifies ECONNRESET -> retryability 'indeterminate' - the ambiguous case createOrder must never auto-retry", async () => {
       const client = buildClient(transportFailure('ECONNRESET'));
       const rejection = client.createOrder({
         orderRef: 'ol_order_1',
@@ -75,6 +75,20 @@ describe('SubiektOrdersBridgeClient', () => {
       await rejection.catch((err: SubiektBridgeUnreachableWithPhaseError) => {
         expect(err.retryability).toBe('indeterminate');
       });
+    });
+
+    it('should abort a response whose body stalls after the headers have arrived', async () => {
+      const fetchImpl = ((_url: unknown, init?: { signal?: AbortSignal }) =>
+        Promise.resolve({
+          status: 200,
+          ok: true,
+          json: (): Promise<unknown> =>
+            new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+            }),
+        } as unknown as Response)) as unknown as FetchLike;
+      const client = new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl, timeoutMs: 20 });
+      await expect(client.getOrder('1')).rejects.toBeInstanceOf(SubiektBridgeUnreachableWithPhaseError);
     });
 
     it('an unparseable JSON response stays indeterminate', async () => {
@@ -130,7 +144,7 @@ describe('SubiektOrdersBridgeClient', () => {
  * zamowienie and a second kontrahent for one sale. The invoicing, catalogue and
  * inventory transports all drew this line; this one did not.
  */
-describe('SubiektOrdersBridgeClient — a server fault wearing the business envelope', () => {
+describe('SubiektOrdersBridgeClient - a server fault wearing the business envelope', () => {
   function serverError(status: number, reason: string): Response {
     return {
       status,
@@ -179,5 +193,42 @@ describe('SubiektOrdersBridgeClient — a server fault wearing the business enve
     expect((error as Error).message).toContain('orders bridge answered HTTP 500');
     expect((error as Error).message).toContain('SQL Server unreachable');
     expect((error as Error).message).not.toContain('Subiekt rejected the request');
+  });
+
+  describe('getOrderFeedHead', () => {
+    it('returns the head payload from /api/orders/feed/head', async () => {
+      const urls: string[] = [];
+      const client = new SubiektOrdersBridgeClient(BASE, {
+        fetchImpl: ((url: string) => {
+          urls.push(url);
+          return Promise.resolve(okResponse({ nextCursor: '2026-01-01T00:00:00.0000000|9' }));
+        }) as unknown as FetchLike,
+      });
+      await expect(client.getOrderFeedHead()).resolves.toEqual({
+        nextCursor: '2026-01-01T00:00:00.0000000|9',
+      });
+      expect(urls[0]).toBe(`${BASE}/api/orders/feed/head`);
+    });
+
+    it('resolves null on a 404 (bridge predating the route), even with a non-JSON body', async () => {
+      const client = new SubiektOrdersBridgeClient(BASE, {
+        fetchImpl: (() =>
+          Promise.resolve({
+            status: 404,
+            ok: false,
+            json: (): Promise<unknown> => Promise.reject(new Error('no body')),
+          } as unknown as Response)) as unknown as FetchLike,
+      });
+      await expect(client.getOrderFeedHead()).resolves.toBeNull();
+    });
+
+    it('throws on a 500', async () => {
+      const client = new SubiektOrdersBridgeClient(BASE, {
+        fetchImpl: (() => Promise.resolve(errorResponse(500, 'boom'))) as unknown as FetchLike,
+      });
+      await expect(client.getOrderFeedHead()).rejects.toBeInstanceOf(
+        SubiektBridgeUnreachableWithPhaseError,
+      );
+    });
   });
 });

@@ -20,7 +20,7 @@ describe('ProductUsedInBundles (#3624)', () => {
     renderWithProviders(<ProductUsedInBundles variantIds={['mug']} />, { apiClient });
     const row = await screen.findByTestId('bundle-list-used-in-ZES-PORANNY');
     expect(row).toHaveTextContent('Zestaw poranny');
-    expect(row).toHaveTextContent('×2');
+    expect(row).toHaveTextContent('×2 in the bundle');
     expect(row).toHaveTextContent(/gift/i);
   });
 
@@ -46,5 +46,19 @@ describe('ProductUsedInBundles (#3624)', () => {
       expect(apiClient.bundles.usedInMany).toHaveBeenCalled();
     });
     expect(container.querySelector('[data-testid="bundle-list-used-in"]')).toBeNull();
+  });
+});
+
+describe('ProductUsedInBundles card mode', () => {
+  it('should invite the seller to make a first bundle when the product is in none', async () => {
+    const apiClient = createMockApiClient({ bundles: { usedInMany: vi.fn().mockResolvedValue([]) } });
+    renderWithProviders(
+      <ProductUsedInBundles card variantIds={['mug']} action={<a href="/x">Make one</a>} />,
+      { apiClient },
+    );
+    expect(await screen.findByTestId('bundle-list-used-in-empty')).toHaveTextContent(
+      'not in any bundle yet',
+    );
+    expect(screen.getByText('Make one')).toBeInTheDocument();
   });
 });

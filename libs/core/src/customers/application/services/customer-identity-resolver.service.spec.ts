@@ -77,12 +77,15 @@ describe('CustomerIdentityResolverService', () => {
       upsertProjection: jest.fn(),
       findDestinationAddressMapping: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
+      redactPersonalDataLastSeenBefore: jest.fn(),
     } as unknown as jest.Mocked<CustomerProjectionRepositoryPort>;
 
     customerProjectionService = {
+      getProjection: jest.fn().mockResolvedValue(null),
       upsertProjection: jest.fn(),
       upsertAddressProjection: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
+      redactPersonalDataLastSeenBefore: jest.fn(),
     } as unknown as jest.Mocked<ICustomerProjectionService>;
 
     connectionPort = {
@@ -188,6 +191,47 @@ describe('CustomerIdentityResolverService', () => {
         'connection-123'
       );
       expect(projectionRepository.findByEmailHash).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resolveCustomerIdentity - order whose buyer data was removed (#4178)', () => {
+    const request: CustomerIdentityResolutionRequest = {
+      externalBuyerId: 'amazon-buyer-1',
+      email: 'buyer@marketplace.amazon.de',
+      sourceConnectionId: 'connection-123',
+      buyerDataRemoved: true,
+    };
+
+    beforeEach(async () => {
+      process.env.OL_CUSTOMER_IDENTITY_MODE = 'external_only';
+      const module: TestingModule = await Test.createTestingModule({
+        providers: buildProviders(),
+      }).compile();
+      service = module.get<CustomerIdentityResolverService>(CustomerIdentityResolverService);
+    });
+
+    it('should resolve the identity but leave an existing projection untouched', async () => {
+      identifierMapping.getInternalId.mockResolvedValue('internal-customer-456');
+      customerProjectionService.getProjection.mockResolvedValue({
+        internalCustomerId: 'internal-customer-456',
+      } as unknown as Awaited<ReturnType<ICustomerProjectionService['getProjection']>>);
+
+      const result = await service.resolveCustomerIdentity(request);
+
+      expect(result.internalCustomerId).toBe('internal-customer-456');
+      expect(customerProjectionService.upsertProjection).not.toHaveBeenCalled();
+    });
+
+    it('should create a new projection with the email hash only', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      identifierMapping.getOrCreateInternalId.mockResolvedValue('internal-customer-789');
+
+      await service.resolveCustomerIdentity(request);
+
+      expect(customerProjectionService.upsertProjection).toHaveBeenCalledTimes(1);
+      const written = customerProjectionService.upsertProjection.mock.calls[0][0];
+      expect(written.normalizedEmail).toBeNull();
+      expect(written.emailHash).toEqual(expect.any(String));
     });
   });
 

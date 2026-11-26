@@ -51,6 +51,14 @@ export const __camelName__AdapterManifest: AdapterMetadata = {
   adapterKey: '__name__.publicapi.v1',
   platformType: '__name__',
   supportedCapabilities: [],
+  // Where order sync may start. `[]` means "no choice" and is right until you
+  // implement `OrderSource`. When you do, read the start section of
+  // `docs/plugin-author-guide.md`: add `headCursor()` and declare 'now',
+  // `cursorForDate()` and declare 'from', `listOrdersInWindow()` and set
+  // `orderWindowImport: true`. `pnpm check:invariants` fails if a declaration and
+  // the adapter disagree, and asks for a `runOrderSourceStartContract` spec and a
+  // setup form that renders `<OrderSyncStartField`.
+  orderSyncStartModes: [],
   displayName: '__Name__',
   version: '0.1.0',
   isDefault: true,

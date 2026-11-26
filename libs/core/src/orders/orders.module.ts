@@ -64,6 +64,9 @@ import { OrderExportRepository } from './infrastructure/persistence/repositories
 import { OrderExportRunOrmEntity } from './infrastructure/persistence/entities/order-export-run.orm-entity';
 import { OrderExportService } from './application/services/order-export.service';
 import { OrderSearchTextReindexService } from './application/services/order-search-text-reindex.service';
+import { BuyerDataRetentionService } from './application/services/buyer-data-retention.service';
+import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
+import { OrderBuyerDataRetentionService } from './application/services/order-buyer-data-retention.service';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
 import { OrderTestFixtureService } from './application/services/order-test-fixture.service';
 import { MarginAnalyticsService } from './application/services/margin-analytics.service';
@@ -125,6 +128,8 @@ import {
   ORDER_EXPORT_REPOSITORY_TOKEN,
   ORDER_EXPORT_SERVICE_TOKEN,
   ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
+  BUYER_DATA_RETENTION_SERVICE_TOKEN,
+  ORDER_BUYER_DATA_RETENTION_SERVICE_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
 import { OrderChangesModule } from './order-changes.module';
@@ -186,6 +191,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     MappingsModule, // Required for MAPPING_CONFIG_SERVICE_TOKEN and FULFILLMENT_ROUTING_SERVICE_TOKEN
     InventoryModule, // Required for RESERVATION_SERVICE_TOKEN (#2344)
     CustomersModule, // Required for CUSTOMER_IDENTITY_RESOLVER_SERVICE_TOKEN
+    OperationalSettingsModule, // Required for the buyer data retention rule defaults (#4289)
     // One-way edge (F3): OrderIngestionService injects AUTO_ISSUE_TRIGGER_SERVICE_TOKEN.
     // InvoicingModule does NOT import OrdersModule — its trigger service consumes
     // an orders runtime value (PAYMENT_STATUS) via a dependency-free leaf import,
@@ -269,6 +275,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     OrderExportRepository,
     OrderExportService,
     OrderSearchTextReindexService,
+    OrderBuyerDataRetentionService,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -485,6 +492,15 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       provide: ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
       useExisting: OrderSearchTextReindexService,
     },
+    BuyerDataRetentionService,
+    {
+      provide: BUYER_DATA_RETENTION_SERVICE_TOKEN,
+      useExisting: BuyerDataRetentionService,
+    },
+    {
+      provide: ORDER_BUYER_DATA_RETENTION_SERVICE_TOKEN,
+      useExisting: OrderBuyerDataRetentionService,
+    },
   ],
   exports: [
     OrderRecordService, // Export service class for direct injection
@@ -565,6 +581,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the worker's `maintenance` role can run the PII-mode
     // `searchText` reindex pass (#3507 G03-14).
     ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN,
+    // Exported so the API's preview endpoint and the worker's `maintenance`
+    // role can run the buyer data retention trial and sweep (#4289).
+    BUYER_DATA_RETENTION_SERVICE_TOKEN,
+    ORDER_BUYER_DATA_RETENTION_SERVICE_TOKEN,
   ],
 })
 export class OrdersModule {}

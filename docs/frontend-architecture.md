@@ -434,6 +434,39 @@ A global client store is only justified when all of the following are true:
 
 Until those conditions are met, prefer Query, URL, form state, or local component state instead.
 
+## Saved list views (#4241)
+
+Named, restorable arrangements of a list page: filter query, sort, visible columns and the field order inside stacked columns. Feature: `features/saved-views` (public barrel `index.ts`); backend in `libs/core/src/saved-views` and `apps/api/src/saved-views` (see `docs/architecture-overview.md` § 32). Design of record: `docs/plans/mockups/saved-views/`.
+
+### State ownership
+
+| State | Owner |
+|---|---|
+| The list as it is now (filters, sort, view id) | the URL |
+| Named views (personal, shared, per-user default) | TanStack Query (`/saved-views`) |
+| Pinned tabs, and column drafts of a list with built-in views only | `localStorage` (`ol.saved-views.pinned.<pageKey>`, `ol.saved-views.<pageKey>.draft.v1`), every access guarded |
+| Search text, page, density, theme | never part of a view and never stored with one |
+
+System views are code (the registry), never rows. A view applies by writing its query into the address, so a link always reproduces what is on screen. A deep link (a view param or any filter) wins over the default view; the default chain (own default, workspace default, first built-in view) applies only to a bare address.
+
+### How a page adopts it
+
+1. Declare a `ListRegistry<Row>` in `features/<feature>/lib/<feature>.list-config.ts`: `pageKey`, the `locked` identity column, `columns` (with `parts` for stacked cells), `filters`, `sorts`, `defaultSort`, `systemViews`. A registry whose cells close over query data must be built in `useMemo` keyed on that data: the engine memoizes on registry identity.
+2. Call `useListView({ registry, pageTitle, counts })` and render what it returns: `viewsBar`, `editedBar`, `repairBanner`, the columns panel props and dialogs, with `toColumns()` feeding `DataTable`.
+3. Add the page to `SAVED_VIEW_PAGES` in `apps/api/src/saved-views/saved-view-page-keys.ts`, with its existing list-query DTO.
+4. Copy lives in the `saved-views` i18n namespace; per-page labels (column, sort and system view names) in the page's own namespace.
+
+Registry options that matter: `customViews: false` keeps built-in views only (Customers, Sales documents, Sync jobs, Webhook deliveries: no save, no per-view menu); `nonViewParams` / `extraNonViewParams` name params that are never part of a view (search, paging, page-specific modes); `sortCodec` keeps a page's existing sort spelling (Orders keeps `sort=total&dir=asc`; the default is `sort=key:dir`); `storedQuery` encodes and decodes the filter query for storage; `viewParam` renames the param carrying the applied view id when the page's own `view` param is taken (Listings uses `savedView`).
+
+### Rules
+
+- **A stored query is validated by the page's list DTO**, so its keys must be names that DTO accepts. When a page's URL params differ from the DTO's (Orders: `invoicing=blocked` vs `salesDocumentBlocked=true`), supply a `storedQuery` codec. The server refuses unknown keys by name rather than storing them.
+- The server strips `search`, `offset`, `cursor`, `limit` and `withTotal` from every stored query, and the client treats them as non-view params. Search is free text (often an email or a name) and a shared view would show it to every role.
+- Selection is cleared when the view changes: the rows underneath are different.
+- Column and part ids in a stored view that the registry no longer knows are reconciled on load and reported by the repair banner; they are never refused on write.
+- Orders adopts views behind `VITE_OL_ORDERS_SAVED_VIEWS_ENABLED` (build-time, on by default, only the literal `false` turns it off, restoring the health tabs and column presets). The legacy `ol.orders-list.visible-columns.v1` key is read once into the draft and removed. A "Late to ship" system view was deliberately not shipped: it needs a relative date, which a stored query cannot express.
+- Not done: views for `failed-orders` and `dispatch-risk`; the Orders export dialog still reads the old column-preset endpoints.
+
 ## Auth And Session
 
 The backend does not yet expose a production-ready user session flow, so the frontend must define an abstraction without coupling the app to a premature implementation.
@@ -507,6 +540,7 @@ Initial variables:
 - `VITE_API_BASE_URL`
 - `VITE_APP_ENV`
 - `VITE_DEFAULT_UI_LOCALE` - the language a session opens in when the operator has not chosen one and the browser asks for no language the app ships (`pl` or `en`; a blank or unsupported value counts as unset, which means `en`; see § Internationalization). Available from #3856.
+- `VITE_I18N_HIGHLIGHT_MISSING` - `true` turns on the development-only missing-translation inspector (see § Internationalization, Guardrails). Default `false`; it has no effect in a production build. Available from #4017.
 
 Rules:
 
@@ -752,6 +786,10 @@ Unit tests and Playwright run in English. `src/test/setup.ts` resets the active 
   - **Escape hatch:** a brand name, unit or mixed-case code that trips the rule either goes in the namespace with identical `en` and `pl` values, or gets `// eslint-disable-next-line i18next/no-literal-string -- <reason>` (`eslint-comments/require-description` already demands the reason).
   - `scripts/check-i18n-lint-rule.mjs` resolves the real config for a real `shared/ui` file and fails if the rule is off there or on for tests and copy files, if any `files` glob matches nothing, or if the sentence, `{'text'}`, ternary and template fixtures stop being reported. A typo in `files`, an empty glob or a later override can each silence the rule while `pnpm lint` stays green.
 - **Pseudo-language**: in a development build, `?lang=xx` renders English accented, bracketed and about 40% longer, and marks `<html data-pseudo-locale="true">`. It lasts for the browser session until a real language is picked. Plain English on that screen is a string that was never extracted; a broken layout is one that Polish will break too.
+- **Missing-translation inspector** (#4017): in a development build with `VITE_I18N_HIGHLIGHT_MISSING=true` and a language other than English active, every text that fell back to English is marked on the real screen. Element text gets a wavy underline (CSS Custom Highlight API; boxes from `Range.getClientRects()` where the API is missing or the text is inside an SVG chart), a fallback placeholder a wavy `::placeholder`, and an element whose `title`, `aria-label`, `aria-description`, `alt`, `value` or `<select>` option fell back a dashed outline with a badge naming the attribute. Hover or focus shows the namespace, key path, text and kind (missing key, empty string, missing plural form). A panel in the bottom corner lists every fallback key read on the current screen, including ones that never reach the DOM (document title, `confirm`, file names, charts), marked "read but not on screen"; a row scrolls to the text, "Copy list" copies `namespace.keyPath` lines, and the list resets on a route change unless "Keep across routes" is ticked.
+  - **How:** `mergeOverEnglish` takes an optional tagger; `src/shared/i18n/missing-inspector/` wraps each fallback in zero-width markers carrying a registry id, and a proxy over each merged tree records every marked string that is read. Markers sit outside `{placeholder}` and `<tag>` syntax, so `interpolate`, `usePlural` and `renderRich` are unaffected, and copying text strips them.
+  - **Caveat:** while it is on, a marked string is not equal to its English text, so logic that compares, sorts or URL-encodes copy can behave differently. It is a viewing aid; turn it off to test behaviour. A text counts as read when code takes it from the copy tree, so spreading a section (`{ ...copy.header }`), `Object.entries` or `JSON.stringify` marks every key in it as read, and those keys can appear as "read but not on screen" without being used. English and `?lang=xx` are never marked, and tests run in English.
+  - **Never shipped:** `main.tsx` loads it with a dynamic `import()` behind `import.meta.env.DEV`. `pnpm --filter @openlinker/web check:i18n-inspector-build` builds with the variable set and fails if the inspector's sentinel string is in the output. It runs in CI, in the `Test (web)` job, and is not part of `pnpm lint` / `check:invariants` because it needs a full `vite build`; run it by hand after changing how `main.tsx` loads the inspector or after adding an import of anything under `missing-inspector/`.
 - **Overflow pass**: `pnpm --filter @openlinker/e2e exec playwright test --project=setup --project=i18n` opens the daily screens in English, then in `pl` and `xx`, and fails when a button, header, badge or chip that fits in English no longer fits its text. It first proves it can catch a deliberately overflowing button. Run it against a local stack before merging a translation batch.
 
 ### Adding another language
@@ -779,6 +817,18 @@ Every translation lives in a namespace: one `apps/web/src/locales/<lang>/<namesp
 Tests keep running in English (pinned in `src/test/setup.ts` and the Vitest config), so add only targeted tests for the new language, for example its plural forms and the `locale.ts` mapping. `src/test/setup.ts` loads every language once before the tests run; add the new code there.
 
 To see where each language stands, run `pnpm i18n:report` (add `--missing` to list the missing key paths): it prints, per namespace, how many English keys the language has translated, most missing first, plus a `TOTAL` line, and it picks the new language up as soon as step 8 is done.
+
+## Release center and the settings page template (planned, epic #4131)
+
+*See [ADR-086](./architecture/adrs/086-release-center.md). Described as designed; not shipped yet.*
+
+- **Settings page template** (`shared/ui/settings-page-template.tsx`): one layout for every settings view - eyebrow, title, description, a sticky "On this page" contents, a single card of sections and actions at the bottom; the page title condenses into the sticky contents once the big title scrolls away. It must not import `features` or `pages`, uses tokens only, and respects `prefers-reduced-motion`. Wizards (they have a stepper) and the Mappings page (its own tabbed layout) are deliberately outside it.
+- **Plugin `sectionTitle`**: the plugin section contract gains an optional, already-resolved `sectionTitle` (from the plugin's own i18n namespace). A plugin without it appears in the contents as one "Platform settings" entry; a slot that renders nothing is left out. The change is additive. It lives on `PlatformContribution.sectionTitle` (`shared/plugins/plugin.types.ts`); set it as a getter so it follows the operator's language. `EditConnectionForm` wraps the plugin slots (structured section, master-catalog picker, extra section) in one contents entry and drops the entry when the slots rendered nothing; host sections carry fixed titles from `connections.editConnectionForm.sections`.
+- **`features/release-center`** owns the dialog (Radix `Dialog`), the bell and panel, the guided tour and the step catalog. `ShellTopbar` takes an `alerts` prop: `AppShell` passes the bell, the pack bench layout passes `null`, so a packer never sees it. The provider mounts inside `AuthenticatedAppLayout` after the password-change and consent redirects.
+- **Step completion is observed** through the `MutationCache` by the `mutationKey` of `useUpdateConnectionMutation`; `features/connections` must not import the release center.
+- **Guides and notifications.** A feature that wants to tell the operator something imports only `publishNotification` / `registerNotificationRule` from `features/release-center` and never the bell; a guide is a `release-showcases.ts` entry. Notification links must be real routes (checked by `pnpm check:release-center-catalog`). Message content is browser-local per user (ADR-086 amendment); read, archived and deleted are release-state user rows.
+- **No browser storage** for release-center state, except the content of message notifications in `lib/notification-store.ts` (ADR-086 amendment) (ESLint `no-restricted-properties` on `localStorage` and `sessionStorage`, plus a test). State comes from `GET /release-state`; a 404 or 500 is treated as "disabled".
+- **Registered viewer exceptions to the hide-write-affordance rule (§ Access Control And UI Visibility):** the read-only banner on settings pages ("You have read-only access. An administrator saves changes.", fields disabled) and the "Needs an administrator" chip on a step. A viewer is shown what exists and who can change it, as with the cost-price and stock-adjust exceptions above.
 
 ## Components And Pages
 

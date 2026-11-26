@@ -51,12 +51,13 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactElement,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
@@ -69,6 +70,7 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import { Input } from '../../../shared/ui/input';
+import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import { useConnectionsQuery } from '../../connections';
 import { useProductsQuery } from '../../products';
@@ -87,6 +89,8 @@ import {
   type SelectionEntry,
 } from './offer-product-picker.types';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+
+type BundleFilter = 'all' | 'only' | 'exclude';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -117,6 +121,7 @@ export function OfferProductPickerModal({
   const format = useFormat();
 
   const [searchInput, setSearchInput] = useState('');
+  const [bundleFilter, setBundleFilter] = useState<BundleFilter>('all');
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selection, setSelection] = useState<Map<string, SelectionEntry>>(new Map());
@@ -190,7 +195,10 @@ export function OfferProductPickerModal({
   );
 
   const productsQuery = useProductsQuery(
-    { search: debouncedSearch || undefined },
+    {
+      search: debouncedSearch || undefined,
+      bundles: bundleFilter === 'all' ? undefined : bundleFilter,
+    },
     { limit: PAGE_SIZE, offset },
   );
   const productItems = productsQuery.data?.items;
@@ -374,6 +382,30 @@ export function OfferProductPickerModal({
     else searchInputRef.current?.focus();
   }, [step, isOpen]);
 
+  // Return focus to the control that opened the dialog. This component renders
+  // nothing while closed, so Radix unmounts with the trigger-less Root and has
+  // nowhere to send focus: it fell to <body> and a keyboard user restarted at
+  // the top of the page. Captured in a layout effect, which runs before the
+  // dialog's own passive focus effects move focus inside.
+  const openerRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (isOpen) {
+      const active = document.activeElement;
+      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      return undefined;
+    }
+    const opener = openerRef.current;
+    openerRef.current = null;
+    if (!opener) return undefined;
+    // After Radix's own unmount-time focus move, which would otherwise win.
+    const timer = window.setTimeout(() => {
+      if (opener.isConnected) opener.focus();
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const pageEnd = Math.min(offset + PAGE_SIZE, total);
@@ -450,6 +482,20 @@ export function OfferProductPickerModal({
                 <p className="offer-product-picker__hint">
                   {copy.search.hint}
                 </p>
+                <SegmentedControl<BundleFilter>
+                  className="offer-product-picker__bundle-filter"
+                  aria-label={copy.bundleFilter.ariaLabel}
+                  value={bundleFilter}
+                  options={[
+                    { value: 'all', label: copy.bundleFilter.all },
+                    { value: 'only', label: copy.bundleFilter.only },
+                    { value: 'exclude', label: copy.bundleFilter.exclude },
+                  ]}
+                  onChange={(next) => {
+                    setBundleFilter(next);
+                    setOffset(0);
+                  }}
+                />
               </div>
 
               <div className="offer-product-picker__list">
@@ -475,7 +521,15 @@ export function OfferProductPickerModal({
                   <p className="muted-text">
                     {debouncedSearch.trim()
                       ? interpolate(copy.empty.noMatch, { query: debouncedSearch.trim() })
-                      : copy.empty.noProducts}
+                      : bundleFilter === 'only'
+                        ? copy.empty.noBundles
+                        : copy.empty.noProducts}
+                    {bundleFilter === 'only' && !debouncedSearch.trim() ? (
+                      <>
+                        {' '}
+                        <Link to="/products/bundles/new">{copy.empty.createBundle}</Link>
+                      </>
+                    ) : null}
                   </p>
                 ) : (
                   <ul className="offer-product-picker__prows">

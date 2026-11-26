@@ -90,9 +90,23 @@ import {
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { FxRestatementRemainingSummary } from '../../../domain/types/order-fx-restatement.types';
 import type {
+  BuyerDataAgeHistogramRows,
+  BuyerDataRetentionCounts,
+  BuyerDataRetentionSample,
+  BuyerDataRetentionScope,
+  ErasableOrderRow,
+  PersonalDataErasure,
+  PersonalDataErasureResult,
+} from '../../../domain/types/buyer-data-retention.types';
+import { buildBuyerPlaceholder } from '../../../domain/buyer-data-retention';
+import type {
   OrderSearchTextReindexRow,
   OrderSearchTextRewrite,
 } from '../../../domain/types/order-search-text-reindex.types';
+import type {
+  OrderBuyerDataRedaction,
+  OrderBuyerDataRetentionCandidate,
+} from '../../../domain/types/order-buyer-data-retention.types';
 import {
   AuthorityAttentionCountedReasonValues,
   buildAuthorityAttentionPayload,
@@ -155,6 +169,36 @@ import type {
 const NET_EXCLUDED_CANDIDATE_PAGE_SIZE = 500;
 
 /**
+ * The order's age for buyer data retention (#4289): when the buyer placed it,
+ * falling back to when OpenLinker first stored it for a source that reports no
+ * placement instant.
+ */
+const BUYER_DATA_AGE_SQL = 'COALESCE(rec."placedAt", rec."createdAt")';
+
+/**
+ * Orders the retention rule must never act on (#4289): an open hold, an open
+ * return, or a sales document still being issued. Hiding or erasing under any
+ * of them would change what an operator is in the middle of working on.
+ * Issued documents are NOT protective - erasing the order's personal data does
+ * not touch an issued document, and a document-protected rule would exempt
+ * nearly every order of an install that issues invoices.
+ */
+const BUYER_DATA_HOLD_SQL = `EXISTS (SELECT 1 FROM "order_holds" oh
+          WHERE oh."internalOrderId" = rec."internalOrderId" AND oh."releasedAt" IS NULL)`;
+const BUYER_DATA_OPEN_RETURN_SQL = `EXISTS (SELECT 1 FROM "returns" ret
+             WHERE ret."internalOrderId" = rec."internalOrderId" AND ret."closedAt" IS NULL)`;
+const BUYER_DATA_INVOICE_PENDING_SQL = `EXISTS (SELECT 1 FROM "invoice_records" ir
+             WHERE ir."orderId" = rec."internalOrderId" AND ir."status" IN ('pending', 'issuing'))`;
+const BUYER_DATA_PROTECTED_SQL = `(
+  ${BUYER_DATA_HOLD_SQL}
+  OR ${BUYER_DATA_OPEN_RETURN_SQL}
+  OR ${BUYER_DATA_INVOICE_PENDING_SQL}
+)`;
+
+/** Orders at or past this many 30-day months share the last histogram bucket. */
+const BUYER_DATA_HISTOGRAM_CAP_MONTHS = 120;
+
+/**
  * Empty defaults for the columns whose "unwritten" value is not `null`, keyed
  * by ORM property name. Consumed by `fromRawRow`'s derived reset; every other
  * column resets to `null`. Factories, not shared literals, so no two returned
@@ -189,10 +233,23 @@ function orderRecordColumnProperties(): readonly string[] {
 /** Rollup states that mean the order's parcels left (#3554, `order.shipped`). */
 const SHIPPED_FULFILLMENT_STATES = ['dispatched', 'delivered'] as const;
 
+/**
+ * The retention anchor (#4178), text-identical to the partial index
+ * `IDX_order_records_buyer_data_retention` so the planner can use it.
+ */
+/**
+ * "This order's buyer data is already gone" as seen by the upsert's own
+ * `ON CONFLICT` clauses: erased by a retention rule or an erasure (#4289), or
+ * redacted by the source's retention period (#4178). The redaction now sets
+ * `personalDataErasedAt` too, so the second arm only covers orders redacted
+ * before it did; one definition keeps the clauses from drifting apart.
+ */
+const BUYER_DATA_GONE_SQL = `("order_records"."personalDataErasedAt" IS NOT NULL OR "order_records"."buyerDataRedactedAt" IS NOT NULL)`;
+
+const BUYER_DATA_RETENTION_ANCHOR_SQL = `COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt" AT TIME ZONE 'UTC')`;
+
 @Injectable()
-export class OrderRecordRepository
-  implements OrderRecordRepositoryPort, OrderGiftReportReaderPort
-{
+export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGiftReportReaderPort {
   /**
    * The "currency mismatch" predicate (#2464/#2713/#2468 review) — a row
    * that either never got an FX stamp (`reportingCurrency IS NULL`) or was
@@ -232,7 +289,7 @@ export class OrderRecordRepository
       .where('rec."createdAt" >= :since', { since });
     qb.andWhere(
       `(${patterns.map((_, index) => `rec."searchText" LIKE :p${index} ESCAPE '\\'`).join(' OR ')})`,
-      Object.fromEntries(patterns.map((pattern, index) => [`p${index}`, pattern])),
+      Object.fromEntries(patterns.map((pattern, index) => [`p${index}`, pattern]))
     );
     return qb.getCount();
   }
@@ -563,9 +620,7 @@ export class OrderRecordRepository
       // v1 scale (≤30k rows in the typical 30-day window), file a follow-up
       // if scan time creeps.
       qb.andWhere(`rec."syncStatus" @> :destFilter::jsonb`, {
-        destFilter: JSON.stringify([
-          { destinationConnectionId: filters.destinationConnectionId },
-        ]),
+        destFilter: JSON.stringify([{ destinationConnectionId: filters.destinationConnectionId }]),
       });
     }
 
@@ -797,9 +852,16 @@ export class OrderRecordRepository
       // an order that went back to `awaiting_mapping` keeps the flag but is not
       // one an operator can work on. `false` is deliberately unchanged.
       qb.andWhere(
-        filters.hasBuyerNote ? OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE : 'rec."hasBuyerNote" = false'
+        filters.hasBuyerNote
+          ? OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE
+          : 'rec."hasBuyerNote" = false'
       );
     }
+
+    // #4289: hidden orders are out of the default list and search. `hidden: true`
+    // is the explicit "show hidden" view. Detail reads (`findById`) do not go
+    // through this builder, so a direct link to a hidden order still opens.
+    qb.andWhere(OrderRecordRepository.hiddenScopePredicate(filters.hidden));
 
     if (filters.search !== undefined) {
       // #3527 — free-text search over the denormalized, diacritic-folded
@@ -1027,7 +1089,9 @@ export class OrderRecordRepository
       openReturnIds.length > 0 ? `rec."internalOrderId" IN (:...summaryOpenReturnIds)` : 'FALSE';
     const giftNotAddedIds = filters.giftNotAddedOrderIds ?? [];
     const giftNotAdded =
-      giftNotAddedIds.length > 0 ? `rec."internalOrderId" IN (:...summaryGiftNotAddedIds)` : 'FALSE';
+      giftNotAddedIds.length > 0
+        ? `rec."internalOrderId" IN (:...summaryGiftNotAddedIds)`
+        : 'FALSE';
     const notShipped = OrderRecordRepository.NOT_SHIPPED;
     // SLA overdue OR at risk == not shipped with a deadline at or before the
     // at-risk cutoff - the union of `applySlaFilter`'s two arms.
@@ -1052,11 +1116,17 @@ export class OrderRecordRepository
       .map((predicate) => `(${predicate})`)
       .join(' OR ');
     qb.addSelect(`COUNT(*) FILTER (WHERE ${hasOpenReturn})`, 'open_return')
-      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE})`, 'has_buyer_note')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE})`,
+        'has_buyer_note'
+      )
       .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_GIFT})`, 'with_gift')
       .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_BUNDLE})`, 'with_bundle')
       .addSelect(`COUNT(*) FILTER (WHERE ${giftNotAdded})`, 'gift_not_added')
-      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.GIFT_SHOP_REJECTED})`, 'gift_shop_rejected')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.GIFT_SHOP_REJECTED})`,
+        'gift_shop_rejected'
+      )
       .addSelect(`COUNT(*) FILTER (WHERE ${dueSoon})`, 'due_within_24h')
       .addSelect(`COUNT(*) FILTER (WHERE (${slaLate}) OR (${dueSoon}))`, 'attention_late_to_ship')
       .addSelect(`COUNT(*) FILTER (WHERE ${stuck})`, 'attention_stuck')
@@ -1078,7 +1148,10 @@ export class OrderRecordRepository
       .select('rec."sourceConnectionId"', 'source_connection_id')
       .addSelect('COUNT(*)', 'count')
       .groupBy('rec."sourceConnectionId"');
-    OrderRecordRepository.applySummaryScope(bySourceQb, { ...filters, sourceConnectionId: undefined });
+    OrderRecordRepository.applySummaryScope(bySourceQb, {
+      ...filters,
+      sourceConnectionId: undefined,
+    });
 
     const [raw, bySourceRows] = await Promise.all([
       qb.getRawOne<{
@@ -1442,10 +1515,7 @@ export class OrderRecordRepository
     const qb = this.repository
       .createQueryBuilder('rec')
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere(
-        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
-        { currentReportingCurrency }
-      )
+      .andWhere(OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT, { currentReportingCurrency })
       .orderBy('rec."placedAt"', 'DESC')
       .take(pagination.limit)
       .skip(pagination.offset);
@@ -1488,10 +1558,7 @@ export class OrderRecordRepository
       .select('rec.sourceConnectionId', 'source_connection_id')
       .addSelect('COUNT(*)', 'affected_count')
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere(
-        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
-        { currentReportingCurrency }
-      )
+      .andWhere(OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT, { currentReportingCurrency })
       .groupBy('rec.sourceConnectionId');
 
     this.applySalesAnalyticsScope(qb, filters);
@@ -1526,10 +1593,7 @@ export class OrderRecordRepository
       .createQueryBuilder('rec')
       .select('rec."internalOrderId"', 'internal_order_id')
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere(
-        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
-        { currentReportingCurrency }
-      )
+      .andWhere(OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT, { currentReportingCurrency })
       .orderBy('rec."internalOrderId"', 'ASC')
       .limit(page.limit);
 
@@ -1624,10 +1688,7 @@ export class OrderRecordRepository
         'terminal_marked'
       )
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere(
-        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
-        { currentReportingCurrency }
-      );
+      .andWhere(OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT, { currentReportingCurrency });
 
     this.applySalesAnalyticsScope(qb, filters);
 
@@ -1683,6 +1744,88 @@ export class OrderRecordRepository
         searchText: row.search_text ?? '',
       };
     });
+  }
+
+  /**
+   * Retention candidates (#4178), see the port. The anchor is
+   * `COALESCE(dispatchByAt, placedAt, createdAt)`: the ship-by deadline and the
+   * placement both precede delivery, so a deletion counted from them is never
+   * later than one counted from delivery. `createdAt` is a `timestamp` (no zone)
+   * while the other two are `timestamptz`; reading it as UTC keeps the
+   * expression IMMUTABLE so the partial index can be built on exactly this text.
+   */
+  async findBuyerDataRetentionCandidates(input: {
+    sourceConnectionId: string;
+    anchorBefore: Date;
+    limit: number;
+  }): Promise<OrderBuyerDataRetentionCandidate[]> {
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec."internalOrderId"', 'internal_order_id')
+      .addSelect('rec."orderSnapshot"', 'order_snapshot')
+      .where('rec."sourceConnectionId" = :sourceConnectionId', {
+        sourceConnectionId: input.sourceConnectionId,
+      })
+      .andWhere('rec."buyerDataRedactedAt" IS NULL')
+      // An order whose personal data a retention rule (#4289) or an erasure
+      // already removed has nothing left to redact.
+      .andWhere('rec."personalDataErasedAt" IS NULL')
+      .andWhere(`${BUYER_DATA_RETENTION_ANCHOR_SQL} < :anchorBefore`, {
+        anchorBefore: input.anchorBefore,
+      })
+      .orderBy(BUYER_DATA_RETENTION_ANCHOR_SQL, 'ASC')
+      .addOrderBy('rec."internalOrderId"', 'ASC')
+      .limit(input.limit)
+      .getRawMany<{ internal_order_id: string; order_snapshot: unknown }>();
+
+    return rows.map((row) => ({
+      internalOrderId: row.internal_order_id,
+      orderSnapshot:
+        typeof row.order_snapshot === 'object' && row.order_snapshot !== null
+          ? (row.order_snapshot as Record<string, unknown>)
+          : {},
+    }));
+  }
+
+  /**
+   * One-shot buyer-data removal (#4178), see the port. `updatedAt` is assigned
+   * to itself, as in `rewriteSearchText`: nothing about the order changed.
+   */
+  async redactBuyerData(redaction: OrderBuyerDataRedaction): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(OrderRecordOrmEntity)
+      .set({
+        orderSnapshot: () => 'CAST(:orderSnapshot AS jsonb)',
+        searchText: redaction.searchText,
+        buyerNote: null,
+        // The note is gone, so the flag that drives the list badge and the
+        // `hasBuyerNote` filter must say so, or the order claims a note nobody can read.
+        hasBuyerNote: false,
+        buyerTaxId: null,
+        orderEdits: () => `CASE WHEN "orderEdits" ? 'address' THEN "orderEdits" - 'address' ELSE "orderEdits" END`,
+        buyerDataRedactedAt: () => 'now()',
+        // The same fact as an erasure: every guard keyed on `personalDataErasedAt`
+        // (the upsert, the customer-projection write, the amendment diff) then
+        // protects a redacted order as well, with no second definition to keep.
+        personalDataErasedAt: () => 'now()',
+        updatedAt: () => '"updatedAt"',
+      })
+      .setParameter('orderSnapshot', JSON.stringify(redaction.orderSnapshot))
+      .where('"internalOrderId" = :internalOrderId', { internalOrderId: redaction.internalOrderId })
+      .andWhere('"buyerDataRedactedAt" IS NULL')
+      .andWhere('"personalDataErasedAt" IS NULL')
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  async isBuyerDataRedacted(internalOrderId: string): Promise<boolean> {
+    const row = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec."buyerDataRedactedAt"', 'redacted_at')
+      .where('rec."internalOrderId" = :internalOrderId', { internalOrderId })
+      .getRawOne<{ redacted_at: Date | null }>();
+    return row !== undefined && row !== null && row.redacted_at !== null;
   }
 
   /**
@@ -1905,7 +2048,9 @@ export class OrderRecordRepository
         'median'
       )
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency });
+      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', {
+        currentReportingCurrency,
+      });
 
     this.applySalesAnalyticsScope(qb, filters);
 
@@ -2049,7 +2194,10 @@ export class OrderRecordRepository
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
     filters: SalesAnalyticsFilters
   ): void {
-    qb.andWhere(`rec."recordStatus" = 'ready'`)
+    // #4289: an order hidden by buyer-data retention is out of every sum, summary
+    // and KPI - the same scope the order list applies (hiddenScopePredicate).
+    qb.andWhere(OrderRecordRepository.hiddenScopePredicate(false))
+      .andWhere(`rec."recordStatus" = 'ready'`)
       .andWhere('rec."placedAt" IS NOT NULL')
       .andWhere('rec."totalAmount" IS NOT NULL')
       .andWhere('rec."placedAt" >= :salesFrom', { salesFrom: filters.from })
@@ -2088,8 +2236,7 @@ export class OrderRecordRepository
    */
   private static readonly IS_SOURCE_DELETED = `rec."recordStatus" = 'source_deleted'`;
   private static readonly IS_MAPPING = `rec."recordStatus" = 'awaiting_mapping'`;
-  private static readonly NOT_MAPPING_OR_DELETED =
-    `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
+  private static readonly NOT_MAPPING_OR_DELETED = `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
   /**
@@ -2222,8 +2369,7 @@ export class OrderRecordRepository
   private static readonly HAS_BUNDLE = `rec."lineExpansion" IS NOT NULL`;
 
   /** "Shop rejected the gift" (#3935): a gift order whose destination sync failed. */
-  private static readonly GIFT_SHOP_REJECTED =
-    `(${OrderRecordRepository.HAS_GIFT} AND rec."syncStatus" @> '[{"status":"failed"}]'::jsonb)`;
+  private static readonly GIFT_SHOP_REJECTED = `(${OrderRecordRepository.HAS_GIFT} AND rec."syncStatus" @> '[{"status":"failed"}]'::jsonb)`;
 
   private static readonly IS_SALES_DOCUMENT_BLOCKED =
     OrderRecordRepository.buildSalesDocumentBlockedPredicate();
@@ -2514,8 +2660,7 @@ export class OrderRecordRepository
    * shipped. Shared by the SLA filter + the SLA summary so the badge, filter,
    * and KPI all agree.
    */
-  private static readonly NOT_SHIPPED =
-    `(rec."fulfillmentState" IS NULL OR rec."fulfillmentState" NOT IN ('dispatched','delivered'))`;
+  private static readonly NOT_SHIPPED = `(rec."fulfillmentState" IS NULL OR rec."fulfillmentState" NOT IN ('dispatched','delivered'))`;
 
   /**
    * Fulfillment-rollup sort ordinal (#1108) — most-actionable first when
@@ -2590,9 +2735,12 @@ export class OrderRecordRepository
         qb.andWhere(`(NOT ${notShipped}) OR rec."dispatchByAt" IS NULL`);
         break;
       case 'overdue':
-        qb.andWhere(`${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :slaNow`, {
-          slaNow: now,
-        });
+        qb.andWhere(
+          `${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :slaNow`,
+          {
+            slaNow: now,
+          }
+        );
         break;
       case 'at_risk':
         qb.andWhere(
@@ -2788,10 +2936,20 @@ export class OrderRecordRepository
    * disagreement stops being visible. This helper carries only what is
    * genuinely common; the asymmetry stays where a reader can see it.
    */
+  /**
+   * #4289 - the ONE definition of the hidden-order scope. The list builder and
+   * every summary reader apply it, so the KPI cards cannot count orders the
+   * list excludes by default.
+   */
+  private static hiddenScopePredicate(hidden: boolean | undefined): string {
+    return hidden === true ? 'rec."hiddenAt" IS NOT NULL' : 'rec."hiddenAt" IS NULL';
+  }
+
   private static applySummaryScope(
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
     filters: OrderHealthSummaryFilters
   ): void {
+    qb.andWhere(OrderRecordRepository.hiddenScopePredicate(filters.hidden));
     if (filters.sourceConnectionId) {
       qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
         sourceConnectionId: filters.sourceConnectionId,
@@ -2947,7 +3105,12 @@ export class OrderRecordRepository
         `OR ("paymentWriteback"->$2->>'state' = 'sending' ` +
         `AND ("paymentWriteback"->$2->>'at')::timestamptz < $4)) ` +
         `RETURNING "internalOrderId"`,
-      [internalOrderId, destinationConnectionId, new Date().toISOString(), staleBefore.toISOString()]
+      [
+        internalOrderId,
+        destinationConnectionId,
+        new Date().toISOString(),
+        staleBefore.toISOString(),
+      ]
     )) as unknown[];
     return OrderRecordRepository.affectedRows(rows) > 0;
   }
@@ -3438,6 +3601,328 @@ export class OrderRecordRepository
   }
 
   /**
+   * The eligibility predicate shared by the trial run and the live sweep
+   * (#4289). Returns the SQL fragments and their parameters so the two cannot
+   * disagree about which orders a rule reaches.
+   */
+  private buildBuyerDataEligibility(scope: BuyerDataRetentionScope): {
+    hide: string;
+    erase: string;
+    eraseHides: string;
+    any: string;
+    where: string;
+    params: unknown[];
+  } {
+    const params: unknown[] = [];
+    const bind = (value: unknown, cast: string): string => {
+      params.push(value);
+      return `$${String(params.length)}::${cast}`;
+    };
+    const hideBound = scope.hideBefore !== null ? bind(scope.hideBefore, 'timestamptz') : null;
+    const eraseBound = scope.eraseBefore !== null ? bind(scope.eraseBefore, 'timestamptz') : null;
+    const hide =
+      hideBound !== null
+        ? `(rec."hiddenAt" IS NULL AND ${BUYER_DATA_AGE_SQL} < ${hideBound})`
+        : 'false';
+    const erase =
+      eraseBound !== null
+        ? `(rec."personalDataErasedAt" IS NULL AND ${BUYER_DATA_AGE_SQL} < ${eraseBound})`
+        : 'false';
+    const eraseHides =
+      scope.eraseHides && eraseBound !== null
+        ? `(rec."hiddenAt" IS NULL AND ${BUYER_DATA_AGE_SQL} < ${eraseBound})`
+        : 'false';
+    const any = `(${hide} OR ${erase} OR ${eraseHides})`;
+    const where =
+      scope.connectionId !== undefined
+        ? `rec."sourceConnectionId" = ${bind(scope.connectionId, 'uuid')} AND ${any}`
+        : any;
+    return { hide, erase, eraseHides, any, where, params };
+  }
+
+  async countBuyerDataRetentionCandidates(
+    scope: BuyerDataRetentionScope
+  ): Promise<BuyerDataRetentionCounts> {
+    const e = this.buildBuyerDataEligibility(scope);
+    const rows = (await this.repository.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE (${e.hide} OR ${e.eraseHides}) AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS to_hide,
+         COUNT(*) FILTER (WHERE ${e.erase} AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS to_erase,
+         COUNT(*) FILTER (WHERE ${e.erase} AND rec."hiddenAt" IS NOT NULL AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS already_hidden_due_for_erase,
+         COUNT(*) FILTER (WHERE ${e.any} AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS total,
+         COUNT(*) FILTER (WHERE ${BUYER_DATA_PROTECTED_SQL}) AS skipped,
+         COUNT(*) FILTER (WHERE ${BUYER_DATA_OPEN_RETURN_SQL}) AS skipped_open_return,
+         COUNT(*) FILTER (WHERE NOT ${BUYER_DATA_OPEN_RETURN_SQL} AND ${BUYER_DATA_HOLD_SQL}) AS skipped_hold,
+         COUNT(*) FILTER (WHERE NOT ${BUYER_DATA_OPEN_RETURN_SQL} AND NOT ${BUYER_DATA_HOLD_SQL}
+                          AND ${BUYER_DATA_INVOICE_PENDING_SQL}) AS skipped_invoice_pending
+       FROM "order_records" rec
+       WHERE ${e.where}`,
+      e.params
+    )) as {
+      to_hide: string;
+      to_erase: string;
+      already_hidden_due_for_erase: string;
+      total: string;
+      skipped: string;
+      skipped_open_return: string;
+      skipped_hold: string;
+      skipped_invoice_pending: string;
+    }[];
+    const row = rows[0];
+    return {
+      toHide: Number(row?.to_hide ?? 0),
+      toErase: Number(row?.to_erase ?? 0),
+      alreadyHiddenDueForErase: Number(row?.already_hidden_due_for_erase ?? 0),
+      total: Number(row?.total ?? 0),
+      skippedProtected: Number(row?.skipped ?? 0),
+      skippedByReason: {
+        openReturn: Number(row?.skipped_open_return ?? 0),
+        hold: Number(row?.skipped_hold ?? 0),
+        invoicePending: Number(row?.skipped_invoice_pending ?? 0),
+      },
+    };
+  }
+
+  /**
+   * Age histogram of the order book in 30-day buckets (#4289), sparse: the
+   * service densifies it. Ages are computed against the caller's `now` so a
+   * test is deterministic. One grouped scan; if it ever hurts on a very large
+   * book, an index on (sourceConnectionId, COALESCE("placedAt","createdAt"))
+   * would help - none is added here.
+   */
+  async getBuyerDataAgeHistogram(
+    now: Date,
+    connectionId?: string
+  ): Promise<BuyerDataAgeHistogramRows> {
+    const params: unknown[] = [now];
+    let scopeSql = '';
+    if (connectionId !== undefined) {
+      params.push(connectionId);
+      scopeSql = `WHERE rec."sourceConnectionId" = $2::uuid`;
+    }
+    const rows = (await this.repository.query(
+      `SELECT
+         LEAST(${String(BUYER_DATA_HISTOGRAM_CAP_MONTHS)},
+               GREATEST(0, FLOOR(EXTRACT(EPOCH FROM ($1::timestamptz - ${BUYER_DATA_AGE_SQL})) / 86400 / 30)))::int AS age_months,
+         COUNT(*) FILTER (WHERE rec."hiddenAt" IS NULL AND rec."personalDataErasedAt" IS NULL) AS visible,
+         COUNT(*) FILTER (WHERE rec."hiddenAt" IS NOT NULL AND rec."personalDataErasedAt" IS NULL) AS hidden,
+         COUNT(*) FILTER (WHERE rec."personalDataErasedAt" IS NOT NULL) AS erased,
+         COUNT(*) AS total,
+         MIN(${BUYER_DATA_AGE_SQL}) AS oldest
+       FROM "order_records" rec
+       ${scopeSql}
+       GROUP BY 1
+       ORDER BY 1`,
+      params
+    )) as {
+      age_months: number;
+      visible: string;
+      hidden: string;
+      erased: string;
+      total: string;
+      oldest: Date | string;
+    }[];
+    let totalOrders = 0;
+    let oldestPlacedAt: Date | null = null;
+    for (const row of rows) {
+      totalOrders += Number(row.total);
+      const oldest = new Date(row.oldest);
+      if (oldestPlacedAt === null || oldest < oldestPlacedAt) oldestPlacedAt = oldest;
+    }
+    return {
+      rows: rows.map((row) => ({
+        ageMonths: Number(row.age_months),
+        visible: Number(row.visible),
+        hidden: Number(row.hidden),
+        erased: Number(row.erased),
+      })),
+      totalOrders,
+      oldestPlacedAt,
+    };
+  }
+
+  async countVisibleOrdersForBuyerData(connectionId?: string): Promise<number> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where(OrderRecordRepository.hiddenScopePredicate(false));
+    if (connectionId !== undefined) {
+      qb.andWhere('rec.sourceConnectionId = :connectionId', { connectionId });
+    }
+    return qb.getCount();
+  }
+
+  async findBuyerDataRetentionSamples(
+    scope: BuyerDataRetentionScope,
+    limit: number
+  ): Promise<BuyerDataRetentionSample[]> {
+    const e = this.buildBuyerDataEligibility(scope);
+    e.params.push(limit);
+    const rows = (await this.repository.query(
+      `SELECT rec."internalOrderId" AS internal_order_id,
+              rec."orderSnapshot"->>'orderNumber' AS order_number,
+              ${BUYER_DATA_AGE_SQL} AS placed_at
+       FROM "order_records" rec
+       WHERE ${e.where} AND NOT ${BUYER_DATA_PROTECTED_SQL}
+       ORDER BY ${BUYER_DATA_AGE_SQL} DESC
+       LIMIT $${String(e.params.length)}`,
+      e.params
+    )) as { internal_order_id: string; order_number: string | null; placed_at: Date | string }[];
+    return rows.map((row) => ({
+      orderRef: row.order_number ?? row.internal_order_id,
+      placedAt: new Date(row.placed_at).toISOString(),
+      // Never read from the snapshot: a preview must carry no personal data.
+      maskedBuyer: buildBuyerPlaceholder(row.internal_order_id),
+    }));
+  }
+
+  async hideOrdersForBuyerDataRetention(
+    connectionId: string,
+    before: Date,
+    limit: number,
+    now: Date
+  ): Promise<number> {
+    const result = (await this.repository.query(
+      `UPDATE "order_records"
+       SET "hiddenAt" = $1
+       WHERE "internalOrderId" IN (
+         SELECT rec."internalOrderId" FROM "order_records" rec
+         WHERE rec."sourceConnectionId" = $2::uuid
+           AND rec."hiddenAt" IS NULL
+           AND ${BUYER_DATA_AGE_SQL} < $3::timestamptz
+           AND NOT ${BUYER_DATA_PROTECTED_SQL}
+         ORDER BY rec."internalOrderId"
+         LIMIT $4
+         FOR UPDATE SKIP LOCKED
+       )`,
+      [now, connectionId, before, limit]
+    )) as [unknown, number];
+    return result[1];
+  }
+
+  async findErasableOrdersForBuyerDataRetention(
+    connectionId: string,
+    before: Date,
+    limit: number
+  ): Promise<ErasableOrderRow[]> {
+    const rows = (await this.repository.query(
+      `SELECT rec."internalOrderId" AS internal_order_id,
+              rec."customerId" AS customer_id,
+              rec."orderSnapshot" AS order_snapshot
+       FROM "order_records" rec
+       WHERE rec."sourceConnectionId" = $1::uuid
+         AND rec."personalDataErasedAt" IS NULL
+         AND ${BUYER_DATA_AGE_SQL} < $2::timestamptz
+         AND NOT ${BUYER_DATA_PROTECTED_SQL}
+       ORDER BY rec."internalOrderId"
+       LIMIT $3`,
+      [connectionId, before, limit]
+    )) as { internal_order_id: string; customer_id: string | null; order_snapshot: unknown }[];
+    return rows.map((row) => ({
+      internalOrderId: row.internal_order_id,
+      customerId: row.customer_id,
+      orderSnapshot:
+        typeof row.order_snapshot === 'object' && row.order_snapshot !== null
+          ? (row.order_snapshot as Record<string, unknown>)
+          : {},
+    }));
+  }
+
+  async erasePersonalDataForRetention(
+    erasures: readonly PersonalDataErasure[],
+    now: Date
+  ): Promise<PersonalDataErasureResult> {
+    const customerIds = new Set<string>();
+    let erased = 0;
+    for (const erasure of erasures) {
+      // `orderEdits.address` is an operator-typed buyer address and goes with
+      // the rest; so does the recipient on `buyer_email_deliveries` and
+      // `document_email_deliveries` (nulled in the same transaction, same order id).
+      // The guard on `personalDataErasedAt` makes a replay a no-op; the protected
+      // re-check closes the window between the page read and this write, in which
+      // an operator may have placed a hold.
+      //
+      // One transaction per order: the order row and its delivery-log rows erase
+      // all-or-nothing. Were the order UPDATE to commit and a recipient UPDATE then
+      // fail, the next pass would skip the order (`personalDataErasedAt` is set) and
+      // the address would stay in the delivery log for good.
+      const returned = await this.dataSource.transaction(
+        async (manager: EntityManager): Promise<{ customer_id: string | null }[]> => {
+          const rows: unknown = await manager.query(
+            `UPDATE "order_records" rec
+             SET "orderSnapshot" = $2::jsonb,
+                 "orderEdits" = CASE WHEN rec."orderEdits" IS NULL THEN NULL
+                                     ELSE rec."orderEdits" - 'address' END,
+                 "buyerNote" = NULL,
+                 "hasBuyerNote" = false,
+                 "buyerTaxId" = NULL,
+                 "searchText" = $3,
+                 "personalDataErasedAt" = $4,
+                 "hiddenAt" = CASE WHEN $5::boolean THEN COALESCE(rec."hiddenAt", $4) ELSE rec."hiddenAt" END
+             WHERE rec."internalOrderId" = $1
+               AND rec."personalDataErasedAt" IS NULL
+               AND NOT ${BUYER_DATA_PROTECTED_SQL}
+             RETURNING rec."customerId" AS customer_id`,
+            [
+              erasure.internalOrderId,
+              JSON.stringify(erasure.orderSnapshot),
+              erasure.searchText,
+              now,
+              erasure.hide,
+            ]
+          );
+          // TypeORM returns `[rows, count]` for UPDATE ... RETURNING on some
+          // driver versions and the bare row array on others.
+          const tuple = rows as [{ customer_id: string | null }[], number] | undefined;
+          const updated = (Array.isArray(tuple?.[0]) ? tuple?.[0] : rows) as {
+            customer_id: string | null;
+          }[];
+          if (updated.length > 0) {
+            // The buyer's address is also kept in clear text on the delivery logs
+            // (nullable columns), keyed by the same order id. Only for rows this
+            // statement actually erased, so a protected order keeps its history.
+            await manager.query(
+              `UPDATE "buyer_email_deliveries" SET "recipient" = NULL
+               WHERE "internalOrderId" = $1 AND "recipient" IS NOT NULL`,
+              [erasure.internalOrderId]
+            );
+            await manager.query(
+              `UPDATE "document_email_deliveries" SET "recipient" = NULL
+               WHERE "internalOrderId" = $1 AND "recipient" IS NOT NULL`,
+              [erasure.internalOrderId]
+            );
+          }
+          return updated;
+        }
+      );
+      erased += returned.length;
+      for (const row of returned) {
+        if (row.customer_id !== null) {
+          customerIds.add(row.customer_id);
+        }
+      }
+    }
+    return { erased, customerIds: [...customerIds] };
+  }
+
+  async findCustomerIdsWithoutPersonalDataOrders(
+    customerIds: readonly string[]
+  ): Promise<string[]> {
+    if (customerIds.length === 0) {
+      return [];
+    }
+    const rows = (await this.repository.query(
+      `SELECT c.id AS customer_id
+       FROM unnest($1::text[]) AS c(id)
+       WHERE NOT EXISTS (
+         SELECT 1 FROM "order_records" rec
+         WHERE rec."customerId" = c.id AND rec."personalDataErasedAt" IS NULL
+       )`,
+      [customerIds]
+    )) as { customer_id: string }[];
+    return rows.map((row) => row.customer_id);
+  }
+
+  /**
    * Count the OTHER orders a customer placed before `before` (#3538, D7). Feeds
    * the derived `buyerOrderCount`; excludes the order being ingested so a
    * re-ingestion yields the same number.
@@ -3447,21 +3932,23 @@ export class OrderRecordRepository
     excludeInternalOrderId: string,
     before: Date
   ): Promise<number> {
-    return this.repository
-      .createQueryBuilder('rec')
-      .where('rec.customerId = :customerId', { customerId })
-      .andWhere('rec.internalOrderId != :excludeInternalOrderId', { excludeInternalOrderId })
-      // N-31: a cancelled order is not an earlier purchase; equal instants
-      // tie-break on the internal id so exactly one of two same-instant orders
-      // counts the other.
-      .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere(
-        `(COALESCE(rec."placedAt", rec."createdAt") < :before
+    return (
+      this.repository
+        .createQueryBuilder('rec')
+        .where('rec.customerId = :customerId', { customerId })
+        .andWhere('rec.internalOrderId != :excludeInternalOrderId', { excludeInternalOrderId })
+        // N-31: a cancelled order is not an earlier purchase; equal instants
+        // tie-break on the internal id so exactly one of two same-instant orders
+        // counts the other.
+        .andWhere('rec."cancelledAt" IS NULL')
+        .andWhere(
+          `(COALESCE(rec."placedAt", rec."createdAt") < :before
           OR (COALESCE(rec."placedAt", rec."createdAt") = :before
               AND rec."internalOrderId" < :excludeInternalOrderId))`,
-        { before, excludeInternalOrderId }
-      )
-      .getCount();
+          { before, excludeInternalOrderId }
+        )
+        .getCount()
+    );
   }
 
   /**
@@ -3613,7 +4100,9 @@ export class OrderRecordRepository
           ? rows.length
           : 0;
     if (affected === 0) return null;
-    const entity = await this.repository.findOne({ where: { internalOrderId: input.internalOrderId } });
+    const entity = await this.repository.findOne({
+      where: { internalOrderId: input.internalOrderId },
+    });
     return entity === null ? null : this.toDomain(entity);
   }
 
@@ -3777,7 +4266,9 @@ export class OrderRecordRepository
 
     return rows
       .map((row) => row as { currency?: unknown; count?: unknown })
-      .filter((row): row is { currency: string; count: unknown } => typeof row.currency === 'string')
+      .filter(
+        (row): row is { currency: string; count: unknown } => typeof row.currency === 'string'
+      )
       .map((row) => ({
         reportingCurrency: row.currency,
         count: Number(row.count ?? 0),
@@ -3995,7 +4486,21 @@ export class OrderRecordRepository
     });
     // Serialized explicitly rather than relying on the driver's object
     // handling, so the jsonb column receives a document in every case.
-    add('orderSnapshot', JSON.stringify(entity.orderSnapshot ?? {}), { cast: '::jsonb' });
+    // #4289: once the buyer's personal data was erased, a re-ingestion must not
+    // restore the source's copy. The incoming snapshot is kept for everything
+    // that is not personal data (items, totals, status), and the three personal
+    // keys are taken from the STORED, already-erased snapshot instead.
+    // `jsonb_strip_nulls` drops a key the stored snapshot never had, so an order
+    // with no billing address does not gain a phantom null one.
+    add('orderSnapshot', JSON.stringify(entity.orderSnapshot ?? {}), {
+      cast: '::jsonb',
+      update: `"orderSnapshot" = CASE WHEN ${BUYER_DATA_GONE_SQL}
+           THEN (EXCLUDED."orderSnapshot" - 'customerEmail' - 'shippingAddress' - 'billingAddress')
+             || jsonb_strip_nulls(jsonb_build_object(
+                  'shippingAddress', "order_records"."orderSnapshot"->'shippingAddress',
+                  'billingAddress', "order_records"."orderSnapshot"->'billingAddress'))
+           ELSE EXCLUDED."orderSnapshot" END`,
+    });
     // #3507 G03-1 — derived from the snapshot written one line up, so it
     // belongs to the SHARED half: both paths rewrite the snapshot, so both
     // must rewrite the text, or `ON CONFLICT` keeps the previous buyer's
@@ -4007,7 +4512,9 @@ export class OrderRecordRepository
     // original - so the stored value is kept. Evaluated by the database against
     // the committed row, so it cannot race the edit's own write.
     add('searchText', entity.searchText ?? '', {
+      // #4289: an erased order keeps its erased (name-free) search text.
       update: `"searchText" = CASE WHEN "order_records"."orderEdits" ? 'address'
+             OR ${BUYER_DATA_GONE_SQL}
            THEN "order_records"."searchText" ELSE EXCLUDED."searchText" END`,
     });
     add('recordStatus', entity.recordStatus);
@@ -4031,7 +4538,11 @@ export class OrderRecordRepository
       // scalars do — `persistIncomingSnapshot` has no resolved billing address
       // to read a tax id off, and writing it there would NULL a value a
       // previous ready-path write settled.
-      add('buyerTaxId', entity.buyerTaxId ?? null);
+      add('buyerTaxId', entity.buyerTaxId ?? null, {
+        // #4289: erased personal data stays erased.
+        update: `"buyerTaxId" = CASE WHEN ${BUYER_DATA_GONE_SQL}
+           THEN "order_records"."buyerTaxId" ELSE EXCLUDED."buyerTaxId" END`,
+      });
       // #2395, added here for exactly the reason `buyerTaxId` is: this
       // statement enumerates its own columns, so a column the caller stamps on
       // the entity but never adds here is simply not written. Ready-path only -
@@ -4063,10 +4574,12 @@ export class OrderRecordRepository
       const incomingNoteUnknown = `(EXCLUDED."buyerNote" IS NULL AND EXCLUDED."hasBuyerNote" = false)`;
       add('buyerNote', entity.buyerNote ?? null, {
         update: `"buyerNote" = CASE WHEN ${incomingNoteUnknown}
+             OR ${BUYER_DATA_GONE_SQL}
            THEN "order_records"."buyerNote" ELSE EXCLUDED."buyerNote" END`,
       });
       add('hasBuyerNote', entity.hasBuyerNote ?? false, {
         update: `"hasBuyerNote" = CASE WHEN ${incomingNoteUnknown}
+             OR ${BUYER_DATA_GONE_SQL}
            THEN "order_records"."hasBuyerNote" ELSE EXCLUDED."hasBuyerNote" END`,
       });
       // N-22: a DIFFERENT note text is a note the operator has not read. The
@@ -4138,11 +4651,11 @@ export class OrderRecordRepository
    * ORM entity is covered on the day it is added.
    *
    * Two standing assumptions, both asserted by the repository's unit spec: the
- * statement quotes PROPERTY names, so this match is sound only while no column
- * renames its database name; and the write set is the statement's own, so the
- * two can never disagree about which columns were written.
- *
- * The empty default is `null` for every column except the two `jsonb`
+   * statement quotes PROPERTY names, so this match is sound only while no column
+   * renames its database name; and the write set is the statement's own, so the
+   * two can never disagree about which columns were written.
+   *
+   * The empty default is `null` for every column except the two `jsonb`
    * array columns whose DB default is `'[]'` (mapped in
    * {@link EMPTY_COLUMN_DEFAULTS}); a future NOT NULL column with a scalar
    * DB default would surface loudly at the domain mapping rather than
@@ -4504,7 +5017,10 @@ export class OrderRecordRepository
       // #3963 - coerced at the mapping boundary: an entry this build does not
       // recognise is absent, never present-and-unrenderable.
       readPaymentWriteback(entity.paymentWriteback),
-      readSalesDocumentBlockParams(entity.salesDocumentBlockParams)
+      readSalesDocumentBlockParams(entity.salesDocumentBlockParams),
+      entity.hiddenAt ?? null,
+      entity.personalDataErasedAt ?? null,
+      entity.buyerDataRedactedAt ?? null
     );
   }
 
@@ -4670,10 +5186,7 @@ export class OrderRecordRepository
    * Convert a derived {@link OrderLineItemDraft} to its ORM entity for
    * insertion. `id`/`createdAt` are left for TypeORM to generate.
    */
-  private lineItemToOrm(
-    orderRecordId: string,
-    item: OrderLineItemDraft
-  ): OrderLineItemOrmEntity {
+  private lineItemToOrm(orderRecordId: string, item: OrderLineItemDraft): OrderLineItemOrmEntity {
     const entity = new OrderLineItemOrmEntity();
     entity.orderRecordId = orderRecordId;
     entity.lineNumber = item.lineNumber;

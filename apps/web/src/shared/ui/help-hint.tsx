@@ -38,6 +38,8 @@ export function HelpHint({ guide, onClick, label, className }: HelpHintProps): R
       className={['pm-qmark', className].filter(Boolean).join(' ')}
       aria-label={label}
       title={label}
+      // A fixed circle: a flex or mobile min-width rule must not squash it into a pill.
+      style={{ width: 18, height: 18, minWidth: 18, flex: '0 0 18px', fontSize: 12 }}
       onClick={open}
     >
       ?

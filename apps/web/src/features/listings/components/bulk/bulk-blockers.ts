@@ -93,6 +93,11 @@ export const NEUTRAL_BLOCKER_CHIPS: Record<string, ChipDescriptor> = {
   'no-ean': chip('noEan', { tone: 'error', fixable: true, field: 'ean' }),
   'invalid-barcode': chip('invalidBarcode', { tone: 'error', fixable: true, field: 'ean' }),
   'no-match': chip('noMatch', { tone: 'error', fixable: true, field: 'category' }),
+  'bundle-card-no-category': chip('bundleCardNoCategory', {
+    tone: 'error',
+    fixable: true,
+    field: 'category',
+  }),
   'multi-match': chip('multiMatch', { tone: 'warning', fixable: true, field: 'category' }),
   'unknown-category-result': chip('unknownCategoryResult', {
     tone: 'error',
@@ -276,6 +281,11 @@ export function describeBlocker(blocker: string, ctx: BlockerCopyContext): Block
         title: interpolate(copy.multiMatch.title, params),
         detail: copy.multiMatch.detail,
       };
+    case 'bundle-card-no-category':
+      return {
+        title: copy.bundleCardNoCategory.title,
+        detail: copy.bundleCardNoCategory.detail,
+      };
     case 'unknown-category-result':
       return {
         title: interpolate(copy.unknownCategoryResult.title, params),
@@ -398,7 +408,8 @@ export function isCategoryBlocker(blocker: string): boolean {
     blocker === 'multi-match' ||
     blocker === 'no-ean' ||
     blocker === 'invalid-barcode' ||
-    blocker === 'unknown-category-result'
+    blocker === 'unknown-category-result' ||
+    blocker === 'bundle-card-no-category'
   );
 }
 

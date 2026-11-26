@@ -18,6 +18,7 @@ export {
   SyncJobQueuePort,
   EnqueueJobRequest,
   EnqueueJobOptions,
+  EnqueueJobOutcome,
 } from './application/ports/sync-job-queue.port';
 export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port';
 export { shipmentDispatchLockKey } from './application/services/order-scoped-lock-keys';
@@ -70,6 +71,13 @@ export {
 export type {
   ConnectionBacklogStatus,
   ConnectionBacklogStats,
+  ActiveOrderImport,
+  OrderImportStats,
+  OrderStartStatus,
+  OrderImportFailureCode,
+  OrderImportFailureReason,
+  OrderImportFailureCodeValues,
+  OrderImportStatus,
   ConnectionSyncStatus,
 } from './domain/types/connection-sync-status.types';
 export {
@@ -100,6 +108,8 @@ export {
 } from './domain/types/sync-job-lane.types';
 export {
   MarketplaceOrdersPollPayloadV1,
+  MarketplaceNotificationsDrainPayloadV1,
+  MarketplaceOrdersImportPayloadV1,
   MarketplaceOrderSyncPayloadV1,
   MarketplaceOrderFxStampPayloadV1,
   MarketplaceOrderFxStampSweepPayloadV1,
@@ -171,6 +181,7 @@ export type {
   SalesDocumentBatchTickPayloadV1,
 } from './domain/types/sales-document-batch-job-payloads.types';
 export type { FulfillmentWorkRelaySweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type { FulfillmentWorkStatusPollPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRerouteSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentRoutingReapSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { InventorySaleDecrementReconcileSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
@@ -216,6 +227,34 @@ export {
   masterSweepLockKey,
 } from './domain/types/master-sweep-cursor.types';
 
+// Order feed seed marker key (#4228)
+export {
+  ORDER_FEED_SEEDED_AT_SUFFIX,
+  orderFeedSeededAtCursorKey,
+} from './domain/types/order-feed-seed-cursor.types';
+
+// Order sync start intent (#4228)
+export type {
+  OrderSyncStart,
+  OrderSyncStartMode,
+  OrderSyncStartOrder,
+  OrderSyncStartedRecord,
+} from './domain/types/order-sync-start.types';
+export {
+  DEFAULT_ORDER_SYNC_START_MODES,
+  ORDER_SYNC_START_CURSOR_KEY,
+  ORDER_SYNC_STARTED_CURSOR_KEY,
+  parseOrderSyncStarted,
+  serializeOrderSyncStarted,
+  ORDER_SYNC_START_MAX_AGE_YEARS,
+  OrderSyncStartModeValues,
+  OrderSyncStartOrderValues,
+  describeInvalidOrderSyncStartDate,
+  parseOrderSyncStart,
+  resolveOrderSyncStartModes,
+  serializeOrderSyncStart,
+} from './domain/types/order-sync-start.types';
+
 // Cursor overview + guarded rewind (#4023)
 export type {
   CursorFamily,
@@ -257,6 +296,12 @@ export type { ISyncCursorsService } from './application/services/sync-cursors.se
 export { InboundRoutingPolicyService } from './application/services/inbound-routing-policy.service';
 export { buildInboundJobIdempotencyKey } from './application/services/inbound-job-idempotency-key';
 export type { IInboundRoutingPolicyService } from './application/interfaces/inbound-routing-policy.service.interface';
+export { InboundQueueDrainService } from './application/services/inbound-queue-drain.service';
+export type { IInboundQueueDrainService } from './application/interfaces/inbound-queue-drain.service.interface';
+export type {
+  InboundQueueDrainInput,
+  InboundQueueDrainResult,
+} from './application/types/inbound-queue-drain.types';
 export type {
   RoutingOutcome,
   InboundRouteResolution,
@@ -270,3 +315,8 @@ export * from './sync.tokens';
 // sub-path (#594). Plugins must not import them from here.
 // `ConnectionCursorOrmEntity` has no external consumer and is intentionally not
 // promoted to the sub-barrel — add it if/when a test fixture needs it.
+
+export {
+  generateOrdersImportNonce,
+  buildOrdersImportRequest,
+} from './domain/types/orders-import-run.types';

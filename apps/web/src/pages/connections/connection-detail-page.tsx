@@ -1,5 +1,5 @@
-import type { ReactElement } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, type CSSProperties, type ReactElement } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
 import { hasPricingSyncPage } from '../../features/connections/lib/pricing-destination';
 import { useProductMasterConnections } from '../../features/connections/hooks/use-product-master-connections';
@@ -10,6 +10,7 @@ import { ConnectionCapabilitiesPanel } from '../../features/connections/componen
 import { ConnectionConfigPanel } from '../../features/connections/components/ConnectionConfigPanel';
 import { ConnectionDiagnosticsPanel } from '../../features/connections/components/ConnectionDiagnosticsPanel';
 import { CatalogTrustPanel } from '../../features/connections/components/catalog-trust-panel';
+import { OrderSyncPanel } from '../../features/connections/components/order-sync-panel';
 import { ConnectionSyncStatusPanel } from '../../features/connections/components/connection-sync-status-panel';
 import { RouterReadinessPanel } from '../../features/connections/components/router-readiness-panel';
 import {
@@ -33,11 +34,14 @@ import { EmptyState, ErrorState, LoadingState } from '../../shared/ui/feedback-s
 import { EntityLabel } from '../../shared/ui/entity-label';
 import { KeyValueList } from '../../shared/ui/key-value-list';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { useGuidedTabTravel } from '../../features/connections/hooks/use-guided-tab-travel';
+import { GUIDED_FLAG_FALLBACK_MS, readLiveLocation } from '../../features/connections/lib/guided-jump';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../shared/ui/tabs';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { isOmsRoutingUiEnabled } from '../../shared/config/oms-routing-ui';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
 import { Alert } from '../../shared/ui/alert';
+import { readCatalogueMode } from '../../features/connections/lib/catalogue-mode';
 import { usePlatform, usePlatforms } from '../../shared/plugins';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { useWriteAccess } from '../../shared/auth/use-permission';
@@ -212,8 +216,9 @@ function ArchivedBanner({ connection }: { connection: Connection }): ReactElemen
   );
 }
 
-const TAB_VALUES = ['overview', 'health', 'actions', 'config', 'gifts'] as const;
+const TAB_VALUES = ['overview', 'orders', 'health', 'actions', 'config', 'gifts'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
+
 
 function isTabValue(value: string | null): value is TabValue {
   return value !== null && (TAB_VALUES as readonly string[]).includes(value);
@@ -237,6 +242,12 @@ function ProductCatalogLinkBanner({
     !connection.enabledCapabilities.includes('OfferManager') &&
     !connection.enabledCapabilities.includes('ProductPublisher')
   ) {
+    return null;
+  }
+
+  // #4281: a connection that declares it has no catalog has nothing to link, so
+  // the "link a catalog" nudge would be asking for the opposite of what was chosen.
+  if (readCatalogueMode(connection.config) === 'none') {
     return null;
   }
 
@@ -352,6 +363,35 @@ export function ConnectionDetailPage(): ReactElement {
 
   const tabParam = searchParams.get('tab');
   const activeTab: TabValue = isTabValue(tabParam) ? tabParam : 'overview';
+
+  // Arrived from a guided jump (e.g. "Get orders from a period…" on the Sync tab): the tab
+  // underline travels from the origin tab, the panel slides in, then the flag is dropped so a
+  // reload or a later tab click does not replay it. The flag is dropped when the underline has
+  // landed (useGuidedTabTravel), with a timeout as the fallback if the sequence stalls.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const guidedState = location.state as { guided?: boolean; fromTab?: string } | null;
+  const guided = guidedState?.guided === true;
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  const clearGuided = useCallback((): void => {
+    // The search is read live: the Actions panel drops its sync params in the same tick, and
+    // navigating to the render's copy would put them back.
+    const current = locationRef.current;
+    const live = readLiveLocation(current);
+    void navigate(`${current.pathname}${live.search}`, { replace: true, state: null });
+  }, [navigate]);
+  useEffect(() => {
+    if (!guided) return undefined;
+    const timer = window.setTimeout(clearGuided, GUIDED_FLAG_FALLBACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [guided, clearGuided]);
+  const travel = useGuidedTabTravel({
+    guided,
+    fromTab: guidedState?.fromTab,
+    toTab: activeTab,
+    onSettled: clearGuided,
+  });
 
   const handleTabChange = (value: string): void => {
     setSearchParams(
@@ -498,13 +538,33 @@ export function ConnectionDetailPage(): ReactElement {
         />
       ) : null}
       {connection ? (
-        <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <TabsList className="tabs__list--scroll">
+        <Tabs
+          value={activeTab}
+          onValueChange={handleTabChange}
+          className={
+            guided ? (travel.ink ? 'tabs--guided tabs--guided-travel' : 'tabs--guided') : undefined
+          }
+          style={guided ? ({ '--guided-dir': travel.direction } as CSSProperties) : undefined}
+        >
+          <TabsList ref={travel.listRef} className="tabs__list--scroll">
             <TabsTrigger value="overview">{copy.tabs.overview}</TabsTrigger>
+            {isOrderSource && !isOms ? (
+              <TabsTrigger value="orders">{copy.tabs.orders}</TabsTrigger>
+            ) : null}
             <TabsTrigger value="health">{copy.tabs.health}</TabsTrigger>
             {isOms ? null : <TabsTrigger value="actions">{copy.tabs.actions}</TabsTrigger>}
             {isOms ? null : <TabsTrigger value="config">{copy.tabs.config}</TabsTrigger>}
             {supportsGifts ? <TabsTrigger value="gifts">{copy.tabs.gifts}</TabsTrigger> : null}
+            {travel.ink ? (
+              <span
+                ref={travel.inkRef}
+                className="tabs__ink"
+                aria-hidden="true"
+                style={{
+                  transform: `translateX(${travel.ink.from.left}px) scaleX(${travel.ink.from.width})`,
+                }}
+              />
+            ) : null}
           </TabsList>
 
           <TabsContent value="overview">
@@ -566,6 +626,15 @@ export function ConnectionDetailPage(): ReactElement {
 
             <ConnectionCapabilitiesPanel connection={connection} readOnly={isOms} />
           </TabsContent>
+
+          {/* How orders come in: where the import started, how it is doing, and moving
+              the start. The queue and catalogue stay on Health, and "Trigger sync"
+              stays on Actions because it also runs product and inventory syncs. */}
+          {isOrderSource && !isOms ? (
+            <TabsContent value="orders">
+              <OrderSyncPanel connection={connection} />
+            </TabsContent>
+          ) : null}
 
           <TabsContent value="health">
             <ConnectionDiagnosticsPanel connectionId={connection.id} />

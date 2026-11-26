@@ -62,6 +62,7 @@ export const JOB_OUTCOME_REASON_VALUES = [
   'auto_dispatch_shipment_claimed_by_sibling_work',
   'auto_dispatch_carrier_refused',
   'auto_dispatch_preflight_failed',
+  'notification_queue_not_configured',
 ] as const;
 export type JobOutcomeReason = (typeof JOB_OUTCOME_REASON_VALUES)[number];
 
@@ -78,7 +79,9 @@ export type JobOutcomeReason = (typeof JOB_OUTCOME_REASON_VALUES)[number];
  */
 export const JOB_TYPE_VALUES = [
   'marketplace.orders.poll',
+  'marketplace.orders.import',
   'marketplace.order.sync',
+  'marketplace.notifications.drain', // Pull-based inbound notifications (#4179) — drains the connection's queue into order syncs.
   'marketplace.order.fxStamp', // Internal job — the bounded per-order reporting-currency stamp retry (#2125).
   'marketplace.order.fxStampSweep', // Internal job — the hourly reporting-currency stamp reconcile (#2125).
   'marketplace.returns.poll', // Returns discovery fan-out over the source feed (#2330).
@@ -105,6 +108,7 @@ export const JOB_TYPE_VALUES = [
   'fulfillment.work.route', // Internal job — commits where one order is fulfilled from (#2395).
   'fulfillment.work.timeoutSweep', // Internal job — reaps fulfilment work a holder never answered (#2712).
   'fulfillment.work.relaySweep', // Internal job — re-drives a missed dispatch relay (#2728).
+  'fulfillment.work.statusPoll', // Internal job - reads a polling holder's progress (Amazon MCF).
   'fulfillment.routing.reapSweep', // Internal job — closes a routing decision stuck past its time limit and routes again (#2731).
   'master.product.syncAll',
   'master.product.syncDelta', // Internal job — not user-triggerable; listed here so an operator can filter the incremental pass (#2220).

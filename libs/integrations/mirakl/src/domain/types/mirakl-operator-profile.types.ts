@@ -9,7 +9,7 @@
  *
  * The profile carries only what the first operator actually needs. Fields for
  * order and offer rules are added by the issues that read them, so nothing here
- * is speculative (ADR-086).
+ * is speculative (ADR-088).
  *
  * @module libs/integrations/mirakl/src/domain/types
  */

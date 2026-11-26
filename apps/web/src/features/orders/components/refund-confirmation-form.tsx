@@ -43,6 +43,7 @@ import { useMemo, type ReactElement, type ReactNode } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { z } from 'zod/v4';
 
+import type { RefundSendTarget } from '../lib/refund-send-target';
 import { interpolate, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -76,12 +77,11 @@ interface RefundConfirmationFormProps {
    */
   currency: string | null;
   /**
-   * The connection a confirmed refund is sent through, or null when it is only
-   * recorded (see
-   * `useRefundSentToChannel`), which changes what the preamble may claim. A prop
-   * rather than a read here, so the form stays free of server state.
+   * The marketplace confirming sends the refund to (see `useRefundSendTarget`),
+   * which changes what the preamble may claim. A prop rather than a read here,
+   * so the form stays free of server state.
    */
-  sentToChannel?: string | null;
+  sendTarget?: RefundSendTarget | null;
   /** Rendered BESIDE the amount as context. Never placed in the input. */
   orderTotal?: string | null;
   pending: boolean;
@@ -122,7 +122,7 @@ type RefundFormValues = z.infer<ReturnType<typeof createRefundConfirmationSchema
 
 export function RefundConfirmationForm({
   currency,
-  sentToChannel = null,
+  sendTarget = null,
   orderTotal = null,
   pending,
   error,
@@ -172,9 +172,13 @@ export function RefundConfirmationForm({
       }}
     >
       <p className="refund-confirmation-form__preamble">
-        {sentToChannel
-          ? interpolate(copy.preambleChannel, { channel: sentToChannel })
-          : copy.preamble}
+        {sendTarget === 'shopify'
+          ? copy.preambleShopify
+          : sendTarget === 'amazon'
+            ? copy.preambleAmazon
+            : sendTarget === 'empik'
+              ? copy.preambleEmpik
+              : copy.preamble}
       </p>
 
       <FormErrorSummary errors={messages} title={copy.heading} />

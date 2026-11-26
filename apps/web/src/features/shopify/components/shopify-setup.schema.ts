@@ -10,7 +10,15 @@
  * @module features/shopify/components
  */
 import { z } from 'zod';
-import type { CoreCapability, CreateConnectionInput } from '../../connections';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  addOrderSyncStartIssues,
+  orderSyncStartShape,
+  readsOrders,
+  toOrderSyncStart,
+  type CoreCapability,
+  type CreateConnectionInput,
+} from '../../connections';
 
 export const SHOPIFY_ADAPTER_KEY = 'shopify.admin.v1';
 
@@ -57,6 +65,7 @@ export const shopifySetupSchema = z
     clientSecret: z.string().trim(),
     accessToken: z.string().trim(),
     locationId: z.string().trim(),
+    orderSyncStart: orderSyncStartShape.default(ORDER_SYNC_START_DEFAULT_VALUE),
   })
   .superRefine((values, ctx) => {
     const need = (field: 'clientId' | 'clientSecret' | 'accessToken'): void => {
@@ -69,6 +78,12 @@ export const shopifySetupSchema = z
     } else {
       need('clientId');
       need('clientSecret');
+    }
+    // Only a question the form asks can be answered wrongly: a role that reads no
+    // orders hides the field, and a stale date typed before switching role must
+    // not block the submit.
+    if (asksOrderSyncStart(values.role)) {
+      addOrderSyncStartIssues(values.orderSyncStart, ctx);
     }
   });
 
@@ -84,6 +99,7 @@ export const SHOPIFY_SETUP_DEFAULT_VALUES: ShopifySetupFormValues = {
   clientSecret: '',
   accessToken: '',
   locationId: '',
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 /** The config seed shared by a direct create and an OAuth install. */
@@ -94,6 +110,15 @@ export function toShopifyConfig(values: ShopifySetupFormSubmission): Record<stri
   };
 }
 
+/**
+ * Whether the order-history choice applies: the role must read orders. It is
+ * asked in every connect mode, because the OAuth install carries the choice
+ * through the redirect and stores it when the callback creates the connection.
+ */
+export function asksOrderSyncStart(role: ShopifySetupRole): boolean {
+  return readsOrders(SHOPIFY_ROLE_CAPABILITIES[role]);
+}
+
 /** Create payload for the two modes that need no redirect. */
 export function toCreateConnectionInput(values: ShopifySetupFormSubmission): CreateConnectionInput {
   return {
@@ -102,6 +127,9 @@ export function toCreateConnectionInput(values: ShopifySetupFormSubmission): Cre
     adapterKey: SHOPIFY_ADAPTER_KEY,
     config: toShopifyConfig(values),
     enabledCapabilities: SHOPIFY_ROLE_CAPABILITIES[values.role],
+    orderSyncStart: asksOrderSyncStart(values.role)
+      ? toOrderSyncStart(values.orderSyncStart)
+      : undefined,
     credentials:
       values.mode === 'access-token'
         ? { accessToken: values.accessToken }

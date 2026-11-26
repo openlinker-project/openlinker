@@ -742,6 +742,10 @@ export interface OrderRecord {
    * degradation on a pre-#3538 payload.
    */
   hasBuyerNote?: boolean;
+  /** When the buyer data retention rule hid the order (#4289). `null`/absent = visible. */
+  hiddenAt?: string | null;
+  /** When the buyer's personal data was erased from the order (#4289). `null`/absent = still stored. */
+  personalDataErasedAt?: string | null;
   /** The order froze a bundle definition at ingestion (#3935). */
   hasBundle?: boolean;
   /**
@@ -1274,6 +1278,12 @@ export interface OrderFilters {
    */
   hasBuyerNote?: boolean;
   /**
+   * Buyer data retention (#4289), `?hidden=`. `true` shows ONLY orders the
+   * retention rule hid; `false` or omitted excludes them, which is the default
+   * list, search and count. Hidden orders are never deleted.
+   */
+  hidden?: boolean;
+  /**
    * "With a gift" filter (#3940), `?withGift=`: orders carrying a gift line,
    * whoever decided it (the channel, a cart rule, a promotion, an operator).
    */
@@ -1318,6 +1328,12 @@ export interface OrderHealthSummaryFilters {
    * never-shipped order otherwise counts as `overdue`.
    */
   cancelled?: boolean;
+  /**
+   * Buyer data retention (#4289): `true` counts only the orders the retention rule
+   * hid, so the KPI cards agree with `/orders?hidden=true`. Omitted or `false`
+   * excludes them, like the default list.
+   */
+  hidden?: boolean;
 }
 
 export interface OrderPagination {

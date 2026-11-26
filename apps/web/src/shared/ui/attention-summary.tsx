@@ -89,10 +89,12 @@ function AttentionGroupLink({ group }: { group: AttentionGroup }): ReactElement 
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" className={classes} data-attention-group={group.id}>
-          <span className="attention-summary__n mono tabular">
-            {group.total === undefined ? copy.unknownCount : group.total}
+          <span className="attention-summary__phrase">
+            <span className="attention-summary__n mono tabular">
+              {group.total === undefined ? copy.unknownCount : group.total}
+            </span>
+            <span className="attention-summary__short">{group.short}</span>
           </span>
-          <span className="attention-summary__short">{group.short}</span>
           {activeLabel ? (
             <span className="attention-summary__on" title={activeLabel} aria-label={activeLabel} />
           ) : null}

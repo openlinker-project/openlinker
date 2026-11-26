@@ -57,6 +57,8 @@ describe('CustomersController', () => {
       upsertAddress: jest.fn(),
       findDestinationAddressMapping: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
+      clearPersonalData: jest.fn(),
+      redactPersonalDataLastSeenBefore: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -192,5 +194,4 @@ describe('CustomersController', () => {
       expect(counted).toEqual({ total: 42 });
     });
   });
-
 });

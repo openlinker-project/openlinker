@@ -15,7 +15,7 @@ import type { OperationalSettingsRepositoryPort } from '../../domain/ports/opera
 import { OperationalSettingsService } from './operational-settings.service';
 
 const emptyRow = (): OperationalSettings =>
-  new OperationalSettings(null, null, null, null, null, null, null, null, null, new Date('2026-08-01T00:00:00Z'), 'admin');
+  new OperationalSettings(null, null, null, null, null, null, null, null, null, null, new Date('2026-08-01T00:00:00Z'), 'admin');
 
 describe('OperationalSettingsService', () => {
   let repository: jest.Mocked<OperationalSettingsRepositoryPort>;
@@ -68,7 +68,7 @@ describe('OperationalSettingsService', () => {
     it('should let a stored row win over the env var and report the row stamp', async () => {
       env.OL_PRODUCT_SYNC_PAGE_LIMIT = '250';
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(900, null, null, null, null, null, null, null, null, new Date('2026-08-02T10:00:00Z'), 'ada')
+        new OperationalSettings(900, null, null, null, null, null, null, null, null, null, new Date('2026-08-02T10:00:00Z'), 'ada')
       );
 
       const view = await service.resolve();
@@ -87,7 +87,7 @@ describe('OperationalSettingsService', () => {
 
     it('should fall back rather than hand the scheduler a stored cadence it cannot construct a CronJob from', async () => {
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(null, null, null, null, null, null, null, null, 'not-a-cron', new Date(), null)
+        new OperationalSettings(null, null, null, null, null, null, null, null, 'not-a-cron', null, new Date(), null)
       );
 
       const view = await service.resolve();
@@ -131,7 +131,9 @@ describe('OperationalSettingsService', () => {
     });
 
     it('should name the broken rule and its limit on the error (#3866)', async () => {
-      await expect(service.updateSettings({ catalogueSweepBudget: 5000 }, null)).rejects.toMatchObject({
+      await expect(
+        service.updateSettings({ catalogueSweepBudget: 5000 }, null)
+      ).rejects.toMatchObject({
         field: 'catalogueSweepBudget',
         rule: 'recommended',
         limit: 2000,
@@ -139,11 +141,13 @@ describe('OperationalSettingsService', () => {
       await expect(
         service.updateSettings({ sweepPageSize: 900, acknowledgeAboveRecommended: true }, null)
       ).rejects.toMatchObject({ field: 'sweepPageSize', rule: 'absolute', limit: 500 });
-      await expect(service.updateSettings({ syncJobRetentionDays: 7 }, null)).rejects.toMatchObject({
-        field: 'syncJobRetentionDays',
-        rule: 'min',
-        limit: 30,
-      });
+      await expect(service.updateSettings({ syncJobRetentionDays: 7 }, null)).rejects.toMatchObject(
+        {
+          field: 'syncJobRetentionDays',
+          rule: 'min',
+          limit: 30,
+        }
+      );
     });
 
     it('should refuse a value above the recommendation without an acknowledgement', async () => {
@@ -186,7 +190,7 @@ describe('OperationalSettingsService', () => {
 
     it('should report an acknowledged override as above the recommendation when read back', async () => {
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(5000, null, null, null, null, null, null, null, null, new Date(), 'ada')
+        new OperationalSettings(5000, null, null, null, null, null, null, null, null, null, new Date(), 'ada')
       );
 
       const view = await service.resolve();
@@ -209,9 +213,9 @@ describe('OperationalSettingsService', () => {
     });
 
     it('should reject an alias form rather than validate a second vocabulary', async () => {
-      await expect(service.updateSettings({ deletionAuditCadence: '@hourly' }, null)).rejects.toThrow(
-        'deletionAuditCadence must be a 5- or 6-field cron expression'
-      );
+      await expect(
+        service.updateSettings({ deletionAuditCadence: '@hourly' }, null)
+      ).rejects.toThrow('deletionAuditCadence must be a 5- or 6-field cron expression');
     });
 
     it('should refuse a cadence that is a disable in disguise — the audit is the deletion authority', async () => {
@@ -270,7 +274,7 @@ describe('OperationalSettingsService', () => {
 
     it('should mark a stored value as one both processes read', async () => {
       repository.findSettings.mockResolvedValue(
-        new OperationalSettings(750, null, null, null, null, null, null, null, null, new Date(), 'ada')
+        new OperationalSettings(750, null, null, null, null, null, null, null, null, null, new Date(), 'ada')
       );
 
       const view = await service.resolve();
@@ -305,6 +309,115 @@ describe('OperationalSettingsService', () => {
 
       expect(view.inventorySweepCadence.value).toBe('*/15 * * * *');
       expect(view.inventorySweepCadence.source).toBe('default');
+    });
+  });
+  describe('buyer data retention (#4289)', () => {
+    it('should default to off with both periods at never', async () => {
+      const view = await service.resolve();
+      expect(view.buyerDataRetentionEnabled).toMatchObject({ value: false, source: 'default' });
+      expect(view.buyerDataHideAfterDays.value).toBe(0);
+      expect(view.buyerDataEraseAfterDays.value).toBe(0);
+      expect(view.buyerDataEraseMode.value).toBe('personal-data');
+    });
+
+    it('should accept never and a period in range, and persist them', async () => {
+      await service.updateSettings(
+        {
+          buyerDataRetentionEnabled: true,
+          buyerDataHideAfterDays: 180,
+          buyerDataEraseAfterDays: 0,
+        },
+        'ada'
+      );
+      expect(repository.upsertSettings.mock.calls[0][0]).toEqual({
+        buyerDataRetentionEnabled: true,
+        buyerDataHideAfterDays: 180,
+        buyerDataEraseAfterDays: 0,
+      });
+    });
+
+    it.each([1, 29, 3651, 45.5])('should refuse the period %p', async (days) => {
+      await expect(
+        service.updateSettings({ buyerDataHideAfterDays: days }, 'ada')
+      ).rejects.toMatchObject({
+        rule: 'buyer-data-period',
+      });
+    });
+
+    it('should refuse an erase period shorter than the stored hide period', async () => {
+      repository.findSettings.mockResolvedValue(
+        new OperationalSettings(
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          new Date(),
+          'ada',
+          null,
+          365
+        )
+      );
+      await expect(
+        service.updateSettings({ buyerDataEraseAfterDays: 90 }, 'ada')
+      ).rejects.toMatchObject({
+        rule: 'buyer-data-order',
+      });
+    });
+
+    it('should refuse an unknown mode', async () => {
+      await expect(
+        service.updateSettings({ buyerDataEraseMode: 'x' as never }, 'ada')
+      ).rejects.toMatchObject({ rule: 'buyer-data-mode' });
+    });
+  });
+
+  describe('releaseCenterEnabled', () => {
+    const row = (value: boolean | null): OperationalSettings =>
+      new OperationalSettings(null, null, null, null, null, null, null, null, null, value, new Date(), null);
+
+    it('should default to on when nothing is set', async () => {
+      expect((await service.resolve()).releaseCenterEnabled).toEqual({
+        value: true,
+        source: 'default',
+        workerMayDiffer: true,
+      });
+    });
+
+    it('should report the env rung when the setting is null and env is false', async () => {
+      env.OL_RELEASE_CENTER_ENABLED = 'false';
+      repository.findSettings.mockResolvedValue(row(null));
+      expect((await service.resolve()).releaseCenterEnabled).toMatchObject({ value: false, source: 'env' });
+    });
+
+    it('should let a stored false win over env true', async () => {
+      env.OL_RELEASE_CENTER_ENABLED = 'true';
+      repository.findSettings.mockResolvedValue(row(false));
+      expect((await service.resolve()).releaseCenterEnabled).toEqual({
+        value: false,
+        source: 'setting',
+        workerMayDiffer: false,
+      });
+    });
+
+    it('should fall through on a garbage env value', async () => {
+      env.OL_RELEASE_CENTER_ENABLED = 'yes please';
+      expect((await service.resolve()).releaseCenterEnabled).toMatchObject({ value: true, source: 'default' });
+    });
+
+    it('should persist an explicit null so the setting clears back to env or default', async () => {
+      await service.updateSettings({ releaseCenterEnabled: null }, 'ada');
+      expect(repository.upsertSettings).toHaveBeenCalledWith({ releaseCenterEnabled: null }, 'ada');
+    });
+
+    it('should leave the toggle alone when the field is omitted', async () => {
+      await service.updateSettings({ sweepPageSize: 50 }, 'ada');
+      expect(repository.upsertSettings).toHaveBeenCalledWith({ sweepPageSize: 50 }, 'ada');
     });
   });
 });

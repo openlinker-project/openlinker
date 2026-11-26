@@ -1,6 +1,6 @@
 # Implementation Plan: Empik order ingestion with automatic acceptance (#4275)
 
-Epic #4273, spike #4268, builds on #4274 (Mirakl plugin foundation, ADR-086).
+Epic #4273, spike #4268, builds on #4274 (Mirakl plugin foundation, ADR-088).
 
 ## 1. Task
 

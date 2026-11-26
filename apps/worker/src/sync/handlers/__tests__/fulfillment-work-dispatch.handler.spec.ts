@@ -157,6 +157,34 @@ describe('FulfillmentWorkDispatchHandler', () => {
     });
   });
 
+  it('should hand a shipping holder the delivery address while buyer data is stored (#4185)', async () => {
+    await handler.execute(job(validPayload));
+
+    expect(
+      (handshake.dispatch.mock.calls as unknown as Array<[{ deliveryAddress: unknown }]>)[0][0].deliveryAddress,
+    ).toEqual({
+      recipientName: 'Anna Kowalska',
+      company: null,
+      addressLine1: 'ul. Testowa 1',
+      addressLine2: null,
+      city: 'Warszawa',
+      region: null,
+      postalCode: '00-001',
+      countryIso2: 'PL',
+      phone: '+48123456789',
+    });
+  });
+
+  it('should hand no delivery address when buyer data is not stored (#4185)', async () => {
+    process.env.OL_STORE_PII = 'false';
+
+    await handler.execute(job(validPayload));
+
+    expect(
+      (handshake.dispatch.mock.calls as unknown as Array<[{ deliveryAddress: unknown }]>)[0][0].deliveryAddress,
+    ).toBeNull();
+  });
+
   it('should report a holder rejection as a TERMINAL business_failure', async () => {
     handshake.dispatch.mockResolvedValue({
       outcome: 'rejected',

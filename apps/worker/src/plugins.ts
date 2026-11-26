@@ -42,6 +42,7 @@ import { SubiektIntegrationModule as SubiektNexoIntegrationModule } from '@openl
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { ShoperIntegrationModule } from '@openlinker/integrations-shoper';
+import { AmazonIntegrationModule } from '@openlinker/integrations-amazon';
 import { ShopifyIntegrationModule } from '@openlinker/integrations-shopify';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 import { OmsModule } from '@openlinker/oms';
@@ -78,6 +79,10 @@ export const workerPlugins: PluginEntry[] = [
   // #3639: Shoper shop platform, registered worker-side so its sync jobs
   // (catalogue, stock, orders, publish) and auth failure classifier run here.
   ShoperIntegrationModule,
+  // #3741: Amazon SP-API, registered worker-side so its capability jobs
+  // (orders, offers, catalogue, stock, returns) and its retry and auth-failure
+  // classifiers run here.
+  AmazonIntegrationModule,
   // #3974: Shopify, registered worker-side so its capability jobs (catalogue,
   // stock, orders, returns, publish) and its retry and auth-failure
   // classifiers run here.

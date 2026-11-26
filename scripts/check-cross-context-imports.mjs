@@ -442,6 +442,12 @@ const ALLOW_LIST = new Map([
   // repository ports on purpose: the claim IS about repository behaviour under
   // real SQL, so unlike the rewire debt below this entry has no rewire target
   // and must NOT be dropped when #722 lands.
+  // #4289: the retention int-spec asserts on stored rows (erase survives
+  // re-ingestion), so it reads the order repository port directly. Permanent.
+  [
+    'apps/api/test/integration/buyer-data-retention.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
   [
     'apps/api/test/integration/paginated-total-split.int-spec.ts',
     new Set([
@@ -451,6 +457,15 @@ const ALLOW_LIST = new Map([
       'ProductVariantRepositoryPort',
       'OfferMappingRepositoryPort',
     ]),
+  ],
+
+  // The release-center persistence int-spec (#4141) proves partial-index
+  // ON CONFLICT predicates, the cursor row comparison and the per-user row
+  // limit under concurrency, all repository SQL. Like the entry above it has
+  // no rewire target and must NOT be dropped when #722 lands.
+  [
+    'apps/api/test/integration/release-center-persistence.int-spec.ts',
+    new Set(['ReleaseCursorRepositoryPort', 'ReleaseItemStateRepositoryPort']),
   ],
 
   // The dead failed-creation guard is a SQL predicate over a LEFT join, so the

@@ -9,6 +9,83 @@ import { ApiProperty } from '@nestjs/swagger';
 import { ConnectionBacklogStatusValues } from '@openlinker/core/sync';
 import { ConnectionBacklogStatus } from '@openlinker/core/sync';
 
+export class ActiveOrderImportDto {
+  @ApiProperty({ description: 'Identifies the import run' })
+  runId!: string;
+
+  @ApiProperty({ enum: ['oldest-first', 'newest-first'] })
+  direction!: 'oldest-first' | 'newest-first';
+
+  @ApiProperty({ nullable: true, type: String, description: 'First day of the window, or null' })
+  from!: string | null;
+
+  @ApiProperty({ nullable: true, type: String, description: 'Last day of the window, or null' })
+  to!: string | null;
+
+  @ApiProperty({ description: 'Pages read so far. The total is unknown.' })
+  pagesDone!: number;
+
+  @ApiProperty({ description: 'ISO timestamp the run started' })
+  startedAt!: string;
+}
+
+export class OrderImportFailureReasonDto {
+  @ApiProperty({ enum: ['missing-mapping', 'other'], description: 'Why the orders could not be imported' })
+  code!: 'missing-mapping' | 'other';
+
+  @ApiProperty({ description: 'Orders that failed for this reason in the last 7 days' })
+  count!: number;
+
+  @ApiProperty({ description: 'ISO timestamp of the most recent failure' })
+  lastFailedAt!: string;
+
+  @ApiProperty({ nullable: true, type: String, description: 'Source id of the most recent order that failed' })
+  sampleOrderId!: string | null;
+
+  @ApiProperty({ description: 'Stored message of that failure, verbatim (English)' })
+  sampleMessage!: string;
+}
+
+export class OrderStartStatusDto {
+  @ApiProperty({ enum: ['now', 'from', 'all'], description: 'Which orders import starts with' })
+  mode!: 'now' | 'from' | 'all';
+
+  @ApiProperty({ nullable: true, type: String, description: 'First day, for mode "from"' })
+  from!: string | null;
+
+  @ApiProperty({ enum: ['oldest-first', 'newest-first'], description: 'Which end of the history is imported first' })
+  order!: 'oldest-first' | 'newest-first';
+
+  @ApiProperty({ nullable: true, type: String, description: 'ISO timestamp the choice took effect; null while it waits for the next check' })
+  appliedAt!: string | null;
+
+  @ApiProperty({ description: 'True when the choice was made and nothing has been read under it yet' })
+  pending!: boolean;
+}
+
+export class OrderImportStatusDto {
+  @ApiProperty({ description: 'Orders imported in the last 24 hours' })
+  importedLast24h!: number;
+
+  @ApiProperty({ nullable: true, type: String, description: 'ISO timestamp of the last successful poll of the shop for orders (last 7 days), or null' })
+  lastPolledAt!: string | null;
+
+  @ApiProperty({ description: 'Order imports that failed for good in the last 7 days' })
+  failedLast7d!: number;
+
+  @ApiProperty({ type: [OrderImportFailureReasonDto], description: 'The failures grouped by reason' })
+  failures!: OrderImportFailureReasonDto[];
+
+  @ApiProperty({ description: 'Order imports queued or running right now' })
+  waiting!: number;
+
+  @ApiProperty({ nullable: true, type: String, description: 'When an order was last imported (last 7 days), or null' })
+  lastImportedAt!: string | null;
+
+  @ApiProperty({ nullable: true, type: ActiveOrderImportDto, description: 'A history or range import that is still running, or null' })
+  activeImport!: ActiveOrderImportDto | null;
+}
+
 export class ConnectionSyncStatusResponseDto {
   @ApiProperty({ description: 'Connection id' })
   connectionId!: string;
@@ -121,6 +198,29 @@ export class ConnectionSyncStatusResponseDto {
       'holds none, which is normal for a webhook-fed connection.',
   })
   lastCursorAdvanceAt!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'ISO timestamp at which order sync was started from "now" for this connection. Null when ' +
+      'no start was recorded (a connection that predates start dates, or one with no order feed).',
+  })
+  orderSyncStartedAt!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: OrderImportStatusDto,
+    description: 'How the order import is doing. Null when the figures could not be read.',
+  })
+  orderImport!: OrderImportStatusDto | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: OrderStartStatusDto,
+    description: 'The start choice for order import, or null when none was recorded.',
+  })
+  orderStart!: OrderStartStatusDto | null;
 
   @ApiProperty({ description: 'Observation window used for the rate figures, in ms' })
   observationWindowMs!: number;

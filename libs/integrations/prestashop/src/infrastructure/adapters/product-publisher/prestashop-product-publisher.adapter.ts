@@ -652,8 +652,14 @@ export class PrestashopProductPublisherAdapter
         return;
       }
 
+      // PS WS PUT takes the FULL resource body: a body of three fields is
+      // refused with 400 (it lacks id_product_attribute, id_shop,
+      // depends_on_stock, out_of_stock), which left a published product at 0.
+      // The read-back row is spread and only `quantity` overlaid, exactly as the
+      // inventory master's adjustment does.
       const saId = String(row.id);
       await this.client.updateResource('stock_availables', saId, {
+        ...row,
         id: saId,
         id_product: productId,
         quantity: String(quantity),

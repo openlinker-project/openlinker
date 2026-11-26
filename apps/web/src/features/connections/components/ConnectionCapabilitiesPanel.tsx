@@ -14,9 +14,18 @@
 import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import type { Connection, CoreCapability } from '../api/connections.types';
+import type { Connection, CoreCapability, OrderSyncStart } from '../api/connections.types';
 import { CORE_CAPABILITY_VALUES } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
+import { useAdaptersQuery } from '../../adapters';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  toOrderSyncStart,
+  type OrderSyncStartValue,
+} from '../lib/order-sync-start';
+import { OrderSyncStartField } from './order-sync-start-field';
 import {
   CAPABILITY_HELP,
   capabilityConflictMessage,
@@ -26,9 +35,11 @@ import {
 import { MCP_TOOL_CAPABILITIES, useMcpConnectionChangeHint } from '../../mcp-tokens';
 import { AccessGate } from '../../../shared/ui/access-gate';
 import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { describeApiError } from '../../../shared/api/describe-api-error';
+import { CapabilityName } from './capability-name';
 
 interface ConnectionCapabilitiesPanelProps {
   connection: Connection;
@@ -100,6 +111,16 @@ export function ConnectionCapabilitiesPanel({
   const updateMutation = useUpdateConnectionMutation();
   const { showToast } = useToast();
   const [pending, setPending] = useState<CoreCapability | null>(null);
+  const adapters = useAdaptersQuery();
+  const [startPrompt, setStartPrompt] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);
+  const [startValue, setStartValue] = useState<OrderSyncStartValue>(ORDER_SYNC_START_DEFAULT_VALUE);
+  const adapter =
+    adapters.data?.find((a) => a.adapterKey === connection.adapterKey) ??
+    adapters.data?.find((a) => a.platformType === connection.platformType && a.isDefault);
+  const supportedStartModes = adapter?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
+  const startParsed = orderSyncStartSchema.safeParse(startValue);
+  const startError = startParsed.success ? undefined : startParsed.error.issues[0]?.message;
 
   // Today the panel only renders the well-known core capabilities (the
   // CoreCapabilityValues set, mirrored here as CORE_CAPABILITY_VALUES).
@@ -140,7 +161,30 @@ export function ConnectionCapabilitiesPanel({
     supported.includes(capability)
   );
 
-  async function handleToggle(capability: CoreCapability, checked: boolean): Promise<void> {
+  async function handleToggle(
+    capability: CoreCapability,
+    checked: boolean,
+    orderSyncStart?: OrderSyncStart
+  ): Promise<void> {
+    // Switching order reading on is where the operator says how far back to read, so the
+    // choice comes before the write instead of silently defaulting to "only new orders".
+    if (
+      capability === 'OrderSource' &&
+      checked &&
+      !enabled.has('OrderSource') &&
+      supportedStartModes.length > 0 &&
+      orderSyncStart === undefined &&
+      !startPrompt
+    ) {
+      setStartPrompt(true);
+      return;
+    }
+    // Switching order reading off stops new orders arriving without any further sign, so it
+    // is confirmed first (the confirm step runs the toggle again with the flag set).
+    if (capability === 'OrderSource' && !checked && enabled.has('OrderSource') && !confirmOff) {
+      setConfirmOff(true);
+      return;
+    }
     const next = new Set(enabled);
     if (checked) {
       next.add(capability);
@@ -151,8 +195,14 @@ export function ConnectionCapabilitiesPanel({
     try {
       await updateMutation.mutateAsync({
         connectionId: connection.id,
-        input: { enabledCapabilities: Array.from(next) },
+        input: {
+          enabledCapabilities: Array.from(next),
+          ...(orderSyncStart ? { orderSyncStart } : {}),
+        },
       });
+      setStartPrompt(false);
+      setConfirmOff(false);
+      setStartValue(ORDER_SYNC_START_DEFAULT_VALUE);
       showToast({
         tone: 'success',
         title: copy.updatedTitle,
@@ -245,7 +295,7 @@ export function ConnectionCapabilitiesPanel({
                     }
                     onChange={(e) => void handleToggle(capability, e.target.checked)}
                   />
-                  <span className="capability-list__name mono-text">{capability}</span>
+                  <CapabilityName capability={capability} />
                 </label>
                 <p className="capability-list__help muted-text">
                   {isBlocked && conflict
@@ -257,6 +307,69 @@ export function ConnectionCapabilitiesPanel({
           })}
         </ul>
       )}
+
+      {startPrompt ? (
+        <div className="capability-list__order-start" data-testid="capability-order-start">
+          <OrderSyncStartField
+            value={startValue}
+            onChange={setStartValue}
+            supportedModes={supportedStartModes}
+            windowImport={adapter?.orderWindowImport ?? false}
+            error={
+              startValue.mode === 'from' && (startValue.from ?? '') !== '' ? startError : undefined
+            }
+          />
+          <div className="capability-list__order-start-actions">
+            <Button
+              tone="secondary"
+              onClick={() => {
+                setStartPrompt(false);
+                setStartValue(ORDER_SYNC_START_DEFAULT_VALUE);
+              }}
+              disabled={updateMutation.isPending}
+            >
+              {copy.orderStart.cancel}
+            </Button>
+            <Button
+              tone="primary"
+              onClick={() =>
+                void handleToggle(
+                  'OrderSource',
+                  true,
+                  toOrderSyncStart(startValue) ?? { mode: 'now' }
+                )
+              }
+              disabled={!startParsed.success || updateMutation.isPending}
+            >
+              {copy.orderStart.confirm}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmOff ? (
+        <div className="capability-list__order-start" data-testid="capability-order-off-confirm">
+          <Alert tone="warning" title={copy.orderOff.title}>
+            {copy.orderOff.body}
+          </Alert>
+          <div className="capability-list__order-start-actions">
+            <Button
+              tone="secondary"
+              onClick={() => setConfirmOff(false)}
+              disabled={updateMutation.isPending}
+            >
+              {copy.orderOff.cancel}
+            </Button>
+            <Button
+              tone="primary"
+              onClick={() => void handleToggle('OrderSource', false)}
+              disabled={updateMutation.isPending}
+            >
+              {copy.orderOff.confirm}
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {/* #3192 - the consequence an operator otherwise discovers by waiting:
        * a role makes the connection ELIGIBLE, it routes nothing to it. Not

@@ -65,7 +65,7 @@ test.describe('ksef-legal: cross-border', () => {
     );
     testInfo.annotations.push({ type: 'clearance', description: String(outcome.regulatoryStatus) });
     expect(outcome.status, 'the shop chose the band, so the guard steps aside').toBe('issued');
-    await page.goto(`/orders/${synthesized.order.internalOrderId}`);
+    await page.goto(`/orders/${synthesized.order.internalOrderId}?tab=documents`);
     await shot(
       page.getByTestId('sales-document-panel'),
       testInfo,

@@ -547,6 +547,33 @@ describe('SubiektInvoicingAdapter', () => {
       });
     });
 
+    it('addresses a correction after a set line to the position Subiekt holds (the set expanded into two lines)', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const correctionSpy = jest.spyOn(bridge, 'issueCorrection');
+      const setLine = {
+        name: 'Zestaw',
+        quantity: 1,
+        unitPriceGross: 60,
+        taxRate: '23',
+        stockComponents: [
+          { productId: 'p-mug', variantId: 'v-mug', quantity: 1 },
+          { productId: 'p-pad', variantId: 'v-pad', quantity: 1 },
+        ],
+      };
+      const coffee = { name: 'Kawa', quantity: 1, unitPriceGross: 30, taxRate: '23' };
+      await adapter.issueCorrection(
+        correctionCommand({
+          lines: [{ originalLineNumber: 2, newQuantity: 0 }],
+          originalDocument: { lines: [setLine, coffee] } as never,
+        }),
+      );
+      // Snapshot line 2 (the coffee) is document position 3: the set took positions 1 and 2.
+      expect(correctionSpy).toHaveBeenCalledWith(
+        100001,
+        expect.objectContaining({ lines: [{ lp: 3, nowaIlosc: 0 }] }),
+      );
+    });
+
     it('rejects a non-positive-integer originalProviderInvoiceId without a bridge call', async () => {
       const { adapter, bridge } = makeAdapter();
       const correctionSpy = jest.spyOn(bridge, 'issueCorrection');

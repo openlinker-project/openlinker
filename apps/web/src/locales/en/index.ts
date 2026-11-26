@@ -14,6 +14,7 @@
 import adapters from './adapters.json';
 import aiProviderSettings from './ai-provider-settings.json';
 import allegroCore from './allegro-core.json';
+import amazon from './amazon.json';
 import analytics from './analytics.json';
 import app from './app.json';
 import auth from './auth.json';
@@ -21,6 +22,7 @@ import automation from './automation.json';
 import bench from './bench.json';
 import bundleReturns from './bundle-returns.json';
 import bundles from './bundles.json';
+import buyerData from './buyer-data.json';
 import buyerEmails from './buyer-emails.json';
 import connections from './connections.json';
 import content from './content.json';
@@ -54,9 +56,11 @@ import priceChanges from './price-changes.json';
 import products from './products.json';
 import promotions from './promotions.json';
 import promptTemplates from './prompt-templates.json';
+import releaseCenter from './release-center.json';
 import returnGifts from './return-gifts.json';
 import returns from './returns.json';
 import salesDocuments from './sales-documents.json';
+import savedViews from './saved-views.json';
 import settings from './settings.json';
 import shipments from './shipments.json';
 import shopify from './shopify.json';
@@ -69,6 +73,7 @@ export const en = {
   adapters,
   'ai-provider-settings': aiProviderSettings,
   'allegro-core': allegroCore,
+  amazon,
   analytics,
   app,
   auth,
@@ -76,6 +81,7 @@ export const en = {
   bench,
   'bundle-returns': bundleReturns,
   bundles,
+  'buyer-data': buyerData,
   'buyer-emails': buyerEmails,
   connections,
   content,
@@ -109,9 +115,11 @@ export const en = {
   'price-changes': priceChanges,
   products,
   'prompt-templates': promptTemplates,
+  'release-center': releaseCenter,
   'return-gifts': returnGifts,
   returns,
   'sales-documents': salesDocuments,
+  'saved-views': savedViews,
   settings,
   shipments,
   shopify,

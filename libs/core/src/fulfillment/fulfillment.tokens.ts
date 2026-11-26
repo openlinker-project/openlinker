@@ -109,6 +109,13 @@ export const FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN = Symbol(
 );
 
 /**
+ * The status poll for a POLLING holder (Amazon Multi-Channel Fulfillment).
+ * Consumed by the WORKER's `fulfillment.work.statusPoll` handler, which
+ * resolves the holder's adapter and composes the dispatch relay.
+ */
+export const FULFILLMENT_STATUS_POLL_SERVICE_TOKEN = Symbol('IFulfillmentStatusPollService');
+
+/**
  * The #2731 stranded-routing-decision reaper. Consumed by the WORKER's
  * `fulfillment.routing.reapSweep` handler and by the read-only routing-decision
  * endpoint in `apps/api`; neither reaches the decision repository port.

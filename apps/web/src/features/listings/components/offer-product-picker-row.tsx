@@ -85,6 +85,15 @@ export function OfferProductPickerRow({
   };
 
   const variantCount = product.variantCount;
+  const bundle = product.bundle ?? null;
+  // The list payload carries no pack size, so a one-component bundle is the
+  // only case that can be named a multipack without another call.
+  const bundleLabel =
+    bundle === null
+      ? null
+      : bundle.componentCount === 1
+        ? copy.bundlePack
+        : plural(bundle.componentCount, copy.bundleSet);
   const isSimple = typeof variantCount === 'number' && variantCount <= 1;
   const rowClasses = [
     'offer-product-picker__prow',
@@ -127,7 +136,20 @@ export function OfferProductPickerRow({
             <b>{product.name}</b>
             <small className="mono-text">{product.sku ?? '—'}</small>
           </span>
-          {typeof variantCount === 'number' ? (
+          {bundleLabel !== null ? (
+            <span
+              className={`offer-product-picker__bundle${
+                bundle?.componentCount === 1 ? ' offer-product-picker__bundle--pack' : ''
+              }`}
+              title={copy.bundleTitle}
+              data-testid="picker-bundle-chip"
+            >
+              <svg className="offer-product-picker__bundle-ico" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+              </svg>
+              {bundleLabel}
+            </span>
+          ) : typeof variantCount === 'number' ? (
             <span
               className={`offer-product-picker__vcount${
                 isSimple ? ' offer-product-picker__vcount--simple' : ''
@@ -189,11 +211,15 @@ export function OfferProductPickerRow({
                     />
                     <span className="offer-product-picker__vname">
                       <b>{variantLabel(detailQuery.data ?? product, variant)}</b>
-                      <small className={`mono-text${hasBarcode ? '' : ' offer-product-picker__vname-bad'}`}>
+                      <small
+                        className={`mono-text${hasBarcode || bundle ? '' : ' offer-product-picker__vname-bad'}`}
+                      >
                         {interpolate(copy.variantSku, { sku: variant.sku ?? '—' })} ·{' '}
-                        {hasBarcode
-                          ? interpolate(copy.variantEan, { ean: variant.ean ?? variant.gtin ?? '—' })
-                          : copy.variantNoEan}
+                        {bundle
+                          ? copy.bundleVariantNote
+                          : hasBarcode
+                            ? interpolate(copy.variantEan, { ean: variant.ean ?? variant.gtin ?? '—' })
+                            : copy.variantNoEan}
                       </small>
                     </span>
                   </label>

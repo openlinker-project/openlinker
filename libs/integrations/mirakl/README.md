@@ -3,7 +3,7 @@
 Mirakl Seller API plugin for OpenLinker. Every Mirakl marketplace runs the same
 Seller API, so this package holds the shared client and adapters, and each
 marketplace is an **operator profile** (`src/operators/`) that becomes its own
-connection type in OpenLinker. See ADR-086.
+connection type in OpenLinker. See ADR-088.
 
 | Operator | Profile | Adapter key | Platform type |
 |---|---|---|---|

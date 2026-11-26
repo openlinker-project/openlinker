@@ -26,7 +26,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useRecordOrderRefundMutation } from '../hooks/use-record-order-refund-mutation';
-import { useRefundSentToChannel } from '../lib/refund-sent-to-channel';
+import { useRefundSendTarget } from '../lib/refund-send-target';
 import { readRefundCeilingFigures } from '../lib/order-cancel';
 import {
   RefundConfirmationForm,
@@ -61,7 +61,7 @@ export function ConfirmOrderRefundDialog({
   const copy = useMessages('orders').confirmOrderRefund;
   const { showToast } = useToast();
   const mutation = useRecordOrderRefundMutation();
-  const sentToChannel = useRefundSentToChannel(sourceConnectionId);
+  const sendTarget = useRefundSendTarget(sourceConnectionId);
   const [acknowledged, setAcknowledged] = useState(false);
   const keyRef = useRef<string>(newIdempotencyKey());
 
@@ -104,9 +104,13 @@ export function ConfirmOrderRefundDialog({
       <DialogContent className="order-hold-dialog" data-testid="order-refund-dialog">
         <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
-          {sentToChannel
-            ? interpolate(copy.descriptionChannel, { channel: sentToChannel })
-            : copy.description}
+          {sendTarget === 'shopify'
+            ? copy.descriptionShopify
+            : sendTarget === 'amazon'
+              ? copy.descriptionAmazon
+              : sendTarget === 'empik'
+                ? copy.descriptionEmpik
+                : copy.description}
         </DialogDescription>
 
         {ceiling ? (
@@ -136,7 +140,7 @@ export function ConfirmOrderRefundDialog({
 
         <RefundConfirmationForm
           currency={currency}
-          sentToChannel={sentToChannel}
+          sendTarget={sendTarget}
           orderTotal={orderTotal}
           pending={mutation.isPending}
           error={

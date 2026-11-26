@@ -7,7 +7,11 @@
  *
  * @module domain/entities
  */
-import type { OrderBundleComponent, OrderBundleLine, RawMultipackLine } from '../types/order-bundle-line.types';
+import type {
+  OrderBundleComponent,
+  OrderBundleLine,
+  RawMultipackLine,
+} from '../types/order-bundle-line.types';
 import {
   componentLineIdsFor,
   componentRefsFor,
@@ -566,8 +570,33 @@ export class OrderRecord {
      * read; `null` when the block has none or predates the column. Appended
      * LAST: positional constructor.
      */
-    public readonly salesDocumentBlockParams: SalesDocumentBlockParams | null = null
+    public readonly salesDocumentBlockParams: SalesDocumentBlockParams | null = null,
+    /**
+     * When the buyer data retention rule hid the order (#4289); `null` = visible.
+     * Sole writer `hideForBuyerDataRetention`. Appended LAST: positional constructor.
+     */
+    public readonly hiddenAt: Date | null = null,
+    /**
+     * When the buyer's personal data was erased (#4289); `null` = not erased.
+     * Sole writer `erasePersonalDataForRetention`. Appended LAST.
+     */
+    public readonly personalDataErasedAt: Date | null = null,
+    /**
+     * When the source's retention period removed the buyer's data (#4178);
+     * `null` = not redacted. Sole writer `redactBuyerData`. Appended LAST.
+     */
+    public readonly buyerDataRedactedAt: Date | null = null
   ) {}
+
+  /**
+   * Whether the buyer's personal data is already gone from this order, by an
+   * erasure (#4289) or a source retention redaction (#4178). Pure derivation of
+   * two loaded fields (ADR-011); the one predicate a caller asks instead of
+   * naming either column, so a third way to lose the data cannot be forgotten.
+   */
+  get isBuyerDataGone(): boolean {
+    return this.personalDataErasedAt !== null || this.buyerDataRedactedAt !== null;
+  }
 
   /**
    * The buyer note in its three domain states, decoded from the column's
@@ -800,6 +829,16 @@ export class OrderRecord {
   }
 
   /**
+   * True when the source asserted it ships this order itself (#3636: Allegro
+   * One Fulfillment, Amazon FBA). Read from the snapshot, where ingestion
+   * persists it; absent means "not asserted", never "the seller ships".
+   * Pure derivation of an already-loaded field (ADR-011).
+   */
+  get isFulfilledBySource(): boolean {
+    return this.orderSnapshot.fulfilledBySource === true;
+  }
+
+  /**
    * True once a reporting-currency figure has landed on this row (#2125). Pure
    * derivation of an already-loaded field (ADR-011).
    *
@@ -942,7 +981,10 @@ export class OrderRecord {
           itemId: id,
           name: typeof name === 'string' ? name : null,
           packQuantity,
-          productRef: { type: ref.type as RawMultipackLine['productRef']['type'], externalId: ref.externalId },
+          productRef: {
+            type: ref.type as RawMultipackLine['productRef']['type'],
+            externalId: ref.externalId,
+          },
         });
       }
     }

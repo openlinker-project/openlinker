@@ -21,18 +21,22 @@ import {
 } from '../../delivery-on-documents';
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import type { AllegroSetupFormValues } from './allegro-setup.schema';
-import { useMessages } from '../../../shared/i18n';
+import { useFormat, useMessages } from '../../../shared/i18n';
+import { describeOrderSyncStart, type CatalogueMode } from '../../connections';
 
 interface AllegroSetupSummaryProps {
   values: AllegroSetupFormValues;
   stepIndex: number;
   selectedCatalogName: string | null;
+  /** `none` reads as "no catalog" rather than as a link nobody has picked yet (#4281). */
+  catalogueMode?: CatalogueMode;
   suggestions?: readonly DeliveryLineSuggestion[];
   /** False when re-authenticating: that flow never touches delivery settings. */
   showDelivery?: boolean;
 }
 
 export function AllegroSetupSummary({
+  catalogueMode = 'linked',
   selectedCatalogName,
   showDelivery = true,
   stepIndex,
@@ -40,6 +44,8 @@ export function AllegroSetupSummary({
   values,
 }: AllegroSetupSummaryProps): ReactElement {
   const copy = useMessages('allegro-core').allegroSetupSummary;
+  const orderCopy = useMessages('connections').orderSyncStart;
+  const format = useFormat();
   const environmentLabel =
     values.environment === 'production'
       ? copy.production
@@ -74,7 +80,7 @@ export function AllegroSetupSummary({
         <section className="wizard-summary__section">
           <h3 className="wizard-summary__section-title">{copy.productCatalogue}</h3>
           <dl className="wizard-summary__rows">
-            <WizardSummaryRow label={copy.linkedTo} value={selectedCatalogName ?? copy.notLinked} />
+            <WizardSummaryRow label={copy.linkedTo} value={catalogueMode === 'none' ? copy.noCatalogue : (selectedCatalogName ?? copy.notLinked)} />
           </dl>
         </section>
       ) : null}
@@ -84,6 +90,18 @@ export function AllegroSetupSummary({
           value={values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE}
           suggestions={suggestions}
         />
+      ) : null}
+
+      {showDelivery && stepIndex >= 4 ? (
+        <section className="wizard-summary__section">
+          <h3 className="wizard-summary__section-title">{orderCopy.review.label}</h3>
+          <dl className="wizard-summary__rows">
+            <WizardSummaryRow
+              label={orderCopy.title}
+              value={describeOrderSyncStart(values.orderSyncStart, orderCopy.review, format.date)}
+            />
+          </dl>
+        </section>
       ) : null}
     </>
   );

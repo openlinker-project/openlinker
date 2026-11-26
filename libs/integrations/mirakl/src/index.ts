@@ -2,7 +2,7 @@
  * @openlinker/integrations-mirakl: Public Barrel
  *
  * Mirakl Seller API plugin, with Empik Marketplace as its first operator
- * (epic #4273, ADR-086). The host composes `EmpikIntegrationModule`. The HTTP
+ * (epic #4273, ADR-088). The host composes `EmpikIntegrationModule`. The HTTP
  * client, pagination helpers and import tracker stay package-private; the
  * typed exceptions are public because host-side classifiers and tests match on
  * them.

@@ -37,6 +37,8 @@ export interface OrderLineItemIdentityProps {
   /** Further lines under the code line. */
   extra?: ReactNode;
   className?: string;
+  /** When set the product name is a button that opens the product (#4286). */
+  onOpen?: () => void;
 }
 
 export function OrderLineItemIdentity({
@@ -48,18 +50,33 @@ export function OrderLineItemIdentity({
   thumbnailSize = 'sm',
   extra,
   className = '',
+  onOpen,
 }: OrderLineItemIdentityProps): ReactElement {
   return (
     <span className={['order-line-item__product', className].filter(Boolean).join(' ')}>
       <ProductThumbnail name={placeholderName} src={imageSrc ?? undefined} size={thumbnailSize} />
       <span className="order-line-item__product-info">
-        {name ? <span className="order-line-item__name">{name}</span> : null}
+        {name ? (
+          onOpen ? (
+            <button type="button" className="order-line-item__name order-line-item__name--link" onClick={onOpen}>
+              {name}
+            </button>
+          ) : (
+            <span className="order-line-item__name">{name}</span>
+          )
+        ) : null}
         <span
           className={['order-line-item__sku', 'mono-text', codeIsFallback ? 'text-muted' : '']
             .filter(Boolean)
             .join(' ')}
         >
-          {code}
+          {onOpen && !name ? (
+            <button type="button" className="order-line-item__name--link" onClick={onOpen}>
+              {code}
+            </button>
+          ) : (
+            code
+          )}
         </span>
         {extra}
       </span>

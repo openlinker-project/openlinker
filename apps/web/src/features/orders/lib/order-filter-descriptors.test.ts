@@ -50,6 +50,8 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
         'fulfillmentState',
         'health',
         'hasBuyerNote',
+        // #4289 - buyer data retention: show only hidden orders.
+        'hidden',
         'hold',
         'invoicing',
         'openReturn',
@@ -102,6 +104,7 @@ describe('ORDER_FILTER_DESCRIPTORS', () => {
       taxRateConflict: 'taxRate=conflict',
       openReturn: 'openReturn=true',
       hasBuyerNote: 'hasBuyerNote=true',
+      hidden: 'hidden=true',
       withGift: 'withGift=true',
       withBundle: 'withBundle=true',
       giftNotAdded: 'giftNotAdded=true',

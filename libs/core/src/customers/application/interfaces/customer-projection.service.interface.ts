@@ -33,6 +33,12 @@ export interface ICustomerProjectionService {
   ): Promise<ReadonlyMap<string, CustomerProjection>>;
 
   /**
+   * Null the personal fields of these customers' projections (#4289), keeping
+   * the email hash. Idempotent. Returns how many projections were cleared.
+   */
+  clearPersonalData(internalCustomerIds: readonly string[]): Promise<number>;
+
+  /**
    * Upsert customer projection
    * Updates lastSeenAt and other fields if projection exists
    */
@@ -51,6 +57,17 @@ export interface ICustomerProjectionService {
   upsertDestinationAddressMapping(
     mapping: DestinationAddressMapping
   ): Promise<DestinationAddressMapping>;
+
+  /**
+   * Remove the personal data of customers last seen through a source before
+   * the given instant (#4178). See
+   * `CustomerProjectionRepositoryPort.redactPersonalDataLastSeenBefore`.
+   */
+  redactPersonalDataLastSeenBefore(input: {
+    readonly sourceConnectionId: string;
+    readonly lastSeenBefore: Date;
+    readonly limit: number;
+  }): Promise<number>;
 }
 
 // Re-export token for convenience

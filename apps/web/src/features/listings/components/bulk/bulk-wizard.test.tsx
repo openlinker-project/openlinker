@@ -19,7 +19,7 @@ import {
   createMockApiClient,
   findToastTitle,
 } from '../../../../test/test-utils';
-import { BulkWizard, mergeResolveOutcomes, seedRows } from './bulk-wizard';
+import { BulkWizard, countWillCreate, mergeResolveOutcomes, seedRows } from './bulk-wizard';
 import type {
   BulkResolveCompletion,
   BulkResolveOutcome,
@@ -478,6 +478,7 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
       connections: { list: vi.fn().mockResolvedValue([connection(capabilities)]) },
       listings: {
         checkPublishedVariants: vi.fn().mockResolvedValue({ publishedVariantIds: [] }),
+        previewBundleOffers: vi.fn().mockResolvedValue({ entries: [] }),
         bulkCreate,
       },
     });
@@ -651,4 +652,32 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
     const cta = await screen.findAllByRole('button', { name: 'Create offers (0)' });
     expect(cta[0]).toBeDisabled();
   }, 15000);
+});
+
+describe('countWillCreate (confirmation counts)', () => {
+  const variant = (variantId: string, over: Partial<BulkVariantRow> = {}): BulkVariantRow =>
+    ({ variantId, included: true, blockers: [], ...over }) as unknown as BulkVariantRow;
+  const row = (productId: string, variants: BulkVariantRow[]): BulkWizardRow =>
+    ({ productId, variants }) as unknown as BulkWizardRow;
+  const pack = { components: [{ quantity: 3 }] };
+  const set = { components: [{ quantity: 1 }, { quantity: 1 }] };
+  const bundles = new Map([
+    ['pack1', pack],
+    ['set1', set],
+    ['set2', set],
+  ]) as unknown as Parameters<typeof countWillCreate>[3];
+
+  it('should count only rows that will really be created', () => {
+    const rows = [
+      row('p1', [variant('pack1')]),
+      row('p2', [variant('set1')]), // already listed
+      row('p3', [variant('set2', { blockers: ['no-match'] })]), // blocked
+      row('p4', [variant('plain', { included: false })]), // switched off
+    ];
+    expect(countWillCreate(rows, {}, new Set(['set1']), bundles)).toEqual({
+      products: 1,
+      sets: 0,
+      packs: 1,
+    });
+  });
 });

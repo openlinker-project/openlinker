@@ -131,6 +131,64 @@ describe('TopProductsService', () => {
     expect(result.unresolvedProductCount).toBe(1);
   });
 
+  describe('unmatched marketplace lines (#4280)', () => {
+    const unmatchedId = 'unmatched:conn-a:9788328345';
+    const withUnmatched = (): TopProductsResult => {
+      const base = coreResult();
+      return {
+        ...base,
+        items: [...base.items, { ...base.items[0], productId: unmatchedId, units: 3 }],
+        total: 2,
+      };
+    };
+
+    it('reports an unmatched row by its offer id and keeps it out of the unresolved count', async () => {
+      orderRecordService.getTopProducts.mockResolvedValue(withUnmatched());
+      productsService.getProductsByIds.mockResolvedValue([product({ id: 'p1' })]);
+      productsService.getVariantsByProductIds.mockResolvedValue([]);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([]);
+
+      const result = await service.getTopProducts(filters);
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items[1]).toEqual(
+        expect.objectContaining({
+          productId: unmatchedId,
+          name: null,
+          sku: '9788328345',
+          unmatchedOfferId: '9788328345',
+        })
+      );
+      expect(result.items[0].unmatchedOfferId).toBeNull();
+      expect(result.unmatchedOfferCount).toBe(1);
+      expect(result.unresolvedProductCount).toBe(0);
+    });
+
+    it('never asks the catalogue about a synthetic id', async () => {
+      orderRecordService.getTopProducts.mockResolvedValue(withUnmatched());
+      productsService.getProductsByIds.mockResolvedValue([product({ id: 'p1' })]);
+      productsService.getVariantsByProductIds.mockResolvedValue([]);
+      integrationsService.listCapabilityAdapters.mockResolvedValue([]);
+
+      await service.getTopProducts(filters);
+
+      expect(productsService.getProductsByIds).toHaveBeenCalledWith(['p1']);
+    });
+
+    it('works for a page made only of unmatched rows without touching the catalogue or the coverage read', async () => {
+      const only = withUnmatched();
+      orderRecordService.getTopProducts.mockResolvedValue({ ...only, items: [only.items[1]], total: 1 });
+      productsService.getProductsByIds.mockResolvedValue([]);
+
+      const result = await service.getTopProducts(filters);
+
+      expect(result.items[0].unmatchedOfferId).toBe('9788328345');
+      expect(result.unmatchedOfferCount).toBe(1);
+      expect(result.unresolvedProductCount).toBe(0);
+      expect(integrationsService.listCapabilityAdapters).not.toHaveBeenCalled();
+    });
+  });
+
   describe('coverage-gap flag', () => {
     it('flags a listing-capable connection where none of the product’s variants are published', async () => {
       orderRecordService.getTopProducts.mockResolvedValue(coreResult());

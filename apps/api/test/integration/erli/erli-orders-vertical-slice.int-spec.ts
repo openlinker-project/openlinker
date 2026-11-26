@@ -64,8 +64,11 @@ import {
 import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 import {
   INBOUND_ROUTING_POLICY_TOKEN,
+  ORDER_SYNC_START_CURSOR_KEY,
+  SYNC_CURSORS_SERVICE_TOKEN,
   SYNC_JOB_QUEUE_TOKEN,
   type IInboundRoutingPolicyService,
+  type ISyncCursorsService,
   type SyncJobQueuePort,
 } from '@openlinker/core/sync';
 import { ErliWebhookEventTranslator } from '@openlinker/integrations-erli/infrastructure/adapters/erli-webhook-event-translator.adapter';
@@ -394,6 +397,43 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
     expect(record).not.toBeNull();
     expect(record!.recordStatus).toBe('ready');
     expect(record!.orderSnapshot.status).toBe('processing');
+  });
+
+  // ── S3b: a connection created after #4228 seeds first, then ingests only new orders ─
+  it('S3b: a now-intent connection seeds at the inbox head on poll 1 and ingests only the next order on poll 2', async () => {
+    const cursors = harness.getApp().get<ISyncCursorsService>(SYNC_CURSORS_SERVICE_TOKEN);
+    const cursorKey = 'erli.orders.inboxCursor';
+    const externalProductId = `erli-variant-${ORDER_COD}`;
+    await seedReadyItem(externalProductId);
+
+    // What ConnectionService.create stores for an order-importing connection.
+    await cursors.advanceCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY, '{"mode":"now"}');
+
+    // History already sitting in the inbox when the connection is added.
+    erli.fake.setRawGet(INBOX_PATH, [buildInboxMessage('1001', ORDER_POLL)]);
+
+    const first = await ingestion().ingestOrders(connectionId, { cursorKey, limit: 200 });
+    expect(first.fetched).toBe(0);
+    expect(first.enqueued).toBe(0);
+    expect(first.committed).toBe(true);
+    expect(await cursors.getCursor(connectionId, cursorKey)).toBe('1001');
+    expect(await cursors.getCursor(connectionId, `${cursorKey}.seededAt`)).not.toBeNull();
+    expect(await cursors.getCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY)).toBeNull();
+
+    // A genuinely new order arrives after the connection was added.
+    erli.fake.setRawGet(INBOX_PATH, [
+      buildInboxMessage('1001', ORDER_POLL),
+      buildInboxMessage('1002', ORDER_COD),
+    ]);
+    erli.fake.setRawGet(
+      orderPath(ORDER_COD),
+      buildErliOrder(ORDER_COD, { productExternalId: externalProductId }),
+    );
+
+    const second = await ingestion().ingestOrders(connectionId, { cursorKey, limit: 200 });
+    expect(second.fetched).toBe(1);
+    expect(second.enqueued).toBe(1);
+    expect(second.nextCursor).toBe('1002');
   });
 
   // ── S4: webhook + poll convergence (one order) ─────────────────────────────

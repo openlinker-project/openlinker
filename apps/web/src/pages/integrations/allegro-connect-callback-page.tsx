@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useHandleAllegroCallback } from '../../features/allegro/hooks/use-handle-allegro-callback';
 import { ApiError } from '../../shared/api/api-error';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
+import { TargetShopRow } from '../../features/connections/components/wizard-created-screen';
+import { ShippingNextStep } from '../../features/connections/components/shipping-next-step';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useMessages } from '../../shared/i18n';
 import { describeApiError } from '../../shared/api/describe-api-error';
@@ -106,7 +108,9 @@ export function AllegroConnectCallbackPage(): ReactElement {
             <dt>{copy.success.connectionId}</dt>
             <dd className="mono-text">{connectionId}</dd>
           </div>
+          <TargetShopRow connectionId={connectionId} />
         </dl>
+        <ShippingNextStep connectionId={connectionId} />
         <div className="form-actions">
           <Link className="button" to={`/connections/${connectionId}`}>
             {copy.success.goToConnection}

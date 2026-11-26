@@ -171,7 +171,8 @@ import {
 } from './bulk-policy';
 import type { BulkOfferOverrides, BulkPerProductOverride } from '../../api/bulk-listings.types';
 import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
-import { BundleComposition } from './bundle-composition';
+import { BundleComposition, BundleFinalTitle } from './bundle-composition';
+import { packSizeOf, relabelConditionParameter } from './bundle-kind';
 
 
 // Grouping-determining category parameters - shared across siblings, edited on
@@ -367,6 +368,11 @@ export function BulkEditModal({
   const copy = useMessages('listings').bulkEditModal;
   const [dirty, setDirty] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  // The modal is mounted only while a row is being edited, so Radix cannot always find the
+  // trigger again once the table re-renders; remember it at mount and hand focus back by hand.
+  const [opener] = useState<Element | null>(() =>
+    typeof document === 'undefined' ? null : document.activeElement
+  );
   // ADR-046: one read for the whole modal - both the marketplace and the shop
   // branch render description fields, and each derives its toolbar and schema
   // from this, so a control the destination would discard is never offered.
@@ -402,6 +408,12 @@ export function BulkEditModal({
       >
         <DialogContent
           className="bulk-editor__content"
+          onCloseAutoFocus={(event) => {
+            if (opener instanceof HTMLElement && opener.isConnected && opener !== document.body) {
+              event.preventDefault();
+              opener.focus();
+            }
+          }}
           onEscapeKeyDown={(event) => {
             if (dirty) {
               event.preventDefault();
@@ -1161,12 +1173,15 @@ function BulkEditModalForm({
         // (#4036): an empty `ean` is stored as that explicit choice, and the card
         // is bound to the barcode so it goes too.
         ...(values.productCardId && !baseEanCleared ? { productCardId: values.productCardId } : {}),
-        ...(baseEanCleared
-          ? { ean: '' }
-          : baseEan !== '' && baseEan !== primaryMasterBarcode
-            ? { ean: baseEan }
-            : {}),
-        ...(simpleEanAck ? { eanOverrideAcknowledged: true } : {}),
+        // A set takes each component's own barcode, so an offer EAN would be a no-op.
+        ...(bundle
+          ? {}
+          : baseEanCleared
+            ? { ean: '' }
+            : baseEan !== '' && baseEan !== primaryMasterBarcode
+              ? { ean: baseEan }
+              : {}),
+        ...(simpleEanAck && !bundle ? { eanOverrideAcknowledged: true } : {}),
         ...(baseImageUrls !== undefined ? { imageUrls: baseImageUrls } : {}),
         ...(baseParameters.length > 0 ? { parameters: baseParameters } : {}),
         ...(Object.keys(platformParams).length > 0 ? { platformParams } : {}),
@@ -1321,7 +1336,9 @@ function BulkEditModalForm({
   const bundle =
     !isMultiVariant && row.variants[0] ? bundles?.get(row.variants[0].variantId) : undefined;
   const productTypeLabel = bundle
-    ? plural(bundle.components.length, bundleCopy.marker)
+    ? packSizeOf(bundle) !== null
+      ? interpolate(bundleCopy.packMarker, { n: packSizeOf(bundle) ?? 0 })
+      : plural(bundle.components.length, bundleCopy.marker)
     : isMultiVariant
       ? plural(row.variants.length, copy.header.variantCount)
       : copy.header.simpleProduct;
@@ -2012,6 +2029,8 @@ function BaseScopeForm({
   }, [form]);
 
   const watchedCategoryId = form.watch('categoryId');
+  const watchedTitle = form.watch('title') ?? '';
+  const watchedTitleLength = watchedTitle.length;
   const watchedEan = form.watch('ean');
   // A set needs no barcode of its own, so a checksum failure on it is not a
   // problem to raise (#3520).
@@ -2022,7 +2041,7 @@ function BaseScopeForm({
     <FormProvider {...form}>
       <div className={classes} hidden={!active} data-form={mode}>
         <div className="bulk-editor__scope-head">
-          <h4>{mode === 'simple' ? copy.scope.offerFields : copy.scope.sharedBase}</h4>
+          <h3 style={SCOPE_TITLE_STYLE}>{mode === 'simple' ? copy.scope.offerFields : copy.scope.sharedBase}</h3>
           <div className="grow" />
           {mode === 'simple' ? (
             <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -2062,8 +2081,11 @@ function BaseScopeForm({
               heading={interpolate(bundleCopy.compositionHeading, { destination: platformName })}
               preview={bundle}
               connectionId={connectionId}
+              destinationName={platformName}
               chosenCategoryId={watchedCategoryId || null}
               onUseSuggestedCategory={onUseBundleCategory}
+              title={form.watch('title')}
+              priceAmount={form.watch('priceAmount')}
             />
           </div>
         ) : null}
@@ -2072,16 +2094,40 @@ function BaseScopeForm({
         <FormField
           name="bulk-edit-title"
           label={copy.fields.title}
-          description={interpolate(copy.fields.titleLimit, { platform: platformName })}
+          description={
+            <>
+              {interpolate(copy.fields.titleLimit, { platform: platformName })}{' '}
+              <span
+                className={`tabular${watchedTitleLength >= TITLE_LIMIT ? ' is-warn' : ''}`}
+                data-testid="bulk-edit-title-counter"
+              >
+                {interpolate(bundleCopy.titleCounter, { n: watchedTitleLength, max: TITLE_LIMIT })}
+              </span>
+            </>
+          }
           error={form.formState.errors.title?.message}
         >
           <Input
             {...form.register('title')}
             className="bulk-editor__input"
-            maxLength={75}
-            aria-invalid={Boolean(form.formState.errors.title)}
+            maxLength={TITLE_LIMIT}
+            aria-invalid={Boolean(form.formState.errors.title) || watchedTitleLength > TITLE_LIMIT}
           />
         </FormField>
+        {/* The input stops typing at the limit, so the only signal a screen reader
+            gets that it was reached is this polite status. */}
+        <span className="sr-only" role="status">
+          {watchedTitleLength >= TITLE_LIMIT
+            ? interpolate(bundleCopy.titleLimitReached, { max: TITLE_LIMIT })
+            : ''}
+        </span>
+        {bundle ? (
+          <BundleFinalTitle
+            preview={bundle}
+            title={watchedTitle}
+            limit={TITLE_LIMIT}
+          />
+        ) : null}
         </div>
 
         {mode === 'simple' ? (
@@ -2093,9 +2139,10 @@ function BaseScopeForm({
                 .filter(Boolean)
                 .join(' ')}
               inputMode="numeric"
-              placeholder={copy.ean.placeholder}
+              placeholder={bundle ? '-' : copy.ean.placeholder}
               aria-label={copy.ean.label}
               aria-invalid={eanInvalid}
+              readOnly={Boolean(bundle)}
             />
             {eanInvalid ? (
               <div className="bulk-editor__ean-err">
@@ -2119,7 +2166,11 @@ function BaseScopeForm({
               </div>
             ) : null}
             <div className="hint" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-              {bundle ? bundleCopy.eanNotNeeded : copy.ean.simpleHint}
+              {bundle
+                ? packSizeOf(bundle) !== null
+                  ? bundleCopy.eanNotNeededPack
+                  : bundleCopy.eanNotNeeded
+                : copy.ean.simpleHint}
             </div>
           </div>
         ) : null}
@@ -2350,12 +2401,17 @@ function BaseScopeForm({
           </div>
         </div>
 
-        {canBrowseCategories && !bundle ? (
+        {canBrowseCategories ? (
           <BaseParameterSection
             watchedCategoryId={watchedCategoryId}
             parametersQuery={categoryParametersQuery}
-            categoryParameters={categoryParameters}
+            // A set's product-level values come from its components' catalogue
+            // cards, so only the offer's own parameters are the operator's to fill.
+            categoryParameters={
+              bundle ? categoryParameters.filter((p) => p.section !== 'product') : categoryParameters
+            }
             ruleHints={ruleHints}
+            isBundle={Boolean(bundle)}
           />
         ) : null}
 
@@ -2490,11 +2546,21 @@ function BaseDescriptionField({
   );
 }
 
+/**
+ * Scope headings were h4 under a dialog h2 with an h3 composition heading
+ * between them (h2 > h4 > h3); h3 keeps the order. The legacy rule sized h4 only.
+ */
+/** Allegro's title ceiling; the input stops typing there. */
+const TITLE_LIMIT = 75;
+const SCOPE_TITLE_STYLE = { fontSize: 14, margin: 0, fontWeight: 600 } as const;
+
 interface BaseParameterSectionProps {
   watchedCategoryId: string | undefined;
   parametersQuery: ReturnType<typeof useCategoryParametersQuery>;
   categoryParameters: CategoryParameter[];
   ruleHints?: BaseRuleHints;
+  /** A set row: its product-level parameters come from the component cards. */
+  isBundle?: boolean;
 }
 
 function BaseParameterSection({
@@ -2502,6 +2568,7 @@ function BaseParameterSection({
   parametersQuery,
   categoryParameters,
   ruleHints,
+  isBundle = false,
 }: BaseParameterSectionProps): ReactElement | null {
   const copy = useMessages('listings').bulkEditModal.parameters;
   if (!watchedCategoryId) return null;
@@ -2531,8 +2598,9 @@ function BaseParameterSection({
           {ruleHints.note}
         </p>
       ) : null}
+      {isBundle ? <p className="cx-sub">{copy.bundleNote}</p> : null}
       <CategoryParametersStep
-        parameters={categoryParameters}
+        parameters={isBundle ? categoryParameters.map((p) => relabelConditionParameter(p, copy.conditionLabel)) : categoryParameters}
         formNamespace="parameters"
         extraHints={ruleHints?.fields}
       />
@@ -2792,7 +2860,7 @@ function VariantScopeForm({
     [baseValues.parameters, edit.params],
   );
   const visibleParams = useMemo(
-    () => effectiveCategoryParameters.filter((p) => isParameterVisible(p, effectiveParamValues)),
+    () => effectiveCategoryParameters.filter((p) => isParameterVisible(p, effectiveParamValues, effectiveCategoryParameters)),
     [effectiveCategoryParameters, effectiveParamValues],
   );
   const requiredParams = visibleParams.filter((p) => p.required);
@@ -3082,7 +3150,7 @@ function VariantScopeForm({
   return (
     <div className={formClasses} data-form={variant.variantId}>
       <div className="bulk-editor__scope-head">
-        <h4>{interpolate(copy.variant.heading, { variant: label })}</h4>
+        <h3 style={SCOPE_TITLE_STYLE}>{interpolate(copy.variant.heading, { variant: label })}</h3>
         <div className="grow" />
         <div className="bulk-editor__scope-toggles">
           <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -4481,7 +4549,7 @@ function ShopBaseScopeForm({
   return (
     <div className={classes} hidden={!active} data-form={mode}>
       <div className="bulk-editor__scope-head">
-        <h4>{mode === 'simple' ? copy.scope.productFields : copy.scope.sharedBase}</h4>
+        <h3 style={SCOPE_TITLE_STYLE}>{mode === 'simple' ? copy.scope.productFields : copy.scope.sharedBase}</h3>
         <div className="grow" />
         {mode === 'simple' ? (
           <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -4770,7 +4838,7 @@ function ShopVariantScopeForm({
   return (
     <div className={formClasses} data-form={variant.variantId}>
       <div className="bulk-editor__scope-head">
-        <h4>{interpolate(copy.variant.heading, { variant: label })}</h4>
+        <h3 style={SCOPE_TITLE_STYLE}>{interpolate(copy.variant.heading, { variant: label })}</h3>
         <div className="grow" />
         <label className="checkbox-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <input type="checkbox" checked={included} onChange={(e) => onIncludedChange(e.target.checked)} />

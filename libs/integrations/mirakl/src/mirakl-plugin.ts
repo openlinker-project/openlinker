@@ -5,7 +5,7 @@
  * Seller API is the same on every Mirakl marketplace, so the plugin is built
  * from an operator profile (`createMiraklPlugin(empikOperatorProfile)`), and
  * each profile becomes its own adapter key, platform type and connection type
- * (ADR-086).
+ * (ADR-088).
  *
  * It registers what every capability depends on (config and credentials
  * validators, the connection tester, the retry and auth-failure classifiers)
@@ -91,6 +91,10 @@ export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): Adap
     defaultEnabledCapabilities: [...MIRAKL_DEFAULT_ENABLED_CAPABILITIES],
     // Readable by every role: the orders UI words a refund confirmation by it.
     publicConfigKeys: ['refundsThroughMarketplace'],
+    // No start choice yet (#4265): the order feed starts from its 7-day lookback
+    // on the first poll. "From now" and "from a date" are a follow-up; the feed
+    // cursor is a plain ISO date, so both are cheap to add.
+    orderSyncStartModes: [],
     displayName: profile.displayName,
     version: profile.version,
     isDefault: true,

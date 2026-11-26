@@ -22,6 +22,7 @@
     "bulkListing": "Bulk listing",
     "bundleEdit": "Bundle",
     "bundleNew": "New bundle",
+    "buyerData": "Buyer data",
     "buyerEmail": "Buyer email",
     "buyerEmails": "Buyer emails",
     "connection": "Connection",
@@ -62,6 +63,7 @@
     "promptTemplate": "Prompt template",
     "promptTemplates": "Prompt templates",
     "providerSettings": "Provider settings",
+    "releaseCenter": "Update news",
     "return": "Return",
     "returns": "Returns",
     "runLog": "Run log",
@@ -76,6 +78,7 @@
     "users": "Users",
     "webhook": "Webhook",
     "webhooks": "Webhooks",
+    "whatsNew": "News and notifications",
     "whoDecides": "Who decides what"
   },
   "palette": {
@@ -97,11 +100,6 @@
     "settings": "Settings"
   },
   "shell": {
-    "alerts": "Alerts",
-    "alertsNew": {
-      "one": "({n} new)",
-      "other": "({n} new)"
-    },
     "breadcrumb": "Breadcrumb",
     "closeMenu": "Close menu",
     "loggedOut": "You have been logged out.",
@@ -115,6 +113,7 @@
   "userMenu": {
     "accountMenu": "Account menu for {username}",
     "density": "Density",
+    "fontSize": "Text size",
     "language": "Language",
     "signOut": "Sign out",
     "theme": "Theme"

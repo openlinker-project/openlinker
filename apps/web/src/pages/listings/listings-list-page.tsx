@@ -22,7 +22,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
@@ -35,7 +35,6 @@ import { ActiveFilterChips, type ActiveFilterChip } from '../../shared/ui/active
 import { PeekArrow } from '../../shared/ui/capped-badges';
 import { FilterDropdown, FilterGroup } from '../../shared/ui/filter-dropdown';
 import { SegmentedControl } from '../../shared/ui/segmented-control';
-import { StatusTabs, type StatusTabTone } from '../../shared/ui/status-tabs';
 import { KeyValueList } from '../../shared/ui/key-value-list';
 import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { StatusBadge } from '../../shared/ui/status-badge';
@@ -49,13 +48,13 @@ import {
   usePlural,
 } from '../../shared/i18n';
 import { usePlatforms } from '../../shared/plugins';
-import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import {
   ConnectionCell,
   useConnectionsQuery,
   type ConnectionCellFacts,
 } from '../../features/connections';
 import { resolvePlatformLabel } from '../../features/mappings';
+import { useProductsQuery, type Product } from '../../features/products';
 import { useListingRowsQuery } from '../../features/listings/hooks/use-listings-query';
 import { useListingsTotal } from '../../features/listings/hooks/use-listings-total';
 import { ListPagination } from '../../shared/ui/list-pagination';
@@ -70,70 +69,39 @@ import { ListingAttentionSummary } from '../../features/listings/components/list
 import { EditOfferDrawer } from '../../features/listings/components/edit-offer-drawer';
 import { useRefreshListingStatusMutation } from '../../features/listings/hooks/use-refresh-listing-status-mutation';
 import { useListingChannelCounts } from '../../features/listings/hooks/use-listing-channel-counts';
+import { useListingsListFilters } from '../../features/listings/hooks/use-listings-list-filters';
+import {
+  LIFECYCLE_TABS,
+  SELLING_DELETED_VIEW_ID,
+  SHOP_BLOCKED_VIEW_ID,
+  createListingsListRegistry,
+  type LifecycleTab,
+} from '../../features/listings/lib/listings.list-config';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+} from '../../features/saved-views';
 import { ListingPeek, type ListingPeekView } from './listing-peek';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { PriceChangesQueueTable, usePriceChangesQuery } from '../../features/price-changes';
 import type {
-  ListingsFilters,
   OfferLifecycle,
   OfferMapping,
 } from '../../features/listings/api/listings.types';
 import { describeApiError } from '../../shared/api/describe-api-error';
 
+
+/** The bundle mark a product list row carries; the feature barrel does not export it by name. */
+type ProductBundleMark = NonNullable<Product['bundle']>;
+
 type ListingsListCopy = ResolvedCopy<Messages['listings']>['listingsListPage'];
 
 const PAGE_SIZE = 20;
-const SEARCH_DEBOUNCE_MS = 300;
-
-/**
- * Lowercase URL-state token for each lifecycle bucket (#2029). Kept distinct
- * from the PascalCase `OfferLifecycle` the API speaks, mirroring the existing
- * `?health=` convention (`orders-list-page.tsx`) of a lowercase URL param.
- */
-const LIFECYCLE_TAB_VALUES = ['active', 'invalid', 'draft', 'ended', 'unsynced'] as const;
-type LifecycleTab = (typeof LIFECYCLE_TAB_VALUES)[number];
-
-const DEFAULT_TAB: LifecycleTab = 'active';
-
-/** Type-guard for the `tab` URL param, mirroring `isOrderHealth` in `orders-list-page.tsx`. */
-function isLifecycleTab(value: string | null): value is LifecycleTab {
-  return value !== null && (LIFECYCLE_TAB_VALUES as readonly string[]).includes(value);
-}
-
-/**
- * One entry per lifecycle tab: its URL token and the `OfferLifecycle` value it
- * filters by. Its label and its own empty-state copy (#2029) live in the
- * `listings.listingsListPage.lifecycleTabs` namespace under the same token -
- * each bucket means something different (see `offer-lifecycle.types.ts`
- * docblocks), so a single generic "no results" message would under-inform the
- * operator. Draft's copy deliberately does NOT say "not live yet": Draft also
- * holds an offer an operator deactivated weeks ago and will never relist.
- */
-interface LifecycleTabDef {
-  key: LifecycleTab;
-  lifecycle: OfferLifecycle;
-}
-
-const LIFECYCLE_TABS: readonly LifecycleTabDef[] = [
-  { key: 'active', lifecycle: 'Active' },
-  // Named `invalid`/`Invalid`, not `inactive`/`Inactive` (#2032 review
-  // thread 9): Allegro's own INACTIVE means "not live", which this bucket
-  // is not - see `OfferLifecycleValues`'s docblock for the full rationale.
-  { key: 'invalid', lifecycle: 'Invalid' },
-  { key: 'draft', lifecycle: 'Draft' },
-  { key: 'ended', lifecycle: 'Ended' },
-  { key: 'unsynced', lifecycle: 'Unsynced' },
-];
-
-/** Tab dot per bucket (#4046): Invalid and Draft are tinted, the rest plain. */
-const LIFECYCLE_TAB_TONE: Readonly<Record<LifecycleTab, StatusTabTone | null>> = {
-  active: null,
-  invalid: 'error',
-  draft: 'warning',
-  ended: null,
-  unsynced: null,
-};
 
 /** The operator's word for a lifecycle bucket; an unknown value is shown as sent. */
 function lifecycleLabel(lifecycle: string, copy: ListingsListCopy): string {
@@ -205,12 +173,15 @@ function ListingCell({
   row,
   shape = 'row',
   activeLifecycle,
+  bundle = null,
 }: {
   row: OfferMapping;
   shape?: 'row' | 'card';
   activeLifecycle?: OfferLifecycle;
+  bundle?: ProductBundleMark | null;
 }): ReactElement {
   const copy = useMessages('listings').listingsListPage.listingCell;
+  const plural = usePlural();
   const identity = row.identity ?? null;
   const badges = listingRowBadges(row, activeLifecycle);
   const alert = listingRowAlert(row);
@@ -233,6 +204,17 @@ function ListingCell({
           )}
           {!isCard && identity?.variantLabel ? (
             <span className="listing-cell__variant">{identity.variantLabel}</span>
+          ) : null}
+          {bundle ? (
+            <span
+              className={`listing-cell__bundle${bundle.componentCount === 1 ? ' listing-cell__bundle--pack' : ''}`}
+              title={copy.bundleTitle}
+              data-testid="listing-bundle-badge"
+            >
+              {bundle.componentCount === 1
+                ? copy.bundlePack
+                : plural(bundle.componentCount, copy.bundleSet)}
+            </span>
           ) : null}
           {badges.map((badge) => (
             <RowBadge key={badge.id} badge={badge} />
@@ -347,10 +329,19 @@ function PriceCell({ row }: { row: OfferMapping }): ReactElement {
   );
 }
 
-function QuantityCell({ row }: { row: OfferMapping }): ReactElement {
+function QuantityCell({
+  row,
+  bundle = null,
+}: {
+  row: OfferMapping;
+  bundle?: ProductBundleMark | null;
+}): ReactElement {
   const copy = useMessages('listings').listingsListPage.cells;
   const format = useFormat();
   const commercial = row.commercial ?? null;
+  // An ended offer sells nothing whatever number the last read left behind, so
+  // showing that number beside an "ended" badge contradicts it.
+  if (row.channelStatus?.lifecycle === 'Ended') return <AbsentValue label={copy.endedNoQuantity} />;
   // Nothing was ever persisted for this offer, so no reading was taken - which
   // is a different fact from a channel that answered and withheld the number.
   // On a connection whose status-sync task is off this is every row.
@@ -362,8 +353,20 @@ function QuantityCell({ row }: { row: OfferMapping }): ReactElement {
   if (quantity == null) return <AbsentValue label={copy.quantityNotReported} />;
 
   return (
-    <span className="qty-cell">
+    <span
+      className="qty-cell"
+      title={
+        bundle?.limitedBy?.name
+          ? interpolate(copy.limitedBy, { name: bundle.limitedBy.name })
+          : undefined
+      }
+    >
       <span className="qty-cell__value">{format.number(quantity)}</span>
+      {bundle?.limitedBy?.name ? (
+        <small className="qty-cell__limit">
+          {interpolate(copy.limitedBy, { name: bundle.limitedBy.name })}
+        </small>
+      ) : null}
       {quantity === 0 ? (
         <StatusBadge tone="error" compact withDot>
           {copy.outOfStock}
@@ -381,32 +384,31 @@ function UpdatedCell({ row }: { row: OfferMapping }): ReactElement {
 }
 
 export function ListingsListPage(): ReactElement {
-  const [searchParams, setSearchParams] = useSearchParams();
   const copy = useMessages('listings').listingsListPage;
   const plural = usePlural();
   const format = useFormat();
-
-  const urlSearch = searchParams.get('search') ?? '';
-  const urlConnectionId = searchParams.get('connectionId') ?? '';
-  // "Needs a look" filters (#4045/#4046): present-and-set is the only state.
-  const sellingDeleted = searchParams.get('staleSignal') === 'selling';
-  const shopBlocked = searchParams.get('shopBlocked') === 'true';
-  // A malformed `?offset=` (hand-edited, or a stale bookmark) must fall back
-  // to page 1, not become `NaN` and 400 the request (#2032 review thread 12).
-  const rawOffset = Number(searchParams.get('offset') ?? '0');
-  const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
-
-  const rawTab = searchParams.get('tab');
-  const tab: LifecycleTab = isLifecycleTab(rawTab) ? rawTab : DEFAULT_TAB;
-  const activeTabDef = LIFECYCLE_TABS.find((def) => def.key === tab) ?? LIFECYCLE_TABS[0];
+  const f = useListingsListFilters();
+  const {
+    urlConnectionId,
+    sellingDeleted,
+    shopBlocked,
+    offset,
+    tab,
+    activeTabDef,
+    searchInput,
+    filters,
+    hasFilters,
+    setParam,
+    setOffset,
+    clearFilters,
+    clearPills,
+  } = f;
   const activeTabCopy = copy.lifecycleTabs[activeTabDef.key];
 
-  // Top-level view switch (#3147): "All listings" (everything below,
-  // unchanged) vs "Price changes" (the new review queue). A permanent tab on
-  // this page per the epic's placement decision — no promotion to a
-  // dedicated nav surface is planned.
-  const rawView = searchParams.get('view');
-  const view: 'all' | 'queue' = rawView === 'queue' ? 'queue' : 'all';
+  // Top-level mode switch (#3147): "All listings" (everything below) vs
+  // "Price changes" (the review queue). A mode of the page, never part of a
+  // saved view - which is why the applied view's id rides its own param.
+  const view = f.mode;
   // The badge needs a real count on every visit (including the default "all
   // listings" tab), so the read itself stays enabled — but the standing 30s
   // BACKGROUND POLL only runs while the "Price changes" tab is actually on
@@ -424,25 +426,6 @@ export function ListingsListPage(): ReactElement {
   const priceChangesOpenCount = priceChangesCountQuery.data?.total ?? null;
   const priceChangesCountUnavailable = priceChangesCountQuery.isError;
 
-  const [searchInput, setSearchInput] = useState(urlSearch);
-
-  const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
-
-  // The channel filter is a discrete <Select> value, not free text, so it
-  // reads/writes the URL directly with no debounce - unlike search, there is
-  // no keystroke-by-keystroke value to settle.
-  const filters: ListingsFilters = {
-    search: debouncedSearch || undefined,
-    connectionId: urlConnectionId || undefined,
-    lifecycle: activeTabDef.lifecycle,
-    staleSignal: sellingDeleted ? 'selling' : undefined,
-    shopBlocked: shopBlocked || undefined,
-    // This page is the only caller that renders a tab bar (#2032 review
-    // thread 3) - `variant-stock-table.tsx` / `product-row-detail.tsx` /
-    // `use-nav-counts.ts` share this same query hook and must not pay for
-    // the aggregate's second full scan.
-    includeLifecycleCounts: true,
-  };
   const pagination = { limit: PAGE_SIZE, offset };
 
   // Two-stage read (#2947): the rows do not wait for either aggregate over
@@ -515,71 +498,128 @@ export function ListingsListPage(): ReactElement {
   const [editTarget, setEditTarget] = useState<OfferMapping | null>(null);
   const refreshStatus = useRefreshListingStatusMutation();
 
+  // Which listed products are sets or multipacks. The listings payload carries no
+  // bundle mark, so ask the catalogue once for its bundles (a short list) and
+  // look rows up by product; past the cap a row simply shows no badge. The cap is
+  // the products API's page maximum (100): a larger limit is refused with a 400 and
+  // the page then shows no badge at all.
+  const bundlesQuery = useProductsQuery({ bundles: 'only' }, { limit: 100, offset: 0 });
+  const bundleByProduct = useMemo(() => {
+    const map = new Map<string, ProductBundleMark>();
+    for (const product of bundlesQuery.data?.items ?? []) {
+      if (product.bundle) map.set(product.id, product.bundle);
+    }
+    return map;
+  }, [bundlesQuery.data]);
+  const bundleOf = useCallback(
+    (row: OfferMapping): ProductBundleMark | null =>
+      row.identity ? (bundleByProduct.get(row.identity.productId) ?? null) : null,
+    [bundleByProduct],
+  );
+
   const channelLabel = useCallback(
     (row: OfferMapping): string => resolvePlatformLabel(platforms, row),
     [platforms],
   );
 
+  // Saved views (#4241): the registry carries this page's cells, so it is
+  // rebuilt only when what they read changes. The lifecycle tabs ARE the
+  // built-in views; the page's own `view` mode switch never enters a view.
+  const registry = useMemo(
+    () =>
+      createListingsListRegistry({
+        labels: {
+          listing: copy.columns.listing,
+          listingFields: copy.savedViews.listingFields,
+          channel: copy.columns.channel,
+          connection: copy.columns.connection,
+          price: copy.savedViews.price,
+          quantity: copy.savedViews.quantity,
+          updated: copy.savedViews.updated,
+        },
+        viewNames: {
+          active: copy.lifecycleTabs.active.label,
+          invalid: copy.lifecycleTabs.invalid.label,
+          draft: copy.lifecycleTabs.draft.label,
+          ended: copy.lifecycleTabs.ended.label,
+          unsynced: copy.lifecycleTabs.unsynced.label,
+          sellingDeleted: copy.pills.sellingDeleted,
+          shopBlocked: copy.pills.shopBlocked,
+        },
+        headers: {
+          listing: copy.columns.listing,
+          channel: copy.columns.channel,
+          connection: copy.columns.connection,
+          price: <ColumnHead label={copy.columns.price} note={copy.columns.onChannel} align="right" />,
+          quantity: <ColumnHead label={copy.columns.quantity} note={copy.columns.onChannel} align="right" />,
+          // Not "when this listing changed" - when OL last read the channel. The
+          // hourly scan makes a days-old value ordinary, and the mobile card
+          // already calls the identical value "Status read".
+          updated: <ColumnHead label={copy.columns.updated} note={copy.columns.statusRead} />,
+        },
+        cells: {
+          listing: (row): ReactNode => (
+            <ListingCell row={row} activeLifecycle={activeTabDef.lifecycle} bundle={bundleOf(row)} />
+          ),
+          channel: (row): ReactNode => <ChannelPill row={row} label={channelLabel(row)} />,
+          // `.get()` returns undefined on a miss, which ConnectionCell reads as
+          // "resolve it yourself" and would turn back into a per-row fetch -
+          // coalesce to null and hand it the batched query's loading state.
+          connection: (row): ReactNode => (
+            <ConnectionCell
+              connectionId={row.connectionId}
+              connection={connectionsById.get(row.connectionId) ?? null}
+              loading={connectionsQuery.isLoading}
+            />
+          ),
+          price: (row): ReactNode => <PriceCell row={row} />,
+          quantity: (row): ReactNode => <QuantityCell row={row} bundle={bundleOf(row)} />,
+          updated: (row): ReactNode => <UpdatedCell row={row} />,
+        },
+      }),
+    [channelLabel, connectionsById, connectionsQuery.isLoading, activeTabDef.lifecycle, bundleOf, copy],
+  );
+
+  const viewCounts = useMemo<Record<string, number | undefined>>(() => {
+    const counts: Record<string, number | undefined> = {
+      [SELLING_DELETED_VIEW_ID]: totalStage.attentionCounts?.sellingDeletedProduct,
+      [SHOP_BLOCKED_VIEW_ID]: totalStage.attentionCounts?.shopBlocked,
+    };
+    for (const def of LIFECYCLE_TABS) counts[def.key] = lifecycleCounts?.[def.lifecycle] ?? undefined;
+    return counts;
+  }, [lifecycleCounts, totalStage.attentionCounts]);
+
+  const savedViews = useListView({ registry, pageTitle: copy.title, counts: viewCounts });
+  const { toColumns } = savedViews;
+
   const columns = useMemo<DataTableColumn<OfferMapping>[]>(
     () => [
-      {
-        id: 'listing',
-        width: '40%',
-        // #2538 - Thumbnail, title and a meta line.
-        lines: 2,
-        header: copy.columns.listing,
-        cell: (row): ReactNode => <ListingCell row={row} activeLifecycle={activeTabDef.lifecycle} />,
-      },
-      {
-        id: 'channel',
-        width: '9%',
-        header: copy.columns.channel,
-        cell: (row): ReactNode => <ChannelPill row={row} label={channelLabel(row)} />,
-      },
-      {
-        id: 'connection',
-        width: '13%',
-        // #2538 - ConnectionCell stacks the name over its status.
-        lines: 2,
-        header: copy.columns.connection,
-        // `.get()` returns undefined on a miss, which ConnectionCell reads as
-        // "resolve it yourself" and would turn back into a per-row fetch -
-        // coalesce to null and hand it the batched query's loading state.
-        cell: (row): ReactNode => (
-          <ConnectionCell
-            connectionId={row.connectionId}
-            connection={connectionsById.get(row.connectionId) ?? null}
-            loading={connectionsQuery.isLoading}
-          />
-        ),
-      },
-      {
-        id: 'price',
-        width: '12%',
-        header: (
-          <ColumnHead label={copy.columns.price} note={copy.columns.onChannel} align="right" />
-        ),
-        align: 'right',
-        cell: (row): ReactNode => <PriceCell row={row} />,
-      },
-      {
-        id: 'quantity',
-        width: '10%',
-        header: (
-          <ColumnHead label={copy.columns.quantity} note={copy.columns.onChannel} align="right" />
-        ),
-        align: 'right',
-        cell: (row): ReactNode => <QuantityCell row={row} />,
-      },
-      {
-        id: 'updated',
-        // Not "when this listing changed" - when OL last read the channel. The
-        // hourly scan makes a days-old value ordinary, and the mobile card
-        // already calls the identical value "Status read".
-        header: <ColumnHead label={copy.columns.updated} note={copy.columns.statusRead} />,
-        width: '12%',
-        cell: (row): ReactNode => <UpdatedCell row={row} />,
-      },
+      ...toColumns(),
+      ...(activeTabDef.lifecycle === 'Ended'
+        ? [
+            {
+              id: 'relist',
+              width: '9rem',
+              header: <span className="sr-only">{copy.columns.relist}</span>,
+              cell: (row: OfferMapping): ReactNode =>
+                row.identity ? (
+                  <Link
+                    className="button button--secondary button--sm listing-relist"
+                    to={`/listings/bulk-create/wizard?${new URLSearchParams({
+                      productIds: row.identity.productId,
+                      variantIds: row.internalId,
+                      connectionId: row.connectionId,
+                    }).toString()}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
+                    {copy.relist}
+                  </Link>
+                ) : null,
+            } satisfies DataTableColumn<OfferMapping>,
+          ]
+        : []),
       {
         id: 'peek',
         width: '3rem',
@@ -597,112 +637,12 @@ export function ListingsListPage(): ReactElement {
         ),
       },
     ],
-    [
-      channelLabel,
-      connectionsById,
-      connectionsQuery.isLoading,
-      activeTabDef.lifecycle,
-      copy.columns,
-      copy.peek,
-    ],
+    [toColumns, copy.peek, copy.columns.relist, copy.relist, activeTabDef.lifecycle],
   );
 
-  /** A discrete filter (channel, needs-a-look) written straight to the URL. */
-  function setParam(key: 'connectionId' | 'staleSignal' | 'shopBlocked', value: string | null): void {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (value) next.set(key, value);
-      else next.delete(key);
-      next.delete('offset');
-      return next;
-    });
-  }
-
-  function handleFilterChange(key: 'search' | 'connectionId', value: string): void {
-    if (key === 'search') setSearchInput(value);
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (value) {
-          next.set(key, value);
-        } else {
-          next.delete(key);
-        }
-        next.delete('offset');
-        return next;
-      },
-      // Every keystroke calls this for `search` (#2032 review thread 12.3) -
-      // `useSearchParams` defaults to push, so typing "kurtka" would leave six
-      // back-button steps to undo. A discrete connectionId change stays a
-      // pushed entry, matching every other filter's back-button semantics.
-      { replace: key === 'search' }
-    );
-  }
-
-  /**
-   * Selecting a tab sets the `tab` URL param (omitted at the default 'active'
-   * value, mirroring the `offset=0` omission convention below) and resets
-   * paging - a tab switch always lands on page 1 of the new bucket (#2029).
-   */
+  /** A lifecycle tab is a built-in view whose id is the tab token. */
   function setTab(next: LifecycleTab): void {
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (next === DEFAULT_TAB) {
-        p.delete('tab');
-      } else {
-        p.set('tab', next);
-      }
-      p.delete('offset');
-      return p;
-    });
-  }
-
-  function setOffset(next: number): void {
-    setSearchParams((prev) => {
-      const p = new URLSearchParams(prev);
-      if (next === 0) {
-        p.delete('offset');
-      } else {
-        p.set('offset', String(next));
-      }
-      return p;
-    });
-  }
-
-  /**
-   * Resets search, the channel filter and the lifecycle tab back to their
-   * defaults in one URL-state update (#2030) - a plain `setSearchParams` call,
-   * never `window.location`, so the table re-renders from the new (empty)
-   * filter set without a full page reload.
-   */
-  function clearFilters(): void {
-    setSearchInput('');
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.delete('search');
-      next.delete('connectionId');
-      next.delete('staleSignal');
-      next.delete('shopBlocked');
-      next.delete('offset');
-      next.delete('tab');
-      // The platform-type filter is gone (#2025/#2030) but a bookmarked URL can
-      // still carry it - strip it so the address bar cannot claim a scope the
-      // table no longer applies.
-      next.delete('platformType');
-      return next;
-    });
-  }
-
-  const hasFilters = !!(debouncedSearch || urlConnectionId || sellingDeleted || shopBlocked);
-
-  /** Pills clear every filter but the tab (#4046); the empty state still resets the tab too. */
-  function clearPills(): void {
-    setSearchInput('');
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      for (const key of ['search', 'connectionId', 'staleSignal', 'shopBlocked', 'offset']) next.delete(key);
-      return next;
-    });
+    savedViews.viewsBar.onSelect(next);
   }
 
   // /listings is backed exclusively by OfferManager-capable connections (the
@@ -774,7 +714,7 @@ export function ListingsListPage(): ReactElement {
       value: text,
       valueText: text,
       onRemove: () => {
-        handleFilterChange('search', '');
+        f.setSearch('');
       },
     });
   }
@@ -812,13 +752,6 @@ export function ListingsListPage(): ReactElement {
       },
     });
   }
-
-  const statusTabs = LIFECYCLE_TABS.map((def) => ({
-    key: def.key,
-    label: copy.lifecycleTabs[def.key].label,
-    tone: LIFECYCLE_TAB_TONE[def.key],
-    count: lifecycleCounts?.[def.lifecycle] ?? undefined,
-  }));
 
   const peekView: ListingPeekView | null = peekRow
     ? {
@@ -890,14 +823,7 @@ export function ListingsListPage(): ReactElement {
           <SegmentedControl<'all' | 'queue'>
             aria-label={copy.views.ariaLabel}
             value={view}
-            onChange={(value) => {
-              setSearchParams((prev) => {
-                const next = new URLSearchParams(prev);
-                if (value === 'queue') next.set('view', 'queue');
-                else next.delete('view');
-                return next;
-              });
-            }}
+            onChange={f.setMode}
             options={[
               { value: 'all', label: copy.views.all },
               {
@@ -938,35 +864,16 @@ export function ListingsListPage(): ReactElement {
         <PriceChangesQueueTable />
       ) : (
         <>
-          <div className="list-statusbar">
-            <StatusTabs<LifecycleTab>
-              tabs={statusTabs}
-              value={tab}
-              onChange={(next) => {
-                setTab(next ?? DEFAULT_TAB);
-              }}
-              aria-label={copy.lifecycleAriaLabel}
-            />
+          <div className="list-statusbar list-statusbar--views">
+            <ViewsBar {...savedViews.viewsBar} />
             <ListingAttentionSummary
               priceChanges={priceChangesCountUnavailable ? null : priceChangesOpenCount}
               onReviewPriceChanges={() => {
-                setSearchParams((prev) => {
-                  const next = new URLSearchParams(prev);
-                  next.set('view', 'queue');
-                  return next;
-                });
+                f.setMode('queue');
               }}
               attention={totalStage.attentionCounts}
               shopBlocked={shopBlocked}
-              onShowShopBlocked={(connectionId) => {
-                setSearchParams((prev) => {
-                  const next = new URLSearchParams(prev);
-                  next.set('shopBlocked', 'true');
-                  if (connectionId) next.set('connectionId', connectionId);
-                  next.delete('offset');
-                  return next;
-                });
-              }}
+              onShowShopBlocked={f.showShopBlocked}
               onClearShopBlocked={() => {
                 setParam('shopBlocked', null);
               }}
@@ -1003,7 +910,7 @@ export function ListingsListPage(): ReactElement {
                   placeholder={copy.toolbar.searchPlaceholder}
                   value={searchInput}
                   onChange={(e) => {
-                    handleFilterChange('search', e.target.value);
+                    f.setSearch(e.target.value);
                   }}
                 />
                 <span className="button__shortcut list-search__kbd" aria-hidden="true">
@@ -1028,6 +935,7 @@ export function ListingsListPage(): ReactElement {
                   }}
                 />
               </FilterGroup>
+              <ColumnsPanel {...savedViews.columnsPanel} />
               <span className="list-toolbar__spacer" />
               <span className="text-muted mono tabular list-results" aria-live="polite">
                 {totalStage.total === null || rowsAreForAnotherTab
@@ -1039,7 +947,13 @@ export function ListingsListPage(): ReactElement {
               ) : null}
             </div>
             <ActiveFilterChips chips={chips} onClearAll={clearPills} clearAllLabel={copy.toolbar.clearAll} />
+            {savedViews.editedBar ? (
+              <div className="sv-applied">
+                <EditedBar {...savedViews.editedBar} />
+              </div>
+            ) : null}
           </div>
+          {savedViews.repairBanner ? <RepairBanner {...savedViews.repairBanner} /> : null}
 
           {/* `isPending`, not `isLoading` (#2032 review thread 12.5): with
               `placeholderData: keepPreviousData` a tab/search/page change
@@ -1121,7 +1035,14 @@ export function ListingsListPage(): ReactElement {
                 }}
                 rowClassName={(m) => (m.id === peekId ? 'list-row--peek' : undefined)}
                 cardView={{
-                  title: (m) => <ListingCell row={m} shape="card" activeLifecycle={activeTabDef.lifecycle} />,
+                  title: (m) => (
+                    <ListingCell
+                      row={m}
+                      shape="card"
+                      activeLifecycle={activeTabDef.lifecycle}
+                      bundle={bundleOf(m)}
+                    />
+                  ),
                   // Channel / Connection / Price / Quantity as a two-column fact
                   // list — the four columns the fold drops (#1965 frame 05).
                   summary: (m) => (
@@ -1241,6 +1162,7 @@ export function ListingsListPage(): ReactElement {
             </>
           )}
 
+          <ViewDialogs {...savedViews.dialogs} />
           <ListingPeek
             view={peekView}
             position={peekIndex + 1}

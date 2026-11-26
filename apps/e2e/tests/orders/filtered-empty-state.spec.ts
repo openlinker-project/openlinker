@@ -38,7 +38,7 @@ test.describe('orders: filtered empty state (#2148)', () => {
 
       // And the action must clear the filter rather than send the operator to
       // /connections to debug an outage that is not happening.
-      await expect(page.getByRole('button', { name: 'View all orders' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Clear filters' })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Manage connections' })).toHaveCount(0);
     });
   }
@@ -52,7 +52,7 @@ test.describe('orders: filtered empty state (#2148)', () => {
     );
     await expect(page.getByText('No orders in this view')).toBeVisible();
 
-    await page.getByRole('button', { name: 'View all orders' }).click();
+    await page.getByRole('button', { name: 'Clear filters' }).click();
 
     // One `setSearchParams` write, so every axis goes at once. Clearing them one
     // call at a time would leave all but the last applied — React Router builds
@@ -74,9 +74,9 @@ test.describe('orders: filtered empty state (#2148)', () => {
     await page.goto(`/orders?createdFrom=${IMPOSSIBLE_FROM}&sort=createdAt&dir=asc`);
     await expect(page.getByText('No orders in this view')).toBeVisible();
 
-    await page.getByRole('button', { name: 'View all orders' }).click();
+    await page.getByRole('button', { name: 'Clear filters' }).click();
 
-    // "View all orders" restores membership, not presentation: resetting the
+    // "Clear filters" restores membership, not presentation: resetting the
     // operator's chosen column sort would be a second, unasked-for change.
     const url = new URL(page.url());
     expect(url.searchParams.get('createdFrom')).toBeNull();

@@ -13,12 +13,14 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
+import { displayConnectionName } from '../../../../shared/lib/display-connection-name';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
 import { GuideButton } from '../../../../shared/ui/guide-drawer';
 import { BundleGuide } from '../../../bundles/components/bundle-guide';
+import { useBundleProbeQuery } from '../../../bundles/hooks/use-bundle-queries';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import {
   usePlatforms,
@@ -47,7 +49,6 @@ import { DuplicateGuardModal } from '../duplicate-guard-modal';
 import type { RecoveryPrefillEntry } from '../../lib/batch-recovery';
 import type {
   BulkOfferCreateRequest,
-  BulkOfferOverrides,
   BulkPerProductOverride,
 } from '../../api/bulk-listings.types';
 import type { BulkShopPublishItemRequest } from '../../api/listings.types';
@@ -66,6 +67,7 @@ import {
 } from './bulk-shop-review-step';
 import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
+import { bundleKindOf } from './bundle-kind';
 import { BulkWizardLeaveGuard } from './bulk-wizard-leave-guard';
 import { gatingBlockers, resolveBlockerChips, type ChipDescriptor } from './bulk-blockers';
 import { describeBulkSubmitOutcome } from './bulk-submit-summary';
@@ -213,7 +215,7 @@ export function BulkWizard({
     if (!activeConnection) return;
     const previousTitle = document.title;
     document.title = interpolate(isShop ? copy.documentTitle.shop : copy.documentTitle.marketplace, {
-      connection: activeConnection.name,
+      connection: displayConnectionName(activeConnection.name),
     });
     return () => {
       document.title = previousTitle;
@@ -346,6 +348,16 @@ export function BulkWizard({
   const bundlePreview = useBundleOfferPreview(config?.connectionId, bundleItems);
   const bundleGuideCopy = useMessages('bundles');
   const hasBundles = bundlePreview.bundles.size > 0;
+  // Step 1 is before the composition check runs, so the header would call a set
+  // "1 product - 1 variant" and the operator cannot tell the handoff carried one.
+  // A lookup by variant id answers which of the chosen variants are bundles.
+  const includedVariantIds = useMemo(
+    () => rows.flatMap((row) => row.variants.filter((v) => v.included).map((v) => v.variantId)),
+    [rows],
+  );
+  const setProbe = useBundleProbeQuery(isShop ? [] : includedVariantIds);
+  const setCount = setProbe.data?.length ?? 0;
+
 
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
@@ -793,7 +805,10 @@ export function BulkWizard({
           description: describeBulkSubmitOutcome(selectedCount, result),
         });
         leaveGuardReleasedRef.current = true;
-        void navigate(`/listings/bulk-batches/${result.batchId}`);
+        // The skip counts live only in the toast otherwise; the progress page repeats them.
+        void navigate(`/listings/bulk-batches/${result.batchId}`, {
+          state: { skippedAlreadyListedCount: result.skippedAlreadyListedCount },
+        });
       } catch {
         // Surfaced via mutation.error in the modal.
       } finally {
@@ -892,8 +907,38 @@ export function BulkWizard({
     return n;
   }, [rows, alreadyListedSet, isShop, blockerChips]);
 
+  // The sets among them, so the confirmation can name what it skips rather than
+  // saying only "N already on the marketplace" (#3520).
+  const alreadyListedBundleCount = useMemo(() => {
+    if (alreadyListedSet.size === 0 || isShop) return 0;
+    let n = 0;
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (
+          variant.included &&
+          alreadyListedSet.has(variant.variantId) &&
+          bundlePreview.bundles.has(variant.variantId)
+        ) {
+          n += 1;
+        }
+      }
+    }
+    return n;
+  }, [rows, alreadyListedSet, isShop, bundlePreview.bundles]);
+
+  // What the confirmation describes: only rows that will really be created.
+  // Excluded, blocked and already-listed rows are skipped at submit, so counting
+  // them made a one-offer batch read as "3 products, including 2 sets".
+  const willCreate = useMemo(
+    () =>
+      countWillCreate(rows, blockerChips, alreadyListedSet, bundlePreview.bundles, isShop),
+    [rows, blockerChips, alreadyListedSet, bundlePreview.bundles, isShop],
+  );
+
   const dupGuardKind = isShop ? 'shop' : 'marketplace';
-  const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
+  const dupGuardDestinationName = activeConnection
+    ? displayConnectionName(activeConnection.name)
+    : marketplaceName;
 
   // Marketplace publish gate: a duplicate opens the soft confirm first, which on
   // confirm hands off to the existing submit-confirm modal.
@@ -945,7 +990,7 @@ export function BulkWizard({
   const pageTitle =
     step !== 'config' && activeConnection !== null
       ? interpolate(isShop ? copy.title.shopTo : copy.title.marketplaceOn, {
-          connection: activeConnection.name,
+          connection: displayConnectionName(activeConnection.name),
         })
       : baseTitle;
   const productCount = plural(rows.length, copy.description.productCount);
@@ -961,10 +1006,19 @@ export function BulkWizard({
         ) : undefined
       }
       description={
-        interpolate(isShop ? copy.description.shop : copy.description.marketplace, {
-          products: productCount,
-          variants: variantCount,
-        })
+        setCount > 0 && setCount === counts.totalVariants
+          ? interpolate(copy.description.marketplaceSets, {
+              sets: plural(setCount, copy.description.setCount),
+            })
+          : interpolate(isShop ? copy.description.shop : copy.description.marketplace, {
+              products: productCount,
+              variants: variantCount,
+            }) +
+            (setCount > 0
+              ? ` ${interpolate(copy.description.includingSets, {
+                  sets: plural(setCount, copy.description.setCount),
+                })}`
+              : '')
       }
     >
       <div className="bulk-wizard">
@@ -1113,11 +1167,13 @@ export function BulkWizard({
             open={confirmOpen}
             onOpenChange={setConfirmOpen}
             offerCount={counts.includedReady - readyButAlreadyListedCount}
-            productCount={counts.productsWithIncluded}
+            productCount={willCreate.products}
             excludedCount={counts.excluded}
             blockedCount={counts.includedNeedsAttention}
             alreadyListedCount={readyButAlreadyListedCount}
+            alreadyListedBundleCount={alreadyListedBundleCount}
             mixedPublishWarning={counts.mixedPublish}
+            bundleSummary={{ sets: willCreate.sets, packs: willCreate.packs }}
             connectionName={resolveConnectionName(config.connectionId)}
             marketplaceName={marketplaceName}
             initialPublishImmediately={config.publishImmediately}
@@ -1137,7 +1193,7 @@ export function BulkWizard({
           description={
             activeConnection
               ? interpolate(copy.changeDestination.descriptionNamed, {
-                  connection: activeConnection.name,
+                  connection: displayConnectionName(activeConnection.name),
                 })
               : copy.changeDestination.description
           }
@@ -1274,20 +1330,6 @@ function reblockRows(
  * rejects the WHOLE request with `property pricingPolicy should not exist` -
  * after the wizard has already shown the row as ready.
  */
-/**
- * An empty `ean` is the wizard's marker for "list without a barcode" (#4036). On
- * the wire that is the absence of the field, and the catalogue card goes with it:
- * a card is bound to a barcode, so sending one for an offer that has none links
- * the offer to a product it does not match.
- */
-function withoutClearedBarcode(overrides: BulkOfferOverrides): BulkOfferOverrides {
-  if (overrides.ean === undefined || overrides.ean.trim() !== '') return overrides;
-  const rest: BulkOfferOverrides = { ...overrides };
-  delete rest.ean;
-  delete rest.productCardId;
-  return rest;
-}
-
 function toWireOverride(override: BulkPerProductOverride): BulkPerProductOverride {
   // Built by allow-list rather than by omission, so a future FE-only field
   // added to `BulkPerProductOverride` cannot silently reach the wire and
@@ -1300,7 +1342,7 @@ function toWireOverride(override: BulkPerProductOverride): BulkPerProductOverrid
   }
   if (override.price !== undefined) wire.price = override.price;
   if (override.overrides !== undefined) {
-    wire.overrides = withoutClearedBarcode(override.overrides);
+    wire.overrides = override.overrides;
   }
   return wire;
 }
@@ -1354,6 +1396,37 @@ interface BatchCounts {
   noVariants: number;
   productsWithIncluded: number;
   mixedPublish: boolean;
+}
+
+/**
+ * The products, sets and multipacks that a submit would actually create offers
+ * for: included, free of gating blockers and not already listed on the target.
+ */
+export function countWillCreate(
+  rows: readonly BulkWizardRow[],
+  chips: Record<string, ChipDescriptor>,
+  alreadyListed: ReadonlySet<string>,
+  bundles: ReadonlyMap<string, BundleOfferPreviewOk>,
+  isShop = false,
+): { products: number; sets: number; packs: number } {
+  let products = 0;
+  let sets = 0;
+  let packs = 0;
+  for (const row of rows) {
+    let any = false;
+    for (const v of row.variants) {
+      if (!v.included || gatingBlockers(v.blockers, chips).length > 0) continue;
+      if (!isShop && alreadyListed.has(v.variantId)) continue;
+      any = true;
+      const bundle = bundles.get(v.variantId);
+      if (bundle) {
+        if (bundleKindOf(bundle) === 'pack') packs += 1;
+        else sets += 1;
+      }
+    }
+    if (any) products += 1;
+  }
+  return { products, sets, packs };
 }
 
 function countBatch(rows: BulkWizardRow[], chips: Record<string, ChipDescriptor>): BatchCounts {

@@ -46,6 +46,17 @@ export class CustomerProjectionService implements ICustomerProjectionService {
     return found;
   }
 
+  async clearPersonalData(internalCustomerIds: readonly string[]): Promise<number> {
+    const unique = [...new Set(internalCustomerIds)];
+    let cleared = 0;
+    for (let i = 0; i < unique.length; i += PROJECTION_READ_CHUNK) {
+      cleared += await this.repository.clearPersonalData(
+        unique.slice(i, i + PROJECTION_READ_CHUNK)
+      );
+    }
+    return cleared;
+  }
+
   async upsertProjection(projection: CustomerProjection): Promise<CustomerProjection> {
     // If PII storage is disabled, clear PII fields but keep emailHash
     const projectionToSave = this.piiConfig.storePii
@@ -93,5 +104,13 @@ export class CustomerProjectionService implements ICustomerProjectionService {
   ): Promise<DestinationAddressMapping> {
     // Destination address mapping doesn't contain PII, so no filtering needed
     return this.repository.upsertDestinationAddressMapping(mapping);
+  }
+
+  async redactPersonalDataLastSeenBefore(input: {
+    readonly sourceConnectionId: string;
+    readonly lastSeenBefore: Date;
+    readonly limit: number;
+  }): Promise<number> {
+    return this.repository.redactPersonalDataLastSeenBefore(input);
   }
 }
