@@ -209,6 +209,7 @@ describe('BulkWizard — demo instrumentation (#1788)', () => {
       status: 'active',
       platformType: 'allegro',
       supportedCapabilities: ['OfferManager', 'OfferCreator'],
+      enabledCapabilities: ['OfferManager'],
       config: { masterCatalogConnectionId: 'conn-master' },
     } as unknown as Connection;
     const apiClient = createMockApiClient({
@@ -258,6 +259,7 @@ describe('BulkWizard — destination context (#2227)', () => {
       status: 'active',
       platformType: 'allegro',
       supportedCapabilities: ['OfferManager', 'OfferCreator'],
+      enabledCapabilities: ['OfferManager'],
       config: { environment: 'sandbox', masterCatalogConnectionId: 'conn-master' },
     } as unknown as Connection;
     const apiClient = createMockApiClient({
@@ -414,6 +416,7 @@ describe('BulkWizard — destinationResolvesCategoryAtSubmit (#2211)', () => {
       status: 'active',
       platformType: 'testmarket',
       supportedCapabilities: ['OfferManager', 'OfferCreator', ...capabilities],
+      enabledCapabilities: ['OfferManager'],
       config: { masterCatalogConnectionId: 'conn-master' },
     } as unknown as Connection;
   }

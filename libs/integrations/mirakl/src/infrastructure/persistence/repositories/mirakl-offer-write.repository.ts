@@ -73,6 +73,13 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
     );
   }
 
+  /**
+   * Newest row by `createdAt`. Correct only because an offer has at most one
+   * `pending` row (`recordPending` upserts into it, keeping its `createdAt`) and
+   * a new pending row is created only after the previous one was submitted, so
+   * the pending row is always the newest. Changing that index or this ordering
+   * would make the stock master read an older target (#4284).
+   */
   async findLatest(
     connectionId: string,
     kind: MiraklOfferWriteKind,

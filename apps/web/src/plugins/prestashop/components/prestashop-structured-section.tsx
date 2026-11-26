@@ -9,6 +9,7 @@
  *   - Shop ID (multi-shop)
  *   - OL callback URL (used by the webhook auto-install flow, #168)
  *   - Fallback carrier picker (PS-only; #517)
+ *   - Default tax group for products without a catalogue tax rate
  *
  * @module plugins/prestashop/components
  */
@@ -110,6 +111,24 @@ export function PrestashopStructuredSection({
         disabled={!configIsParseable}
         onChange={(value) => syncStructuredToJson('defaultCarrierId', value)}
       />
+
+      <FormField
+        label={copy.defaultTaxGroup.label}
+        name="prestashopDefaultTaxRulesGroupId"
+        error={form.formState.errors.prestashopDefaultTaxRulesGroupId?.message}
+        description={copy.defaultTaxGroup.description}
+      >
+        <Input
+          value={form.watch('prestashopDefaultTaxRulesGroupId') ?? ''}
+          onChange={(event) =>
+            syncStructuredToJson('prestashopDefaultTaxRulesGroupId', event.target.value)
+          }
+          placeholder={copy.defaultTaxGroup.placeholder}
+          inputMode="numeric"
+          disabled={!configIsParseable}
+          invalid={Boolean(form.formState.errors.prestashopDefaultTaxRulesGroupId)}
+        />
+      </FormField>
 
       <FormField
         label={copy.inpostModuleType.label}

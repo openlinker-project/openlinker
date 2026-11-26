@@ -66,6 +66,7 @@ import {
 import { MiraklConfigException } from '../../domain/exceptions/mirakl-config.exception';
 import { MiraklUnsupportedFieldException } from '../../domain/exceptions/mirakl-unsupported-field.exception';
 import { mapMiraklInactivityReasons } from '../../domain/policies/mirakl-inactivity-reason.policy';
+import { pickMiraklBarcode } from '../../domain/policies/mirakl-offer-reference.policy';
 import {
   formatMiraklPrice,
   formatMiraklQuantity,
@@ -81,7 +82,6 @@ import { MiraklOfferCreator } from './mirakl-offer-creator';
 import { MiraklOfferWriteReconciler } from './mirakl-offer-write-reconciler';
 
 const OFFERS_PATH = '/api/offers';
-const EAN_REFERENCE_TYPES = new Set(['EAN', 'EAN13', 'GTIN', 'ISBN']);
 
 /** What one connection's offer manager is built from. */
 export interface MiraklOfferManagerSettings {
@@ -332,16 +332,13 @@ function toFeedItem(offer: MiraklOffer): OfferFeedItem[] {
   if (!offer.shop_sku) {
     return [];
   }
-  const ean = (offer.product_references ?? []).find(
-    (reference) =>
-      reference.reference && EAN_REFERENCE_TYPES.has((reference.reference_type ?? '').toUpperCase())
-  )?.reference;
+  const ean = pickMiraklBarcode(offer.product_references);
   return [
     {
       offerId: offer.shop_sku,
       externalRef: offer.shop_sku,
       sku: offer.shop_sku,
-      ean: ean ?? null,
+      ean,
       raw: {
         offerId: offer.offer_id,
         productSku: offer.product_sku,

@@ -74,6 +74,13 @@ export class MiraklConnectionConfigShapeValidatorAdapter
         message: 'leadTimeToShip must be 0-30 days and logisticClass a non-empty code',
       });
     }
+    if (
+      config.refundsThroughMarketplace !== undefined &&
+      config.refundsThroughMarketplace !== null &&
+      typeof config.refundsThroughMarketplace !== 'boolean'
+    ) {
+      issues.push({ path: 'refundsThroughMarketplace', message: 'must be true or false' });
+    }
     if (config.baseUrl !== undefined) {
       issues.push({
         path: 'baseUrl',

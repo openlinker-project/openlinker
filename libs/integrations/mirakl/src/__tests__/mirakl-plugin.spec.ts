@@ -3,8 +3,8 @@
  *
  * The manifest comes from the operator profile and advertises `OrderSource`;
  * `register` wires every side-registration under the profile's adapter key;
- * `createCapabilityAdapter` builds the order source and refuses what is not
- * delivered yet; the Empik module builds.
+ * `createCapabilityAdapter` builds every delivered adapter (the two masters
+ * from #4284 included) and refuses the rest; the Empik module builds.
  *
  * @module libs/integrations/mirakl/src/__tests__
  */
@@ -17,6 +17,8 @@ import {
   EmpikIntegrationModule,
   empikOperatorProfile,
 } from '../index';
+import { MiraklInventoryMasterAdapter } from '../infrastructure/adapters/catalog-master/mirakl-inventory-master.adapter';
+import { MiraklProductMasterAdapter } from '../infrastructure/adapters/catalog-master/mirakl-product-master.adapter';
 import { MiraklAuthFailureClassifierAdapter } from '../infrastructure/adapters/mirakl-auth-failure-classifier.adapter';
 import { MiraklConnectionConfigShapeValidatorAdapter } from '../infrastructure/adapters/mirakl-connection-config-shape-validator.adapter';
 import { MiraklConnectionCredentialsShapeValidatorAdapter } from '../infrastructure/adapters/mirakl-connection-credentials-shape-validator.adapter';
@@ -31,6 +33,18 @@ function registry(): { register: jest.Mock } {
 }
 
 describe('createMiraklPlugin (Empik)', () => {
+  it('should keep both masters out of the defaults, so a new connection stays a marketplace', () => {
+    const manifest = buildMiraklAdapterManifest(empikOperatorProfile);
+
+    expect(manifest.defaultEnabledCapabilities).not.toContain('ProductMaster');
+    expect(manifest.defaultEnabledCapabilities).not.toContain('InventoryMaster');
+    expect(
+      (manifest.defaultEnabledCapabilities ?? []).every((capability) =>
+        manifest.supportedCapabilities.includes(capability)
+      )
+    ).toBe(true);
+  });
+
   it('should build the manifest from the Empik profile with the order source', () => {
     const plugin = createMiraklPlugin(empikOperatorProfile);
 
@@ -39,6 +53,22 @@ describe('createMiraklPlugin (Empik)', () => {
       platformType: 'empik',
       supportedCapabilities: [
         'OrderSource',
+        'ReturnSourceReader',
+        'OfferManager',
+        'OfferLister',
+        'OfferStatusReader',
+        'OfferQuantityBatchUpdater',
+        'PendingQuantityAckReconciler',
+        'OfferFieldUpdater',
+        'OfferCreator',
+        'CategoryBrowser',
+        'EanCategoryMatcher',
+        'ProductMaster',
+        'InventoryMaster',
+      ],
+      defaultEnabledCapabilities: [
+        'OrderSource',
+        'ReturnSourceReader',
         'OfferManager',
         'OfferLister',
         'OfferStatusReader',
@@ -80,30 +110,30 @@ describe('createMiraklPlugin (Empik)', () => {
 
     expect(configRegistry.register).toHaveBeenCalledWith(
       EMPIK_ADAPTER_KEY,
-      expect.any(MiraklConnectionConfigShapeValidatorAdapter),
+      expect.any(MiraklConnectionConfigShapeValidatorAdapter)
     );
     expect(credentialsRegistry.register).toHaveBeenCalledWith(
       EMPIK_ADAPTER_KEY,
-      expect.any(MiraklConnectionCredentialsShapeValidatorAdapter),
+      expect.any(MiraklConnectionCredentialsShapeValidatorAdapter)
     );
     expect(testerRegistry.register).toHaveBeenCalledWith(
       EMPIK_ADAPTER_KEY,
-      expect.any(MiraklConnectionTesterAdapter),
+      expect.any(MiraklConnectionTesterAdapter)
     );
     expect(retryRegistry.register).toHaveBeenCalledWith(
       EMPIK_ADAPTER_KEY,
-      expect.any(MiraklRetryClassifierAdapter),
+      expect.any(MiraklRetryClassifierAdapter)
     );
     expect(authRegistry.register).toHaveBeenCalledWith(
       EMPIK_ADAPTER_KEY,
-      expect.any(MiraklAuthFailureClassifierAdapter),
+      expect.any(MiraklAuthFailureClassifierAdapter)
     );
     expect(emailRegistry.register).toHaveBeenCalledWith(
       EMPIK_ADAPTER_KEY,
-      expect.any(MiraklEmailNormalizerAdapter),
+      expect.any(MiraklEmailNormalizerAdapter)
     );
     expect(schedulerRegistry.register).toHaveBeenCalledWith(
-      expect.objectContaining({ taskId: 'empik-orders-poll', jobType: 'marketplace.orders.poll' }),
+      expect.objectContaining({ taskId: 'empik-orders-poll', jobType: 'marketplace.orders.poll' })
     );
   });
 
@@ -111,6 +141,7 @@ describe('createMiraklPlugin (Empik)', () => {
     return {
       credentialsResolver: { get: jest.fn().mockResolvedValue({ apiKey: 'key-1' }) },
       http: { forConnection: jest.fn().mockReturnValue(jest.fn()), evict: jest.fn() },
+      identifierMapping: {},
     } as unknown as HostServices;
   }
 
@@ -124,7 +155,7 @@ describe('createMiraklPlugin (Empik)', () => {
     const adapter = await createMiraklPlugin(empikOperatorProfile).createCapabilityAdapter(
       empikConnection,
       'OrderSource',
-      capabilityHost(),
+      capabilityHost()
     );
 
     expect(adapter).toBeInstanceOf(MiraklOrderSourceAdapter);
@@ -134,10 +165,30 @@ describe('createMiraklPlugin (Empik)', () => {
     const adapter = await createMiraklPlugin(empikOperatorProfile).createCapabilityAdapter(
       empikConnection,
       'OfferManager',
-      capabilityHost(),
+      capabilityHost()
     );
 
     expect(adapter).toBeInstanceOf(MiraklOfferManagerAdapter);
+  });
+
+  it('should build the product master', async () => {
+    const adapter = await createMiraklPlugin(empikOperatorProfile).createCapabilityAdapter(
+      empikConnection,
+      'ProductMaster',
+      capabilityHost()
+    );
+
+    expect(adapter).toBeInstanceOf(MiraklProductMasterAdapter);
+  });
+
+  it('should build the inventory master', async () => {
+    const adapter = await createMiraklPlugin(empikOperatorProfile).createCapabilityAdapter(
+      empikConnection,
+      'InventoryMaster',
+      capabilityHost()
+    );
+
+    expect(adapter).toBeInstanceOf(MiraklInventoryMasterAdapter);
   });
 
   it('should refuse a capability no adapter delivers', async () => {
@@ -145,8 +196,8 @@ describe('createMiraklPlugin (Empik)', () => {
       createMiraklPlugin(empikOperatorProfile).createCapabilityAdapter(
         empikConnection,
         'ProductPublisher',
-        capabilityHost(),
-      ),
+        capabilityHost()
+      )
     ).rejects.toThrow(/Empik/);
   });
 

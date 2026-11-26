@@ -24,4 +24,14 @@ export const empikOperatorProfile: MiraklOperatorProfile = {
   // DO01 on staging (2026-11-23): `CUSTOMER_INVOICE` ("Faktura"), entity ORDER.
   invoiceDocumentTypeCode: 'CUSTOMER_INVOICE',
   taxonomyOwners: { production: 'empik', staging: 'empik:staging' },
+  // RE02 REFUND on staging (2026-11-24): 15 agreed with the customer (out of
+  // stock), 16 cancelled before shipping, 17 returned without a reason,
+  // 18 not collected, REFUND_21 damaged, REFUND_22 not as described.
+  refundReasonCodes: {
+    withdrawal: '17',
+    defective: 'REFUND_21',
+    not_as_described: 'REFUND_22',
+    wrong_item: 'REFUND_22',
+    other: '17',
+  },
 };

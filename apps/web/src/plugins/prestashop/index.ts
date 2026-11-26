@@ -15,6 +15,7 @@ import { getPrestashopMessages, prestashopMessages } from './messages';
 import { PrestashopConnectionActions } from './components/prestashop-connection-actions';
 import { PrestashopCredentialsPanel } from './components/prestashop-credentials-panel';
 import { PrestashopStructuredSection } from './components/prestashop-structured-section';
+import { prestashopConnectionConfig } from './prestashop-connection-config';
 import { PrestashopExtraSection } from './components/prestashop-extra-section';
 import { prestashopSetupRoute } from './prestashop-setup.route';
 
@@ -41,6 +42,7 @@ export const prestashopPlugin: OpenLinkerPlugin = definePlugin({
     },
     getCallbackUrlDefault: publicApiBaseUrl,
     StructuredConfigSection: PrestashopStructuredSection,
+    connectionConfig: prestashopConnectionConfig,
     CredentialsPanel: PrestashopCredentialsPanel,
     ConnectionActions: PrestashopConnectionActions,
     ExtraConfigSection: PrestashopExtraSection,

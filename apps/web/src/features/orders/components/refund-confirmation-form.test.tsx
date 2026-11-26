@@ -102,10 +102,10 @@ describe('RefundConfirmationForm (#2382)', () => {
 });
 
 describe('RefundConfirmationForm preamble (#4091 O25)', () => {
-  it('should say OpenLinker sends the refund to Shopify, not that it moves no money, when it does', () => {
-    renderForm({ sentToShopify: true });
+  it('should say OpenLinker sends the refund through the channel, not that it moves no money, when it does', () => {
+    renderForm({ sentToChannel: 'Empik' });
 
-    expect(screen.getByText(/OpenLinker sends this refund to Shopify/)).toBeInTheDocument();
+    expect(screen.getByText(/OpenLinker sends this refund through Empik/)).toBeInTheDocument();
     expect(screen.queryByText(/does not move money/)).not.toBeInTheDocument();
   });
 });
