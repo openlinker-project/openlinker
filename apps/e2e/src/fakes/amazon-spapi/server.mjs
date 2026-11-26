@@ -25,7 +25,7 @@
 import http from 'node:http';
 import { loadContracts, validateRequest, validateResponse } from './contract.mjs';
 
-const PORTS = { lwa: 4100, eu: 4101, na: 4102, fe: 4103 };
+const PORTS = { lwa: 4100, eu: 4101, na: 4102, fe: 4103, sqs: 4104 };
 const REGION_BY_PORT = { 4101: 'eu', 4102: 'na', 4103: 'fe' };
 const SELLER = 'A2EXAMPLE12345';
 
@@ -110,7 +110,7 @@ function makeListing(market, sku, asin, fba = false, qty = 7) {
   return {
     sku,
     summaries: [
-      { marketplaceId: market.id, asin, productType: 'LUGGAGE', status: ['BUYABLE'], itemName: `Listing ${sku}`, mainImage: { link: 'https://m.media-amazon.com/images/I/fake.jpg' } },
+      { marketplaceId: market.id, asin, productType: 'LUGGAGE', status: ['BUYABLE'], itemName: `Listing ${sku}`, createdDate: iso(-30 * DAY), lastUpdatedDate: iso(-DAY), mainImage: { link: 'https://m.media-amazon.com/images/I/fake.jpg', height: 500, width: 500 } },
     ],
     attributes: {
       item_name: [{ value: `Listing ${sku}`, marketplace_id: market.id }],
@@ -122,8 +122,16 @@ function makeListing(market, sku, asin, fba = false, qty = 7) {
   };
 }
 
+const RETURN_HEADER = 'Order ID\tOrder date\tReturn request date\tReturn request status\tAmazon RMA ID\tASIN\tMerchant SKU\tItem Name\tReturn quantity\tReturn reason\tOrder Amount\tOrder quantity';
+
+function buildReturnsReport(region) {
+  const rows = (fx.returns[region] ?? []).map((r) => [r.orderId, r.orderDate, r.requestDate, r.status, r.rma, r.asin, r.sku, r.name, r.quantity, r.reason, r.amount, r.orderQuantity].join('\t'));
+  const seeded = (fx.returnsReport[region] ?? '').split('\n').slice(1);
+  return [RETURN_HEADER, ...seeded, ...rows].join('\n');
+}
+
 function freshFixtures() {
-  const fx = { orders: {}, listings: {}, fbaStock: {}, returnsReport: {}, feeds: {}, reports: {}, docs: {}, destinations: [], subscription: null, seq: 0 };
+  const fx = { orders: {}, listings: {}, fbaStock: {}, returnsReport: {}, returns: {}, feeds: {}, reports: {}, docs: {}, destinations: [], subscription: null, seq: 0, mcf: {}, sqs: [], inflight: {}, modes: { feed: 'normal', report: 'normal', mcfFulfillable: true } };
   for (const [region, markets] of Object.entries(MARKETS)) {
     fx.orders[region] = [];
     fx.listings[region] = {};
@@ -141,6 +149,7 @@ function freshFixtures() {
       fx.fbaStock[region][fbaSku] = { fulfillableQuantity: 12, reservedQuantity: { totalReservedQuantity: 3 } };
     });
     const m0 = markets[0];
+    fx.returns[region] = [];
     fx.returnsReport[region] = [
       'Order ID\tOrder date\tReturn request date\tReturn request status\tAmazon RMA ID\tASIN\tMerchant SKU\tItem Name\tReturn quantity\tReturn reason\tOrder Amount\tOrder quantity',
       `${fx.orders[region][0].orderId}\t${iso(-5 * DAY).slice(0, 10)}\t${iso(-2 * DAY)}\tApproved\tRMA-${region}-1\tB0FAKE00001\tE2E-${m0.country}-1\tTest product\t1\tDEFECTIVE\t39.90\t1`,
@@ -154,6 +163,7 @@ let calls = [];
 let switches = [];
 let tokenSeq = 0;
 let currentToken = null;
+let validTokens = new Set();
 
 function record(entry) {
   calls.push({ at: new Date().toISOString(), ...entry });
@@ -177,7 +187,7 @@ const json = (res, status, body, headers = {}) => {
     violation(res.ctx.port, res.ctx.method, res.ctx.pathname, 'response', validateResponse(contracts, res.ctx.method, res.ctx.pathname, status, body));
   }
   const text = JSON.stringify(body);
-  res.writeHead(status, { 'content-type': 'application/json', 'x-amzn-requestid': `fake-${++fx.seq}`, ...headers });
+  res.writeHead(status, { 'content-type': 'application/json', 'x-amzn-requestid': `fake-${++fx.seq}`, ...(res.ctx ? { 'x-amzn-RateLimit-Limit': '5.0' } : {}), ...headers });
   res.end(text);
 };
 
@@ -215,6 +225,72 @@ async function control(req, res, url, port) {
     const out = calls.filter((c) => (!p || String(c.port) === p) && (!path || c.path.includes(path)) && (!since || c.at >= since));
     return json(res, 200, { calls: out });
   }
+  if (url.pathname === '/__mode' && req.method === 'POST') {
+    Object.assign(fx.modes, JSON.parse((await readBody(req)) || '{}'));
+    return json(res, 200, fx.modes);
+  }
+  if (url.pathname === '/__buyer/purchase' && req.method === 'POST') {
+    const b = JSON.parse((await readBody(req)) || '{}');
+    const region = b.region ?? 'eu';
+    const market = MARKETS[region].find((m) => m.id === b.marketplaceId) ?? MARKETS[region][0];
+    const n = ++fx.seq;
+    const base = makeOrder(region, market, b.noRecipient ? 'norole' : b.taxId ? 'taxid' : b.fba ? 'fba' : b.cod ? 'cod' : 'plain', 50 + n);
+    const when = new Date(Date.now() - (b.ageMinutes ?? 2.5) * 60 * 1000).toISOString();
+    const qty = b.qty ?? 1;
+    const price = String(b.price ?? '39.90');
+    const total = (Number(price) * qty + 5).toFixed(2);
+    const order = {
+      ...base,
+      orderId: b.orderId ?? `${base.orderId.split('-')[0]}-BUY${String(n).padStart(4, '0')}-${market.country}`,
+      createdTime: when,
+      lastUpdatedTime: when,
+      proceeds: { grandTotal: money(total, market.currency), breakdowns: [{ type: 'ITEM', subtotal: money((Number(price) * qty).toFixed(2), market.currency) }, { type: 'SHIPPING', subtotal: money('5.00', market.currency) }] },
+      orderItems: [{ orderItemId: `${n}00000000000`, quantityOrdered: qty, product: { asin: b.asin ?? 'B0FAKE00001', title: b.title ?? `Bought ${b.sku}`, sellerSku: b.sku, price: { unitPrice: money(price, market.currency) } } }],
+      fulfillment: { ...base.fulfillment, fulfillmentStatus: b.status ?? 'UNSHIPPED', ...(b.fba ? { fulfilledBy: 'AMAZON' } : {}) },
+    };
+    if (b.taxId) order.tax = { taxRegistrations: [{ taxRegistrationNumber: b.taxId, legalName: 'Buyer Co' }] };
+    delete order.packages;
+    fx.orders[region].push(order);
+    return json(res, 200, { orderId: order.orderId });
+  }
+  if (url.pathname === '/__buyer/advance' && req.method === 'POST') {
+    const b = JSON.parse((await readBody(req)) || '{}');
+    const status = { Pending: 'PENDING', Unshipped: 'UNSHIPPED', Shipped: 'SHIPPED', Delivered: 'SHIPPED', Canceled: 'CANCELLED', Cancelled: 'CANCELLED' }[b.status] ?? b.status;
+    for (const list of Object.values(fx.orders)) {
+      const o = list.find((x) => x.orderId === b.orderId);
+      if (!o) continue;
+      o.fulfillment = { ...o.fulfillment, fulfillmentStatus: status };
+      if (b.status === 'Delivered') o.packages = [...(o.packages ?? []), { packageReferenceId: '1', packageStatus: { status: 'DELIVERED' }, carrier: 'DPD', trackingNumber: 'DLV123' }];
+      o.lastUpdatedTime = new Date(Date.now() - 2.5 * 60 * 1000).toISOString();
+      return json(res, 200, { orderId: o.orderId, status });
+    }
+    return json(res, 404, { error: 'order not found' });
+  }
+  if (url.pathname === '/__buyer/return' && req.method === 'POST') {
+    const b = JSON.parse((await readBody(req)) || '{}');
+    const region = b.region ?? 'eu';
+    const order = fx.orders[region].find((x) => x.orderId === b.orderId);
+    if (!order) return json(res, 404, { error: 'order not found' });
+    const item = order.orderItems.find((i) => i.product.sellerSku === b.sku) ?? order.orderItems[0];
+    const n = ++fx.seq;
+    fx.returns[region].push({ orderId: order.orderId, orderDate: order.createdTime.slice(0, 10), requestDate: new Date(Date.now() - 60 * 60 * 1000).toISOString(), status: b.status ?? 'Approved', rma: b.rma ?? `RMA-${region}-${n}`, asin: item.product.asin, sku: item.product.sellerSku, name: item.product.title, quantity: b.quantity ?? 1, reason: b.reason ?? 'DEFECTIVE', amount: item.product.price.unitPrice.amount, orderQuantity: item.quantityOrdered });
+    return json(res, 200, { rma: fx.returns[region].at(-1).rma });
+  }
+  if (url.pathname === '/__buyer/return-status' && req.method === 'POST') {
+    const b = JSON.parse((await readBody(req)) || '{}');
+    for (const list of Object.values(fx.returns)) for (const r of list) if (r.rma === b.rma) r.status = b.status;
+    return json(res, 200, { ok: true });
+  }
+  if (url.pathname === '/__sqs/publish' && req.method === 'POST') {
+    const b = JSON.parse((await readBody(req)) || '{}');
+    const id = `m-${++fx.seq}`;
+    const body = b.raw ?? JSON.stringify({ NotificationVersion: '1.0', NotificationType: b.type ?? 'ORDER_CHANGE', PayloadVersion: '1.0', EventTime: new Date().toISOString(), Payload: { OrderChangeNotification: { AmazonOrderId: b.orderId, OrderChangeType: b.changeType ?? 'OrderStatusChange' } }, NotificationMetadata: { ApplicationId: 'app', SubscriptionId: 's', PublishTime: new Date().toISOString(), NotificationId: b.notificationId ?? `n-${fx.seq}` } });
+    fx.sqs.push({ MessageId: id, ReceiptHandle: `rh-${id}`, Body: body, visibleAt: 0 });
+    return json(res, 200, { messageId: id, queued: fx.sqs.length });
+  }
+  if (url.pathname === '/__sim') {
+    return json(res, 200, { confirmations: fx.confirmations ?? [], refundFeeds: fx.refundFeeds ?? [], mcf: Object.keys(fx.mcf).map((k) => ({ id: k, status: fx.mcf[k].status, speed: fx.mcf[k].request.shippingSpeedCategory })), sqs: fx.sqs.map((m) => m.MessageId), modes: fx.modes, destinations: fx.destinations, subscription: fx.subscription });
+  }
   if (url.pathname === '/__violations') {
     return json(res, 200, { enabled: contracts !== null, violations });
   }
@@ -224,11 +300,13 @@ async function control(req, res, url, port) {
     calls = [];
     switches = [];
     currentToken = null;
+    validTokens = new Set();
     return json(res, 200, { ok: true });
   }
   if (url.pathname === '/__fail' && req.method === 'POST') {
     const body = JSON.parse((await readBody(req)) || '{}');
-    if (body.clear) switches = [];
+    if (body.kind === 'expire-tokens') validTokens = new Set();
+    else if (body.clear) switches = [];
     else switches.push(body);
     return json(res, 200, { switches });
   }
@@ -269,6 +347,7 @@ async function lwa(req, res, url) {
     return json(res, 400, { error: 'invalid_grant', error_description: 'The refresh token is invalid, revoked or expired' });
   }
   currentToken = `fake-token-${++tokenSeq}`;
+  validTokens.add(currentToken);
   return json(res, 200, { access_token: currentToken, token_type: 'bearer', expires_in: 3600, refresh_token: undefined });
 }
 
@@ -303,7 +382,16 @@ async function spapi(req, res, url, port) {
   };
 
   res.ctx = { port, method: req.method, pathname: url.pathname };
-  if (contracts) violation(port, req.method, url.pathname, 'request', validateRequest(contracts, req.method, url.pathname, Object.fromEntries(url.searchParams.entries()), raw));
+  if (contracts) {
+    const invalid = validateRequest(contracts, req.method, url.pathname, Object.fromEntries(url.searchParams.entries()), raw);
+    violation(port, req.method, url.pathname, 'request', invalid);
+    if (invalid.length > 0 && !invalid[0].startsWith('no operation')) {
+      // Like Amazon: an invalid request is refused, it is not answered as if it were valid.
+      res.ctx.skip = true;
+      record({ ...entry, rejected: 'contract-violation' });
+      return json(res, 400, { errors: [{ code: 'InvalidInput', message: invalid.join('; ').slice(0, 300) }] });
+    }
+  }
 
   // Failure switches first (a switch never needs a valid token).
   const sw = takeSwitch(port, url.pathname, ['401', '429', '503', '500', '400', '403', '404']);
@@ -313,24 +401,30 @@ async function spapi(req, res, url, port) {
     record(entry);
     const status = Number(sw.kind);
     const code = { 401: 'Unauthorized', 429: 'QuotaExceeded', 503: 'ServiceUnavailable', 500: 'InternalFailure', 400: 'InvalidInput', 403: 'Unauthorized', 404: 'NotFound' }[sw.kind];
-    return json(res, status, { errors: [{ code, message: `injected ${sw.kind}` }] });
+    return json(res, status, { errors: [{ code, message: `injected ${sw.kind}`, details: '' }] });
   }
-  if (!entry.hasAccessToken || token !== currentToken) {
+  if (!entry.hasAccessToken || !validTokens.has(token)) {
     entry.rejected = 'stale-or-missing-token';
     res.ctx.skip = true;
     record(entry);
-    return json(res, 401, { errors: [{ code: 'Unauthorized', message: 'Access to requested resource is denied.' }] });
+    // Real SP-API answers a bad access token with 403 Unauthorized (LWA itself answers 401).
+    return json(res, 403, { errors: [{ code: 'Unauthorized', message: 'Access to requested resource is denied.', details: 'The access token you provided is revoked, malformed or invalid.' }] });
   }
   record(entry);
 
   const q = url.searchParams;
   const p = url.pathname;
   const markets = MARKETS[region];
+  const asked = (q.get('marketplaceIds') ?? '').split(',').filter(Boolean);
+  if (asked.some((id) => !markets.some((m) => m.id === id))) {
+    res.ctx.skip = true;
+    return json(res, 403, { errors: [{ code: 'Unauthorized', message: 'Access to requested resource is denied.', details: 'The marketplaces you provided are not valid for region.' }] });
+  }
 
   // --- Sellers ---
   if (p === '/sellers/v1/marketplaceParticipations') {
     return json(res, 200, {
-      payload: markets.map((m) => ({ marketplace: { id: m.id, countryCode: m.country, defaultCurrencyCode: m.currency }, participation: { isParticipating: true } })),
+      payload: markets.map((m) => ({ marketplace: { id: m.id, countryCode: m.country, name: m.name, defaultCurrencyCode: m.currency, defaultLanguageCode: 'en_US', domainName: m.name.replace('Amazon.', 'www.amazon.') }, storeName: `E2E store ${m.country}`, participation: { isParticipating: true, hasSuspendedListings: false } })),
     });
   }
 
@@ -347,12 +441,31 @@ async function spapi(req, res, url, port) {
   }
   let m = p.match(/^\/orders\/2026-01-01\/orders\/([^/]+)$/);
   if (m && req.method === 'GET') {
+    if (!q.get('includedData')) {
+      res.ctx.skip = true;
+      return json(res, 400, { errors: [{ code: 'InvalidInput', message: 'Could not match input arguments', details: '' }] });
+    }
     const order = fx.orders[region].find((o) => o.orderId === decodeURIComponent(m[1]));
     if (!order) return json(res, 404, { errors: [{ code: 'NotFound', message: 'order not found' }] });
     return json(res, 200, { order });
   }
   m = p.match(/^\/orders\/v0\/orders\/([^/]+)\/shipmentConfirmation$/);
   if (m && req.method === 'POST') {
+    const order = fx.orders[region].find((o) => o.orderId === decodeURIComponent(m[1]));
+    if (!order) return json(res, 404, { errors: [{ code: 'NotFound', message: 'order not found' }] });
+    if (['SHIPPED', 'CANCELLED'].includes(order.fulfillment?.fulfillmentStatus)) {
+      // Amazon refuses a second confirmation for an order that is already complete.
+      res.ctx.skip = true;
+      return json(res, 400, { errors: [{ code: 'InvalidInput', message: `Order ${order.orderId} is already ${order.fulfillment.fulfillmentStatus}` }] });
+    }
+    const body = JSON.parse(raw);
+    const pkg = body.packageDetail ?? {};
+    const itemIds = (pkg.orderItems ?? []).map((i) => i.orderItemId);
+    const all = order.orderItems.every((i) => itemIds.includes(i.orderItemId));
+    order.fulfillment = { ...order.fulfillment, fulfillmentStatus: all ? 'SHIPPED' : 'PARTIALLY_SHIPPED' };
+    order.packages = [...(order.packages ?? []), { packageReferenceId: String(pkg.packageReferenceId ?? fx.seq), packageStatus: { status: 'SHIPPED' }, carrier: pkg.carrierCode ?? pkg.carrierName, trackingNumber: pkg.trackingNumber, shipTime: pkg.shipDate }];
+    order.lastUpdatedTime = new Date().toISOString();
+    fx.confirmations = [...(fx.confirmations ?? []), { orderId: order.orderId, carrier: pkg.carrierCode, tracking: pkg.trackingNumber, items: itemIds }];
     res.writeHead(204);
     return res.end();
   }
@@ -375,7 +488,7 @@ async function spapi(req, res, url, port) {
 
   // --- Product type definitions ---
   if (p === '/definitions/2020-09-01/productTypes') {
-    return json(res, 200, { productTypes: [{ name: 'LUGGAGE', displayName: 'Luggage', marketplaceIds: [q.get('marketplaceIds')] }, { name: 'SHOES', displayName: 'Shoes', marketplaceIds: [q.get('marketplaceIds')] }] });
+    return json(res, 200, { productTypeVersion: 'LATEST', productTypes: [{ name: 'LUGGAGE', displayName: 'Luggage', marketplaceIds: [q.get('marketplaceIds')] }, { name: 'SHOES', displayName: 'Shoes', marketplaceIds: [q.get('marketplaceIds')] }] });
   }
   m = p.match(/^\/definitions\/2020-09-01\/productTypes\/([^/]+)$/);
   if (m) {
@@ -435,31 +548,77 @@ async function spapi(req, res, url, port) {
     return json(res, 200, { sku, status: 'ACCEPTED', submissionId: `sub-${++fx.seq}`, issues: [] });
   }
 
+  // --- FBA inventory: seeding endpoints of the real sandbox (idempotency token required) ---
+  if (p === '/fba/inventory/v1/items' && req.method === 'POST') {
+    const b = JSON.parse(raw);
+    if (!b.marketplaceId) { res.ctx.skip = true; return json(res, 400, { errors: [{ code: 'InvalidInput', message: 'MarketplaceId is required for Operation: CreateInventoryItem', details: '' }] }); }
+    fx.fbaStock[region][b.sellerSku] = fx.fbaStock[region][b.sellerSku] ?? { fulfillableQuantity: 0, reservedQuantity: { totalReservedQuantity: 0 } };
+    return json(res, 200, {});
+  }
+  if (p === '/fba/inventory/v1/items/inventory' && req.method === 'POST') {
+    const tokenHeader = req.headers['x-amzn-idempotency-token'];
+    fx.idem = fx.idem ?? new Set();
+    if (!tokenHeader || fx.idem.has(tokenHeader)) {
+      res.ctx.skip = true;
+      return json(res, 400, { errors: [{ code: 'InvalidInput', message: !tokenHeader ? 'Idempotency Token is required for Operation: AddInventory' : 'Idempotency token already used', details: '' }] });
+    }
+    fx.idem.add(tokenHeader);
+    const b = JSON.parse(raw);
+    for (const item of b.inventoryItems ?? []) {
+      const cur = fx.fbaStock[region][item.sellerSku] ?? { fulfillableQuantity: 0, reservedQuantity: { totalReservedQuantity: 0 } };
+      cur.fulfillableQuantity += item.quantity ?? 0;
+      fx.fbaStock[region][item.sellerSku] = cur;
+    }
+    return json(res, 200, {});
+  }
+
   // --- FBA inventory ---
   if (p === '/fba/inventory/v1/summaries') {
     const skus = (q.get('sellerSkus') ?? '').split(',').filter(Boolean);
     const summaries = skus.filter((s) => fx.fbaStock[region][s]).map((s) => ({ sellerSku: s, asin: 'B0FAKE0000F', fnSku: 'X00FAKE', inventoryDetails: fx.fbaStock[region][s], totalQuantity: 15, lastUpdatedTime: iso(-3600 * 1000) }));
-    return json(res, 200, { payload: { inventorySummaries: summaries } });
+    return json(res, 200, { payload: { granularity: { granularityType: 'Marketplace', granularityId: q.get('granularityId') ?? markets[0].id }, inventorySummaries: summaries } });
   }
 
   // --- Feeds ---
   if (p === '/feeds/2021-06-30/documents' && req.method === 'POST') {
     const id = `fdoc-${++fx.seq}`;
     fx.docs[id] = { kind: 'feed-input', content: null };
-    return json(res, 200, { feedDocumentId: id, url: `http://${req.headers.host}/docs/in/${id}` });
+    return json(res, 201, { feedDocumentId: id, url: `http://${req.headers.host}/docs/in/${id}` });
   }
   if (p === '/feeds/2021-06-30/feeds' && req.method === 'POST') {
     const body = JSON.parse(raw);
     const feedId = `feed-${++fx.seq}`;
-    const resultId = `fres-${fx.seq}`;
-    fx.feeds[feedId] = { feedId, feedType: body.feedType, inputFeedDocumentId: body.inputFeedDocumentId, processingStatus: 'DONE', resultFeedDocumentId: resultId, processingEndTime: iso(0) };
-    fx.docs[resultId] = { kind: 'feed-result', content: 'Feed Processing Summary:\n\tNumber of records processed\t\t1\n\tNumber of records successful\t\t1\n' };
+    const input = fx.docs[body.inputFeedDocumentId]?.content ?? '';
+    fx.feeds[feedId] = { feedId, feedType: body.feedType, inputFeedDocumentId: body.inputFeedDocumentId, processingStatus: 'IN_QUEUE', polls: 0, mode: fx.modes.feed, input, region };
     return json(res, 202, { feedId });
   }
   m = p.match(/^\/feeds\/2021-06-30\/feeds\/([^/]+)$/);
   if (m) {
     const feed = fx.feeds[m[1]];
-    return feed ? json(res, 200, feed) : json(res, 404, { errors: [{ code: 'NotFound', message: 'feed' }] });
+    if (!feed) return json(res, 404, { errors: [{ code: 'NotFound', message: 'feed' }] });
+    feed.polls += 1;
+    // IN_QUEUE -> IN_PROGRESS -> terminal, one stage per poll (mode: normal | rejected | fatal | slow).
+    if (feed.mode === 'slow') feed.processingStatus = feed.polls > 6 ? 'DONE' : 'IN_PROGRESS';
+    else if (feed.polls === 1) feed.processingStatus = 'IN_QUEUE';
+    else if (feed.polls === 2) feed.processingStatus = 'IN_PROGRESS';
+    else feed.processingStatus = feed.mode === 'fatal' ? 'FATAL' : 'DONE';
+    if (['DONE', 'FATAL'].includes(feed.processingStatus) && !feed.resultFeedDocumentId && feed.mode !== 'fatal') {
+      const resultId = `fres-${++fx.seq}`;
+      feed.resultFeedDocumentId = resultId;
+      feed.processingEndTime = iso(0);
+      fx.docs[resultId] = {
+        kind: 'feed-result',
+        content:
+          feed.mode === 'rejected'
+            ? 'Feed Processing Summary:\n\tNumber of records processed\t\t1\n\tNumber of records successful\t\t0\n\noriginal-record-number\tsku\terror-code\terror-type\terror-message\n1\t\t8560\tError\tThe refund amount exceeds the order total\n'
+            : 'Feed Processing Summary:\n\tNumber of records processed\t\t1\n\tNumber of records successful\t\t1\n',
+      };
+      fx.refundFeeds = [...(fx.refundFeeds ?? []), { feedId: feed.feedId, type: feed.feedType, mode: feed.mode, input: feed.input }];
+    }
+    if (feed.processingStatus === 'FATAL') feed.processingEndTime = iso(0);
+    const { polls, mode, input, region: r2, ...wire } = feed;
+    void polls; void mode; void input; void r2;
+    return json(res, 200, wire);
   }
   m = p.match(/^\/feeds\/2021-06-30\/documents\/([^/]+)$/);
   if (m) {
@@ -469,14 +628,23 @@ async function spapi(req, res, url, port) {
   // --- Reports ---
   if (p === '/reports/2021-06-30/reports' && req.method === 'POST') {
     const id = `rep-${++fx.seq}`;
-    fx.reports[id] = { reportId: id, processingStatus: 'DONE', reportDocumentId: `rdoc-${fx.seq}`, processingEndTime: iso(0) };
-    fx.docs[`rdoc-${fx.seq}`] = { kind: 'report', content: fx.returnsReport[region] };
+    fx.reports[id] = { reportId: id, reportType: JSON.parse(raw).reportType, processingStatus: 'IN_QUEUE', createdTime: iso(0), marketplaceIds: JSON.parse(raw).marketplaceIds, polls: 0, mode: fx.modes.report, region };
     return json(res, 202, { reportId: id });
   }
   m = p.match(/^\/reports\/2021-06-30\/reports\/([^/]+)$/);
   if (m) {
     const r = fx.reports[m[1]];
-    return r ? json(res, 200, r) : json(res, 404, { errors: [{ code: 'NotFound', message: 'report' }] });
+    if (!r) return json(res, 404, { errors: [{ code: 'NotFound', message: 'report' }] });
+    r.polls += 1;
+    r.processingStatus = r.polls === 1 ? 'IN_QUEUE' : r.polls === 2 ? 'IN_PROGRESS' : r.mode === 'fatal' ? 'FATAL' : r.mode === 'cancelled' ? 'CANCELLED' : 'DONE';
+    if (r.processingStatus === 'DONE' && !r.reportDocumentId) {
+      r.reportDocumentId = `rdoc-${++fx.seq}`;
+      r.processingEndTime = iso(0);
+      fx.docs[r.reportDocumentId] = { kind: 'report', content: buildReturnsReport(r.region) };
+    }
+    const { polls, mode, region: r3, ...wire } = r;
+    void polls; void mode; void r3;
+    return json(res, 200, wire);
   }
   m = p.match(/^\/reports\/2021-06-30\/documents\/([^/]+)$/);
   if (m) {
@@ -502,14 +670,81 @@ async function spapi(req, res, url, port) {
     return fx.subscription ? json(res, 200, { payload: fx.subscription }) : json(res, 404, { errors: [{ code: 'NotFound', message: 'no subscription' }] });
   }
 
-  // --- FBA outbound (MCF): present but empty; the executor points are live-only ---
+  // --- FBA outbound (MCF): a stateful fulfillment order ---
+  if (p === '/fba/outbound/2020-07-01/fulfillmentOrders/preview' && req.method === 'POST') {
+    const body = JSON.parse(raw);
+    const ok = fx.modes.mcfFulfillable && (body.items ?? []).every((i) => fx.fbaStock[region][i.sellerSku]);
+    return json(res, 200, { payload: { fulfillmentPreviews: (body.shippingSpeedCategories ?? ['Standard']).map((c) => ({ shippingSpeedCategory: c, isFulfillable: ok, isCODCapable: false, marketplaceId: body.marketplaceId, fulfillmentPreviewShipments: [], unfulfillablePreviewItems: ok ? [] : (body.items ?? []).map((i) => ({ sellerSku: i.sellerSku, sellerFulfillmentOrderItemId: i.sellerFulfillmentOrderItemId, quantity: i.quantity, itemUnfulfillableReasons: ['NoStock'] })) })) } });
+  }
+  if (p === '/fba/outbound/2020-07-01/fulfillmentOrders' && req.method === 'POST') {
+    const body = JSON.parse(raw);
+    const id = body.sellerFulfillmentOrderId;
+    if (fx.mcf[id]) {
+      res.ctx.skip = true;
+      return json(res, 400, { errors: [{ code: 'InvalidInput', message: 'Order Already Exists', details: '' }] });
+    }
+    fx.mcf[id] = { request: body, status: 'Received', polls: 0, receivedDate: iso(0), items: body.items, region };
+    res.writeHead(200, { 'content-type': 'application/json', 'x-amzn-requestid': `fake-${++fx.seq}` });
+    return res.end('{}');
+  }
+  m = p.match(/^\/fba\/outbound\/2020-07-01\/fulfillmentOrders\/([^/]+)(\/cancel)?$/);
+  if (m) {
+    const id = decodeURIComponent(m[1]);
+    const o = fx.mcf[id];
+    if (!o) { res.ctx.skip = true; return json(res, 400, { errors: [{ code: 'InvalidInput', message: 'Order Does Not Exist', details: '' }] }); }
+    if (m[2] && req.method === 'PUT') {
+      if (['Processing', 'Complete', 'CompletePartialled'].includes(o.status)) {
+        res.ctx.skip = true;
+        return json(res, 400, { errors: [{ code: 'InvalidRequestException', message: 'The fulfillment order can no longer be cancelled' }] });
+      }
+      o.status = 'Cancelled';
+      return json(res, 200, {});
+    }
+    o.polls += 1;
+    if (!['Cancelled', 'Complete'].includes(o.status) && o.mode !== 'hold') {
+      o.status = o.polls === 1 ? 'Received' : o.polls === 2 ? 'Planning' : o.polls === 3 ? 'Processing' : 'Complete';
+    }
+    const shipped = o.status === 'Complete';
+    return json(res, 200, {
+      payload: {
+        fulfillmentOrder: { sellerFulfillmentOrderId: id, marketplaceId: o.request.marketplaceId, displayableOrderId: o.request.displayableOrderId, displayableOrderDate: o.request.displayableOrderDate, displayableOrderComment: o.request.displayableOrderComment, shippingSpeedCategory: o.request.shippingSpeedCategory, destinationAddress: o.request.destinationAddress, receivedDate: o.receivedDate, fulfillmentOrderStatus: o.status, statusUpdatedDate: iso(0) },
+        fulfillmentOrderItems: o.items.map((i) => ({ sellerSku: i.sellerSku, sellerFulfillmentOrderItemId: i.sellerFulfillmentOrderItemId, quantity: i.quantity, cancelledQuantity: o.status === 'Cancelled' ? i.quantity : 0, unfulfillableQuantity: 0 })),
+        fulfillmentShipments: shipped ? [{ amazonShipmentId: `AMZ-${id}`, fulfillmentCenterId: 'FC1', fulfillmentShipmentStatus: 'SHIPPED', shippingDate: iso(0), fulfillmentShipmentItem: o.items.map((i) => ({ sellerSku: i.sellerSku, sellerFulfillmentOrderItemId: i.sellerFulfillmentOrderItemId, quantity: i.quantity })), fulfillmentShipmentPackage: [{ packageNumber: 1, carrierCode: 'DPD', trackingNumber: `MCF${id.slice(-8)}` }] }] : [],
+        returnItems: [], returnAuthorizations: [],
+      },
+    });
+  }
   if (p.startsWith('/fba/outbound/')) {
     res.ctx.skip = true;
-    return json(res, 404, { errors: [{ code: 'NotFound', message: 'fake: MCF is live-only' }] });
+    return json(res, 404, { errors: [{ code: 'NotFound', message: 'fake: no such MCF route' }] });
   }
 
   res.ctx.skip = true;
   return json(res, 404, { errors: [{ code: 'NotFound', message: `fake: no route ${req.method} ${p}` }] });
+}
+
+async function sqsHandler(req, res) {
+  const raw = await readBody(req);
+  const target = req.headers['x-amz-target'] ?? '';
+  const body = raw ? JSON.parse(raw) : {};
+  record({ port: PORTS.sqs, host: req.headers.host, method: req.method, path: target, hasSigV4: String(req.headers.authorization ?? '').startsWith('AWS4-HMAC-SHA256'), authScope: String(req.headers.authorization ?? '').match(/Credential=[^/]+\/\d+\/([^/]+)\/sqs/)?.[1] ?? null, queueUrl: body.QueueUrl, body: raw.slice(0, 300) });
+  if (takeSwitch(PORTS.sqs, target, ['sqs-fail'])) {
+    res.writeHead(400, { 'content-type': 'application/x-amz-json-1.0' });
+    return res.end(JSON.stringify({ __type: 'com.amazon.coral.service#AccessDeniedException', message: 'not authorized' }));
+  }
+  res.writeHead(200, { 'content-type': 'application/x-amz-json-1.0', 'x-amzn-requestid': `sqs-${++fx.seq}` });
+  if (target === 'AmazonSQS.ReceiveMessage') {
+    const now = Date.now();
+    const out = fx.sqs.filter((m) => m.visibleAt <= now).slice(0, body.MaxNumberOfMessages ?? 1);
+    for (const m of out) m.visibleAt = now + 30_000;
+    return res.end(JSON.stringify(out.length ? { Messages: out.map(({ MessageId, ReceiptHandle, Body }) => ({ MessageId, ReceiptHandle, Body, MD5OfBody: 'x' })) } : {}));
+  }
+  if (target === 'AmazonSQS.DeleteMessageBatch') {
+    const handles = new Set((body.Entries ?? []).map((e) => e.ReceiptHandle));
+    fx.sqs = fx.sqs.filter((m) => !handles.has(m.ReceiptHandle));
+    return res.end(JSON.stringify({ Successful: (body.Entries ?? []).map((e) => ({ Id: e.Id })), Failed: [] }));
+  }
+  return res.end('{}');
 }
 
 function handler(port) {
@@ -545,6 +780,7 @@ function handler(port) {
         }
       }
       if (port === PORTS.lwa) return await lwa(req, res, url);
+      if (port === PORTS.sqs) return await sqsHandler(req, res);
       return await spapi(req, res, url, port);
     } catch (error) {
       json(res, 500, { errors: [{ code: 'FakeServerError', message: String(error?.message ?? error) }] });

@@ -18,6 +18,7 @@ import {
   type RegionFixture,
 } from '../../src/support/amazon';
 import { resolveEnv } from '../../src/config/env';
+import { REGIONS } from '../../src/support/amazon';
 
 /** Bearer-token client returning status and body for ANY OL path (validation points need the 4xx too). */
 export class OlApi {
@@ -101,7 +102,7 @@ export const test = base.extend<Fixtures>({
         region,
         point,
         info.status === 'passed' ? 'pass' : 'fail',
-        info.status === 'passed' ? info.title : (info.error?.message ?? 'failed').split('\n')[0]!.slice(0, 300),
+        info.status === 'passed' ? info.title : (info.error?.message ?? 'failed').replace(/\u001b\[[0-9;]*m/g, '').split('\n').filter((l) => l.trim() !== '').slice(0, 5).join(' | ').slice(0, 420),
         screenshot,
       );
     },
@@ -184,3 +185,55 @@ export async function runJob(
     await new Promise((r) => setTimeout(r, 1500));
   }
 }
+
+import pg from 'pg';
+
+/** One-off SQL against the stack's Postgres (cursors, retention anchors, shipment seeds). */
+export async function sql<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
+  const client = new pg.Client({ connectionString: resolveEnv().databaseUrl });
+  await client.connect();
+  try {
+    return (await client.query(text, params)).rows as T[];
+  } finally {
+    await client.end();
+  }
+}
+
+export interface OrderRow {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  recordStatus: string;
+  orderSnapshot: Record<string, any>;
+  [k: string]: any;
+}
+
+export async function ordersOf(ol: OlApi, connectionId: string): Promise<OrderRow[]> {
+  const res = await ol.call('GET', `/orders?sourceConnectionId=${connectionId}&limit=100`);
+  return (res.body?.items ?? []) as OrderRow[];
+}
+
+export const extIds = (rows: OrderRow[]): string[] => rows.map((o) => String(o.orderSnapshot.externalOrderId)).sort();
+
+/** Polls (via real poll jobs) until the connection holds all `wanted` external ids, or times out. */
+export async function pollUntilHas(ol: OlApi, connectionId: string, wanted: string[], rounds = 6): Promise<OrderRow[]> {
+  let rows: OrderRow[] = [];
+  for (let i = 0; i < rounds; i += 1) {
+    await runJob(ol, 'marketplace.orders.poll', connectionId, { limit: 100, cursorKey: 'amazon.orders.feedCursor' });
+    for (let j = 0; j < 10; j += 1) {
+      rows = await ordersOf(ol, connectionId);
+      if (wanted.every((w) => extIds(rows).includes(w))) return rows;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  return rows;
+}
+
+export const fakeBuy = async (body: Record<string, unknown>): Promise<string> => {
+  const r = await fetch(`http://127.0.0.1:${REGIONS.eu.fakePort}/__buyer/purchase`, { method: 'POST', body: JSON.stringify(body) });
+  return ((await r.json()) as { orderId: string }).orderId;
+};
+export const fakePost = async (path: string, body: Record<string, unknown> = {}): Promise<any> => {
+  const r = await fetch(`http://127.0.0.1:${REGIONS.eu.fakePort}${path}`, { method: 'POST', body: JSON.stringify(body) });
+  return r.json();
+};
+export const fakeGet = async (path: string): Promise<any> => (await fetch(`http://127.0.0.1:${REGIONS.eu.fakePort}${path}`)).json();

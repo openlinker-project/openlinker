@@ -81,7 +81,8 @@ export function validateRequest(specs, method, pathname, query, bodyText) {
       continue;
     }
     const schema = paramSchema(p);
-    const instance = p.type === 'array' ? value.split(',') : p.type === 'integer' ? Number(value) : p.type === 'number' ? Number(value) : value;
+    const coerce = (v) => (p.type === 'boolean' ? (v === 'true' ? true : v === 'false' ? false : v) : p.type === 'integer' || p.type === 'number' ? Number(v) : v);
+    const instance = p.type === 'array' ? value.split(',') : coerce(value);
     const validate = compile(s, schema, `q:${o.method}:${o.path}:${name}`);
     if (!validate(instance)) out.push(`query ${name}=${value.slice(0, 60)}: ${fmt(validate.errors).join('; ')}`);
   }
