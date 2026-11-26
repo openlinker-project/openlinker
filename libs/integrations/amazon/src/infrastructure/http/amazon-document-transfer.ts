@@ -18,6 +18,7 @@ import { gunzipSync } from 'node:zlib';
 
 import type { FetchLike } from '@openlinker/shared/http';
 
+import { isAmazonTestOrigin } from '../../amazon.constants';
 import { AmazonApiError } from '../../domain/exceptions/amazon-api.error';
 
 const DOCUMENT_HOST_PATTERN = /(^|\.)(amazonaws\.com|amazon\.com)$/;
@@ -30,6 +31,10 @@ export function safeAmazonDocumentUrl(resource: string, label: string): string {
     url = new URL(resource);
   } catch {
     throw new AmazonApiError(502, 'DocumentLinkInvalid', `${label} link is not a URL`, undefined);
+  }
+  // Test seam (ignored in production): the fake server hands out its own links.
+  if (isAmazonTestOrigin(url.origin) && url.username === '' && url.password === '') {
+    return url.toString();
   }
   if (
     url.protocol !== 'https:' ||

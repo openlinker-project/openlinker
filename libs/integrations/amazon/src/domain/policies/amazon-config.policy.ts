@@ -36,6 +36,7 @@ import {
   AMAZON_KNOWN_MARKETPLACES,
   AMAZON_SINGLE_MARKETPLACE_REGIONS,
   AMAZON_SPAPI_HOSTS,
+  amazonTestOverride,
   AmazonEnvironmentValues,
   AmazonRegionValues,
   type AmazonRegion,
@@ -148,8 +149,13 @@ export function regionChangeIssue(
 }
 
 /** The SP-API host a connection talks to. */
-export function resolveAmazonSpApiHost(config: Pick<AmazonConnectionConfig, 'region' | 'environment'>): string {
-  return AMAZON_SPAPI_HOSTS[config.environment][config.region];
+export function resolveAmazonSpApiHost(
+  config: Pick<AmazonConnectionConfig, 'region' | 'environment'>,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  // Test seam (ignored in production): a base URL beats the hardcoded host.
+  const override = amazonTestOverride(`OL_AMAZON_SPAPI_BASE_URL_${config.region.toUpperCase()}`, env);
+  return override ?? AMAZON_SPAPI_HOSTS[config.environment][config.region];
 }
 
 function readEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T | null {

@@ -45,7 +45,7 @@ import type { CachePort } from '@openlinker/shared';
 import type { FetchLike } from '@openlinker/shared/http';
 import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
 
-import { AMAZON_LWA_TOKEN_URL } from '../../amazon.constants';
+import { resolveAmazonLwaUrl } from '../../amazon.constants';
 import { AmazonApiError } from '../../domain/exceptions/amazon-api.error';
 import { AmazonAuthenticationError } from '../../domain/exceptions/amazon-authentication.error';
 import { AmazonNetworkError } from '../../domain/exceptions/amazon-network.error';
@@ -173,7 +173,7 @@ export class AmazonAccessTokenProvider implements AmazonAccessTokenSource {
     let response: Response;
     let text: string;
     try {
-      response = await this.fetchImpl(AMAZON_LWA_TOKEN_URL, {
+      response = await this.fetchImpl(resolveAmazonLwaUrl(), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',

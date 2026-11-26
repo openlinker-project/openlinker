@@ -22,6 +22,32 @@ export const AMAZON_LWA_TOKEN_URL = 'https://api.amazon.com/auth/o2/token';
 export const AmazonRegionValues = ['eu', 'na', 'fe'] as const;
 export type AmazonRegion = (typeof AmazonRegionValues)[number];
 
+/**
+ * Test seam: point the plugin at a fake SP-API / LWA server (automated E2E).
+ * `OL_AMAZON_SPAPI_BASE_URL_{EU,NA,FE}` replace a region's host and
+ * `OL_AMAZON_LWA_URL` the token endpoint. A value is a base URL such as
+ * `http://fake:4101`. Every override is IGNORED when `NODE_ENV=production`,
+ * so a mis-set variable can never redirect real credentials off Amazon.
+ */
+export function amazonTestOverride(name: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  if (env.NODE_ENV === 'production') {
+    return null;
+  }
+  const value = env[name]?.trim();
+  return value !== undefined && /^https?:\/\/[^/\s]+$/.test(value) ? value : null;
+}
+
+/** True when `origin` is one of the seam's fake base URLs (never in production). */
+export function isAmazonTestOrigin(origin: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  return ['EU', 'NA', 'FE'].some((r) => amazonTestOverride(`OL_AMAZON_SPAPI_BASE_URL_${r}`, env) === origin);
+}
+
+/** The LWA token endpoint, honouring the test seam. */
+export function resolveAmazonLwaUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const override = amazonTestOverride('OL_AMAZON_LWA_URL', env);
+  return override !== null ? `${override}/auth/o2/token` : AMAZON_LWA_TOKEN_URL;
+}
+
 export const AmazonEnvironmentValues = ['production', 'sandbox'] as const;
 export type AmazonEnvironment = (typeof AmazonEnvironmentValues)[number];
 

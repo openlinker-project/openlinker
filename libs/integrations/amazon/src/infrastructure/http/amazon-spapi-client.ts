@@ -157,5 +157,6 @@ export function buildAmazonUrl(host: string, path: string, query?: AmazonQuery):
     params.append(key, Array.isArray(value) ? value.join(',') : String(value));
   }
   const search = params.toString();
-  return `https://${host}${normalisedPath}${search.length > 0 ? `?${search}` : ''}`;
+  const base = /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return `${base}${normalisedPath}${search.length > 0 ? `?${search}` : ''}`;
 }
