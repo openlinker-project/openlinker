@@ -144,6 +144,7 @@ function freshFixtures() {
         const sku = `E2E-${m.country}-${n}`;
         fx.listings[region][`${m.id}:${sku}`] = makeListing(m, sku, `B0FAKE0000${n}`);
       });
+      fx.listings[region][`${m.id}:E2E-${m.country}-DEL`] = makeListing(m, `E2E-${m.country}-DEL`, 'B0FAKE0000D');
       const fbaSku = `E2E-${m.country}-FBA`;
       fx.listings[region][`${m.id}:${fbaSku}`] = makeListing(m, fbaSku, 'B0FAKE0000F', true, 0);
       fx.fbaStock[region][fbaSku] = { fulfillableQuantity: 12, reservedQuantity: { totalReservedQuantity: 3 } };

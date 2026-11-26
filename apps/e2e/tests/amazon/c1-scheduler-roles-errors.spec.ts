@@ -5,7 +5,8 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test, expect, shot, createConn, runJob, listJobs, sql, fakeGet, type OlApi } from './amazon-test';
 import { provisionRoleUser } from './roles';
 import { resolveEnv } from '../../src/config/env';
@@ -90,7 +91,7 @@ test('P126 the scheduler task specs pass', async ({ evidence }) => {
 });
 
 test('P127 the worker .env.example documents all six variables', async ({ evidence }) => {
-  const text = readFileSync(resolve(__dirname, '../../../worker/.env.example'), 'utf8');
+  const text = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../worker/.env.example'), 'utf8');
   const names = ['ORDERS_POLL', 'RETURNS_POLL', 'RETURNS_STATUS_SYNC', 'NOTIFICATIONS_DRAIN', 'OFFERS_SYNC', 'OFFER_STATUS_SYNC'].map((n) => `OL_AMAZON_${n}_SCHEDULER_ENABLED`);
   await evidence('apps/worker/.env.example', Object.fromEntries(names.map((n) => [n, text.includes(n)])));
   for (const n of names) expect(text, n).toContain(n);

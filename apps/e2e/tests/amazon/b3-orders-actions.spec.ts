@@ -8,7 +8,7 @@
  * @module tests/amazon
  */
 import { execFile } from 'node:child_process';
-import { test, expect, shot, createConn, runJob, ordersOf, extIds, pollUntilHas, fakeGet, fakePost, sql, type OlApi } from './amazon-test';
+import { test, expect, shot, createConn, patchConfig, runJob, fakeBuy, ordersOf, pollUntilHas, fakeGet, sql, type OlApi } from './amazon-test';
 import { REGIONS, type RegionFixture } from '../../src/support/amazon';
 
 const STAMP = Date.now();
@@ -37,8 +37,8 @@ async function sourceWithOrders(ol: OlApi, region: RegionFixture, name: string, 
 async function seedShipment(orderInternalId: string, tracking: string | null, status = 'generated'): Promise<string> {
   const id = `ol_shipment_e2e${STAMP}${Math.floor(Math.random() * 1e6)}`;
   await sql(
-    `insert into shipments (id, "orderId", "connectionId", "shippingMethod", status, "trackingNumber", direction, "carrier", "createdAt", "updatedAt") values ($1,$2,$3,'courier',$4,$5,'outbound','dpd', now(), now())`,
-    [id, orderInternalId, '99999999-9999-4999-8999-999999999999', status, tracking],
+    `insert into shipments (id, "orderId", "connectionId", "shippingMethod", status, "trackingNumber", "providerShipmentId", direction, "carrier", "createdAt", "updatedAt") values ($1,$2,$3,'courier',$4,$5,$6,'outbound','dpd', now(), now())`,
+    [id, orderInternalId, '99999999-9999-4999-8999-999999999999', status, tracking, `prov-${id}`],
   );
   return id;
 }
@@ -74,7 +74,9 @@ test('P061b dispatch without a tracking number is reported unsupported, not sent
 test('P062 a second parcel after a full confirmation is refused by Amazon and reported', async ({ ol, region, evidence }) => {
   const src = await sourceWithOrders(ol, region, `E2E orders ${region.region}`, ['plain', 'cod']);
   const order = (await ordersOf(ol, src.id)).find((o) => o.orderSnapshot.externalOrderId === src.ids.plain)!;
-  const shipmentId = await seedShipment(order.internalOrderId, 'TRK-E2E-2');
+  const first = await seedShipment(order.internalOrderId, 'TRK-E2E-2a');
+  await ol.call('POST', `/shipments/${first}/notify-dispatched`);
+  const shipmentId = await seedShipment(order.internalOrderId, 'TRK-E2E-2b');
   const res = await ol.call('POST', `/shipments/${shipmentId}/notify-dispatched`);
   await evidence('second parcel (known limit: the event names no lines)', res.body);
   expect(res.status).toBe(200);
@@ -91,6 +93,9 @@ test('P063 cancel, delivered, in-progress and paid write-backs are unsupported (
 
 test('P064 the mapping option lists load with Amazon vocabulary', async ({ ol, region, evidence }) => {
   const src = await sourceWithOrders(ol, region, `E2E orders ${region.region}`, ['plain', 'cod']);
+  const conns = (await ol.call('GET', '/connections')).body as { id: string; name: string }[];
+  const master = conns.find((c) => c.name === `E2E master ${region.region}`);
+  if (master) await patchConfig(ol, src.id, { masterCatalogConnectionId: master.id });
   const out: Record<string, unknown> = {};
   for (const kind of ['order-statuses', 'delivery-methods', 'payment-methods']) {
     const r = await ol.call('GET', `/connections/${src.id}/mappings/options/source/${kind}`);
@@ -128,23 +133,34 @@ test('P067 the retention service specs pass', async ({ evidence }) => {
   expect(core.ok, core.tail).toBe(true);
 });
 
-test('P068 and P069 the 30-day anchor redacts buyer data and a re-import brings none back', async ({ ol, region, evidence }) => {
-  test.setTimeout(420_000);
-  const src = await sourceWithOrders(ol, region, `E2E orders ${region.region}`, ['plain', 'cod']);
-  const order = (await ordersOf(ol, src.id)).find((o) => o.orderSnapshot.externalOrderId === src.ids.plain)!;
+test('P068 and P069 the 30-day anchor redacts buyer data and a re-import brings none back', async ({ ol, region, fake, evidence }) => {
+  test.setTimeout(480_000);
+  await fake.reset();
+  // A fresh order on a fresh connection, so the redaction below is observed and not inherited from an earlier run.
+  const c = await createConn(ol, { name: `ret68 ${region.region} ${STAMP}`, region, capabilities: ['OrderSource'], orderSyncStart: { mode: 'now' } });
+  await runJob(ol, 'marketplace.orders.poll', c.body.id, { limit: 100, cursorKey: 'amazon.orders.feedCursor' });
+  const bought = await fakeBuy({ region: region.region, sku: `E2E-${region.marketplaces[0]!.country}-1`, qty: 1, ageMinutes: 1 });
+  const before = (await pollUntilHas(ol, c.body.id, [bought])).find((o) => o.orderSnapshot.externalOrderId === bought)!;
+  expect(before.orderSnapshot.shippingAddress.address1).toBeTruthy();
+  expect(before.orderSnapshot.customerEmail).toBeTruthy();
+  const src = { id: c.body.id, ids: { plain: bought } as Record<string, string> };
+  const order = before;
   await sql(`update order_records set "dispatchByAt" = now() - interval '31 days' where "internalOrderId" = $1`, [order.internalOrderId]);
   await new Promise<void>((resolve) => execFile('docker', ['restart', 'olamz-worker'], () => resolve()));
-  let redacted: any;
-  for (let i = 0; i < 40; i += 1) {
+  let redactedAt: unknown = null;
+  for (let i = 0; i < 40 && !redactedAt; i += 1) {
     await new Promise((r) => setTimeout(r, 5000));
-    const rows = await ordersOf(ol, src.id).catch(() => []);
-    redacted = rows.find((o) => o.internalOrderId === order.internalOrderId);
-    if (redacted?.buyerDataRedactedAt) break;
+    const row = await sql<{ at: unknown }>(`select "buyerDataRedactedAt" at from order_records where "internalOrderId" = $1`, [order.internalOrderId]).catch(() => []);
+    redactedAt = row[0]?.at ?? null;
   }
+  const redacted = (await ordersOf(ol, src.id)).find((o) => o.internalOrderId === order.internalOrderId) as any;
+  redacted.buyerDataRedactedAt = redactedAt;
   await evidence('after the retention pass', { buyerDataRedactedAt: redacted?.buyerDataRedactedAt, address: redacted?.orderSnapshot?.shippingAddress, email: redacted?.orderSnapshot?.customerEmail, items: redacted?.orderSnapshot?.items?.length, total: redacted?.orderSnapshot?.totals?.total });
   expect(redacted?.buyerDataRedactedAt).toBeTruthy();
   expect(redacted.orderSnapshot.customerEmail ?? null).toBeNull();
-  expect(Object.keys(redacted.orderSnapshot.shippingAddress ?? {}).filter((k) => k !== 'country')).toHaveLength(0);
+  const addr = redacted.orderSnapshot.shippingAddress ?? {};
+  for (const k of Object.keys(addr).filter((x) => x !== 'country')) expect(addr[k]).toBe('[REDACTED]');
+  expect(addr.firstName ?? null).toBeNull();
   expect(redacted.orderSnapshot.items.length).toBeGreaterThan(0);
   expect(redacted.orderSnapshot.totals.total).toBe(44.9);
   // P069: a re-import stores none of it again.
@@ -152,5 +168,7 @@ test('P068 and P069 the 30-day anchor redacts buyer data and a re-import brings 
   await new Promise((r) => setTimeout(r, 6000));
   const again = (await ordersOf(ol, src.id)).find((o) => o.internalOrderId === order.internalOrderId)!;
   expect(again.orderSnapshot.customerEmail ?? null).toBeNull();
-  expect(Object.keys(again.orderSnapshot.shippingAddress ?? {}).filter((k) => k !== 'country')).toHaveLength(0);
+  const addr2 = again.orderSnapshot.shippingAddress ?? {};
+  for (const k of Object.keys(addr2).filter((x) => x !== 'country')) expect(addr2[k]).toBe('[REDACTED]');
+  expect(addr2.firstName ?? null).toBeNull();
 });

@@ -6,7 +6,7 @@
  *
  * @module tests/amazon
  */
-import { test, expect, shot, createConn, runJob, ordersOf, extIds, pollUntilHas, fakeBuy, fakePost, fakeGet, sql } from './amazon-test';
+import { test, expect, shot, createConn, runJob, ordersOf, extIds, pollUntilHas, fakeBuy, fakeGet, sql } from './amazon-test';
 import { openWizard, fillWizard, regionWizard } from './wizard';
 import { REGIONS } from '../../src/support/amazon';
 

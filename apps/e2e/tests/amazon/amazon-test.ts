@@ -62,6 +62,7 @@ interface Fixtures {
   /** Marks the evidence page used (API/DB points) so the auto shot is not taken over it. */
   evidence: (title: string, observed: unknown) => Promise<void>;
   pointRecorder: void;
+  tidyMasters: void;
 }
 
 export const test = base.extend<Fixtures>({
@@ -81,6 +82,16 @@ export const test = base.extend<Fixtures>({
       await evidenceShot(page, regionOf(info).region, Number(m?.[1] ?? 0), title, observed);
     });
   },
+  tidyMasters: [
+    async ({}, use) => {
+      await use();
+      while (throwawayMasters.length > 0) {
+        const t = throwawayMasters.pop()!;
+        await t.ol.call('PATCH', `/connections/${t.id}/disable`).catch(() => undefined);
+      }
+    },
+    { auto: true },
+  ],
   pointRecorder: [
     async ({ page }, use, info) => {
       const m = /^P(\d{3})/.exec(info.title);
@@ -122,7 +133,16 @@ export interface ApiConnOpts {
 }
 
 /** Creates an Amazon connection through the API (the wizard is covered by its own points). */
+/** Throwaway ProductMaster connections created by a test: disabled afterwards so their sweeps never import duplicate SKUs. */
+export const throwawayMasters: { ol: OlApi; id: string }[] = [];
+
 export async function createConn(ol: OlApi, o: ApiConnOpts): Promise<{ status: number; body: any }> {
+  const res = await createConnRaw(ol, o);
+  if (res.status === 201 && o.capabilities.includes('ProductMaster') && !o.name.startsWith('E2E ')) throwawayMasters.push({ ol, id: res.body.id });
+  return res;
+}
+
+async function createConnRaw(ol: OlApi, o: ApiConnOpts): Promise<{ status: number; body: any }> {
   return ol.call('POST', '/connections', {
     name: o.name,
     platformType: 'amazon',
@@ -152,6 +172,7 @@ export interface JobRow {
   outcome: string | null;
   attempts: number;
   lastError: string | null;
+  outcomeReason?: string | null;
   idempotencyKey: string;
   nextRunAt?: string;
   deferredTotalMs?: number;
