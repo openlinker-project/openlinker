@@ -52,6 +52,13 @@ describe('buildMiraklSchedulerTasks', () => {
       jobType: 'marketplace.returns.statusSync',
       enabledEnvVar: 'OL_EMPIK_RETURNS_STATUS_SYNC_SCHEDULER_ENABLED',
     });
+    // One RT11 call per re-read return, so the hourly page stays small.
+    expect(byId.get('empik-returns-status-sync')?.generatePayload({} as Connection)).toEqual({
+      schemaVersion: 1,
+      limit: 10,
+      cursorKey: 'empik.returns.scanOffset',
+      lookbackDays: 90,
+    });
     expect(byId.get('empik-offer-writes')).toMatchObject({
       requiredCapability: 'OfferManager',
       jobType: 'marketplace.offerQuantity.reconcile',
@@ -64,11 +71,9 @@ describe('buildMiraklSchedulerTasks', () => {
       enabledEnvVar: 'OL_EMPIK_MASTER_STOCK_WRITES_SCHEDULER_ENABLED',
     });
     expect(
-      byId
-        .get('empik-offers-sync')
-        ?.generatePayload({
-          config: { masterCatalogConnectionId: 'master-1' },
-        } as unknown as Connection)
+      byId.get('empik-offers-sync')?.generatePayload({
+        config: { masterCatalogConnectionId: 'master-1' },
+      } as unknown as Connection)
     ).toEqual({
       schemaVersion: 1,
       limit: 100,

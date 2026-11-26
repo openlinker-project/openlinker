@@ -110,7 +110,8 @@ export interface MiraklOrderSourceOptions {
   readonly catalogMaster?: boolean;
   /**
    * Host cache, read to skip refunds OpenLinker sent itself when observing
-   * refunds (see `mirakl-refunds.ts`).
+   * refunds (see `mirakl-refunds.ts`), and to answer a return the returns feed
+   * just read without another RT11 call (see `mirakl-return-source.ts`).
    */
   readonly cache?: CachePort;
   readonly now?: () => Date;
@@ -166,7 +167,7 @@ export class MiraklOrderSourceAdapter
       brand,
       settings.invoiceTypeCode ?? DEFAULT_INVOICE_TYPE_CODE
     );
-    this.returns = new MiraklReturnSource(connectionId, httpClient, this.now);
+    this.returns = new MiraklReturnSource(connectionId, httpClient, this.now, settings.cache);
     this.refunds = new MiraklRefundReader(connectionId, httpClient, settings.cache);
     this.terminalRawStatuses = this.returns.terminalRawStatuses;
   }

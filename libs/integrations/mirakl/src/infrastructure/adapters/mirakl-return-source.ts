@@ -9,15 +9,31 @@
  *   halving when a window does not fit the page budget). A return that
  *   changes comes back with a new `last_updated`, so the feed also carries
  *   transitions; the status sync re-reading open returns is the backstop.
- *   Mirakl allows RT11 at most every 5 minutes, so the poll runs every 15.
  * - **One return**: RT11 by `return_id`, plus its order (OR11) for the line
  *   SKUs and prices RT11 lines do not carry. A missing order does not fail the
  *   read; a missing return answers 404, which core counts as not found.
+ *   `return_id` is taken from Mirakl's documentation, not yet seen working on
+ *   Empik (staging has no return); the read matches the answer by `id`, so a
+ *   parameter Mirakl ignored ends in a 404, never in the wrong return.
+ *
+ * ## How often RT11 is called
+ *
+ * Mirakl recommends RT11 at most every 5 minutes. Core reads one return at a
+ * time after the feed (one `marketplace.return.sync` job per item), so a feed
+ * of N returns would otherwise cost N more RT11 calls within seconds. The feed
+ * therefore keeps every return it read in the host cache for
+ * {@link FEED_CACHE_TTL_SECONDS}, and `getReturn` answers from it, calling
+ * RT11 only for a return the feed did not just read (the status sync's
+ * re-reads, a manual re-sync). The feed's copy is as fresh as RT11 itself at
+ * that moment, so nothing is lost. The status sync re-reads a small page per
+ * pass (see the scheduler tasks), and the client honours `Retry-After` if
+ * Mirakl answers 429 anyway. Without a cache every read calls RT11, as before.
  * - **Terminal states** (`CLOSED`, `REFUSED`, `CANCELED`) are declared so the
  *   status sync stops re-reading them.
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters
  */
+import type { CachePort } from '@openlinker/shared/cache';
 import type {
   IncomingReturn,
   ReturnFeedInput,
@@ -43,6 +59,12 @@ import { mapMiraklReturn } from './mirakl-return.mapper';
 
 const RETURNS_PATH = '/api/returns';
 const MAX_WINDOW_HALVINGS = 16;
+/**
+ * How long a return read by the feed answers `getReturn`: past the 15-minute
+ * poll and the sync jobs it enqueues, short enough that a later re-read goes
+ * back to RT11.
+ */
+const FEED_CACHE_TTL_SECONDS = 20 * 60;
 
 export class MiraklReturnSource {
   private readonly logger = new Logger(MiraklReturnSource.name);
@@ -51,7 +73,8 @@ export class MiraklReturnSource {
   constructor(
     private readonly connectionId: string,
     private readonly httpClient: IMiraklHttpClient,
-    private readonly now: () => Date
+    private readonly now: () => Date,
+    private readonly cache?: CachePort
   ) {}
 
   async listReturnFeed(input: ReturnFeedInput): Promise<ReturnFeedOutput> {
@@ -65,8 +88,9 @@ export class MiraklReturnSource {
     if (page.truncated) {
       this.logger.error(
         `Return feed on connection ${this.connectionId} still did not fit ${maxPages} page(s) ` +
-          `after ${MAX_WINDOW_HALVINGS} halvings; advancing past it, so returns in it may be missed ` +
-          `until the status sync re-reads them`
+          `after ${MAX_WINDOW_HALVINGS} halvings; advancing past it, so returns changed in it may ` +
+          `be missed (a return OpenLinker already holds is still re-read by the status sync; a new ` +
+          `one is not)`
       );
     }
     const seen = new Set<string>();
@@ -76,6 +100,7 @@ export class MiraklReturnSource {
       const eventKey = buildReturnEventKey(miraklReturn.id, miraklReturn.last_updated);
       if (seen.has(eventKey)) continue;
       seen.add(eventKey);
+      await this.remember(miraklReturn);
       items.push({
         externalReturnId: miraklReturn.id,
         externalOrderId: miraklReturn.order_id ?? null,
@@ -87,12 +112,8 @@ export class MiraklReturnSource {
   }
 
   async getReturn(input: { externalReturnId: string }): Promise<IncomingReturn> {
-    const { data } = await this.httpClient.get<{ data?: readonly MiraklReturn[] }>(RETURNS_PATH, {
-      queryParams: { return_id: input.externalReturnId },
-    });
-    const miraklReturn = (data?.data ?? []).find(
-      (candidate) => candidate.id === input.externalReturnId
-    );
+    const miraklReturn =
+      (await this.recall(input.externalReturnId)) ?? (await this.readOne(input.externalReturnId));
     if (!miraklReturn) {
       throw new MiraklApiException(
         `Mirakl return ${input.externalReturnId} not found`,
@@ -101,6 +122,44 @@ export class MiraklReturnSource {
       );
     }
     return mapMiraklReturn(miraklReturn, await this.readOrder(miraklReturn.order_id));
+  }
+
+  private async readOne(returnId: string): Promise<MiraklReturn | undefined> {
+    const { data } = await this.httpClient.get<{ data?: readonly MiraklReturn[] }>(RETURNS_PATH, {
+      queryParams: { return_id: returnId },
+    });
+    return (data?.data ?? []).find((candidate) => candidate.id === returnId);
+  }
+
+  private cacheKey(returnId: string): string {
+    return `mirakl:return:${this.connectionId}:${returnId}`;
+  }
+
+  /** Keeps a return the feed read; a cache fault only costs an RT11 call later. */
+  private async remember(miraklReturn: MiraklReturn): Promise<void> {
+    if (!this.cache || !miraklReturn.id) return;
+    try {
+      await this.cache.set(this.cacheKey(miraklReturn.id), miraklReturn, FEED_CACHE_TTL_SECONDS);
+    } catch (error) {
+      this.logger.warn(
+        `Could not keep return ${miraklReturn.id} in the cache (connection: ${this.connectionId}): ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  private async recall(returnId: string): Promise<MiraklReturn | undefined> {
+    if (!this.cache) return undefined;
+    try {
+      const cached = await this.cache.get<MiraklReturn>(this.cacheKey(returnId));
+      return cached?.id === returnId ? cached : undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read return ${returnId} from the cache (connection: ${this.connectionId}): ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      return undefined;
+    }
   }
 
   private readWindow(

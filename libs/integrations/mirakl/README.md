@@ -127,14 +127,18 @@ product; core already sends the bundle availability as its stock.
 
 The order source is also a `ReturnSourceReader` over RT11 (`GET /api/returns`):
 
-- **Feed** (`marketplace.returns.poll`, every 15 minutes; Mirakl allows RT11
-  at most every 5): closed `return_last_updated_from` / `_to` windows, the
-  orders feed's window rules. A changed return comes back with a new
+- **Feed** (`marketplace.returns.poll`, every 15 minutes; Mirakl recommends
+  RT11 at most every 5): closed `return_last_updated_from` / `_to` windows,
+  the orders feed's window rules. A changed return comes back with a new
   `last_updated`, so the feed also carries transitions.
 - **One return**: RT11 by `return_id`, plus the order (OR11), because RT11
   lines carry only the order line id, quantity and reason; the order adds the
-  line's `offer_sku`, title and unit price that core matches lines on.
-- **Status** (`marketplace.returns.statusSync`, hourly): re-reads open returns.
+  line's `offer_sku`, title and unit price that core matches lines on. A return
+  the feed just read is answered from the host cache (20 minutes), so the
+  per-return sync jobs after a feed cost no extra RT11 call. `return_id` comes
+  from Mirakl's documentation and is not yet checked on Empik.
+- **Status** (`marketplace.returns.statusSync`, hourly): re-reads up to 10 open
+  returns per pass, one RT11 call each.
   Terminal states declared: `CLOSED`, `REFUSED`, `CANCELED`; `RECEIVED` and
   `NO_RECEPTION` keep being re-read.
 - The reason stays Mirakl's code (`RETURN_BROKEN_ITEM`, ...).
@@ -226,7 +230,7 @@ reference, "Call Frequency"); a call above the maximum answers 429 with
 | STO01 stock import | once per minute (recommended every 5) | offer writes every 5 min; master stock writes every minute, one file |
 | PRI01 price import | once per minute | with the offer writes, every 5 min |
 | OR11 orders | once per minute | every 5 min |
-| RT11 returns | every 5 minutes | every 15 min |
+| RT11 returns | every 5 minutes | feed every 15 min (follow-up reads from the cache); status sync up to 10 calls an hour |
 | A01 account | once per day | connection test only |
 | OF21 / P31 | per page view | master sweeps: one OF21 per product |
 

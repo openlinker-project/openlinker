@@ -16,10 +16,12 @@
  * - **offer status** (hourly, #4277): `marketplace.offer.statusSync`; `active`
  *   and `inactivity_reasons`, plus the price and quantity the channel shows.
  * - **returns poll** (every 15 min, #4279): `marketplace.returns.poll` over
- *   RT11 by last-updated window. Mirakl allows RT11 at most every 5 minutes.
+ *   RT11 by last-updated window. Mirakl recommends RT11 at most every 5
+ *   minutes; the returns the feed read answer the follow-up reads from the
+ *   cache, so each return does not cost another RT11 call.
  * - **returns status** (hourly, #4279): `marketplace.returns.statusSync`
  *   re-reads open returns until a terminal state, the backstop for a change
- *   the window missed.
+ *   the window missed. One RT11 call per return, so the page is small.
  *
  * Registered unconditionally and gated at each tick by its own
  * `OL_{PLATFORM}_..._SCHEDULER_ENABLED`, which turns a task off only on the
@@ -56,7 +58,12 @@ const OFFER_STATUS_LIMIT = 100;
 const RETURNS_POLL_CRON = '*/15 * * * *';
 const RETURNS_POLL_LIMIT = 100;
 const RETURNS_STATUS_CRON = '50 * * * *';
-const RETURNS_STATUS_LIMIT = 50;
+/**
+ * Open returns re-read per hourly pass, one RT11 call each. The feed already
+ * carries transitions, so this backstop stays small rather than sending a
+ * burst of RT11 calls against a 5-minute recommendation.
+ */
+const RETURNS_STATUS_LIMIT = 10;
 /** Returns older than this are no longer re-read by the status sync. */
 const RETURNS_STATUS_LOOKBACK_DAYS = 90;
 
