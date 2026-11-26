@@ -82,10 +82,13 @@ export const amazonAdapterManifest: AdapterMetadata = {
   // than 30 days after delivery. Enforced by the order buyer-data retention
   // pass (#4178).
   buyerDataRetentionDays: 30,
-  // The operator chooses where order sync starts (#4262): only new orders,
-  // from a date, or everything the Orders API still serves. The date window
-  // import backs "newest first" and a manual date-range run.
-  orderSyncStartModes: ['now', 'from', 'all'],
+  // The operator chooses where order sync starts (#4262): only new orders or
+  // from a date. There is no "all": a feed with no position starts a 7-day
+  // bootstrap (the Orders API is read by a date window), so "every order the
+  // shop has" would silently import only the last week. History is reached
+  // with "from" and an early date, or the date-range import. The date window
+  // import also backs "newest first" and a manual date-range run.
+  orderSyncStartModes: ['now', 'from'],
   orderWindowImport: true,
   // Non-secret keys the UI may read under any role: the bulk offer wizard
   // needs the marketplaces and merchant token, and the refund dialogs need to
