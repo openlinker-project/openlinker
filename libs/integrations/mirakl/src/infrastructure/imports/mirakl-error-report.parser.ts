@@ -20,7 +20,14 @@ const REASON_COLUMNS = ['error-message', 'errors', 'error', 'error-reason', 'mes
 const LINE_COLUMNS = ['error-line', 'line-number', 'line'];
 const SKU_COLUMNS = ['sku', 'offer-sku', 'shop-sku', 'product-sku', 'shop_sku'];
 
-export function parseMiraklErrorReport(csv: string): MiraklImportLineError[] {
+/**
+ * @param keyColumns further columns that name the line, matched before the SKU
+ * columns, lower-cased (a P41 report names a card by its catalogue code).
+ */
+export function parseMiraklErrorReport(
+  csv: string,
+  keyColumns: readonly string[] = []
+): MiraklImportLineError[] {
   const text = csv.replace(/^﻿/, '');
   const firstLine = text.split(/\r?\n/, 1)[0] ?? '';
   const delimiter = firstLine.includes(';') ? ';' : ',';
@@ -34,7 +41,10 @@ export function parseMiraklErrorReport(csv: string): MiraklImportLineError[] {
     return [];
   }
   const lineIndex = findColumn(header, LINE_COLUMNS);
-  const skuIndex = findColumn(header, SKU_COLUMNS);
+  const skuIndex = findColumn(header, [
+    ...keyColumns.map((name) => name.toLowerCase()),
+    ...SKU_COLUMNS,
+  ]);
 
   const errors: MiraklImportLineError[] = [];
   for (const row of rows.slice(1)) {
@@ -44,7 +54,11 @@ export function parseMiraklErrorReport(csv: string): MiraklImportLineError[] {
     }
     const line = lineIndex === undefined ? undefined : toLineNumber(row[lineIndex]);
     const sku = skuIndex === undefined ? undefined : (row[skuIndex] ?? '').trim() || undefined;
-    errors.push({ reason, ...(line === undefined ? {} : { line }), ...(sku === undefined ? {} : { sku }) });
+    errors.push({
+      reason,
+      ...(line === undefined ? {} : { line }),
+      ...(sku === undefined ? {} : { sku }),
+    });
   }
   return errors;
 }

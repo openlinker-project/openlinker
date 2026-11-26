@@ -18,7 +18,7 @@ export interface MiraklOfferWriteRepositoryPort {
   recordPending(
     connectionId: string,
     kind: MiraklOfferWriteKind,
-    values: readonly MiraklOfferWriteValue[],
+    values: readonly MiraklOfferWriteValue[]
   ): Promise<void>;
 
   /** Record writes already sent in `importId` (an OF24 create). */
@@ -26,21 +26,21 @@ export interface MiraklOfferWriteRepositoryPort {
     connectionId: string,
     kind: MiraklOfferWriteKind,
     values: readonly MiraklOfferWriteValue[],
-    importId: string,
+    importId: string
   ): Promise<void>;
 
   /** The newest write of one kind for one offer, whatever its status. */
   findLatest(
     connectionId: string,
     kind: MiraklOfferWriteKind,
-    offerSku: string,
+    offerSku: string
   ): Promise<MiraklOfferWrite | null>;
 
   /** Pending writes of one kind, oldest first. */
   findPending(
     connectionId: string,
     kind: MiraklOfferWriteKind,
-    limit: number,
+    limit: number
   ): Promise<MiraklOfferWrite[]>;
 
   /**
@@ -52,10 +52,34 @@ export interface MiraklOfferWriteRepositoryPort {
   /** Fail writes the operator refused to import at all, each at the version read. */
   failPending(writes: readonly MiraklOfferWrite[], reason: string): Promise<number>;
 
-  /** Ids of this connection's imports still waiting for an outcome, oldest first. */
+  /** Submitted writes of one kind, oldest first (the card pass, #4278). */
+  findSubmitted(
+    connectionId: string,
+    kind: MiraklOfferWriteKind,
+    limit: number
+  ): Promise<MiraklOfferWrite[]>;
+
+  /**
+   * Settle submitted writes one by one (a card the operator accepted or
+   * refused). Each row only while still submitted; returns the rows settled.
+   */
+  settleWrites(
+    writes: readonly MiraklOfferWrite[],
+    status: 'applied' | 'failed',
+    reason?: string
+  ): Promise<number>;
+
+  /** When a file of this kind was last sent for the connection, or null. */
+  latestImportAt(connectionId: string, kind: MiraklOfferWriteKind): Promise<Date | null>;
+
+  /**
+   * Ids of this connection's imports still waiting for an outcome, oldest
+   * first. Card imports are left out: the card pass follows them itself,
+   * because a finished card import is not yet a card in the catalogue.
+   */
   findSubmittedImports(
     connectionId: string,
-    limit: number,
+    limit: number
   ): Promise<Array<{ importId: string; kind: MiraklOfferWriteKind }>>;
 
   /**
@@ -65,7 +89,7 @@ export interface MiraklOfferWriteRepositoryPort {
   settleImport(
     connectionId: string,
     importId: string,
-    failures: ReadonlyMap<string, string>,
+    failures: ReadonlyMap<string, string>
   ): Promise<number>;
 
   /** Fail every line of one import with the same reason. */

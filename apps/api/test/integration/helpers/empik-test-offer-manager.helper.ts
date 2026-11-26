@@ -22,6 +22,7 @@ import {
   ADAPTER_REGISTRY_TOKEN,
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
+import { empikOperatorProfile } from '@openlinker/integrations-mirakl';
 import { MiraklOfferManagerAdapter } from '@openlinker/integrations-mirakl/infrastructure/adapters/mirakl-offer-manager.adapter';
 import { MiraklImportTracker } from '@openlinker/integrations-mirakl/infrastructure/imports/mirakl-import-tracker';
 import { MiraklOfferWriteOrmEntity } from '@openlinker/integrations-mirakl/infrastructure/persistence/entities/mirakl-offer-write.orm-entity';
@@ -68,6 +69,7 @@ export function installEmpikOfferManagerHarness(
           writes: repository,
           taxonomyOwner: 'empik:staging',
           offerDefaults: { leadTimeToShip: 2, logisticClass: '1' },
+          cardAttributes: empikOperatorProfile.cardAttributes,
         });
         return Promise.resolve(adapter as unknown as T);
       },

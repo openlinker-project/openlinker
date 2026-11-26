@@ -49,6 +49,7 @@ const IMPORT_KIND: Readonly<Record<MiraklOfferWriteKind, MiraklImportKind>> = {
   stock: 'stock',
   price: 'prices',
   offer: 'offers',
+  card: 'products',
 };
 
 const SUBMIT_PATH: Readonly<Record<MiraklBufferedWriteKind, string>> = {

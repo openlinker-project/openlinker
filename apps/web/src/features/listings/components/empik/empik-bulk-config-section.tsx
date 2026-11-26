@@ -113,10 +113,7 @@ export function EmpikBulkConfigSection({
         />
       </FormField>
       <p className="erli-config__note">
-        {[
-          interpolate(copy.note.existingCards, { platform: platformName }),
-          copy.note.currency,
-        ].join(' ')}
+        {[interpolate(copy.note.cards, { platform: platformName }), copy.note.currency].join(' ')}
       </p>
     </div>
   );

@@ -463,9 +463,17 @@
       }
     },
     "empik": {
-      "noCard": {
-        "detail": "Najpierw dodaj produkt w panelu sprzedawcy Empik; tworzenie kart z OpenLinker nie jest jeszcze dostępne.",
-        "title": "Empik nie ma karty produktu dla tego EAN."
+      "cardMissingParameters": {
+        "detail": "Uzupełnij wymagane atrybuty karty dla wybranej kategorii, na przykład producenta.",
+        "title": "Nowa karta produktu w Empik wymaga więcej danych."
+      },
+      "cardNoImage": {
+        "detail": "Dodaj co najmniej jedno zdjęcie do produktu albo do tej oferty. Pierwsze zdjęcie będzie okładką karty.",
+        "title": "Nowa karta produktu w Empik wymaga zdjęcia."
+      },
+      "newCard": {
+        "detail": "Karta trafi do Empiku z najbliższym importem kart (najwyżej co 15 minut). Empik sprawdza nowe karty; oferta zostanie wystawiona, gdy Empik przyjmie kartę, co może chwilę potrwać.",
+        "title": "Empik nie ma jeszcze karty produktu dla tego EAN, więc OpenLinker ją utworzy."
       }
     },
     "erli": {
@@ -1655,13 +1663,15 @@
       "label": "Klasa logistyczna"
     },
     "note": {
-      "currency": "Ceny są wysyłane w PLN.",
-      "existingCards": "Oferty są tworzone na istniejących kartach produktu w {platform}, wyszukiwanych po EAN."
+      "cards": "Oferty trafiają na istniejącą kartę produktu w {platform}, wyszukiwaną po EAN. Gdy jej nie ma, OpenLinker tworzy kartę z tytułu, opisu, zdjęć i atrybutów ustawionych tutaj i wystawia ofertę, gdy {platform} przyjmie kartę. Oferta na istniejącej karcie bierze tytuł, opis i zdjęcia z karty, a {platform} nie ma ofert w wersji roboczej.",
+      "currency": "Ceny są wysyłane w PLN."
     }
   },
   "empikOfferValidation": {
     "blockers": {
-      "noCard": "brak karty w Empik"
+      "cardMissingParameters": "brak danych karty",
+      "cardNoImage": "karta bez zdjęcia",
+      "newCard": "nowa karta Empik"
     }
   },
   "erliBulkConfigSection": {

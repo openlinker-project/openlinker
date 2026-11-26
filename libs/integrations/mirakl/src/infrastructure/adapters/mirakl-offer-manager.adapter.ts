@@ -74,9 +74,11 @@ import {
 import type { MiraklOfferWriteRepositoryPort } from '../../domain/ports/mirakl-offer-write-repository.port';
 import type { MiraklOfferDefaults } from '../../domain/types/mirakl-connection.types';
 import type { MiraklOffer, MiraklOffersPage } from '../../domain/types/mirakl-offer.types';
+import type { MiraklCardAttributeCodes } from '../../domain/types/mirakl-operator-profile.types';
 import type { IMiraklHttpClient } from '../http/mirakl-http-client.interface';
 import { MIRAKL_MAX_PAGE_SIZE } from '../http/mirakl-pagination';
 import type { IMiraklImportTracker } from '../imports/mirakl-import-tracker.interface';
+import { MiraklCardCreationPass } from './mirakl-card-creation-pass';
 import { MiraklCatalog } from './mirakl-catalog';
 import { MiraklOfferCreator } from './mirakl-offer-creator';
 import { MiraklOfferWriteReconciler } from './mirakl-offer-write-reconciler';
@@ -94,6 +96,8 @@ export interface MiraklOfferManagerSettings {
   readonly writes: MiraklOfferWriteRepositoryPort | undefined;
   readonly taxonomyOwner: TaxonomyOwner;
   readonly offerDefaults?: MiraklOfferDefaults;
+  /** The card attributes OpenLinker fills when it creates a card (#4278). */
+  readonly cardAttributes: MiraklCardAttributeCodes;
 }
 
 export class MiraklOfferManagerAdapter
@@ -125,7 +129,11 @@ export class MiraklOfferManagerAdapter
     this.importTracker = settings.importTracker;
     this.brand = settings.brand;
     this.writes = settings.writes;
-    this.catalog = new MiraklCatalog(settings.connectionId, settings.httpClient);
+    this.catalog = new MiraklCatalog(
+      settings.connectionId,
+      settings.httpClient,
+      settings.cardAttributes
+    );
     this.creator = new MiraklOfferCreator({
       connectionId: settings.connectionId,
       adapterKey: settings.adapterKey,
@@ -134,6 +142,7 @@ export class MiraklOfferManagerAdapter
       catalog: this.catalog,
       writes: (): MiraklOfferWriteRepositoryPort => this.store(),
       offerDefaults: settings.offerDefaults ?? {},
+      cardAttributes: settings.cardAttributes,
     });
   }
 
@@ -190,13 +199,41 @@ export class MiraklOfferManagerAdapter
     return { succeeded: cmd.items.map((item) => item.offerId), failed: [] };
   }
 
-  reconcilePendingQuantityAcks(limit: number): Promise<PendingQuantityAckReconcileResult> {
-    return new MiraklOfferWriteReconciler(
-      this.connectionId,
-      this.httpClient,
-      this.importTracker,
-      this.store()
-    ).reconcile(limit);
+  /**
+   * The offer-writes pass (stock and price files, offer imports), then the
+   * card pass (#4278): cards OpenLinker creates are sent, followed through the
+   * operator's review and turned into offers. The card pass runs even when the
+   * first one throws, and the first failure is thrown at the end.
+   */
+  async reconcilePendingQuantityAcks(limit: number): Promise<PendingQuantityAckReconcileResult> {
+    let writes: PendingQuantityAckReconcileResult = { reconciled: 0, stillPending: 0 };
+    let firstFailure: unknown;
+    try {
+      writes = await new MiraklOfferWriteReconciler(
+        this.connectionId,
+        this.httpClient,
+        this.importTracker,
+        this.store()
+      ).reconcile(limit);
+    } catch (error) {
+      firstFailure = error;
+    }
+    const cards = await new MiraklCardCreationPass({
+      connectionId: this.connectionId,
+      brand: this.brand,
+      httpClient: this.httpClient,
+      importTracker: this.importTracker,
+      catalog: this.catalog,
+      writes: this.store(),
+      codes: this.settings.cardAttributes,
+    }).run();
+    if (firstFailure !== undefined) {
+      throw firstFailure;
+    }
+    return {
+      reconciled: writes.reconciled + cards.settled,
+      stillPending: writes.stillPending + cards.waiting,
+    };
   }
 
   async updateOfferFields(cmd: UpdateOfferFieldsCommand): Promise<void> {
@@ -253,7 +290,9 @@ export class MiraklOfferManagerAdapter
     });
     const offer = (data?.offers ?? []).find((candidate) => candidate.shop_sku === externalOfferId);
     if (!offer) {
-      const pending = await this.statusOfCreateImport(externalOfferId);
+      const pending =
+        (await this.statusOfCreateImport(externalOfferId)) ??
+        (await this.statusOfCardRequest(externalOfferId));
       if (pending) {
         return pending;
       }
@@ -281,6 +320,22 @@ export class MiraklOfferManagerAdapter
    * offer, `inactive` with the import's reason. `null` when OpenLinker did not
    * create it, which leaves the not-found answer to the caller.
    */
+  /**
+   * An offer whose card OpenLinker is creating (#4278): `activating` while the
+   * card is queued or under the operator's review, refused with Mirakl's
+   * reason when the card was refused.
+   */
+  private async statusOfCardRequest(offerSku: string): Promise<OfferStatusReadResult | null> {
+    const card = await this.writes?.findLatest(this.connectionId, 'card', offerSku);
+    if (!card || card.status === 'applied') {
+      return null;
+    }
+    if (card.status === 'failed') {
+      return refused(card.error ?? `${this.brand} refused the product card`);
+    }
+    return { publicationStatus: 'activating', validationErrors: [] };
+  }
+
   private async statusOfCreateImport(offerSku: string): Promise<OfferStatusReadResult | null> {
     const created = await this.writes?.findLatest(this.connectionId, 'offer', offerSku);
     if (!created?.importId) {

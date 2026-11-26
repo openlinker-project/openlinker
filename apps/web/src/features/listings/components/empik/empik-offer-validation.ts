@@ -1,50 +1,98 @@
 /**
  * Empik offer validation
  *
- * Empik's row blocker (#4278), declared once for the bulk Review step and the
+ * Empik's row checks (#4278), declared once for the bulk Review step and the
  * single-offer wizard. A row without an EAN is already blocked by the host's
- * own "no barcode" check, so Empik adds only:
+ * own "no barcode" check, and a row without a card and without a category by
+ * the host's category check, so Empik adds only what a NEW product card needs.
  *
- * - `empik:no-card`: the card lookup ran and found no card for the EAN.
- *   Creating cards from OpenLinker is not available yet, so the product has
- *   to be added in the Empik panel first. Raised only when a lookup actually
- *   ran for this row's barcode (`catalogueConsulted`), never on its absence:
- *   an EAN typed in the row editor was not looked up, and Empik refuses the
- *   offer at creation if it has no card.
+ * A card is created when the card lookup ran for this row's barcode and found
+ * nothing (`catalogueConsulted`, never on its absence: an EAN typed in the row
+ * editor was not looked up). Then:
+ *
+ * - `empik:new-card` (advisory): OpenLinker sends a new product card to Empik
+ *   and lists the offer once Empik accepts it, which can take a while.
+ * - `empik:card-no-image`: a card needs a main image.
+ * - `empik:card-missing-parameters`: the category's required card attributes
+ *   are not all filled. The host decides this from the category schema and the
+ *   values the operator or an attribute rule supplied; the attributes
+ *   OpenLinker fills itself (title, description, images, VAT, ...) are not in
+ *   that schema, so they are never asked for.
+ *
+ * The backend checks the same card before it is sent and refuses it naming
+ * the attribute, so these chips only bring that answer forward.
  *
  * @module features/listings/components/empik
  */
 import { getMessages } from '../../../../shared/i18n';
-import type { OfferBlockerCopy, OfferValidationContribution } from '../../../../shared/plugins';
+import type {
+  OfferBlockerCopy,
+  OfferRowValidationInput,
+  OfferValidationContribution,
+} from '../../../../shared/plugins';
 
-export const EMPIK_NO_CARD_BLOCKER = 'empik:no-card';
+export const EMPIK_NEW_CARD_NOTICE = 'empik:new-card';
+export const EMPIK_CARD_NO_IMAGE_BLOCKER = 'empik:card-no-image';
+export const EMPIK_CARD_MISSING_PARAMETERS_BLOCKER = 'empik:card-missing-parameters';
+
+function copyOf(key: 'newCard' | 'cardNoImage' | 'cardMissingParameters'): OfferBlockerCopy {
+  const copy = getMessages('listings').bulkBlockers.empik[key];
+  return { title: copy.title, detail: copy.detail };
+}
+
+/** The lookup ran for this barcode and Empik has no card for it. */
+function willCreateCard(input: OfferRowValidationInput): boolean {
+  return (
+    input.catalogueConsulted === true &&
+    !input.willLinkProductCard &&
+    input.barcodeMatchedCatalogue !== true
+  );
+}
 
 export const empikOfferValidation: OfferValidationContribution = {
   blockers: [
     {
-      id: EMPIK_NO_CARD_BLOCKER,
-      tone: 'error',
+      id: EMPIK_NEW_CARD_NOTICE,
+      tone: 'info',
+      advisory: true,
       get label(): string {
-        return getMessages('listings').empikOfferValidation.blockers.noCard;
+        return getMessages('listings').empikOfferValidation.blockers.newCard;
       },
-      field: 'ean',
-      describe: (): OfferBlockerCopy => {
-        const copy = getMessages('listings').bulkBlockers.empik.noCard;
-        return { title: copy.title, detail: copy.detail };
+      describe: (): OfferBlockerCopy => copyOf('newCard'),
+    },
+    {
+      id: EMPIK_CARD_NO_IMAGE_BLOCKER,
+      tone: 'error',
+      field: 'images',
+      get label(): string {
+        return getMessages('listings').empikOfferValidation.blockers.cardNoImage;
       },
+      describe: (): OfferBlockerCopy => copyOf('cardNoImage'),
+    },
+    {
+      id: EMPIK_CARD_MISSING_PARAMETERS_BLOCKER,
+      tone: 'error',
+      field: 'parameters',
+      get label(): string {
+        return getMessages('listings').empikOfferValidation.blockers.cardMissingParameters;
+      },
+      describe: (): OfferBlockerCopy => copyOf('cardMissingParameters'),
     },
   ],
   validateRow: (input) => {
-    if (!input.barcode?.trim()) {
+    if (!input.barcode?.trim() || !willCreateCard(input)) {
       return [];
     }
-    if (
-      input.catalogueConsulted === true &&
-      !input.willLinkProductCard &&
-      input.barcodeMatchedCatalogue !== true
-    ) {
-      return [EMPIK_NO_CARD_BLOCKER];
+    const ids = [EMPIK_NEW_CARD_NOTICE];
+    if (input.imageCount === 0) {
+      ids.push(EMPIK_CARD_NO_IMAGE_BLOCKER);
     }
-    return [];
+    if (input.needsProductParameters) {
+      ids.push(EMPIK_CARD_MISSING_PARAMETERS_BLOCKER);
+    }
+    return ids;
   },
+  // `needsProductParameters` is only computed when the host loads the
+  // category's parameter schema.
+  needsCategoryParameterSchema: true,
 };

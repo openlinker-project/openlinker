@@ -13,8 +13,11 @@
 /**
  * `stock` goes through STO01, `price` through PRI01. `offer` is an OF24 create
  * (#4278): recorded already submitted, so the status read can follow it.
+ * `card` is a catalogue card OpenLinker creates through P41 before the offer
+ * (#4278, part 2): its `value` is a JSON `MiraklCardRequest`, queued and sent
+ * as one file per connection at most every 15 minutes.
  */
-export const MiraklOfferWriteKindValues = ['stock', 'price', 'offer'] as const;
+export const MiraklOfferWriteKindValues = ['stock', 'price', 'offer', 'card'] as const;
 export type MiraklOfferWriteKind = (typeof MiraklOfferWriteKindValues)[number];
 
 /** The kinds recorded first and sent as one file per pass. */

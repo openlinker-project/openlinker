@@ -423,9 +423,17 @@
       }
     },
     "empik": {
-      "noCard": {
-        "detail": "Add the product in the Empik seller panel first; creating cards from OpenLinker is not available yet.",
-        "title": "Empik has no product card for this EAN."
+      "cardMissingParameters": {
+        "detail": "Fill the required card attributes for the chosen category, for example the producer.",
+        "title": "A new Empik product card needs more details."
+      },
+      "cardNoImage": {
+        "detail": "Add at least one image to the product or to this offer. The first image becomes the card cover.",
+        "title": "A new Empik product card needs an image."
+      },
+      "newCard": {
+        "detail": "The card goes to Empik with the next card import (at most every 15 minutes). Empik reviews new cards; the offer is listed once Empik accepts the card, which can take a while.",
+        "title": "Empik has no product card for this EAN yet, so OpenLinker will create one."
       }
     },
     "erli": {
@@ -1499,13 +1507,15 @@
       "label": "Logistic class"
     },
     "note": {
-      "currency": "Prices are sent in PLN.",
-      "existingCards": "Offers are created on existing {platform} product cards, found by EAN."
+      "cards": "Offers go on an existing {platform} product card found by EAN. When there is none, OpenLinker creates the card from the title, description, images and attributes you set here and lists the offer once {platform} accepts the card. An offer on an existing card takes its title, description and images from the card, and {platform} has no draft offers.",
+      "currency": "Prices are sent in PLN."
     }
   },
   "empikOfferValidation": {
     "blockers": {
-      "noCard": "no Empik card"
+      "cardMissingParameters": "card details missing",
+      "cardNoImage": "card needs image",
+      "newCard": "new Empik card"
     }
   },
   "erliBulkConfigSection": {

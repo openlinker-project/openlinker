@@ -125,6 +125,7 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
             isMiraklEnvironment(config.environment) ? config.environment : 'production'
           ],
         offerDefaults: offerDefaults.kind === 'valid' ? offerDefaults : {},
+        cardAttributes: this.profile.cardAttributes,
       }),
       productMaster: new MiraklProductMasterAdapter(
         connection.id,

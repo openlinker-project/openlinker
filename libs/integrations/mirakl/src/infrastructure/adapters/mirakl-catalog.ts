@@ -13,9 +13,11 @@
  *   {@link MAX_DICTIONARY_VALUES} is not sent: on Empik staging one book
  *   category names lists of 24 000, 33 000 and 321 000 entries (publishers,
  *   authors), several megabytes each, which made the wizard wait minutes and
- *   no picker can show. Such an attribute is offered as free text. An Empik
- *   offer always points to an existing card and sends no card attributes, so
- *   nothing is lost today; creating cards (P41) will need a searchable picker.
+ *   no picker can show. Such an attribute is offered as free text, and its
+ *   value is sent as typed when OpenLinker creates a card (P41, #4278); a
+ *   searchable picker is a follow-up. The attributes OpenLinker fills itself
+ *   when it creates a card (category, title, images, VAT, ...) are left out of
+ *   what the wizard is shown (`readCardAttributes` keeps them all).
  * - **Card match** (`EanCategoryMatcher` for the wizard, `CategoryBarcodeMatcher`
  *   for the offer build): P31 by EAN, up to 100 EANs per request. One card is
  *   a match with its category; several are a `multi-match`; a failed request
@@ -40,6 +42,8 @@ import type {
   MiraklProductAttribute,
   MiraklValueList,
 } from '../../domain/types/mirakl-catalog.types';
+import { isMiraklCardAttributeFilledByOpenLinker } from '../../domain/policies/mirakl-card.policy';
+import type { MiraklCardAttributeCodes } from '../../domain/types/mirakl-operator-profile.types';
 import type { IMiraklHttpClient } from '../http/mirakl-http-client.interface';
 
 const HIERARCHIES_PATH = '/api/hierarchies';
@@ -59,7 +63,9 @@ export class MiraklCatalog {
 
   constructor(
     private readonly connectionId: string,
-    private readonly httpClient: IMiraklHttpClient
+    private readonly httpClient: IMiraklHttpClient,
+    /** The attributes OpenLinker fills on a card it creates; hidden from the wizard. */
+    private readonly cardAttributes?: MiraklCardAttributeCodes
   ) {}
 
   async fetchCategories(parentId?: string): Promise<OfferCategory[]> {
@@ -80,7 +86,20 @@ export class MiraklCatalog {
       }));
   }
 
+  /** The parameters the operator fills; the ones OpenLinker fills are left out. */
   async fetchCategoryParameters(input: { categoryId: string }): Promise<CategoryParameter[]> {
+    const attributes = await this.readCardAttributes(input.categoryId);
+    const codes = this.cardAttributes;
+    return codes
+      ? attributes.filter(
+          (attribute) => !isMiraklCardAttributeFilledByOpenLinker(attribute.id, codes)
+        )
+      : attributes;
+  }
+
+  /** Every card attribute of a category (PM11 + VL11), one per code. */
+  async readCardAttributes(categoryId: string): Promise<CategoryParameter[]> {
+    const input = { categoryId };
     const { data } = await this.httpClient.get<{ attributes?: readonly MiraklProductAttribute[] }>(
       ATTRIBUTES_PATH,
       { queryParams: { hierarchy: input.categoryId } }

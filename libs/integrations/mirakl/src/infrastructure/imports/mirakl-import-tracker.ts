@@ -59,6 +59,7 @@ interface RawImportStatus {
   status?: unknown;
   import_status?: unknown;
   has_error_report?: unknown;
+  has_transformation_error_report?: unknown;
   lines_in_error?: unknown;
   lines_in_success?: unknown;
   lines_read?: unknown;
@@ -76,7 +77,7 @@ export class MiraklImportTracker implements IMiraklImportTracker {
 
   constructor(
     private readonly client: IMiraklHttpClient,
-    private readonly connectionId: string,
+    private readonly connectionId: string
   ) {}
 
   async getStatus(kind: MiraklImportKind, importId: string): Promise<MiraklImportStatus> {
@@ -94,8 +95,14 @@ export class MiraklImportTracker implements IMiraklImportTracker {
       state: this.toState(kind, importId, rawStatus),
       rawStatus,
       hasErrorReport: raw.has_error_report === true,
+      ...(products && {
+        hasTransformationErrorReport: raw.has_transformation_error_report === true,
+      }),
       ...definedCount('linesInError', products ? raw.transform_lines_in_error : raw.lines_in_error),
-      ...definedCount('linesInSuccess', products ? raw.transform_lines_in_success : raw.lines_in_success),
+      ...definedCount(
+        'linesInSuccess',
+        products ? raw.transform_lines_in_success : raw.lines_in_success
+      ),
       ...definedCount('linesRead', products ? raw.transform_lines_read : raw.lines_read),
     };
   }
@@ -106,15 +113,36 @@ export class MiraklImportTracker implements IMiraklImportTracker {
     return parseMiraklErrorReport(data ?? '');
   }
 
+  async getProductErrorReports(
+    importId: string,
+    status: MiraklImportStatus,
+    keyColumns: readonly string[]
+  ): Promise<MiraklImportLineError[]> {
+    const id = this.checkedId(importId);
+    const lines: MiraklImportLineError[] = [];
+    if (status.hasTransformationErrorReport === true || (status.linesInError ?? 0) > 0) {
+      const { data } = await this.client.getText(
+        `/api/products/imports/${id}/transformation_error_report`
+      );
+      lines.push(...parseMiraklErrorReport(data ?? '', keyColumns));
+    }
+    if (status.hasErrorReport) {
+      const { data } = await this.client.getText(`/api/products/imports/${id}/error_report`);
+      lines.push(...parseMiraklErrorReport(data ?? '', keyColumns));
+    }
+    return lines;
+  }
+
   private async readStatus(
     kind: MiraklImportKind,
-    id: string,
+    id: string
   ): Promise<RawImportStatus | undefined> {
     switch (kind) {
       case 'offers':
         return (await this.client.get<RawImportStatus>(`/api/offers/imports/${id}`)).data;
       case 'stock':
-        return (await this.client.get<RawImportStatus>(`/api/offers/stock/imports/${id}/status`)).data;
+        return (await this.client.get<RawImportStatus>(`/api/offers/stock/imports/${id}/status`))
+          .data;
       case 'products':
         return (await this.client.get<RawImportStatus>(`/api/products/imports/${id}`)).data;
       case 'prices': {
@@ -142,7 +170,7 @@ export class MiraklImportTracker implements IMiraklImportTracker {
   private toState(
     kind: MiraklImportKind,
     importId: string,
-    rawStatus: string | null,
+    rawStatus: string | null
   ): MiraklImportState {
     if (rawStatus !== null) {
       if (DONE_STATUSES.has(rawStatus)) return 'done';
@@ -153,7 +181,7 @@ export class MiraklImportTracker implements IMiraklImportTracker {
       }
     }
     this.logger.warn(
-      `Unrecognised Mirakl ${kind} import status "${rawStatus ?? '<none>'}" for import ${importId}; reported as pending [connectionId=${this.connectionId}]`,
+      `Unrecognised Mirakl ${kind} import status "${rawStatus ?? '<none>'}" for import ${importId}; reported as pending [connectionId=${this.connectionId}]`
     );
     return 'pending';
   }
@@ -162,7 +190,7 @@ export class MiraklImportTracker implements IMiraklImportTracker {
     if (!IMPORT_ID_PATTERN.test(importId)) {
       throw new MiraklConfigException(
         `Mirakl import id must be alphanumeric (with dashes), got "${importId.slice(0, 80)}"`,
-        this.connectionId,
+        this.connectionId
       );
     }
     return encodeURIComponent(importId);

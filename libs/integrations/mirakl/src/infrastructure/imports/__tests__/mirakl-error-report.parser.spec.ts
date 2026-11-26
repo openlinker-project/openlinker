@@ -43,6 +43,14 @@ describe('parseMiraklErrorReport', () => {
     ]);
   });
 
+  it('should name a card line by a key column before the SKU columns', () => {
+    const csv = 'CATALOG_CODE;EAN;errors\nOL-1;111;Brak zdjęcia\n';
+
+    expect(parseMiraklErrorReport(csv, ['CATALOG_CODE'])).toEqual([
+      { reason: 'Brak zdjęcia', sku: 'OL-1' },
+    ]);
+  });
+
   it('should return no errors when the report has only a header', () => {
     expect(parseMiraklErrorReport('line-number;errors\n')).toEqual([]);
   });

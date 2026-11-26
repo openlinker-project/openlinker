@@ -32,7 +32,9 @@ describe('empikPlugin', () => {
     expect(empikPlugin.platform?.CredentialsPanel).toBeDefined();
     expect(empikPlugin.platform?.bulkOfferConfigSection?.isComplete).toBeDefined();
     expect(empikPlugin.platform?.offerValidation?.blockers.map((blocker) => blocker.id)).toEqual([
-      'empik:no-card',
+      'empik:new-card',
+      'empik:card-no-image',
+      'empik:card-missing-parameters',
     ]);
     expect(empikPlugin.platform?.supportsListingEdit).toBeUndefined();
   });

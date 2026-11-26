@@ -21,7 +21,7 @@ const COLUMN_BY_KIND: Readonly<Record<MiraklBufferedWriteKind, string>> = {
 };
 
 /** One CSV cell, quoted only when it carries a separator, quote or newline. */
-function cell(value: string): string {
+export function miraklCsvCell(value: string): string {
   return /[;"\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
@@ -30,7 +30,7 @@ export function buildMiraklOfferFile(
   kind: MiraklBufferedWriteKind,
   lines: ReadonlyArray<{ readonly offerSku: string; readonly value: string }>
 ): string {
-  const rows = lines.map((line) => `${cell(line.offerSku)};${cell(line.value)}`);
+  const rows = lines.map((line) => `${miraklCsvCell(line.offerSku)};${miraklCsvCell(line.value)}`);
   return [`offer-sku;${COLUMN_BY_KIND[kind]}`, ...rows].join('\n') + '\n';
 }
 

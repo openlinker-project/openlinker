@@ -6,7 +6,7 @@
  * `empik.mirakl.v1`, epic #4273). This first slice (#4274) contributes the
  * guided setup route, the setup card and a credentials panel for rotating the
  * shop API key. #4278 adds the bulk offer wizard section (lead time and
- * logistic class) and the row blockers for a missing EAN or Empik card.
+ * logistic class) and the row checks for a new Empik product card (#4278).
  *
  * Config (environment, shop id) is set in the wizard; the edit form falls back
  * to the generic raw-JSON block for the rare later change, as for DPD.
@@ -24,7 +24,7 @@ import { empikMessages, getEmpikMessages } from './messages';
 
 // Component-lazy so the wizard section stays out of the main bundle (#1096).
 const EmpikBulkConfigSectionLazy = lazy(() =>
-  import('../../features/listings').then((m) => ({ default: m.EmpikBulkConfigSection })),
+  import('../../features/listings').then((m) => ({ default: m.EmpikBulkConfigSection }))
 );
 
 export const empikPlugin: OpenLinkerPlugin = definePlugin({
@@ -49,7 +49,7 @@ export const empikPlugin: OpenLinkerPlugin = definePlugin({
       },
     },
     CredentialsPanel: EmpikCredentialsPanel,
-    // Bulk offer creation on existing Empik product cards (#4278).
+    // Bulk offer creation, on an existing Empik card or a new one (#4278).
     bulkOfferConfigSection: {
       component: EmpikBulkConfigSectionLazy,
       isComplete: empikBulkConfigIsComplete,

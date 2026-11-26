@@ -25,7 +25,7 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
   async recordPending(
     connectionId: string,
     kind: MiraklOfferWriteKind,
-    values: readonly MiraklOfferWriteValue[],
+    values: readonly MiraklOfferWriteValue[]
   ): Promise<void> {
     if (values.length === 0) return;
     // Last value wins inside one call too: a batch may name an offer twice.
@@ -43,12 +43,12 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
           value: value.value,
           currency: value.currency ?? null,
           status: 'pending' as const,
-        })),
+        }))
       )
       .onConflict(
         `("connectionId", "kind", "offerSku") WHERE "status" = 'pending' DO UPDATE SET ` +
           `"value" = EXCLUDED."value", "currency" = EXCLUDED."currency", ` +
-          `"version" = "mirakl_offer_writes"."version" + 1, "updatedAt" = now()`,
+          `"version" = "mirakl_offer_writes"."version" + 1, "updatedAt" = now()`
       )
       .execute();
   }
@@ -57,7 +57,7 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
     connectionId: string,
     kind: MiraklOfferWriteKind,
     values: readonly MiraklOfferWriteValue[],
-    importId: string,
+    importId: string
   ): Promise<void> {
     if (values.length === 0) return;
     await this.repository.insert(
@@ -69,7 +69,7 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
         currency: value.currency ?? null,
         status: 'submitted' as const,
         importId,
-      })),
+      }))
     );
   }
 
@@ -83,7 +83,7 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
   async findLatest(
     connectionId: string,
     kind: MiraklOfferWriteKind,
-    offerSku: string,
+    offerSku: string
   ): Promise<MiraklOfferWrite | null> {
     const row = await this.repository.findOne({
       where: { connectionId, kind, offerSku },
@@ -95,7 +95,7 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
   async findPending(
     connectionId: string,
     kind: MiraklOfferWriteKind,
-    limit: number,
+    limit: number
   ): Promise<MiraklOfferWrite[]> {
     const rows = await this.repository.find({
       where: { connectionId, kind, status: 'pending' },
@@ -112,7 +112,7 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
           SET "status" = 'submitted', "importId" = $1, "updatedAt" = now()
          FROM unnest($2::uuid[], $3::int[]) AS sent(id, version)
         WHERE w."id" = sent.id AND w."version" = sent.version AND w."status" = 'pending'`,
-      [importId, writes.map((write) => write.id), writes.map((write) => write.version)],
+      [importId, writes.map((write) => write.id), writes.map((write) => write.version)]
     );
     return affected(result);
   }
@@ -124,23 +124,63 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
           SET "status" = 'failed', "error" = $1, "updatedAt" = now()
          FROM unnest($2::uuid[], $3::int[]) AS sent(id, version)
         WHERE w."id" = sent.id AND w."version" = sent.version AND w."status" = 'pending'`,
-      [truncate(reason), writes.map((write) => write.id), writes.map((write) => write.version)],
+      [truncate(reason), writes.map((write) => write.id), writes.map((write) => write.version)]
     );
     return affected(result);
   }
 
+  async findSubmitted(
+    connectionId: string,
+    kind: MiraklOfferWriteKind,
+    limit: number
+  ): Promise<MiraklOfferWrite[]> {
+    const rows = await this.repository.find({
+      where: { connectionId, kind, status: 'submitted' },
+      order: { updatedAt: 'ASC' },
+      take: limit,
+    });
+    return rows.map(toDomain);
+  }
+
+  async settleWrites(
+    writes: readonly MiraklOfferWrite[],
+    status: 'applied' | 'failed',
+    reason?: string
+  ): Promise<number> {
+    if (writes.length === 0) return 0;
+    const result: unknown = await this.repository.query(
+      `UPDATE "mirakl_offer_writes"
+          SET "status" = $1, "error" = $2, "updatedAt" = now()
+        WHERE "id" = ANY($3::uuid[]) AND "status" = 'submitted'`,
+      [status, reason === undefined ? null : truncate(reason), writes.map((write) => write.id)]
+    );
+    return affected(result);
+  }
+
+  async latestImportAt(connectionId: string, kind: MiraklOfferWriteKind): Promise<Date | null> {
+    const rows = (await this.repository.query(
+      `SELECT MAX("updatedAt") AS "at"
+         FROM "mirakl_offer_writes"
+        WHERE "connectionId" = $1 AND "kind" = $2 AND "importId" IS NOT NULL`,
+      [connectionId, kind]
+    )) as Array<{ at: Date | string | null }>;
+    const at = rows[0]?.at;
+    return at === null || at === undefined ? null : new Date(at);
+  }
+
   async findSubmittedImports(
     connectionId: string,
-    limit: number,
+    limit: number
   ): Promise<Array<{ importId: string; kind: MiraklOfferWriteKind }>> {
     const rows = (await this.repository.query(
       `SELECT "importId", "kind"
          FROM "mirakl_offer_writes"
         WHERE "connectionId" = $1 AND "status" = 'submitted' AND "importId" IS NOT NULL
+          AND "kind" <> 'card'
         GROUP BY "importId", "kind"
         ORDER BY MIN("updatedAt") ASC
         LIMIT $2`,
-      [connectionId, limit],
+      [connectionId, limit]
     )) as Array<{ importId: string; kind: MiraklOfferWriteKind }>;
     return rows;
   }
@@ -148,7 +188,7 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
   async settleImport(
     connectionId: string,
     importId: string,
-    failures: ReadonlyMap<string, string>,
+    failures: ReadonlyMap<string, string>
   ): Promise<number> {
     const skus = [...failures.keys()];
     const reasons = skus.map((sku) => truncate(failures.get(sku) ?? ''));
@@ -161,8 +201,8 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
              FROM unnest($3::text[], $4::text[]) AS f(sku, reason)
             WHERE w."connectionId" = $1 AND w."importId" = $2
               AND w."status" = 'submitted' AND w."offerSku" = f.sku`,
-          [connectionId, importId, skus, reasons],
-        ),
+          [connectionId, importId, skus, reasons]
+        )
       );
     }
     settled += affected(
@@ -170,8 +210,8 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
         `UPDATE "mirakl_offer_writes"
             SET "status" = 'applied', "updatedAt" = now()
           WHERE "connectionId" = $1 AND "importId" = $2 AND "status" = 'submitted'`,
-        [connectionId, importId],
-      ),
+        [connectionId, importId]
+      )
     );
     return settled;
   }
@@ -182,8 +222,8 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
         `UPDATE "mirakl_offer_writes"
             SET "status" = 'failed', "error" = $3, "updatedAt" = now()
           WHERE "connectionId" = $1 AND "importId" = $2 AND "status" = 'submitted'`,
-        [connectionId, importId, truncate(reason)],
-      ),
+        [connectionId, importId, truncate(reason)]
+      )
     );
   }
 
@@ -192,8 +232,8 @@ export class MiraklOfferWriteRepository implements MiraklOfferWriteRepositoryPor
       await this.repository.query(
         `DELETE FROM "mirakl_offer_writes"
           WHERE "connectionId" = $1 AND "status" IN ('applied', 'failed') AND "updatedAt" < $2`,
-        [connectionId, before],
-      ),
+        [connectionId, before]
+      )
     );
   }
 }
@@ -211,7 +251,7 @@ function toDomain(row: MiraklOfferWriteOrmEntity): MiraklOfferWrite {
     row.version,
     row.error,
     row.createdAt,
-    row.updatedAt,
+    row.updatedAt
   );
 }
 

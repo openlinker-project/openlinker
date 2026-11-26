@@ -42,6 +42,11 @@ export interface MiraklImportStatus {
   readonly linesRead?: number;
   /** Whether Mirakl has an error report for this import. */
   readonly hasErrorReport: boolean;
+  /**
+   * A product import only: whether Mirakl has a transformation error report
+   * (P47), the lines it could not read before the operator saw them.
+   */
+  readonly hasTransformationErrorReport?: boolean;
 }
 
 /** One failed line from an import's error report. */

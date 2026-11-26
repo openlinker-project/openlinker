@@ -124,10 +124,9 @@ later fails is marked `failed` with its reason and is not re-sent
 automatically: the offer keeps the old value until the next stock or price
 change, or until the inventory sweep sends the stock again.
 
-## Listing from OpenLinker (#4278, part 1: existing cards)
+## Listing from OpenLinker (#4278)
 
-On a Mirakl operator an offer points to a catalogue card. This part lists
-products whose EAN already has one:
+On a Mirakl operator an offer points to a catalogue card, found by EAN.
 
 - **Taxonomy**: H11 categories (`CategoryBrowser`), PM11 card attributes with
   VL11 values (`CategoryParametersReader`), and the tree's identity
@@ -135,20 +134,36 @@ products whose EAN already has one:
   category mappings and attribute rules work.
 - **Card match** (`EanCategoryMatcher` in the wizard, `CategoryBarcodeMatcher`
   when the offer is built): P31 by EAN, up to 100 per request.
-- **Create** (`OfferCreator`): OF24 once per offer with the full field set
-  (EAN, state 11, price, quantity, lead time, logistic class, `gpsr-*` fields
-  from `Product.gpsr`). The import is recorded, so the offer reads
+- **Card exists** (`OfferCreator`): OF24 once per offer with the full field
+  set (EAN, state 11, price, quantity, lead time, logistic class, `gpsr-*`
+  fields from `Product.gpsr`). The import is recorded, so the offer reads
   `activating` while it runs and `inactive` with Mirakl's reason if refused.
   Lead time and logistic class come from the wizard, else
   `config.offerDefaults`.
-- **No card**: refused with `MIRAKL_PRODUCT_CARD_MISSING`, and the wizard
-  blocks the row before submit.
+- **No card (part 2)**: OpenLinker creates one.
+  - The card is built from the offer: category, catalogue code (the shop
+    SKU), title, description, EAN, images (main + up to 10 more), VAT
+    (matched to the operator's list by label), the variant group
+    (`VARIANT_GROUP_MKPL`), and a set (`650` = Tak, `ADRU` contents) or a
+    multipack (`2039` = N) from the bundle definition. These attributes are
+    hidden in the wizard; the rest come from the offer's parameters.
+  - A required attribute left empty, or a value not on the operator's list,
+    refuses the create naming the attribute. The wizard shows the same before
+    submit: `empik:card-no-image`, `empik:card-missing-parameters`, plus the
+    advisory `empik:new-card`.
+  - The create answers `draft` with `MIRAKL_CARD_PENDING` ("waiting for Empik
+    to accept the product card"), because the operator reviews cards by hand.
+  - The card waits in `mirakl_offer_writes` (kind `card`). The offer-writes
+    job (every 5 minutes) sends queued cards as one P41 file at most every 15
+    minutes, follows the import (P42), fails a refused card with Mirakl's
+    reason (reports P47 / P44, matched by catalogue code), and sends the
+    queued OF24 once P31 finds the card.
 
-Not yet: creating cards (P41), variant grouping (`VARIANT_GROUP_MKPL`) and
-bundle or multipack cards. On staging a card import stayed waiting for the
-operator indefinitely, so this waits on Empik's answer about card review. A
-bundle or multipack whose own EAN already has a card is listed like any
-product; core already sends the bundle availability as its stock.
+Not verified on staging yet: the OF24 after Empik accepts a card (a staging
+card import stayed waiting for the operator), and how Empik reviews and how
+long it takes. A LIST with more than 1 000 values (Empik's producer) is free
+text, sent as typed; a searchable picker is a follow-up. The offer's "draft"
+switch does nothing on Empik, which has no draft offers.
 
 ## Returns (#4279)
 

@@ -17,6 +17,7 @@ import type { MiraklOffer } from '../../../domain/types/mirakl-offer.types';
 import type { IMiraklHttpClient } from '../../http/mirakl-http-client.interface';
 import type { IMiraklImportTracker } from '../../imports/mirakl-import-tracker.interface';
 import { MiraklOfferManagerAdapter } from '../mirakl-offer-manager.adapter';
+import { empikOperatorProfile } from '../../../operators/empik.profile';
 
 /** Shaped like the OF21 answer for a real Empik staging offer. */
 function stagingOffer(overrides: Partial<MiraklOffer> = {}): MiraklOffer {
@@ -55,6 +56,7 @@ function setup(
       findLatest: jest.fn().mockResolvedValue(null),
     } as unknown as MiraklOfferWriteRepositoryPort,
     taxonomyOwner: 'empik',
+    cardAttributes: empikOperatorProfile.cardAttributes,
   });
   return { adapter, get, recordPending };
 }
@@ -169,7 +171,7 @@ describe('MiraklOfferManagerAdapter', () => {
   describe('status of an offer OpenLinker just created (#4278)', () => {
     function withCreate(
       created: { status: string; importId: string; error?: string } | null,
-      tracker: Partial<Record<'getStatus' | 'getErrorReport', jest.Mock>> = {},
+      tracker: Partial<Record<'getStatus' | 'getErrorReport', jest.Mock>> = {}
     ): MiraklOfferManagerAdapter {
       return new MiraklOfferManagerAdapter({
         connectionId: 'conn-1',
@@ -183,13 +185,14 @@ describe('MiraklOfferManagerAdapter', () => {
           findLatest: jest.fn().mockResolvedValue(created),
         } as unknown as MiraklOfferWriteRepositoryPort,
         taxonomyOwner: 'empik',
+        cardAttributes: empikOperatorProfile.cardAttributes,
       });
     }
 
     it('should read activating while the create import runs', async () => {
       const adapter = withCreate(
         { status: 'submitted', importId: '1' },
-        { getStatus: jest.fn().mockResolvedValue({ state: 'pending', hasErrorReport: false }) },
+        { getStatus: jest.fn().mockResolvedValue({ state: 'pending', hasErrorReport: false }) }
       );
 
       expect(await adapter.getOfferStatus('OL-x')).toEqual({
@@ -208,7 +211,7 @@ describe('MiraklOfferManagerAdapter', () => {
           getErrorReport: jest
             .fn()
             .mockResolvedValue([{ sku: 'OL-x', reason: 'The product does not exist' }]),
-        },
+        }
       );
 
       expect(await adapter.getOfferStatus('OL-x')).toEqual({
@@ -221,8 +224,53 @@ describe('MiraklOfferManagerAdapter', () => {
 
     it('should report not found for an offer OpenLinker did not create', async () => {
       await expect(withCreate(null).getOfferStatus('OL-x')).rejects.toBeInstanceOf(
-        OfferNotFoundOnMarketplaceException,
+        OfferNotFoundOnMarketplaceException
       );
     });
+  });
+});
+
+describe('status of an offer whose card OpenLinker is creating (#4278, part 2)', () => {
+  function withCard(card: { status: string; error?: string } | null): MiraklOfferManagerAdapter {
+    return new MiraklOfferManagerAdapter({
+      connectionId: 'conn-1',
+      adapterKey: 'empik.mirakl.v1',
+      brand: 'Empik',
+      httpClient: {
+        get: jest.fn().mockResolvedValue({ status: 200, data: { offers: [], total_count: 0 } }),
+      } as unknown as IMiraklHttpClient,
+      importTracker: {} as IMiraklImportTracker,
+      writes: {
+        findLatest: jest.fn((_connectionId: string, kind: string) =>
+          Promise.resolve(kind === 'card' ? card : null)
+        ),
+      } as unknown as MiraklOfferWriteRepositoryPort,
+      taxonomyOwner: 'empik',
+      cardAttributes: empikOperatorProfile.cardAttributes,
+    });
+  }
+
+  it('should read as activating while the card is queued or under review', async () => {
+    for (const status of ['pending', 'submitted']) {
+      await expect(withCard({ status }).getOfferStatus('OL-1')).resolves.toEqual({
+        publicationStatus: 'activating',
+        validationErrors: [],
+      });
+    }
+  });
+
+  it('should carry Mirakl reason when the card was refused', async () => {
+    const result = await withCard({ status: 'failed', error: 'Brak zdjęcia' }).getOfferStatus(
+      'OL-1'
+    );
+
+    expect(result.publicationStatus).toBe('inactive');
+    expect(result.validationErrors).toEqual([expect.objectContaining({ message: 'Brak zdjęcia' })]);
+  });
+
+  it('should still report a missing offer when no card was ever requested', async () => {
+    await expect(withCard(null).getOfferStatus('OL-1')).rejects.toBeInstanceOf(
+      OfferNotFoundOnMarketplaceException
+    );
   });
 });

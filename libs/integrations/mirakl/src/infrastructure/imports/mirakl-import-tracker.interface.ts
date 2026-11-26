@@ -23,4 +23,15 @@ export interface IMiraklImportTracker {
 
   /** The failed lines of an import. Empty when the report lists none. */
   getErrorReport(kind: MiraklImportKind, importId: string): Promise<MiraklImportLineError[]>;
+
+  /**
+   * The failed lines of a product (P41) import, from both of its reports:
+   * the transformation errors (P47) and the integration errors (P44). A line
+   * is named by the first of `keyColumns` the report carries.
+   */
+  getProductErrorReports(
+    importId: string,
+    status: MiraklImportStatus,
+    keyColumns: readonly string[]
+  ): Promise<MiraklImportLineError[]>;
 }

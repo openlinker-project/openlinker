@@ -48,4 +48,35 @@ export interface MiraklOperatorProfile {
    * refund reason. Operators configure their own codes.
    */
   readonly refundReasonCodes: Readonly<Record<RefundReason, string>>;
+  /**
+   * The operator's card attribute codes OpenLinker fills itself when it
+   * creates a catalogue card (P41, #4278). Operators name these attributes
+   * their own way; Empik's were read from PM11 on staging.
+   */
+  readonly cardAttributes: MiraklCardAttributeCodes;
+}
+
+/** Card attributes filled from the offer command rather than typed in. */
+export interface MiraklCardAttributeCodes {
+  /** The category (hierarchy code) the card is created in. */
+  readonly category: string;
+  /** The seller's own product code; also how an error report names a line. */
+  readonly catalogCode: string;
+  readonly title: string;
+  readonly description: string;
+  readonly ean: string;
+  readonly mainImage: string;
+  /** Further images: `${extraImagePrefix}1` ... `${extraImagePrefix}${extraImageCount}`. */
+  readonly extraImagePrefix: string;
+  readonly extraImageCount: number;
+  /** VAT rate, a LIST whose labels read like `23%`. */
+  readonly vat: string;
+  /** Groups the cards of one product's variants. */
+  readonly variantGroup: string;
+  /** Yes/no LIST: the card is a set of several products. */
+  readonly bundle: string;
+  /** Free text: what a set contains, where the category has it. */
+  readonly bundleContents: string;
+  /** Integer: units of one product in the pack (a multipack). */
+  readonly packQuantity: string;
 }

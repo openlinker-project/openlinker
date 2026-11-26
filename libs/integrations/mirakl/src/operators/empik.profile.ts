@@ -34,4 +34,20 @@ export const empikOperatorProfile: MiraklOperatorProfile = {
     wrong_item: 'REFUND_22',
     other: '17',
   },
+  // PM11 on staging (2026-11-26, category Aparaty dla dzieci and SPIKE-4268).
+  cardAttributes: {
+    category: 'STR_GOLD',
+    catalogCode: 'CATALOG_CODE',
+    title: 'PELNY_TYTUL',
+    description: 'OPIS_PRODUKTU_PELNY',
+    ean: 'EAN',
+    mainImage: 'ZDJECIE_OKLADKI_PRZOD_DUZY',
+    extraImagePrefix: 'DODATKOWE_ZDJECIA_',
+    extraImageCount: 10,
+    vat: 'VAT_VALUE',
+    variantGroup: 'VARIANT_GROUP_MKPL',
+    bundle: '650',
+    bundleContents: 'ADRU',
+    packQuantity: '2039',
+  },
 };
