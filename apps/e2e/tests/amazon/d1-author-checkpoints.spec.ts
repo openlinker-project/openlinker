@@ -51,7 +51,7 @@ test('[S08] the MCF shipping speed field is offered once FulfillmentExecutor is 
 test('[U14] changing the title of an Amazon listing is refused on purpose, without retries', async ({ ol, region, fake, evidence }) => {
   await fake.reset();
   const w = await world(ol, region);
-  const sku = `E2E-${region.marketplaces[0]!.country}-1`;
+  const sku = `E2E-${region.marketplaces[0].country}-1`;
   await runJob(ol, 'marketplace.offers.sync', w.sales.id, { limit: 20, cursor: null, feedType: 'offers', masterConnectionId: w.master.id });
   const res = await ol.call('POST', `/listings/connections/${w.sales.id}/offers/${sku}/fields`, { title: 'A new title from OpenLinker' });
   await new Promise((r) => setTimeout(r, 8000));
@@ -70,8 +70,8 @@ test('[U03] a recipient name with three words and a company name are mapped with
   await fake.reset();
   const c = await createConn(ol, { name: `author u03 ${region.region} ${STAMP}`, region, capabilities: ['OrderSource'], orderSyncStart: { mode: 'now' } });
   await runJob(ol, 'marketplace.orders.poll', c.body.id, { limit: 100, cursorKey: 'amazon.orders.feedCursor' });
-  const orderId = await fakeBuy({ region: region.region, sku: `E2E-${region.marketplaces[0]!.country}-1`, qty: 1, ageMinutes: 1 });
-  await fakePost('/__state', { patchOrder: { orderId, recipient: { deliveryAddress: { name: 'Maria Silva Santos', companyName: 'Test Store #1234', addressLine1: 'Rua 1', city: 'Sao Paulo', districtOrCounty: 'Bela Vista', postalCode: '01310-100', countryCode: region.marketplaces[0]!.country } } } });
+  const orderId = await fakeBuy({ region: region.region, sku: `E2E-${region.marketplaces[0].country}-1`, qty: 1, ageMinutes: 1 });
+  await fakePost('/__state', { patchOrder: { orderId, recipient: { deliveryAddress: { name: 'Maria Silva Santos', companyName: 'Test Store #1234', addressLine1: 'Rua 1', city: 'Sao Paulo', districtOrCounty: 'Bela Vista', postalCode: '01310-100', countryCode: region.marketplaces[0].country } } } });
   const row = (await pollUntilHas(ol, c.body.id, [orderId])).find((o) => o.orderSnapshot.externalOrderId === orderId)!;
   await evidence('mapped recipient (author finding U03: how the name is split)', row.orderSnapshot.shippingAddress);
   const a = row.orderSnapshot.shippingAddress;

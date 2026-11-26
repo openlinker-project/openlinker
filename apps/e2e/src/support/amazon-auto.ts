@@ -30,10 +30,10 @@ export async function runAuto(key: string, cwd: string, args: string[], via: 'ho
       via === 'docker'
         ? ['docker', ['run', '--rm', process.env.AMAZON_AUTO_IMAGE ?? 'olamz-migrate', 'sh', '-c', `cd /app && ${args[0]}`]]
         : ['pnpm', args];
-    execFile(file as string, fileArgs as string[], { cwd: resolve(ROOT, cwd), maxBuffer: 20 * 1024 * 1024, timeout: 900_000 }, (error, stdout, stderr) => {
+    execFile(file, fileArgs, { cwd: resolve(ROOT, cwd), maxBuffer: 20 * 1024 * 1024, timeout: 900_000 }, (error, stdout, stderr) => {
       const out = `${stdout}\n${stderr}`;
       const tail = out.split('\n').filter((l) => /Tests:|Test Suites:|Test Files|Tests |FAIL|failed/.test(l)).slice(-8).join('\n');
-      done({ ok: error === null, command: `${String(file)} ${(fileArgs as string[]).join(' ')}`, tail });
+      done({ ok: error === null, command: `${String(file)} ${(fileArgs).join(' ')}`, tail });
     });
   });
   writeFileSync(cache, JSON.stringify({ at: Date.now(), result }));

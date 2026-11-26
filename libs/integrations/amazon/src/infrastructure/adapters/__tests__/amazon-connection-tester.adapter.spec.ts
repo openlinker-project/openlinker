@@ -115,9 +115,14 @@ describe('AmazonConnectionTesterAdapter', () => {
   });
 
   it('should report a missing role as misconfigured, not as bad credentials', async () => {
+    // The client renews the token once on a 403 Unauthorized, so the role error
+    // is answered twice, with a fresh token in between.
+    const denied = { errors: [{ code: 'Unauthorized', message: 'Access to requested resource is denied.' }] };
     const { http } = transport(
       json(200, { access_token: 'Atza|1' }),
-      json(403, { errors: [{ code: 'Unauthorized', message: 'Access to requested resource is denied.' }] }),
+      json(403, denied),
+      json(200, { access_token: 'Atza|2' }),
+      json(403, denied),
     );
     const result = await new AmazonConnectionTesterAdapter(http).test(
       connection({ marketplaceIds: ['A1PA6795UKMFR9'] }),

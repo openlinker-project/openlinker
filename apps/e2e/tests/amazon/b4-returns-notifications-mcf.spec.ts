@@ -24,7 +24,7 @@ async function ensureConn(ol: OlApi, name: string, make: () => Promise<{ status:
 
 async function fixtureId(region: string, kind: string): Promise<string> {
   const state = await fakeGet('/__state');
-  const cc = REGIONS[region as 'eu' | 'na' | 'fe'].marketplaces[0]!.country;
+  const cc = REGIONS[region as 'eu' | 'na' | 'fe'].marketplaces[0].country;
   const wanted = kind.toUpperCase().padEnd(7, '0').slice(0, 7);
   return (state.orders[region] as string[]).find((id) => id.includes(`-${cc}`) && id.endsWith(wanted))!;
 }
@@ -50,7 +50,7 @@ async function freshReturn(ol: OlApi, region: RegionFixture, tag: string): Promi
   const orderId = await fixtureId(region.region, 'PLAIN');
   await pollUntilHas(ol, c.body.id, [orderId]);
   const rma = `RMA-${tag}-${region.region}-${STAMP}`;
-  await fakePost('/__buyer/return', { region: region.region, orderId, sku: `E2E-${region.marketplaces[0]!.country}-1`, quantity: 1, rma });
+  await fakePost('/__buyer/return', { region: region.region, orderId, sku: `E2E-${region.marketplaces[0].country}-1`, quantity: 1, rma });
   let ret: any;
   for (let i = 0; i < 8 && !ret; i += 1) {
     await runJob(ol, 'marketplace.returns.poll', c.body.id, { cursorKey: 'amazon.returns.reportCursor', limit: 100 });
@@ -65,7 +65,7 @@ async function ensureReturn(ol: OlApi, region: RegionFixture): Promise<{ connId:
   const src = await returnsSource(ol, region);
   let rows = await returnsOf(ol, src.id);
   if (rows.length === 0) {
-    await fakePost('/__buyer/return', { region: region.region, orderId: src.orderId, sku: `E2E-${region.marketplaces[0]!.country}-1`, quantity: 1, reason: 'DEFECTIVE' });
+    await fakePost('/__buyer/return', { region: region.region, orderId: src.orderId, sku: `E2E-${region.marketplaces[0].country}-1`, quantity: 1, reason: 'DEFECTIVE' });
     for (let i = 0; i < 8 && rows.length === 0; i += 1) {
       await runJob(ol, 'marketplace.returns.poll', src.id, { cursorKey: 'amazon.returns.reportCursor', limit: 100 });
       await new Promise((r) => setTimeout(r, 2500));
@@ -77,7 +77,7 @@ async function ensureReturn(ol: OlApi, region: RegionFixture): Promise<{ connId:
 
 test('P103 simulated: the returns report is requested, built over several ticks, then read', async ({ ol, region, evidence }) => {
   const src = await returnsSource(ol, region);
-  await fakePost('/__buyer/return', { region: region.region, orderId: src.orderId, sku: `E2E-${region.marketplaces[0]!.country}-1`, quantity: 1, reason: 'NO_LONGER_WANTED', rma: `RMA-P103-${region.region}-${STAMP}` });
+  await fakePost('/__buyer/return', { region: region.region, orderId: src.orderId, sku: `E2E-${region.marketplaces[0].country}-1`, quantity: 1, reason: 'NO_LONGER_WANTED', rma: `RMA-P103-${region.region}-${STAMP}` });
   const states: number[] = [];
   let found = false;
   for (let i = 0; i < 8 && !found; i += 1) {
@@ -112,7 +112,7 @@ test('P105 simulated: the returns status sync re-reads open returns from the cac
 test('P106 an ingested return shows the raw status, SKU and reason; an unmatched one is an orphan', async ({ page, ol, region }) => {
   const { connId, ret } = await ensureReturn(ol, region);
   await page.goto(`/returns/${ret.id ?? ret.returnId}`);
-  await expect(page.getByText(new RegExp(`E2E-${region.marketplaces[0]!.country}-1`)).first()).toBeVisible();
+  await expect(page.getByText(new RegExp(`E2E-${region.marketplaces[0].country}-1`)).first()).toBeVisible();
   await expect(page.getByText(/Reason:/).first()).toBeVisible();
   await page.getByText('What the channel says').click();
   await expect(page.getByText(/Approved/).first()).toBeVisible();
@@ -123,7 +123,7 @@ test('P106 an ingested return shows the raw status, SKU and reason; an unmatched
 test('P107 without refundsEnabled a confirmed refund is only recorded, no money is moved', async ({ ol, region, evidence }) => {
   const { connId, ret } = await freshReturn(ol, region, 'p107');
   await patchConfig(ol, connId, { refundsEnabled: false });
-  const res = await ol.call('POST', `/returns/${ret.id ?? ret.returnId}/refund`, { amount: '10.00', currency: region.marketplaces[0]!.currency, reason: 'defective', acknowledgeAboveCeiling: false });
+  const res = await ol.call('POST', `/returns/${ret.id ?? ret.returnId}/refund`, { amount: '10.00', currency: region.marketplaces[0].currency, reason: 'defective', acknowledgeAboveCeiling: false });
   await evidence('POST /returns/:id/refund with refunds not sent to Amazon', res);
   expect(res.status, JSON.stringify(res.body)).toBeLessThan(300);
   expect(res.body.moneyMoved).toBe(false);
@@ -133,7 +133,7 @@ test('P108 simulated: with refundsEnabled the refund is sent to Amazon as a paym
   await fake.reset();
   const { connId, ret } = await freshReturn(ol, region, 'p108');
   await patchConfig(ol, connId, { refundsEnabled: true });
-  const res = await ol.call('POST', `/returns/${ret.id ?? ret.returnId}/refund`, { amount: '10.00', currency: region.marketplaces[0]!.currency, reason: 'defective', acknowledgeAboveCeiling: false });
+  const res = await ol.call('POST', `/returns/${ret.id ?? ret.returnId}/refund`, { amount: '10.00', currency: region.marketplaces[0].currency, reason: 'defective', acknowledgeAboveCeiling: false });
   await new Promise((r) => setTimeout(r, 4000));
   const sim = await fakeGet('/__sim');
   await evidence('refund confirm with refundsEnabled (feed processing SIMULATED)', { response: res.body, feeds: sim.refundFeeds.map((f: any) => ({ id: f.feedId, type: f.type, mode: f.mode })) });
@@ -146,7 +146,7 @@ test('P109 simulated: a rejected feed is reported as such, never as a refund', a
   await fakePost('/__mode', { feed: 'rejected' });
   const { connId, ret } = await freshReturn(ol, region, 'p109');
   await patchConfig(ol, connId, { refundsEnabled: true });
-  const res = await ol.call('POST', `/returns/${ret.id ?? ret.returnId}/refund`, { amount: '10.00', currency: region.marketplaces[0]!.currency, reason: 'defective', acknowledgeAboveCeiling: false });
+  const res = await ol.call('POST', `/returns/${ret.id ?? ret.returnId}/refund`, { amount: '10.00', currency: region.marketplaces[0].currency, reason: 'defective', acknowledgeAboveCeiling: false });
   await fakePost('/__mode', { feed: 'normal' });
   await evidence('refund whose feed Amazon rejects (SIMULATED)', res);
   expect(res.body.moneyMoved ?? false).toBe(false);
@@ -159,7 +159,7 @@ test('P110 an FBA order, another currency and an amount above the items are deni
   await patchConfig(ol, connId, { refundsEnabled: true });
   const before = (await fakeGet('/__sim')).refundFeeds.length;
   const otherCurrency = await ol.call('POST', `/returns/${ret.id ?? ret.returnId}/refund`, { amount: '1.00', currency: 'CHF', reason: 'defective' });
-  const tooMuch = await ol.call('POST', `/returns/${ret.id ?? ret.returnId}/refund`, { amount: '99999.00', currency: region.marketplaces[0]!.currency, reason: 'defective' });
+  const tooMuch = await ol.call('POST', `/returns/${ret.id ?? ret.returnId}/refund`, { amount: '99999.00', currency: region.marketplaces[0].currency, reason: 'defective' });
   const after = (await fakeGet('/__sim')).refundFeeds.length;
   await evidence('denied refunds', { otherCurrency: [otherCurrency.status, otherCurrency.body], tooMuch: [tooMuch.status, tooMuch.body], feedsBefore: before, feedsAfter: after });
   expect(after).toBe(before);

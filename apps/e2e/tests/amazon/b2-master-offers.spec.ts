@@ -9,7 +9,7 @@ import { test, expect, shot, createConn, patchConfig, runJob, sql, fakeGet, fake
 import type { RegionFixture } from '../../src/support/amazon';
 
 const SELLER = 'A2EXAMPLE12345';
-const cc = (r: RegionFixture): string => r.marketplaces[0]!.country;
+const cc = (r: RegionFixture): string => r.marketplaces[0].country;
 
 import { world } from './amazon-world';
 
@@ -22,11 +22,11 @@ test('P085 the product sweep creates products with the SKU as external id', asyn
 
 test('P086 an Amazon-sourced product shows its listing content and a gross price', async ({ page, ol, region }) => {
   const w = await world(ol, region);
-  const v = w.variants[`E2E-${cc(region)}-1`]!;
+  const v = w.variants[`E2E-${cc(region)}-1`];
   await page.goto(`/products/${v.productId}`);
   await expect(page.getByText(new RegExp(`Listing E2E-${cc(region)}-1`)).first()).toBeVisible();
   const detail = (await ol.call('GET', `/products/${v.productId}`)).body;
-  expect(JSON.stringify(detail)).toMatch(new RegExp(region.marketplaces[0]!.currency));
+  expect(JSON.stringify(detail)).toMatch(new RegExp(region.marketplaces[0].currency));
   await shot(page, region.region, 86);
 });
 
@@ -58,7 +58,7 @@ test('P089 with an FBA location FBA stock appears as available and reserved ther
   const patched = await patchConfig(ol, w.master.id, { fbaLocationId: w.fba });
   expect(patched.status, JSON.stringify(patched.body)).toBe(200);
   await runJob(ol, 'master.inventory.syncAll', w.master.id, {});
-  const fbaVariant = w.variants[`E2E-${cc(region)}-FBA`]!;
+  const fbaVariant = w.variants[`E2E-${cc(region)}-FBA`];
   for (let i = 0; i < 30; i += 1) {
     const hit = await sql<{ a: number }>(`select "availableQuantity" a from inventory_items where "locationId" = $1 and "productVariantId" = $2`, [w.fba, fbaVariant.id]);
     if (hit[0]?.a === 12) break;
@@ -77,12 +77,12 @@ test('P089 with an FBA location FBA stock appears as available and reserved ther
 test('P090 an FBA location without an FBM override reports no FBA stock and keeps FBM', async ({ ol, region, evidence }) => {
   const w = await world(ol, region);
   await sql(`update connections set config = config - 'stockLocationOverride' where id = $1`, [w.master.id]);
-  const before = (await sql<{ n: string }>(`select count(*)::text n from inventory_items where "locationId" = $1 and "isStale" = false`, [w.fbm]))[0]!.n;
+  const before = (await sql<{ n: string }>(`select count(*)::text n from inventory_items where "locationId" = $1 and "isStale" = false`, [w.fbm]))[0].n;
   const since = new Date().toISOString();
   await runJob(ol, 'master.inventory.syncAll', w.master.id, {});
   await new Promise((r) => setTimeout(r, 8000));
   const fbaCalls = ((await fakeGet(`/__calls?path=/fba/inventory/v1/summaries&since=${since}`)).calls as any[]).length;
-  const after = (await sql<{ n: string }>(`select count(*)::text n from inventory_items where "locationId" = $1 and "isStale" = false`, [w.fbm]))[0]!.n;
+  const after = (await sql<{ n: string }>(`select count(*)::text n from inventory_items where "locationId" = $1 and "isStale" = false`, [w.fbm]))[0].n;
   await evidence('FBA location set, FBM override removed in the DB', { fbaSummaryCalls: fbaCalls, fbmLiveBefore: before, fbmLiveAfter: after });
   expect(fbaCalls).toBe(0);
   expect(after).toBe(before);
@@ -94,7 +94,7 @@ test('P091 FBA stock counts toward availability and the page warns about it', as
   await patchConfig(ol, w.master.id, { fbaLocationId: w.fba });
   await page.goto(`/connections/${w.master.id}/edit`);
   await expect(page.getByText(/FBA stock counts toward what other channels may sell/)).toBeVisible();
-  const v = w.variants[`E2E-${cc(region)}-FBA`]!;
+  const v = w.variants[`E2E-${cc(region)}-FBA`];
   const av = await ol.call('GET', `/inventory/availability?productVariantIds=${v.id}`);
   const text = JSON.stringify(av.body);
   expect(av.status, text).toBe(200);
@@ -104,14 +104,14 @@ test('P091 FBA stock counts toward availability and the page warns about it', as
 test('P092 a stock adjustment writes FBM through to Amazon, and FBA positions are refused', async ({ ol, region, fake, evidence }) => {
   const w = await world(ol, region);
   await fake.clearFailures();
-  const fbm = w.variants[`E2E-${cc(region)}-1`]!;
+  const fbm = w.variants[`E2E-${cc(region)}-1`];
   const sku = `E2E-${cc(region)}-1`;
   const since = new Date().toISOString();
   const key = crypto.randomUUID();
   const res = await ol.call('POST', `/inventory/${fbm.id}/adjust`, { mode: 'set', quantity: 11, operatorReason: 'count_correction', idempotencyKey: key, confirmLargeChange: true });
   await new Promise((r) => setTimeout(r, 6000));
   const patches = ((await fakeGet(`/__calls?since=${since}`)).calls as any[]).filter((c) => c.method === 'PATCH' && decodeURIComponent(c.path).endsWith(`/${sku}`));
-  const fbaV = w.variants[`E2E-${cc(region)}-FBA`]!;
+  const fbaV = w.variants[`E2E-${cc(region)}-FBA`];
   const sinceFba = new Date().toISOString();
   const fbaRes = await ol.call('POST', `/inventory/${fbaV.id}/adjust`, { mode: 'delta', quantity: 1, operatorReason: 'found' });
   await new Promise((r) => setTimeout(r, 4000));
@@ -127,8 +127,8 @@ test('P092 a stock adjustment writes FBM through to Amazon, and FBA positions ar
 test('P093 a listing deleted at Amazon stales the variant on the next sweep', async ({ ol, region, fake, evidence }) => {
   const w = await world(ol, region);
   const sku = `E2E-${cc(region)}-DEL`;
-  const v = w.variants[sku]!;
-  await fakePost('/__state', { dropListing: { region: region.region, key: `${region.marketplaces[0]!.id}:${sku}` } });
+  const v = w.variants[sku];
+  await fakePost('/__state', { dropListing: { region: region.region, key: `${region.marketplaces[0].id}:${sku}` } });
   await runJob(ol, 'master.product.reconcile', w.master.id, {});
   for (let i = 0; i < 20; i += 1) {
     const hit = await sql<{ isStale: boolean }>(`select "isStale" from product_variants where id = $1`, [v.id]);

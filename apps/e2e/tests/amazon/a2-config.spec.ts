@@ -27,7 +27,7 @@ test('P016 config-policy and web marketplace specs pass', async ({ evidence }) =
 });
 
 test('P017 a marketplace from another region is refused', async ({ ol, region, evidence }) => {
-  const f = FOREIGN_MARKETPLACE[region.region]!;
+  const f = FOREIGN_MARKETPLACE[region.region];
   const res = await createConn(ol, { name: `neg ${STAMP}`, region, capabilities: ['OrderSource'], config: { marketplaceIds: [f.id] } });
   await evidence(`POST /connections region ${region.region} + ${f.label} marketplace`, res);
   expect(res.status).toBe(400);
@@ -54,7 +54,7 @@ test('P019 empty marketplaceIds is refused', async ({ ol, region, evidence }) =>
 
 test('P020 a far-east connection with two marketplaces is refused', async ({ ol, evidence }) => {
   const fe = REGIONS.fe;
-  const res = await createConn(ol, { name: `fe2 ${STAMP}`, region: fe, capabilities: ['OrderSource'], config: { marketplaceIds: [fe.marketplaces[0]!.id, 'A39IBJ37TRP1C6'] } });
+  const res = await createConn(ol, { name: `fe2 ${STAMP}`, region: fe, capabilities: ['OrderSource'], config: { marketplaceIds: [fe.marketplaces[0].id, 'A39IBJ37TRP1C6'] } });
   await evidence('fe with JP + AU', res);
   expect(res.status).toBe(400);
   expect(text(res.body)).toMatch(/fe region has a separate seller account per marketplace/);
@@ -65,7 +65,7 @@ test('P021 a marketplace listed twice is read once', async ({ ol, region, fake, 
   // list and the plugin de-duplicates when it READS the config (parseAmazonConfig),
   // so the observable guarantee is what is sent to Amazon.
   await fake.reset();
-  const id = region.marketplaces[0]!.id;
+  const id = region.marketplaces[0].id;
   const res = await createConn(ol, { name: `dup ${region.region} ${STAMP}`, region, capabilities: ['OrderSource'], config: { marketplaceIds: [id, id] } });
   expect(res.status).toBe(201);
   await runJob(ol, 'marketplace.orders.poll', res.body.id, { limit: 10, cursorKey: 'amazon.orders.feedCursor' });

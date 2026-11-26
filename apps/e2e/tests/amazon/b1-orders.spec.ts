@@ -21,7 +21,7 @@ void firstId;
 /** The fixture order id of `kind` in the region's first marketplace. */
 async function fixtureId(region: string, kind: string, country?: string): Promise<string> {
   const state = await fakeGet('/__state');
-  const cc = country ?? REGIONS[region as 'eu' | 'na' | 'fe'].marketplaces[0]!.country;
+  const cc = country ?? REGIONS[region as 'eu' | 'na' | 'fe'].marketplaces[0].country;
   const wanted = kind.toUpperCase().padEnd(7, '0').slice(0, 7);
   const hit = (state.orders[region] as string[]).find((id) => id.includes(`-${cc}`) && id.endsWith(wanted));
   if (!hit) throw new Error(`no fixture ${kind} in ${region}/${cc}`);
@@ -48,7 +48,7 @@ test('P048 start mode now imports no existing orders, only new ones', async ({ o
   await runJob(ol, 'marketplace.orders.poll', c.body.id, { limit: 100, cursorKey: 'amazon.orders.feedCursor' });
   await new Promise((r) => setTimeout(r, 4000));
   const before = await ordersOf(ol, c.body.id);
-  const bought = await fakeBuy({ region: region.region, sku: `E2E-${region.marketplaces[0]!.country}-1`, qty: 1, ageMinutes: 1 });
+  const bought = await fakeBuy({ region: region.region, sku: `E2E-${region.marketplaces[0].country}-1`, qty: 1, ageMinutes: 1 });
   const rows = await pollUntilHas(ol, c.body.id, [bought]);
   await evidence('start mode now', { importedBeforePurchase: before.length, afterPurchase: extIds(rows), bought });
   expect(before).toHaveLength(0);
@@ -83,7 +83,7 @@ test('P051 a window import imports the range once and again creates no duplicate
   const to = new Date(Date.now() - 1.5 * DAY).toISOString();
   const start = async (): Promise<number> => (await ol.call('POST', `/connections/${c.body.id}/order-import`, { from, to, direction: 'oldest-first' })).status;
   expect(await start()).toBe(202);
-  const expected = (await fakeGet('/__state')).orders[region.region].filter((id: string) => /-[A-Z]{2}(\d+)000-/.test(id) && Number(/-[A-Z]{2}(\d+)000-/.exec(id)![1]) >= 1 && Number(/-[A-Z]{2}(\d+)000-/.exec(id)![1]) <= 4 && id.includes(`-${region.marketplaces[0]!.country}`));
+  const expected = (await fakeGet('/__state')).orders[region.region].filter((id: string) => /-[A-Z]{2}(\d+)000-/.test(id) && Number(/-[A-Z]{2}(\d+)000-/.exec(id)![1]) >= 1 && Number(/-[A-Z]{2}(\d+)000-/.exec(id)![1]) <= 4 && id.includes(`-${region.marketplaces[0].country}`));
   let rows = await ordersOf(ol, c.body.id);
   for (let i = 0; i < 30 && !expected.every((e: string) => extIds(rows).includes(e)); i += 1) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -146,7 +146,7 @@ test.describe('imported orders', () => {
   const byExt = async (ol: any, id: string): Promise<any> => (await ordersOf(ol, connId)).find((o) => o.orderSnapshot.externalOrderId === id);
 
   test('P055 an imported FBM order carries the seller SKU as product reference', async ({ page, ol, region }) => {
-    const o = await byExt(ol, ids.plain!);
+    const o = await byExt(ol, ids.plain);
     const line = o.orderSnapshot.items[0];
     expect(line.sku).toMatch(/^E2E-/);
     expect(line.productRef).toEqual({ type: 'offer', externalId: line.sku });
@@ -157,7 +157,7 @@ test.describe('imported orders', () => {
   });
 
   test('P056 money: lines plus shipping equal the total, gross, no tax rate', async ({ ol, evidence }) => {
-    const o = await byExt(ol, ids.plain!);
+    const o = await byExt(ol, ids.plain);
     const t = o.orderSnapshot.totals;
     const lines = o.orderSnapshot.items.reduce((s: number, i: any) => s + i.price * i.quantity, 0);
     await evidence('plain order totals', { totals: t, lines });
@@ -167,7 +167,7 @@ test.describe('imported orders', () => {
   });
 
   test('P057 simulated: an order whose seller app has the recipient role stores the address', async ({ ol, evidence }) => {
-    const o = await byExt(ol, ids.plain!);
+    const o = await byExt(ol, ids.plain);
     await evidence('simulated recipient role present (OpenLinker side only)', { shippingAddress: o.orderSnapshot.shippingAddress, withheld: o.orderSnapshot.metadata.amazonShippingAddressWithheld });
     expect(o.orderSnapshot.shippingAddress.address1).toBeTruthy();
     expect(o.orderSnapshot.customerEmail).toMatch(/@marketplace\.amazon\./);
@@ -175,14 +175,14 @@ test.describe('imported orders', () => {
   });
 
   test('P058 an order without the recipient role has no address and says so', async ({ ol, evidence }) => {
-    const o = await byExt(ol, ids.norole!);
+    const o = await byExt(ol, ids.norole);
     await evidence('order without recipient', { shippingAddress: o.orderSnapshot.shippingAddress ?? null, metadata: o.orderSnapshot.metadata });
     expect(o.orderSnapshot.shippingAddress ?? null).toBeNull();
     expect(o.orderSnapshot.metadata.amazonShippingAddressWithheld).toBe(true);
   });
 
   test('P059 an FBA order is marked fulfilled by the source and offers no label', async ({ page, ol, region }) => {
-    const o = await byExt(ol, ids.fba!);
+    const o = await byExt(ol, ids.fba);
     expect(o.orderSnapshot.metadata.amazonFulfillmentStatus).toBe('SHIPPED');
     await page.goto(`/orders/${o.internalOrderId}`);
     await page.waitForLoadState('networkidle');
@@ -191,9 +191,9 @@ test.describe('imported orders', () => {
   });
 
   test('P060 cash on delivery and pending payment', async ({ ol, evidence }) => {
-    const cod = await byExt(ol, ids.cod!);
-    const pending = await byExt(ol, ids.pending!);
-    const plain = await byExt(ol, ids.plain!);
+    const cod = await byExt(ol, ids.cod);
+    const pending = await byExt(ol, ids.pending);
+    const plain = await byExt(ol, ids.plain);
     await evidence('payment fields', { cod: [cod.orderSnapshot.paymentMethod, cod.orderSnapshot.paymentStatus], pending: [pending.orderSnapshot.paymentMethod, pending.orderSnapshot.paymentStatus], plain: [plain.orderSnapshot.paymentMethod, plain.orderSnapshot.paymentStatus] });
     expect(cod.orderSnapshot.paymentMethod).toBe('cash_on_delivery');
     expect(pending.orderSnapshot.paymentStatus).not.toBe('paid');

@@ -16,11 +16,11 @@ import { REGIONS, type RegionFixture } from '../../src/support/amazon';
 
 const STAMP = Date.now();
 const DAY = 24 * 3600 * 1000;
-const cc = (r: RegionFixture): string => r.marketplaces[0]!.country;
+const cc = (r: RegionFixture): string => r.marketplaces[0].country;
 
 test('P022 the offer wizard lists the currencies of the connection marketplaces and where offers go', async ({ page, ol, region }) => {
   const w = await world(ol, region);
-  const v = w.variants[`E2E-${cc(region)}-1`]!;
+  const v = w.variants[`E2E-${cc(region)}-1`];
   await page.goto(`/listings/bulk-create/wizard?productIds=${v.productId}&variantIds=${v.id}&connectionId=${w.sales.id}`);
   await expect(page.getByText('Offer currency').first()).toBeVisible({ timeout: 30_000 });
   for (const m of region.marketplaces) {
@@ -32,7 +32,7 @@ test('P022 the offer wizard lists the currencies of the connection marketplaces 
 
 test('P025 adding a marketplace tells that its orders are read from the last 7 days', async ({ page, ol, region }) => {
   const second = region.region === 'eu' ? { id: 'A1PA6795UKMFR9', label: /Germany/ } : region.region === 'na' ? { id: 'A2EUQ1WTGCTBG2', label: /Canada/ } : null;
-  const c = await createConn(ol, { name: `addmk ${region.region} ${STAMP}`, region, capabilities: ['OrderSource'], config: { marketplaceIds: [region.marketplaces[0]!.id] } });
+  const c = await createConn(ol, { name: `addmk ${region.region} ${STAMP}`, region, capabilities: ['OrderSource'], config: { marketplaceIds: [region.marketplaces[0].id] } });
   await page.goto(`/connections/${c.body.id}/edit`);
   await expect(page.getByText(/Orders from a marketplace you add are read from the last 7 days/)).toBeVisible();
   if (second === null) {
@@ -56,7 +56,7 @@ test('P028 the catalogue marketplace is chosen on the page and never follows a r
   await expect(page.getByText(/First marketplace \(/).first()).toBeVisible();
   const ids = region.marketplaces.map((m) => m.id);
   if (ids.length > 1) {
-    await page.getByLabel('Catalogue marketplace').selectOption(ids[1]!);
+    await page.getByLabel('Catalogue marketplace').selectOption(ids[1]);
     await page.getByRole('button', { name: 'Save changes' }).click();
     await expect.poll(async () => (await ol.call('GET', `/connections/${c.body.id}`)).body.config.catalogueMarketplaceId).toBe(ids[1]);
     const reordered = await patchConfig(ol, c.body.id, { marketplaceIds: [...ids].reverse() });
@@ -166,7 +166,7 @@ test.describe('offer creation', () => {
 
   test('P073 and P074 simulated: an EAN known to the catalogue resolves the product type and the ASIN; product types are browsable', async ({ ol, region, evidence }) => {
     const w = await world(ol, region);
-    const v = w.variants[`E2E-${cc(region)}-1`]!;
+    const v = w.variants[`E2E-${cc(region)}-1`];
     const resolve = await ol.call('POST', `/listings/connections/${w.sales.id}/categories/resolve`, { variantId: v.id });
     const browse = await ol.call('GET', `/connections/${w.sales.id}/mappings/options/destination/categories`);
     await evidence('category resolve by EAN and product type browse (catalogue SIMULATED)', { resolve: [resolve.status, resolve.body], browse: [browse.status, JSON.stringify(browse.body).slice(0, 400)] });
@@ -177,11 +177,11 @@ test.describe('offer creation', () => {
   test('P075 and P078 simulated: an offer on an existing ASIN is an offer-only listing, a second create does not overwrite', async ({ ol, region, fake, evidence }) => {
     await fake.reset();
     const w = await world(ol, region);
-    const v = w.variants[`E2E-${cc(region)}-2`]!;
+    const v = w.variants[`E2E-${cc(region)}-2`];
     const since = new Date().toISOString();
-    const first = await create(ol, w.sales.id, v.id, { price: { amount: 49.9, currency: region.marketplaces[0]!.currency } });
+    const first = await create(ol, w.sales.id, v.id, { price: { amount: 49.9, currency: region.marketplaces[0].currency } });
     const puts = ((await fakeGet(`/__calls?since=${since}`)).calls as any[]).filter((c) => c.method === 'PUT' && c.path.includes('/listings/'));
-    const second = await create(ol, w.sales.id, v.id, { price: { amount: 49.9, currency: region.marketplaces[0]!.currency } });
+    const second = await create(ol, w.sales.id, v.id, { price: { amount: 49.9, currency: region.marketplaces[0].currency } });
     await evidence('offer create twice (listing side SIMULATED)', { first: [first.create.status, first.record?.status, first.record?.error], putBodies: puts.map((p) => (p.body ?? '').slice(0, 300)), second: [second.create.status, second.record?.status, second.record?.error ?? second.record] });
     expect(first.create.status, JSON.stringify(first.create.body)).toBeLessThan(300);
     expect(puts.length).toBeGreaterThan(0);
@@ -192,9 +192,9 @@ test.describe('offer creation', () => {
   test('P076 simulated: no ASIN creates a full listing from title, brand, EAN and description', async ({ ol, region, fake, evidence }) => {
     await fake.reset();
     const w = await world(ol, region);
-    const v = w.variants[`E2E-${cc(region)}-NEW`]!;
+    const v = w.variants[`E2E-${cc(region)}-NEW`];
     const since = new Date().toISOString();
-    const res = await create(ol, w.sales.id, v.id, { price: { amount: 19.9, currency: region.marketplaces[0]!.currency }, overrides: { title: 'E2E new item', description: 'Described', categoryId: 'LUGGAGE' } });
+    const res = await create(ol, w.sales.id, v.id, { price: { amount: 19.9, currency: region.marketplaces[0].currency }, overrides: { title: 'E2E new item', description: 'Described', categoryId: 'LUGGAGE' } });
     const puts = ((await fakeGet(`/__calls?since=${since}`)).calls as any[]).filter((c) => c.method === 'PUT' && c.path.includes('/listings/'));
     await evidence('offer without a catalogue ASIN (catalogue SIMULATED)', { create: [res.create.status, res.create.body], record: res.record?.status, putBodies: puts.map((p) => (p.body ?? '').slice(0, 400)) });
     expect(res.create.status, JSON.stringify(res.create.body)).toBeLessThan(300);
@@ -204,15 +204,15 @@ test.describe('offer creation', () => {
   test('P077 a product with no barcode and no ASIN is refused with a clear message', async ({ ol, region, fake, evidence }) => {
     await fake.reset();
     const w = await world(ol, region);
-    const v = w.variants[`E2E-${cc(region)}-NOEAN`]!;
-    const res = await create(ol, w.sales.id, v.id, { price: { amount: 9.9, currency: region.marketplaces[0]!.currency } });
+    const v = w.variants[`E2E-${cc(region)}-NOEAN`];
+    const res = await create(ol, w.sales.id, v.id, { price: { amount: 9.9, currency: region.marketplaces[0].currency } });
     await evidence('offer without a barcode', { create: [res.create.status, res.create.body], record: res.record });
     expect(JSON.stringify(res)).toMatch(/barcode|EAN|GTIN|exemption/i);
   });
 
   test('P079 an Amazon offer cannot be created from a bundle: the preview says the destination does not support it', async ({ ol, region, evidence }) => {
     const w = await world(ol, region);
-    const v = w.variants[`E2E-${cc(region)}-1`]!;
+    const v = w.variants[`E2E-${cc(region)}-1`];
     const res = await ol.call('POST', `/listings/connections/${w.sales.id}/bundle-offer-preview`, { items: [{ variantId: v.id }] });
     await evidence('POST bundle-offer-preview on an Amazon connection (the wording is the finding)', res);
     expect(res.status).toBeGreaterThanOrEqual(400);
@@ -225,7 +225,7 @@ test.describe('offer creation', () => {
     const sku = `E2E-${cc(region)}-1`;
     await runJob(ol, 'marketplace.offers.sync', w.sales.id, { limit: 20, cursor: null, feedType: 'offers', masterConnectionId: w.master.id });
     const since = new Date().toISOString();
-    const res = await ol.call('POST', `/listings/connections/${w.sales.id}/offers/${sku}/fields`, { price: { amount: '59.90', currency: region.marketplaces[0]!.currency } });
+    const res = await ol.call('POST', `/listings/connections/${w.sales.id}/offers/${sku}/fields`, { price: { amount: '59.90', currency: region.marketplaces[0].currency } });
     await new Promise((r) => setTimeout(r, 6000));
     const patches = ((await fakeGet(`/__calls?since=${since}`)).calls as any[]).filter((c) => c.method === 'PATCH');
     await evidence('price change (listing SIMULATED)', { response: [res.status, res.body], patches: patches.map((p) => (p.body ?? '').slice(0, 300)) });
@@ -239,10 +239,10 @@ test.describe('offer creation', () => {
     const sku = `E2E-${cc(region)}-1`;
     await runJob(ol, 'marketplace.offers.sync', w.sales.id, { limit: 20, cursor: null, feedType: 'offers', masterConnectionId: w.master.id });
     await runJob(ol, 'marketplace.offer.statusSync', w.sales.id, { limit: 20, cursorKey: 'amazon.offerStatus.scanOffset' });
-    const v = w.variants[sku]!;
+    const v = w.variants[sku];
     const read = async (): Promise<any> => (await ol.call('GET', `/listings/products/${v.productId}/offer-status`)).body;
     const active = await read();
-    await fakePost('/__state', { dropListing: { region: region.region, key: `${region.marketplaces[0]!.id}:${sku}` } });
+    await fakePost('/__state', { dropListing: { region: region.region, key: `${region.marketplaces[0].id}:${sku}` } });
     await runJob(ol, 'marketplace.offer.statusSync', w.sales.id, { limit: 20, cursorKey: 'amazon.offerStatus.scanOffset' });
     const ended = await read();
     await fake.reset();
@@ -267,7 +267,7 @@ test.describe('Multi-Channel Fulfillment dispatch (simulated)', () => {
     return { workId, masterId: w.master.id };
   }
   const dispatch = async (ol: OlApi, s: { workId: string; masterId: string }): Promise<any> =>
-    runJob(ol, 'fulfillment.work.dispatch', s.masterId, { workId: s.workId, orderId: (await sql<{ orderId: string }>(`select "orderId" from fulfillment_works where id = $1`, [s.workId]))[0]!.orderId, assignmentAttempt: null });
+    runJob(ol, 'fulfillment.work.dispatch', s.masterId, { workId: s.workId, orderId: (await sql<{ orderId: string }>(`select "orderId" from fulfillment_works where id = $1`, [s.workId]))[0].orderId, assignmentAttempt: null });
   const workRow = async (id: string): Promise<any> => (await sql(`select "requestStatus","externalWorkId","acceptedAt","assignmentAttempt" from fulfillment_works where id = $1`, [id]))[0];
 
   test('P096 simulated: work whose variant is in FBA stock is previewed, created once and accepted, and a retry answers the same acceptance', async ({ ol, region, fake, evidence }) => {

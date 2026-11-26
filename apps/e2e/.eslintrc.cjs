@@ -36,6 +36,22 @@ module.exports = {
   },
   overrides: [
     {
+      // The Amazon suite drives the OpenLinker API and the fake SP-API over
+      // plain HTTP and reads their JSON replies untyped (`res.json()` is
+      // `any`). Typing every reply shape would duplicate the API DTOs inside a
+      // test harness, so the `no-unsafe-*` family is relaxed for these files
+      // only, together with `no-explicit-any` for the same untyped replies.
+      files: ['tests/amazon/**/*.ts', 'src/support/amazon-auto.ts'],
+      rules: {
+        '@typescript-eslint/no-unsafe-member-access': 'off',
+        '@typescript-eslint/no-unsafe-assignment': 'off',
+        '@typescript-eslint/no-unsafe-argument': 'off',
+        '@typescript-eslint/no-unsafe-call': 'off',
+        '@typescript-eslint/no-unsafe-return': 'off',
+        '@typescript-eslint/no-explicit-any': 'off',
+      },
+    },
+    {
       // Operator-facing prompt / diagnostic surfaces legitimately write to
       // stdout: `manualCheckpoint` renders the attended-run operator prompt and
       // the bulk-wizard param-readback is a headed-run visual diagnostic. This

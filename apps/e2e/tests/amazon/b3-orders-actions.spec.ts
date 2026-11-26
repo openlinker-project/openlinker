@@ -16,7 +16,7 @@ const DAY = 24 * 3600 * 1000;
 
 async function fixtureId(region: string, kind: string): Promise<string> {
   const state = await fakeGet('/__state');
-  const cc = REGIONS[region as 'eu' | 'na' | 'fe'].marketplaces[0]!.country;
+  const cc = REGIONS[region as 'eu' | 'na' | 'fe'].marketplaces[0].country;
   const wanted = kind.toUpperCase().padEnd(7, '0').slice(0, 7);
   return (state.orders[region] as string[]).find((id) => id.includes(`-${cc}`) && id.endsWith(wanted))!;
 }
@@ -139,7 +139,7 @@ test('P068 and P069 the 30-day anchor redacts buyer data and a re-import brings 
   // A fresh order on a fresh connection, so the redaction below is observed and not inherited from an earlier run.
   const c = await createConn(ol, { name: `ret68 ${region.region} ${STAMP}`, region, capabilities: ['OrderSource'], orderSyncStart: { mode: 'now' } });
   await runJob(ol, 'marketplace.orders.poll', c.body.id, { limit: 100, cursorKey: 'amazon.orders.feedCursor' });
-  const bought = await fakeBuy({ region: region.region, sku: `E2E-${region.marketplaces[0]!.country}-1`, qty: 1, ageMinutes: 1 });
+  const bought = await fakeBuy({ region: region.region, sku: `E2E-${region.marketplaces[0].country}-1`, qty: 1, ageMinutes: 1 });
   const before = (await pollUntilHas(ol, c.body.id, [bought])).find((o) => o.orderSnapshot.externalOrderId === bought)!;
   expect(before.orderSnapshot.shippingAddress.address1).toBeTruthy();
   expect(before.orderSnapshot.customerEmail).toBeTruthy();
@@ -164,7 +164,7 @@ test('P068 and P069 the 30-day anchor redacts buyer data and a re-import brings 
   expect(redacted.orderSnapshot.items.length).toBeGreaterThan(0);
   expect(redacted.orderSnapshot.totals.total).toBe(44.9);
   // P069: a re-import stores none of it again.
-  await runJob(ol, 'marketplace.order.sync', src.id, { externalOrderId: src.ids.plain! });
+  await runJob(ol, 'marketplace.order.sync', src.id, { externalOrderId: src.ids.plain });
   await new Promise((r) => setTimeout(r, 6000));
   const again = (await ordersOf(ol, src.id)).find((o) => o.internalOrderId === order.internalOrderId)!;
   expect(again.orderSnapshot.customerEmail ?? null).toBeNull();

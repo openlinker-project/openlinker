@@ -8,7 +8,7 @@ import { createConn, runJob, type OlApi } from './amazon-test';
 import type { RegionFixture } from '../../src/support/amazon';
 
 const SELLER = 'A2EXAMPLE12345';
-const cc = (r: RegionFixture): string => r.marketplaces[0]!.country;
+const cc = (r: RegionFixture): string => r.marketplaces[0].country;
 
 export interface World {
   master: { id: string };
