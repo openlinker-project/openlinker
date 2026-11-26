@@ -15,6 +15,8 @@
  *   `SHIPPED` or `CANCELED`.
  * - `GET /api/orders/documents` (OR72) and `POST /api/orders/{id}/documents`
  *   (OR74): keep the uploaded documents per order.
+ * - `GET /api/returns` (RT11, #4279): by `return_id` or a last-updated window,
+ *   one seek page.
  *
  * Every other call rejects, so an unexpected request fails the test loudly.
  *
@@ -22,6 +24,7 @@
  */
 import { MiraklApiException } from '@openlinker/integrations-mirakl';
 import type { MiraklOrder } from '@openlinker/integrations-mirakl/domain/types/mirakl-order.types';
+import type { MiraklReturn } from '@openlinker/integrations-mirakl/domain/types/mirakl-return.types';
 import type { IMiraklHttpClient } from '@openlinker/integrations-mirakl/infrastructure/http/mirakl-http-client.interface';
 import type {
   MiraklFileUpload,
@@ -55,6 +58,7 @@ export class MiraklFakeHttpClient implements IMiraklHttpClient {
   private readonly orders = new Map<string, StoredOrder>();
   private readonly armedAcceptErrors: MiraklApiException[] = [];
   readonly documents: StoredDocument[] = [];
+  private readonly returns = new Map<string, MiraklReturn>();
 
   /** Add or replace an order on the fake marketplace. */
   putOrder(order: MiraklOrder, acceptedState = 'SHIPPING'): void {
@@ -63,6 +67,11 @@ export class MiraklFakeHttpClient implements IMiraklHttpClient {
 
   orderState(orderId: string): string | undefined {
     return this.orders.get(orderId)?.order.order_state;
+  }
+
+  /** Add or replace a return on the fake marketplace. */
+  putReturn(miraklReturn: MiraklReturn): void {
+    this.returns.set(miraklReturn.id ?? '', miraklReturn);
   }
 
   order(orderId: string): MiraklOrder | undefined {
@@ -83,11 +92,25 @@ export class MiraklFakeHttpClient implements IMiraklHttpClient {
     this.orders.clear();
     this.armedAcceptErrors.length = 0;
     this.documents.length = 0;
+    this.returns.clear();
   }
 
   get<T>(path: string, options?: MiraklRequestOptions): Promise<MiraklHttpResponse<T>> {
     const query = options?.queryParams ?? {};
     this.calls.push({ method: 'GET', path, query });
+    if (path === '/api/returns') {
+      const data = [...this.returns.values()].filter((candidate) => {
+        if (typeof query.return_id === 'string') return candidate.id === query.return_id;
+        const updated = Date.parse(candidate.last_updated ?? '');
+        const from = Date.parse(String(query.return_last_updated_from ?? ''));
+        const to = Date.parse(String(query.return_last_updated_to ?? ''));
+        return (Number.isNaN(from) || updated >= from) && (Number.isNaN(to) || updated <= to);
+      });
+      return Promise.resolve({
+        status: 200,
+        data: { data, next_page_token: null } as unknown as T,
+      });
+    }
     if (path === '/api/orders/documents') {
       const ids = String(query.order_ids ?? '').split(',');
       const docs = this.documents.filter((document) => ids.includes(document.order_id));
@@ -128,7 +151,9 @@ export class MiraklFakeHttpClient implements IMiraklHttpClient {
     switch (action) {
       case 'accept':
         if (stored.order.order_state !== 'WAITING_ACCEPTANCE') {
-          return Promise.reject(new MiraklApiException('invalid state', 400, 'ORDER_INVALID_STATE'));
+          return Promise.reject(
+            new MiraklApiException('invalid state', 400, 'ORDER_INVALID_STATE')
+          );
         }
         this.moveTo(stored, stored.acceptedState);
         break;
@@ -209,7 +234,10 @@ function matchesQuery(order: MiraklOrder, query: Readonly<Record<string, unknown
     }
   }
   const updatedAt = Date.parse(order.last_updated_date ?? '');
-  if (typeof query.start_update_date === 'string' && updatedAt < Date.parse(query.start_update_date)) {
+  if (
+    typeof query.start_update_date === 'string' &&
+    updatedAt < Date.parse(query.start_update_date)
+  ) {
     return false;
   }
   if (typeof query.end_update_date === 'string' && updatedAt > Date.parse(query.end_update_date)) {

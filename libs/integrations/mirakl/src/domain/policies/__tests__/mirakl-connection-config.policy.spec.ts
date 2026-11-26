@@ -8,6 +8,7 @@ import {
   isMiraklEnvironment,
   readMiraklShopId,
   readMiraklCarrierCodes,
+  readMiraklOfferDefaults,
   resolveMiraklOrderAcceptance,
   resolveMiraklBaseUrl,
 } from '../mirakl-connection-config.policy';
@@ -91,6 +92,27 @@ describe('readMiraklCarrierCodes', () => {
     'should refuse %p',
     (value) => {
       expect(readMiraklCarrierCodes(value).kind).toBe('invalid');
+    },
+  );
+});
+
+describe('readMiraklOfferDefaults', () => {
+  it('should read a lead time and a logistic class', () => {
+    expect(readMiraklOfferDefaults({ leadTimeToShip: 2, logisticClass: 1 })).toEqual({
+      kind: 'valid',
+      leadTimeToShip: 2,
+      logisticClass: '1',
+    });
+  });
+
+  it('should read absent values as absent', () => {
+    expect(readMiraklOfferDefaults(undefined)).toEqual({ kind: 'valid' });
+  });
+
+  it.each([[{ leadTimeToShip: 31 }], [{ leadTimeToShip: 1.5 }], [{ logisticClass: ' ' }], ['x']])(
+    'should refuse %p',
+    (value) => {
+      expect(readMiraklOfferDefaults(value).kind).toBe('invalid');
     },
   );
 });

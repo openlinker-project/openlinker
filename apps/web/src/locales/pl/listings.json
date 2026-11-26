@@ -406,6 +406,12 @@
         "title": "{destination} zwrócił wynik kategorii, którego ta wersja nie rozpoznaje."
       }
     },
+    "empik": {
+      "noCard": {
+        "detail": "Najpierw dodaj produkt w panelu sprzedawcy Empik; tworzenie kart z OpenLinker nie jest jeszcze dostępne.",
+        "title": "Empik nie ma karty produktu dla tego EAN."
+      }
+    },
     "erli": {
       "missingImage": {
         "detail": "Erli wymaga co najmniej jednego. Dodaj je w sekcji zdjęć.",
@@ -1478,6 +1484,26 @@
     "validation": {
       "priceInvalid": "Cena musi być liczbą dodatnią z maks. 2 miejscami po przecinku",
       "titleTooLong": "Tytuł może mieć maks. {max} znaków"
+    }
+  },
+  "empikBulkConfigSection": {
+    "leadTime": {
+      "description": "Liczba dni od zamówienia do wysyłki, którą {platform} pokazuje kupującym, od 0 do {max}.",
+      "invalid": "Podaj pełną liczbę dni od 0 do {max}.",
+      "label": "Czas wysyłki (dni)"
+    },
+    "logisticClass": {
+      "description": "Kod klasy logistycznej {platform}, od której zależą stawki dostawy, np. 1 dla drobnych produktów.",
+      "label": "Klasa logistyczna"
+    },
+    "note": {
+      "currency": "Ceny są wysyłane w PLN.",
+      "existingCards": "Oferty są tworzone na istniejących kartach produktu w {platform}, wyszukiwanych po EAN."
+    }
+  },
+  "empikOfferValidation": {
+    "blockers": {
+      "noCard": "brak karty w Empik"
     }
   },
   "erliBulkConfigSection": {

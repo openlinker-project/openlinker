@@ -90,6 +90,25 @@ export interface MiraklOrderLine {
   readonly taxes?: readonly MiraklTax[];
   readonly shipping_taxes?: readonly MiraklTax[];
   readonly product_medias?: readonly MiraklProductMedia[];
+  /** Refunds already made on this line (OR28, or by the operator). */
+  readonly refunds?: readonly MiraklOrderRefund[];
+}
+
+/** One refund on an order line, as OR11 returns it. */
+export interface MiraklOrderRefund {
+  readonly id?: string;
+  /** Product part of the refund. */
+  readonly amount?: number;
+  readonly shipping_amount?: number;
+  readonly currency_iso_code?: string;
+  readonly reason_code?: string;
+  readonly created_date?: string;
+  /** When the money was paid back; absent until it was. */
+  readonly transaction_date?: string;
+  /** `WAITING_REFUND_TAX_CONFIRMATION`, `WAITING_REFUND`, `WAITING_REFUND_PAYMENT` or `REFUNDED`. */
+  readonly refund_state?: string;
+  /** Deprecated twin of `refund_state`, read when that is absent. */
+  readonly state?: string;
 }
 
 export interface MiraklOrder {
