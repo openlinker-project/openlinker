@@ -2849,8 +2849,7 @@ export class OrderIngestionService implements IOrderIngestionService {
   private async resolveCustomerId(
     incoming: IncomingOrder,
     connectionId: string,
-    internalOrderId: string,
-    buyerDataRemoved = false
+    internalOrderId: string
   ): Promise<string | undefined> {
     if (incoming.customerExternalId) {
       if (incoming.customerEmail) {
@@ -2858,7 +2857,6 @@ export class OrderIngestionService implements IOrderIngestionService {
           externalBuyerId: incoming.customerExternalId,
           email: incoming.customerEmail,
           sourceConnectionId: connectionId,
-          buyerDataRemoved,
         });
         return resolution.internalCustomerId;
       }
@@ -2881,7 +2879,6 @@ export class OrderIngestionService implements IOrderIngestionService {
         externalBuyerId: incoming.customerEmail,
         email: incoming.customerEmail,
         sourceConnectionId: connectionId,
-        buyerDataRemoved,
       });
       return resolution.internalCustomerId;
     }

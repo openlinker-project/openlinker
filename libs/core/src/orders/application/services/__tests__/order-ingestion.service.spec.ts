@@ -2626,46 +2626,6 @@ describe('OrderIngestionService', () => {
       );
     });
 
-    it('should write no buyer data to the customer projections when re-importing a redacted order (#4178)', async () => {
-      orderSource.getOrder.mockResolvedValueOnce({
-        ...baseIncoming,
-        customerExternalId: 'buyer-ext-1',
-        customerEmail: 'buyer@example.com',
-      });
-      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
-      orderRecordService.getOrderRecord.mockResolvedValue({
-        sourceConnectionId: connectionId,
-        recordStatus: 'ready',
-        syncStatus: [],
-        lineExpansion: null,
-        buyerDataRedactedAt: new Date('2026-10-01T00:00:00Z'),
-      } as unknown as OrderRecord);
-
-      await service.syncOrderFromSource(connectionId, externalOrderId);
-
-      expect(customerIdentityResolver.resolveCustomerIdentity).toHaveBeenCalledWith(
-        expect.objectContaining({ externalBuyerId: 'buyer-ext-1', buyerDataRemoved: true })
-      );
-      expect(customerProjectionUpdater.updateProjectionsForOrder).not.toHaveBeenCalled();
-    });
-
-    it('should write the customer projections of an order seen for the first time', async () => {
-      orderSource.getOrder.mockResolvedValueOnce({
-        ...baseIncoming,
-        customerExternalId: 'buyer-ext-1',
-        customerEmail: 'buyer@example.com',
-      });
-      integrationsService.getCapabilityAdapter.mockResolvedValue(orderSource);
-      orderRecordService.getOrderRecord.mockResolvedValue(null);
-
-      await service.syncOrderFromSource(connectionId, externalOrderId);
-
-      expect(customerIdentityResolver.resolveCustomerIdentity).toHaveBeenCalledWith(
-        expect.objectContaining({ buyerDataRemoved: false })
-      );
-      expect(customerProjectionUpdater.updateProjectionsForOrder).toHaveBeenCalled();
-    });
-
     it('should fall back to identifierMapping when customerExternalId is present but email is absent', async () => {
       orderSource.getOrder.mockResolvedValueOnce({
         ...baseIncoming,
@@ -2698,7 +2658,6 @@ describe('OrderIngestionService', () => {
         externalBuyerId: 'erli-buyer@example.com',
         email: 'erli-buyer@example.com',
         sourceConnectionId: connectionId,
-        buyerDataRemoved: false,
       });
       // The Customer mapping is NOT created directly — resolution goes through
       // the identity resolver, which owns the Customer-mapping write.
