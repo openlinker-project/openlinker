@@ -106,7 +106,7 @@ function makeOrder(region, market, kind, index) {
   return { ...base, ...k };
 }
 
-function makeListing(market, sku, asin, fba = false, qty = 7) {
+function makeListing(market, sku, asin, fba = false, qty = 7, ean = '5901234123457') {
   return {
     sku,
     summaries: [
@@ -114,7 +114,7 @@ function makeListing(market, sku, asin, fba = false, qty = 7) {
     ],
     attributes: {
       item_name: [{ value: `Listing ${sku}`, marketplace_id: market.id }],
-      externally_assigned_product_identifier: [{ type: 'ean', value: '5901234123457', marketplace_id: market.id }],
+      ...(ean ? { externally_assigned_product_identifier: [{ type: 'ean', value: ean, marketplace_id: market.id }] } : {}),
     },
     offers: [{ marketplaceId: market.id, offerType: 'B2C', price: money('39.90', market.currency) }],
     fulfillmentAvailability: [{ fulfillmentChannelCode: fba ? 'AMAZON_EU' : 'DEFAULT', quantity: qty }],
@@ -145,6 +145,8 @@ function freshFixtures() {
         fx.listings[region][`${m.id}:${sku}`] = makeListing(m, sku, `B0FAKE0000${n}`);
       });
       fx.listings[region][`${m.id}:E2E-${m.country}-DEL`] = makeListing(m, `E2E-${m.country}-DEL`, 'B0FAKE0000D');
+      fx.listings[region][`${m.id}:E2E-${m.country}-NEW`] = makeListing(m, `E2E-${m.country}-NEW`, 'B0FAKE0000N', false, 3, '5900000000000');
+      fx.listings[region][`${m.id}:E2E-${m.country}-NOEAN`] = makeListing(m, `E2E-${m.country}-NOEAN`, 'B0FAKE0000E', false, 3, null);
       const fbaSku = `E2E-${m.country}-FBA`;
       fx.listings[region][`${m.id}:${fbaSku}`] = makeListing(m, fbaSku, 'B0FAKE0000F', true, 0);
       fx.fbaStock[region][fbaSku] = { fulfillableQuantity: 12, reservedQuantity: { totalReservedQuantity: 3 } };
@@ -427,7 +429,7 @@ async function spapi(req, res, url, port) {
   // --- Sellers ---
   if (p === '/sellers/v1/marketplaceParticipations') {
     return json(res, 200, {
-      payload: markets.map((m) => ({ marketplace: { id: m.id, countryCode: m.country, name: m.name, defaultCurrencyCode: m.currency, defaultLanguageCode: 'en_US', domainName: m.name.replace('Amazon.', 'www.amazon.') }, storeName: `E2E store ${m.country}`, participation: { isParticipating: true, hasSuspendedListings: false } })),
+      payload: markets.filter((m) => m.id !== fx.modes.hideMarketplace).map((m) => ({ marketplace: { id: m.id, countryCode: m.country, name: m.name, defaultCurrencyCode: m.currency, defaultLanguageCode: 'en_US', domainName: m.name.replace('Amazon.', 'www.amazon.') }, storeName: `E2E store ${m.country}`, participation: { isParticipating: true, hasSuspendedListings: false } })),
     });
   }
 

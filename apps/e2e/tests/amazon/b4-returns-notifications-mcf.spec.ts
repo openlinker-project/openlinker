@@ -92,6 +92,23 @@ test('P103 simulated: the returns report is requested, built over several ticks,
   expect(states[0]).toBeLessThanOrEqual(states.at(-1)!);
 });
 
+test('P104 the return reader and cursor specs pass', async ({ evidence }) => {
+  test.setTimeout(900_000);
+  const { runAuto } = await import('../../src/support/amazon-auto');
+  const plugin = await runAuto('plugin-amazon', '.', ['pnpm --filter @openlinker/integrations-amazon test'], 'docker');
+  await evidence('amazon-return.mapper.spec.ts, amazon-return-feed-cursor.policy.spec.ts (inside the full plugin run)', plugin);
+  expect(plugin.ok, plugin.tail).toBe(true);
+});
+
+test('P105 simulated: the returns status sync re-reads open returns from the cached report', async ({ ol, region, evidence }) => {
+  const { connId, ret } = await ensureReturn(ol, region);
+  const job = await runJob(ol, 'marketplace.returns.statusSync', connId, { limit: 50, cursorKey: 'amazon.returns.scanOffset', lookbackDays: 40 });
+  const after = (await returnsOf(ol, connId)).find((r) => (r.id ?? r.returnId) === (ret.id ?? ret.returnId));
+  await evidence('marketplace.returns.statusSync (report cache SIMULATED)', { job: [job.status, job.outcome, job.lastError], returnStillThere: Boolean(after) });
+  expect(job.status).toBe('succeeded');
+  expect(after).toBeTruthy();
+});
+
 test('P106 an ingested return shows the raw status, SKU and reason; an unmatched one is an orphan', async ({ page, ol, region }) => {
   const { connId, ret } = await ensureReturn(ol, region);
   await page.goto(`/returns/${ret.id ?? ret.returnId}`);

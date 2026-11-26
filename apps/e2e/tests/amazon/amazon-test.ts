@@ -5,7 +5,7 @@
  *
  * @module tests/amazon
  */
-import { existsSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test as base, expect } from '../../src/fixtures/test';
 import {
@@ -55,6 +55,17 @@ export class OlApi {
   }
 }
 
+/** Every point a test title names: `P113 and P114`, `P121-P124`, `P061b`. */
+export function pointsOf(title: string): number[] {
+  const out: number[] = [];
+  for (const m of title.matchAll(/P(\d{3})(?:b)?(?:-P(\d{3}))?/g)) {
+    const from = Number(m[1]);
+    const to = m[2] ? Number(m[2]) : from;
+    for (let n = from; n <= to; n += 1) if (!out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
 interface Fixtures {
   fake: AmazonFake;
   region: RegionFixture;
@@ -77,9 +88,8 @@ export const test = base.extend<Fixtures>({
     await use(await new OlApi(env.apiUrl, env.adminUser, env.adminPass).login());
   },
   evidence: async ({ page }, use, info) => {
-    const m = /^P(\d{3})/.exec(info.title);
     await use(async (title, observed) => {
-      await evidenceShot(page, regionOf(info).region, Number(m?.[1] ?? 0), title, observed);
+      await evidenceShot(page, regionOf(info).region, pointsOf(info.title)[0] ?? 0, title, observed);
     });
   },
   tidyMasters: [
@@ -94,28 +104,32 @@ export const test = base.extend<Fixtures>({
   ],
   pointRecorder: [
     async ({ page }, use, info) => {
-      const m = /^P(\d{3})/.exec(info.title);
-      if (m) rmSync(resolve(RUN_DIR, regionOf(info).region, `${m[1]}.png`), { force: true });
+      const ids = pointsOf(info.title);
+      for (const n of ids) rmSync(resolve(RUN_DIR, regionOf(info).region, `${String(n).padStart(3, '0')}.png`), { force: true });
       await use();
-      if (!m) return;
-      const point = Number(m[1]);
+      if (ids.length === 0) return;
       const region = regionOf(info).region;
-      const file = resolve(RUN_DIR, region, `${m[1]}.png`);
+      const first = String(ids[0]).padStart(3, '0');
+      const file = resolve(RUN_DIR, region, `${first}.png`);
       let screenshot: string | null = existsSync(file) && info.status === 'passed' ? file : null;
       if (screenshot === null) {
         try {
-          screenshot = await shot(page, region, m[1]!);
+          screenshot = await shot(page, region, first);
         } catch {
           screenshot = null;
         }
       }
-      recordResult(
-        region,
-        point,
-        info.status === 'passed' ? 'pass' : 'fail',
-        info.status === 'passed' ? info.title : (info.error?.message ?? 'failed').replace(/\u001b\[[0-9;]*m/g, '').split('\n').filter((l) => l.trim() !== '').slice(0, 5).join(' | ').slice(0, 420),
-        screenshot,
-      );
+      for (const n of ids.slice(1)) {
+        const target = resolve(RUN_DIR, region, `${String(n).padStart(3, '0')}.png`);
+        if (screenshot !== null) copyFileSync(screenshot, target);
+      }
+      const note =
+        info.status === 'passed'
+          ? info.title
+          : (info.error?.message ?? 'failed').replace(/\u001b\[[0-9;]*m/g, '').split('\n').filter((l) => l.trim() !== '').slice(0, 5).join(' | ').slice(0, 420);
+      for (const n of ids) {
+        recordResult(region, n, info.status === 'passed' ? 'pass' : 'fail', note, screenshot === null ? null : resolve(RUN_DIR, region, `${String(n).padStart(3, '0')}.png`));
+      }
     },
     { auto: true },
   ],

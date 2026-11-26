@@ -35,7 +35,7 @@ test('P120 the six tasks are off unless their variables are set (spec)', async (
 });
 
 test.describe('scheduler ticks (every task ON on this stack, slow ones every minute)', () => {
-  test('P121-P124 each task enqueues its job with the documented payload for the right connections', async ({ ol, region, evidence }) => {
+  test('P071 P121-P124 each task enqueues its job with the documented payload for the right connections', async ({ ol, region, evidence }) => {
     test.setTimeout(480_000);
     const start = Date.now();
     const sales = await createConn(ol, { name: `sch sales ${region.region} ${STAMP}`, region, capabilities: ['OrderSource', 'OfferManager'], config: { sellerId: 'A2EXAMPLE12345' }, orderSyncStart: { mode: 'now' } });
