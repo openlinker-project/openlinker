@@ -295,7 +295,9 @@ async function control(req, res, url, port) {
     return json(res, 200, { enabled: contracts !== null, violations });
   }
   if (url.pathname === '/__reset' && req.method === 'POST') {
-    fx = freshFixtures();
+    // Reports, feeds, documents and MCF orders survive a reset: OpenLinker keeps their ids in cursors.
+    const keep = { reports: fx.reports, feeds: fx.feeds, docs: fx.docs, mcf: fx.mcf, seq: fx.seq, sqs: [] };
+    fx = Object.assign(freshFixtures(), keep);
     violations = [];
     calls = [];
     switches = [];

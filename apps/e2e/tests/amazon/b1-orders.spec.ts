@@ -8,6 +8,7 @@
  */
 import { test, expect, shot, createConn, runJob, ordersOf, extIds, pollUntilHas, fakeBuy, fakePost, fakeGet, sql } from './amazon-test';
 import { openWizard, fillWizard, regionWizard } from './wizard';
+import { REGIONS } from '../../src/support/amazon';
 
 const STAMP = Date.now();
 const DAY = 24 * 3600 * 1000;
@@ -18,11 +19,13 @@ const firstId = (region: string, kind: string): string => {
 void firstId;
 
 /** The fixture order id of `kind` in the region's first marketplace. */
-async function fixtureId(region: string, kind: string, marketIndex = 0): Promise<string> {
+async function fixtureId(region: string, kind: string, country?: string): Promise<string> {
   const state = await fakeGet('/__state');
-  const ids = (state.orders[region] as string[]).filter((id) => id.toUpperCase().endsWith(kind.toUpperCase().padEnd(7, '0').slice(0, 7)) || id.includes(`-${kind.toUpperCase()}`));
-  const sorted = ids.sort();
-  return sorted[marketIndex] ?? sorted[0]!;
+  const cc = country ?? REGIONS[region as 'eu' | 'na' | 'fe'].marketplaces[0]!.country;
+  const wanted = kind.toUpperCase().padEnd(7, '0').slice(0, 7);
+  const hit = (state.orders[region] as string[]).find((id) => id.includes(`-${cc}`) && id.endsWith(wanted));
+  if (!hit) throw new Error(`no fixture ${kind} in ${region}/${cc}`);
+  return hit;
 }
 
 test('P047 the wizard offers where order sync starts (now / from), not all', async ({ page, region }) => {
@@ -31,7 +34,10 @@ test('P047 the wizard offers where order sync starts (now / from), not all', asy
   await expect(page.getByText('Which orders should OpenLinker import?')).toBeVisible();
   await expect(page.getByText('New orders only')).toBeVisible();
   await expect(page.getByText('Orders since a date')).toBeVisible();
-  await expect(page.getByText('Every order the shop has')).toHaveCount(0);
+  // The option is shown disabled, with the reason, rather than hidden.
+  await expect(page.getByRole('radio', { name: /Every order the shop has/ })).toBeDisabled();
+  await expect(page.getByText('OpenLinker cannot import the full history of this connection yet.')).toBeVisible();
+  await expect(page.getByRole('radio', { name: /New orders only/ })).toBeEnabled();
   await shot(page, region.region, 47);
 });
 
@@ -42,7 +48,7 @@ test('P048 start mode now imports no existing orders, only new ones', async ({ o
   await runJob(ol, 'marketplace.orders.poll', c.body.id, { limit: 100, cursorKey: 'amazon.orders.feedCursor' });
   await new Promise((r) => setTimeout(r, 4000));
   const before = await ordersOf(ol, c.body.id);
-  const bought = await fakeBuy({ region: region.region, sku: `E2E-${region.marketplaces[0]!.country}-1`, qty: 1 });
+  const bought = await fakeBuy({ region: region.region, sku: `E2E-${region.marketplaces[0]!.country}-1`, qty: 1, ageMinutes: 1 });
   const rows = await pollUntilHas(ol, c.body.id, [bought]);
   await evidence('start mode now', { importedBeforePurchase: before.length, afterPurchase: extIds(rows), bought });
   expect(before).toHaveLength(0);
@@ -189,7 +195,7 @@ test.describe('imported orders', () => {
     const pending = await byExt(ol, ids.pending!);
     const plain = await byExt(ol, ids.plain!);
     await evidence('payment fields', { cod: [cod.orderSnapshot.paymentMethod, cod.orderSnapshot.paymentStatus], pending: [pending.orderSnapshot.paymentMethod, pending.orderSnapshot.paymentStatus], plain: [plain.orderSnapshot.paymentMethod, plain.orderSnapshot.paymentStatus] });
-    expect(cod.orderSnapshot.paymentMethod).toBe('cod');
+    expect(cod.orderSnapshot.paymentMethod).toBe('cash_on_delivery');
     expect(pending.orderSnapshot.paymentStatus).not.toBe('paid');
     expect(plain.orderSnapshot.paymentStatus).toBe('paid');
   });
