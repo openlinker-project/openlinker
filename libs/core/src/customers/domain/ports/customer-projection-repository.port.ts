@@ -100,6 +100,21 @@ export interface CustomerProjectionRepositoryPort {
   upsert(projection: CustomerProjection): Promise<CustomerProjection>;
 
   /**
+   * Remove the personal data of customers last seen through `sourceConnectionId`
+   * before `lastSeenBefore` (#4178, a source's buyer-data retention period):
+   * clears the email and names, and the street, city and postcode of their
+   * address projections. Hashes and countries stay, so identity resolution and
+   * address reuse keep working. At most `limit` customers per call, oldest
+   * first; returns how many were cleared. A customer seen again later is
+   * cleared again once that sighting is past the period too.
+   */
+  redactPersonalDataLastSeenBefore(input: {
+    readonly sourceConnectionId: string;
+    readonly lastSeenBefore: Date;
+    readonly limit: number;
+  }): Promise<number>;
+
+  /**
    * Find all address projections for a customer
    */
   findAddressesByCustomerId(internalCustomerId: string): Promise<CustomerAddressProjection[]>;

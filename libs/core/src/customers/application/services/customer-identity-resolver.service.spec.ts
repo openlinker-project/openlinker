@@ -77,12 +77,14 @@ describe('CustomerIdentityResolverService', () => {
       upsertProjection: jest.fn(),
       findDestinationAddressMapping: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
+      redactPersonalDataLastSeenBefore: jest.fn(),
     } as unknown as jest.Mocked<CustomerProjectionRepositoryPort>;
 
     customerProjectionService = {
       upsertProjection: jest.fn(),
       upsertAddressProjection: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
+      redactPersonalDataLastSeenBefore: jest.fn(),
     } as unknown as jest.Mocked<ICustomerProjectionService>;
 
     connectionPort = {

@@ -758,6 +758,12 @@ export type { OrderExportColumnId, OrderExportCellValue } from './domain/order-e
 export { buildOrderExportCsv } from './domain/order-export-csv';
 // `searchText` re-derivation under the current PII mode (#3507 G03-14).
 export type { IOrderSearchTextReindexService } from './application/services/order-search-text-reindex.service.interface';
+export type { IOrderBuyerDataRetentionService } from './application/services/order-buyer-data-retention.service.interface';
+export type {
+  OrderBuyerDataRetentionRunResult,
+  OrderBuyerDataRetentionConnectionResult,
+} from './domain/types/order-buyer-data-retention.types';
+export { redactOrderSnapshotBuyerData } from './domain/order-buyer-data-redaction';
 export type {
   OrderSearchTextReindexRow,
   OrderSearchTextRewrite,

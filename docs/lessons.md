@@ -3075,3 +3075,15 @@ repositories.
 **Applies to**: any surface built from a `docs/plans/mockups/*.html` design; portalled UI (Radix dialog, popover, dropdown) most of all.
 
 **Source**: #4154
+
+## Prove a reference against something that already exists when the reference is written
+
+**Context**: the release center guard required each curated highlight hash to be listed in `CHANGELOG.md`, a file the release-please PR writes only when the release is cut.
+
+**Problem**: the check could be satisfied only after the release PR existed, so every release PR started red and needed a manual commit on the bot's branch, which the next release-please run could overwrite. A check whose evidence appears later than the thing it guards turns into a standing manual step.
+
+**Rule**: pick the evidence that exists at authoring time (here: the commit is in git history) and make CI able to see it (full clone, `fetch-depth: 0`). When a guard must read an artifact a later automation writes, ask whether the guarded value can be checked against the source of that artifact instead.
+
+**Applies to**: `scripts/check-release-center-catalog.mjs`, `release-highlights.ts`, any invariant that reads generated files.
+
+**Source**: #4262, ADR-086 amendment

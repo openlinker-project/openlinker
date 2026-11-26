@@ -287,8 +287,9 @@ export interface AdapterMetadata {
    * whole config from non-admins, which also hid facts the UI needs to tell the
    * truth - KSeF's QR code points at a different portal per environment, so an
    * operator was shown a TEST-portal code for a production invoice. Only keys
-   * an adapter declares here, and only scalar values, are exposed as
-   * `publicConfig`; never a secret, URL or identifier. Absent means none.
+   * an adapter declares here, and only scalar values or a list of strings (an
+   * id list), are exposed as `publicConfig`; never a secret or a URL. Absent
+   * means none.
    */
   publicConfigKeys?: string[];
 
@@ -316,6 +317,21 @@ export interface AdapterMetadata {
    * unset and falls through to the sane, capability-driven default.
    */
   defaultEnabledCapabilities?: string[];
+
+  /**
+   * How long OpenLinker may keep buyer personal data on orders from this
+   * source, in days (#4178). Absent means the platform imposes no limit, which
+   * is every source except those whose terms require deletion (Amazon's Data
+   * Protection Policy: 30 days after delivery).
+   *
+   * Counted from the order's ship-by deadline, or its placement when it has
+   * none, both of which precede delivery, so deleting at that point is never
+   * later than the platform's own limit. After that the buyer's addresses,
+   * email, note and tax id are removed from the order
+   * (`IOrderBuyerDataRetentionService`), and a later re-import of the order
+   * stores none of them again. At least one day; a shorter value is ignored.
+   */
+  buyerDataRetentionDays?: number;
 
   /**
    * Config keys that must be unique across every ACTIVE connection sharing

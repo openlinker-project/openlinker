@@ -105,4 +105,12 @@ export class CustomerProjectionService implements ICustomerProjectionService {
     // Destination address mapping doesn't contain PII, so no filtering needed
     return this.repository.upsertDestinationAddressMapping(mapping);
   }
+
+  async redactPersonalDataLastSeenBefore(input: {
+    readonly sourceConnectionId: string;
+    readonly lastSeenBefore: Date;
+    readonly limit: number;
+  }): Promise<number> {
+    return this.repository.redactPersonalDataLastSeenBefore(input);
+  }
 }

@@ -3864,6 +3864,12 @@ textarea,
   color: var(--status-success-strong);
 }
 
+/* A description inside an inline row (a checkbox or radio label), where a
+   block `<p>` is not allowed: shown on its own line under the label text. */
+.form-field__description--block {
+  display: block;
+}
+
 .form-field__error {
   margin: 0;
   color: var(--status-error-strong);
@@ -42696,6 +42702,48 @@ button.followers-count:focus-visible {
 /* a product name that opens the product peek (#4286) */
 .order-line-item__name--link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent-primary); text-align: left; cursor: pointer; }
 .order-line-item__name--link:hover { text-decoration: underline; }
+
+/* ── Amazon tax code rates (#4182) ── */
+.amazon-tax-codes {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.amazon-tax-codes > legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+
+.amazon-tax-codes__row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.amazon-tax-codes__rate {
+  max-width: 6rem;
+}
+
+/* ── Amazon connection checkboxes (#4184) ── */
+.amazon-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.amazon-checkbox-row input {
+  margin-top: 0.2em;
+  flex: none;
+}
+
+.amazon-checkbox-row__description {
+  display: block;
+  margin-top: var(--space-1);
+}
 
 /* ── Order sync start (#4228) ───────────────────────────────────────────── */
 .order-sync-start {

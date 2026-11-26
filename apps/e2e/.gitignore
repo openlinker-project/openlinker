@@ -11,3 +11,8 @@
 playwright-report/
 test-results/
 blob-report/
+
+# Amazon E2E scratch (screenshots, results.jsonl, cached auto runs)
+local-e2e-runs/
+test-results/
+playwright-report/

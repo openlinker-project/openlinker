@@ -87,6 +87,11 @@ jobs:
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check-release-center-catalog.mjs proves each release highlight hash
+          # with `git cat-file`, and the hash may be any commit on main, so a
+          # one-commit clone would report every older hash as missing.
+          fetch-depth: 0
       # actions/checkout@v4 shallow-fetches only the triggering ref, so
       # `refs/remotes/origin/main` is absent on pull_request builds. The
       # migration-ordering invariant (#1013) in check-migration-timestamps.mjs
@@ -106,7 +111,10 @@ jobs:
       - name: Fetch origin/main (baseline for migration-ordering + ADR-number invariants)
         run: |
           if command -v git >/dev/null 2>&1; then
-            git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+            # No --depth: this checkout is already full (fetch-depth: 0 above), and a
+            # depth-1 fetch would re-shallow it at main's tip, hiding the older commits
+            # the release highlight check looks up.
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           else
             echo "git not available on this runner — migration-ordering guard will skip (#1020/#662)"
           fi

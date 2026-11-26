@@ -149,6 +149,48 @@ export class CustomerProjectionRepository implements CustomerProjectionRepositor
     return this.toDomainCustomer(saved);
   }
 
+  /**
+   * See the port. One statement clears both tables, so a customer is never
+   * left with names removed but its addresses kept; the CTE picks the batch.
+   */
+  async redactPersonalDataLastSeenBefore(input: {
+    readonly sourceConnectionId: string;
+    readonly lastSeenBefore: Date;
+    readonly limit: number;
+  }): Promise<number> {
+    const rows: unknown = await this.customerRepository.query(
+      `WITH batch AS (
+         SELECT "internalCustomerId" FROM customer_projections
+         WHERE "lastSourceConnectionId" = $1
+           AND "lastSeenAt" < $2
+           AND ("normalizedEmail" IS NOT NULL OR "firstName" IS NOT NULL OR "lastName" IS NOT NULL
+                OR EXISTS (
+                  SELECT 1 FROM customer_address_projections a
+                  WHERE a."internalCustomerId" = customer_projections."internalCustomerId"
+                    AND (a.address1 IS NOT NULL OR a.address2 IS NOT NULL OR a.city IS NOT NULL OR a.postcode IS NOT NULL)
+                ))
+         ORDER BY "lastSeenAt" ASC
+         LIMIT $3
+       ),
+       addresses AS (
+         UPDATE customer_address_projections a
+         SET address1 = NULL, address2 = NULL, city = NULL, postcode = NULL
+         FROM batch WHERE a."internalCustomerId" = batch."internalCustomerId"
+         RETURNING a."internalCustomerId"
+       )
+       UPDATE customer_projections c
+       SET "normalizedEmail" = NULL, "firstName" = NULL, "lastName" = NULL
+       FROM batch WHERE c."internalCustomerId" = batch."internalCustomerId"
+       RETURNING c."internalCustomerId"`,
+      [input.sourceConnectionId, input.lastSeenBefore, input.limit],
+    );
+    // For an UPDATE ... RETURNING, TypeORM's raw `query()` answers `[rows, affectedCount]`
+    // rather than the rows, so counting the outer array reads 2 for any batch (and
+    // 2 for an empty one, which would keep the pass looping until its cap).
+    const returned = Array.isArray(rows) && Array.isArray(rows[0]) ? rows[0] : rows;
+    return Array.isArray(returned) ? returned.length : 0;
+  }
+
   async findAddressesByCustomerId(
     internalCustomerId: string
   ): Promise<CustomerAddressProjection[]> {

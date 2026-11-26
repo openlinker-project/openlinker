@@ -18,6 +18,10 @@ export const JobTypeValues = [
   'marketplace.orders.poll',
   'marketplace.orders.import', // One page of a date-window order import, newest-first history or a manual range (#4228).
   'marketplace.order.sync',
+  // Pull-based inbound notifications (#4179): drains a queue the operator owns
+  // (Amazon SQS) through the same routing a webhook takes. The routed child
+  // jobs re-read the entity; this job carries no data of its own.
+  'marketplace.notifications.drain',
   // Per-order reporting-currency stamp: bounded retry after a degraded inline
   // attempt, plus the hourly reconcile that survives a dead retry job (#2125).
   // Named under `marketplace.order.*` rather than a new `order.*` namespace so

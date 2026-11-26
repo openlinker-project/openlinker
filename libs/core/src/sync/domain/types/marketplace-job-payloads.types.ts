@@ -17,6 +17,15 @@ export interface MarketplaceOrdersPollPayloadV1 {
 }
 
 /**
+ * `marketplace.notifications.drain` (#4179): read up to `maxMessages` from the
+ * connection's inbound queue and route each notification.
+ */
+export interface MarketplaceNotificationsDrainPayloadV1 {
+  schemaVersion: 1;
+  maxMessages: number;
+}
+
+/**
  * One page of an order import over a date window (#4228): the history of a new
  * connection read newest-first, or a range an operator asked for by hand.
  *

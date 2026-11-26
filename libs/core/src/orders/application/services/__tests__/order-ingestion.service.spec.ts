@@ -2284,6 +2284,27 @@ describe('OrderIngestionService', () => {
       expect(orderItemRefResolver.tryResolve).not.toHaveBeenCalled();
     });
 
+    it('should not resolve the buyer again for an order whose buyer data is already gone (#4178)', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        isBuyerDataGone: true,
+        customerId: 'ol_customer_kept',
+        syncStatus: [],
+      } as unknown as OrderRecord);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(customerIdentityResolver.resolveCustomerIdentity).not.toHaveBeenCalled();
+      expect(orderRecordService.persistIncomingSnapshot).toHaveBeenCalledWith(
+        expect.anything(),
+        'ol_order_echo',
+        'ol_customer_kept',
+        connectionId,
+        null
+      );
+    });
+
     it('should skip an order the source says OpenLinker created, before any id is minted (echo race)', async () => {
       orderSource.getOrder.mockResolvedValue({ ...baseIncoming, createdFromInternalOrderId: 'ol_order_original' });
 

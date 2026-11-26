@@ -12,8 +12,8 @@
  * spec mocks. Only the `OrderSource` adapter is stubbed, through the same public
  * registry seam real plugins use, so no marketplace credentials are involved.
  *
- * Allegro and Erli are both exercised because the mechanism is marketplace
- * neutral: both emit `productRef: { type: 'offer', externalId }`.
+ * Allegro, Erli and Amazon are all exercised because the mechanism is marketplace
+ * neutral (Amazon keys a line by its seller SKU as an offer ref, #4262): all emit `productRef: { type: 'offer', externalId }`.
  *
  * @module apps/api/test/integration/orders
  */
@@ -39,6 +39,7 @@ import { createTestConnection } from '../helpers/test-connection.helper';
 const MARKETPLACES = [
   { platformType: 'allegro', adapterKey: 'allegro.test.catalogue-less.v1' },
   { platformType: 'erli', adapterKey: 'erli.test.catalogue-less.v1' },
+  { platformType: 'amazon', adapterKey: 'amazon.test.catalogue-less.v1' },
 ] as const;
 
 function makeIncoming(externalOrderId: string): IncomingOrder {

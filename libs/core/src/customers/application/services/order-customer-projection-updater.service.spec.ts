@@ -42,6 +42,7 @@ describe('OrderCustomerProjectionUpdaterService', () => {
       upsertProjection: jest.fn(),
       upsertAddressProjection: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
+      redactPersonalDataLastSeenBefore: jest.fn(),
     } as unknown as jest.Mocked<ICustomerProjectionService>;
 
     const module: TestingModule = await Test.createTestingModule({

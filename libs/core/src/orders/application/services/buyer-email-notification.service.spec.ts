@@ -64,6 +64,7 @@ describe('BuyerEmailNotificationService', () => {
       settleClaim: jest.fn().mockResolvedValue(undefined),
       releaseClaim: jest.fn().mockResolvedValue(undefined),
       listByOrder: jest.fn(),
+      clearRecipientsForOrder: jest.fn(),
     };
     connections = { get: jest.fn() };
     mailer = { sendEmail: jest.fn() };
@@ -175,6 +176,7 @@ describe('BuyerEmailNotificationService.sendTest (#3555)', () => {
       settleClaim: jest.fn(),
       releaseClaim: jest.fn(),
       listByOrder: jest.fn(),
+      clearRecipientsForOrder: jest.fn(),
     };
     service = new BuyerEmailNotificationService(
       repository,

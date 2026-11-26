@@ -23,8 +23,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { normalizeCategorySearchText } from '../../../domain/destination-category-search';
-import { TaxonomyOwnerValues } from '../../../domain/types/taxonomy-owner.types';
-import type { TaxonomyOwner } from '../../../domain/types/taxonomy-owner.types';
+import { isTaxonomyOwner, type TaxonomyOwner } from '../../../domain/types/taxonomy-owner.types';
 import { DestinationCategory } from '../../../domain/entities/destination-category.entity';
 import type { DestinationCategoryRepositoryPort } from '../../../domain/ports/destination-category-repository.port';
 import type {
@@ -338,14 +337,12 @@ export class DestinationCategoryRepository implements DestinationCategoryReposit
 
   /**
    * Narrow the stored owner instead of casting it: if a value is ever removed
-   * from `TaxonomyOwnerValues` while rows survive, an unchecked cast would leak
-   * an invalid `TaxonomyOwner` into the domain. Unknown values read as `null`
+   * from `TaxonomyOwnerValues` (or the Amazon pattern) while rows survive, an
+   * unchecked cast would leak an invalid `TaxonomyOwner` into the domain. Unknown values read as `null`
    * (the row is orphaned, not silently mistyped).
    */
   private toTaxonomyOwner(value: string | null): TaxonomyOwner | null {
-    return value !== null && (TaxonomyOwnerValues as readonly string[]).includes(value)
-      ? (value as TaxonomyOwner)
-      : null;
+    return value !== null && isTaxonomyOwner(value) ? value : null;
   }
 
   private toDomain(row: CategoryRow): DestinationCategory {

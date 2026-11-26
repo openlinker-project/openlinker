@@ -505,6 +505,22 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
+    // Amazon (#4262, layer 1: fake SP-API). One project per SP-API region; the
+    // specs read the region from the project name. MUTATING (creates Amazon
+    // connections, enqueues jobs against the fake), `retries: 0`, one worker.
+    // Needs the isolated stack in `amazon-stack/` and `E2E_DATABASE_URL`.
+    {
+      name: 'amazon-auth',
+      testMatch: /amazon\/amazon-auth\.setup\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    ...(['eu', 'na', 'fe'] as const).map((region) => ({
+      name: `amazon-${region}`,
+      testMatch: /amazon\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['amazon-auth'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    })),
     {
       // G10 batched sales-document issuing (#3585, mockup M15). Mockup
       // baselines read the committed file; the live-state spec stubs the

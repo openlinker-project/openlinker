@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (19 realtime / 39 bulk / 5 fiscal / 7 fan-out across 70 job types -
+ * table (19 realtime / 39 bulk / 5 fiscal / 8 fan-out across 71 job types -
  * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
  * Subiekt connection's own reachability on a cron, nobody is waiting on any
  * one tick of it, and a late check costs nothing beyond a delayed log line;
@@ -167,7 +167,9 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // nobody waits on, which must never take a `realtime` slot from a buyer's order.
     expect(registry.getJobTypesByLane('bulk')).toHaveLength(40);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
-    expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
+    // #4179's `marketplace.notifications.drain` is the eighth: like the orders
+    // poll it shortens, one cron-paced read that enqueues `realtime` children.
+    expect(registry.getJobTypesByLane('fan-out')).toHaveLength(8);
   });
 
   it('should lane the routing reaper bulk and its re-route child realtime (#2731)', () => {
@@ -252,6 +254,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(registry.getLane('marketplace.sourceFulfillment.statusSync')).toBe('bulk');
     // Enumerators are fan-out.
     expect(registry.getLane('marketplace.orders.poll')).toBe('fan-out');
+    expect(registry.getLane('marketplace.notifications.drain')).toBe('fan-out');
     // #2330 returns: the lanes mirror the order path they were modelled on.
     // Discovery fans out; the per-return child is what a buyer waits on; the
     // lifecycle re-read is a paced sweep whose lateness costs nobody a request.

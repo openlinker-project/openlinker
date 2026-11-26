@@ -18,7 +18,15 @@
  *      the check is "the value is declared in source", not "always on screen".
  *   5. Every minor from HIGHLIGHTS_REQUIRED_FROM up to the package minor, and
  *      every minor that introduces a step, has a highlights list, and every
- *      listed commit hash exists in CHANGELOG.md.
+ *      listed commit hash (7 or more hex characters) is a commit in this
+ *      repository's git history. The proof is the history, not CHANGELOG.md:
+ *      a release's changelog section is written by the release-please PR, so
+ *      requiring the hash there made every release PR start red and need a
+ *      hand-made commit on the bot's branch. The changelog is still what the
+ *      dialog reads at runtime, and a hash it does not list simply shows
+ *      nothing (the dialog falls back to the release's own entries).
+ *      A runner with no git (a tarball checkout) skips only this proof, with a
+ *      warning; `--release` refuses to run without git.
  *   6. CHANGELOG.md has a heading for the package.json version.
  *   7. Every `to: '/path'` a notification action points at (a file that publishes a notification or
  *      registers a notification rule) matches a route declared in the router, so a bell link can
@@ -30,6 +38,7 @@
  * Run with `--self-check` to exercise the pure helpers on synthetic input.
  */
 
+import { execFileSync } from 'node:child_process';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -128,6 +137,37 @@ export function linkMatchesRoute(path, routes) {
   return false;
 }
 
+const COMMIT_HASH = /^[0-9a-f]{7,40}$/;
+
+/**
+ * Whether `hash` names a commit in this repository's history. No shell: the
+ * hash goes to git as one argument, and only a hex string reaches it. A shallow
+ * clone cannot see older commits, so CI must check out with full history.
+ */
+export function gitCommitExists(hash) {
+  if (!COMMIT_HASH.test(hash)) return false;
+  try {
+    execFileSync('git', ['cat-file', '-e', `${hash}^{commit}`], { cwd: root, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether this checkout has a git repository to ask. A runner without a git
+ * binary checks out a tarball (the Lint job's self-hosted runner does), so the
+ * history proof cannot run there; `main` decides whether that is a skip or a failure.
+ */
+export function gitHistoryAvailable() {
+  try {
+    execFileSync('git', ['rev-parse', '--git-dir'], { cwd: root, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Pure core of the check. Returns a list of error strings. */
 export function validate({
   entries,
@@ -136,6 +176,7 @@ export function validate({
   routes,
   tourTargets,
   changelog,
+  commitExists,
   notificationLinks = [],
   strict = false,
   }) {
@@ -201,8 +242,8 @@ export function validate({
   }
   for (const [minor, hashes] of Object.entries(highlights.map)) {
     for (const hash of hashes) {
-      if (hash.length < 7 || !changelog.includes(`/commit/${hash}`)) {
-        errors.push(`highlights ${minor}: commit "${hash}" is not in CHANGELOG.md`);
+      if (hash.length < 7 || !commitExists(hash)) {
+        errors.push(`highlights ${minor}: commit "${hash}" is not a commit in this repository's history`);
       }
     }
   }
@@ -265,6 +306,7 @@ async function collect() {
     routes,
     tourTargets,
     changelog,
+    commitExists: gitHistoryAvailable() ? gitCommitExists : null,
   };
 }
 
@@ -277,7 +319,8 @@ function selfCheck() {
     packageVersion: '0.20.0',
     routes: new Set(['x/:id']),
     tourTargets: new Set(['t1']),
-    changelog: '## [0.20.0](u)\n(https://x/commit/abcdef1234)',
+    changelog: '## [0.20.0](u)',
+    commitExists: (hash) => hash === 'abcdef1',
   };
   const cases = [
     [base, 0],
@@ -290,13 +333,30 @@ function selfCheck() {
     [{ ...base, tourTargets: new Set() }, 1],
     [{ ...base, highlights: { map: {}, from: '0.20' } }, 1],
     [{ ...base, highlights: { map: { '0.20': ['deadbee'] }, from: '0.20' } }, 1],
-    [{ ...base, changelog: '' }, 2],
+    [{ ...base, highlights: { map: { '0.20': ['abcdef'] }, from: '0.20' } }, 1],
+    [{ ...base, commitExists: () => true, highlights: { map: { '0.20': ['abcdef'] }, from: '0.20' } }, 1],
+    [{ ...base, changelog: '' }, 1],
     [{ ...base, notificationLinks: [{ file: 'a.ts', path: '/x/42' }] }, 0],
     [{ ...base, notificationLinks: [{ file: 'a.ts', path: '/jobs' }] }, 1],
   ];
   const parsed = parseCatalogEntries("    id: 'one',\n    introducedIn: '0.1.0',\n    target: 'x',\n");
   if (parsed.length !== 1 || parsed[0].target !== 'x') {
     console.error('check-release-center-catalog --self-check FAILED: parseCatalogEntries');
+    process.exit(1);
+  }
+  if (gitCommitExists('zzzzzzz') || gitCommitExists('abc') || gitCommitExists('--help')) {
+    console.error('check-release-center-catalog --self-check FAILED: gitCommitExists accepted a non-hash');
+    process.exit(1);
+  }
+  // The real lookup against this clone (skipped where git or a history is missing).
+  let head = null;
+  try {
+    head = execFileSync('git', ['rev-parse', '--short=9', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  } catch {
+    // not a git checkout: only the negative cases above apply
+  }
+  if (head !== null && !gitCommitExists(head)) {
+    console.error('check-release-center-catalog --self-check FAILED: gitCommitExists missed HEAD');
     process.exit(1);
   }
   cases.forEach(([input, expected], i) => {
@@ -313,7 +373,20 @@ function selfCheck() {
 
 async function main() {
   if (process.argv.includes('--self-check')) return selfCheck();
-  const errors = validate({ ...(await collect()), strict: process.argv.includes('--release') });
+  const strict = process.argv.includes('--release');
+  const collected = await collect();
+  let commitExists = collected.commitExists;
+  if (commitExists === null) {
+    // No git (tarball checkout): the other rules still run. The release PR job
+    // has git and runs with --release, so there an unprovable hash is an error.
+    if (strict) {
+      console.error('check-release-center-catalog failed: --release needs a git checkout to prove the highlight hashes');
+      process.exit(1);
+    }
+    console.warn('check-release-center-catalog: no git repository here, highlight commit hashes not verified');
+    commitExists = () => true;
+  }
+  const errors = validate({ ...collected, commitExists, strict });
   if (errors.length > 0) {
     console.error('check-release-center-catalog failed:');
     for (const e of errors) console.error(`  - ${e}`);

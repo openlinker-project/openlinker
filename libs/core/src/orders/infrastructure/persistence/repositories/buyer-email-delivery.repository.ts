@@ -69,6 +69,17 @@ export class BuyerEmailDeliveryRepository implements BuyerEmailDeliveryRepositor
     await this.ormRepository.delete({ id: deliveryId, outcome: 'pending' });
   }
 
+  async clearRecipientsForOrder(internalOrderId: string): Promise<number> {
+    const result = await this.ormRepository
+      .createQueryBuilder()
+      .update()
+      .set({ recipient: null })
+      .where('"internalOrderId" = :internalOrderId', { internalOrderId })
+      .andWhere('recipient IS NOT NULL')
+      .execute();
+    return result.affected ?? 0;
+  }
+
   async listByOrder(internalOrderId: string, limit: number): Promise<BuyerEmailDelivery[]> {
     const rows = await this.ormRepository.find({
       where: { internalOrderId },

@@ -64,6 +64,10 @@ import type {
   OrderSearchTextReindexRow,
   OrderSearchTextRewrite,
 } from '../types/order-search-text-reindex.types';
+import type {
+  OrderBuyerDataRedaction,
+  OrderBuyerDataRetentionCandidate,
+} from '../types/order-buyer-data-retention.types';
 
 /** Filter of {@link OrderRecordRepositoryPort.findHeldByReasonCode}. */
 export interface HeldOrdersFilter {
@@ -1296,4 +1300,32 @@ export interface OrderRecordRepositoryPort {
    * how many rows were actually rewritten.
    */
   rewriteSearchText(rewrites: readonly OrderSearchTextRewrite[]): Promise<number>;
+
+  /**
+   * Orders of one source whose buyer data is due for removal (#4178): not yet
+   * redacted, and whose retention anchor - the ship-by deadline, else the
+   * placement, else the first write - is before `anchorBefore`. Oldest first,
+   * at most `limit`. Frontier-as-query: a redacted row leaves the set, so no
+   * cursor is needed.
+   */
+  findBuyerDataRetentionCandidates(input: {
+    sourceConnectionId: string;
+    anchorBefore: Date;
+    limit: number;
+  }): Promise<OrderBuyerDataRetentionCandidate[]>;
+
+  /**
+   * Remove an order's buyer data (#4178): the redacted snapshot and search text
+   * are written, the buyer note and tax id are cleared, an operator's address
+   * edit is dropped from the overlay, `hasBuyerNote` is cleared, and
+   * `buyerDataRedactedAt` and `personalDataErasedAt` are stamped (a redaction
+   * is an erasure, so every guard keyed on the latter covers it). Guarded on
+   * both being NULL, so it happens once and an already erased order is left
+   * alone; returns whether it did. `updatedAt` is left alone (the order did not change).
+   */
+  redactBuyerData(redaction: OrderBuyerDataRedaction): Promise<boolean>;
+
+  /** Whether the order's buyer data was already removed (#4178). Unknown order: `false`. */
+  isBuyerDataRedacted(internalOrderId: string): Promise<boolean>;
 }
+

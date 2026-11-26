@@ -35,7 +35,7 @@ import {
   stockLocationOverrideInvalid,
 } from './connection-errors';
 import { codedHttpError } from '../../../common/errors/coded-http.exception';
-import { hasMasterAndPublisher, masterPublisherConflictError } from './connection-capability-rules';
+import { hasMasterAndPublisher, masterPublisherConflictError, publisherRole } from './connection-capability-rules';
 import type {
   ConnectionCreateInput,
   ConnectionUpdateInput,
@@ -438,10 +438,18 @@ export class ConnectionService implements IConnectionService {
 
   /**
    * Master/publisher exclusion (#3985): one connection must not be both a
-   * `ProductMaster` and a `ProductPublisher`. Whatever OpenLinker publishes
-   * to a shop is read back by that shop's own master sync as a brand-new
-   * master product, minting a duplicate that then competes for order-line
-   * resolution. The rule is stated in capability terms, never by platform.
+   * `ProductMaster` and a destination OpenLinker publishes products to.
+   * Whatever OpenLinker publishes there is read back by the same connection's
+   * master sync as a brand-new master product, minting a duplicate that then
+   * competes for order-line resolution. The rule is stated in capability
+   * terms, never by platform.
+   *
+   * Two roles publish: `ProductPublisher` (a shop), and an `OfferManager` whose
+   * adapter advertises `OfferCreator`, i.e. one that creates new listings on a
+   * marketplace that can also be read as a catalogue (Amazon, #4182). An
+   * `OfferManager` without `OfferCreator` only writes stock and price to
+   * listings that already exist (WooCommerce write-back), creates nothing, and
+   * is not caught.
    *
    * Fires only on the TRANSITION into the combination: a connection that
    * already holds both (created before this rule) keeps saving unrelated
@@ -450,11 +458,13 @@ export class ConnectionService implements IConnectionService {
    */
   private assertNotMasterAndPublisher(
     enabledCapabilities: string[],
-    previouslyEnabled: string[] | null
+    previouslyEnabled: string[] | null,
+    supportedCapabilities: readonly string[]
   ): void {
-    if (!hasMasterAndPublisher(enabledCapabilities)) return;
-    if (previouslyEnabled !== null && hasMasterAndPublisher(previouslyEnabled)) return;
-    throw masterPublisherConflictError();
+    if (!hasMasterAndPublisher(enabledCapabilities, supportedCapabilities)) return;
+    if (previouslyEnabled !== null && hasMasterAndPublisher(previouslyEnabled, supportedCapabilities)) return;
+    const publisher = publisherRole(enabledCapabilities, supportedCapabilities);
+    throw masterPublisherConflictError(publisher ?? 'ProductPublisher');
   }
 
   /**
@@ -1591,7 +1601,7 @@ export class ConnectionService implements IConnectionService {
         throw capabilitiesUnsupported(metadata.adapterKey, invalid);
       }
       this.assertNoWriteBackAuthorityConflict(enabledCapabilities);
-      this.assertNotMasterAndPublisher(enabledCapabilities, null);
+      this.assertNotMasterAndPublisher(enabledCapabilities, null, metadata.supportedCapabilities);
       // #4228 - before credentials are persisted, like the config checks below.
       if (orderSyncStart !== undefined) {
         this.assertOrderSyncStart(
@@ -1918,7 +1928,11 @@ export class ConnectionService implements IConnectionService {
           throw capabilitiesUnsupported(metadata.adapterKey, invalid);
         }
         this.assertNoWriteBackAuthorityConflict(patch.enabledCapabilities);
-        this.assertNotMasterAndPublisher(patch.enabledCapabilities, existing.enabledCapabilities);
+        this.assertNotMasterAndPublisher(
+          patch.enabledCapabilities,
+          existing.enabledCapabilities,
+          metadata.supportedCapabilities
+        );
       }
 
       if (orderSyncStart !== undefined && metadata) {

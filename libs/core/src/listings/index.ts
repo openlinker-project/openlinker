@@ -39,8 +39,12 @@ export {
   CategoryResolutionMethodValues,
   CategoryProvenanceValues,
 } from './application/types/category-resolution.types';
-export type { TaxonomyOwner } from './domain/types/taxonomy-owner.types';
-export { TaxonomyOwnerValues } from './domain/types/taxonomy-owner.types';
+export type { AmazonTaxonomyOwner, TaxonomyOwner } from './domain/types/taxonomy-owner.types';
+export {
+  amazonTaxonomyOwner,
+  isTaxonomyOwner,
+  TaxonomyOwnerValues,
+} from './domain/types/taxonomy-owner.types';
 
 // Destination taxonomy read model (#1979, ADR-037). Contracts only — the
 // service CLASS stays on the `/services` sub-barrel (#337/#359).

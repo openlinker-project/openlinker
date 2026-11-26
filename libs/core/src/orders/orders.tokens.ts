@@ -58,6 +58,9 @@ export const ORDER_EXPORT_SERVICE_TOKEN = Symbol('IOrderExportService');
 // `order_records.searchText` re-derivation under the current PII mode (#3507 G03-14).
 export const ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN = Symbol('IOrderSearchTextReindexService');
 export const BUYER_DATA_RETENTION_SERVICE_TOKEN = Symbol('IBuyerDataRetentionService');
+export const ORDER_BUYER_DATA_RETENTION_SERVICE_TOKEN = Symbol('IOrderBuyerDataRetentionService');
+
+
 
 // ADR-044 change proposals (#2333). `OrderChangesModule` is a LEAF module inside
 // this context — a sibling context imports that, never `OrdersModule`, and

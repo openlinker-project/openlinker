@@ -453,6 +453,7 @@
       "title": "This is more than the order total"
     },
     "description": "Record the refund you made to the buyer. OpenLinker does not move money.",
+    "descriptionAmazon": "Confirming submits the refund to Amazon, which processes it and returns the money to the buyer.",
     "descriptionShopify": "Confirming sends the refund to Shopify, which returns the money to the buyer.",
     "recorded": "Refund recorded.",
     "title": "Confirm a refund"
@@ -2738,6 +2739,7 @@
     "orderTotal": "Order total: {total} {currency}",
     "pending": "Recording…",
     "preamble": "OpenLinker does not move money. Confirm that you have refunded the buyer, and OpenLinker will record it against this return and this order.",
+    "preambleAmazon": "OpenLinker submits this refund to Amazon, which processes it and returns the money to the buyer. Amazon accepting it for processing does not mean the money has reached the buyer yet. Check the amount before you confirm, because it cannot be undone from here.",
     "preambleShopify": "OpenLinker sends this refund to Shopify, which returns the money to the buyer. Check the amount before you confirm, because it cannot be undone from here.",
     "reasonLabel": "Reason",
     "submit": "Confirm refund"

@@ -11,6 +11,7 @@ import { Injectable } from '@nestjs/common';
 import { SyncJobHandlerRegistry } from './sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './inventory-propagate-to-marketplaces.handler';
 import { OrdersPollHandler } from './orders-poll.handler';
+import { NotificationsDrainHandler } from './notifications-drain.handler';
 import { OrdersImportHandler } from './orders-import.handler';
 import { MarketplaceOrderSyncHandler } from './marketplace-order-sync.handler';
 import { MarketplaceOrderFxStampHandler } from './marketplace-order-fx-stamp.handler';
@@ -91,6 +92,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly reservationConsumeHandler: ReservationConsumeHandler,
     private readonly ordersHoldsReconcileHandler: OrdersHoldsReconcileHandler,
     private readonly marketplaceOrdersPollHandler: OrdersPollHandler,
+    private readonly notificationsDrainHandler: NotificationsDrainHandler,
     private readonly marketplaceOrdersImportHandler: OrdersImportHandler,
     private readonly marketplaceOrderSyncHandler: MarketplaceOrderSyncHandler,
     private readonly marketplaceOrderFxStampHandler: MarketplaceOrderFxStampHandler,
@@ -210,6 +212,14 @@ export class HandlerRegistrationService implements OnModuleInit {
       'marketplace.order.sync',
       this.marketplaceOrderSyncHandler,
       'realtime'
+    );
+    // Pull-based inbound notifications (#4179). 'fan-out', like the orders poll
+    // it shortens: cron-paced, makes one queue read and enqueues children; the
+    // children it routes ('marketplace.order.sync') run in 'realtime'.
+    this.handlerRegistry.register(
+      'marketplace.notifications.drain',
+      this.notificationsDrainHandler,
+      'fan-out'
     );
     // Per-order reporting-currency stamp: bounded retry + hourly reconcile (#2125).
     this.handlerRegistry.register(

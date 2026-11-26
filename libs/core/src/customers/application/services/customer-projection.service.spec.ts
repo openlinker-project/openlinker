@@ -29,6 +29,7 @@ describe('CustomerProjectionService', () => {
       upsert: jest.fn(),
       upsertAddress: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
+      redactPersonalDataLastSeenBefore: jest.fn(),
       findById: jest.fn(),
       findByIds: jest.fn(),
       findByEmailHash: jest.fn(),

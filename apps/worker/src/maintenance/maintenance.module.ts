@@ -29,6 +29,7 @@ import { OrderSearchTextReindexSweepService } from './order-search-text-reindex-
 import { SyncJobRetentionService } from './sync-job-retention.service';
 import { InventoryMovementRetentionService } from './inventory-movement-retention.service';
 import { BuyerDataRetentionSweepService } from './buyer-data-retention.service';
+import { OrderBuyerDataRetentionSweepService } from './order-buyer-data-retention-sweep.service';
 
 @Module({
   imports: [CoreSyncModule, CoreOrdersModule, OperationalSettingsModule, CoreInventoryModule],
@@ -39,6 +40,7 @@ import { BuyerDataRetentionSweepService } from './buyer-data-retention.service';
     BuyerDataRetentionSweepService,
     OrderExportRetentionService,
     OrderSearchTextReindexSweepService,
+    OrderBuyerDataRetentionSweepService,
   ],
 })
 export class MaintenanceModule {}

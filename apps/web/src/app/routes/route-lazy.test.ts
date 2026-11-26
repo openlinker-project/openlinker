@@ -165,8 +165,10 @@ const lazyRoutes = collectLazyRoutes([
  * The release center adds `whats-new` and `settings/release-center`, from 87 to 89, and the bulk multipack creator (`products/bundles/bulk`) takes it to 90.
  *
  * #4289 adds the buyer data rules page (`settings/buyer-data`), from 90 to 91.
+ *
+ * The Amazon plugin adds its guided setup route (`connections/new/amazon`), from 91 to 92.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 91;
+const EXPECTED_LAZY_ROUTE_COUNT = 92;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {
