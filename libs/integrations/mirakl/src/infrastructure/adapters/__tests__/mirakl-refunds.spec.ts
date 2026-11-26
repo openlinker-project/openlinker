@@ -215,7 +215,11 @@ describe('MiraklRefundReader', () => {
       ],
     });
 
-    const refunds = await new MiraklRefundReader(http.client).listRefunds({
+    const refunds = await new MiraklRefundReader(
+      'conn-1',
+      http.client,
+      new InMemoryCacheAdapter()
+    ).listRefunds({
       externalOrderId: '1001-A',
     });
 
@@ -231,10 +235,97 @@ describe('MiraklRefundReader', () => {
   });
 
   it('should report nothing for an order Mirakl does not have', async () => {
-    const refunds = await new MiraklRefundReader(fakeHttp(null).client).listRefunds({
+    const refunds = await new MiraklRefundReader(
+      'conn-1',
+      fakeHttp(null).client,
+      undefined
+    ).listRefunds({
       externalOrderId: 'X',
     });
 
     expect(refunds).toEqual([]);
+  });
+});
+
+describe('a refund OpenLinker sent, once Empik pays it out', () => {
+  function paidOut(lineRefundId: string): MiraklOrder {
+    return {
+      ...ORDER,
+      order_lines: [
+        {
+          order_line_id: '1001-A-1',
+          price: 30,
+          shipping_price: 10,
+          refunds: [
+            { id: lineRefundId, amount: 30, shipping_amount: 5, refund_state: 'REFUNDED' },
+            { id: 'R-OUTSIDE', amount: 2, refund_state: 'REFUNDED' },
+          ],
+        },
+      ],
+    };
+  }
+
+  it('should not be observed again when the refund answer names its line refund', async () => {
+    const cache = new InMemoryCacheAdapter();
+    await executor(fakeHttp().client, cache).executeRefund(command());
+
+    const refunds = await new MiraklRefundReader(
+      'conn-1',
+      fakeHttp(paidOut('R-1')).client,
+      cache
+    ).listRefunds({ externalOrderId: '1001-A' });
+
+    expect(refunds.map((refund) => refund.externalRefundId)).toEqual(['R-OUTSIDE']);
+  });
+
+  it('should not be observed again when only the order read back shows its line refund', async () => {
+    const cache = new InMemoryCacheAdapter();
+    const http = fakeHttp();
+    http.put.mockResolvedValueOnce({ status: 200, data: {} });
+    http.get
+      .mockResolvedValueOnce({ status: 200, data: { orders: [ORDER] } })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          orders: [
+            {
+              ...ORDER,
+              order_lines: [
+                {
+                  order_line_id: '1001-A-1',
+                  refunds: [{ id: 'R-NEW', amount: 30, refund_state: 'WAITING_REFUND' }],
+                },
+              ],
+            },
+          ],
+        },
+      });
+    await executor(http.client, cache).executeRefund(command());
+
+    const refunds = await new MiraklRefundReader(
+      'conn-1',
+      fakeHttp(paidOut('R-NEW')).client,
+      cache
+    ).listRefunds({ externalOrderId: '1001-A' });
+
+    expect(refunds.map((refund) => refund.externalRefundId)).toEqual(['R-OUTSIDE']);
+  });
+
+  it('should still accept the refund when the order cannot be read back', async () => {
+    const cache = new InMemoryCacheAdapter();
+    const http = fakeHttp();
+    http.get
+      .mockResolvedValueOnce({ status: 200, data: { orders: [ORDER] } })
+      .mockRejectedValueOnce(new Error('timeout'));
+
+    const result = await executor(http.client, cache).executeRefund(command());
+
+    expect(result.outcome).toBe('accepted');
+    const refunds = await new MiraklRefundReader(
+      'conn-1',
+      fakeHttp(paidOut('R-1')).client,
+      cache
+    ).listRefunds({ externalOrderId: '1001-A' });
+    expect(refunds.map((refund) => refund.externalRefundId)).toEqual(['R-OUTSIDE']);
   });
 });

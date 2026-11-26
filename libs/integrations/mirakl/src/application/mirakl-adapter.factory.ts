@@ -162,6 +162,7 @@ export class MiraklAdapterFactory implements IMiraklAdapterFactory {
       carrierCodes: carrierCodes.kind === 'valid' ? carrierCodes.codes : {},
       invoiceTypeCode: this.profile.invoiceDocumentTypeCode,
       catalogMaster: (connection.enabledCapabilities ?? []).includes('ProductMaster'),
+      cache: master.cache,
     };
     // Only an explicit `true` sends refunds; anything else keeps recording them.
     if (config.refundsThroughMarketplace !== true) {

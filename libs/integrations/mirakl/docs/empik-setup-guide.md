@@ -173,7 +173,20 @@ truth, and OpenLinker:
 
 Use it when Empik is where you keep your catalogue and stock, and OpenLinker
 should take products and stock from there (for example to sell the same goods
-in another channel or to pack Empik orders in OpenLinker).
+in another channel).
+
+Two things work differently from a marketplace connection:
+
+- **Empik orders are not packed in OpenLinker.** A connection that is a product
+  master is treated as the seller's own shop, so with the OMS on, its orders
+  are not sent to the pack bench (the order shows "came from your own shop").
+  Pack Empik orders the way you do today. Orders from other channels are
+  packed and routed as usual.
+- **An Empik sale lowers Empik stock only if Empik does it.** OpenLinker does
+  not lower stock in the master for a sale made in the master itself. Empik
+  normally lowers the offer quantity on its own; this was not checked on
+  staging (no test orders), so after the first real order check that the
+  quantity in the Empik panel went down.
 
 1. Open the connection. The **Overview** tab ends with **Capabilities -
    Enabled roles**.
@@ -190,8 +203,14 @@ What you get:
   your shop SKU: title, description, brand, EAN, gross price, category and the
   card's picture. A card without a picture in Empik (most book cards) has no
   image in OpenLinker either. Empik gives sellers no VAT rate, so it stays empty.
+  Two consequences: with `OL_TAX_RATE_STRICT_ENABLED=true` a sales document for
+  an order of these products waits until the rate is known, and publishing them
+  to a PrestaShop shop needs that connection's **Default tax-rule group**.
 - **Stock**: the offer quantity. A change made in OpenLinker (a routed sale, a
   manual correction) is queued and sent every minute as one `STO01` file.
+  Empik confirms the file a few minutes later. If it refuses a line, the
+  refusal is logged and stays in the write queue, but OpenLinker has already
+  counted the change: check the offer in the Empik panel.
 - **Deletions**: an offer that disappears from Empik is treated as a product
   deleted at the master, so its listings in other channels pause.
 - Writing the catalogue from OpenLinker is refused.

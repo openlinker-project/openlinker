@@ -63,6 +63,7 @@ import type {
   SourceRefundObservation,
 } from '@openlinker/core/orders';
 import type { IncomingReturn, ReturnFeedInput, ReturnFeedOutput } from '@openlinker/core/returns';
+import type { CachePort } from '@openlinker/shared/cache';
 import { Logger } from '@openlinker/shared/logging';
 import { MiraklApiException } from '../../domain/exceptions/mirakl-api.exception';
 import {
@@ -107,6 +108,11 @@ export interface MiraklOrderSourceOptions {
    * product (keyed by `shop_sku`) instead of the offer.
    */
   readonly catalogMaster?: boolean;
+  /**
+   * Host cache, read to skip refunds OpenLinker sent itself when observing
+   * refunds (see `mirakl-refunds.ts`).
+   */
+  readonly cache?: CachePort;
   readonly now?: () => Date;
 }
 /**
@@ -161,7 +167,7 @@ export class MiraklOrderSourceAdapter
       settings.invoiceTypeCode ?? DEFAULT_INVOICE_TYPE_CODE
     );
     this.returns = new MiraklReturnSource(connectionId, httpClient, this.now);
-    this.refunds = new MiraklRefundReader(httpClient);
+    this.refunds = new MiraklRefundReader(connectionId, httpClient, settings.cache);
     this.terminalRawStatuses = this.returns.terminalRawStatuses;
   }
 

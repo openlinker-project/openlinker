@@ -157,8 +157,12 @@ fixture is to be checked against the first real one.
 - Mirakl takes no idempotency key, so the key is kept in the host cache: a
   retry answers from the first refund, and a retry of an attempt that did not
   finish throws (outcome unknown) instead of refunding again. No cache, no
-  refund. A sent refund is `accepted`: the operator pays it out later, and the
-  reader then reports it as paid.
+  refund. A sent refund is `accepted`: the operator pays it out later.
+- A refund OpenLinker sent is not reported by the reader once paid out, or
+  core would record it a second time as made outside OpenLinker and relay it
+  to the order's other channels again. The sender marks the line refunds it
+  created (ids in the OR28 answer, plus ids new on the order when it is read
+  back) in the host cache for 180 days, and the reader skips marked ids.
 
 Not checked live: staging has no orders to refund.
 

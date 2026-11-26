@@ -29,8 +29,28 @@
  * and the refusal is `denied`.
  *
  * OR28 creates the refunds in `WAITING_REFUND`; the operator pays them out
- * later, so a sent refund is `accepted`, never `refunded`. Core sees the money
- * move through {@link MiraklRefundReader}.
+ * later, so a sent refund is `accepted`, never `refunded`.
+ *
+ * ## A refund OpenLinker sent is not observed again
+ *
+ * This source both reads refunds and sends them, so once Empik pays out a
+ * refund OpenLinker sent, OR11 reports it as `REFUNDED` and the reader would
+ * hand it to core as a NEW refund made outside OpenLinker: counted twice, and
+ * relayed a second time to the order's copies in other channels. Core keys an
+ * observation by the line refund id, which is not the id the executor records,
+ * so the reader has to leave these out itself. The executor marks the line
+ * refund ids it created (the ids in the OR28 answer, plus the ids that appear
+ * on the order between its read before the call and a read after it) in the
+ * host cache for {@link SENT_MARK_TTL_SECONDS}; the reader skips a marked id.
+ * The executor refuses to send without a cache, so every refund it sent is
+ * marked. A mark lost to a flushed cache would let that one refund be observed
+ * again; the warning the executor logs when it cannot read the order back says
+ * so for the case it can see.
+ *
+ * Concurrency: the check of the idempotency key and the "sending" mark are not
+ * one atomic step. Two calls with one key at the same moment are kept apart by
+ * core's per-order refund lock (`order:refund:{id}`), which every refund write
+ * holds; this class relies on it rather than repeating it.
  *
  * @module libs/integrations/mirakl/src/infrastructure/adapters
  */
@@ -58,6 +78,8 @@ const REFUNDED_STATE = 'REFUNDED';
 const AMOUNT = /^\d+(\.\d{1,2})?$/;
 /** How long a refund key is remembered: well past any retry of the same refund. */
 const KEY_TTL_SECONDS = 60 * 60 * 24 * 90;
+/** How long a sent line refund is remembered: well past any payout delay. */
+const SENT_MARK_TTL_SECONDS = 60 * 60 * 24 * 180;
 
 interface MiraklRefundRequestLine {
   order_line_id: string;
@@ -101,6 +123,11 @@ function denied(message: string): RefundExecutionResult {
   return { outcome: 'denied', providerRefundId: null, refundedAt: null, providerMessage: message };
 }
 
+/**
+ * Every refund already on the line, whatever its state: all four OR11 states
+ * (`WAITING_REFUND_TAX_CONFIRMATION`, `WAITING_REFUND`, `WAITING_REFUND_PAYMENT`,
+ * `REFUNDED`) are money promised to the buyer, and Mirakl has no refused state.
+ */
 function sumRefunded(line: MiraklOrderLine, part: 'amount' | 'shipping_amount'): number {
   return (line.refunds ?? []).reduce((sum, refund) => sum + toCents(refund[part]), 0);
 }
@@ -124,8 +151,32 @@ function proportionalTaxes(
   }));
 }
 
+/** Cache key marking a line refund OpenLinker sent itself. */
+function sentMarkKey(connectionId: string, lineRefundId: string): string {
+  return `mirakl:refund-sent:${connectionId}:${lineRefundId}`;
+}
+
+/** The ids of every refund already on the order's lines. */
+function lineRefundIds(order: MiraklOrder): Set<string> {
+  const ids = new Set<string>();
+  for (const line of order.order_lines ?? []) {
+    for (const refund of line.refunds ?? []) {
+      if (refund.id) {
+        ids.add(refund.id);
+      }
+    }
+  }
+  return ids;
+}
+
 export class MiraklRefundReader {
-  constructor(private readonly httpClient: IMiraklHttpClient) {}
+  private readonly logger = new Logger(MiraklRefundReader.name);
+
+  constructor(
+    private readonly connectionId: string,
+    private readonly httpClient: IMiraklHttpClient,
+    private readonly cache: CachePort | undefined
+  ) {}
 
   async listRefunds(input: { externalOrderId: string }): Promise<SourceRefundObservation[]> {
     const order = await readMiraklOrder(this.httpClient, input.externalOrderId);
@@ -138,6 +189,9 @@ export class MiraklRefundReader {
         if (!refund.id || refundStateOf(refund) !== REFUNDED_STATE) {
           continue;
         }
+        if (await this.sentByOpenLinker(refund.id)) {
+          continue;
+        }
         observations.push({
           externalRefundId: refund.id,
           amount: formatCents(toCents(refund.amount) + toCents(refund.shipping_amount)),
@@ -148,6 +202,20 @@ export class MiraklRefundReader {
       }
     }
     return observations;
+  }
+
+  private async sentByOpenLinker(lineRefundId: string): Promise<boolean> {
+    if (!this.cache) {
+      return false;
+    }
+    const marked = await this.cache.get<true>(sentMarkKey(this.connectionId, lineRefundId));
+    if (marked === true) {
+      this.logger.debug(
+        `Skipping refund ${lineRefundId}: OpenLinker sent it (connection: ${this.connectionId})`
+      );
+      return true;
+    }
+    return false;
   }
 }
 
@@ -247,6 +315,7 @@ export class MiraklRefundExecutor {
       response?.refunds?.find((refund) => refund.order_refund_id)?.order_refund_id ??
       response?.refunds?.find((refund) => refund.refund_id)?.refund_id ??
       null;
+    await this.markSentLineRefunds(command.externalOrderId, lineRefundIds(order), response);
     await this.cache.set<StoredRefund>(
       cacheKey,
       { state: 'sent', providerRefundId },
@@ -308,6 +377,61 @@ export class MiraklRefundExecutor {
         };
       });
     return { kind: 'ok', lines: requestLines };
+  }
+
+  /**
+   * Marks the line refunds this call created, so the reader does not report
+   * them as refunds made outside OpenLinker once Empik pays them out. Never
+   * throws: the money is already on its way, and failing here would make core
+   * record an executed refund as unknown.
+   */
+  private async markSentLineRefunds(
+    externalOrderId: string,
+    before: ReadonlySet<string>,
+    response: MiraklRefundResponse | undefined
+  ): Promise<void> {
+    const created = new Set<string>();
+    for (const refund of response?.refunds ?? []) {
+      if (refund.refund_id) {
+        created.add(refund.refund_id);
+      }
+    }
+    try {
+      const after = await readMiraklOrder(this.httpClient, externalOrderId);
+      for (const id of after ? lineRefundIds(after) : []) {
+        if (!before.has(id)) {
+          created.add(id);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not read ${this.brand} order ${externalOrderId} back after a refund; ` +
+          `only the ids in the refund answer are marked as sent by OpenLinker ` +
+          `(connection: ${this.connectionId}): ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    if (created.size === 0) {
+      this.logger.warn(
+        `No line refund id found for the refund on ${this.brand} order ${externalOrderId}; ` +
+          `once paid out it may be recorded a second time (connection: ${this.connectionId})`
+      );
+      return;
+    }
+    for (const id of created) {
+      try {
+        await this.cache?.set<true>(
+          sentMarkKey(this.connectionId, id),
+          true,
+          SENT_MARK_TTL_SECONDS
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Could not mark refund ${id} as sent by OpenLinker; once paid out it may be ` +
+            `recorded a second time (connection: ${this.connectionId}): ` +
+            `${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
   }
 
   private accepted(providerRefundId: string | null): RefundExecutionResult {

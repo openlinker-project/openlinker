@@ -28,8 +28,14 @@
  * `appliedAt: null`: the same "accepted, confirmed later" contract Allegro's
  * quantity writes have (#2621).
  *
- * Known window, stated rather than hidden: a sale made on the marketplace
- * between the OF21 read and Mirakl applying the file is written over.
+ * Known gaps, stated rather than hidden:
+ * - a sale made on the marketplace between the OF21 read and Mirakl applying
+ *   the file is written over;
+ * - the adjustment answers `applied` once the target is queued, so a line the
+ *   STO01 import later refuses leaves OpenLinker's mirror lower than Empik's
+ *   number until the next master stock sync. The refusal is recorded on the
+ *   queue row with Mirakl's reason and logged by the reconciler; no order is
+ *   marked for it (the Allegro #2621 contract has the same shape).
  *
  * Reads overlay the queued target too, so a master sync running before the
  * file is applied does not mirror the old number back.
@@ -117,7 +123,11 @@ export class MiraklInventoryMasterAdapter
   // ─── Reads ─────────────────────────────────────────────────────────────────
 
   async getInventory(productId: string, _locationId?: string): Promise<Inventory> {
+    // One offer is one pooled position, so the list always has exactly one entry.
     const [inventory] = await this.listInventory(productId);
+    if (!inventory) {
+      throw new MasterProductNotFoundError(productId, this.connectionId);
+    }
     return inventory;
   }
 
