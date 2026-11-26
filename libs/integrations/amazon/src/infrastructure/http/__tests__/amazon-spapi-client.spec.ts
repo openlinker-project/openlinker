@@ -111,6 +111,39 @@ describe('AmazonSpApiClient 401 handling', () => {
     expect(source.invalidate).toHaveBeenCalledTimes(1);
   });
 
+  it('should renew the token once on 403 Unauthorized, as the sandbox answers a bad token', async () => {
+    const { source } = rotatingTokens();
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(response(403, '{"errors":[{"code":"Unauthorized","message":"denied","details":"The access token you provided is revoked, malformed or invalid."}]}'))
+      .mockResolvedValueOnce(response(200, '{"ok":true}'));
+    const client = new AmazonSpApiClient('h', source, fetchImpl);
+
+    await expect(client.get('/x')).resolves.toMatchObject({ data: { ok: true } });
+    expect(source.invalidate).toHaveBeenCalledWith('Atza|old');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('should surface a 403 Unauthorized that repeats (a missing role), after one renewal', async () => {
+    const { source } = rotatingTokens();
+    const fetchImpl = jest
+      .fn()
+      .mockImplementation(() => Promise.resolve(response(403, '{"errors":[{"code":"Unauthorized","message":"role"}]}')));
+    const client = new AmazonSpApiClient('h', source, fetchImpl);
+
+    await expect(client.get('/x')).rejects.toMatchObject({ statusCode: 403 });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('should not renew the token on a 403 with another code', async () => {
+    const { source } = rotatingTokens();
+    const fetchImpl = jest.fn().mockResolvedValue(response(403, '{"errors":[{"code":"AccessDenied","message":"x"}]}'));
+    const client = new AmazonSpApiClient('h', source, fetchImpl);
+
+    await expect(client.get('/x')).rejects.toMatchObject({ statusCode: 403 });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('should not retry when the token source cannot forget a token', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(response(401, '{"errors":[{"code":"Unauthorized"}]}'));
     const client = new AmazonSpApiClient('h', tokens, fetchImpl);
