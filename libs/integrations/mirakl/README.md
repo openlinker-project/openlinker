@@ -149,10 +149,15 @@ On a Mirakl operator an offer points to a catalogue card, found by EAN.
     hidden in the wizard; the rest come from the offer's parameters.
   - A required attribute left empty, or a value not on the operator's list,
     refuses the create naming the attribute. The wizard shows the same before
-    submit: `empik:card-no-image`, `empik:card-missing-parameters`, plus the
+    submit: `empik:card-no-image`, `empik:card-no-description`,
+    `empik:card-missing-parameters`, plus the
     advisory `empik:new-card`.
-  - The create answers `draft` with `MIRAKL_CARD_PENDING` ("waiting for Empik
-    to accept the product card"), because the operator reviews cards by hand.
+  - The create answers `validating`. While the card is queued or reviewed the
+    status read answers `activating` with `awaitingMarketplaceReview`, so the
+    creation poller keeps waiting (every 15 minutes, up to 48 hours) instead
+    of timing out after its normal ~9 minutes, and the record ends `active`
+    or `failed` with Empik's reason. On staging the cards reached the catalogue
+    about 30 minutes after they were sent.
   - The card waits in `mirakl_offer_writes` (kind `card`). The offer-writes
     job (every 5 minutes) sends queued cards as one P41 file at most every 15
     minutes, follows the import (P42), fails a refused card with Mirakl's
@@ -168,10 +173,11 @@ On a Mirakl operator an offer points to a catalogue card, found by EAN.
     name the list lacks refuses the card before anything is sent, naming
     similar values. A searchable picker is a follow-up.
 
-Verified on staging (2026-11-26): a card file with these fixes passed
-Empik's checks and waits for the operator (import 30573). Not verified yet:
-the OF24 after Empik accepts a card, and how long the review takes. The
-offer's "draft" switch does nothing on Empik, which has no draft offers.
+Verified end to end on staging (2026-11-26): three cards sent as import
+30573 reached the catalogue about 30 minutes later (P42 still read `SENT`,
+which is why arrival is read from P31), and the card pass sent their offers,
+which went live. The offer's "draft" switch does nothing on Empik, which has
+no draft offers.
 
 ## Returns (#4279)
 

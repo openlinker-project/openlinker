@@ -319,15 +319,10 @@ export class MiraklOfferManagerAdapter
   }
 
   /**
-   * An offer OpenLinker just created is not in OF21 until its OF24 import has
-   * run. While it runs the offer reads `activating`; if the import refused the
-   * offer, `inactive` with the import's reason. `null` when OpenLinker did not
-   * create it, which leaves the not-found answer to the caller.
-   */
-  /**
-   * An offer whose card OpenLinker is creating (#4278): `activating` while the
-   * card is queued or under the operator's review, refused with Mirakl's
-   * reason when the card was refused.
+   * An offer whose card OpenLinker is creating (#4278): `activating` and
+   * awaiting the marketplace's review while the card is queued or reviewed
+   * (so the creation poller waits instead of timing out), refused with
+   * Mirakl's reason when the card was refused.
    */
   private async statusOfCardRequest(offerSku: string): Promise<OfferStatusReadResult | null> {
     const card = await this.writes?.findLatest(this.connectionId, 'card', offerSku);
@@ -337,9 +332,15 @@ export class MiraklOfferManagerAdapter
     if (card.status === 'failed') {
       return refused(card.error ?? `${this.brand} refused the product card`);
     }
-    return { publicationStatus: 'activating', validationErrors: [] };
+    return { publicationStatus: 'activating', validationErrors: [], awaitingMarketplaceReview: true };
   }
 
+  /**
+   * An offer OpenLinker just created is not in OF21 until its OF24 import has
+   * run. While it runs the offer reads `activating`; if the import refused the
+   * offer, `inactive` with the import's reason. `null` when OpenLinker did not
+   * create it, which leaves the not-found answer to the caller.
+   */
   private async statusOfCreateImport(offerSku: string): Promise<OfferStatusReadResult | null> {
     const created = await this.writes?.findLatest(this.connectionId, 'offer', offerSku);
     if (!created?.importId) {

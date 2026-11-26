@@ -68,6 +68,8 @@ import type { IOfferStatusPollService } from '../interfaces/offer-status-poll.se
 import { IBulkListingProgressService } from './bulk-listing-progress.service.interface';
 import { IOfferStatusSyncService } from './offer-status-sync.service.interface';
 import {
+  OFFER_POLL_REVIEW_DELAY_SECONDS,
+  OFFER_POLL_REVIEW_MAX_ATTEMPTS,
   offerPollDelaySeconds,
   resolveOfferPollCadence,
   type OfferPollCadenceConfig,
@@ -142,10 +144,13 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     // Enforce poll-attempt cap. `pollAttempt > maxAttempts` is a forward
     // guard against payload manipulation; the next-iteration enqueue already
     // bails when iteration N would exceed the cap (see scheduleNext below).
-    if (input.pollAttempt > this.cadence.maxAttempts) {
+    // A marketplace review may extend the budget (#4278); the cap here is the
+    // absolute one, and `scheduleNext` applies the one that fits the read.
+    const ceiling = this.cadence.maxAttempts + OFFER_POLL_REVIEW_MAX_ATTEMPTS;
+    if (input.pollAttempt > ceiling) {
       await this.markFailedAtomically(
         record,
-        `POLL_TIMEOUT after ${this.cadence.maxAttempts} attempts`,
+        `POLL_TIMEOUT after ${ceiling} attempts`,
         OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE
       );
       // A validator that outran the poll budget may still activate the offer;
@@ -246,7 +251,7 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     }
 
     // Still validating — schedule the next iteration if we haven't hit the cap.
-    await this.scheduleNext(input, record);
+    await this.scheduleNext(input, record, result.awaitingMarketplaceReview === true);
     return { outcome: 'ok' };
   }
 
@@ -284,15 +289,25 @@ export class OfferStatusPollService implements IOfferStatusPollService {
     }
   }
 
-  private async scheduleNext(current: PollOnceInput, record: OfferCreationRecord): Promise<void> {
+  private async scheduleNext(
+    current: PollOnceInput,
+    record: OfferCreationRecord,
+    awaitingReview = false
+  ): Promise<void> {
     const nextAttempt = current.pollAttempt + 1;
-    if (nextAttempt > this.cadence.maxAttempts) {
+    const cap = awaitingReview
+      ? this.cadence.maxAttempts + OFFER_POLL_REVIEW_MAX_ATTEMPTS
+      : this.cadence.maxAttempts;
+    if (nextAttempt > cap) {
       // We've exhausted the cadence budget. Mark the record failed with a
       // POLL_TIMEOUT code and don't enqueue another iteration.
       await this.markFailedAtomically(
         record,
-        `Allegro never finished validating offer ${current.externalOfferId} after ` +
-          `${this.cadence.maxAttempts} poll iterations`,
+        awaitingReview
+          ? `The marketplace did not finish reviewing offer ${current.externalOfferId} ` +
+              `within ${(OFFER_POLL_REVIEW_MAX_ATTEMPTS * OFFER_POLL_REVIEW_DELAY_SECONDS) / 3600} hours`
+          : `Allegro never finished validating offer ${current.externalOfferId} after ` +
+              `${this.cadence.maxAttempts} poll iterations`,
         OFFER_CREATION_POLL_TIMEOUT_ERROR_CODE
       );
       this.logger.warn(
@@ -308,20 +323,23 @@ export class OfferStatusPollService implements IOfferStatusPollService {
       return;
     }
 
-    await this.enqueuePoll({
-      offerCreationRecordId: current.offerCreationRecordId,
-      externalOfferId: current.externalOfferId,
-      connectionId: current.connectionId,
-      pollAttempt: nextAttempt,
-    });
+    await this.enqueuePoll(
+      {
+        offerCreationRecordId: current.offerCreationRecordId,
+        externalOfferId: current.externalOfferId,
+        connectionId: current.connectionId,
+        pollAttempt: nextAttempt,
+      },
+      awaitingReview ? OFFER_POLL_REVIEW_DELAY_SECONDS : undefined
+    );
   }
 
   /**
    * Build the cadence-specific delay and the iteration-keyed sync-job row.
    * Used by both `scheduleFirstPoll` and the in-flight re-enqueue path.
    */
-  private async enqueuePoll(input: PollOnceInput): Promise<void> {
-    const delaySeconds = this.computeDelaySeconds(input.pollAttempt);
+  private async enqueuePoll(input: PollOnceInput, delayOverrideSeconds?: number): Promise<void> {
+    const delaySeconds = delayOverrideSeconds ?? this.computeDelaySeconds(input.pollAttempt);
     const runAfter = new Date(Date.now() + delaySeconds * 1000);
 
     const payload: MarketplaceOfferPollCreationStatusPayloadV1 = {

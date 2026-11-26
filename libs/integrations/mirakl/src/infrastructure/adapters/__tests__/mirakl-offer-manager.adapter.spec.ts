@@ -250,11 +250,12 @@ describe('status of an offer whose card OpenLinker is creating (#4278, part 2)',
     });
   }
 
-  it('should read as activating while the card is queued or under review', async () => {
+  it('should read as activating and under review while the card is queued or reviewed', async () => {
     for (const status of ['pending', 'submitted']) {
       await expect(withCard({ status }).getOfferStatus('OL-1')).resolves.toEqual({
         publicationStatus: 'activating',
         validationErrors: [],
+        awaitingMarketplaceReview: true,
       });
     }
   });

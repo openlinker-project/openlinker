@@ -290,11 +290,7 @@ describe('MiraklOfferCreator without a card (#4278, part 2)', () => {
     const result = await creator.createOffer(cardCommand());
 
     expect(post).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      externalOfferId: SHOP_SKU,
-      status: 'draft',
-      validationErrors: [expect.objectContaining({ code: 'MIRAKL_CARD_PENDING' })],
-    });
+    expect(result).toEqual({ externalOfferId: SHOP_SKU, status: 'validating' });
     const [connectionId, kind, values] = recordPending.mock.calls[0] as [
       string,
       string,

@@ -75,9 +75,6 @@ export interface MiraklOfferCreatorDeps {
   readonly cardAttributes: MiraklCardAttributeCodes;
 }
 
-/** Code of the note a create carries while its card waits for the operator. */
-export const MIRAKL_CARD_PENDING_CODE = 'MIRAKL_CARD_PENDING';
-
 /**
  * A refusal Mirakl answered about the request itself; anything else may pass.
  * A 401 / 403 never gets here: the client throws `MiraklAuthenticationException`
@@ -194,19 +191,11 @@ export class MiraklOfferCreator {
     ean: string,
     offer: MiraklOfferLine
   ): Promise<CreateOfferResult> {
-    const pending: CreateOfferResult = {
-      externalOfferId: shopSku,
-      status: 'draft',
-      validationErrors: [
-        {
-          code: MIRAKL_CARD_PENDING_CODE,
-          message:
-            `${this.deps.brand} has no product card for EAN ${ean} yet. OpenLinker sends the card ` +
-            `to ${this.deps.brand} and creates the offer once ${this.deps.brand} accepts the card.`,
-          summary: `Waiting for ${this.deps.brand} to accept the product card`,
-        },
-      ],
-    };
+    // `validating`: the creation poller follows the offer from here. The
+    // status read reports the card as under review, so the poller waits for
+    // the operator at a slow pace instead of timing the create out, and the
+    // record ends `active` or `failed` with the operator's reason.
+    const pending: CreateOfferResult = { externalOfferId: shopSku, status: 'validating' };
     const writes = this.deps.writes();
     const earlier = await writes.findLatest(this.deps.connectionId, 'card', shopSku);
     if (earlier?.status === 'submitted') {
