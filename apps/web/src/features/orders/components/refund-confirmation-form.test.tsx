@@ -109,6 +109,13 @@ describe('RefundConfirmationForm preamble (#4091 O25)', () => {
     expect(screen.queryByText(/does not move money/)).not.toBeInTheDocument();
   });
 
+  it('should say OpenLinker sends the refund to Empik when the Empik connection opted in', () => {
+    renderForm({ sendTarget: 'empik' });
+
+    expect(screen.getByText(/OpenLinker sends this refund to Empik/)).toBeInTheDocument();
+    expect(screen.queryByText(/does not move money/)).not.toBeInTheDocument();
+  });
+
   it('should say Amazon takes the refund for processing rather than that the money has moved', () => {
     renderForm({ sendTarget: 'amazon' });
 

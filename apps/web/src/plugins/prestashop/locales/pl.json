@@ -1,4 +1,7 @@
 {
+  "connectionConfig": {
+    "defaultTaxGroupInvalid": "ID grupy podatkowej musi być liczbą całkowitą."
+  },
   "plugin": {
     "setupCard": {
       "badge": "Webservice API",
@@ -50,6 +53,11 @@
       "description": "Adres URL OpenLinker widziany z PrestaShop - moduł PS wysyła pod niego webhooki (POST) do OL. Wstępnie wypełniony adresem API używanym przez tę aplikację; zmień go dla środowiska Docker (np. http://host.docker.internal:3000) lub nietypowych wdrożeń. Wymagany do użycia akcji „Skonfiguruj webhooki”.",
       "label": "Adres URL zwrotny OL",
       "placeholder": "https://api.openlinker.example"
+    },
+    "defaultTaxGroup": {
+      "description": "ID grupy reguł podatkowych w PrestaShop (Międzynarodowe > Podatki > Reguły podatków) używane, gdy publikowany produkt nie ma stawki VAT w źródle, np. produkt pobrany z Empiku. Puste pole: taki produkt jest odrzucany. Produkt z własną stawką ją zachowuje.",
+      "label": "Domyślna grupa podatkowa dla produktów bez stawki VAT",
+      "placeholder": "np. 1"
     },
     "fallbackCarrier": {
       "description": "Używany, gdy metoda dostawy Allegro nie ma mapowania przewoźnika. Pozostaw pusty, aby podczas synchronizacji użyć przewoźnika OpenLinker Dynamic (dokładny koszt dostawy z Allegro) - działa tylko z zainstalowanym modułem OL dla PrestaShop.",

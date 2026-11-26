@@ -86,6 +86,7 @@ async function renderWizardInDataRouter(): Promise<void> {
           status: 'active',
           platformType: 'testmarket',
           supportedCapabilities: ['OfferManager', 'OfferCreator'],
+          enabledCapabilities: ['OfferManager'],
           config: { masterCatalogConnectionId: 'conn-master' },
         } as unknown as Connection,
       ]),

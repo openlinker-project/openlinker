@@ -89,6 +89,11 @@ export class PrestashopConnectionConfigDto {
     message: 'salesCountryIso2 must be a 2-letter uppercase ISO 3166-1 code (e.g. PL, DE)',
   })
   salesCountryIso2?: string;
+  /** Tax-rule group for published products whose catalogue has no rate; `null` clears it. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  defaultTaxRulesGroupId?: number | null;
   @IsOptional()
   @IsInt()
   @Min(1)

@@ -699,6 +699,16 @@ export function effectiveVariantEan(variant: BulkVariantRow): string | null {
 }
 
 /**
+ * Whether the operator typed a barcode for this sibling in the row editor. The
+ * editor stores one only when it differs from the master's, so any non-empty
+ * value is one the Resolve step never looked up.
+ */
+export function hasBarcodeOverride(variant: BulkVariantRow): boolean {
+  const ean = variant.override.overrides?.ean;
+  return ean !== undefined && ean.trim() !== '';
+}
+
+/**
  * Whether the operator cleared this sibling's barcode on purpose (#4036). An
  * empty `ean` override is an explicit "list without a barcode", distinct from an
  * absent one, which inherits the master barcode. The distinction has to survive
@@ -966,7 +976,10 @@ export function recomputeVariantBlockers(
     suppliedParameters: variant.override.overrides?.parameters,
     projectedParameters: projectedFor(context, variant.variantId, submitCategoryId),
     barcode: effectiveVariantEan(variant),
-    catalogueConsulted: context.catalogueConsulted,
+    // The lookup ran for the barcode the variant had at Resolve. A barcode the
+    // operator typed since was never looked up, so for this row nothing was
+    // consulted: "no card for this barcode" would describe a different EAN.
+    catalogueConsulted: context.catalogueConsulted === true && !hasBarcodeOverride(variant),
     barcodeMatchedCatalogue: variant.overriddenCard !== null,
     siblingsWithoutCatalogueCard: coverage.withoutCard,
     includedSiblingCount: coverage.included,

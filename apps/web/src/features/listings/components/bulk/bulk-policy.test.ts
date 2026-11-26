@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
+import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import { allegroOfferValidation } from '../allegro/allegro-offer-validation';
 import {
   clampMarkupPercent,
@@ -660,6 +661,34 @@ describe('recomputeVariantBlockers', () => {
     );
     expect(blockers).toContain('stock-unknown');
     expect(blockers).not.toContain('no-master-stock');
+  });
+
+  it('should not report a catalogue lookup for an EAN typed after Resolve', () => {
+    const seen: OfferRowValidationInput[] = [];
+    const capture = (input: OfferRowValidationInput): string[] => {
+      seen.push(input);
+      return [];
+    };
+    const typed = makeVariant('ol_variant_1', {
+      override: { overrides: { ean: '9788377585061' } },
+    });
+    const master = makeVariant('ol_variant_2');
+
+    for (const variant of [typed, master]) {
+      recomputeVariantBlockers(
+        makeWizardRow([variant]),
+        variant,
+        CONFIG,
+        new Map(),
+        capture,
+        false,
+        false,
+        { catalogueConsulted: true }
+      );
+    }
+
+    // The lookup answered for the master barcode, not the one typed since.
+    expect(seen.map((input) => input.catalogueConsulted)).toEqual([false, true]);
   });
 
   it('flags an invalid supplied barcode as invalid-barcode, not no-ean (#2240)', () => {

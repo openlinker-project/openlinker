@@ -422,6 +422,12 @@
         "title": "{destination} returned a category result this version doesn't recognise."
       }
     },
+    "empik": {
+      "noCard": {
+        "detail": "Add the product in the Empik seller panel first; creating cards from OpenLinker is not available yet.",
+        "title": "Empik has no product card for this EAN."
+      }
+    },
     "erli": {
       "missingImage": {
         "detail": "Erli needs at least one. Add one in the images section.",
@@ -1480,6 +1486,26 @@
     "validation": {
       "priceInvalid": "Price must be a positive number with up to 2 decimal places",
       "titleTooLong": "Title must be {max} characters or fewer"
+    }
+  },
+  "empikBulkConfigSection": {
+    "leadTime": {
+      "description": "Days from order to shipment that {platform} shows buyers, 0 to {max}.",
+      "invalid": "Enter a whole number of days from 0 to {max}.",
+      "label": "Lead time (days)"
+    },
+    "logisticClass": {
+      "description": "The {platform} logistic class code that sets shipping rates, e.g. 1 for small items.",
+      "label": "Logistic class"
+    },
+    "note": {
+      "currency": "Prices are sent in PLN.",
+      "existingCards": "Offers are created on existing {platform} product cards, found by EAN."
+    }
+  },
+  "empikOfferValidation": {
+    "blockers": {
+      "noCard": "no Empik card"
     }
   },
   "erliBulkConfigSection": {

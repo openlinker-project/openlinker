@@ -61,6 +61,9 @@ export const WIZARDS = {
   allegro: ['apps/web/src/features/allegro/components/AllegroSetupForm.tsx'],
   amazon: ['apps/web/src/features/amazon/components/amazon-setup-form.tsx'],
   erli: ['apps/web/src/features/connections/components/erli-setup-form.tsx'],
+  mirakl: {
+    none: 'no start choice yet; the order feed starts from its 7-day lookback on the first poll',
+  },
   prestashop: ['apps/web/src/features/connections/components/prestashop-setup-form.tsx'],
   shopify: ['apps/web/src/features/shopify/components/shopify-setup-form.tsx'],
   shoper: ['apps/web/src/features/connections/components/shoper-setup-form.tsx'],

@@ -934,6 +934,82 @@
     "unmanagedStockInvalid": "Unmanaged stock quantity must be a positive integer.",
     "wholeNumberOrZero": "Must be a whole number, 0 or more"
   },
+  "empikSetupForm": {
+    "beforeYouStart": {
+      "body": "In the {platform} seller panel, open the user menu, go to <strong>API key</strong> and generate a key. Empik allows one key per shop, and generating a new one disables the old one. OpenLinker stores the key securely on the server.",
+      "title": "Before you start"
+    },
+    "connect": "Connect {platform}",
+    "connecting": "Connecting…",
+    "createError": "Unable to create connection",
+    "createdDescription": "{platform} connection \"{name}\" was created.",
+    "createdTitle": "Connection created",
+    "done": "Done",
+    "environments": {
+      "production": "Production",
+      "staging": "Staging"
+    },
+    "fields": {
+      "apiKey": {
+        "description": "The shop API key from the Empik seller panel.",
+        "label": "API key"
+      },
+      "environment": {
+        "description": "Choose Staging for an Empik test account. A test key does not work on production.",
+        "label": "Environment",
+        "option": "{name} - {url}"
+      },
+      "name": {
+        "description": "A label to identify this {platform} account in OpenLinker.",
+        "label": "Connection name",
+        "placeholder": "My {platform} shop"
+      },
+      "shopId": {
+        "description": "Only needed when one API key has access to several shops. Leave empty to use the key's own shop.",
+        "label": "Shop ID (optional)"
+      }
+    },
+    "latency": "({ms}ms)",
+    "platformFallback": "the marketplace",
+    "review": {
+      "defaultShop": "The key's own shop",
+      "name": "Name"
+    },
+    "shippingZone": {
+      "body": "Empik only shows offers from shops that have shipping charges. In the seller panel go to <strong>Settings</strong>, then <strong>Shipping configuration</strong>, then <strong>Shipping charges</strong>, and add at least one zone. Without it every offer stays inactive.",
+      "title": "Set up shipping in the Empik seller panel"
+    },
+    "steps": {
+      "credentials": "Credentials",
+      "review": "Review & connect"
+    },
+    "test": "Test connection",
+    "testError": "Unable to test connection",
+    "testFailed": "Connection test failed",
+    "testPassed": "Connection test passed",
+    "testing": "Testing…"
+  },
+  "empikSetupPage": {
+    "chip": "API key",
+    "description": "Provide your {platform} shop API key. OpenLinker uses it to sync offers and orders with your {platform} seller account.",
+    "fallbackPlatform": "the marketplace",
+    "title": "Connect {platform}"
+  },
+  "empikSetupSchema": {
+    "apiKeyRequired": "API key is required",
+    "nameRequired": "Connection name is required",
+    "shopIdInvalid": "Shop ID must be a whole number greater than 0"
+  },
+  "empikSetupSummary": {
+    "connection": "Connection",
+    "environment": "Environment",
+    "environments": {
+      "production": "Production",
+      "staging": "Staging"
+    },
+    "name": "Name",
+    "shopId": "Shop ID"
+  },
   "enableConnectionButton": {
     "enable": "Enable",
     "enabling": "Enabling…",

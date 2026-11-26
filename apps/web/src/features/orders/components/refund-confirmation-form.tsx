@@ -176,7 +176,9 @@ export function RefundConfirmationForm({
           ? copy.preambleShopify
           : sendTarget === 'amazon'
             ? copy.preambleAmazon
-            : copy.preamble}
+            : sendTarget === 'empik'
+              ? copy.preambleEmpik
+              : copy.preamble}
       </p>
 
       <FormErrorSummary errors={messages} title={copy.heading} />

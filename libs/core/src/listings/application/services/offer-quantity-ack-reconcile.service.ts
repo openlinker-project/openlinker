@@ -8,6 +8,12 @@
  * run on its own schedule by a worker handler for any `OfferManager`-capable
  * connection whose dispatched adapter declares `PendingQuantityAckReconciler`.
  *
+ * A connection that is a stock MASTER instead (#4284, Mirakl) holds no
+ * `OfferManager` - a stock master is never also a write-back target (#1498) -
+ * yet its own stock writes can be just as asynchronous. For such a connection
+ * the same pass asks the `InventoryMaster` adapter, probed for the same
+ * method rather than trusted (ADR-046). Everything else is unchanged.
+ *
  * Deliberately thin: the pending-write bookkeeping is entirely adapter-
  * internal (e.g. Allegro's own `allegro_quantity_commands` table), so this
  * service only resolves the capability and delegates — mirroring how
@@ -18,7 +24,11 @@
  */
 import { Injectable, Inject } from '@nestjs/common';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
-import type { OfferManagerPort, PendingQuantityAckReconcileResult } from '@openlinker/core/listings';
+import type {
+  OfferManagerPort,
+  PendingQuantityAckReconciler,
+  PendingQuantityAckReconcileResult,
+} from '@openlinker/core/listings';
 import { isPendingQuantityAckReconciler } from '@openlinker/core/listings';
 import { Logger } from '@openlinker/shared/logging';
 import type { IOfferQuantityAckReconcileService } from './offer-quantity-ack-reconcile.service.interface';
@@ -32,10 +42,13 @@ export class OfferQuantityAckReconcileService implements IOfferQuantityAckReconc
     private readonly integrationsService: IIntegrationsService
   ) {}
 
-  async reconcile(
-    connectionId: string,
-    limit: number
-  ): Promise<PendingQuantityAckReconcileResult> {
+  async reconcile(connectionId: string, limit: number): Promise<PendingQuantityAckReconcileResult> {
+    const { connection } = await this.integrationsService.getAdapter(connectionId);
+    const enabled = connection.enabledCapabilities ?? [];
+    if (!enabled.includes('OfferManager') && enabled.includes('InventoryMaster')) {
+      return this.reconcileStockMaster(connectionId, limit);
+    }
+
     const adapter = await this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
       connectionId,
       'OfferManager'
@@ -50,4 +63,31 @@ export class OfferQuantityAckReconcileService implements IOfferQuantityAckReconc
 
     return adapter.reconcilePendingQuantityAcks(limit);
   }
+
+  private async reconcileStockMaster(
+    connectionId: string,
+    limit: number
+  ): Promise<PendingQuantityAckReconcileResult> {
+    const adapter = await this.integrationsService.getCapabilityAdapter<unknown>(
+      connectionId,
+      'InventoryMaster'
+    );
+    if (!hasPendingWrites(adapter)) {
+      this.logger.debug(
+        `Connection ${connectionId} stock master keeps no pending writes; nothing to reconcile`
+      );
+      return { reconciled: 0, stillPending: 0 };
+    }
+    return adapter.reconcilePendingQuantityAcks(limit);
+  }
+}
+
+/** Probed, not trusted: an inventory master declares nothing for this. */
+function hasPendingWrites(adapter: unknown): adapter is PendingQuantityAckReconciler {
+  return (
+    typeof adapter === 'object' &&
+    adapter !== null &&
+    typeof (adapter as Partial<PendingQuantityAckReconciler>).reconcilePendingQuantityAcks ===
+      'function'
+  );
 }

@@ -764,6 +764,84 @@ describe('PrestashopProductPublisherAdapter', () => {
       await expectRefusal(baseCommand({ taxRate: undefined }), 'TAX_RATE_MISSING');
     });
 
+    describe('defaultTaxRulesGroupId on the connection', () => {
+      function withDefaultGroup(value: unknown): PrestashopProductPublisherAdapter {
+        return createAdapter({
+          ...connection,
+          config: { ...connection.config, defaultTaxRulesGroupId: value },
+        } as Connection);
+      }
+
+      it('should take the net from the default group when the catalogue holds no rate', async () => {
+        taxRateResolver.resolveTaxRulesGroupRate.mockResolvedValue({
+          kind: 'resolved',
+          rate: 0.05,
+          matchedBy: 'country',
+        });
+
+        await withDefaultGroup(9).publishProduct(
+          baseCommand({ price: { amount: 105, currency: 'PLN' }, taxRate: undefined }),
+        );
+
+        expect(writtenProductBody()).toMatchObject({
+          price: '100.000000',
+          id_tax_rules_group: '9',
+        });
+        expect(taxRateResolver.resolveTaxRulesGroupRate).toHaveBeenCalledWith(
+          9,
+          14,
+          CONNECTION_ID,
+          client,
+        );
+      });
+
+      it('should never let the default group override a catalogue rate', async () => {
+        await withDefaultGroup(9).publishProduct(baseCommand());
+
+        expect(writtenProductBody()).toMatchObject({
+          id_tax_rules_group: String(PL_23_TAX_GROUP_ID),
+        });
+        expect(taxRateResolver.resolveTaxRulesGroupRate).not.toHaveBeenCalled();
+      });
+
+      it('should refuse with TAX_GROUP_UNRESOLVED when the default group has no rate for the sales country', async () => {
+        taxRateResolver.resolveTaxRulesGroupRate.mockResolvedValue({
+          kind: 'unknown',
+          reason: 'configuration',
+          evidence: 'tax rules group 9 has no rule for PL',
+        });
+
+        const error = await withDefaultGroup(9)
+          .publishProduct(baseCommand({ taxRate: undefined }))
+          .then(
+            () => null,
+            (e: unknown) => e,
+          );
+
+        expect(error).toBeInstanceOf(ProductPublishRejectedException);
+        expect(error).toMatchObject({
+          errors: [expect.objectContaining({ code: 'TAX_GROUP_UNRESOLVED' })],
+        });
+        expect(client.createResource).not.toHaveBeenCalled();
+      });
+
+      it.each([null, ''])(
+        'should still refuse with TAX_RATE_MISSING when the default is %p',
+        async (value) => {
+          const error = await withDefaultGroup(value)
+            .publishProduct(baseCommand({ taxRate: undefined }))
+            .then(
+              () => null,
+              (e: unknown) => e,
+            );
+
+          expect(error).toMatchObject({
+            errors: [expect.objectContaining({ code: 'TAX_RATE_MISSING' })],
+          });
+        },
+      );
+    });
+
     it('should refuse with SALES_COUNTRY_UNRESOLVED when the shop cannot name a sales country', async () => {
       salesCountryResolver.resolve.mockResolvedValue(null);
 

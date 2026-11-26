@@ -108,7 +108,9 @@ export function ConfirmOrderRefundDialog({
             ? copy.descriptionShopify
             : sendTarget === 'amazon'
               ? copy.descriptionAmazon
-              : copy.description}
+              : sendTarget === 'empik'
+                ? copy.descriptionEmpik
+                : copy.description}
         </DialogDescription>
 
         {ceiling ? (
