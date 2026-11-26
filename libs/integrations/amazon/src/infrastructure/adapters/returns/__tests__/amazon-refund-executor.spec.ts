@@ -247,4 +247,27 @@ describe('AmazonRefundExecutor', () => {
 
     expect(feeds.uploadFeedDocument.mock.calls[0][0]).toContain('111-1\tI1\tCustomerReturn\tUSD\t10.00\t1.00\t0.00\t0.00');
   });
+
+  it('should write a currency with no minor unit without decimals', async () => {
+    const jpy = (amount: string): { amount: string; currencyCode: string } => ({ amount, currencyCode: 'JPY' });
+    const yenOrder = {
+      orderId: '503-1',
+      salesChannel: { channelName: 'Amazon.co.jp', marketplaceId: 'A1VC38T7YXB528' },
+      fulfillment: { fulfilledBy: 'MERCHANT' },
+      proceeds: { grandTotal: jpy('1500') },
+      orderItems: [
+        {
+          orderItemId: 'I1',
+          quantityOrdered: 1,
+          product: { sellerSku: 'MUG', price: { unitPrice: jpy('1500') } },
+          proceeds: { breakdowns: [{ type: 'ITEM', subtotal: jpy('1500') }] },
+        },
+      ],
+    } as unknown as AmazonOrder;
+    const { executor, feeds } = setup(undefined, yenOrder);
+
+    await executor.executeRefund(command({ externalOrderId: '503-1', amount: '1000', currency: 'JPY' }));
+
+    expect(feeds.uploadFeedDocument.mock.calls[0][0]).toContain('503-1\tI1\tCustomerReturn\tJPY\t1000\t0\t0\t0');
+  });
 });

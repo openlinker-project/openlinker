@@ -181,6 +181,7 @@ export type {
   SalesDocumentBatchTickPayloadV1,
 } from './domain/types/sales-document-batch-job-payloads.types';
 export type { FulfillmentWorkRelaySweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type { FulfillmentWorkStatusPollPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRerouteSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentRoutingReapSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { InventorySaleDecrementReconcileSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';

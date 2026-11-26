@@ -29,6 +29,7 @@ import { FulfillmentHandshakeService } from './application/services/fulfillment-
 import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
 import { FulfillmentRelayGateService } from './application/services/fulfillment-relay-gate.service';
 import { FulfillmentRelayReconcileService } from './application/services/fulfillment-relay-reconcile.service';
+import { FulfillmentStatusPollService } from './application/services/fulfillment-status-poll.service';
 import { FulfillmentSaleDecrementReconcileService } from './application/services/fulfillment-sale-decrement-reconcile.service';
 import { FulfillmentVerificationService } from './application/services/fulfillment-verification.service';
 import { RoutingCommitService } from './application/services/routing-commit.service';
@@ -40,6 +41,7 @@ import {
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
   FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
   FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
+  FULFILLMENT_STATUS_POLL_SERVICE_TOKEN,
   FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
@@ -104,6 +106,8 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
       provide: FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
       useExisting: FulfillmentRelayReconcileService,
     },
+    FulfillmentStatusPollService,
+    { provide: FULFILLMENT_STATUS_POLL_SERVICE_TOKEN, useExisting: FulfillmentStatusPollService },
     FulfillmentSaleDecrementReconcileService,
     {
       provide: FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN,
@@ -149,6 +153,8 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
     // Exported for the worker's dispatch-relay reconcile sweep (#2728).
     FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
+    // Exported for the worker's status poll of a polling holder (MCF).
+    FULFILLMENT_STATUS_POLL_SERVICE_TOKEN,
     // Exported for the worker's sale-decrement reconcile sweep (#3629).
     FULFILLMENT_SALE_DECREMENT_RECONCILE_SERVICE_TOKEN,
     ROUTING_DECISION_REPOSITORY_TOKEN,

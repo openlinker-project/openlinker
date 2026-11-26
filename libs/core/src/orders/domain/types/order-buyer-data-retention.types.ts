@@ -32,6 +32,8 @@ export interface OrderBuyerDataRetentionConnectionResult {
   readonly sourceConnectionId: string;
   readonly retentionDays: number;
   readonly redacted: number;
+  /** Orders whose redaction failed this run; they stay candidates for the next one. */
+  readonly failed: number;
   /** Customer projections cleared for this source. */
   readonly customersRedacted: number;
   /** A full budget was spent; the rest is redacted on the next run. */

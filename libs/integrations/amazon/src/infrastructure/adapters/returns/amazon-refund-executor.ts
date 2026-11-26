@@ -41,6 +41,7 @@
  * @module libs/integrations/amazon/src/infrastructure/adapters/returns
  */
 import type { ExecuteRefundCommand, RefundExecutionResult, RefundReason } from '@openlinker/core/orders';
+import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 import type { CachePort } from '@openlinker/shared';
 
 import { allocateAmazonRefund } from '../../../domain/policies/amazon-refund-allocation.policy';
@@ -121,16 +122,19 @@ export class AmazonRefundExecutor {
     if (payments.currency !== command.currency) {
       return denied(`the Amazon order is not in ${command.currency}`);
     }
+    // The currency's own minor unit: JPY has none, so a fixed 100 would write
+    // "1000.00" for a 1000-yen refund.
+    const exponent = minorUnitExponentFor(command.currency);
     const items = payments.items.map((item) => ({
       orderItemId: item.orderItemId,
       sku: item.sku,
-      paidMinor: Math.round(item.gross * 100),
+      paidMinor: toMinor(item.gross, exponent),
       quantity: item.quantity,
     }));
     const returned =
       command.externalReturnId === null ? null : await this.deps.returns.cached(command.externalReturnId);
     const allocation = allocateAmazonRefund(
-      toMinor(command.amount),
+      toMinor(Number(command.amount), exponent),
       items,
       returned === null ? null : returned.lines.map((line) => ({ sku: line.sku, quantity: line.quantity })),
     );
@@ -143,16 +147,16 @@ export class AmazonRefundExecutor {
       FEED_HEADERS,
       allocation.parts.map((part) => {
         const tax =
-          payments.taxTreatment === 'exclusive' ? taxShareMinor(part, payments.items) : 0;
+          payments.taxTreatment === 'exclusive' ? taxShareMinor(part, payments.items, exponent) : 0;
         return [
           order.orderId,
           part.orderItemId,
           reasonCode,
           command.currency,
-          fromMinor(part.amountMinor - tax),
-          fromMinor(tax),
-          '0.00',
-          '0.00',
+          fromMinor(part.amountMinor - tax, exponent),
+          fromMinor(tax, exponent),
+          fromMinor(0, exponent),
+          fromMinor(0, exponent),
         ];
       }),
     );
@@ -242,12 +246,13 @@ function denied(message: string): RefundExecutionResult {
 function taxShareMinor(
   part: { readonly orderItemId: string; readonly amountMinor: number },
   items: readonly AmazonItemPayment[],
+  exponent: number,
 ): number {
   const item = items.find((candidate) => candidate.orderItemId === part.orderItemId);
   if (item === undefined || item.gross <= 0 || item.tax <= 0) {
     return 0;
   }
-  return Math.round((part.amountMinor * Math.round(item.tax * 100)) / Math.round(item.gross * 100));
+  return Math.round((part.amountMinor * toMinor(item.tax, exponent)) / toMinor(item.gross, exponent));
 }
 
 function adjustmentReason(reason: RefundReason, forReturn: boolean): string {
@@ -255,11 +260,11 @@ function adjustmentReason(reason: RefundReason, forReturn: boolean): string {
   return forReturn ? 'CustomerReturn' : 'GeneralAdjustment';
 }
 
-function toMinor(amount: string): number {
-  const value = Number(amount);
-  return Number.isFinite(value) ? Math.round(value * 100) : Number.NaN;
+/** An amount in the currency's minor units (`minorUnitExponentFor`). */
+function toMinor(value: number, exponent: number): number {
+  return Number.isFinite(value) ? Math.round(value * 10 ** exponent) : Number.NaN;
 }
 
-function fromMinor(minor: number): string {
-  return (minor / 100).toFixed(2);
+function fromMinor(minor: number, exponent: number): string {
+  return (minor / 10 ** exponent).toFixed(exponent);
 }

@@ -30,7 +30,7 @@ const page = (skus: string[], nextToken?: string) => ({
 });
 
 describe('AmazonListingReader', () => {
-  it('should prefetch 20 SKUs per call and report a missing SKU as absent without another call', async () => {
+  it('should prefetch 20 SKUs per call and serve the found ones without another call', async () => {
     const { reader, get } = setup();
     get.mockResolvedValue(page(['A']));
 
@@ -39,8 +39,29 @@ describe('AmazonListingReader', () => {
     expect(get).toHaveBeenCalledTimes(1);
     expect((get.mock.calls as unknown[][])[0][1]).toMatchObject({ identifiers: ['A', 'B'], identifiersType: 'SKU' });
     await expect(reader.read('A')).resolves.toEqual({ sku: 'A' });
-    await expect(reader.read('B')).resolves.toBeNull();
     expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('should ask Amazon for a SKU the search omitted, never read the omission as a deletion', async () => {
+    const { reader, get } = setup();
+    get.mockResolvedValueOnce(page(['A']));
+    await reader.prefetch(['A', 'B']);
+    expect(reader.peek('B')).toBeUndefined();
+
+    // Index lag: the search left out a listing that exists.
+    get.mockResolvedValueOnce({ status: 200, requestId: 'r', data: { sku: 'B' } });
+    await expect(reader.read('B')).resolves.toEqual({ sku: 'B' });
+    expect(get).toHaveBeenCalledTimes(2);
+    expect((get.mock.calls as unknown[][])[1][0]).toBe('/listings/2021-08-01/items/A2SELLER123/B');
+  });
+
+  it('should take only a 404 from the listing read as gone after a search miss', async () => {
+    const { reader, get } = setup();
+    get.mockResolvedValueOnce(page([]));
+    await reader.prefetch(['B']);
+
+    get.mockRejectedValueOnce(new AmazonApiError(404, 'NOT_FOUND', 'gone', 'r'));
+    await expect(reader.read('B')).resolves.toBeNull();
   });
 
   it('should answer null for a listing Amazon does not have', async () => {

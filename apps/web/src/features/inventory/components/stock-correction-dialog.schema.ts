@@ -104,6 +104,7 @@ const TARGET_REFUSAL_KEY: Record<CorrectionTargetRefusalReason, keyof StockCorre
   'no-position': 'noPosition',
   'unattributed-owner': 'unattributedOwner',
   'adapter-unresolved': 'adapterUnresolved',
+  'multiple-locations': 'multipleLocations',
 };
 
 export function targetRefusalCopy(

@@ -7,6 +7,7 @@ import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 
 import { AmazonApiError } from '../../../../domain/exceptions/amazon-api.error';
 import { AmazonConfigException } from '../../../../domain/exceptions/amazon-config.exception';
+import { AmazonListingUpdateNotSupportedException } from '../../../../domain/exceptions/amazon-listing-update-not-supported.exception';
 import { AmazonNotSupportedException } from '../../../../domain/exceptions/amazon-not-supported.exception';
 import type { AmazonConnectionConfig } from '../../../../domain/types/amazon-config.types';
 import type { AmazonListingItem } from '../../../../domain/types/amazon-listing.types';
@@ -51,7 +52,7 @@ describe('AmazonOfferManagerAdapter.listOffers', () => {
 
     expect(get).toHaveBeenCalledWith('/listings/2021-08-01/items/A2SELLER123', {
       marketplaceIds: ['A1PA6795UKMFR9'],
-      includedData: ['summaries', 'fulfillmentAvailability'],
+      includedData: ['summaries', 'attributes', 'fulfillmentAvailability'],
       sortBy: 'sku',
       sortOrder: 'ASC',
       pageSize: 20,
@@ -63,6 +64,21 @@ describe('AmazonOfferManagerAdapter.listOffers', () => {
       raw: { fulfilledByAmazon: false },
     });
     expect(result.nextCursor).toBe('next');
+  });
+
+  it('should carry the listing EAN so offer linking can match it in the master catalogue', async () => {
+    const { adapter, get } = setup();
+    const withEan = fbmListing({
+      attributes: {
+        externally_assigned_product_identifier: [{ type: 'ean', value: '5901234123457', marketplace_id: 'A1PA6795UKMFR9' }],
+      },
+    });
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { numberOfResults: 2, items: [withEan, fbmListing()] } });
+
+    const result = await adapter.listOffers({ cursor: null, limit: 20 });
+
+    expect(result.items[0].ean).toBe('5901234123457');
+    expect(result.items[1].ean).toBeNull();
   });
 
   it('should pass the page token on', async () => {
@@ -132,8 +148,8 @@ describe('AmazonOfferManagerAdapter.updateOfferQuantity', () => {
       },
     });
     const error = await adapter.updateOfferQuantity({ offerId: 'MUG-BLUE', quantity: 3 }).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(AmazonApiError);
-    expect(error).toMatchObject({ errorCode: '90220' });
+    expect(error).toBeInstanceOf(AmazonListingUpdateNotSupportedException);
+    expect(error).toMatchObject({ issueCode: '90220', sku: 'MUG-BLUE' });
   });
 
   it('should not write back to the listings of a stock-master connection (#4183)', async () => {

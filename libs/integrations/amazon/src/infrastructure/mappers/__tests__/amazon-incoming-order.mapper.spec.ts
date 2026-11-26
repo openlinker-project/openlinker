@@ -46,6 +46,11 @@ describe('mapAmazonOrderToIncomingOrder', () => {
     expect(coaster.taxRate).toBeUndefined();
   });
 
+  it('should key a line by seller SKU as a variant when the connection is the catalogue', () => {
+    const [mug] = mapAmazonOrderToIncomingOrder(amazonFbmOrder(), 'variant').items;
+    expect(mug.productRef).toEqual({ type: 'variant', externalId: 'MUG-BLUE' });
+  });
+
   it('should say the address was withheld when Amazon sends none', () => {
     const order = mapAmazonOrderToIncomingOrder(amazonFbmOrder({ recipient: undefined }));
     expect(order.shippingAddress).toBeUndefined();

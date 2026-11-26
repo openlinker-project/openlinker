@@ -39,6 +39,7 @@ import {
   SHOPIFY_LOCATION_READER_TOKEN,
   SHOPIFY_PLATFORM_TYPE,
   checkShopifyOAuthCallback,
+  shopifyAdapterManifest,
   parseShopifyConfig,
   type IShopifyLocationReader,
   type ShopifyLocationSummary,
@@ -66,6 +67,7 @@ import { toConfigShapeErrorBody } from '../application/services/connection-shape
 import {
   hasMasterAndPublisher,
   masterPublisherConflictError,
+  publisherRole,
 } from '../application/services/connection-capability-rules';
 import { allowedValues, connectionConfigInvalid } from '../application/services/connection-errors';
 import { toOrderSyncStart } from './dto/order-sync-start.dto';
@@ -163,8 +165,13 @@ export class ShopifyController {
     }
     // The connection is created only after the merchant approved the app, so a
     // combination core would refuse is refused here, before the redirect.
-    if (dto.enabledCapabilities && hasMasterAndPublisher(dto.enabledCapabilities)) {
-      throw masterPublisherConflictError();
+    if (
+      dto.enabledCapabilities &&
+      hasMasterAndPublisher(dto.enabledCapabilities, shopifyAdapterManifest.supportedCapabilities)
+    ) {
+      throw masterPublisherConflictError(
+        publisherRole(dto.enabledCapabilities, shopifyAdapterManifest.supportedCapabilities) ?? 'ProductPublisher',
+      );
     }
     // A reauth rotates credentials only, so a start choice has nothing to apply to.
     const orderSyncStart = dto.connectionId ? undefined : toOrderSyncStart(dto.orderSyncStart);

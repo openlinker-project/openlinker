@@ -225,7 +225,7 @@ export function AmazonSetupForm(): ReactElement {
 
       <fieldset className="form-field">
         <legend className="form-field__label">{copy.role}</legend>
-        <label className="checkbox-row">
+        <label className="amazon-checkbox-row">
           <input type="radio" value="sales-channel" {...form.register('role')} />
           <span>
             {copy.roleSalesChannel}
@@ -234,14 +234,18 @@ export function AmazonSetupForm(): ReactElement {
             </span>
           </span>
         </label>
-        <label className="checkbox-row">
+        <label className="amazon-checkbox-row">
           <input type="radio" value="master" {...form.register('role')} />
           <span>
             {copy.roleMaster}
             <span className="form-field__description form-field__description--block">{copy.roleMasterHint}</span>
           </span>
         </label>
-        <label className="checkbox-row">
+      </fieldset>
+
+      <fieldset className="form-field">
+        <legend className="form-field__label">{copy.handles}</legend>
+        <label className="amazon-checkbox-row">
           <input type="checkbox" {...form.register('orders')} />
           <span>
             {copy.orders}
@@ -250,9 +254,21 @@ export function AmazonSetupForm(): ReactElement {
             </span>
           </span>
         </label>
-        <label className="checkbox-row">
-          <input type="checkbox" {...form.register('offers')} disabled={role === 'master'} />
-          <span className={role === 'master' ? 'text-muted' : undefined}>
+        <label className="amazon-checkbox-row">
+          {/* Controlled rather than registered: a catalogue master never gets
+              offers, so the box reads unticked, while the form keeps the
+              sales-channel choice for a switch back. */}
+          <input
+            type="checkbox"
+            checked={offers}
+            disabled={role === 'master'}
+            onChange={(event) => {
+              form.setValue('offers', event.target.checked);
+              // The "orders or offers" refusal is reported on `orders`.
+              if (form.formState.submitCount > 0) void form.trigger(['orders', 'offers']);
+            }}
+          />
+          <span className={role === 'master' ? 'muted-text' : undefined}>
             {copy.offers}
             <span className="form-field__description form-field__description--block">
               {role === 'master' ? copy.offersMasterHint : copy.offersHint}

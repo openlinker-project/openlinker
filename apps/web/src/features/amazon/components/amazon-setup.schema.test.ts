@@ -39,6 +39,18 @@ describe('amazonSetupSchema', () => {
     });
   });
 
+  it('should send the chosen order sync start only when the connection reads orders (#4228)', () => {
+    const fromDate = { ...valid, orderSyncStart: { mode: 'from' as const, from: '2026-11-01' } };
+
+    expect(toCreateConnectionInput(amazonSetupSchema.parse(fromDate)).orderSyncStart).toEqual({
+      mode: 'from',
+      from: '2026-11-01',
+    });
+    expect(
+      toCreateConnectionInput(amazonSetupSchema.parse({ ...fromDate, orders: false })).orderSyncStart,
+    ).toBeUndefined();
+  });
+
   it('should refuse a marketplace served by another region', () => {
     expect(issues({ ...valid, region: 'na' })).toMatchObject({ marketplaceIds: 'marketplaceOtherRegion' });
     expect(issues({ ...valid, marketplaceIds: [] })).toMatchObject({ marketplaceIds: 'marketplaceRequired' });

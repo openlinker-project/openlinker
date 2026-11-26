@@ -6,6 +6,7 @@
 import { AmazonApiError } from '../../../domain/exceptions/amazon-api.error';
 import { AmazonAuthenticationError } from '../../../domain/exceptions/amazon-authentication.error';
 import { AmazonConfigException } from '../../../domain/exceptions/amazon-config.exception';
+import { AmazonListingUpdateNotSupportedException } from '../../../domain/exceptions/amazon-listing-update-not-supported.exception';
 import { AmazonNetworkError } from '../../../domain/exceptions/amazon-network.error';
 import { AmazonNotSupportedException } from '../../../domain/exceptions/amazon-not-supported.exception';
 import { AmazonAuthFailureClassifierAdapter } from '../amazon-auth-failure-classifier.adapter';
@@ -25,11 +26,26 @@ describe('AmazonRetryClassifierAdapter', () => {
     }
   });
 
+  it('should make a listing patch Amazon answered INVALID terminal, named the way core reads a refusal', () => {
+    const refused = new AmazonListingUpdateNotSupportedException('MUG', '90220', 'quantity is required', 'req');
+    expect(classifier.isNonRetryable(refused)).toBe(true);
+    // The shape `inventory-correction.service.ts` reads as a master refusal, not an unknown outcome.
+    expect(/NotSupported(Exception|Error)?$/.test(refused.name)).toBe(true);
+    expect(refused.message).toBe('Amazon refused the update of listing MUG (90220: quantity is required)');
+  });
+
   it('should retry network failures, 408, 429 and 5xx', () => {
     expect(classifier.isNonRetryable(new AmazonNetworkError('down'))).toBe(false);
     for (const status of [408, 429, 500, 503]) {
       expect(classifier.isNonRetryable(api(status))).toBe(false);
     }
+  });
+
+  it('should make a product type schema the plugin will not read terminal, even wrapped', () => {
+    expect(classifier.isNonRetryable(api(502, 'SchemaLinkInvalid'))).toBe(true);
+    expect(classifier.isNonRetryable(api(502, 'SchemaTooLarge'))).toBe(true);
+    expect(classifier.isNonRetryable(new Error('create failed', { cause: api(502, 'SchemaLinkInvalid') }))).toBe(true);
+    expect(classifier.isNonRetryable(api(502, 'SchemaUnreadable'))).toBe(false);
   });
 
   it('should not claim errors from other plugins', () => {

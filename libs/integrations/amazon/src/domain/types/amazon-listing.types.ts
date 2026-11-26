@@ -80,3 +80,16 @@ export interface AmazonListingSubmissionResponse {
 
 /** The fulfilment channel of seller-fulfilled stock. */
 export const AMAZON_SELLER_FULFILLMENT_CHANNEL = 'DEFAULT';
+
+/**
+ * A seller-fulfilled stock patch Amazon accepted but may not have applied yet
+ * (#4183 review). Amazon applies an accepted patch minutes later, so a listing
+ * read inside that window still shows `readQuantity`; the next adjustment
+ * starts from `writtenQuantity` instead, or a back-to-back decrement is lost.
+ */
+export interface AmazonPendingStockWrite {
+  /** The seller-fulfilled quantity Amazon reported before the first patch of the chain. */
+  readonly readQuantity: number;
+  /** The quantities written since, oldest first; the last one is the newest. */
+  readonly writtenQuantities: readonly number[];
+}

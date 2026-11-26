@@ -134,7 +134,8 @@
       "auto_dispatch_preflight_failed": "nieprawidłowe dane przesyłki",
       "auto_dispatch_shipment_claimed_by_sibling_work": "inna paczka ma etykietę",
       "auto_dispatch_work_not_eligible": "zamówienie niegotowe",
-      "master_deleted": "usunięte w źródle"
+      "master_deleted": "usunięte w źródle",
+      "notification_queue_not_configured": "brak kolejki"
     },
     "statuses": {
       "dead": "martwe",

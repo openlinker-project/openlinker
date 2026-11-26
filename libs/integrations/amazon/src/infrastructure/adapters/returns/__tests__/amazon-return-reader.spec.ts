@@ -5,7 +5,6 @@
  */
 import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 
-import { AmazonApiError } from '../../../../domain/exceptions/amazon-api.error';
 import { decodeAmazonReturnFeedCursor, encodeAmazonReturnFeedCursor } from '../../../../domain/policies/amazon-return-feed-cursor.policy';
 import type { AmazonReportsClient } from '../../../http/amazon-reports.client';
 import { AmazonReturnReader } from '../amazon-return-reader';
@@ -79,15 +78,21 @@ describe('AmazonReturnReader', () => {
     expect(decodeAmazonReturnFeedCursor(second.nextCursor, NOW)).toEqual({ step: 'idle', until: '2026-11-18T11:58:00.000Z' });
   });
 
-  it('should close the cycle on a cancelled report and fail on a fatal one', async () => {
+  it('should close the cycle on a cancelled report and on a fatal one', async () => {
     const { reader, reports } = setup();
     const pending = encodeAmazonReturnFeedCursor({ step: 'pending', reportId: 'R1', until: '2026-11-18T11:58:00.000Z' });
     reports.getReport.mockResolvedValueOnce({ reportId: 'R1', processingStatus: 'CANCELLED' });
     const cancelled = await reader.listReturnFeed({ fromCursor: pending, limit: 10 });
     expect(decodeAmazonReturnFeedCursor(cancelled.nextCursor, NOW).step).toBe('idle');
 
+    // A FATAL report never changes; the feed must move on, not fail every tick.
     reports.getReport.mockResolvedValueOnce({ reportId: 'R1', processingStatus: 'FATAL' });
-    await expect(reader.listReturnFeed({ fromCursor: pending, limit: 10 })).rejects.toThrow(AmazonApiError);
+    const fatal = await reader.listReturnFeed({ fromCursor: pending, limit: 10 });
+    expect(fatal.items).toEqual([]);
+    expect(decodeAmazonReturnFeedCursor(fatal.nextCursor, NOW)).toEqual({
+      step: 'idle',
+      until: '2026-11-18T11:58:00.000Z',
+    });
   });
 
   it('should read a return back from the cache, and report one it never saw as not found', async () => {

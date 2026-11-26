@@ -54,6 +54,7 @@ import { AmazonEmailNormalizerAdapter } from './infrastructure/adapters/amazon-e
 import { buildAmazonSchedulerTasks } from './infrastructure/scheduler/amazon-scheduler-tasks';
 import { AmazonAdapterFactory } from './application/amazon-adapter.factory';
 import { createAmazonPacedFetch } from './infrastructure/http/amazon-paced-transport';
+import { AMAZON_BUYER_DATA_RETENTION_DAYS } from './domain/policies/amazon-buyer-data-window.policy';
 import type { AmazonResolution } from './application/interfaces/amazon-adapter.factory.interface';
 
 /**
@@ -81,7 +82,7 @@ export const amazonAdapterManifest: AdapterMetadata = {
   // Amazon's Data Protection Policy: buyer personal data is deleted no later
   // than 30 days after delivery. Enforced by the order buyer-data retention
   // pass (#4178).
-  buyerDataRetentionDays: 30,
+  buyerDataRetentionDays: AMAZON_BUYER_DATA_RETENTION_DAYS,
   // The operator chooses where order sync starts (#4262): only new orders or
   // from a date. There is no "all": a feed with no position starts a 7-day
   // bootstrap (the Orders API is read by a date window), so "every order the

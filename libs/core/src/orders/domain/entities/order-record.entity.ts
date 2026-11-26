@@ -829,6 +829,16 @@ export class OrderRecord {
   }
 
   /**
+   * True when the source asserted it ships this order itself (#3636: Allegro
+   * One Fulfillment, Amazon FBA). Read from the snapshot, where ingestion
+   * persists it; absent means "not asserted", never "the seller ships".
+   * Pure derivation of an already-loaded field (ADR-011).
+   */
+  get isFulfilledBySource(): boolean {
+    return this.orderSnapshot.fulfilledBySource === true;
+  }
+
+  /**
    * True once a reporting-currency figure has landed on this row (#2125). Pure
    * derivation of an already-loaded field (ADR-011).
    *

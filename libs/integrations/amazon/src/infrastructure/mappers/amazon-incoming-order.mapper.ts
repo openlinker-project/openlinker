@@ -10,6 +10,8 @@
  *     (the offer mapping's external id), not the master catalogue's variant
  *     SKU, and core resolves a `sku` ref against the master. A line without a
  *     SKU falls back to the ASIN. The plain SKU is still reported in `sku`.
+ *     Only a connection that IS the catalogue names the variant instead
+ *     (`resolveAmazonOrderLineRef`); the default is the offer.
  *   - **Money comes from the item proceeds.** Amazon reports `ITEM`,
  *     `SHIPPING`, `TAX`, `DISCOUNT` and the smaller charges per order item
  *     (`orderItems[].proceeds.breakdowns`); the order-level breakdowns, when
@@ -56,10 +58,11 @@ import type {
   AmazonOrderItem,
   AmazonProceedsBreakdown,
 } from '../../domain/types/amazon-order.types';
+import type { AmazonOrderLineRef } from '../../domain/policies/amazon-order-line-ref.policy';
 
 const COD_PAYMENT_METHOD = 'CashOnDelivery';
 
-export function mapAmazonOrderToIncomingOrder(order: AmazonOrder): IncomingOrder {
+export function mapAmazonOrderToIncomingOrder(order: AmazonOrder, lineRef: AmazonOrderLineRef = 'offer'): IncomingOrder {
   const currency = findCurrency(order);
   const fulfillmentStatus = order.fulfillment?.fulfillmentStatus;
   const paymentMethod = readPaymentMethod(order);
@@ -77,10 +80,7 @@ export function mapAmazonOrderToIncomingOrder(order: AmazonOrder): IncomingOrder
     const price = unitPrice(money.taxTreatment === 'exclusive' ? line.net : line.amount, quantity);
     return {
       id: item.orderItemId,
-      productRef: {
-        type: 'offer',
-        externalId: item.product.sellerSku ?? item.product.asin ?? item.orderItemId,
-      },
+      productRef: { type: lineRef, externalId: item.product.sellerSku ?? item.product.asin ?? item.orderItemId },
       quantity,
       price,
       unitPriceGross: unitPrice(line.gross, quantity),

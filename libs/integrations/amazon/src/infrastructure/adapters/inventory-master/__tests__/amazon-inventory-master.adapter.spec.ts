@@ -10,6 +10,7 @@ import { InMemoryCacheAdapter } from '@openlinker/shared/cache/testing';
 
 import { AmazonApiError } from '../../../../domain/exceptions/amazon-api.error';
 import { AmazonConfigException } from '../../../../domain/exceptions/amazon-config.exception';
+import { AmazonListingUpdateNotSupportedException } from '../../../../domain/exceptions/amazon-listing-update-not-supported.exception';
 import { AmazonNotSupportedException } from '../../../../domain/exceptions/amazon-not-supported.exception';
 import { AmazonStockUnreadableException } from '../../../../domain/exceptions/amazon-stock-unreadable.exception';
 import type { AmazonConnectionConfig } from '../../../../domain/types/amazon-config.types';
@@ -46,6 +47,8 @@ interface Setup {
   patch: jest.Mock;
   identifierMapping: jest.Mocked<IdentifierMappingPort>;
   cache: InMemoryCacheAdapter;
+  /** Replace what Amazon answers for a listing, as when it applies a patch or sells a unit. */
+  setListing: (item: AmazonListingItem) => void;
 }
 
 function setup(options: {
@@ -109,7 +112,14 @@ function setup(options: {
     identifierMapping,
     options.withCache === false ? undefined : cache,
   );
-  return { adapter, get, patch, identifierMapping, cache };
+  return { adapter, get, patch, identifierMapping, cache, setListing: (item) => bySku.set(item.sku, item) };
+}
+
+/** The seller-fulfilled quantity each patch call wrote, in order. */
+function writtenQuantities(patch: jest.Mock): number[] {
+  return (patch.mock.calls as Array<[string, { patches: Array<{ value: Array<{ quantity: number }> }> }]>).map(
+    (call) => call[1].patches[0].value[0].quantity,
+  );
 }
 
 describe('AmazonInventoryMasterAdapter', () => {
@@ -310,6 +320,107 @@ describe('AmazonInventoryMasterAdapter', () => {
       expect(result.available).toBe(0);
     });
 
+    describe('while an accepted patch may be unapplied (#4183 review)', () => {
+      it('should start a back-to-back adjustment from the written quantity, not Amazon\'s stale read', async () => {
+        const { adapter, patch } = setup({ listings: [listing('MUG', 10)] });
+
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+
+        expect(writtenQuantities(patch)).toEqual([9, 8]);
+      });
+
+      it('should go back to Amazon\'s read once it applied the patch', async () => {
+        const { adapter, patch, setListing } = setup({ listings: [listing('MUG', 10)] });
+
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+        setListing(listing('MUG', 9));
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+        setListing(listing('MUG', 8));
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+
+        expect(writtenQuantities(patch)).toEqual([9, 8, 7]);
+      });
+
+      it('should keep the newest written quantity while Amazon has applied only an older one', async () => {
+        const { adapter, patch, setListing } = setup({ listings: [listing('MUG', 10)] });
+
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+        setListing(listing('MUG', 9));
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+
+        expect(writtenQuantities(patch)).toEqual([9, 8, 7]);
+      });
+
+      it('should carry a change Amazon made itself onto the unapplied quantity', async () => {
+        const { adapter, patch, setListing } = setup({ listings: [listing('MUG', 10)] });
+
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+        // An FBM order took 3 units before Amazon applied the patch to 9.
+        setListing(listing('MUG', 7));
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+
+        expect(writtenQuantities(patch)).toEqual([9, 5]);
+      });
+
+      it('should drop the unapplied chain when Amazon reports an error on the stock attribute', async () => {
+        const { adapter, patch, setListing } = setup({ listings: [listing('MUG', 10)] });
+
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+        // Amazon accepted the patch to 9, then failed it: the listing still says 10.
+        setListing(
+          listing('MUG', 10, {
+            issues: [
+              {
+                code: '99300',
+                message: 'quantity could not be updated',
+                severity: 'ERROR',
+                attributeNames: ['fulfillment_availability'],
+              },
+            ],
+          }),
+        );
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+
+        expect(writtenQuantities(patch)).toEqual([9, 9]);
+      });
+
+      it('should ask Amazon for the listing issues on the read before a write', async () => {
+        const { adapter, get } = setup({ listings: [listing('MUG', 10)] });
+
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+
+        expect(get).toHaveBeenCalledWith(
+          `/listings/2021-08-01/items/${SELLER}/MUG`,
+          expect.objectContaining({ includedData: expect.arrayContaining(['issues']) as unknown as string[] }),
+        );
+      });
+
+      it('should remember nothing when Amazon refuses the patch', async () => {
+        const { adapter, patch } = setup({ listings: [listing('MUG', 10)] });
+        patch.mockResolvedValueOnce(
+          ok({ sku: 'MUG', status: 'INVALID', submissionId: 's', issues: [{ code: 'E', message: 'bad', severity: 'ERROR' }] }),
+        );
+
+        await expect(adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 })).rejects.toThrow(
+          AmazonListingUpdateNotSupportedException,
+        );
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+
+        expect(writtenQuantities(patch)).toEqual([9, 9]);
+      });
+
+      it('should read Amazon every time without a cache', async () => {
+        const { adapter, patch } = setup({ listings: [listing('MUG', 10)], withCache: false });
+
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+        await adapter.adjustInventory({ productId: 'ol_product_1', quantity: -1 });
+
+        expect(writtenQuantities(patch)).toEqual([9, 9]);
+      });
+    });
+
     it('should write the named variant of a variation family', async () => {
       const { adapter, patch } = setup({
         listings: [parent('MUG', ['MUG-RED']), listing('MUG-RED', 1)],
@@ -364,7 +475,7 @@ describe('AmazonInventoryMasterAdapter', () => {
 
       await expect(
         adapter.adjustInventory({ productId: 'ol_product_1', quantity: 1, idempotencyKey: 'k2' }),
-      ).rejects.toThrow(AmazonApiError);
+      ).rejects.toThrow(AmazonListingUpdateNotSupportedException);
       await adapter.adjustInventory({ productId: 'ol_product_1', quantity: 1, idempotencyKey: 'k2' });
 
       expect(patch).toHaveBeenCalledTimes(2);

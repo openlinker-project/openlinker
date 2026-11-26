@@ -66,6 +66,16 @@ export function categoryNotFound(categoryId: string, connectionId: string): Http
   );
 }
 
+/** The marketplace failed to answer for a category's parameters (upstream error, not a missing category). */
+export function categoryParametersUnavailable(categoryId: string, connectionId: string): HttpException {
+  return codedHttpError(
+    HttpStatus.BAD_GATEWAY,
+    'MARKETPLACE_CATEGORY_PARAMETERS_UNAVAILABLE',
+    `Category ${categoryId} parameters could not be read on connection ${connectionId}`,
+    { categoryId, connectionId }
+  );
+}
+
 export function bulkSubmissionEmpty(error: EmptyBulkSubmissionException): HttpException {
   return codedHttpError(HttpStatus.BAD_REQUEST, 'BULK_SUBMISSION_EMPTY', error.message);
 }

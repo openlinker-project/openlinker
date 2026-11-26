@@ -4,13 +4,14 @@
  * `patchListingsItem` for one of the seller's listings, used by the offer
  * manager (stock, price) and the inventory master (stock corrections). A patch
  * must name the listing's product type, so the caller passes the listing it
- * has just read. A patch Amazon answers `INVALID` is raised as an
- * `AmazonApiError` carrying Amazon's first issue; `ACCEPTED` means Amazon
- * queued it, applied a few minutes later.
+ * has just read. A patch Amazon answers `INVALID` wrote nothing and is raised
+ * as `AmazonListingUpdateNotSupportedException` carrying Amazon's first issue,
+ * so core reads it as a refusal rather than an unknown outcome; `ACCEPTED`
+ * means Amazon queued it, applied a few minutes later.
  *
  * @module libs/integrations/amazon/src/infrastructure/writers
  */
-import { AmazonApiError } from '../../domain/exceptions/amazon-api.error';
+import { AmazonListingUpdateNotSupportedException } from '../../domain/exceptions/amazon-listing-update-not-supported.exception';
 import { AmazonNotSupportedException } from '../../domain/exceptions/amazon-not-supported.exception';
 import {
   AMAZON_SELLER_FULFILLMENT_CHANNEL,
@@ -39,8 +40,8 @@ export async function patchAmazonListing(
   );
   if (response.data.status === 'INVALID') {
     const first = response.data.issues?.find((issue) => issue.severity === 'ERROR') ?? response.data.issues?.[0];
-    throw new AmazonApiError(
-      400,
+    throw new AmazonListingUpdateNotSupportedException(
+      item.sku,
       first?.code ?? 'INVALID',
       first?.message ?? 'Amazon refused the listing update',
       response.requestId,

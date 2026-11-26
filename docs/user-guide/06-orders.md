@@ -23,7 +23,7 @@ When you connect a shop or marketplace, you choose which orders OpenLinker bring
 - **From a date.** Orders placed on or after the day you pick, and every new order after that.
 - **All orders.** Every order the shop has, however old. Old orders are handled like new ones, so use this only on purpose.
 
-You can change this later on the connection's **Orders** tab (**Order import** panel):
+You can change this later on the connection's **Sync** tab (**Order import** panel):
 
 - **Check for new orders** runs a check right now.
 - **Get orders from a period...** takes you to **Actions**, **Trigger sync**, **Sync orders** with the period option chosen. It reads the orders placed between two days, once. New orders keep syncing as before, and orders OpenLinker already has are updated, never created twice. Only shops that can read a period offer it.

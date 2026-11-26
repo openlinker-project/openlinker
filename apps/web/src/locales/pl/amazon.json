@@ -49,7 +49,7 @@
       "label": "Środowisko Selling Partner API"
     },
     "catalogueMarketplace": {
-      "description": "OpenLinker czyta katalog z jednego rynku: treść listingu, cenę brutto z jej walutą, kraj stawki VAT i stany.",
+      "description": "OpenLinker czyta katalog z jednego rynku: treść oferty, cenę brutto z jej walutą, kraj stawki VAT i stany.",
       "first": "Pierwszy rynek ({marketplace})",
       "label": "Rynek katalogu"
     },
@@ -68,9 +68,9 @@
       "none": "Bez lokalizacji"
     },
     "marketplaces": {
-      "addedNote": "Zamówienia z dodanego rynku są pobierane z ostatnich 7 dni.",
+      "addedNote": "Zamówienia z dodanego rynku są pobierane od początku historii.",
       "description": "Na tych rynkach są pobierane zamówienia i wystawiane oferty.",
-      "descriptionSingle": "W tym regionie każdy kraj ma osobne konto sprzedawcy, więc połączenie sprzedaje na jednym rynku.",
+      "descriptionSingle": "Ustawiony przy tworzeniu połączenia. W tym regionie każdy kraj ma osobne konto sprzedawcy, więc inny rynek wymaga nowego połączenia.",
       "label": "Rynki",
       "placeholder": "Wybierz rynki",
       "unlisted": "Rynek {id}"
@@ -93,11 +93,11 @@
       "description": "Ustawiony przy tworzeniu połączenia. Inny region to inne konto Amazon i wymaga nowego połączenia.",
       "label": "Region"
     },
-    "sellerIdMissing": "Bez merchant tokenu nie da się czytać ani zapisywać ofert.",
+    "sellerIdMissing": "Bez merchant tokenu nie da się czytać ani zapisywać Twoich ofert, katalogu i stanów na Amazonie.",
     "taxCodes": {
       "add": "Dodaj kod podatkowy",
       "code": "Kod podatkowy",
-      "description": "Amazon nadaje listingowi kod podatkowy (np. A_GEN_STANDARD), a nie stawkę. Ustaw stawkę każdego kodu, którego używa Twoje konto: OpenLinker odczyta z niej stawkę VAT produktu i wyśle kod z każdą wystawianą ofertą.",
+      "description": "Amazon nadaje ofercie kod podatkowy (np. A_GEN_STANDARD), a nie stawkę. Ustaw stawkę każdego kodu, którego używa Twoje konto: OpenLinker odczyta z niej stawkę VAT produktu i wyśle kod z każdą wystawianą ofertą.",
       "empty": "Żaden kod podatkowy nie ma jeszcze stawki, więc stawka VAT produktów z Amazona jest nieznana.",
       "invalid": "Każdy wiersz musi mieć kod podatkowy i stawkę, np. 23, 8, 0 albo zw.",
       "label": "Stawki VAT kodów podatkowych Amazona",
@@ -168,8 +168,9 @@
       "queueUrlInvalid": "Podaj adres kolejki SQS, np. https://sqs.eu-west-1.amazonaws.com/123456789012/amazon-notifications.",
       "required": "To pole jest wymagane.",
       "sellerIdInvalid": "Podaj merchant token z Seller Central: od 8 do 20 wielkich liter i cyfr.",
-      "sellerIdRequired": "Merchant token jest potrzebny do zarządzania ofertami."
+      "sellerIdRequired": "Merchant token jest potrzebny do czytania Twoich ofert, katalogu i stanów na Amazonie."
     },
+    "handles": "Co obsługuje OpenLinker",
     "marketplaceOption": "{country} ({currency})",
     "marketplaces": "Rynki",
     "marketplacesHint": "Zamówienia są pobierane, a oferty wystawiane na wybranych rynkach.",
@@ -180,7 +181,7 @@
     "notificationsHint": "Z kolejką SQS Amazon zgłasza zmiany zamówień w ciągu minuty, a nie przy następnym odpytaniu. Możesz ją dodać później.",
     "offers": "Oferty",
     "offersHint": "Łącz istniejące oferty, wystawiaj nowe i aktualizuj stany oraz ceny.",
-    "offersMasterHint": "Stany katalogu głównego nie są zapisywane do jego własnych listingów, więc oferty zostają wyłączone.",
+    "offersMasterHint": "Stany katalogu głównego nie są zapisywane do jego własnych ofert, więc oferty zostają wyłączone.",
     "orders": "Zamówienia",
     "ordersHint": "Importuj zamówienia z Amazona i odsyłaj numery przesyłek.",
     "queueUrl": "Adres kolejki SQS",
@@ -197,13 +198,13 @@
     },
     "role": "Rola Amazona w OpenLinkerze",
     "roleMaster": "Katalog główny",
-    "roleMasterHint": "Produkty i stany z Twoich listingów na Amazonie do sprzedaży w innych kanałach.",
+    "roleMasterHint": "Produkty i stany z Twoich ofert na Amazonie do sprzedaży w innych kanałach.",
     "roleSalesChannel": "Kanał sprzedaży",
     "roleSalesChannelHint": "Produkty pochodzą z Twojego katalogu; Amazon dostaje oferty i wysyła zamówienia.",
     "sandboxNotice": "Sandbox odpowiada tylko przykładowymi danymi Amazona. Żadne prawdziwe zamówienia ani oferty nie są czytane ani zmieniane.",
     "sellerId": "Merchant token",
     "sellerIdHint": "Seller Central: Ustawienia, Informacje o koncie, Merchant token.",
-    "sellerIdHintRequired": "Wymagany do ofert. Seller Central: Ustawienia, Informacje o koncie, Merchant token.",
+    "sellerIdHintRequired": "Wymagany do ofert i katalogu. Seller Central: Ustawienia, Informacje o koncie, Merchant token.",
     "submit": "Utwórz połączenie",
     "test": "Testuj połączenie",
     "testFailed": "Test połączenia nie powiódł się",

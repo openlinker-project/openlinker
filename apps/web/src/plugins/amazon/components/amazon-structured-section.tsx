@@ -13,8 +13,9 @@
  *
  * The region is fixed because another region is another Amazon seller account
  * with its own refresh token and merchant token; the API refuses the change.
- * In a region without a unified account (Far East) the picker takes one
- * marketplace.
+ * In a region without a unified account (Far East) each marketplace is its
+ * own seller account, so the marketplace is shown but not editable, like the
+ * region; another marketplace is a new connection.
  *
  * With the connection as the stock master (#4183), the FBA stock location is
  * picked from OpenLinker's locations; the API refuses it unless the
@@ -78,6 +79,10 @@ export function AmazonStructuredSection({
   const offersEnabled = connection.enabledCapabilities.includes('OfferManager');
   const catalogueEnabled = connection.enabledCapabilities.includes('ProductMaster');
   const mcfEnabled = connection.enabledCapabilities.includes('FulfillmentExecutor');
+  // Offers and the catalogue master both read the seller's listings, which
+  // need the merchant token (the setup schema requires it for both roles).
+  const sellerIdNeeded =
+    offersEnabled || catalogueEnabled || connection.enabledCapabilities.includes('InventoryMaster');
 
   const taxRows = parseTaxCodeRows(form.watch('amazonTaxCodeRates') ?? '');
   const writeTaxRows = (rows: readonly AmazonTaxCodeRow[]): void =>
@@ -132,7 +137,11 @@ export function AmazonStructuredSection({
       <FormField
         label={copy.marketplaces.label}
         name="amazonMarketplaceIds"
-        description={`${singleMarketplace ? copy.marketplaces.descriptionSingle : copy.marketplaces.description} ${copy.marketplaces.addedNote}`}
+        description={
+          singleMarketplace
+            ? copy.marketplaces.descriptionSingle
+            : `${copy.marketplaces.description} ${copy.marketplaces.addedNote}`
+        }
         error={errors.amazonMarketplaceIds?.message}
       >
         <AmazonMarketplacePicker
@@ -153,13 +162,14 @@ export function AmazonStructuredSection({
             })
           }
           placeholder={copy.marketplaces.placeholder}
-          disabled={disabled}
+          // In Far East the marketplace IS the seller account, so it is fixed like the region.
+          disabled={disabled || singleMarketplace}
           invalid={Boolean(errors.amazonMarketplaceIds)}
           single={singleMarketplace}
         />
       </FormField>
 
-      {offersEnabled ? (
+      {sellerIdNeeded ? (
         <FormField
           label={messages.setup.sellerId}
           name="amazonSellerId"
@@ -176,7 +186,7 @@ export function AmazonStructuredSection({
           />
         </FormField>
       ) : null}
-      {offersEnabled && (form.watch('amazonSellerId') ?? '').trim() === '' ? (
+      {sellerIdNeeded && (form.watch('amazonSellerId') ?? '').trim() === '' ? (
         <Alert tone="warning" density="compact">
           {copy.sellerIdMissing}
         </Alert>

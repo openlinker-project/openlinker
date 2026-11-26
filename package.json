@@ -58,7 +58,8 @@
     "demo:devtools:up": "docker compose -f docker-compose.yml -f docker-compose.demo.yml --profile devtools up -d phpmyadmin",
     "demo:down": "docker compose -f docker-compose.yml -f docker-compose.demo.yml down",
     "demo:logs": "docker compose -f docker-compose.yml -f docker-compose.demo.yml logs -f",
-    "prepare": "husky install || true"
+    "prepare": "husky install || true",
+    "amazon:probe": "node scripts/amazon-probe.mjs"
   },
   "devDependencies": {
     "@babel/core": "^7.28.5",

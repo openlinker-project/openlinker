@@ -34,8 +34,11 @@ Evidence base: `docs/plans/analysis/SPIKE-2881-amazon-sp-api.md` and the product
 - `marketplaceIds` - at least one. Known ids: FR `A13V1IB3VIYZZH`, DE `A1PA6795UKMFR9`,
   PL `A1C3SOZRARQ6R3`. A known id paired with another region is refused at save; an unknown id is
   accepted by format alone. In `fe` (Japan, Australia, Singapore) each country is a separate seller
-  account, so a connection there names exactly one marketplace. A marketplace added later is read
-  from the last 7 days: the order feed moves its watermark back for it.
+  account, so a connection there names exactly one marketplace. A marketplace added later has its
+  whole order history read: the order feed shares one watermark across marketplaces, so it moves
+  back to the start and re-reads every marketplace's orders (already imported ones are updated, not
+  duplicated), which takes long at the order search quota. Orders past the 30-day buyer-data window
+  are read without the buyer's personal data.
 
 ## Where order sync starts
 

@@ -59,6 +59,7 @@ const INTEGRATIONS = join('libs', 'integrations');
 export const WIZARDS = {
   amazon: ['apps/web/src/features/amazon/components/amazon-setup-form.tsx'],
   allegro: ['apps/web/src/features/allegro/components/AllegroSetupForm.tsx'],
+  amazon: ['apps/web/src/features/amazon/components/amazon-setup-form.tsx'],
   erli: ['apps/web/src/features/connections/components/erli-setup-form.tsx'],
   prestashop: ['apps/web/src/features/connections/components/prestashop-setup-form.tsx'],
   shopify: ['apps/web/src/features/shopify/components/shopify-setup-form.tsx'],

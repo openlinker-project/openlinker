@@ -21,6 +21,7 @@ export const CorrectionTargetRefusalReasonValues = [
   'no-position',
   'unattributed-owner',
   'adapter-unresolved',
+  'multiple-locations',
 ] as const;
 export type CorrectionTargetRefusalReason = (typeof CorrectionTargetRefusalReasonValues)[number];
 

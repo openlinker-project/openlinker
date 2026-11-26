@@ -4,8 +4,11 @@
  * @module libs/integrations/amazon/src/domain/policies/__tests__
  */
 import {
+  environmentChangeIssue,
+  fixedAccountIssues,
   parseAmazonConfig,
   regionChangeIssue,
+  singleMarketplaceChangeIssue,
   resolveAmazonSpApiHost,
   resolveCatalogueMarketplaceId,
 } from '../amazon-config.policy';
@@ -150,6 +153,51 @@ describe('regionChangeIssue', () => {
 
   it('should pass a save that keeps the region', () => {
     expect(regionChangeIssue({ region: 'na', sellerId: 'A2EXAMPLE12345' }, { region: 'na' })).toBeNull();
+  });
+});
+
+describe('environmentChangeIssue', () => {
+  it('should refuse a move from sandbox to production', () => {
+    expect(environmentChangeIssue({ environment: 'production' }, { environment: 'sandbox' })?.path).toBe('environment');
+  });
+
+  it('should read a stored config without an environment as production', () => {
+    expect(environmentChangeIssue({ environment: 'production' }, {})).toBeNull();
+    expect(environmentChangeIssue({ environment: 'sandbox' }, {})?.path).toBe('environment');
+  });
+});
+
+describe('singleMarketplaceChangeIssue', () => {
+  const JP = 'A1VC38T7YXB528';
+  const AU = 'A39IBJ37TRP1C6';
+
+  it('should refuse swapping the marketplace in the fe region', () => {
+    expect(singleMarketplaceChangeIssue({ region: 'fe', marketplaceIds: [AU] }, { region: 'fe', marketplaceIds: [JP] })?.path).toBe(
+      'marketplaceIds',
+    );
+  });
+
+  it('should pass a save that keeps the fe marketplace', () => {
+    expect(singleMarketplaceChangeIssue({ region: 'fe', marketplaceIds: [JP] }, { region: 'fe', marketplaceIds: [JP] })).toBeNull();
+  });
+
+  it('should leave a unified region free to change its marketplaces', () => {
+    expect(
+      singleMarketplaceChangeIssue(
+        { region: 'na', marketplaceIds: ['A2EUQ1WTGCTBG2'] },
+        { region: 'na', marketplaceIds: ['ATVPDKIKX0DER'] },
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('fixedAccountIssues', () => {
+  it('should report every account field that changed', () => {
+    const issues = fixedAccountIssues(
+      { region: 'na', environment: 'production', marketplaceIds: ['ATVPDKIKX0DER'] },
+      { region: 'eu', environment: 'sandbox', marketplaceIds: ['A1PA6795UKMFR9'] },
+    );
+    expect(issues.map((issue) => issue.path)).toEqual(['region', 'environment']);
   });
 });
 

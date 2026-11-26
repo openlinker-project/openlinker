@@ -44,7 +44,7 @@ describe('AmazonOrderSourceAdapter.listOrderFeed', () => {
 
     expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders', {
       marketplaceIds: ['A1PA6795UKMFR9'],
-      lastUpdatedAfter: '2026-11-10T12:00:00.000Z',
+      lastUpdatedAfter: '2000-01-01T00:00:00.000Z',
       maxResultsPerPage: 100,
     });
     expect(result.items.map((item) => [item.externalOrderId, item.eventType])).toEqual([
@@ -78,7 +78,7 @@ describe('AmazonOrderSourceAdapter.listOrderFeed', () => {
     await wider.listOrderFeed({ fromCursor, limit: 50 });
 
     const params = (get.mock.calls[0] as [string, Record<string, unknown>])[1];
-    expect(params.lastUpdatedAfter).toBe('2026-11-10T12:00:00.000Z');
+    expect(params.lastUpdatedAfter).toBe('2000-01-01T00:00:00.000Z');
     expect(params.paginationToken).toBeUndefined();
   });
 
@@ -95,16 +95,52 @@ describe('AmazonOrderSourceAdapter.listOrderFeed', () => {
 });
 
 describe('AmazonOrderSourceAdapter.getOrder', () => {
-  it('should read the order with buyer, recipient and proceeds', async () => {
+  it('should read a recent order again with buyer, recipient and proceeds', async () => {
     const { client, get } = clientStub();
     get.mockResolvedValue({ status: 200, requestId: 'r', data: { order: amazonFbmOrder() } });
 
     const order = await adapter(client).getOrder({ externalOrderId: '302-1234567-7654321' });
 
-    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders/302-1234567-7654321', {
+    expect(get).toHaveBeenNthCalledWith(1, '/orders/2026-01-01/orders/302-1234567-7654321', {
+      includedData: ['PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'],
+    });
+    expect(get).toHaveBeenNthCalledWith(2, '/orders/2026-01-01/orders/302-1234567-7654321', {
       includedData: ['BUYER', 'RECIPIENT', 'PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'],
     });
     expect(order.externalOrderId).toBe('302-1234567-7654321');
+    expect(order.customerEmail).toBe('abc123@marketplace.amazon.de');
+  });
+
+  it('should never fetch the buyer data of an order shipped-by more than 30 days ago', async () => {
+    const { client, get } = clientStub();
+    const withoutBuyer = amazonFbmOrder({
+      createdTime: '2026-10-01T09:00:00Z',
+      buyer: undefined,
+      recipient: undefined,
+      fulfillment: { fulfillmentStatus: 'SHIPPED', shipByWindow: { latestDateTime: '2026-10-03T22:59:59Z' } },
+    });
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { order: withoutBuyer } });
+
+    const order = await adapter(client).getOrder({ externalOrderId: '302-1234567-7654321' });
+
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders/302-1234567-7654321', {
+      includedData: ['PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'],
+    });
+    expect(order.customerEmail).toBeUndefined();
+  });
+
+  it('should key lines by the reference the connection role resolves through', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValue({ status: 200, requestId: 'r', data: { order: amazonFbmOrder() } });
+
+    const asOffer = await adapter(client).getOrder({ externalOrderId: '302-1234567-7654321' });
+    const asVariant = await new AmazonOrderSourceAdapter('conn-1', client, CONFIG, () => NOW, undefined, 'variant').getOrder({
+      externalOrderId: '302-1234567-7654321',
+    });
+
+    expect(asOffer.items[0].productRef).toEqual({ type: 'offer', externalId: 'MUG-BLUE' });
+    expect(asVariant.items[0].productRef).toEqual({ type: 'variant', externalId: 'MUG-BLUE' });
   });
 });
 
@@ -121,6 +157,10 @@ describe('AmazonOrderSourceAdapter.write', () => {
     });
 
     expect(result).toEqual({ outcome: 'applied' });
+    // The confirmation reads no buyer data (Amazon's Data Protection Policy).
+    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders/302-1234567-7654321', {
+      includedData: ['PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'],
+    });
     expect(post).toHaveBeenCalledWith('/orders/v0/orders/302-1234567-7654321/shipmentConfirmation', {
       marketplaceId: 'A1PA6795UKMFR9',
       packageDetail: {
@@ -236,5 +276,70 @@ describe('AmazonQueuedOrderSourceAdapter (#4179)', () => {
 
     expect(isInboundQueueReader(new AmazonQueuedOrderSourceAdapter('conn-1', client, CONFIG, queue as never))).toBe(true);
     expect(isInboundQueueReader(adapter(client))).toBe(false);
+  });
+});
+
+describe('AmazonOrderSourceAdapter.readFulfillment', () => {
+  it('should report an FBA order Amazon shipped as dispatched with no waybills', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: { order: amazonFbmOrder({ fulfillment: { fulfillmentStatus: 'SHIPPED', fulfilledBy: 'AMAZON' } }) },
+    });
+
+    const result = await adapter(client).readFulfillment({ externalOrderId: 'x' });
+
+    // Status and packages only: the read-back never fetches the buyer's data.
+    expect(get).toHaveBeenCalledWith('/orders/2026-01-01/orders/x', { includedData: ['FULFILLMENT', 'PACKAGES'] });
+    expect(result).toEqual({ outcome: 'read', rawStatus: 'SHIPPED', dispatched: true, waybills: [] });
+  });
+
+  it('should report the tracking numbers of the packages the seller confirmed', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValue({
+      status: 200,
+      requestId: 'r',
+      data: {
+        order: amazonFbmOrder({
+          fulfillment: { fulfillmentStatus: 'SHIPPED', fulfilledBy: 'MERCHANT' },
+          packages: [
+            { packageReferenceId: '1', carrier: 'DPD', trackingNumber: ' 0950123 ' },
+            { packageReferenceId: '2', carrier: 'DPD' },
+          ],
+        }),
+      },
+    });
+
+    const result = await adapter(client).readFulfillment({ externalOrderId: 'x' });
+
+    expect(result.waybills).toEqual([{ waybill: '0950123', carrierName: 'DPD' }]);
+  });
+
+  it('should read an unshipped order as not dispatched and an unknown status as unknown', async () => {
+    const { client, get } = clientStub();
+    get.mockResolvedValueOnce({
+      status: 200,
+      requestId: 'r',
+      data: { order: amazonFbmOrder({ fulfillment: { fulfillmentStatus: 'UNSHIPPED' } }) },
+    });
+    get.mockResolvedValueOnce({
+      status: 200,
+      requestId: 'r',
+      data: { order: amazonFbmOrder({ fulfillment: { fulfillmentStatus: 'SOMETHING_NEW' } }) },
+    });
+
+    await expect(adapter(client).readFulfillment({ externalOrderId: 'x' })).resolves.toMatchObject({ dispatched: false });
+    await expect(adapter(client).readFulfillment({ externalOrderId: 'x' })).resolves.toMatchObject({ dispatched: null });
+  });
+
+  it('should report a failed read as unavailable, never throw', async () => {
+    const { client, get } = clientStub();
+    get.mockRejectedValue(new AmazonApiError(500, 'InternalFailure', 'boom', 'r'));
+
+    await expect(adapter(client).readFulfillment({ externalOrderId: 'x' })).resolves.toMatchObject({
+      outcome: 'unavailable',
+      rawStatus: null,
+    });
   });
 });

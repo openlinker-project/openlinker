@@ -47,6 +47,7 @@ import {
   adapterCapabilityNotSupported,
   masterCatalogConnectionNotConfigured,
   categoryNotFound,
+  categoryParametersUnavailable,
   offerMappingNotFound,
   providerCapabilityUnsupported,
 } from './listings-errors';
@@ -869,7 +870,13 @@ export class ListingsController {
         // category without re-resolving the connection.
         throw categoryNotFound(categoryId, connectionId);
       }
-      throw err;
+      // Anything else is the marketplace failing to answer (an upstream error, a
+      // schema the adapter refuses to read): a 502 the operator can act on, not
+      // an unexplained 500.
+      this.logger.warn(
+        `Category parameters unavailable (connection=${connectionId}, category=${categoryId}): ${(err as Error).message}`
+      );
+      throw categoryParametersUnavailable(categoryId, connectionId);
     }
 
     return { parameters: parameters.map((p) => this.toCategoryParameterResponseDto(p)) };

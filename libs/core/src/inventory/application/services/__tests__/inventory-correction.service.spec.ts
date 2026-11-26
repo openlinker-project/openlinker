@@ -259,6 +259,30 @@ describe('InventoryCorrectionService', () => {
       });
     });
 
+    it('should refuse with multiple-locations when one owner holds the variant at two locations', async () => {
+      const h = build();
+      h.inventoryRepository.findLiveOwnerPositions.mockResolvedValue([
+        position({ locationId: 'loc-fbm' }),
+        position({ inventoryItemId: 'inv-2', locationId: 'loc-fba' }),
+      ]);
+      await expect(h.service.getCorrectionTarget({ productVariantId: VARIANT_ID })).resolves.toEqual({
+        kind: 'refused',
+        reason: 'multiple-locations',
+      });
+    });
+
+    it('should refuse the correction itself at two locations and write nothing', async () => {
+      const h = build();
+      h.inventoryRepository.findLiveOwnerPositions.mockResolvedValue([
+        position({ locationId: 'loc-fbm' }),
+        position({ inventoryItemId: 'inv-2', locationId: 'loc-fba' }),
+      ]);
+      await expect(h.service.correctStock(baseInput)).rejects.toMatchObject({
+        reason: 'multiple-locations',
+      });
+      expect(h.adapter.adjustInventory).not.toHaveBeenCalled();
+    });
+
     it('should refuse with no-position when the variant has no live position', async () => {
       const h = build();
       h.inventoryRepository.findLiveOwnerPositions.mockResolvedValue([]);

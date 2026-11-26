@@ -132,6 +132,10 @@ describe('AmazonSetupForm', () => {
     await fill();
     fireEvent.click(screen.getByRole('radio', { name: /Catalogue master/ }));
     expect(screen.getByLabelText(/^Offers/)).toBeDisabled();
+    expect(screen.getByLabelText(/^Offers/)).not.toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: /Sales channel/ }));
+    expect(screen.getByLabelText(/^Offers/)).toBeChecked();
+    fireEvent.click(screen.getByRole('radio', { name: /Catalogue master/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Create connection' }));
 
     await waitFor(() =>

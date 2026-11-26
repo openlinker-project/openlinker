@@ -26,6 +26,13 @@
  *   Never throws; a failure is `rejected`, transient when it was a transport
  *   failure or a throttle.
  *
+ * Fulfilment read-back (`OrderFulfillmentReadback`): the order's
+ * `fulfillmentStatus` (`SHIPPED` is dispatched) and the tracking numbers of
+ * its packages. An order Amazon ships itself (FBA) reports `SHIPPED` with no
+ * package tracking; core records that as a shipment made outside OpenLinker
+ * for an order its source fulfils. Never throws: a failed read is
+ * `unavailable`.
+ *
  * Returns (`ReturnSourceReader`, #4184): delegated to `AmazonReturnReader`,
  * which reads Amazon's seller-fulfilled returns report. Refunds
  * (`RefundExecutor`) are on the refunding subclasses the factory builds only
@@ -45,14 +52,17 @@ import type {
   OrderFeedOutput,
   OrderLifecycleEvent,
   OrderSourcePort,
+  OrderFulfillmentReadback,
   OrderStatusWriteback,
   OrderWindowInput,
   OrderWindowPage,
   OrderWindowReader,
   OrderWritebackResult,
   ReturnSourceReader,
+  SourceFulfillmentReadback,
   SourceOptionsReader,
 } from '@openlinker/core/orders';
+import { unavailableSourceFulfillmentReadback } from '@openlinker/core/orders';
 import type { IncomingReturn, ReturnFeedInput, ReturnFeedOutput } from '@openlinker/core/returns';
 import { Logger } from '@openlinker/shared/logging';
 import { RateLimitAbortedError, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
@@ -65,6 +75,7 @@ import {
   nextAmazonOrderFeedCursor,
   scopeAmazonOrderFeedCursor,
 } from '../../../domain/policies/amazon-order-feed-cursor.policy';
+import { isWithinAmazonBuyerDataWindow } from '../../../domain/policies/amazon-buyer-data-window.policy';
 import {
   amazonLatestQueryableMs,
   amazonOrderWindowSlice,
@@ -87,6 +98,7 @@ import {
 } from '../../../domain/types/amazon-order.types';
 import type { AmazonSpApiClient } from '../../http/amazon-spapi-client';
 import { mapAmazonOrderToIncomingOrder } from '../../mappers/amazon-incoming-order.mapper';
+import type { AmazonOrderLineRef } from '../../../domain/policies/amazon-order-line-ref.policy';
 import { AMAZON_TERMINAL_RETURN_STATUSES } from '../../mappers/amazon-return.mapper';
 import type { AmazonReturnReader } from '../returns/amazon-return-reader';
 import { resolveAmazonCarrier } from './amazon-carrier-code';
@@ -97,17 +109,37 @@ const MAX_RESULTS_PER_PAGE = 100;
 /** What `getOrder` asks Amazon to include. `RECIPIENT` needs the D2C Shipping role; without it Amazon omits the address. */
 const GET_ORDER_INCLUDED_DATA = ['BUYER', 'RECIPIENT', 'PROCEEDS', 'FULFILLMENT', 'PAYMENT', 'TAX', 'PACKAGES'];
 
+/**
+ * The blocks that carry the buyer's personal data. A read that does not show
+ * the buyer leaves them out: fetching restricted data a call does not use is
+ * what Amazon's Data Protection Policy forbids.
+ */
+const BUYER_DATA_BLOCKS: ReadonlySet<string> = new Set(['BUYER', 'RECIPIENT']);
+
+/**
+ * Every block of the full read except the buyer's data: the shipment
+ * confirmation and a refund read the items, amounts, channel and packages, and
+ * keeping the rest of the full read means no field they rely on goes missing.
+ */
+export const ORDER_WITHOUT_BUYER_DATA_INCLUDED_DATA: readonly string[] = GET_ORDER_INCLUDED_DATA.filter(
+  (block) => !BUYER_DATA_BLOCKS.has(block),
+);
+
+/** The fulfilment read-back needs the status and the packages only, never the buyer's data. */
+const READ_FULFILLMENT_INCLUDED_DATA = ['FULFILLMENT', 'PACKAGES'];
+
 /** Payment method names the Orders API documents (`PaymentExecution.paymentMethod`). */
 const DOCUMENTED_PAYMENT_METHODS = ['CashOnDelivery', 'ConvenienceStore', 'CreditCard', 'Invoice', 'Pix'];
 
 export class AmazonOrderSourceAdapter
   implements
     OrderSourcePort,
-    OrderStatusWriteback,
-    SourceOptionsReader,
-    ReturnSourceReader,
     OrderFeedBootstrap,
     OrderFeedDateBootstrap,
+    OrderStatusWriteback,
+    OrderFulfillmentReadback,
+    SourceOptionsReader,
+    ReturnSourceReader,
     OrderWindowReader
 {
   private readonly logger = new Logger(AmazonOrderSourceAdapter.name);
@@ -119,6 +151,8 @@ export class AmazonOrderSourceAdapter
     private readonly now: () => Date = (): Date => new Date(),
     /** The returns report reader (#4184); absent only in tests that do not read returns. */
     protected readonly returns?: AmazonReturnReader,
+    /** Which mapping an order line resolves through (`resolveAmazonOrderLineRef`). */
+    private readonly orderLineRef: AmazonOrderLineRef = 'offer',
   ) {}
 
   /** Return request statuses after which Amazon changes nothing more (#4184). */
@@ -145,7 +179,6 @@ export class AmazonOrderSourceAdapter
     const cursor = scopeAmazonOrderFeedCursor(
       decodeAmazonOrderFeedCursor(input.fromCursor, now),
       this.config.marketplaceIds,
-      now,
     );
     const response = await this.client.get<AmazonSearchOrdersResponse>(SEARCH_ORDERS_PATH, {
       marketplaceIds: this.config.marketplaceIds,
@@ -246,9 +279,28 @@ export class AmazonOrderSourceAdapter
     }
   }
 
+  /**
+   * The buyer's personal data is fetched only while the order is inside the
+   * buyer-data window (`amazon-buyer-data-window.policy.ts`): the first read
+   * leaves the `BUYER` and `RECIPIENT` blocks out, and only an order whose
+   * ship-by deadline (else placement) is less than 30 days ago is read again
+   * with them, the same anchor core's retention pass uses. An imported history therefore
+   * never fetches data Amazon's Data Protection Policy would have deleted.
+   * The cost is a second `getOrder` for a recent order.
+   */
   async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {
+    const withoutBuyer = await this.readOrder(input.externalOrderId, ORDER_WITHOUT_BUYER_DATA_INCLUDED_DATA);
+    const anchor = {
+      createdTime: withoutBuyer.createdTime,
+      ...(withoutBuyer.fulfillment?.shipByWindow?.latestDateTime
+        ? { shipByLatest: withoutBuyer.fulfillment.shipByWindow.latestDateTime }
+        : {}),
+    };
+    if (!isWithinAmazonBuyerDataWindow(anchor, this.now())) {
+      return mapAmazonOrderToIncomingOrder(withoutBuyer, this.orderLineRef);
+    }
     const order = await this.readOrder(input.externalOrderId);
-    return mapAmazonOrderToIncomingOrder(order);
+    return mapAmazonOrderToIncomingOrder(order, this.orderLineRef);
   }
 
   async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
@@ -261,7 +313,7 @@ export class AmazonOrderSourceAdapter
               detail: 'Amazon needs a tracking number to confirm a shipment; sent once the carrier issues it',
             };
           }
-          const order = await this.readOrder(event.externalOrderId);
+          const order = await this.readOrder(event.externalOrderId, ORDER_WITHOUT_BUYER_DATA_INCLUDED_DATA);
           if (order.fulfillment?.fulfilledBy === 'AMAZON') {
             return { outcome: 'unsupported', detail: 'Amazon ships this order itself (FBA)' };
           }
@@ -290,6 +342,31 @@ export class AmazonOrderSourceAdapter
     }
   }
 
+  async readFulfillment(input: { externalOrderId: string }): Promise<SourceFulfillmentReadback> {
+    try {
+      const order = await this.readOrder(input.externalOrderId, READ_FULFILLMENT_INCLUDED_DATA);
+      const rawStatus = order.fulfillment?.fulfillmentStatus ?? null;
+      return {
+        outcome: 'read',
+        rawStatus,
+        dispatched: amazonDispatchedFlag(rawStatus),
+        // PACKAGES is always requested, so an order without packages answered "none".
+        waybills: (order.packages ?? [])
+          .filter((pkg) => typeof pkg.trackingNumber === 'string' && pkg.trackingNumber.trim().length > 0)
+          .map((pkg) => ({
+            waybill: (pkg.trackingNumber as string).trim(),
+            ...(pkg.carrier ? { carrierName: pkg.carrier } : {}),
+          })),
+      };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Amazon fulfillment readback failed for order ${input.externalOrderId}: ${detail} (connection: ${this.connectionId})`,
+      );
+      return unavailableSourceFulfillmentReadback(`Amazon did not answer for order ${input.externalOrderId}`);
+    }
+  }
+
   listOrderStatuses(): Promise<MappingOption[]> {
     return Promise.resolve(AmazonFulfillmentStatusValues.map((value) => ({ value, label: value })));
   }
@@ -302,10 +379,13 @@ export class AmazonOrderSourceAdapter
     return Promise.resolve(DOCUMENTED_PAYMENT_METHODS.map((value) => ({ value, label: value })));
   }
 
-  protected async readOrder(orderId: string): Promise<AmazonOrder> {
+  protected async readOrder(
+    orderId: string,
+    includedData: readonly string[] = GET_ORDER_INCLUDED_DATA,
+  ): Promise<AmazonOrder> {
     const response = await this.client.get<AmazonGetOrderResponse>(
       `${SEARCH_ORDERS_PATH}/${encodeURIComponent(orderId)}`,
-      { includedData: GET_ORDER_INCLUDED_DATA },
+      { includedData },
     );
     return response.data.order;
   }
@@ -346,6 +426,26 @@ function toFeedItem(order: AmazonOrder): OrderFeedItem {
     occurredAt: order.lastUpdatedTime,
     eventKey: `${order.orderId}:${order.lastUpdatedTime}`,
   };
+}
+
+/**
+ * Whether Amazon's `fulfillmentStatus` means the order left. `null` for a
+ * status this build does not know, which the caller reads as "unknown".
+ */
+function amazonDispatchedFlag(status: string | null): boolean | null {
+  switch (status) {
+    case 'SHIPPED':
+      return true;
+    case 'PENDING_AVAILABILITY':
+    case 'PENDING':
+    case 'UNSHIPPED':
+    case 'PARTIALLY_SHIPPED':
+    case 'CANCELLED':
+    case 'UNFULFILLABLE':
+      return false;
+    default:
+      return null;
+  }
 }
 
 function isTransient(error: unknown): boolean {

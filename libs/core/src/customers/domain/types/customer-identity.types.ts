@@ -50,6 +50,16 @@ export interface CustomerIdentityResolutionRequest {
    * Source connection ID (where the order/buyer data comes from)
    */
   sourceConnectionId: string;
+
+  /**
+   * The order this resolution comes from had its buyer data removed because
+   * its source's retention period passed (#4178). The identity is still
+   * resolved, but no personal data is written back: an existing customer
+   * projection is left untouched (its data may come from a newer order of
+   * another source), and a new one is created with the email hash only.
+   * Absent means `false`.
+   */
+  buyerDataRemoved?: boolean;
 }
 
 /**

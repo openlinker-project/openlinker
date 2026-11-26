@@ -172,6 +172,29 @@ describe('AmazonMcfFulfillmentExecutorAdapter', () => {
     expect(outbound.created).toHaveLength(0);
   });
 
+  it('should reject, blocking, an order Amazon refuses on create', async () => {
+    const { adapter, outbound } = setup();
+    outbound.create.mockRejectedValueOnce(new AmazonApiError(400, 'InvalidInput', 'postalCode is invalid', 'r'));
+
+    await expect(adapter.requestFulfillment(request())).resolves.toEqual({
+      status: 'rejected',
+      reason: 'refused-by-amazon',
+      blocking: true,
+      detail: expect.stringContaining('postalCode is invalid') as unknown as string,
+    });
+  });
+
+  it('should leave Amazon a candidate after a 400 that is not InvalidInput', async () => {
+    const { adapter, outbound } = setup();
+    outbound.create.mockRejectedValueOnce(new AmazonApiError(400, 'InvalidSkuState', 'SKU is not yet active', 'r'));
+
+    await expect(adapter.requestFulfillment(request())).resolves.toMatchObject({
+      status: 'rejected',
+      reason: 'refused-by-amazon',
+      blocking: false,
+    });
+  });
+
   it('should reject work without a delivery address or with a variant Amazon has no SKU for', async () => {
     const { adapter, outbound } = setup();
 
