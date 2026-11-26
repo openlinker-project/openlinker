@@ -20,6 +20,11 @@ x-amazon-env: &amazon-env
   OL_AMAZON_NOTIFICATIONS_DRAIN_SCHEDULER_ENABLED: 'true'
   OL_AMAZON_OFFERS_SYNC_SCHEDULER_ENABLED: 'true'
   OL_AMAZON_OFFER_STATUS_SYNC_SCHEDULER_ENABLED: 'true'
+  # Test seam (ignored in production): tick the slow tasks every minute so a run can watch them.
+  OL_AMAZON_RETURNS_POLL_CRON: '* * * * *'
+  OL_AMAZON_RETURNS_STATUS_SYNC_CRON: '* * * * *'
+  OL_AMAZON_OFFERS_SYNC_CRON: '* * * * *'
+  OL_AMAZON_OFFER_STATUS_SYNC_CRON: '* * * * *'
 
 services:
   api:
