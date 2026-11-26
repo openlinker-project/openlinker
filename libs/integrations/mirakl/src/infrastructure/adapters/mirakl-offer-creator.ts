@@ -18,6 +18,11 @@
  * status read can tell "still importing" from "gone", and the reconciler
  * settles it with the line's error if the import refused it.
  *
+ * Only a definite answer refuses the offer: no card in a P31 answer, or a 4xx
+ * (other than 429) on OF24. A failed P31 read, a 429 or a 5xx is thrown on, so
+ * the job retries; a repeated OF24 is safe, because `update_delete: update`
+ * upserts by `shop_sku` and never creates a second offer.
+ *
  * A product with no card is refused (`MIRAKL_PRODUCT_CARD_MISSING`): creating
  * cards (P41) waits on how the operator reviews them; on Empik staging a card
  * import stayed waiting indefinitely.
@@ -30,6 +35,7 @@ import {
   type CreateOfferResult,
   type CreateOfferValidationError,
 } from '@openlinker/core/listings';
+import { Logger } from '@openlinker/shared/logging';
 import { MiraklApiException } from '../../domain/exceptions/mirakl-api.exception';
 import { readMiraklOfferDefaults } from '../../domain/policies/mirakl-connection-config.policy';
 import { buildMiraklGpsrFields } from '../../domain/policies/mirakl-gpsr.policy';
@@ -58,7 +64,15 @@ export interface MiraklOfferCreatorDeps {
   readonly offerDefaults: MiraklOfferDefaults;
 }
 
+/** A refusal Mirakl answered about the request itself; anything else may pass. */
+function isDefiniteRefusal(error: MiraklApiException): boolean {
+  const status = error.statusCode;
+  return status !== undefined && status >= 400 && status < 500 && status !== 429;
+}
+
 export class MiraklOfferCreator {
+  private readonly logger = new Logger(MiraklOfferCreator.name);
+
   constructor(private readonly deps: MiraklOfferCreatorDeps) {}
 
   async createOffer(cmd: CreateOfferCommand): Promise<CreateOfferResult> {
@@ -81,7 +95,7 @@ export class MiraklOfferCreator {
       throw new OfferCreateRejectedException(this.deps.adapterKey, 0, errors);
     }
 
-    const cards = (await this.deps.catalog.findCards([ean])).get(ean) ?? [];
+    const cards = (await this.deps.catalog.readCards([ean])).get(ean) ?? [];
     if (cards.length === 0) {
       throw new OfferCreateRejectedException(this.deps.adapterKey, 0, [
         {
@@ -92,6 +106,13 @@ export class MiraklOfferCreator {
             `is not available yet; add the product in the ${this.deps.brand} seller panel first.`,
         },
       ]);
+    }
+
+    if (cards.length > 1) {
+      this.logger.warn(
+        `${this.deps.brand} has ${cards.length} catalogue cards for EAN ${ean}; the offer is sent ` +
+          `by EAN and ${this.deps.brand} picks the card (connection: ${this.deps.connectionId})`
+      );
     }
 
     const body = {
@@ -123,7 +144,7 @@ export class MiraklOfferCreator {
       }
       importId = String(data.import_id);
     } catch (error) {
-      if (error instanceof MiraklApiException) {
+      if (error instanceof MiraklApiException && isDefiniteRefusal(error)) {
         throw new OfferCreateRejectedException(this.deps.adapterKey, error.statusCode ?? 0, [
           {
             code: error.miraklCode ?? 'MIRAKL_OFFER_IMPORT_REFUSED',

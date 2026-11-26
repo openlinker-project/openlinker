@@ -143,26 +143,36 @@ export class MiraklCatalog {
     return match.kind === 'matched' ? match.allegroCategoryId : null;
   }
 
-  /** Cards for these EANs, keyed by EAN; a failed read answers none. */
+  /**
+   * Cards for these EANs, keyed by EAN; a failed read answers none. For the
+   * wizard's matching, where "no match" is a safe answer; an offer create
+   * uses {@link readCards}, because there a failed read is not "no card".
+   */
   async findCards(eans: readonly string[]): Promise<Map<string, MiraklCatalogCard[]>> {
-    const cards = new Map<string, MiraklCatalogCard[]>();
-    if (eans.length === 0) {
-      return cards;
-    }
     try {
-      const { data } = await this.httpClient.get<{ products?: readonly MiraklCatalogCard[] }>(
-        PRODUCTS_PATH,
-        { queryParams: { product_references: eans.map((ean) => `EAN|${ean}`).join(',') } }
-      );
-      for (const card of data?.products ?? []) {
-        if (!card.product_id) continue;
-        cards.set(card.product_id, [...(cards.get(card.product_id) ?? []), card]);
-      }
+      return await this.readCards(eans);
     } catch (error) {
       this.logger.warn(
         `Card lookup for ${eans.length} EAN(s) on connection ${this.connectionId} failed: ` +
           `${error instanceof Error ? error.name : 'error'}`
       );
+      return new Map();
+    }
+  }
+
+  /** Cards for these EANs, keyed by EAN; a failed read throws. */
+  async readCards(eans: readonly string[]): Promise<Map<string, MiraklCatalogCard[]>> {
+    const cards = new Map<string, MiraklCatalogCard[]>();
+    if (eans.length === 0) {
+      return cards;
+    }
+    const { data } = await this.httpClient.get<{ products?: readonly MiraklCatalogCard[] }>(
+      PRODUCTS_PATH,
+      { queryParams: { product_references: eans.map((ean) => `EAN|${ean}`).join(',') } }
+    );
+    for (const card of data?.products ?? []) {
+      if (!card.product_id) continue;
+      cards.set(card.product_id, [...(cards.get(card.product_id) ?? []), card]);
     }
     return cards;
   }

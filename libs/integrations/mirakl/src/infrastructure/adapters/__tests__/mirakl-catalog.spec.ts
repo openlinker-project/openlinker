@@ -114,9 +114,7 @@ describe('MiraklCatalog.fetchCategoryParameters', () => {
       return Promise.resolve({
         status: 200,
         data: {
-          values_lists: [
-            { code, values: code === '800' ? huge : [{ code: '6', label: '5%' }] },
-          ],
+          values_lists: [{ code, values: code === '800' ? huge : [{ code: '6', label: '5%' }] }],
         },
       });
     });
@@ -171,8 +169,20 @@ describe('MiraklCatalog.fetchCategoryParameters duplicates', () => {
       status: 200,
       data: {
         attributes: [
-          { code: 'PELNY_TYTUL', label: 'Tytuł', type: 'TEXT', hierarchy_code: '', required: false },
-          { code: 'PELNY_TYTUL', label: 'Tytuł', type: 'TEXT', hierarchy_code: '8', required: true },
+          {
+            code: 'PELNY_TYTUL',
+            label: 'Tytuł',
+            type: 'TEXT',
+            hierarchy_code: '',
+            required: false,
+          },
+          {
+            code: 'PELNY_TYTUL',
+            label: 'Tytuł',
+            type: 'TEXT',
+            hierarchy_code: '8',
+            required: true,
+          },
         ],
       },
     });
@@ -264,5 +274,11 @@ describe('MiraklCatalog.resolveCategoriesForBatchByEan', () => {
     });
 
     expect(result.get('v1')).toEqual({ kind: 'no-match' });
+  });
+
+  it('should throw from readCards when the lookup fails, so an offer create can retry', async () => {
+    const get = jest.fn().mockRejectedValue(new MiraklApiException('down', 500));
+
+    await expect(catalog(get).readCards(['111'])).rejects.toBeInstanceOf(MiraklApiException);
   });
 });

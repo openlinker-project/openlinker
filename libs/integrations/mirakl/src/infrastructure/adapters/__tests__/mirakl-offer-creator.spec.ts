@@ -29,12 +29,12 @@ function setup(cards: Array<{ product_sku: string }> = [{ product_sku: '11246537
   creator: MiraklOfferCreator;
   post: jest.Mock;
   recordSubmitted: jest.Mock;
+  readCards: jest.Mock;
 } {
   const post = jest.fn().mockResolvedValue({ status: 201, data: { import_id: 2156101 } });
   const recordSubmitted = jest.fn().mockResolvedValue(undefined);
-  const catalog = {
-    findCards: jest.fn().mockResolvedValue(new Map([['9788380082113', cards]])),
-  } as unknown as MiraklCatalog;
+  const readCards = jest.fn().mockResolvedValue(new Map([['9788380082113', cards]]));
+  const catalog = { readCards } as unknown as MiraklCatalog;
   const creator = new MiraklOfferCreator({
     connectionId: 'conn-1',
     adapterKey: 'empik.mirakl.v1',
@@ -44,7 +44,7 @@ function setup(cards: Array<{ product_sku: string }> = [{ product_sku: '11246537
     writes: () => ({ recordSubmitted }) as unknown as MiraklOfferWriteRepositoryPort,
     offerDefaults: { leadTimeToShip: 2, logisticClass: '1' },
   });
-  return { creator, post, recordSubmitted };
+  return { creator, post, recordSubmitted, readCards };
 }
 
 async function rejection(promise: Promise<unknown>): Promise<string[]> {
@@ -115,7 +115,7 @@ describe('MiraklOfferCreator', () => {
       adapterKey: 'empik.mirakl.v1',
       brand: 'Empik',
       httpClient: { post } as unknown as IMiraklHttpClient,
-      catalog: { findCards: jest.fn() } as unknown as MiraklCatalog,
+      catalog: { readCards: jest.fn() } as unknown as MiraklCatalog,
       writes: (): MiraklOfferWriteRepositoryPort => ({}) as MiraklOfferWriteRepositoryPort,
       offerDefaults: {},
     });
@@ -134,5 +134,36 @@ describe('MiraklOfferCreator', () => {
     expect(await rejection(creator.createOffer(command()))).toEqual([
       'MIRAKL_OFFER_IMPORT_REFUSED',
     ]);
+  });
+
+  it('should let a failed card lookup through for a retry, never refusing the offer', async () => {
+    const { creator, post, readCards } = setup();
+    readCards.mockRejectedValueOnce(new MiraklApiException('down', 503));
+
+    const error = await creator.createOffer(command()).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(MiraklApiException);
+    expect(error).not.toBeInstanceOf(OfferCreateRejectedException);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it.each([429, 500, 503])(
+    'should let a %s from the offer import through for a retry, never refusing the offer',
+    async (status) => {
+      const { creator, post } = setup();
+      post.mockRejectedValueOnce(new MiraklApiException('busy', status));
+
+      const error = await creator.createOffer(command()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(MiraklApiException);
+      expect(error).not.toBeInstanceOf(OfferCreateRejectedException);
+    }
+  );
+
+  it('should still create the offer when several cards share the EAN', async () => {
+    const { creator, post } = setup([{ product_sku: 'A' }, { product_sku: 'B' }]);
+
+    await expect(creator.createOffer(command())).resolves.toMatchObject({ status: 'validating' });
+    expect(post).toHaveBeenCalledTimes(1);
   });
 });
