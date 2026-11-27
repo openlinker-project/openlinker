@@ -116,7 +116,9 @@ export function resolveSalesDocumentCellState(
     if (!copy) {
       return {
         kind: view.documentKind,
-        word: cellCopy.notIssued,
+        // Polish agrees the word with the kind ("Faktura · Niewystawiona",
+        // "Paragon fiskalny · Niewystawiony"), so an invoice has its own word.
+        word: view.documentKind === 'invoice' ? cellCopy.notIssuedInvoice : cellCopy.notIssued,
         tone: 'idle',
         reasonDetail: null,
         keepsAction: true,

@@ -13,7 +13,8 @@
  * @module apps/web/src/shared/ui
  */
 import type { ReactElement } from 'react';
-import { HELP_LINKS, HELP_LINK_LABELS, type HelpSurfaceKey } from '../lib/help-links';
+import { HELP_LINKS, HELP_LINK_LABEL_KEYS, type HelpSurfaceKey } from '../lib/help-links';
+import { useMessages } from '../i18n/use-messages';
 
 export interface HelpLinkProps {
   readonly surfaceKey: HelpSurfaceKey;
@@ -22,7 +23,7 @@ export interface HelpLinkProps {
 
 export function HelpLink({ surfaceKey, className }: HelpLinkProps): ReactElement {
   const href = HELP_LINKS[surfaceKey];
-  const label = HELP_LINK_LABELS[surfaceKey];
+  const label = useMessages('ui').helpLink[HELP_LINK_LABEL_KEYS[surfaceKey]];
 
   return (
     <a

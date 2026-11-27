@@ -223,6 +223,12 @@
     "footOpen": "na tej stronie, aby otworzyć przewodnik,",
     "footPress": "Naciśnij"
   },
+  "helpLink": {
+    "connectionRateLimit": "Pomoc: limit zapytań połączenia",
+    "connectionStockAndPricing": "Pomoc: stan i cena w kanale",
+    "salesDocumentsRouting": "Pomoc: jak działa wybór dokumentu sprzedaży",
+    "whoDecides": "Pomoc: kto o czym decyduje przy realizacji"
+  },
   "inlineDisclosure": {
     "change": "Zmień"
   },

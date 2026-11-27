@@ -2815,6 +2815,7 @@
     },
     "noDocument": "No document",
     "notIssued": "Not issued",
+    "notIssuedInvoice": "Not issued",
     "openOrder": "Open order",
     "regulatory": {
       "accepted": "Accepted",
@@ -2832,6 +2833,8 @@
     "awaitingClearance": "Awaiting clearance",
     "cleared": "Cleared",
     "inProgressElsewhere": "In progress elsewhere",
+    "invoiceRejected": "Rejected",
+    "invoiceUnconfirmed": "Unconfirmed",
     "issued": "Issued",
     "issuing": "Issuing",
     "notIssued": "Not issued",

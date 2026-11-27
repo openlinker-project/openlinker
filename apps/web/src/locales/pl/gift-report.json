@@ -32,8 +32,8 @@
   },
   "chart": {
     "aria": "Koszt gratisów w czasie",
-    "hintDay": "zł netto",
-    "hintWeek": "zł netto · ostatni słupek: tydzień w toku",
+    "hintDay": "netto",
+    "hintWeek": "netto · ostatni słupek: tydzień w toku",
     "inProgress": "tydzień w toku",
     "plotAria": "Wykres kosztu gratisów: razem {total}",
     "titleDay": "Koszt gratisów dzień po dniu",

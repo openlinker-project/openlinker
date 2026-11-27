@@ -407,11 +407,11 @@ describe('OperationalSettingsPage', () => {
     expect(Number(slider.getAttribute('max'))).toBeGreaterThan(500);
   });
 
-  it("should render the API's own note about adapter clamping", async () => {
+  it('should render the note about adapter page-size caps when the API reports one', async () => {
     renderPage();
 
     expect(
-      await screen.findByText(/clamped when the request is built/),
+      await screen.findByText(/WooCommerce allows at most 100/),
     ).toBeInTheDocument();
   });
 

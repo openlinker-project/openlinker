@@ -24,7 +24,7 @@
     "invoicingOfflineSubmissionResubmit": "Prześlij ponownie faktury offline",
     "invoicingPaymentStatusRefreshByExternalId": "Odśwież status płatności faktury",
     "invoicingPendingRecoverySweep": "Odzyskaj faktury zablokowane w trakcie wystawiania",
-    "invoicingRegulatoryStatusReconcile": "Sprawdź rozliczenie w urzędzie skarbowym",
+    "invoicingRegulatoryStatusReconcile": "Sprawdź przyjęcie faktur w urzędzie skarbowym",
     "marketplaceFulfillmentStatusSync": "Odczytaj status realizacji w marketplace",
     "marketplaceOfferCreate": "Utwórz ofertę",
     "marketplaceOfferPauseStale": "Wstrzymaj oferty usuniętych produktów",
@@ -262,8 +262,8 @@
         "label": "Wyślij stany magazynowe do marketplace"
       },
       "reconcileRegulatoryStatus": {
-        "description": "Zapytaj urząd skarbowy o status rozliczenia przesłanych faktur.",
-        "label": "Sprawdź status rozliczenia"
+        "description": "Zapytaj urząd skarbowy, czy przyjął przesłane faktury.",
+        "label": "Sprawdź status przyjęcia"
       },
       "syncAllInventory": {
         "description": "Wylicz i synchronizuj stany magazynowe każdego produktu.",

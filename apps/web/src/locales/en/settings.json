@@ -80,6 +80,7 @@
       },
       "eyebrow": "Catalogue",
       "pageSize": {
+        "adapterClampNote": "Some shops cap how many products one request may ask for - WooCommerce allows at most 100. A larger page size is refused there, with an error naming the cap, rather than quietly sending a smaller page than you set.",
         "ariaLabel": "Products per shop request",
         "description": "How many products OpenLinker asks the shop for in one request. Asking for fewer means more requests for the same work; asking for more makes a single failed request cost more.",
         "label": "Products per shop request"

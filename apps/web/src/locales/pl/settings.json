@@ -84,6 +84,7 @@
       },
       "eyebrow": "Katalog",
       "pageSize": {
+        "adapterClampNote": "Niektóre sklepy ograniczają, o ile produktów można zapytać w jednym zapytaniu - WooCommerce pozwala na najwyżej 100. Większa liczba zostanie tam odrzucona z błędem podającym limit, zamiast po cichu wysłać mniejszą stronę niż ustawiona.",
         "ariaLabel": "Produkty na jedno zapytanie do sklepu",
         "description": "O ile produktów OpenLinker prosi sklep w jednym zapytaniu. Mniejsza wartość oznacza więcej zapytań przy tej samej pracy; większa sprawia, że jedno nieudane zapytanie kosztuje więcej.",
         "label": "Produkty na zapytanie do sklepu"

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getMessages } from '../../../shared/i18n';
+import { getMessages, loadMessages, messagesIn } from '../../../shared/i18n';
 import { resolveInvoiceHeadline, resolveFiscalHeadline } from './sales-document-headline';
 import type { InvoiceRecord } from '../../invoicing';
 import type { FiscalRegistrationRecord } from '../../fiscalization';
@@ -135,3 +135,41 @@ describe('resolveInvoiceHeadline - connection missing a setting (#3772)', () => 
   });
 });
 
+describe('sales document headline - Polish agreement with the document kind', () => {
+  // English uses the same word for both kinds, so only Polish shows whether
+  // the invoice path reads its own (feminine) keys and the receipt path the
+  // masculine ones.
+  it('should use the feminine words for a failed invoice', async () => {
+    await loadMessages('pl');
+    const pl = messagesIn('orders', 'pl').salesDocumentHeadline;
+    expect(
+      resolveInvoiceHeadline(invoice({ status: 'failed', failureMode: 'rejected' }), 'KSeF', pl).state,
+    ).toBe('Odrzucona');
+    expect(
+      resolveInvoiceHeadline(invoice({ status: 'failed', failureMode: 'in-doubt' }), 'KSeF', pl).state,
+    ).toBe('Niepotwierdzona');
+  });
+
+  it('should keep the masculine words for a failed fiscal receipt', async () => {
+    await loadMessages('pl');
+    const pl = messagesIn('orders', 'pl').salesDocumentHeadline;
+    expect(
+      resolveFiscalHeadline(
+        fiscalRecord({ status: 'failed', failureMode: 'rejected' }),
+        undefined,
+        'eparagony',
+        false,
+        pl,
+      ).state,
+    ).toBe('Odrzucony');
+    expect(
+      resolveFiscalHeadline(
+        fiscalRecord({ status: 'failed', failureMode: 'in-doubt' }),
+        undefined,
+        'eparagony',
+        false,
+        pl,
+      ).state,
+    ).toBe('Niepotwierdzony');
+  });
+});

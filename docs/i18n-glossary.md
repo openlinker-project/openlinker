@@ -28,6 +28,8 @@ Add a row when a new domain term reaches the UI. Change a row only together with
 | Customer | Klient | |
 | Buyer | Kupujący | the person who placed the order |
 | Seller | Sprzedawca | |
+| Ship by | Termin wysyłki | the deadline for sending an order; never "Wyślij do", which reads as an address |
+| Clearance | Przyjęcie | a tax authority accepting an invoice (KSeF); "Czeka na przyjęcie" while it waits, never "rozliczenie", which reads as payment |
 | Connection | Połączenie | a configured integration instance |
 | Integration | Integracja | the product type (Allegro, PrestaShop, ...) |
 | Marketplace | Marketplace | kept in English, common in Polish e-commerce |

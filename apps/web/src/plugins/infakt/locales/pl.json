@@ -49,14 +49,14 @@
     "pdfDownloadFailed": "Nie udało się pobrać PDF",
     "pdfDownloadFailedDesc": "Nie udało się pobrać pliku PDF faktury.",
     "pdfDownloading": "Pobieranie…",
-    "pending": "inFakt przesyła tę fakturę do KSeF. Rozliczenie zwykle kończy się w ciągu minuty lub dwóch.",
+    "pending": "inFakt przesyła tę fakturę do KSeF. Przyjęcie zwykle trwa minutę lub dwie.",
     "rejectedFallback": "KSeF odrzucił tę fakturę.",
     "resend": "Ponów wysyłkę do KSeF",
     "resendFailed": "Ponowne wysłanie nieudane",
     "resendSuccess": "Wysłano ponownie do KSeF",
-    "resendSuccessDesc": "inFakt ponownie przesyła tę fakturę do KSeF. Status rozliczenia wkrótce się odświeży.",
+    "resendSuccessDesc": "inFakt ponownie przesyła tę fakturę do KSeF. Status przyjęcia wkrótce się odświeży.",
     "resending": "Wysyłanie ponownie…",
-    "title": "Rozliczenie w KSeF (przez inFakt)"
+    "title": "Przyjęcie w KSeF (przez inFakt)"
   },
   "infaktSetupForm": {
     "apiKey": {
@@ -73,7 +73,7 @@
       "unreachable": "Nie udało się połączyć z inFakt, aby pobrać listę kont bankowych. To połączenie pozostaje przy metodzie <strong>Przelew</strong>, więc faktury nadal będą wystawiane z przelewem i inFakt może je odrzucać, dopóki nie wybierzesz konta bankowego na ekranie edycji połączenia."
     },
     "beforeYouStart": {
-      "body": "W ustawieniach konta inFakt wygeneruj <strong>klucz API</strong>. OpenLinker używa go do wystawiania faktur i odczytu statusu rozliczenia w KSeF przez wbudowaną integrację inFakt. Klucz jest przechowywany bezpiecznie na serwerze i pokazywany tylko raz.",
+      "body": "W ustawieniach konta inFakt wygeneruj <strong>klucz API</strong>. OpenLinker używa go do wystawiania faktur i odczytu statusu przyjęcia w KSeF przez wbudowaną integrację inFakt. Klucz jest przechowywany bezpiecznie na serwerze i pokazywany tylko raz.",
       "title": "Zanim zaczniesz"
     },
     "configureWebhooks": "Skonfiguruj webhooki…",
@@ -119,7 +119,7 @@
     },
     "webhookPrompt": {
       "configure": "Skonfiguruj webhooki",
-      "description": "Webhooki pozwalają inFakt powiadomić OpenLinker w chwili rozliczenia faktury w KSeF, zamiast czekać na kolejne odpytanie. Są opcjonalne, a ich konfiguracja w panelu inFakt zajmuje minutę. Możesz zrobić to później na karcie Akcje połączenia.",
+      "description": "Webhooki pozwalają inFakt powiadomić OpenLinker w chwili przyjęcia faktury przez KSeF, zamiast czekać na kolejne odpytanie. Są opcjonalne, a ich konfiguracja w panelu inFakt zajmuje minutę. Możesz zrobić to później na karcie Akcje połączenia.",
       "notNow": "Nie teraz",
       "ready": {
         "description": "Webhooki skonfigurujesz w dowolnej chwili na karcie Akcje połączenia.",
@@ -128,7 +128,7 @@
       "title": "Skonfigurować teraz webhooki dostarczania?"
     },
     "webhooks": {
-      "body": "Otrzymuj z inFakt aktualizacje rozliczenia w KSeF w czasie rzeczywistym.",
+      "body": "Otrzymuj z inFakt informacje o przyjęciu faktur przez KSeF w czasie rzeczywistym.",
       "title": "Webhooki dostarczania (opcjonalne)"
     }
   },
@@ -137,7 +137,7 @@
       "apiKey": "Klucz API",
       "guided": "Z przewodnikiem"
     },
-    "description": "Podaj klucz API inFakt. OpenLinker używa go do wystawiania faktur i odczytu statusu rozliczenia w KSeF przez wbudowaną integrację e-faktur inFakt.",
+    "description": "Podaj klucz API inFakt. OpenLinker używa go do wystawiania faktur i odczytu statusu przyjęcia w KSeF przez wbudowaną integrację e-faktur inFakt.",
     "eyebrow": "Integracje",
     "title": "Połącz z inFakt"
   },
@@ -249,7 +249,7 @@
   "infaktWebhookConnectionActions": {
     "activation": "Aktywacja: {value}",
     "configure": "Skonfiguruj webhooki…",
-    "description": "Dostarczaj z inFakt zdarzenia rozliczenia w KSeF w czasie rzeczywistym. Zarejestruj adres i opcjonalnie weryfikuj podpisy dostaw.",
+    "description": "Dostarczaj z inFakt zdarzenia przyjęcia faktur przez KSeF w czasie rzeczywistym. Zarejestruj adres i opcjonalnie weryfikuj podpisy dostaw.",
     "signature": "Podpis: {value}",
     "title": "Konfiguracja webhooków"
   },
