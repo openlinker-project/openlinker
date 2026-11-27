@@ -6,7 +6,7 @@
     },
     "environments": {
       "demo": "Demo (przedprodukcyjne)",
-      "prod": "Produkcja (rzeczywiste rozliczenie)",
+      "prod": "Produkcja (prawdziwe faktury)",
       "test": "Test (sandbox)"
     },
     "fields": {
@@ -185,7 +185,7 @@
     "loadingLines": "Wczytywanie pozycji faktury…",
     "newPrice": "Nowe brutto, pozycja {n}",
     "newQty": "Nowa ilość, pozycja {n}",
-    "note": "Dokument KOR zmienia ilość, cenę lub obie dla każdej pozycji. KSeF nadaje numer rozliczenia, a OpenLinker sam uzgadnia jego status.",
+    "note": "Dokument KOR zmienia ilość, cenę lub obie dla każdej pozycji. KSeF nadaje numer KSeF, a OpenLinker sam sprawdza jego status.",
     "providerTag": "Wysłana bezpośrednio do KSeF",
     "removeLine": "Usuń pozycję {n}",
     "submit": "Wystaw KOR",
@@ -194,7 +194,7 @@
   },
   "ksefInvoiceDetailSection": {
     "art108gHint": "Art. 108g: przy płatności za tę fakturę podaj ten numer KSeF w tytule przelewu.",
-    "clearanceStatus": "Status rozliczenia",
+    "clearanceStatus": "Status przyjęcia",
     "close": "Zamknij",
     "documentNumber": "Numer faktury",
     "documentNumberHint": "Nadany przez OpenLinker przy wystawieniu",
@@ -211,7 +211,7 @@
     "fa3XmlFailed": "Nie udało się pobrać XML FA(3)",
     "loading": "Wczytywanie…",
     "number": "Numer KSeF",
-    "numberHint": "Nadawany przez KSeF przy rozliczeniu",
+    "numberHint": "Nadawany przez KSeF przy przyjęciu faktury",
     "numberPending": "Oczekuje",
     "rejectionDetail": "Szczegóły odrzucenia",
     "rejectionDetailHint": "Zgłoszone przez KSeF",
@@ -223,15 +223,15 @@
     "upoDownloadFailedDesc": "Nie udało się pobrać dokumentu poświadczenia.",
     "upoDownloading": "Pobieranie…",
     "upoFrameTitle": "Podgląd poświadczenia UPO",
-    "upoHint": "Potwierdzenie rozliczenia",
-    "upoHintPending": "Dostępne po rozliczeniu",
+    "upoHint": "Potwierdzenie przyjęcia",
+    "upoHintPending": "Dostępne po przyjęciu faktury",
     "upoLabel": "Urzędowe poświadczenie (UPO)",
     "upoPreview": "Podgląd",
     "upoPreviewFailed": "Podgląd UPO nieudany",
     "upoPreviewFailedDesc": "Nie udało się pobrać dokumentu poświadczenia.",
     "upoPreviewUnsupported": "Tego poświadczenia nie da się wyświetlić na stronie. Otwórz je przyciskiem \"Pobierz UPO\".",
     "verificationPendingFrame": "Kod weryfikacyjny pojawi się, gdy KSeF nada numer",
-    "verificationPendingHint": "KSeF przyjął tę fakturę, ale nie nadał jeszcze numeru. OpenLinker sprawdza to automatycznie; kod pojawi się tutaj po nadaniu numeru.",
+    "verificationPendingHint": "KSeF otrzymał tę fakturę, ale nie nadał jeszcze numeru. OpenLinker sprawdza to automatycznie; kod pojawi się tutaj po nadaniu numeru.",
     "verificationPendingLabel": "Kod weryfikacyjny (KOD I)",
     "verificationPendingNotSent": "Ta faktura nie dotarła jeszcze do KSeF. Kod pojawi się tutaj, gdy KSeF ją przyjmie i nada numer."
   },
@@ -605,7 +605,7 @@
   },
   "ksefRegulatoryStatusLabels": {
     "accepted": "KSeF: przyjęta",
-    "cleared": "KSeF: w rozliczeniu",
+    "cleared": "KSeF: przyjmowanie",
     "pending-submission": "KSeF: czeka na przesłanie",
     "rejected": "KSeF: odrzucona",
     "submitted": "KSeF: przesłana"
@@ -635,7 +635,7 @@
       "title": "Połączenie utworzone, ale coś wymaga sprawdzenia"
     },
     "environment": {
-      "description": "Docelowe środowisko KSeF. Do testów użyj Test lub Demo; Produkcja rozlicza prawdziwe faktury."
+      "description": "Docelowe środowisko KSeF. Do testów użyj Test lub Demo; Produkcja przesyła prawdziwe faktury."
     },
     "lineUnit": {
       "description": "Jednostka miary wpisywana w pozycjach wystawionych faktur. Wyczyść pole, aby pominąć jednostkę w dokumentach."
@@ -655,7 +655,7 @@
       "eInvoicing": "e-Faktury",
       "guided": "Z przewodnikiem"
     },
-    "description": "Podaj środowisko KSeF, kontekst sprzedawcy i sekret uwierzytelniający. OpenLinker używa ich do rozliczania faktur w Krajowym Systemie e-Faktur.",
+    "description": "Podaj środowisko KSeF, kontekst sprzedawcy i sekret uwierzytelniający. OpenLinker używa ich do przesyłania faktur do Krajowego Systemu e-Faktur.",
     "eyebrow": "Integracje",
     "title": "Połącz z KSeF"
   },
@@ -689,7 +689,7 @@
       "label": "Zezwalaj na faktury zagraniczne"
     },
     "environment": {
-      "description": "Docelowe środowisko KSeF. Produkcja rozlicza prawdziwe faktury.",
+      "description": "Docelowe środowisko KSeF. Produkcja przesyła prawdziwe faktury.",
       "placeholder": "Wybierz środowisko…"
     },
     "exemptionKind": {
@@ -788,7 +788,7 @@
   "plugin": {
     "setupCard": {
       "badge": "e-Faktury",
-      "description": "Połącz Krajowy System e-Faktur (KSeF), aby rozliczać faktury. Potrzebny jest token autoryzacyjny KSeF albo kwalifikowana pieczęć elektroniczna."
+      "description": "Połącz Krajowy System e-Faktur (KSeF), aby przesyłać do niego faktury. Potrzebny jest token autoryzacyjny KSeF albo kwalifikowana pieczęć elektroniczna."
     }
   }
 }

@@ -675,7 +675,7 @@
   "invoicing:invoice.marketplaceUpload.retry": 16,
   "invoicing:invoice.marketplaceUpload.retrying": 14,
   "invoicing:invoice.regulatory.accepted": 14,
-  "invoicing:invoice.regulatory.cleared": 14,
+  "invoicing:invoice.regulatory.cleared": 18,
   "invoicing:invoice.regulatory.not-applicable": 8,
   "invoicing:invoice.regulatory.pending-submission": 32,
   "invoicing:invoice.regulatory.rejected": 14,

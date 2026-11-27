@@ -79,12 +79,12 @@
     },
     "column": {
       "buyerTaxId": "NIP kupującego",
-      "clearanceRef": "Nr rozliczenia",
+      "clearanceRef": "Nr przyjęcia",
       "connection": "Połączenie",
       "documentType": "Typ dokumentu",
       "issuedAt": "Wystawiono",
       "orderId": "Zamów.",
-      "regulatory": "Rozliczenie",
+      "regulatory": "Przyjęcie",
       "select": "Zaznacz fakturę",
       "status": "Status"
     },
@@ -137,7 +137,7 @@
       "unknown": "Nie udało się potwierdzić, czy ta faktura została wystawiona. Sprawdź u dostawcy przed ponownym wystawieniem - ponowienie w ciemno może utworzyć duplikat."
     },
     "field": {
-      "clearance": "Rozliczenie w urzędzie skarbowym",
+      "clearance": "Przyjęcie przez urząd skarbowy",
       "clearanceRef": "Numer referencyjny",
       "document": "Typ dokumentu",
       "issued": "Data wystawienia",
@@ -152,8 +152,8 @@
       "issuedFrom": "Wystawione od",
       "issuedTo": "Wystawione do",
       "regulatory": {
-        "all": "Wszystkie statusy rozliczenia",
-        "label": "Filtruj według statusu rozliczenia"
+        "all": "Wszystkie statusy przyjęcia",
+        "label": "Filtruj według statusu przyjęcia"
       },
       "status": {
         "all": "Wszystkie statusy",
@@ -189,7 +189,7 @@
     },
     "list": {
       "caption": "Faktury",
-      "description": "Wystawione, oczekujące i nieudane faktury ze wszystkich połączeń, ze statusem rozliczenia.",
+      "description": "Wystawione, oczekujące i nieudane faktury ze wszystkich połączeń, ze statusem przyjęcia przez urząd skarbowy.",
       "empty": {
         "filtered": "Żadna faktura nie pasuje do bieżących filtrów. Spróbuj wyczyścić część filtrów.",
         "none": "Nie wystawiono jeszcze żadnej faktury.",
@@ -268,7 +268,7 @@
     },
     "regulatory": {
       "accepted": "Przyjęta",
-      "cleared": "W rozliczeniu",
+      "cleared": "Czeka na przyjęcie",
       "not-applicable": "Nie dot.",
       "pending-submission": "Czeka na przesłanie",
       "rejected": "Odrzucona",
@@ -296,7 +296,7 @@
     },
     "tl": {
       "accepted": "Przyjęta",
-      "clearanceLane": "Rozliczenie w urzędzie skarbowym",
+      "clearanceLane": "Przyjęcie przez urząd skarbowy",
       "clearancePending": "Czeka na przyjęcie",
       "clearanceRejected": "Odrzucona przez urząd skarbowy",
       "created": "Utworzona",
@@ -310,7 +310,7 @@
       "issuingHint": "W toku - zablokowana",
       "pending": "Oczekuje",
       "pendingSubmission": "Czeka na przesłanie",
-      "pendingSubmissionHint": "Wystawiona offline - jeszcze nie przesłana do rozliczenia",
+      "pendingSubmissionHint": "Wystawiona offline - jeszcze nie przesłana do urzędu skarbowego",
       "submitted": "Przesłana"
     }
   },
