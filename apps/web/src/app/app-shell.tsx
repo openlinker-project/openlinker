@@ -20,6 +20,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type PropsWithChildren,
   type ReactElement,
   type ReactNode,
@@ -32,6 +33,7 @@ import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registr
 import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
+import { useScrollEdges } from './hooks/use-scroll-edges';
 import { DashboardGlow } from './dashboard-glow';
 import { Button } from '../shared/ui/button';
 import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/language';
@@ -81,6 +83,17 @@ export function SidebarNav({
   const numberFormatter = useNumberFormat();
   const formatCount = (value: number | null): string | null =>
     value === null ? null : numberFormatter.format(value);
+  const navRef = useRef<HTMLElement>(null);
+  const edges = useScrollEdges(navRef, groups);
+  // One click moves most of a screen, keeping a couple of rows for context.
+  const scrollMenu = (direction: 1 | -1): void => {
+    const nav = navRef.current;
+    if (!nav) {
+      return;
+    }
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    nav.scrollBy({ top: direction * nav.clientHeight * 0.7, behavior: still ? 'auto' : 'smooth' });
+  };
   // Shared render for a greyed-out, non-clickable nav item (planned items and
   // demo-locked `restricted` groups use the same treatment; only the tooltip
   // source differs — per-item `reason` for planned, group-level for restricted).
@@ -112,45 +125,92 @@ export function SidebarNav({
     </li>
   );
   return (
-    <nav className="shell-nav" aria-label={ariaLabel}>
-      {groups.map((group) => (
-        <section key={group.label} className="shell-nav__group">
-          <p className="shell-nav__label">
-            <span className="shell-nav__label-text">{group.label}</span>
-          </p>
-          <ul className="shell-nav__list">
-            {group.kind === 'live'
-              ? group.items.map((item) => {
-                  const countText = item.countKey ? formatCount(counts[item.countKey]) : null;
-                  return (
-                    <li key={item.label}>
-                      <NavLink
-                        to={item.to}
-                        end={item.end}
-                        onClick={onNavigate}
-                        className={({ isActive }) =>
-                          (activeTo === undefined ? isActive : activeTo === item.to)
-                            ? 'shell-nav__link shell-nav__link--active'
-                            : 'shell-nav__link'
-                        }
-                      >
-                        <span className="shell-nav__link-label" title={item.label}>
-                          {item.label}
-                        </span>
-                        {countText !== null ? (
-                          <span className="shell-nav__link-count mono-text">{countText}</span>
-                        ) : null}
-                      </NavLink>
-                    </li>
-                  );
-                })
-              : group.kind === 'restricted'
-                ? group.items.map((item) => renderDisabledItem(item.label, group.reason, true))
-                : group.items.map((item) => renderDisabledItem(item.label, item.reason, false))}
-          </ul>
-        </section>
-      ))}
-    </nav>
+    <div
+      className="shell-nav-scroll"
+      data-scroll-up={edges.up ? '' : undefined}
+      data-scroll-down={edges.down ? '' : undefined}
+    >
+      {/* Mouse affordance only: keyboard focus already scrolls the menu, so the
+          arrows are hidden from assistive tech and out of the tab order. */}
+      <button
+        type="button"
+        className="shell-nav-scroll__arrow shell-nav-scroll__arrow--up"
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => scrollMenu(-1)}
+      >
+        <ScrollChevron />
+      </button>
+      <nav ref={navRef} className="shell-nav" aria-label={ariaLabel}>
+        {groups.map((group) => (
+          <section key={group.label} className="shell-nav__group">
+            <p className="shell-nav__label">
+              <span className="shell-nav__label-text">{group.label}</span>
+            </p>
+            <ul className="shell-nav__list">
+              {group.kind === 'live'
+                ? group.items.map((item) => {
+                    const countText = item.countKey ? formatCount(counts[item.countKey]) : null;
+                    return (
+                      <li key={item.label}>
+                        <NavLink
+                          to={item.to}
+                          end={item.end}
+                          onClick={onNavigate}
+                          className={({ isActive }) =>
+                            (activeTo === undefined ? isActive : activeTo === item.to)
+                              ? 'shell-nav__link shell-nav__link--active'
+                              : 'shell-nav__link'
+                          }
+                        >
+                          <span className="shell-nav__link-label" title={item.label}>
+                            {item.label}
+                          </span>
+                          {countText !== null ? (
+                            <span className="shell-nav__link-count mono-text">{countText}</span>
+                          ) : null}
+                        </NavLink>
+                      </li>
+                    );
+                  })
+                : group.kind === 'restricted'
+                  ? group.items.map((item) => renderDisabledItem(item.label, group.reason, true))
+                  : group.items.map((item) => renderDisabledItem(item.label, item.reason, false))}
+            </ul>
+          </section>
+        ))}
+      </nav>
+      <button
+        type="button"
+        className="shell-nav-scroll__arrow shell-nav-scroll__arrow--down"
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => scrollMenu(1)}
+      >
+        <ScrollChevron />
+      </button>
+    </div>
+  );
+}
+
+function ScrollChevron(): ReactElement {
+  return (
+    <svg
+      className="shell-nav-scroll__chevron"
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      aria-hidden="true"
+    >
+      <path
+        d="M4 6l4 4 4-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -433,11 +493,28 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const omsRouting = useOmsRoutingState({ enabled: sessionNeedsOmsRouting(permissions, role) });
   const groups = useMemo(
     () => buildNavGroups({ isAdmin, demoMode, permissions, role, omsRouting, copy }),
-    [isAdmin, demoMode, permissions, role, omsRouting, copy],
+    [isAdmin, demoMode, permissions, role, omsRouting, copy]
   );
 
   const closeDrawer = useCallback((): void => {
     drawerRef.current?.close();
+  }, []);
+
+  // A click on the dimmed backdrop reaches the <dialog> itself, with the point
+  // outside the panel's box; a click inside the panel never does.
+  const handleDrawerClick = useCallback((event: ReactMouseEvent<HTMLDialogElement>): void => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    const box = event.currentTarget.getBoundingClientRect();
+    const inside =
+      event.clientX >= box.left &&
+      event.clientX <= box.right &&
+      event.clientY >= box.top &&
+      event.clientY <= box.bottom;
+    if (!inside) {
+      event.currentTarget.close();
+    }
   }, []);
 
   const openDrawer = useCallback((): void => {
@@ -490,7 +567,13 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
           />
         </div>
 
-        <dialog ref={drawerRef} className="shell-drawer" aria-label={copy.shell.mobileNavigation}>
+        {/* Backdrop click is a pointer shortcut; Escape and the close button cover the keyboard. */}
+        <dialog
+          ref={drawerRef}
+          className="shell-drawer"
+          aria-label={copy.shell.mobileNavigation}
+          onClick={handleDrawerClick}
+        >
           <div className="shell-drawer__inner">
             <div className="shell-drawer__header">
               <SidebarBrand />
