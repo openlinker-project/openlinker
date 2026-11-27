@@ -187,9 +187,20 @@ const ALLOW_LIST = new Map([
     new Set(['SyncJobRepositoryPort']),
   ],
   ['apps/worker/src/sync/sync-job.runner.ts', new Set(['SyncJobRepositoryPort'])],
+  // #3986: the webhook drain claims queued peer jobs through the same port the runner uses.
+  ['apps/worker/src/sync/handlers/master-product-sync.handler.ts', new Set(['SyncJobRepositoryPort'])],
+  [
+    'apps/worker/src/sync/handlers/__tests__/master-product-sync.handler.spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  ['apps/worker/test/integration/hook-sync-scope-claim.int-spec.ts', new Set(['SyncJobRepositoryPort'])],
   ['apps/worker/src/sync/__tests__/sync-job.runner.spec.ts', new Set(['SyncJobRepositoryPort'])],
   [
     'apps/worker/test/integration/allegro-offer-quantity-update-e2e.int-spec.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  [
+    'apps/worker/test/integration/inventory-propagate-offer-key-e2e.int-spec.ts',
     new Set(['SyncJobRepositoryPort']),
   ],
   [
@@ -431,6 +442,12 @@ const ALLOW_LIST = new Map([
   // repository ports on purpose: the claim IS about repository behaviour under
   // real SQL, so unlike the rewire debt below this entry has no rewire target
   // and must NOT be dropped when #722 lands.
+  // #4289: the retention int-spec asserts on stored rows (erase survives
+  // re-ingestion), so it reads the order repository port directly. Permanent.
+  [
+    'apps/api/test/integration/buyer-data-retention.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
   [
     'apps/api/test/integration/paginated-total-split.int-spec.ts',
     new Set([
@@ -442,6 +459,24 @@ const ALLOW_LIST = new Map([
     ]),
   ],
 
+  // The release-center persistence int-spec (#4141) proves partial-index
+  // ON CONFLICT predicates, the cursor row comparison and the per-user row
+  // limit under concurrency, all repository SQL. Like the entry above it has
+  // no rewire target and must NOT be dropped when #722 lands.
+  [
+    'apps/api/test/integration/release-center-persistence.int-spec.ts',
+    new Set(['ReleaseCursorRepositoryPort', 'ReleaseItemStateRepositoryPort']),
+  ],
+
+  // The dead failed-creation guard is a SQL predicate over a LEFT join, so the
+  // int-spec must drive the repository against real Postgres - a service-level
+  // read would not exercise the negated-NULL case it exists to pin. Like the
+  // #2944 row above, it has no rewire target and must NOT be dropped with #722.
+  [
+    'apps/api/test/integration/offer-dead-failed-creation.int-spec.ts',
+    new Set(['OfferMappingRepositoryPort']),
+  ],
+
   // apps → orders.OrderRecordRepositoryPort — rewire via IOrdersService
   ['apps/api/src/orders/http/orders.controller.ts', new Set(['OrderRecordRepositoryPort'])],
   ['apps/api/src/orders/http/orders.controller.spec.ts', new Set(['OrderRecordRepositoryPort'])],
@@ -451,6 +486,12 @@ const ALLOW_LIST = new Map([
   ],
   [
     'apps/api/test/integration/order-health-summary.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+  // #2703/#2704 — asserts the real raw-SQL UPDATE and the `COALESCE ... NOT IN`
+  // filter arm against Postgres, which only the repository reaches.
+  [
+    'apps/api/test/integration/order-destination-routing-block.int-spec.ts',
     new Set(['OrderRecordRepositoryPort']),
   ],
   // #3527/#3528 — trigram search + diacritic folding + the tracking-number OR

@@ -127,6 +127,17 @@ export class LocationRepository implements LocationRepositoryPort {
     return entity ? this.toDomain(entity) : null;
   }
 
+  async findByOwnerAndExternalRef(
+    ownerConnectionId: string,
+    externalRef: string
+  ): Promise<InventoryLocation | null> {
+    const entity = await this.ormRepository.findOne({
+      where: { ownerConnectionId, externalRef },
+      order: { createdAt: 'ASC' },
+    });
+    return entity ? this.toDomain(entity) : null;
+  }
+
   async findByIds(ids: readonly string[]): Promise<InventoryLocation[]> {
     // The empty guard is not an optimisation: `In([])` compiles to `IN (NULL)`,
     // which is a round trip that can only ever answer nothing.

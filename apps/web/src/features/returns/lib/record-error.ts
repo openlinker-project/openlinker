@@ -1,12 +1,13 @@
 /**
  * Record-a-return error mapping (#2372/#2376, #3084)
  *
- * Turns a failed `POST /returns/record` into one of the four closed reasons
+ * Turns a failed `POST /returns/record` into one of the five closed reasons
  * `ReturnRecordRefusedError` can carry — read from the response body's
  * `reason` field, never the message string, the `readMatchRefusalReason` /
  * `readBlockedTrigger` precedent.
  *
- * Every reason maps to 400 (`ReturnsExceptionFilter`'s own docblock: this
+ * `line-removed-by-edit` (E-14) is the exception: a 409, since the order's state refuses it.
+ * Every other reason maps to 400 (`ReturnsExceptionFilter`'s own docblock: this
  * route addresses no existing return, so there is no resource whose STATE
  * could conflict — the payload is the entire request). `unknown-order` and
  * `order-not-on-connection` are field errors an operator can fix by picking a
@@ -23,11 +24,12 @@ export const RECORD_RETURN_REFUSAL_REASON_VALUES = [
   'invalid-quantity',
   'unknown-order',
   'order-not-on-connection',
+  'line-removed-by-edit',
 ] as const;
 export type RecordReturnRefusalReason = (typeof RECORD_RETURN_REFUSAL_REASON_VALUES)[number];
 
 /**
- * Returns `null` for anything that is not one of the four reasons this build
+ * Returns `null` for anything that is not one of the five reasons this build
  * recognises, so an error shape this build predates degrades to the generic
  * message rather than rendering `undefined`.
  */

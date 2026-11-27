@@ -25,6 +25,14 @@ WooCommerce REST API v3 adapter for OpenLinker — product catalog, inventory, a
 
 See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-capability catalog.
 
+The order processor also declares `OrderCreateStockEffect`. WooCommerce lowers stock only when an order reaches a
+paid-like status (`processing` / `completed` / `on-hold`, or `set_paid`), only with `woocommerce_manage_stock = yes`,
+and only for products that manage stock - so a `pending` order OpenLinker creates for an unpaid sale lowers nothing.
+Because that is a fact about the order rather than the store, the adapter answers from the created order itself:
+`true` only when every line in the `POST /orders` response carries the `_reduced_stock` item meta WooCommerce writes
+when it takes a line out of stock. Anything else - and an adapter that created no order, since core also asks after
+a skipped create - answers `false`, keeping the order's holds until dispatch.
+
 `ShopCategoryBrowser`, `ShopAttributeReader`, and `CategoryProvisioner` are
 sub-capabilities of `ShopProductManagerPort` implemented on the same
 `ProductPublisher` adapter instance; call sites narrow with
@@ -74,7 +82,7 @@ Generate at **WooCommerce → Settings → Advanced → REST API**.
 |---|---|---|
 | `siteUrl` | HTTPS URL (**required**) | The store's base URL. Must include the `https://` protocol (Basic Auth would leak credentials over plain http); the adapter appends the `wc/v3` REST paths itself |
 | `inventory` | Object (optional) | Inventory tuning: `unmanagedStockQuantity` (integer >= 0, default 1000) - the quantity reported for in-stock products with stock management disabled |
-| `orders` | Object (optional) | Order-ingestion tuning: `initialSyncFrom` (parseable date string, e.g. `"2024-01-01"`) - the earliest order date picked up by the first sync |
+| `orders` | Object (optional) | Order-ingestion tuning: `initialSyncFrom` (parseable date string, e.g. `"2024-01-01"`) - the earliest order date picked up by an `all` history read. It no longer decides where a new connection starts: the operator's explicit choice (`now` by default, `from` a date, or `all`) does, and `now` seeds at the real newest order. `from` dates are read in UTC because the REST API exposes no site time zone, so a site east of UTC can miss the first hours of the chosen day. `from` filters by last MODIFIED time, so it also brings older orders changed since the chosen day. There is no window import (`OrderWindowReader`) on WooCommerce. |
 
 ## Product publish field mapping
 

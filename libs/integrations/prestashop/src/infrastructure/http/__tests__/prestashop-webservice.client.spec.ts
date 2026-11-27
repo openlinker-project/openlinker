@@ -7,6 +7,7 @@
  * @module libs/integrations/prestashop/src/infrastructure/http/__tests__
  */
 import { PrestashopWebserviceClient } from '../prestashop-webservice.client';
+import { isRequestNotSentError } from '@openlinker/shared/http';
 import type {
   PrestashopConnectionConfig,
   PrestashopCredentials,
@@ -833,6 +834,69 @@ describe('PrestashopWebserviceClient', () => {
         expect(error).toBeInstanceOf(PrestashopAmbiguousWriteException);
         expect((error as PrestashopAmbiguousWriteException).statusCode).toBeUndefined();
         expect(global.fetch).toHaveBeenCalledTimes(1);
+      });
+
+      describe('request-not-sent mark (#4041)', () => {
+        const refused = (): TypeError =>
+          new TypeError('fetch failed', {
+            cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),
+          });
+        const reset = (): TypeError =>
+          new TypeError('fetch failed', {
+            cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+          });
+
+        it('should mark a createResource refused before send', async () => {
+          (global.fetch as jest.Mock).mockRejectedValue(refused());
+          const error = await client
+            .createResource('customers', { email: 'a@b.com' })
+            .then(() => null)
+            .catch((e: unknown) => e);
+          expect(error).toBeInstanceOf(PrestashopAmbiguousWriteException);
+          expect(isRequestNotSentError(error)).toBe(true);
+        });
+
+        it('should NOT mark a reset, a bare fetch failed or a timeout-style failure', async () => {
+          for (const failure of [reset(), new TypeError('fetch failed')]) {
+            (global.fetch as jest.Mock).mockReset();
+            (global.fetch as jest.Mock).mockRejectedValue(failure);
+            const error = await client
+              .createResource('customers', { email: 'a@b.com' })
+              .then(() => null)
+              .catch((e: unknown) => e);
+            expect(isRequestNotSentError(error)).toBe(false);
+          }
+        });
+
+        it('should mark an updateResource only when every retry was refused', async () => {
+          jest.useRealTimers();
+          const fast = new PrestashopWebserviceClient(baseUrl, credentials, config, {
+            retryConfig: { maxRetries: 2, initialDelayMs: 0, maxDelayMs: 1, backoffMultiplier: 1 },
+          });
+          try {
+            (global.fetch as jest.Mock).mockReset();
+            (global.fetch as jest.Mock).mockRejectedValue(refused());
+            const allRefused = await fast
+              .updateResource('stock_availables', '1', { id: '1' })
+              .then(() => null)
+              .catch((e: unknown) => e);
+            expect(global.fetch).toHaveBeenCalledTimes(3);
+            expect(isRequestNotSentError(allRefused)).toBe(true);
+
+            (global.fetch as jest.Mock).mockReset();
+            (global.fetch as jest.Mock)
+              .mockRejectedValueOnce(reset())
+              .mockRejectedValueOnce(refused())
+              .mockRejectedValueOnce(refused());
+            const mixed = await fast
+              .updateResource('stock_availables', '1', { id: '1' })
+              .then(() => null)
+              .catch((e: unknown) => e);
+            expect(isRequestNotSentError(mixed)).toBe(false);
+          } finally {
+            jest.useFakeTimers();
+          }
+        });
       });
 
       it('should still retry a 429 on createResource (the shop never processed the request)', async () => {

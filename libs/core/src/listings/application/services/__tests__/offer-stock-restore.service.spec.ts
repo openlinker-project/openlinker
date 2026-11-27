@@ -2,8 +2,9 @@
  * Offer Stock Restore Service Tests
  *
  * Unit tests for OfferStockRestoreService (#1146, #2348). Mocks all ports;
- * verifies target resolution (variant → external offer id → ATP), dispatch to
- * the OfferStockRestorer capability, the no-op paths (non-restorer adapter,
+ * verifies target resolution (variant → external offer id → ATP), the write
+ * through the ordered quantity seam (#2617) for an OfferStockRestorer
+ * connection, the no-op paths (non-restorer adapter,
  * unsupported/disabled OfferManager, non-capability error rethrow, and the
  * missing-record / no-variant / no-mapping skips) — and, for #2348, the ordering
  * contract: release strictly precedes restore, runs even when nothing will be
@@ -24,13 +25,19 @@ import type {
   IInventorySaleReversalService,
   IReservationService,
   VariantAvailability,
-  IAvailabilityService,
+  IInventorySyncService,
 } from '@openlinker/core/inventory';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
 import {
   OfferStockRestoreReleaseIncompleteError,
   OfferStockRestoreReversalIncompleteError,
+  OfferStockRestoreWriteIncompleteError,
 } from '@openlinker/core/listings';
+import type {
+  UpdateOfferQuantitiesBatchCommand,
+  UpdateOfferQuantityCommand,
+} from '@openlinker/core/listings';
+import { ContendedWriteError } from '@openlinker/core/sync';
 import type { IOrderRecordService } from '@openlinker/core/orders';
 import type {
   OfferManagerPort,
@@ -44,8 +51,12 @@ const CONNECTION_ID = 'conn-1';
 const ORDER_ID = 'ol_order_abc';
 const VARIANT_A = 'ol_variant_a';
 const VARIANT_B = 'ol_variant_b';
+const PRODUCT_ID = 'ol_product_a';
+const SHOP_CONN = 'conn-shop-1';
 const OFFER_A = 'erli-offer-a';
 const OFFER_B = 'erli-offer-b';
+const STAMP = new Date('2026-10-26T10:00:00.000Z');
+const OBSERVED = STAMP.toISOString();
 
 function mapping(internalId: string, externalId: string): OfferMappingListItem {
   return { internalId, externalId } as unknown as OfferMappingListItem;
@@ -55,13 +66,28 @@ function availability(rows: Array<[string, number]>): VariantAvailability[] {
   return rows.map(([productVariantId, totalAvailable]) => ({
     productVariantId,
     totalAvailable,
-    locationCount: 1,
+    locationCount: 1, positionCount: 1,
+    stockUpdatedAt: STAMP,
     // Wave-1b: empty ledger, so ATP mirrors master stock (#2323).
     availableToPromise: totalAvailable,
   }));
 }
 
+/** The command the restore hands the ordered write seam for one offer. */
+function item(offerId: string, quantity: number): UpdateOfferQuantityCommand {
+  return {
+    offerId,
+    quantity,
+    idempotencyKey: `stock-restore:${ORDER_ID}:${offerId}:${quantity}:${OBSERVED}`,
+    observedAt: OBSERVED,
+  };
+}
+
 describe('OfferStockRestoreService', () => {
+  let bundleDefinitions: { findCurrentContainingComponents: jest.Mock };
+  let identifierMapping: { getExternalIds: jest.Mock };
+  let listingSaleStatus: { findActiveHolds: jest.Mock };
+  let products: { getVariant: jest.Mock };
   let service: OfferStockRestoreService;
   let integrationsService: jest.Mocked<IIntegrationsService>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
@@ -85,17 +111,25 @@ describe('OfferStockRestoreService', () => {
     failed: 0,
     ...over,
   });
-  let availabilityService: jest.Mocked<IAvailabilityService>;
+  let inventorySync: jest.Mocked<IInventorySyncService>;
 
   beforeEach(() => {
     callOrder = [];
     restorer = {
       updateOfferQuantity: jest.fn(),
-      restoreStockOnCancellation: jest.fn().mockImplementation(() => {
-        callOrder.push('restore');
-        return Promise.resolve(undefined);
-      }),
+      restoreStockOnCancellation: jest.fn(),
     } as unknown as jest.Mocked<OfferManagerPort & OfferStockRestorer>;
+
+    // The ordered write seam (#2617). Default: every offer written.
+    inventorySync = {
+      updateOfferQuantity: jest.fn(),
+      updateOfferQuantities: jest
+        .fn()
+        .mockImplementation((_connectionId: string, cmd: UpdateOfferQuantitiesBatchCommand) => {
+          callOrder.push('restore');
+          return Promise.resolve({ succeeded: cmd.items.map((i) => i.offerId), failed: [] });
+        }),
+    } as unknown as jest.Mocked<IInventorySyncService>;
 
     reservations = {
       reserveForOrder: jest.fn(),
@@ -124,20 +158,6 @@ describe('OfferStockRestoreService', () => {
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
-    // #2610 via #2323 — the restore asks the availability seam for the
-    // connection's publish Controls rather than reading the buffer helpers.
-    // Default: pass-through (no reserve, no threshold).
-    availabilityService = {
-      applyPublishControlsBatch: jest.fn((input: { quantities: readonly number[] }) =>
-        Promise.resolve(
-          input.quantities.map((quantity) => ({ quantity, provenance: 'computed' as const }))
-        )
-      ),
-      applyPublishControls: jest.fn(),
-      getPromisableQuantities: jest.fn(),
-      getAppliedReserve: jest.fn().mockResolvedValue(0),
-    } as unknown as jest.Mocked<IAvailabilityService>;
-
     orderRecordService = {
       getOrderRecord: jest.fn(),
       findByIds: jest.fn(),
@@ -156,23 +176,62 @@ describe('OfferStockRestoreService', () => {
       getProductStockAggregates: jest.fn(),
     } as unknown as jest.Mocked<IInventoryQueryService>;
 
+    bundleDefinitions = { findCurrentContainingComponents: jest.fn().mockResolvedValue([]) };
+    identifierMapping = { getExternalIds: jest.fn().mockResolvedValue([]) };
+    listingSaleStatus = { findActiveHolds: jest.fn().mockResolvedValue([]) };
+    products = { getVariant: jest.fn().mockResolvedValue({ productId: PRODUCT_ID }) };
+
     service = new OfferStockRestoreService(
       integrationsService,
       orderRecordService,
       offerMappings,
       inventoryQuery,
-      availabilityService,
+      inventorySync,
       reservations,
       shipments,
-      saleReversal
+      saleReversal,
+      bundleDefinitions as never,
+      identifierMapping as never,
+      listingSaleStatus as never,
+      products as never
     );
   });
 
   function orderRecord(items: Array<{ variantId?: string }>): OrderRecord {
-    return { orderSnapshot: { items } } as unknown as OrderRecord;
+    return { orderSnapshot: { items }, physicalItems: [] } as unknown as OrderRecord;
   }
 
-  it('should build correct targets and call restoreStockOnCancellation', async () => {
+  it('should also republish the bundle offers a restored component feeds (#3931)', async () => {
+    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+    bundleDefinitions.findCurrentContainingComponents.mockResolvedValue([
+      { variantId: VARIANT_B, version: 1, components: [] },
+    ]);
+    offerMappings.findMappingPage
+      .mockResolvedValueOnce({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 })
+      .mockResolvedValueOnce({ items: [mapping(VARIANT_B, OFFER_B)], total: 1 });
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(
+      availability([
+        [VARIANT_A, 5],
+        [VARIANT_B, 2],
+      ])
+    );
+
+    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+    expect(inventoryQuery.getAvailabilityByVariantIds).toHaveBeenCalledWith(
+      expect.arrayContaining([VARIANT_A, VARIANT_B])
+    );
+    expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      expect.objectContaining({
+        items: expect.arrayContaining([
+          expect.objectContaining({ offerId: OFFER_B, quantity: 2 }),
+        ]),
+      })
+    );
+  });
+
+  it('should write each restore through the ordered quantity seam, not the restorer', async () => {
     orderRecordService.getOrderRecord.mockResolvedValue(
       orderRecord([{ variantId: VARIANT_A }, { variantId: VARIANT_B }])
     );
@@ -188,11 +247,37 @@ describe('OfferStockRestoreService', () => {
 
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
-    expect(restorer.restoreStockOnCancellation).toHaveBeenCalledTimes(1);
-    expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
-      { externalOfferId: OFFER_A, quantity: 5 },
-      { externalOfferId: OFFER_B, quantity: 12 },
-    ]);
+    expect(inventorySync.updateOfferQuantities).toHaveBeenCalledTimes(1);
+    // The capability only declares participation; writing through it directly
+    // would skip the #2617 freshness guard.
+    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+    expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(CONNECTION_ID, {
+      items: [
+        item(OFFER_A, 5),
+        item(OFFER_B, 12),
+      ],
+    });
+  });
+
+  it('should restore every offer mapped to a relisted variant, not only the first (E2E-26)', async () => {
+    // A relisted variant keeps its old ended offer beside the live one; the
+    // page lists the ended one first, which is the order seen live.
+    const ENDED_OFFER = 'offer-ended-1';
+    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+    offerMappings.findMappingPage.mockResolvedValue({
+      items: [mapping(VARIANT_A, ENDED_OFFER), mapping(VARIANT_A, OFFER_A)],
+      total: 2,
+    });
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 20]]));
+
+    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+    expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(CONNECTION_ID, {
+      items: [
+        item(ENDED_OFFER, 20),
+        item(OFFER_A, 20),
+      ],
+    });
   });
 
   it('should restore a known zero (master authoritative including 0)', async () => {
@@ -202,9 +287,11 @@ describe('OfferStockRestoreService', () => {
 
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
-    expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
-      { externalOfferId: OFFER_A, quantity: 0 },
-    ]);
+    expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(CONNECTION_ID, {
+      items: [
+        item(OFFER_A, 0),
+      ],
+    });
   });
 
   it('should omit — never zero — a variant whose availability is unknown (#2323)', async () => {
@@ -214,7 +301,7 @@ describe('OfferStockRestoreService', () => {
       {
         productVariantId: VARIANT_A,
         totalAvailable: 12,
-        locationCount: 1,
+        locationCount: 1, positionCount: 1,
         availableToPromise: null,
       },
     ]);
@@ -225,7 +312,7 @@ describe('OfferStockRestoreService', () => {
     // the strength of a failed read; writing `totalAvailable` would restore
     // stock that is already promised elsewhere. Doing nothing is the only
     // answer that asserts nothing false.
-    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+    expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
   });
 
   /**
@@ -266,9 +353,8 @@ describe('OfferStockRestoreService', () => {
       service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
     ).resolves.toMatchObject({ outcome: 'skipped-no-restorer' });
 
-    expect(orderRecordService.getOrderRecord).not.toHaveBeenCalled();
     expect(offerMappings.findMappingPage).not.toHaveBeenCalled();
-    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+    expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
   });
 
   it('should no-op (not throw) when OfferManager is unsupported by the adapter', async () => {
@@ -280,8 +366,7 @@ describe('OfferStockRestoreService', () => {
       service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
     ).resolves.toMatchObject({ outcome: 'skipped-no-restorer' });
 
-    expect(orderRecordService.getOrderRecord).not.toHaveBeenCalled();
-    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+    expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
   });
 
   it('should no-op (not throw) when OfferManager is disabled on the connection', async () => {
@@ -293,8 +378,7 @@ describe('OfferStockRestoreService', () => {
       service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
     ).resolves.toMatchObject({ outcome: 'skipped-no-restorer' });
 
-    expect(orderRecordService.getOrderRecord).not.toHaveBeenCalled();
-    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+    expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
   });
 
   it('should rethrow non-capability errors from adapter resolution', async () => {
@@ -311,7 +395,7 @@ describe('OfferStockRestoreService', () => {
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
     expect(offerMappings.findMappingPage).not.toHaveBeenCalled();
-    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+    expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
   });
 
   it('should no-op when the order has no resolved variants', async () => {
@@ -320,7 +404,7 @@ describe('OfferStockRestoreService', () => {
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
     expect(offerMappings.findMappingPage).not.toHaveBeenCalled();
-    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+    expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
   });
 
   it('should no-op when none of the order variants have an offer mapping', async () => {
@@ -330,7 +414,7 @@ describe('OfferStockRestoreService', () => {
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
     expect(inventoryQuery.getAvailabilityByVariantIds).not.toHaveBeenCalled();
-    expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+    expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
   });
 
   describe('ordering: release strictly precedes restore (#2348)', () => {
@@ -388,7 +472,7 @@ describe('OfferStockRestoreService', () => {
 
       const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
-      expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+      expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
       expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
       expect(result.outcome).toBe('skipped-consumed');
     });
@@ -404,7 +488,7 @@ describe('OfferStockRestoreService', () => {
         service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
       ).rejects.toBeInstanceOf(OfferStockRestoreReleaseIncompleteError);
 
-      expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+      expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
     });
 
     it('should report a release that closed nothing without failing', async () => {
@@ -437,9 +521,11 @@ describe('OfferStockRestoreService', () => {
 
       const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
-      expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
-        { externalOfferId: OFFER_A, quantity: 7 },
-      ]);
+      expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(CONNECTION_ID, {
+      items: [
+        item(OFFER_A, 7),
+      ],
+    });
       expect(result.offersRestored).toBe(1);
     });
 
@@ -453,28 +539,9 @@ describe('OfferStockRestoreService', () => {
 
       const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
-      expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+      expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
       expect(result.outcome).toBe('skipped-no-targets');
     });
-  });
-
-  it('should hold back the connection stock safety buffer when restoring (#2610)', async () => {
-    // The seam applies the Controls; a reserve of 2 over a master 5 publishes 3.
-    availabilityService.applyPublishControlsBatch.mockResolvedValue([
-      { quantity: 3, provenance: 'computed' },
-    ]);
-    orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
-    offerMappings.findMappingPage.mockResolvedValue({
-      items: [mapping(VARIANT_A, OFFER_A)],
-      total: 1,
-    });
-    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 5]]));
-
-    await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
-
-    expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
-      { externalOfferId: OFFER_A, quantity: 3 },
-    ]);
   });
 
   describe('sale-decrement reversal (#3479)', () => {
@@ -531,7 +598,7 @@ describe('OfferStockRestoreService', () => {
       const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
       expect(result.outcome).toBe('restored');
-      expect(restorer.restoreStockOnCancellation).toHaveBeenCalled();
+      expect(inventorySync.updateOfferQuantities).toHaveBeenCalled();
     });
 
     it('should fail the job when the reversal throws, so the retry ladder re-runs it', async () => {
@@ -541,7 +608,7 @@ describe('OfferStockRestoreService', () => {
       await expect(service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)).rejects.toThrow(
         OfferStockRestoreReversalIncompleteError,
       );
-      expect(restorer.restoreStockOnCancellation).not.toHaveBeenCalled();
+      expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
     });
 
     it('should fail the job when a reversal line is retryable', async () => {
@@ -564,22 +631,280 @@ describe('OfferStockRestoreService', () => {
     });
   });
 
-  it('should publish 0 when the restored quantity is below the zero threshold (#2610)', async () => {
-    // A threshold of 4 over a master 3 publishes 0 — the seam's arithmetic.
-    availabilityService.applyPublishControlsBatch.mockResolvedValue([
-      { quantity: 0, provenance: 'computed' },
-    ]);
+  it('should hand the seam the raw ATP, so the Controls are applied once there (#2610)', async () => {
+    // The seam applies the reserve and the zero threshold; buffering here too
+    // would hold the reserve back twice.
     orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
     offerMappings.findMappingPage.mockResolvedValue({
       items: [mapping(VARIANT_A, OFFER_A)],
       total: 1,
     });
-    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 3]]));
+    inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 5]]));
 
     await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
 
-    expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
-      { externalOfferId: OFFER_A, quantity: 0 },
-    ]);
+    expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(CONNECTION_ID, {
+      items: [item(OFFER_A, 5)],
+    });
+  });
+
+  describe('write ordering and retries (#2617, #3814 review)', () => {
+    function readyToRestore(): void {
+      orderRecordService.getOrderRecord.mockResolvedValue(
+        orderRecord([{ variantId: VARIANT_A }, { variantId: VARIANT_B }])
+      );
+      offerMappings.findMappingPage
+        .mockResolvedValueOnce({ items: [mapping(VARIANT_A, OFFER_A)], total: 1 })
+        .mockResolvedValueOnce({ items: [mapping(VARIANT_B, OFFER_B)], total: 1 });
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(
+        availability([
+          [VARIANT_A, 5],
+          [VARIANT_B, 12],
+        ])
+      );
+    }
+
+    it('should quote the stock observation so an older restore cannot land after a newer propagation', async () => {
+      readyToRestore();
+
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      const [, cmd] = inventorySync.updateOfferQuantities.mock.calls[0];
+      expect(cmd.items.map((i) => i.observedAt)).toEqual([OBSERVED, OBSERVED]);
+    });
+
+    it('should write a variant with no observed positions unguarded, keyed as unobserved', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+      offerMappings.findMappingPage.mockResolvedValue({
+        items: [mapping(VARIANT_A, OFFER_A)],
+        total: 1,
+      });
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { productVariantId: VARIANT_A, totalAvailable: 0, locationCount: 0, positionCount: 0, availableToPromise: 0 },
+      ]);
+
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(CONNECTION_ID, {
+        items: [
+          {
+            offerId: OFFER_A,
+            quantity: 0,
+            idempotencyKey: `stock-restore:${ORDER_ID}:${OFFER_A}:0:unobserved`,
+          },
+        ],
+      });
+    });
+
+    it('should key a retry after stock moved as a different command', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+      offerMappings.findMappingPage.mockResolvedValue({
+        items: [mapping(VARIANT_A, OFFER_A)],
+        total: 1,
+      });
+      inventoryQuery.getAvailabilityByVariantIds
+        .mockResolvedValueOnce(availability([[VARIANT_A, 5]]))
+        .mockResolvedValueOnce([
+          {
+            productVariantId: VARIANT_A,
+            totalAvailable: 4,
+            locationCount: 1, positionCount: 1,
+            stockUpdatedAt: new Date('2026-10-26T11:00:00.000Z'),
+            availableToPromise: 4,
+          },
+        ]);
+
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      const keys = inventorySync.updateOfferQuantities.mock.calls.map(
+        ([, cmd]) => cmd.items[0].idempotencyKey
+      );
+      expect(keys[0]).not.toEqual(keys[1]);
+    });
+
+    it('should try every offer and then fail the job when one was not written', async () => {
+      readyToRestore();
+      inventorySync.updateOfferQuantities.mockResolvedValue({
+        succeeded: [OFFER_A],
+        failed: [{ offerId: OFFER_B, errorCode: 'rejected', message: 'nope' }],
+      });
+
+      await expect(
+        service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
+      ).rejects.toBeInstanceOf(OfferStockRestoreWriteIncompleteError);
+
+      const [, cmd] = inventorySync.updateOfferQuantities.mock.calls[0];
+      expect(cmd.items.map((i) => i.offerId)).toEqual([OFFER_A, OFFER_B]);
+    });
+
+    it('should fail the job when the publish Controls could not be resolved', async () => {
+      readyToRestore();
+      inventorySync.updateOfferQuantities.mockResolvedValue({
+        succeeded: [],
+        failed: [
+          { offerId: OFFER_A, errorCode: 'availability_unknown' },
+          { offerId: OFFER_B, errorCode: 'availability_unknown' },
+        ],
+      });
+
+      await expect(
+        service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
+      ).rejects.toBeInstanceOf(OfferStockRestoreWriteIncompleteError);
+    });
+
+    it('should defer, not fail, when every failure is a contended write lock', async () => {
+      readyToRestore();
+      inventorySync.updateOfferQuantities.mockResolvedValue({
+        succeeded: [OFFER_A],
+        failed: [{ offerId: OFFER_B, errorCode: 'write_contended' }],
+      });
+
+      await expect(
+        service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
+      ).rejects.toBeInstanceOf(ContendedWriteError);
+    });
+
+    it('should report a superseded offer as restored, since a newer quantity is live', async () => {
+      // The seam reports a write refused by a newer mark as succeeded.
+      readyToRestore();
+
+      const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(result.offersRestored).toBe(2);
+    });
+  });
+  describe('shop publish targets (#4193)', () => {
+    const SHOP_EXTERNAL = '9001';
+
+    /** Order with one variant, no marketplace offer mapping, one ShopProduct mapping. */
+    function shopOnly(over: { enabledCapabilities?: string[] } = {}): void {
+      orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+      identifierMapping.getExternalIds.mockImplementation((_type: string, id: string) =>
+        Promise.resolve(
+          id === VARIANT_A
+            ? [{ connectionId: SHOP_CONN, externalId: SHOP_EXTERNAL }]
+            : id === PRODUCT_ID
+              ? [{ connectionId: SHOP_CONN, externalId: 'parent-1' }]
+              : []
+        )
+      );
+      integrationsService.listCapabilityAdapters.mockResolvedValue([
+        {
+          connectionId: SHOP_CONN,
+          connection: { enabledCapabilities: over.enabledCapabilities ?? ['OfferManager'] },
+        },
+      ] as never);
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 7]]));
+    }
+
+    it('should restore a shop-published variant through the ordered seam on the shop connection', async () => {
+      integrationsService.getCapabilityAdapter.mockRejectedValue(
+        new CapabilityNotSupportedException('x', 'OfferManager')
+      );
+      shopOnly();
+
+      const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(inventorySync.updateOfferQuantities).toHaveBeenCalledTimes(1);
+      expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(SHOP_CONN, {
+        items: [
+          {
+            ...item(SHOP_EXTERNAL, 7),
+            productVariantId: VARIANT_A,
+            externalParentId: 'parent-1',
+          },
+        ],
+      });
+      expect(result).toMatchObject({ outcome: 'restored', offersRestored: 1 });
+    });
+
+    it('should leave marketplace behaviour unchanged and write both targets when both are mapped', async () => {
+      shopOnly();
+      offerMappings.findMappingPage.mockResolvedValue({
+        items: [mapping(VARIANT_A, OFFER_A)],
+        total: 1,
+      });
+
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(CONNECTION_ID, {
+        items: [item(OFFER_A, 7)],
+      });
+      expect(inventorySync.updateOfferQuantities).toHaveBeenCalledWith(
+        SHOP_CONN,
+        expect.objectContaining({ items: [expect.objectContaining({ offerId: SHOP_EXTERNAL })] })
+      );
+    });
+
+    it('should skip a shop connection that is the inventory master', async () => {
+      shopOnly({ enabledCapabilities: ['OfferManager', 'InventoryMaster'] });
+
+      const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
+      expect(result.outcome).toBe('skipped-no-targets');
+    });
+
+    it('should skip a shop connection without OfferManager enabled', async () => {
+      shopOnly();
+      integrationsService.listCapabilityAdapters.mockResolvedValue([]);
+
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
+    });
+
+    it('should not restore a listing taken off sale after a master deletion', async () => {
+      shopOnly();
+      listingSaleStatus.findActiveHolds.mockResolvedValue([
+        { connectionId: SHOP_CONN, externalId: SHOP_EXTERNAL },
+      ]);
+
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
+    });
+
+    it('should omit a shop product whose availability is unknown rather than write 0', async () => {
+      shopOnly();
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+        { ...availability([[VARIANT_A, 7]])[0], availableToPromise: null },
+      ]);
+
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
+    });
+
+    it('should not restore a shop product when the order already shipped', async () => {
+      shopOnly();
+      shipments.hasConsumedReservations.mockResolvedValue(true);
+
+      const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(result.outcome).toBe('skipped-consumed');
+      expect(inventorySync.updateOfferQuantities).not.toHaveBeenCalled();
+    });
+
+    it('should release the holds before the shop restore is written', async () => {
+      shopOnly();
+
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(callOrder).toEqual(['release', 'restore']);
+    });
+
+    it('should fail the job when the shop write is incomplete', async () => {
+      shopOnly();
+      inventorySync.updateOfferQuantities.mockResolvedValue({
+        succeeded: [],
+        failed: [{ offerId: SHOP_EXTERNAL, errorCode: 'boom', message: 'x' }],
+      });
+
+      await expect(
+        service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID)
+      ).rejects.toThrow(OfferStockRestoreWriteIncompleteError);
+    });
   });
 });

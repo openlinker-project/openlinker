@@ -24,6 +24,7 @@ describe('OrderRecordRepository', () => {
   let repository: OrderRecordRepository;
   let ormRepository: jest.Mocked<Repository<OrderRecordOrmEntity>>;
   let transactionalManager: {
+    find: jest.Mock;
     save: jest.Mock<Promise<unknown>, unknown[]>;
     delete: jest.Mock;
     query: jest.Mock<Promise<unknown>, unknown[]>;
@@ -41,6 +42,8 @@ describe('OrderRecordRepository', () => {
     transactionalManager = {
       save: jest.fn(),
       delete: jest.fn(),
+      // #3588: the prior line rows read for the cost carry-forward.
+      find: jest.fn().mockResolvedValue([]),
       // #2282: the order-record half of `upsertWithLineItems` is the shared
       // frozen-attribution raw statement, not `save()`.
       query: jest.fn(),
@@ -212,7 +215,10 @@ describe('OrderRecordRepository', () => {
         select: jest.fn().mockReturnThis(),
         addSelect,
         andWhere: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
         getRawOne: jest.fn().mockResolvedValue(raw),
+        getRawMany: jest.fn().mockResolvedValue([]),
       });
 
       await repository.countByHealth({});
@@ -262,6 +268,9 @@ describe('OrderRecordRepository', () => {
         select: jest.fn().mockReturnThis(),
         addSelect,
         andWhere: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([]),
         getRawOne: jest.fn().mockResolvedValue({
           total: '7',
           sales_document_blocked: '2',
@@ -1763,6 +1772,7 @@ describe('OrderRecordRepository', () => {
     const EMPTY_DEFAULTS: Record<string, unknown> = {
       syncStatus: [],
       syncAttempts: [],
+      hasBuyerNote: false,
     };
 
     function allColumnProperties(): string[] {
@@ -1813,6 +1823,18 @@ describe('OrderRecordRepository', () => {
         if (built.writeSet.has(column)) {
           continue;
         }
+        // `orderEdits` (#3542) is the one non-written column that is deliberately
+        // NOT reset: the overlay it carries has to reach the domain mapping.
+        // `personalDataErasedAt` (#4289) is read-only here for the same reason:
+        // the erased-order guards read it, and only the retention writer sets it.
+        if (column === 'orderEdits' || column === 'personalDataErasedAt') {
+          continue;
+        }
+        // `lineExpansion` (#3607) is kept for the same reason: the frozen
+        // component list must reach `physicalItems` on the returned record.
+        if (column === 'lineExpansion') {
+          continue;
+        }
         expect({ column, value: projected[column] }).toEqual({
           column,
           value: EMPTY_DEFAULTS[column] ?? null,
@@ -1840,11 +1862,49 @@ describe('OrderRecordRepository', () => {
       const sql = upsertSql();
 
       for (const column of columns) {
+        // `orderEdits` is a read-only guard: the DO UPDATE CASE branches read it
+        // to keep an operator-edited address, and the statement never writes it.
+        // `personalDataErasedAt` (#4289) and `buyerDataRedactedAt` (#4178) are
+        // read-only the same way: the buyer-data-gone guards read them.
+        if (
+          column === 'orderEdits' ||
+          column === 'personalDataErasedAt' ||
+          column === 'buyerDataRedactedAt'
+        ) {
+          continue;
+        }
         const named = sql.includes(`"${column}"`);
         const inWriteSet = UPSERT_WRITE_SET.includes(column);
         // The write set the test asserts against must stay the statement's own.
-        expect(named).toBe(inWriteSet);
+        expect({ column, named }).toEqual({ column, named: inWriteSet });
       }
+    });
+  });
+
+  describe('buyer note and buyer order count reads (#3538)', () => {
+    it('should count only live earlier orders and tie-break equal instants by id (N-31)', async () => {
+      const where = jest.fn().mockReturnThis();
+      const andWhere = jest.fn().mockReturnThis();
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+        where,
+        andWhere,
+        getCount: jest.fn().mockResolvedValue(2),
+      });
+
+      await repository.countEarlierOrdersForCustomer('cust', 'order-b', new Date('2026-01-01'));
+
+      const clauses = (andWhere.mock.calls as Array<[string]>).map(([sql]) => sql).join('\n');
+      expect(clauses).toContain('"cancelledAt" IS NULL');
+      expect(clauses).toContain('rec."internalOrderId" < :excludeInternalOrderId');
+    });
+
+    it('should not bump updatedAt when marking a note read (B-9)', async () => {
+      (ormRepository.update as jest.Mock).mockResolvedValue({ affected: 1 });
+
+      await repository.markBuyerNoteRead('order-1', new Date('2026-01-01'), 'user-1');
+
+      const [, patch] = (ormRepository.update as jest.Mock).mock.calls[0];
+      expect(patch).not.toHaveProperty('updatedAt');
     });
   });
 
@@ -1889,11 +1949,96 @@ describe('OrderRecordRepository', () => {
         const insertHalf = sql.slice(0, sql.indexOf('VALUES'));
         const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
         expect(insertHalf).toContain('"searchText"');
-        expect(updateHalf).toContain('"searchText" = EXCLUDED."searchText"');
+        expect(updateHalf).toMatch(
+          /"searchText" = CASE WHEN "order_records"\."orderEdits" \? 'address'\s+OR \("order_records"\."personalDataErasedAt" IS NOT NULL OR "order_records"\."buyerDataRedactedAt" IS NOT NULL\)\s+THEN "order_records"\."searchText" ELSE EXCLUDED\."searchText" END/
+        );
         expect(writeSet.has('searchText')).toBe(true);
         expect(params).toContain('ord-001 sku-1');
       }
     );
+
+    it('should require recordStatus ready for hasBuyerNote=true and leave false unchanged (N-20)', () => {
+      const build = (hasBuyerNote: boolean): jest.Mock => {
+        const andWhere = jest.fn().mockReturnThis();
+        (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
+          andWhere,
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          leftJoin: jest.fn().mockReturnThis(),
+          setParameter: jest.fn().mockReturnThis(),
+        });
+        (
+          repository as unknown as { buildFilteredQuery: (f: unknown) => unknown }
+        ).buildFilteredQuery({ hasBuyerNote });
+        return andWhere;
+      };
+
+      expect(build(true)).toHaveBeenCalledWith(
+        `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`
+      );
+      expect(build(false)).toHaveBeenCalledWith('rec."hasBuyerNote" = false');
+    });
+
+    it('should keep a stored note when the incoming note is unknown (B-5)', () => {
+      const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toContain(
+        'CASE WHEN (EXCLUDED."buyerNote" IS NULL AND EXCLUDED."hasBuyerNote" = false)'
+      );
+      expect(updateHalf).toMatch(/THEN "order_records"\."buyerNote" ELSE EXCLUDED\."buyerNote" END/);
+      expect(updateHalf).toMatch(/THEN "order_records"\."hasBuyerNote" ELSE EXCLUDED\."hasBuyerNote" END/);
+    });
+
+    it('should reset the read marker only when a different note text arrives (N-22)', () => {
+      const { sql, writeSet } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toContain('"buyerNoteReadAt" = CASE');
+      expect(updateHalf).toContain('"buyerNoteReadByUserId" = CASE');
+      expect(updateHalf).toContain(
+        'EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"'
+      );
+      // Still not a written column: markBuyerNoteRead stays its sole setter.
+      expect(writeSet.has('buyerNoteReadAt')).toBe(false);
+    });
+
+    it('should record when the note text changed without resetting any acknowledgement (N-22)', () => {
+      const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toMatch(
+        /"buyerNoteChangedAt" = CASE[\s\S]*?EXCLUDED\."buyerNote" IS DISTINCT FROM "order_records"\."buyerNote"\s+THEN now\(\) ELSE "order_records"\."buyerNoteChangedAt" END/
+      );
+      // A note arriving for the first time is not a change.
+      expect(updateHalf).toContain(`"order_records"."buyerNote" IS NOT NULL AND "order_records"."buyerNote" <> ''`);
+    });
+
+    it('should clear the read marker together with the note when the source reports no note (N-23)', () => {
+      const { sql } = (repository as unknown as Builder).buildFrozenAttributionUpsert(
+        createOrmEntity(),
+        true
+      );
+      const updateHalf = sql.slice(sql.indexOf('DO UPDATE SET'));
+
+      expect(updateHalf).toMatch(
+        /"buyerNoteReadAt" = CASE\s+WHEN EXCLUDED\."buyerNote" = ''\s+THEN NULL/
+      );
+      expect(updateHalf).toMatch(
+        /"buyerNoteReadByUserId" = CASE\s+WHEN EXCLUDED\."buyerNote" = ''\s+THEN NULL/
+      );
+      // An unknown read (NULL) matches no WHEN arm, so the marker is kept (B-5).
+      expect(updateHalf).not.toMatch(/EXCLUDED\."buyerNote" IS NULL\s+THEN NULL/);
+    });
 
     it('should write the text derived from the snapshot when upserting with PII stored', async () => {
       process.env.OL_STORE_PII = 'true';
@@ -2273,6 +2418,7 @@ describe('OrderRecordRepository', () => {
           taxRate: null,
           taxSource: null,
           taxRateReadAt: null,
+          cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
         },
       ]);
 
@@ -2772,25 +2918,87 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('delivery relay state on the sync status (#4195)', () => {
+    it('should write the fingerprint and the relay report into the status row', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([[], 1]);
+      const at = new Date('2026-11-17T10:00:00Z');
+
+      await repository.updateSyncStatus(
+        'order-123',
+        'dest-1',
+        {
+          destinationConnectionId: 'dest-1',
+          status: 'synced',
+          deliveryFingerprint: 'fp-1',
+          deliveryUpdate: { outcome: 'refused', reason: 'fulfilled', detail: 'shipped', at },
+        },
+        { destinationConnectionId: 'dest-1', status: 'synced', attemptedAt: at }
+      );
+
+      const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+      const params = calls[0][1] as unknown[];
+      expect(JSON.parse(params[2] as string)).toMatchObject({
+        deliveryFingerprint: 'fp-1',
+        deliveryUpdate: {
+          outcome: 'refused',
+          reason: 'fulfilled',
+          detail: 'shipped',
+          at: at.toISOString(),
+        },
+      });
+    });
+
+    it('should read the persisted fingerprint and report back, and drop an unrecognised outcome', async () => {
+      const entity = createOrmEntity();
+      entity.syncStatus = [
+        {
+          destinationConnectionId: 'a',
+          status: 'synced',
+          deliveryFingerprint: 'fp-1',
+          deliveryUpdate: { outcome: 'updated', at: '2026-11-17T10:00:00.000Z' },
+        },
+        {
+          destinationConnectionId: 'b',
+          status: 'synced',
+          deliveryUpdate: { outcome: 'something-new', at: '2026-11-17T10:00:00.000Z' },
+        },
+      ];
+      ormRepository.findOne.mockResolvedValue(entity);
+
+      const result = await repository.findById('order-123');
+
+      expect(result?.syncStatus[0]).toMatchObject({
+        deliveryFingerprint: 'fp-1',
+        deliveryUpdate: { outcome: 'updated', at: new Date('2026-11-17T10:00:00.000Z') },
+      });
+      expect(result?.syncStatus[1].deliveryUpdate).toBeUndefined();
+    });
+  });
+
   describe('markCancelled (#1984)', () => {
-    it('should issue a COALESCE update carrying the given instant and order id', async () => {
+    it('should issue a first-write-wins update and report the transition from the affected count', async () => {
       (ormRepository.query as jest.Mock).mockResolvedValue([[], 1]);
       const cancelledAt = new Date('2026-08-11T09:00:00Z');
 
-      await repository.markCancelled('order-123', cancelledAt);
+      const transitioned = await repository.markCancelled('order-123', cancelledAt);
 
       expect(ormRepository.query).toHaveBeenCalledWith(
-        expect.stringContaining('COALESCE("cancelledAt", $1)'),
+        expect.stringContaining('"cancelledAt" IS NULL'),
         [cancelledAt, 'order-123']
       );
+      expect(transitioned).toBe(true);
+    });
+
+    it('should report no transition when the order was already cancelled', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([[], 0]);
+
+      await expect(repository.markCancelled('order-123', new Date())).resolves.toBe(false);
     });
 
     it('should not throw when no row matches the given order id', async () => {
       (ormRepository.query as jest.Mock).mockResolvedValue([[], 0]);
 
-      await expect(
-        repository.markCancelled('non-existent-order', new Date())
-      ).resolves.toBeUndefined();
+      await expect(repository.markCancelled('non-existent-order', new Date())).resolves.toBe(false);
     });
   });
 
@@ -3256,6 +3464,113 @@ describe('OrderRecordRepository', () => {
         (m) => m[1]
       );
       expect(new Set(pathKeyMatches)).toEqual(new Set(['taxRate', 'taxSource', 'taxRateReadAt']));
+    });
+  });
+
+  describe('getDeliveryCountryFacts (#3907)', () => {
+    function stubBuilders(
+      counts: { country: string; currency: string | null; order_count: string }[],
+      rates: { country: string; tax_rate: string; line_count: string }[],
+      examples: { country: string; items: unknown; totals: unknown }[]
+    ): jest.Mock[] {
+      const make = (rows: unknown[]): jest.Mock => {
+        const parts: Record<string, jest.Mock> = {};
+        for (const name of [
+          'select',
+          'addSelect',
+          'where',
+          'andWhere',
+          'groupBy',
+          'addGroupBy',
+          'orderBy',
+          'addOrderBy',
+          'innerJoin',
+          'distinctOn',
+        ]) {
+          parts[name] = jest.fn().mockReturnThis();
+        }
+        parts.getRawMany = jest.fn().mockResolvedValue(rows);
+        return parts as unknown as jest.Mock;
+      };
+      const builders = [make(counts), make(rates), make(examples)];
+      const create = ormRepository.createQueryBuilder as jest.Mock;
+      builders.forEach((builder) => create.mockReturnValueOnce(builder));
+      return builders;
+    }
+
+    it('should issue exactly three queries and never one per country', async () => {
+      stubBuilders(
+        [
+          { country: 'PL', currency: 'PLN', order_count: '5' },
+          { country: 'DE', currency: 'EUR', order_count: '2' },
+        ],
+        [],
+        []
+      );
+
+      await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      expect(ormRepository.createQueryBuilder).toHaveBeenCalledTimes(3);
+    });
+
+    it('should return an empty list without further queries when no order has a country', async () => {
+      stubBuilders([], [], []);
+
+      const result = await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      expect(result).toEqual([]);
+      expect(ormRepository.createQueryBuilder).toHaveBeenCalledTimes(1);
+    });
+
+    it('should assemble orders, rates by frequency, majority currency and example when rows exist', async () => {
+      stubBuilders(
+        [
+          { country: 'PL', currency: 'PLN', order_count: '6' },
+          { country: 'PL', currency: 'EUR', order_count: '1' },
+          { country: 'DE', currency: 'EUR', order_count: '2' },
+        ],
+        [
+          { country: 'PL', tax_rate: '8', line_count: '3' },
+          { country: 'PL', tax_rate: '23', line_count: '9' },
+        ],
+        [
+          {
+            country: 'PL',
+            items: [{ name: 'Shirt', quantity: 1, price: 10, taxRate: '23' }],
+            totals: { shipping: 4 },
+          },
+        ]
+      );
+
+      const result = await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      expect(result).toEqual([
+        {
+          country: 'PL',
+          orders: 7,
+          ratesSeen: ['23', '8'],
+          currency: 'PLN',
+          example: { lines: [{ name: 'Shirt', gross: 10, rate: '23' }], delivery: 4 },
+        },
+        { country: 'DE', orders: 2, ratesSeen: [], currency: 'EUR', example: null },
+      ]);
+    });
+
+    it('should scope every query to the source connection when reading', async () => {
+      const builders = stubBuilders(
+        [{ country: 'PL', currency: 'PLN', order_count: '1' }],
+        [],
+        []
+      );
+
+      await repository.getDeliveryCountryFacts('conn-1', new Date());
+
+      for (const builder of builders) {
+        const where = (builder as unknown as { where: jest.Mock }).where;
+        expect(where).toHaveBeenCalledWith('rec.sourceConnectionId = :sourceConnectionId', {
+          sourceConnectionId: 'conn-1',
+        });
+      }
     });
   });
 

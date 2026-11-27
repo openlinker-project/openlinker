@@ -100,6 +100,13 @@ export type PruneSkippedReason = (typeof PruneSkippedReasonValues)[number] | nul
 export interface MasterProductBatchSyncFailure {
   externalId: string;
   message: string;
+  /**
+   * The original thrown value, kept so a caller settling the failure itself can
+   * classify it (429/503 deferral, contended write, non-retryable) exactly as
+   * the job runner would. `message` stays the loggable form; this is absent for
+   * a failure that was constructed rather than caught.
+   */
+  error?: unknown;
 }
 
 /**

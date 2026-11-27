@@ -31,7 +31,7 @@ import {
   ATTENTION_BADGE_COPY,
   ATTENTION_UNKNOWN_COPY,
   type AttentionTitleParams,
-} from '../lib/attention-reason.copy';
+} from '../lib/attention-reason-text';
 import { toAttentionEntryView, type AttentionEntryInput } from '../lib/attention-entry';
 
 interface OmsAttentionBadgesProps {

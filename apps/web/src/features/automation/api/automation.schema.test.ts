@@ -237,3 +237,41 @@ describe('parseAutomationVocabulary', () => {
     expect(() => parseAutomationVocabulary({ triggers: [] })).toThrow();
   });
 });
+
+describe('gift promotions are kept out of the generic automations surface (#3940)', () => {
+  const vocabulary = {
+    triggers: [
+      { value: 'order.packed', firingMode: 'edge', legalActions: ['send-email'], legalConditionFields: [] },
+      { value: 'order.ingested', firingMode: 'edge', legalActions: ['add-gift'], legalConditionFields: [] },
+    ],
+    actions: [
+      { action: 'send-email', irreversible: false, availability: 'available' },
+      { action: 'add-gift', irreversible: false, availability: 'available' },
+    ],
+    conditionFields: [],
+    amountOps: [],
+    holdReasons: [],
+    stepBounds: { min: 1, max: 3 },
+    runOutcomes: [],
+    stepStatuses: [],
+    nonFiringReasons: [],
+    conditionOutcomes: [],
+  };
+
+  it('should drop the gift trigger and step from the vocabulary instead of failing the read', () => {
+    const parsed = parseAutomationVocabulary(vocabulary);
+
+    expect(parsed.triggers.map((t) => t.value)).toEqual(['order.packed']);
+    expect(parsed.actions.map((a) => a.action)).toEqual(['send-email']);
+  });
+
+  it('should leave the gift trigger out of the summary without counting it as a dropped row', () => {
+    const summary = parseAutomationSummary([
+      { trigger: 'order.packed', ruleCount: 1 },
+      { trigger: 'order.ingested', ruleCount: 3 },
+    ]);
+
+    expect(summary.items.map((i) => i.trigger)).toEqual(['order.packed']);
+    expect(summary.droppedCount).toBe(0);
+  });
+});

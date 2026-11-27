@@ -154,6 +154,26 @@ describe('SalesDocumentsListPage', () => {
     });
   });
 
+  // #3761 - 'both' is a connection-config value, never a document's kind, so
+  // offering it as a filter showed the same list as "All kinds".
+  it('offers only the concrete document kinds in the kind filter', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [makeItem()], nextCursor: null });
+    renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents' });
+
+    await screen.findByText('order_1');
+    const options = within(screen.getByLabelText('Filter by kind')).getAllByRole('option');
+    expect(options.map((o) => (o as HTMLOptionElement).value)).toEqual(['', 'invoice', 'fiscal-receipt']);
+  });
+
+  it('treats a stale ?kind=both URL as no kind filter', async () => {
+    const list = vi.fn().mockResolvedValue({ items: [makeItem()], nextCursor: null });
+    renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents?kind=both' });
+
+    await screen.findByText('order_1');
+    expect(screen.getByLabelText('Filter by kind')).toHaveValue('');
+    expect(list.mock.lastCall?.[0]?.kind).toBeUndefined();
+  });
+
   it('renders rows with order id, kind, and the currency-formatted amount', async () => {
     const item = makeItem({ amount: { value: 1000, currency: 'JPY' } });
     const list = vi.fn().mockResolvedValue({ items: [item], nextCursor: null });
@@ -348,5 +368,59 @@ describe('SalesDocumentsListPage', () => {
     expect(row).not.toBeNull();
     const trigger = within(row as HTMLElement).getByRole('button', { name: /Invoice: Issued/ });
     expect(trigger).toHaveAccessibleName(/A second document exists for this order/);
+  });
+  describe('saved views (#4241)', () => {
+    it('should open on the All documents view', async () => {
+      const list = vi.fn().mockResolvedValue({ items: [makeItem()], nextCursor: null });
+      renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents' });
+
+      const strip = await screen.findByRole('group', { name: 'Views' });
+      expect(within(strip).getByRole('button', { name: 'All documents' })).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('should filter by kind when the Invoices view is picked', async () => {
+      const list = vi.fn().mockResolvedValue({ items: [makeItem()], nextCursor: null });
+      renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents' });
+
+      await screen.findByText('order_1');
+      fireEvent.click(screen.getByRole('button', { name: 'Invoices' }));
+
+      await waitFor(() => {
+        expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'invoice' }), expect.anything());
+      });
+    });
+
+    it('should return to the first keyset page when another view is picked', async () => {
+      const page1: PaginatedSalesDocuments = { items: [makeItem()], nextCursor: 'cursor-2' };
+      const list = vi.fn().mockResolvedValue(page1);
+      renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents' });
+
+      await screen.findByText('order_1');
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      await waitFor(() => {
+        expect(list).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ cursor: 'cursor-2' }));
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Invoices' }));
+      await waitFor(() => {
+        expect(list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ kind: 'invoice' }),
+          expect.objectContaining({ cursor: undefined }),
+        );
+      });
+    });
+
+    it('should drop a column from the table when the Columns panel hides it', async () => {
+      const list = vi.fn().mockResolvedValue({ items: [makeItem()], nextCursor: null });
+      renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents' });
+
+      const table = await screen.findByRole('table');
+      expect(within(table).getByRole('columnheader', { name: 'Kind' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Columns & sort/ }));
+      fireEvent.click(await screen.findByRole('checkbox', { name: /Kind/ }));
+      await waitFor(() => {
+        expect(within(table).queryByRole('columnheader', { name: 'Kind' })).toBeNull();
+      });
+    });
   });
 });

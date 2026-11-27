@@ -1,91 +1,115 @@
 /**
- * resolveIssueErrorMessage (#757)
+ * resolveIssueErrorMessage (#757, codes since #3863)
  *
- * Pure mapper from a `POST /invoices` failure to an operator-friendly toast
- * string. Discriminators pinned to the verified HTTP shapes (plan §2.6):
+ * Pure mapper from a `POST /invoices` failure to an operator-facing sentence,
+ * and the predicates the sales-document panel branches on. Every one of them
+ * reads the error's stable `code` and `params` (#3863/#3864), never the
+ * exception class name the API used to send in `error`: a renamed class must
+ * not change what the operator is told.
  *
- *   1. Capability-disabled (HTTP 400, `details.error` is
- *      `CapabilityNotEnabledException` / `CapabilityNotSupportedException`) →
- *      a FIXED string. MUST NOT echo `error.message` (it embeds the internal
- *      `connectionId` + `adapterKey`).
- *   2. Sanitised provider rejection (HTTP 422) → surface `error.message`
- *      verbatim (controller correlationId string, PII-clean).
- *   3. Other HTTP 400 (buyer-profile / price-treatment) → surface
- *      `error.message` (PII-clean mapper text, operator-actionable).
- *   4. Insufficient permissions (HTTP 403) → a FIXED, permission-specific
- *      string (#1613). The FE gates the Issue/Retry affordances behind
- *      `invoices:write` (`useWriteAccess`), so this is normally a defensive
- *      fallback for a stale session — never echo `error.message`.
- *   5. Defensive 409 → already-issued fixed string.
- *   6. Fallback → generic fixed string.
- *
- * Security invariant: only branches 2 and 3 surface `error.message`; the
- * capability branch, the 403 branch, and the fallback emit FIXED strings.
+ * The operator never sees server text here. A rejection with a known
+ * `failureCode` reads that code's fixed copy; everything else is
+ * `describeApiError`, which chooses copy by code. The one exception is the
+ * acknowledgement request, which carries the adapter's own `failureReason` -
+ * a sentence the adapter vouched for as operator-safe (#3772).
  *
  * @module apps/web/src/features/invoicing/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
-import type { CapabilityErrorBody } from '../api/invoicing.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import type { FailureCode } from '../api/invoicing.types';
+import { failureCodeCopy } from './derive-invoice-display';
 
-type Translate = (key: string, fallback: string) => string;
+const CAPABILITY_CODES = new Set(['CAPABILITY_NOT_ENABLED', 'CAPABILITY_NOT_SUPPORTED']);
 
-const CAPABILITY_EXCEPTION_NAMES = new Set([
-  'CapabilityNotEnabledException',
-  'CapabilityNotSupportedException',
-]);
+/** Codes for an order the operator may still choose to invoice (DEF-26). */
+const OVERRULABLE_ORDER_CODES = new Set(['ORDER_CANCELLED', 'ORDER_FULLY_REFUNDED']);
 
-/** Discriminates a capability-disabled 400 from a legitimate buyer-profile 400
- *  by the structured body's `error` name (NOT status alone). */
-export function isCapabilityDisabledError(error: unknown): boolean {
-  if (!(error instanceof ApiError) || error.status !== 400) {
-    return false;
+function stringParam(error: ApiError, name: string): string | undefined {
+  const value = error.params[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** The `failureCode` of a provider rejection, or `null` for any other error. */
+function readRejectionCode(error: unknown): string | null {
+  if (!(error instanceof ApiError) || error.code !== 'INVOICE_ISSUE_REJECTED') {
+    return null;
   }
-  const body = error.details as CapabilityErrorBody | null;
-  return Boolean(body?.error && CAPABILITY_EXCEPTION_NAMES.has(body.error));
+  return stringParam(error, 'failureCode') ?? null;
+}
+
+/** True when the connection's invoicing capability is off or not offered. */
+export function isCapabilityDisabledError(error: unknown): boolean {
+  return error instanceof ApiError && error.code !== undefined && CAPABILITY_CODES.has(error.code);
 }
 
 /**
- * Discriminates the "no numbering series configured" 400 (AC #6). The invoicing
- * controller maps `MissingNumberingSeriesException` to a 400 carrying
- * `{ error: 'MissingNumberingSeriesException' }`, so an issue-without-series
- * rejection can be surfaced as an actionable CTA (link to the numbering page)
- * instead of a bare toast. Name-based, not status alone.
+ * True for the rejection whose fix is a setting on the connection (#3772): the
+ * panel then names the setting and links to the connection instead of a toast.
  */
-export function isMissingNumberingSeriesError(error: unknown): boolean {
-  if (!(error instanceof ApiError) || error.status !== 400) {
-    return false;
-  }
-  const body = error.details as CapabilityErrorBody | null;
-  return body?.error === 'MissingNumberingSeriesException';
+export function isConnectionSetupIncompleteError(error: unknown): boolean {
+  return readRejectionCode(error) === 'connection-setup-incomplete';
 }
 
-export function resolveIssueErrorMessage(error: unknown, t: Translate): string {
-  // Branch order matters: the capability-disabled 400 (fixed copy, no PII echo)
-  // MUST be tested before the generic 400 branch that surfaces `error.message`.
-  if (isCapabilityDisabledError(error)) {
-    return t('invoice.error.capabilityDisabled', 'Invoicing is not enabled for this connection.');
+export interface AcknowledgementRequest {
+  warningCode: string;
+  message: string;
+}
+
+/**
+ * A refusal the operator may overrule by acknowledging it (DEF-23/26): a
+ * rejection with `acknowledgement-required`, or a cancelled / fully refunded
+ * order. Returns the code to send back in `acknowledgeWarnings` and the
+ * sentence to show, or `null` for any other error.
+ */
+export function readAcknowledgementRequest(error: unknown): AcknowledgementRequest | null {
+  if (!(error instanceof ApiError)) {
+    return null;
   }
-  if (error instanceof ApiError) {
-    // Branches 2 + 3 (the ONLY two that echo the server message): a sanitised
-    // provider rejection (422, controller correlationId string) and a
-    // non-capability buyer-profile/price-treatment 400 (PII-clean mapper text).
-    // The capability-disabled 400 is already handled above (fixed copy, no echo),
-    // so reaching this with status 400 means a non-capability 400. SECURITY: this
-    // assumes every non-capability 400 message is server-sanitised — the
-    // discriminator is name-based, so an unmodeled 400 shape would echo whatever
-    // the BE sent. Keep this in lockstep with the controller's 400 vocabulary.
-    if (error.status === 422 || error.status === 400) {
-      return error.message;
-    }
-    if (error.status === 403) {
-      return t(
-        'invoice.error.forbidden',
-        "You don't have permission to issue invoices - this action requires an administrator account.",
-      );
-    }
-    if (error.status === 409) {
-      return t('invoice.error.alreadyIssued', 'This order already has an issued invoice.');
-    }
+  const overrulable =
+    readRejectionCode(error) === 'acknowledgement-required' ||
+    (error.code !== undefined && OVERRULABLE_ORDER_CODES.has(error.code));
+  const warningCode = stringParam(error, 'warningCode') ?? readDetailString(error, 'warningCode');
+  if (!overrulable || warningCode === undefined) {
+    return null;
   }
-  return t('invoice.error.generic', 'Could not issue the invoice. Please try again.');
+  const failureReason = readDetailString(error, 'failureReason');
+  return { warningCode, message: failureReason ?? describeApiError(error) };
+}
+
+export function isConnectionSettingError(error: unknown): boolean {
+  return readConnectionSettingErrorCode(error) !== null;
+}
+
+export type ConnectionSettingFailureCode = Extract<
+  FailureCode,
+  'connection-setup-incomplete' | 'connection-setting-rejected'
+>;
+
+/** Which of the two connection-setting rejections it is, or `null`. */
+export function readConnectionSettingErrorCode(error: unknown): ConnectionSettingFailureCode | null {
+  const code = readRejectionCode(error);
+  return code === 'connection-setup-incomplete' || code === 'connection-setting-rejected'
+    ? code
+    : null;
+}
+
+/** True when the connection has no numbering series for this document. */
+export function isMissingNumberingSeriesError(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'MISSING_NUMBERING_SERIES';
+}
+
+/** The sentence for a failed issue. Never server text, never blank. */
+export function resolveIssueErrorMessage(error: unknown): string {
+  return failureCodeCopy(readRejectionCode(error)) ?? describeApiError(error);
+}
+
+/** A string field the body still carries outside the envelope (kept for older shapes). */
+function readDetailString(error: ApiError, name: string): string | undefined {
+  const details = error.details;
+  if (typeof details !== 'object' || details === null) {
+    return undefined;
+  }
+  const value = (details as Record<string, unknown>)[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }

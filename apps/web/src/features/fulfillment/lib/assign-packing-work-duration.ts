@@ -18,6 +18,7 @@
  *
  * @module apps/web/src/features/fulfillment/lib
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 
 /**
  * The one rounding rule, floored to the largest whole unit:
@@ -30,15 +31,16 @@
 export function formatCompactDuration(elapsedMs: number): string {
   const safeMs = Number.isFinite(elapsedMs) && elapsedMs > 0 ? elapsedMs : 0;
   const totalMinutes = Math.floor(safeMs / 60_000);
+  const units = getMessages('fulfillment').compactDuration;
   if (totalMinutes < 60) {
-    return `${String(totalMinutes)}m`;
+    return interpolate(units.minutes, { n: totalMinutes });
   }
   const totalHours = Math.floor(totalMinutes / 60);
   if (totalHours < 24) {
-    return `${String(totalHours)}h`;
+    return interpolate(units.hours, { n: totalHours });
   }
   const totalDays = Math.floor(totalHours / 24);
-  return `${String(totalDays)}d`;
+  return interpolate(units.days, { n: totalDays });
 }
 
 /**

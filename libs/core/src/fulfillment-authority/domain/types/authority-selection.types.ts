@@ -1,8 +1,8 @@
 /**
  * Authority Holder Selection (#2304, ADR-052 / ADR-053)
  *
- * The pure generalisation of `selectPrimaryInvoicingConnection` (#2047,
- * `invoicing/domain/types/invoicing-primary.types.ts`) from "which connection
+ * The pure generalisation of the one-primary-connection rule #2047 introduced for
+ * invoicing (now `resolveSalesDocumentRouting`, #2155) from "which connection
  * auto-issues the invoice" to "which connection holds authority X over scope Y".
  * The shipped `resolveSalesDocumentRouting` already mirrors that rule verbatim,
  * so the generalisation has two consumers to keep honest, not one
@@ -26,7 +26,7 @@ import { type AuthorityScope, authorityScopeKey } from './authority-scope.types'
 /**
  * One eligible claimant, reduced to what the choice depends on.
  *
- * Structural on purpose, exactly as `InvoicingConnectionCandidate` is: the rule
+ * Structural on purpose, exactly as `SalesDocumentRoutingCandidate` is: the rule
  * is a pure function that needs no `Connection` entity, and therefore this leaf
  * needs no cross-context import. The caller has already filtered to active
  * connections that carry the authority's capability (or its config claim) and

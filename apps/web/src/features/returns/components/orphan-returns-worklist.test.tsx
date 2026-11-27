@@ -14,8 +14,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { OrphanReturnsWorklist } from './orphan-returns-worklist';
-import { ORPHAN_RETURNS_WORKLIST_COPY as COPY } from '../lib/orphan-returns-worklist.copy';
-import { AUTHORIZE_RETURN_DIALOG_COPY } from '../lib/authorize-return-dialog.copy';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { ReturnListItem } from '../api/returns.types';
 import { createNoopSessionAdapter } from '../../../shared/auth/noop-session-adapter';
 import type { SessionAdapter } from '../../../shared/auth/session-adapter';
@@ -24,6 +23,9 @@ import {
   createMockApiClient,
   renderWithProviders,
 } from '../../../test/test-utils';
+
+const COPY = getMessages('returns').orphanWorklist;
+const AUTHORIZE_RETURN_DIALOG_COPY = getMessages('returns').authorizeReturnDialog;
 
 function item(overrides: Partial<ReturnListItem> = {}): ReturnListItem {
   return {
@@ -334,7 +336,7 @@ describe('OrphanReturnsWorklist', () => {
       needsApproval: listResult(),
     });
 
-    expect(await screen.findByText(COPY.needsOrderTruncated(1, 45))).toBeInTheDocument();
+    expect(await screen.findByText(interpolate(COPY.needsOrderTruncated, { shown: 1, total: 45 }))).toBeInTheDocument();
   });
 
   it('should disclose rows dropped for being unparseable, separately from a truncated page', async () => {

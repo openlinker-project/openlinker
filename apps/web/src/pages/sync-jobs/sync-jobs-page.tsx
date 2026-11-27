@@ -1,21 +1,37 @@
 import type { ReactElement } from 'react';
-import { useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { useTableSort } from '../../shared/ui/use-table-sort';
+import { SortField } from '../../shared/ui/sort-field';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
+import { EmptyValue } from '../../shared/ui/empty-value';
 import { formatDurationMs } from '../../shared/format/format-duration-ms';
 import { SyncJobStatusBadge } from '../../features/sync-jobs/components/SyncJobStatusBadge';
 import { useSyncJobsQuery } from '../../features/sync-jobs/hooks/use-sync-jobs-query';
 import { useStreamDeadLettersQuery } from '../../features/sync-jobs/hooks/use-stream-dead-letters-query';
 import { useStreamDeadLettersCountQuery } from '../../features/sync-jobs/hooks/use-stream-dead-letters-count-query';
-import { useConnectionsQuery } from '../../features/connections/hooks/use-connections-query';
-import { ConnectionEntityLabel } from '../../features/connections/components/ConnectionEntityLabel';
+import {
+  ConnectionChip,
+  readConnectionEnvironment,
+  useConnectionsQuery,
+  type Connection,
+} from '../../features/connections';
+import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
+import { usePlatforms, type Platform } from '../../shared/plugins';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+} from '../../shared/i18n';
 import type {
   SyncJob,
   SyncJobFilters,
@@ -30,42 +46,172 @@ import {
   SYNC_JOBS_MAX_LIMIT,
 } from '../../features/sync-jobs/api/sync-jobs.types';
 import type { StreamDeadLetter } from '../../features/sync-jobs/api/stream-dead-letters.types';
+import { jobTypeLabel } from '../../features/sync-jobs/lib/job-type-label';
+import {
+  createSyncJobsListRegistry,
+  sortSyncJobs,
+  type SyncJobsListConfigInput,
+} from '../../features/sync-jobs/lib/sync-jobs.list-config';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+} from '../../features/saved-views';
 
 // Capped by the backend validator on GET /sync/jobs (@Max(100)).
 const PAGE_SIZE = SYNC_JOBS_MAX_LIMIT;
 
-const COLUMNS: DataTableColumn<SyncJob>[] = [
-  {
-    id: 'status',
-    header: 'Status',
-    cell: (job) => <SyncJobStatusBadge status={job.status} outcome={job.outcome} outcomeReason={job.outcomeReason} />,
-    accessor: (job) => job.status,
-    sortable: true,
-  },
-  {
-    id: 'jobType',
-    header: 'Job type',
-    cell: (job) => (
-      <span className="mono-text" title={job.jobType}>
-        {job.jobType}
+type SyncJobsCopy = ResolvedCopy<Messages['sync-jobs']>['syncJobsPage'];
+
+/** Breaks a dotted code only after a dot, never inside a segment. */
+function DottedCode({ code }: { code: string }): ReactElement {
+  return (
+    <>
+      {code.split('.').map((segment, i) => (
+        <span key={i}>
+          {i > 0 ? '.' : ''}
+          {i > 0 ? <wbr /> : null}
+          {segment}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/**
+ * The job type as two lines. When the type has an operator-facing name
+ * (`jobTypeLabel`), that name leads and the full code sits under it; when it
+ * has none, the code's last segment - the part that says what the job does -
+ * leads and its namespace sits under it. Either way nothing is clipped: the
+ * column used to cut the whole string to `fulfillment.work.au…` (#4016).
+ */
+function JobTypeCell({ jobType }: { jobType: string }): ReactElement {
+  const label = jobTypeLabel(jobType);
+  const named = label !== jobType;
+  const cut = jobType.lastIndexOf('.');
+  const lead = named ? label : cut === -1 ? jobType : jobType.slice(cut + 1);
+  const sub = named ? jobType : cut === -1 ? null : jobType.slice(0, cut);
+  return (
+    <span className={`sync-job-type${named ? ' sync-job-type--named' : ''}`} title={jobType}>
+      <span className="sr-only">{named ? `${label} (${jobType})` : jobType}</span>
+      <span className="sync-job-type__action" aria-hidden="true">
+        {lead}
       </span>
+      {sub ? (
+        <span className="sync-job-type__scope" aria-hidden="true">
+          <DottedCode code={sub} />
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Last error, clamped to two lines with an in-place toggle for the rest. The
+ * toggle is a real button, which `DataTable` already excludes from the row's
+ * navigate-on-click, so expanding an error does not open the job.
+ *
+ * Whether the toggle is needed is MEASURED, not guessed from the length: the
+ * clamp depends on the column's width, so a fixed character threshold left
+ * a clipped error with no way to read it on a narrower window.
+ */
+function LastErrorCell({ error }: { error: string }): ReactElement {
+  const copy = useMessages('sync-jobs').syncJobsPage.errorToggle;
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  const textRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!el || open) return undefined;
+    const measure = (): void => {
+      setClipped(el.scrollHeight > el.clientHeight + 1);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, [error, open]);
+
+  return (
+    <span className="sync-job-error">
+      <span
+        ref={textRef}
+        className={`sync-job-error__text${open ? ' sync-job-error__text--open' : ''}`}
+      >
+        {error}
+      </span>
+      {open || clipped ? (
+        <button
+          type="button"
+          className="sync-job-error__toggle"
+          aria-expanded={open}
+          onClick={() => {
+            setOpen((value) => !value);
+          }}
+        >
+          {open ? copy.showLess : copy.showFull}
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * The job's connection as the shared `ConnectionChip` (#3670), the chip the
+ * Orders and Products lists render. Fed from the page's one batched
+ * connections read rather than a fetch per row, and used by both the table
+ * cell and the mobile card so the two cannot drift apart.
+ */
+function JobConnectionChip({
+  connectionId,
+  connectionById,
+  connectionsLoading,
+  platforms,
+}: {
+  connectionId: string;
+  connectionById: ReadonlyMap<string, Connection>;
+  connectionsLoading: boolean;
+  platforms: readonly Platform[];
+}): ReactElement {
+  const connection = connectionById.get(connectionId);
+  const platformType = connection?.platformType ?? null;
+  return (
+    <ConnectionChip
+      connectionId={connectionId}
+      name={connection?.name ?? null}
+      loading={connectionsLoading}
+      channel={{
+        platformType,
+        label: platformType ? resolvePlatformLabel(platforms, platformType) : null,
+        shortLabel: platformType ? resolvePlatformShortLabel(platforms, platformType) : null,
+        environment: readConnectionEnvironment(connection?.config),
+      }}
+    />
+  );
+}
+
+function buildSyncJobCells(
+  renderConnection: (connectionId: string) => ReactElement,
+  copy: SyncJobsCopy,
+): SyncJobsListConfigInput['cells'] {
+  return {
+    status: (job) => (
+      <SyncJobStatusBadge
+        status={job.status}
+        outcome={job.outcome}
+        outcomeReason={job.outcomeReason}
+      />
     ),
-    accessor: (job) => job.jobType,
-    sortable: true,
-  },
-  {
-    id: 'connectionId',
-    header: 'Connection',
-    cell: (job) => (
-      <ConnectionEntityLabel connectionId={job.connectionId} linkToDetail={false} showId />
-    ),
-    hideBelow: 1024,
-  },
-  {
-    id: 'attempts',
-    header: 'Attempts',
-    align: 'right',
-    cell: (job) => {
+    jobType: (job) => <JobTypeCell jobType={job.jobType} />,
+    connection: (job) => renderConnection(job.connectionId),
+    attempts: (job): ReactElement => {
       const deferred = formatDurationMs(job.deferredTotalMs);
       return (
         <>
@@ -74,106 +220,79 @@ const COLUMNS: DataTableColumn<SyncJob>[] = [
             // A deferred job consumes no attempt, so its counter stands still
             // while it waits. Without this an operator reads a row parked on a
             // throttling shop as simply stuck (#2613).
-            <span className="text-muted" title={`Deferred for ${deferred} so far`}>
+            <span
+              className="text-muted"
+              title={interpolate(copy.columns.deferredTitle, { duration: deferred })}
+            >
               {' '}
-              · deferred
+              · {copy.columns.deferred}
             </span>
           ) : null}
         </>
       );
     },
-    accessor: (job) => job.attempts,
-    sortable: true,
-    hideBelow: 768,
-  },
-  {
-    id: 'lastAttemptDurationMs',
-    header: 'Duration',
-    align: 'right',
-    // Unmeasured rows sort as -1, so they group together and land first on an
-    // ascending sort - ahead of a genuine 0 ms row. Stated rather than dressed
-    // up: the cell renders an em-dash, so the group is identifiable, and this
-    // page sorts only the visible page anyway.
-    cell: (job) => {
-      const formatted = formatDurationMs(job.lastAttemptDurationMs);
-      return formatted ?? <span className="text-muted">—</span>;
-    },
-    accessor: (job) => job.lastAttemptDurationMs ?? -1,
-    sortable: true,
-    hideBelow: 768,
-  },
-  {
-    id: 'lastError',
-    header: 'Last error',
-    cell: (job) =>
-      job.lastError ? (
-        <span className="mono-text" title={job.lastError}>
-          {job.lastError.length > 60 ? `${job.lastError.slice(0, 60)}…` : job.lastError}
-        </span>
-      ) : (
-        <span className="text-muted">—</span>
-      ),
-    hideBelow: 1024,
-  },
-  {
-    id: 'createdAt',
-    header: 'Created',
-    cell: (job) => <TimeDisplay iso={job.createdAt} />,
-    accessor: (job) => job.createdAt,
-    sortable: true,
-  },
-];
+    // Unmeasured rows render the shared empty-value mark, so the group the
+    // duration sort puts together stays identifiable.
+    duration: (job) => formatDurationMs(job.lastAttemptDurationMs) ?? <EmptyValue />,
+    lastError: (job) => (job.lastError ? <LastErrorCell error={job.lastError} /> : <EmptyValue />),
+    created: (job) => <TimeDisplay iso={job.createdAt} />,
+  };
+}
 
 // Poison stream entries are rare (they only exist after MAX_RECOVERY_ATTEMPTS
 // consecutive failures); a small fixed page is plenty and keeps this
 // secondary table lightweight relative to the primary sync-jobs one.
 const DEAD_LETTER_PAGE_SIZE = 20;
 
-const DEAD_LETTER_COLUMNS: DataTableColumn<StreamDeadLetter>[] = [
-  {
-    id: 'stream',
-    header: 'Stream',
-    cell: (entry) => <span className="mono-text">{entry.stream}</span>,
-    accessor: (entry) => entry.stream,
-    sortable: true,
-  },
-  {
-    id: 'consumerGroup',
-    header: 'Consumer group',
-    cell: (entry) => <span className="mono-text">{entry.consumerGroup}</span>,
-    hideBelow: 1024,
-  },
-  {
-    id: 'entryId',
-    header: 'Entry ID',
-    cell: (entry) => <span className="mono-text">{entry.entryId}</span>,
-    hideBelow: 768,
-  },
-  {
-    id: 'attempts',
-    header: 'Attempts',
-    align: 'right',
-    cell: (entry) => entry.attempts,
-    accessor: (entry) => entry.attempts,
-    sortable: true,
-  },
-  {
-    id: 'lastError',
-    header: 'Last error',
-    cell: (entry) => (
-      <span className="mono-text" title={entry.lastError}>
-        {entry.lastError.length > 60 ? `${entry.lastError.slice(0, 60)}…` : entry.lastError}
-      </span>
-    ),
-  },
-  {
-    id: 'lastSeenAt',
-    header: 'Last seen',
-    cell: (entry) => <TimeDisplay iso={entry.lastSeenAt} />,
-    accessor: (entry) => entry.lastSeenAt,
-    sortable: true,
-  },
-];
+function buildDeadLetterColumns(
+  copy: SyncJobsCopy['deadLetters']['columns']
+): DataTableColumn<StreamDeadLetter>[] {
+  return [
+    {
+      id: 'stream',
+      header: copy.stream,
+      cell: (entry) => <span className="mono-text">{entry.stream}</span>,
+      accessor: (entry) => entry.stream,
+      sortable: true,
+    },
+    {
+      id: 'consumerGroup',
+      header: copy.consumerGroup,
+      cell: (entry) => <span className="mono-text">{entry.consumerGroup}</span>,
+      hideBelow: 1024,
+    },
+    {
+      id: 'entryId',
+      header: copy.entryId,
+      cell: (entry) => <span className="mono-text">{entry.entryId}</span>,
+      hideBelow: 768,
+    },
+    {
+      id: 'attempts',
+      header: copy.attempts,
+      align: 'right',
+      cell: (entry) => entry.attempts,
+      accessor: (entry) => entry.attempts,
+      sortable: true,
+    },
+    {
+      id: 'lastError',
+      header: copy.lastError,
+      cell: (entry) => (
+        <span className="mono-text" title={entry.lastError}>
+          {entry.lastError.length > 60 ? `${entry.lastError.slice(0, 60)}…` : entry.lastError}
+        </span>
+      ),
+    },
+    {
+      id: 'lastSeenAt',
+      header: copy.lastSeen,
+      cell: (entry) => <TimeDisplay iso={entry.lastSeenAt} />,
+      accessor: (entry) => entry.lastSeenAt,
+      sortable: true,
+    },
+  ];
+}
 
 /**
  * Poison Redis Stream entries that exhausted recovery (#2301, D48) — a
@@ -182,6 +301,10 @@ const DEAD_LETTER_COLUMNS: DataTableColumn<StreamDeadLetter>[] = [
  * action in this pass.
  */
 function StreamDeadLettersSection(): ReactElement {
+  const pageCopy = useMessages('sync-jobs').syncJobsPage;
+  const copy = pageCopy.deadLetters;
+  const format = useFormat();
+  const deadLetterColumns = useMemo(() => buildDeadLetterColumns(copy.columns), [copy.columns]);
   const [offset, setOffset] = useState(0);
   const { sort, setSort } = useTableSort([{ id: 'lastSeenAt', desc: true }]);
 
@@ -194,34 +317,54 @@ function StreamDeadLettersSection(): ReactElement {
   const total = listQuery.data?.total ?? 0;
   const hasPrev = offset > 0;
   const hasNext = offset + DEAD_LETTER_PAGE_SIZE < total;
+  // Nothing dead-lettered is the normal state, so it gets one line rather than
+  // a heading, a paragraph and an empty-state card (#4016).
+  const isEmpty =
+    !listQuery.isLoading && !listQuery.error && (listQuery.data?.items.length ?? 0) === 0;
 
   return (
-    <div className="page-section" aria-labelledby="stream-dead-letters-heading">
-      <h2 id="stream-dead-letters-heading" className="section-title">
-        Poison stream entries
-        {countQuery.data ? <span className="text-muted"> ({countQuery.data.count})</span> : null}
-      </h2>
-      <p className="text-muted">
-        Redis Stream entries that failed recovery repeatedly and were durably recorded here
-        instead of being retried forever. No replay action yet — investigate the raw fields
-        below.
-      </p>
+    <section className="poison-entries" aria-labelledby="stream-dead-letters-heading">
+      <div className="poison-entries__header">
+        <div className="poison-entries__intro">
+          <h2 id="stream-dead-letters-heading" className="poison-entries__title">
+            {copy.title}
+            {countQuery.data && countQuery.data.count > 0 ? (
+              <span className="text-muted"> ({countQuery.data.count})</span>
+            ) : null}
+          </h2>
+          <p className="poison-entries__hint">{copy.description}</p>
+        </div>
+        {isEmpty ? (
+          <span className="poison-entries__none" data-testid="poison-entries-none">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="m3.5 8.5 3 3 6-7" />
+            </svg>
+            {copy.none}
+          </span>
+        ) : null}
+      </div>
 
       {listQuery.isLoading ? (
-        <DataTableSkeleton columns={DEAD_LETTER_COLUMNS} label="Loading poison stream entries…" />
+        <DataTableSkeleton columns={deadLetterColumns} label={copy.loading} />
       ) : listQuery.error ? (
         <ErrorState
-          title="Unable to load poison stream entries"
-          message={listQuery.error.message}
-          action={<Button onClick={() => { void listQuery.refetch(); }}>Retry</Button>}
+          title={copy.errorTitle}
+          message={describeApiError(listQuery.error, 'sync-jobs')}
+          action={
+            <Button
+              onClick={() => {
+                void listQuery.refetch();
+              }}
+            >
+              {pageCopy.retry}
+            </Button>
+          }
         />
-      ) : (listQuery.data?.items.length ?? 0) === 0 ? (
-        <EmptyState liveRegion="off" title="No poison entries" message="Nothing dead-lettered." />
-      ) : (
+      ) : isEmpty ? null : (
         <>
           <DataTable
-            caption="Poison stream entries"
-            columns={DEAD_LETTER_COLUMNS}
+            caption={copy.title}
+            columns={deadLetterColumns}
             rows={listQuery.data?.items ?? []}
             rowKey={(entry) => entry.id}
             sort={sort}
@@ -229,26 +372,46 @@ function StreamDeadLettersSection(): ReactElement {
           />
           <div className="pagination">
             <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + DEAD_LETTER_PAGE_SIZE, total)} of {total}
+              {interpolate(pageCopy.pagination.range, {
+                from: format.number(offset + 1),
+                to: format.number(Math.min(offset + DEAD_LETTER_PAGE_SIZE, total)),
+                total: format.number(total),
+              })}
             </span>
             <div className="pagination__actions">
-              <Button disabled={!hasPrev} onClick={() => { setOffset(offset - DEAD_LETTER_PAGE_SIZE); }}>
-                Previous
+              <Button
+                tone="secondary"
+                disabled={!hasPrev}
+                onClick={() => {
+                  setOffset(offset - DEAD_LETTER_PAGE_SIZE);
+                }}
+              >
+                {pageCopy.pagination.previous}
               </Button>
-              <Button disabled={!hasNext} onClick={() => { setOffset(offset + DEAD_LETTER_PAGE_SIZE); }}>
-                Next
+              <Button
+                tone="secondary"
+                disabled={!hasNext}
+                onClick={() => {
+                  setOffset(offset + DEAD_LETTER_PAGE_SIZE);
+                }}
+              >
+                {pageCopy.pagination.next}
               </Button>
             </div>
           </div>
         </>
       )}
-    </div>
+    </section>
   );
 }
 
 export function SyncJobsPage(): ReactElement {
+  const copy = useMessages('sync-jobs').syncJobsPage;
+  const pageCopy = copy;
+  const format = useFormat();
+  const statusLabels: Record<string, string | undefined> =
+    useMessages('sync-jobs').syncJobStatusBadge.statuses;
   const [searchParams, setSearchParams] = useSearchParams();
-  const { sort, setSort } = useTableSort([{ id: 'createdAt', desc: true }]);
 
   const status = (searchParams.get('status') as JobStatus | null) ?? undefined;
   const jobType = (searchParams.get('jobType') as JobType | null) ?? undefined;
@@ -261,7 +424,66 @@ export function SyncJobsPage(): ReactElement {
 
   const query = useSyncJobsQuery(filters, pagination);
   const connectionsQuery = useConnectionsQuery();
-  const connections = connectionsQuery.data ?? [];
+  const connections = useMemo(() => connectionsQuery.data ?? [], [connectionsQuery.data]);
+  const platforms = usePlatforms();
+  const connectionById = useMemo(
+    () => new Map(connections.map((c) => [c.id, c] as const)),
+    [connections]
+  );
+  const connectionsLoading = connectionsQuery.isLoading;
+  const renderConnection = useCallback(
+    (id: string): ReactElement => (
+      <JobConnectionChip
+        connectionId={id}
+        connectionById={connectionById}
+        connectionsLoading={connectionsLoading}
+        platforms={platforms}
+      />
+    ),
+    [connectionById, connectionsLoading, platforms]
+  );
+  const registry = useMemo(
+    () =>
+      createSyncJobsListRegistry({
+        labels: {
+          status: copy.columns.status,
+          statusFields: copy.savedViews.statusFields,
+          jobType: copy.columns.jobType,
+          jobTypeFields: copy.savedViews.jobTypeFields,
+          connection: copy.columns.connection,
+          attempts: copy.columns.attempts,
+          duration: copy.columns.duration,
+          lastError: copy.columns.lastError,
+          created: copy.columns.created,
+        },
+        viewNames: copy.savedViews.views,
+        sortLabels: copy.savedViews.sorts,
+        lockedHeader: (context) => {
+          const active = context.sort.key === 'status';
+          return (
+            <SortField
+              label={copy.columns.status}
+              active={active}
+              dir={context.sort.dir}
+              ariaLabel={context.sortLabel(copy.columns.status, active, context.sort.dir)}
+              onClick={() => {
+                context.onSort('status');
+              }}
+            />
+          );
+        },
+        cells: buildSyncJobCells(renderConnection, copy),
+      }),
+    [copy, renderConnection],
+  );
+  const view = useListView<SyncJob>({ registry, pageTitle: copy.title });
+  const { toColumns } = view;
+  const columns = useMemo<DataTableColumn<SyncJob>[]>(() => toColumns(), [toColumns]);
+  // The API has no sort, so the rows already fetched are put in the view's order.
+  const items = useMemo(
+    () => sortSyncJobs(query.data?.items ?? [], view.sort),
+    [query.data?.items, view.sort],
+  );
 
   function setFilter(key: string, value: string): void {
     setSearchParams((prev) => {
@@ -306,134 +528,182 @@ export function SyncJobsPage(): ReactElement {
   const hasNext = offset + PAGE_SIZE < total;
 
   return (
-    <PageLayout
-      eyebrow="Diagnostics"
-      title="Sync Jobs"
-      description="Background processing visibility — filter by status, job type, or connection."
-    >
-      {/* Filter bar */}
-      <div className="toolbar">
-        <Select
-          aria-label="Filter by status"
-          value={status ?? ''}
-          onChange={(e) => { setFilter('status', e.target.value); }}
-        >
-          <option value="">All statuses</option>
-          {JOB_STATUS_VALUES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </Select>
+    <PageLayout eyebrow={copy.eyebrow} title={copy.title} description={copy.description}>
+      <ViewsBar {...view.viewsBar} />
 
-        <Select
-          aria-label="Filter by job type"
-          value={jobType ?? ''}
-          onChange={(e) => { setFilter('jobType', e.target.value); }}
-        >
-          <option value="">All job types</option>
-          {JOB_TYPE_VALUES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </Select>
+      {/* Filter bar - labelled, grouped on the left, wrapping (#4016). */}
+      <div className="sync-jobs-filters" role="group" aria-label={copy.filters.group}>
+        <div className="sync-jobs-filters__field">
+          <label htmlFor="sync-jobs-filter-status">{copy.filters.status}</label>
+          <Select
+            id="sync-jobs-filter-status"
+            className={status ? 'control--active' : ''}
+            value={status ?? ''}
+            onChange={(e) => {
+              setFilter('status', e.target.value);
+            }}
+          >
+            <option value="">{copy.filters.allStatuses}</option>
+            {JOB_STATUS_VALUES.map((s) => (
+              <option key={s} value={s}>
+                {statusLabels[s] ?? s}
+              </option>
+            ))}
+          </Select>
+        </div>
 
-        <Select
-          aria-label="Filter by outcome"
-          value={outcome ?? ''}
-          onChange={(e) => { setFilter('outcome', e.target.value); }}
-        >
-          <option value="">All outcomes</option>
-          {JOB_OUTCOME_VALUES.map((o) => (
-            <option key={o} value={o}>
-              {o === 'business_failure' ? 'business failure' : o}
-            </option>
-          ))}
-        </Select>
+        <div className="sync-jobs-filters__field sync-jobs-filters__field--wide">
+          <label htmlFor="sync-jobs-filter-type">{copy.filters.jobType}</label>
+          <Select
+            id="sync-jobs-filter-type"
+            className={jobType ? 'control--active' : ''}
+            value={jobType ?? ''}
+            onChange={(e) => {
+              setFilter('jobType', e.target.value);
+            }}
+          >
+            <option value="">{copy.filters.allJobTypes}</option>
+            {JOB_TYPE_VALUES.map((t) => (
+              <option key={t} value={t}>
+                {jobTypeLabel(t)}
+              </option>
+            ))}
+          </Select>
+        </div>
 
-        <Select
-          aria-label="Filter by connection"
-          value={connectionId ?? ''}
-          onChange={(e) => { setFilter('connectionId', e.target.value); }}
-        >
-          <option value="">All connections</option>
-          {connections.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
+        <div className="sync-jobs-filters__field">
+          <label htmlFor="sync-jobs-filter-outcome">{copy.filters.outcome}</label>
+          <Select
+            id="sync-jobs-filter-outcome"
+            className={outcome ? 'control--active' : ''}
+            value={outcome ?? ''}
+            onChange={(e) => {
+              setFilter('outcome', e.target.value);
+            }}
+          >
+            <option value="">{copy.filters.allOutcomes}</option>
+            {JOB_OUTCOME_VALUES.map((o) => (
+              <option key={o} value={o}>
+                {copy.outcomes[o]}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="sync-jobs-filters__field">
+          <label htmlFor="sync-jobs-filter-connection">{copy.filters.connection}</label>
+          <Select
+            id="sync-jobs-filter-connection"
+            className={connectionId ? 'control--active' : ''}
+            value={connectionId ?? ''}
+            onChange={(e) => {
+              setFilter('connectionId', e.target.value);
+            }}
+          >
+            <option value="">{copy.filters.allConnections}</option>
+            {connections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <ColumnsPanel {...view.columnsPanel} />
+
+        {filtersActive ? (
+          <Button tone="ghost" className="sync-jobs-filters__clear" onClick={clearFilters}>
+            {copy.empty.clearFilters}
+          </Button>
+        ) : null}
       </div>
 
+      {view.editedBar ? (
+        <div className="sv-applied">
+          <EditedBar {...view.editedBar} />
+        </div>
+      ) : null}
+      {view.repairBanner ? <RepairBanner {...view.repairBanner} /> : null}
+
       {/* Table */}
-      {query.isLoading ? (
-        <DataTableSkeleton columns={COLUMNS} label="Loading sync jobs…" />
+      {query.isLoading || !view.isReady ? (
+        <DataTableSkeleton columns={columns} label={copy.loading} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load sync jobs"
-          message={query.error.message}
+          title={copy.errorTitle}
+          message={describeApiError(query.error, 'sync-jobs')}
           action={
-            <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+            <Button
+              onClick={() => {
+                void query.refetch();
+              }}
+            >
+              {pageCopy.retry}
+            </Button>
           }
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         <EmptyState
           liveRegion="off"
-          title="No jobs found"
-          message={
-            filtersActive
-              ? 'No jobs match the current filters.'
-              : 'No sync jobs have been enqueued yet.'
-          }
-          action={
-            filtersActive ? (
-              <Button onClick={clearFilters}>Clear filters</Button>
-            ) : undefined
-          }
+          title={copy.empty.title}
+          message={filtersActive ? copy.empty.filtered : copy.empty.none}
+          // No action here: the filter bar's Clear filters button is already on
+          // screen whenever a filter is active, and a second button with the
+          // same name read twice to a screen reader (#4016).
         />
       ) : (
         <>
+          {/* Not virtualized: the virtualizer pins every row to one fixed
+              height and the container to 600px, which left a tall empty box
+              under a short result and cannot hold a two-line job type or an
+              expanded error. A page is capped at 100 rows (#4016). */}
           <DataTable
-            caption="Sync jobs"
-            columns={COLUMNS}
-            rows={query.data?.items ?? []}
+            caption={copy.caption}
+            className="sync-jobs-table"
+            columns={columns}
+            rows={items}
             rowKey={(job) => job.id}
             rowHref={(job) => job.id}
-            sort={sort}
-            onSortChange={setSort}
-            virtualize
-            containerHeight={600}
             cardView={{
-              title: (job) => job.jobType,
-              subtitle: (job) => (
-                <ConnectionEntityLabel
-                  connectionId={job.connectionId}
-                  linkToDetail={false}
-                  showId={false}
+              title: (job) => jobTypeLabel(job.jobType),
+              subtitle: (job) => renderConnection(job.connectionId),
+              meta: (job) => (
+                <SyncJobStatusBadge
+                  status={job.status}
+                  outcome={job.outcome}
+                  outcomeReason={job.outcomeReason}
                 />
               ),
-              meta: (job) => <SyncJobStatusBadge status={job.status} outcome={job.outcome} outcomeReason={job.outcomeReason} />,
             }}
           />
 
           {/* Pagination */}
           <div className="pagination">
             <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+              {interpolate(copy.pagination.range, {
+                from: format.number(offset + 1),
+                to: format.number(Math.min(offset + PAGE_SIZE, total)),
+                total: format.number(total),
+              })}
             </span>
             <div className="pagination__actions">
               <Button
+                tone="secondary"
                 disabled={!hasPrev}
-                onClick={() => { setOffset(offset - PAGE_SIZE); }}
+                onClick={() => {
+                  setOffset(offset - PAGE_SIZE);
+                }}
               >
-                Previous
+                {pageCopy.pagination.previous}
               </Button>
               <Button
+                tone="secondary"
                 disabled={!hasNext}
-                onClick={() => { setOffset(offset + PAGE_SIZE); }}
+                onClick={() => {
+                  setOffset(offset + PAGE_SIZE);
+                }}
               >
-                Next
+                {pageCopy.pagination.next}
               </Button>
             </div>
           </div>
@@ -441,6 +711,8 @@ export function SyncJobsPage(): ReactElement {
       )}
 
       <StreamDeadLettersSection />
+
+      <ViewDialogs {...view.dialogs} />
     </PageLayout>
   );
 }

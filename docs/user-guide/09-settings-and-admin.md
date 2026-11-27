@@ -40,6 +40,12 @@ Preview cards for settings features that are coming soon:
 
 ---
 
+## Login page
+
+The **Login page** tile opens the editor for what your team sees before signing in: the headline, the form text, a help line with a link, and whether people can request an account. See **[Login page](./09a-login-page.md)** for the walkthrough.
+
+---
+
 ## AI Provider Settings
 
 > ⚠️ **Admin only.** This page requires the `admin` role.

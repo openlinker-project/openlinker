@@ -194,7 +194,11 @@ export class BulkOfferWizard {
    * desktop twin and keep the label in `hasText` so a copy change still fails.
    */
   get createOffersButton(): Locator {
-    return this.page.locator('button.bulk-review__cta--top', {
+    // The marketplace review step renders ONE CTA, in the sticky action bar
+    // (no `--top` twin since #4002); the shop review step still has a `--top`
+    // desktop twin beside a `--mobile` one. Excluding only `--mobile` matches the
+    // single visible desktop button on both.
+    return this.page.locator('button.bulk-review__cta:not(.bulk-review__cta--mobile)', {
       hasText: /^Create offers \(\d+\)$/,
     });
   }

@@ -11,12 +11,16 @@
  *   - Clearance status badge (the shared, regulator-neutral
  *     `RegulatoryStatusBadge`, branded with the KSeF-specific
  *     `labelOverrides` — #3181, since this surface is KSeF's own)
- *   - KSeF number (`clearanceReference` → fallback `providerInvoiceNumber`)
+ *   - KSeF number: the authority's `clearanceReference` ONLY (DEF-14). OL's own
+ *     document number gets its own row - before clearance there is no KSeF
+ *     number, and the Art. 108g copy hint must never offer one.
  *   - Official receipt (UPO): download + inline preview (#1234, B3), gated on
  *     `regulatoryStatus === 'accepted'`
  *   - FA(3) document: view rendered HTML inline + download source XML (#1228, B5),
  *     gated on `regulatoryStatus === 'accepted'`
  *   - Inline `.doc-preview` area for the FA(3) rendered document
+ *   - While the document waits for its KSeF number, a dashed placeholder where
+ *     the KOD I verification QR will appear (#3547, M24 `not-cleared`)
  *
  * @module plugins/ksef/components
  */
@@ -26,13 +30,16 @@ import type { InvoiceDetailSectionProps } from '../../../shared/plugins';
 import {
   RegulatoryStatusBadge,
   regCardToneFor,
-  useKsefUpoDownload,
-  useKsefUpoPreview,
-  useKsefFa3,
+  useRegulatoryConfirmationDownload,
+  useRegulatoryConfirmationPreview,
+  useInvoiceSourceDocument,
+  useInvoiceVerificationLinkQuery,
 } from '../../../features/invoicing';
+import type { RegulatoryStatus } from '../../../features/invoicing';
 import { KsefFa3View } from './ksef-fa3-view';
-import { KSEF_REGULATORY_STATUS_LABELS } from '../lib/ksef-regulatory-status-labels';
+import { getKsefRegulatoryStatusLabels } from '../lib/ksef-regulatory-status-labels';
 import { Button } from '../../../shared/ui/button';
+import { CopyableId } from '../../../shared/ui/copyable-id';
 import {
   Dialog,
   DialogClose,
@@ -42,27 +49,29 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { useTranslation } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 /**
- * Resolved KSeF number: prefer the authority-assigned clearance reference
- * (the 35-character KSeF number) over the provider invoice number which
- * is an internal document id assigned before clearance.
+ * Clearance statuses in which a document is still waiting for its KSeF number,
+ * so the KOD I QR cannot exist yet (#3547). `cleared` is listed for safety: no
+ * KSeF path emits it today, and it is not the terminal `accepted`. If a
+ * provider-neutral `cleared` ever starts meaning "has its number", remove it
+ * here, or this section will show the placeholder for a document that has one.
  */
-function resolveKsefNumber(
-  clearanceReference: string | null,
-  providerInvoiceNumber: string | null,
-): string | null {
-  return clearanceReference ?? providerInvoiceNumber ?? null;
-}
+const AWAITING_KSEF_NUMBER_STATUSES: ReadonlyArray<RegulatoryStatus> = [
+  'pending-submission',
+  'submitted',
+  'cleared',
+];
 
 export function KsefInvoiceDetailSection({
   invoice,
 }: InvoiceDetailSectionProps): ReactElement | null {
-  const { t } = useTranslation();
-  const upoDownload = useKsefUpoDownload();
-  const upoPreview = useKsefUpoPreview();
-  const fa3 = useKsefFa3();
+  const copy = useKsefMessages().ksefInvoiceDetailSection;
+  const upoDownload = useRegulatoryConfirmationDownload();
+  const upoPreview = useRegulatoryConfirmationPreview();
+  const fa3 = useInvoiceSourceDocument();
   const { showToast } = useToast();
   // Tracks a fetched-but-unparseable FA(3) document so the preview area falls
   // through to placeholder/error copy instead of rendering nothing (KsefFa3View
@@ -70,26 +79,35 @@ export function KsefInvoiceDetailSection({
   const [viewParseFailed, setViewParseFailed] = useState(false);
   const handleFa3ParseError = useCallback(() => setViewParseFailed(true), []);
 
-  const ksefNumber = resolveKsefNumber(invoice.clearanceReference, invoice.providerInvoiceNumber);
+  // DEF-14: the KSeF number is the authority's, and exists only once cleared.
+  const ksefNumber = invoice.clearanceReference;
+  const documentNumber = invoice.providerInvoiceNumber;
   const hasRegulatoryData = invoice.regulatoryStatus !== 'not-applicable';
+  // UPO and FA(3) are available only once the authority has accepted the invoice —
+  // that's the terminal success state where the UPO document and issued FA(3) exist.
+  const isAccepted = invoice.regulatoryStatus === 'accepted';
+  // #3547: KOD I exists only once KSeF has assigned the number. Until then the
+  // operator sees why the QR is missing instead of an empty space. `rejected`
+  // is deliberately absent: such a document never gets a KSeF number, and the
+  // rejection detail above already says what happened.
+  const isAwaitingKsefNumber = AWAITING_KSEF_NUMBER_STATUSES.includes(invoice.regulatoryStatus);
+  // DEF-02 / DEF-03 / DEF-15: the QR link is built by the server from the
+  // submitted document, so it is right for every role and needs no browser crypto.
+  const verificationLink = useInvoiceVerificationLinkQuery(invoice.id, isAccepted);
 
   if (!hasRegulatoryData && !ksefNumber) {
     return null;
   }
-
-  // UPO and FA(3) are available only once the authority has accepted the invoice —
-  // that's the terminal success state where the UPO document and issued FA(3) exist.
-  const isAccepted = invoice.regulatoryStatus === 'accepted';
 
   async function handlePreviewUpo(): Promise<void> {
     const ok = await upoPreview.open(invoice.id);
     if (!ok) {
       showToast({
         tone: 'error',
-        title: t('invoice.ksef.upoPreviewFailed', 'UPO preview failed'),
-        description:
-          upoPreview.error?.message ??
-          t('invoice.ksef.upoPreviewFailedDesc', 'Could not fetch the confirmation document.'),
+        title: copy.upoPreviewFailed,
+        description: upoPreview.error
+          ? describeApiError(upoPreview.error, 'ksef')
+          : copy.upoPreviewFailedDesc,
       });
     }
   }
@@ -99,10 +117,10 @@ export function KsefInvoiceDetailSection({
     if (!ok) {
       showToast({
         tone: 'error',
-        title: t('invoice.ksef.upoDownloadFailed', 'UPO download failed'),
-        description:
-          upoDownload.error?.message ??
-          t('invoice.ksef.upoDownloadFailedDesc', 'Could not fetch the confirmation document.'),
+        title: copy.upoDownloadFailed,
+        description: upoDownload.error
+          ? describeApiError(upoDownload.error, 'ksef')
+          : copy.upoDownloadFailedDesc,
       });
     }
   }
@@ -115,9 +133,8 @@ export function KsefInvoiceDetailSection({
     if (err) {
       showToast({
         tone: 'error',
-        title: t('invoice.ksef.fa3ViewFailed', 'FA(3) preview failed'),
-        description:
-          err.message ?? t('invoice.ksef.fa3ViewFailedDesc', 'Could not fetch the document.'),
+        title: copy.fa3ViewFailed,
+        description: describeApiError(err, 'ksef'),
       });
     }
   }
@@ -128,9 +145,8 @@ export function KsefInvoiceDetailSection({
     if (err) {
       showToast({
         tone: 'error',
-        title: t('invoice.ksef.fa3XmlFailed', 'FA(3) XML download failed'),
-        description:
-          err.message ?? t('invoice.ksef.fa3XmlFailedDesc', 'Could not fetch the source document.'),
+        title: copy.fa3XmlFailed,
+        description: describeApiError(err, 'ksef'),
       });
     }
   }
@@ -145,35 +161,76 @@ export function KsefInvoiceDetailSection({
         )}`.trim()}
       >
         <h4 className="invoice-detail-section__title">
-          {t('invoice.ksef.sectionTitle', 'KSeF · National e-Invoicing System')}
+          {copy.sectionTitle}
         </h4>
 
         {hasRegulatoryData ? (
           <div className="slot-row">
             <div>
               <div className="slot-row__label">
-                {t('invoice.ksef.clearanceStatus', 'Clearance status')}
+                {copy.clearanceStatus}
               </div>
             </div>
             <RegulatoryStatusBadge
               status={invoice.regulatoryStatus}
-              labelOverrides={KSEF_REGULATORY_STATUS_LABELS}
+              labelOverrides={getKsefRegulatoryStatusLabels()}
             />
+          </div>
+        ) : null}
+
+        {/* Rejection detail (#1582): when the authority rejected the document,
+            surface its operator-facing diagnostic so the operator can see WHY. */}
+        {invoice.regulatoryStatus === 'rejected' && invoice.clearanceDetail ? (
+          <div className="slot-row">
+            <div>
+              <div className="slot-row__label">
+                {copy.rejectionDetail}
+              </div>
+              <div className="slot-row__hint">
+                {copy.rejectionDetailHint}
+              </div>
+            </div>
+            <span className="text-danger" role="status">
+              {invoice.clearanceDetail}
+            </span>
+          </div>
+        ) : null}
+
+        {documentNumber ? (
+          <div className="slot-row">
+            <div>
+              <div className="slot-row__label">
+                {copy.documentNumber}
+              </div>
+              <div className="slot-row__hint">
+                {copy.documentNumberHint}
+              </div>
+            </div>
+            <span className="mono-text">{documentNumber}</span>
           </div>
         ) : null}
 
         <div className="slot-row">
           <div>
-            <div className="slot-row__label">{t('invoice.ksef.number', 'KSeF number')}</div>
+            <div className="slot-row__label">{copy.number}</div>
             <div className="slot-row__hint">
-              {t('invoice.ksef.numberHint', 'Authority-assigned on clearance')}
+              {copy.numberHint}
             </div>
+            {/* Art. 108g (transitional from 2026): a bank transfer paying a KSeF
+                invoice must carry this 35-character KSeF number in the payment
+                title. We surface it copyable so the operator/buyer can paste it
+                into the transfer — OpenLinker does not initiate the transfer. */}
+            {ksefNumber ? (
+              <div className="slot-row__hint">
+                {copy.art108gHint}
+              </div>
+            ) : null}
           </div>
           {ksefNumber ? (
-            <span className="mono-text text-sm">{ksefNumber}</span>
+            <CopyableId id={ksefNumber} label={ksefNumber} />
           ) : (
             <span className="text-muted">
-              {t('invoice.ksef.numberPending', 'Pending')}
+              {copy.numberPending}
             </span>
           )}
         </div>
@@ -181,12 +238,12 @@ export function KsefInvoiceDetailSection({
         <div className="slot-row">
           <div>
             <div className="slot-row__label">
-              {t('invoice.ksef.upoLabel', 'Official receipt (UPO)')}
+              {copy.upoLabel}
             </div>
             <div className="slot-row__hint">
               {isAccepted
-                ? t('invoice.ksef.upoHint', 'Proof of clearance')
-                : t('invoice.ksef.upoHintPending', 'Available once cleared')}
+                ? copy.upoHint
+                : copy.upoHintPending}
             </div>
           </div>
           {isAccepted ? (
@@ -198,8 +255,8 @@ export function KsefInvoiceDetailSection({
                 disabled={upoPreview.isLoading}
               >
                 {upoPreview.isLoading
-                  ? t('common.loading', 'Loading…')
-                  : t('invoice.ksef.upoPreview', 'Preview')}
+                  ? copy.loading
+                  : copy.upoPreview}
               </Button>
               <Button
                 tone="ghost"
@@ -208,24 +265,48 @@ export function KsefInvoiceDetailSection({
                 disabled={upoDownload.isDownloading}
               >
                 {upoDownload.isDownloading
-                  ? t('invoice.ksef.upoDownloading', 'Downloading…')
-                  : t('invoice.ksef.upoDownload', 'Download UPO')}
+                  ? copy.upoDownloading
+                  : copy.upoDownload}
               </Button>
             </span>
           ) : (
-            <span className="text-muted">—</span>
+            <span className="text-muted">{copy.emptyCell}</span>
           )}
         </div>
+
+        {isAwaitingKsefNumber ? (
+          // M24 `not-cleared`: a dashed frame where the KOD I QR will be, beside
+          // the reason it is not there yet. The copy states only what OpenLinker
+          // actually does: a `submitted` status is re-checked in the background
+          // (`regulatory-status-reconcile`, on by default), but the offline-window
+          // resubmit for `pending-submission` is opt-in, so that copy promises no
+          // automatic send.
+          <div className="ksef-verification-pending" role="note">
+            <div className="ksef-verification-pending__frame">
+              {copy.verificationPendingFrame}
+            </div>
+            <div className="ksef-verification-pending__text">
+              <strong>
+                {copy.verificationPendingLabel}
+              </strong>
+              <span>
+                {invoice.regulatoryStatus === 'pending-submission'
+                  ? copy.verificationPendingNotSent
+                  : copy.verificationPendingHint}
+              </span>
+            </div>
+          </div>
+        ) : null}
 
         {isAccepted ? (
           <>
             <div className="slot-row">
               <div>
                 <div className="slot-row__label">
-                  {t('invoice.ksef.fa3Label', 'FA(3) document')}
+                  {copy.fa3Label}
                 </div>
                 <div className="slot-row__hint">
-                  {t('invoice.ksef.fa3Hint', 'Human-readable + source XML')}
+                  {copy.fa3Hint}
                 </div>
               </div>
               <span className="slot-row__actions">
@@ -236,8 +317,8 @@ export function KsefInvoiceDetailSection({
                   disabled={fa3.isLoadingView}
                 >
                   {fa3.isLoadingView
-                    ? t('common.loading', 'Loading…')
-                    : t('invoice.ksef.fa3View', 'View')}
+                    ? copy.loading
+                    : copy.fa3View}
                 </Button>
                 <Button
                   tone="ghost"
@@ -246,26 +327,27 @@ export function KsefInvoiceDetailSection({
                   disabled={fa3.isDownloadingXml}
                 >
                   {fa3.isDownloadingXml
-                    ? t('invoice.ksef.fa3Downloading', 'Downloading…')
-                    : t('invoice.ksef.fa3DownloadXml', 'Download XML')}
+                    ? copy.fa3Downloading
+                    : copy.fa3DownloadXml}
                 </Button>
               </span>
             </div>
 
             <div className="doc-preview">
               <span className="doc-preview__chip">
-                {t('invoice.ksef.fa3Preview', 'FA(3) preview')}
+                {copy.fa3Preview}
               </span>
               {fa3.viewError || viewParseFailed ? (
-                <span>{t('invoice.ksef.fa3ViewError', "Preview failed. Click 'View' to retry.")}</span>
+                <span>{copy.fa3ViewError}</span>
               ) : fa3.viewText !== null ? (
                 <KsefFa3View
                   xmlText={fa3.viewText}
                   ksefNumber={ksefNumber}
+                  verificationUrl={verificationLink.data?.url ?? null}
                   onParseError={handleFa3ParseError}
                 />
               ) : (
-                <span>{t('invoice.ksef.fa3PreviewPlaceholder', "Click 'View' to load the invoice.")}</span>
+                <span>{copy.fa3PreviewPlaceholder}</span>
               )}
             </div>
           </>
@@ -281,25 +363,19 @@ export function KsefInvoiceDetailSection({
       >
         {upoPreviewState !== null ? (
           <DialogContent className="dialog__content--wide" aria-describedby="ksef-upo-preview-desc">
-            <DialogTitle>{t('invoice.ksef.upoDialogTitle', 'UPO confirmation')}</DialogTitle>
+            <DialogTitle>{copy.upoDialogTitle}</DialogTitle>
             <DialogDescription id="ksef-upo-preview-desc">
-              {t(
-                'invoice.ksef.upoDialogDesc',
-                'Official confirmation (UPO) for this KSeF invoice.',
-              )}
+              {copy.upoDialogDesc}
             </DialogDescription>
             {upoPreviewState.kind === 'unsupported' ? (
               <p className="ksef-upo-preview__unsupported">
-                {t(
-                  'invoice.ksef.upoPreviewUnsupported',
-                  'This confirmation can\'t be previewed inline. Use "Download UPO" to open it.',
-                )}
+                {copy.upoPreviewUnsupported}
               </p>
             ) : (
               <iframe
                 className="ksef-upo-preview__frame"
                 src={upoPreviewState.objectUrl}
-                title={t('invoice.ksef.upoFrameTitle', 'UPO confirmation preview')}
+                title={copy.upoFrameTitle}
                 // `allow-same-origin` is required for the browser's built-in PDF renderer
                 // (Chrome/Firefox) to display a blob: URL for PDF content. Without it
                 // sandbox="" blocks the PDF plugin and the frame renders blank.
@@ -316,13 +392,13 @@ export function KsefInvoiceDetailSection({
                   disabled={upoDownload.isDownloading}
                 >
                   {upoDownload.isDownloading
-                    ? t('invoice.ksef.upoDownloading', 'Downloading…')
-                    : t('invoice.ksef.upoDownload', 'Download UPO')}
+                    ? copy.upoDownloading
+                    : copy.upoDownload}
                 </Button>
               ) : null}
               <DialogClose asChild>
                 <Button tone="secondary" className="button--sm">
-                  {t('common.close', 'Close')}
+                  {copy.close}
                 </Button>
               </DialogClose>
             </DialogFooter>

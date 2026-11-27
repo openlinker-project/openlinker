@@ -86,6 +86,28 @@ export const SalesDocumentUnresolvedReasonValues = [
    * Sales documents - which is why this must reach a badge rather than a log.
    */
   'no-connection-declares-document-kind',
+  /**
+   * Routing named a connection - through a rule or a country default - that
+   * cannot issue the document right now: it is not active (disabled, in an
+   * error state, waiting for re-authorisation, archived), it no longer exists,
+   * or it no longer has the capability that document kind needs.
+   *
+   * It exists because a rule's `connectionId` is a PERSISTED value, checked
+   * against the connection only when the rule is saved. Nothing re-checks it
+   * when the connection is later disabled, removed or loses a capability, so
+   * the rule keeps routing orders to it. Before this reason the gate treated
+   * that state as unreachable (true of the pre-#2170 resolver, whose pick is
+   * always drawn from the active candidate list) and answered `indeterminate`,
+   * which leaves the persisted reason untouched: no document, no job, no badge,
+   * one log line per order - the silent decline ADR-041 §54 forbids.
+   *
+   * It is a misconfiguration with a direct remedy - turn the connection back
+   * on, or point the rule at another one - so it is counted, unlike
+   * `'no-connection-declares-document-kind'`: an install that never configured
+   * routing has no rule to point anywhere, so this cannot be what an
+   * unconfigured install looks like.
+   */
+  'routed-connection-unavailable',
 ] as const;
 
 export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReasonValues)[number];
@@ -131,6 +153,14 @@ export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReaso
  * is upstream (correct the order, or teach its adapter to report the discount
  * that explains the gap), not a provider configuration change.
  *
+ * ALSO WRITTEN (#3934, ADR-083): `'bundle-split-unknown'` - a set sold at a
+ * price covering components that carry different tax rates cannot be presented
+ * on a document without guessing: a component's catalogue rate is unknown, or
+ * none of its price and cost is known to split the paid price by. Nothing is
+ * guessed, so the document is held. The remedy is upstream (read the rate or a
+ * price for the component in the shop / catalogue); the badge clears on the
+ * next transition once it is.
+ *
  * DECLARED BUT NEVER WRITTEN, each blocked on a prerequisite ADR-041 names:
  *   - `'missing-required-tax-id'` — needs a buyer tax id on the order contract;
  *     no such field exists on `Order` today.
@@ -148,6 +178,7 @@ export const SalesDocumentGateBlockReasonValues = [
   'missing-tax-rate',
   'tax-rate-conflict',
   'line-total-mismatch',
+  'bundle-split-unknown',
   'trigger-model-manual',
   'trigger-model-batched',
 ] as const;
@@ -179,6 +210,138 @@ export interface SalesDocumentBlock {
   readonly reason: SalesDocumentGateBlockReason;
   readonly unresolvedReason?: SalesDocumentUnresolvedReason;
   readonly detail?: string;
+  /**
+   * The facts `detail` states, as values (#3866), so the frontend can say the
+   * same thing in the operator's language. Same PII rule as `detail`: ids,
+   * counts and codes only. Absent where there is nothing to parametrise (the
+   * `'line-total-mismatch'` detail is the mapper's own sentence).
+   */
+  readonly params?: SalesDocumentBlockParams;
+  /**
+   * The connection and kind routing resolved the order to, when the block is
+   * about THAT target (#3583). Set for `trigger-model-batched`, where it is
+   * what puts the order in that connection's batch queue; absent where routing
+   * named no target.
+   */
+  readonly connectionId?: string;
+  /** A `SalesDocumentKind`; typed `string` (its definition) to keep this module import-free. */
+  readonly documentKind?: string;
+}
+
+/**
+ * Why the connection a routing decision names cannot issue the document
+ * (`'routed-connection-unavailable'`, #3866).
+ */
+export const RoutedConnectionStateValues = [
+  /** The connection no longer exists. */
+  'not-found',
+  /** It could not be read back. */
+  'unreadable',
+  'disabled',
+  'error',
+  'needs-reauth',
+  'archived',
+  /** Active, but the capability the document needs is not enabled (`missingCapability`). */
+  'missing-capability',
+  /** Active and capable on a re-read: it changed while the order was checked. */
+  'changed',
+] as const;
+
+export type RoutedConnectionState = (typeof RoutedConnectionStateValues)[number];
+
+/** The kind of the eligible pool an ambiguity was found in. */
+export const SalesDocumentPoolKindValues = ['invoice', 'fiscal-receipt', 'mixed'] as const;
+
+export type SalesDocumentPoolKind = (typeof SalesDocumentPoolKindValues)[number];
+
+/** The half of a document `'missing-tax-rate'` is about. */
+export const MissingTaxRateScopeValues = ['lines', 'shipping'] as const;
+
+export type MissingTaxRateScope = (typeof MissingTaxRateScopeValues)[number];
+
+/**
+ * Values behind a block's `detail`. Every field is optional; which ones are
+ * set depends on the reason. Persisted as jsonb and coerced on read through
+ * {@link readSalesDocumentBlockParams}.
+ */
+export interface SalesDocumentBlockParams {
+  /** `'no-connection-declares-document-kind'`: connections that could issue, none declaring a kind. */
+  readonly candidateCount?: number;
+  /** `'ambiguous-connection-no-primary'` and the generic unresolved case. */
+  readonly eligibleCount?: number;
+  /** `'ambiguous-connection-no-primary'`: 0 = none marked primary, more = several. */
+  readonly primaryCount?: number;
+  readonly poolKind?: SalesDocumentPoolKind;
+  readonly connectionId?: string;
+  readonly ruleId?: string;
+  /** The decided document kind; open-world, so a plain string. */
+  readonly documentKind?: string;
+  readonly connectionState?: RoutedConnectionState;
+  /** Capability name(s) the routed connection lacks, `connectionState: 'missing-capability'`. */
+  readonly missingCapabilities?: readonly string[];
+  readonly taxRateScope?: MissingTaxRateScope;
+  readonly lineCount?: number;
+  readonly totalLines?: number;
+  /** Internal product id of the first rate-less line (auto-issue gate only). */
+  readonly firstLineRef?: string;
+}
+
+function includesValue<T extends string>(values: readonly T[], value: unknown): value is T {
+  return typeof value === 'string' && (values as readonly string[]).includes(value);
+}
+
+/**
+ * Coerce a persisted jsonb value into {@link SalesDocumentBlockParams}: keeps
+ * the fields this build knows with the right type, drops anything else, and
+ * returns `null` when nothing is left. A row written by another release
+ * therefore degrades to "no params" (the frontend falls back to `detail`)
+ * rather than reaching the UI as a shape it cannot render.
+ */
+export function readSalesDocumentBlockParams(value: unknown): SalesDocumentBlockParams | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const count = (key: string): number | undefined => {
+    const v = raw[key];
+    return typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : undefined;
+  };
+  const text = (key: string): string | undefined => {
+    const v = raw[key];
+    return typeof v === 'string' && v.length > 0 ? v : undefined;
+  };
+  const capabilities = Array.isArray(raw.missingCapabilities)
+    ? raw.missingCapabilities.filter((c): c is string => typeof c === 'string' && c.length > 0)
+    : [];
+  const params: { -readonly [K in keyof SalesDocumentBlockParams]: SalesDocumentBlockParams[K] } = {
+    candidateCount: count('candidateCount'),
+    eligibleCount: count('eligibleCount'),
+    primaryCount: count('primaryCount'),
+    poolKind: includesValue(SalesDocumentPoolKindValues, raw.poolKind) ? raw.poolKind : undefined,
+    connectionId: text('connectionId'),
+    ruleId: text('ruleId'),
+    documentKind: text('documentKind'),
+    connectionState: includesValue(RoutedConnectionStateValues, raw.connectionState)
+      ? raw.connectionState
+      : undefined,
+    missingCapabilities: capabilities.length > 0 ? capabilities : undefined,
+    taxRateScope: includesValue(MissingTaxRateScopeValues, raw.taxRateScope)
+      ? raw.taxRateScope
+      : undefined,
+    lineCount: count('lineCount'),
+    totalLines: count('totalLines'),
+    firstLineRef: text('firstLineRef'),
+  };
+  const kept = Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v !== undefined)
+  ) as SalesDocumentBlockParams;
+  return Object.keys(kept).length > 0 ? kept : null;
+}
+
+/** What the gate enqueued on a `none` outcome (#3583), so a batch run can record it. */
+export interface SalesDocumentEnqueued {
+  readonly connectionId: string;
+  /** A `SalesDocumentKind`, typed `string` for the same import-free reason. */
+  readonly documentKind: string;
+  readonly idempotencyKey: string;
 }
 
 /**
@@ -206,9 +369,20 @@ export interface SalesDocumentBlock {
  * lets a later rule edit/deletion self-correct the persisted value instead of
  * outliving the decision that produced it. Absent on `indeterminate` because
  * that arm is never persisted at all.
+ *
+ * `enqueued` / `alreadyDocumented` (#3583) say WHY an outcome is `none`, for a
+ * batch run that has to record each order: a job was enqueued, or the order
+ * already carries a document so the block was suppressed. Both absent means
+ * nothing was due (an `auto-on-*` condition not met yet, or no candidate).
+ * Persistence ignores both; they are a report, not state.
  */
 export type SalesDocumentBlockOutcome =
-  | { kind: 'none'; matchedRuleId?: string }
+  | {
+      kind: 'none';
+      matchedRuleId?: string;
+      enqueued?: SalesDocumentEnqueued;
+      alreadyDocumented?: true;
+    }
   | { kind: 'blocked'; block: SalesDocumentBlock; matchedRuleId?: string }
   | { kind: 'indeterminate' };
 
@@ -228,7 +402,11 @@ export type SalesDocumentBlockOutcome =
  * deliberate edit here.
  */
 export const SalesDocumentAttentionReasonValues: readonly SalesDocumentGateBlockReason[] =
-  SalesDocumentGateBlockReasonValues.filter((reason) => reason !== 'trigger-model-manual');
+  SalesDocumentGateBlockReasonValues.filter(
+    // #3583: a batched order is waiting for its scheduled run, a configured
+    // workflow exactly like manual, not a fault to alarm on.
+    (reason) => reason !== 'trigger-model-manual' && reason !== 'trigger-model-batched',
+  );
 
 /**
  * Unresolved reasons that are the DEFAULT STATE of an install which never opted

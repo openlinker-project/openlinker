@@ -29,7 +29,7 @@ import { useCallback, useState } from 'react';
 import { ApiError } from '../../../shared/api/api-error';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { FulfillmentTask } from '../api/fulfillment.types';
-import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
+import { getMessages, useMessages } from '../../../shared/i18n';
 import { useUpdateFulfillmentAssignmentMutation } from './use-update-fulfillment-assignment-mutation';
 
 /** What a staffing control may change. `undefined` means "leave alone". */
@@ -56,23 +56,25 @@ export interface FulfillmentAssignmentRunner {
  * toast about it would talk over a page that is on its way out.
  */
 export function staffingFailureMessage(error: unknown, isMove: boolean): string {
+  const rowCopy = getMessages('fulfillment').assignPackingWork.row;
   if (error instanceof ApiError) {
-    if (error.isForbidden()) return ASSIGN_PACKING_WORK_COPY.row.moveForbidden;
-    if (error.isNotFound()) return ASSIGN_PACKING_WORK_COPY.row.moveNotFound;
-    if (error.isConflict()) return ASSIGN_PACKING_WORK_COPY.row.moveConflict;
+    if (error.isForbidden()) return rowCopy.moveForbidden;
+    if (error.isNotFound()) return rowCopy.moveNotFound;
+    if (error.isConflict()) return rowCopy.moveConflict;
     if (error.isServerError() || error.isNetworkError()) {
-      return ASSIGN_PACKING_WORK_COPY.row.moveUnknown;
+      return rowCopy.moveUnknown;
     }
     // A 4xx we do recognise as deterministic: the server refused, so nothing
     // changed and saying so is honest.
     return isMove
-      ? ASSIGN_PACKING_WORK_COPY.row.moveFailed
-      : ASSIGN_PACKING_WORK_COPY.row.selfServeFailed;
+      ? rowCopy.moveFailed
+      : rowCopy.selfServeFailed;
   }
-  return ASSIGN_PACKING_WORK_COPY.row.moveUnknown;
+  return rowCopy.moveUnknown;
 }
 
 export function useFulfillmentAssignmentRunner(): FulfillmentAssignmentRunner {
+  const rowCopy = useMessages('fulfillment').assignPackingWork.row;
   const mutation = useUpdateFulfillmentAssignmentMutation();
   const { showToast } = useToast();
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
@@ -85,9 +87,7 @@ export function useFulfillmentAssignmentRunner(): FulfillmentAssignmentRunner {
       // CALLER set, never guessed from the task's new state: a self-serve
       // toggle on an already-unassigned task could otherwise read as a move.
       const isMove = 'assignedToUserId' in change;
-      const successMessage = isMove
-        ? ASSIGN_PACKING_WORK_COPY.row.moveSucceeded
-        : ASSIGN_PACKING_WORK_COPY.row.selfServeUpdated;
+      const successMessage = isMove ? rowCopy.moveSucceeded : rowCopy.selfServeUpdated;
 
       mutate(
         { workId: task.id, expectedVersion: task.version, ...change },
@@ -104,7 +104,7 @@ export function useFulfillmentAssignmentRunner(): FulfillmentAssignmentRunner {
         }
       );
     },
-    [mutate, showToast]
+    [mutate, showToast, rowCopy]
   );
 
   return { busyTaskId, setAssignment };

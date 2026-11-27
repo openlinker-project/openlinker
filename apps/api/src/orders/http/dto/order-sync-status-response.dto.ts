@@ -6,8 +6,36 @@
  * @module apps/api/src/orders/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  OrderDeliveryRefusalReasonValues,
+  OrderDeliveryUpdateOutcomeValues,
+  type OrderDeliveryRefusalReason,
+  type OrderDeliveryUpdateOutcome,
+} from '@openlinker/core/orders';
 import { OrderSyncStatusFilterValues } from '@openlinker/core/orders';
 import { OrderSyncStatusFilter } from '@openlinker/core/orders';
+
+/**
+ * What the last attempt to carry a changed delivery point (pickup locker,
+ * shipping method) to a destination copy did (#4195).
+ */
+export class OrderDeliveryUpdateResponseDto {
+  @ApiProperty({ enum: OrderDeliveryUpdateOutcomeValues })
+  outcome!: OrderDeliveryUpdateOutcome;
+
+  @ApiPropertyOptional({
+    enum: OrderDeliveryRefusalReasonValues,
+    nullable: true,
+    description: 'Why the destination declined to edit its copy (outcome "refused" only)',
+  })
+  reason!: OrderDeliveryRefusalReason | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Operator-facing elaboration' })
+  detail!: string | null;
+
+  @ApiProperty({ description: 'When the relay was attempted (ISO 8601)' })
+  at!: string;
+}
 
 export class OrderSyncStatusResponseDto {
   @ApiProperty({ description: 'Destination connection ID' })
@@ -30,4 +58,11 @@ export class OrderSyncStatusResponseDto {
 
   @ApiPropertyOptional({ nullable: true, description: 'Error message if sync failed' })
   error!: string | null;
+
+  @ApiPropertyOptional({
+    type: OrderDeliveryUpdateResponseDto,
+    nullable: true,
+    description: 'Last delivery-point relay to this destination, absent when none was attempted',
+  })
+  deliveryUpdate!: OrderDeliveryUpdateResponseDto | null;
 }

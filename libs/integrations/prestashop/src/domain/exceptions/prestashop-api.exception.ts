@@ -25,9 +25,12 @@ export class PrestashopApiException extends Error {
     public readonly statusCode?: number,
     public readonly responseBody?: string,
     public readonly connectionId?: string,
-    public readonly retryAfterSeconds?: number
+    public readonly retryAfterSeconds?: number,
+    cause?: unknown
   ) {
-    super(message);
+    // `cause` is only set by a caller that re-wraps a lower failure so a
+    // classifier can still read the original status (#3984).
+    super(message, cause === undefined ? undefined : { cause });
     this.name = 'PrestashopApiException';
     Error.captureStackTrace(this, this.constructor);
   }

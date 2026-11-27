@@ -153,6 +153,8 @@ After the connection is saved, enable the capabilities you need:
 | `OrderProcessorManager` | Creates PrestaShop orders from marketplace order events |
 | `ProductPublisher` / `CategoryProvisioner` | Advanced: lets OL create/update products and categories directly in PrestaShop, for setups where PrestaShop is a *destination* catalog rather than the source. Most operators using PrestaShop as their master shop won't need these — skip unless you know you do. |
 
+**Where order sync starts.** When you enable `OrderSource`, choose where to start: new orders only (default), from a date, or all orders. You can change it later on the connection's **Orders** tab, and import older orders from there too. "From a date" needs the shop to allow filtering orders by `date_upd`; some shops refuse that, and OpenLinker then says so and asks you to use "new orders only" or "all orders" instead (see the Troubleshooting table).
+
 ## 4. Map categories to your marketplace
 
 With `ProductMaster` enabled, the connection detail page gains a **Category
@@ -506,6 +508,7 @@ and **Stock** resources (§1).
 |---|---|---|
 | "Configure webhooks" fails | Webservice key is missing **Modify (PUT)** / **Add (POST)** permission on **Configurations** | Edit the key's permissions in PS Admin → Advanced Parameters → Webservice and retry |
 | Test connection fails, but the key looks right | Webservice is disabled, or the key lacks **View (GET)** on a resource OL needs (products, orders, customers, carriers, categories, currencies, …) | Re-check the permission grid — tick the **View** column header to grant read on everything |
+| Choosing "From a date" fails with "does not allow filtering orders by `date_upd`" | The shop's webservice refuses `date_upd` as a filter field, so a date position cannot be found | Choose "New orders only" or "All orders" instead |
 | Orders fail with "no shipping methods available" | OpenLinker's cart-build step for that order didn't complete before order creation, so no shipping-cost sidecar row exists for the cart | Check the worker logs for the failed order's `marketplace.order.sync` job; the OL Dynamic carrier fails closed rather than silently charging zero |
 | Carrier picked is unexpected / wrong shipping charge on some orders | No explicit shipping-method mapping and no fallback carrier set, and the OL module isn't installed | Install the OL Dynamic Carrier module (§5), or set an explicit fallback carrier (§2) |
 | Order created without expected customer-group discounts/restrictions | `guestCustomerGroupId` unset, so OpenLinker uses PrestaShop group `2` | Set `guestCustomerGroupId` in the connection's **Config JSON** to your shop's actual guest group - see [Advanced connection settings](#advanced-connection-settings) |

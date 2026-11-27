@@ -1,4 +1,8 @@
+export { LoginPageCopyFieldValues } from './api/system.types';
 export type {
+  LoginPageCopyByLocale,
+  LoginPageCopyField,
+  LoginPageCopyOverrides,
   SystemConfig,
   DemoIntegrations,
   PosthogDemoIntegration,

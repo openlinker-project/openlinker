@@ -1,0 +1,365 @@
+{
+  "eparagonyConnectionConfig": {
+    "countryCode": "Użyj dwuliterowego kodu kraju, np. PL.",
+    "httpsUrl": "Musi to być prawidłowy adres URL https://.",
+    "pollTimeoutNotNumber": "Czas oczekiwania musi być liczbą milisekund.",
+    "pollTimeoutNotPositive": "Czas oczekiwania musi być większy od zera.",
+    "sellerAddressPartRequired": "Wymagane."
+  },
+  "eparagonyInvoiceCorrectionFlow": {
+    "addLine": "+ Dodaj pozycję",
+    "cancel": "Anuluj",
+    "clearanceRef": "Numer potwierdzenia <strong>{reference}</strong>",
+    "col": {
+      "lp": "Lp.",
+      "newPrice": "Nowa brutto",
+      "newQty": "Nowa ilość",
+      "remove": "Usuń"
+    },
+    "correcting": "Korygowany dokument: <strong>{reference}</strong>",
+    "emptyCell": "-",
+    "failed": "Nie udało się wystawić korekty",
+    "gridLinesRequired": "Zmień ilość lub cenę co najmniej jednej pozycji przed wystawieniem korekty.",
+    "issued": "Korekta wystawiona",
+    "issuedBody": "Dokument korygujący został przekazany do dostawcy.",
+    "issuedOn": "Wystawiono <strong>{date}</strong>",
+    "lineDeltaRequired": "Każda pozycja musi mieć nową ilość lub nową cenę.",
+    "lineNum": "Numer pozycji {n}",
+    "linesRequired": "Wymagana jest co najmniej jedna pozycja z numerem pozycji.",
+    "loadingLines": "Wczytywanie pozycji faktury…",
+    "newPrice": "Nowa cena brutto, pozycja {n}",
+    "newQty": "Nowa ilość, pozycja {n}",
+    "note": "Dokument korygujący zmienia ilość lub cenę w każdej pozycji. Dostawca przesyła go w Twoim imieniu, a OpenLinker śledzi jego status.",
+    "providerTag": "eparagony.pl · slot",
+    "removeLine": "Usuń pozycję {n}",
+    "submit": "Wystaw korektę",
+    "submitting": "Wystawianie…",
+    "title": "Wystaw korektę"
+  },
+  "eparagonyInvoiceDetailSection": {
+    "cannotRetryBody": "API dostawcy nie ma wywołania, które uruchamia lub ponawia przesłanie. Dokument jest u dostawcy i tylko on może go przekazać dalej.",
+    "cannotRetryTitle": "Oczekiwanie na dostawcę - OpenLinker nie może tego wymusić",
+    "open": "Otwórz",
+    "title": "Dokument u dostawcy",
+    "visualisation": "Wizualizacja faktury",
+    "visualisationAria": "Otwórz wizualizację faktury (otwiera się w nowej karcie)",
+    "visualisationNote": "Widok HTML opublikowany przez dostawcę, nie PDF."
+  },
+  "eparagonySellerSection": {
+    "address": {
+      "apartment": {
+        "label": "Lokal"
+      },
+      "city": {
+        "label": "Miejscowość",
+        "placeholder": "Warszawa"
+      },
+      "country": {
+        "label": "Kraj",
+        "placeholder": "PL"
+      },
+      "description": "Na fakturze opcjonalny. Zostaw puste albo uzupełnij wszystkie pola oprócz lokalu.",
+      "legend": "Adres sprzedawcy",
+      "number": {
+        "label": "Budynek",
+        "placeholder": "51"
+      },
+      "postalCode": {
+        "label": "Kod pocztowy",
+        "placeholder": "00-838"
+      },
+      "street": {
+        "label": "Ulica",
+        "placeholder": "Prosta"
+      }
+    },
+    "help": "eparagony.pl drukuje te dane jako dane sprzedawcy na każdej fakturze wystawionej przez to połączenie.",
+    "label": "Sprzedawca na fakturach:",
+    "missingTin": "Każda faktura z tego połączenia jest odrzucana, dopóki nie dodasz NIP sprzedawcy.",
+    "name": {
+      "description": "Nazwa zgodna z rejestrem, np. pełna nazwa firmy.",
+      "label": "Nazwa sprzedawcy"
+    },
+    "readiness": {
+      "complete": "Faktury i korekty mają wszystko, czego potrzebują.",
+      "invoicesOnly": "Można wystawiać faktury. Korekta wymaga też nazwy sprzedawcy i pełnego adresu."
+    },
+    "summary": {
+      "complete": "NIP {tin}, komplet danych",
+      "invoicesOnly": "NIP {tin}, niekompletne dla korekt",
+      "missingTin": "Brak NIP, każda faktura jest odrzucana",
+      "withProblems": {
+        "few": "{summary} ({n} problemy do poprawienia)",
+        "many": "{summary} ({n} problemów do poprawienia)",
+        "one": "{summary} ({n} problem do poprawienia)",
+        "other": "{summary} ({n} problemu do poprawienia)"
+      }
+    },
+    "tin": {
+      "description": "Musi to być ten sam NIP co na koncie eparagony.pl. eparagony.pl odrzuca każdą fakturę z innym numerem.",
+      "label": "NIP"
+    }
+  },
+  "eparagonySetupForm": {
+    "account": {
+      "clientId": {
+        "description": "Wydawany przez eparagony.pl po zatwierdzeniu integracji.",
+        "label": "Client ID"
+      },
+      "clientSecret": {
+        "description": "Bezpiecznie przechowywany na serwerze i po zapisaniu nigdy więcej nie wyświetlany.",
+        "label": "Client secret"
+      },
+      "environment": {
+        "description": "Do sandboxa nie jest podłączone urządzenie fiskalne, więc nic nie jest naprawdę drukowane ani rejestrowane.",
+        "label": "Środowisko",
+        "production": "Produkcja - https://api.eparagony.pl",
+        "sandbox": "Sandbox - https://sandbox.eparagony.pl"
+      },
+      "integrationId": {
+        "description": "W formacie integration:secret. Zostaw puste, jeśli go nie otrzymano.",
+        "label": "ID integracji (opcjonalnie)",
+        "placeholder": "openlinker:abc123"
+      },
+      "name": {
+        "description": "Etykieta identyfikująca to konto eparagony.pl w OpenLinker.",
+        "label": "Nazwa połączenia",
+        "placeholder": "Moje konto eparagony.pl"
+      },
+      "posId": {
+        "description": "Identyfikator kasy lub stanowiska, który eparagony.pl umieszcza na każdym dokumencie.",
+        "label": "ID POS"
+      },
+      "title": "Konto eparagony.pl"
+    },
+    "addressSummary": "Uzupełnij adres sprzedawcy albo zostaw go pustego.",
+    "backLink": "Połączenia",
+    "bothDocumentsNote": "Zamówienie otrzymuje jeden dokument, nigdy oba. Po połączeniu dodaj w Ustawienia → Dokumenty sprzedaży regułę określającą, które zamówienia dostają paragon, a które fakturę. Do tego czasu zamówienia czekają, zamiast dostać zgadnięty dokument.",
+    "connect": "Połącz eparagony.pl",
+    "connecting": "Łączenie…",
+    "created": {
+      "body": "Utworzono połączenie eparagony.pl „{name}”.",
+      "bodyWithSeller": "Utworzono połączenie eparagony.pl „{name}” z danymi sprzedawcy potrzebnymi do faktur.",
+      "title": "Połączenie utworzone"
+    },
+    "documentChoice": {
+      "fiscalization": {
+        "help": "Rejestruje sprzedaż na Twojej własnej drukarce fiskalnej przez eparagony.pl.",
+        "label": "Fiskalne e-paragony"
+      },
+      "help": "Wybierz jedno lub oba. Możesz to później zmienić na stronie szczegółów połączenia.",
+      "invoicing": {
+        "help": "Wystawia faktury VAT przez eparagony.pl. eparagony.pl może też przesyłać je dalej do KSeF.",
+        "label": "Faktury"
+      },
+      "legend": "Co ma wystawiać to połączenie?"
+    },
+    "done": "Gotowe",
+    "nextSteps": {
+      "numbering": "Skonfiguruj serię numeracji faktur. Bez niej wystawianie faktury zatrzymuje się i prosi o serię.",
+      "numberingLink": "Skonfiguruj numerację",
+      "rule": "Dodaj regułę dokumentów sprzedaży: które zamówienia dostają paragon, a które fakturę.",
+      "ruleLink": "Otwórz dokumenty sprzedaży",
+      "title": "Przed pierwszą fakturą"
+    },
+    "receipts": {
+      "checklist": {
+        "askServicer": "Zapytaj serwisanta",
+        "device": "<strong>Urządzenie skonfigurowane do e-paragonów</strong> przez serwisanta drukarki.",
+        "intro": "eparagony.pl rejestruje sprzedaż na Twojej własnej drukarce fiskalnej. Najpierw trzeba przygotować trzy rzeczy, zwykle robi to serwisant drukarki:",
+        "printer": "<strong>Drukarka fiskalna online</strong> - Posnet, Novitus lub Elzab - podłączona do internetu.",
+        "software": "<strong>Oprogramowanie eparagony.pl do sterowania drukarką</strong> uruchomione na komputerze obok drukarki.",
+        "title": "Zanim podłączysz drukarkę",
+        "yourEquipment": "Twój sprzęt"
+      },
+      "title": "Fiskalne e-paragony"
+    },
+    "seller": {
+      "address": {
+        "apartment": {
+          "label": "Lokal"
+        },
+        "city": {
+          "label": "Miejscowość",
+          "placeholder": "Warszawa"
+        },
+        "country": {
+          "label": "Kraj",
+          "placeholder": "PL"
+        },
+        "description": "Faktury działają bez niego; korekta go wymaga. Zostaw puste albo uzupełnij wszystkie pola oprócz lokalu.",
+        "legend": "Adres sprzedawcy (opcjonalnie)",
+        "number": {
+          "label": "Budynek",
+          "placeholder": "51"
+        },
+        "postalCode": {
+          "label": "Kod pocztowy",
+          "placeholder": "00-838"
+        },
+        "street": {
+          "label": "Ulica",
+          "placeholder": "Prosta"
+        }
+      },
+      "help": "eparagony.pl drukuje te dane jako dane sprzedawcy na każdej fakturze wystawionej przez to połączenie.",
+      "hub": {
+        "label": "Przesyłaj faktury dalej do KSeF",
+        "off": "Wyłączone: faktury są wystawiane poza KSeF i jest to pełny wynik. Włącz, gdy eparagony.pl może przesyłać faktury do KSeF w Twoim imieniu.",
+        "on": "Przed pierwszą fakturą: nadaj eparagony.pl uprawnienie do wystawiania faktur w aplikacji podatnika KSeF i włącz KSeF w panel.eparagony.pl. Bez obu tych kroków eparagony.pl odrzuci fakturę."
+      },
+      "name": {
+        "description": "Nazwa zgodna z rejestrem. Faktury działają bez niej; korekta jej wymaga.",
+        "label": "Nazwa sprzedawcy (opcjonalnie)"
+      },
+      "tin": {
+        "description": "Musi to być ten sam NIP co na koncie eparagony.pl. eparagony.pl odrzuca każdą fakturę z innym numerem.",
+        "label": "NIP",
+        "placeholder": "1234567890"
+      },
+      "title": "Sprzedawca na fakturach"
+    },
+    "serverFieldError": "{path}: {message}",
+    "test": {
+      "failed": "Test połączenia nie powiódł się",
+      "latency": " ({ms} ms)",
+      "passed": "Test połączenia zakończony powodzeniem",
+      "test": "Przetestuj połączenie",
+      "testing": "Testowanie…",
+      "unableToTest": "Nie udało się przetestować połączenia"
+    },
+    "unableToCreate": "Nie udało się utworzyć połączenia"
+  },
+  "eparagonySetupPage": {
+    "description": "OpenLinker przekazuje sprzedaż do eparagony.pl, które wystawia fiskalny e-paragon na Twojej własnej drukarce, fakturę albo oba dokumenty. Samo połączenie niczego nie wystawia.",
+    "eyebrow": "Integracje",
+    "guidedSetup": "Kreator konfiguracji",
+    "title": "Połącz eparagony.pl"
+  },
+  "eparagonySetupRoute": {
+    "crumb": "Połącz eparagony.pl"
+  },
+  "eparagonySetupSchema": {
+    "addressPartRequired": "Wymagane.",
+    "clientIdRequired": "Client ID jest wymagany",
+    "clientSecretRequired": "Client secret jest wymagany",
+    "countryCode": "Użyj dwuliterowego kodu, np. PL.",
+    "documentChoiceRequired": "Wybierz co najmniej jedno: e-paragony, faktury lub oba.",
+    "integrationIdShape": "Musi mieć format integration:secret, np. openlinker:abc123",
+    "merchantTinRequired": "NIP jest wymagany do wystawiania faktur",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "posIdRequired": "ID POS jest wymagane"
+  },
+  "eparagonyStructuredSection": {
+    "deviceNumber": {
+      "description": "Tylko do diagnostyki. Nigdy nie jest wysyłany na paragonie - eparagony.pl samo kieruje do urządzenia. Po uzupełnieniu „Przetestuj połączenie” pokaże też, czy urządzenie było widziane jako aktywne.",
+      "label": "Numer urządzenia fiskalnego",
+      "placeholder": "ABC123456890"
+    },
+    "diagnostics": {
+      "groupLabel": "Diagnostyka i czasy:",
+      "summaryCustomised": "Dostosowane",
+      "summaryDefaults": "Domyślne"
+    },
+    "fallback": {
+      "groupLabel": "Zapasowa stawka VAT:",
+      "label": "Zapasowy slot urządzenia",
+      "notSetOption": "Nie ustawiono - odrzucaj pozycję bez stawki (zalecane)",
+      "slotOption": "Slot {slot}",
+      "summaryNotSet": "Nie ustawiono - pozycja bez stawki jest odrzucana",
+      "summarySlot": "Slot {slot} - używany, gdy pozycja nie ma stawki",
+      "taxRatesNote": "Znaczenie każdego slotu w Twoim urządzeniu określa tabela <code>taxRates</code>, która nie ma tu pola - to programowanie urządzenia, a nie stawka VAT produktu. Edytuj ją poniżej w „Pokaż surowy JSON konfiguracji”. Jeśli jej nie ustawisz, eparagony.pl przyjmie standardowe polskie sloty.",
+      "unrecognised": "Zapisana wartość ({value}) nie jest slotem udostępnianym przez to urządzenie fiskalne, więc zapis tego połączenia zostanie odrzucony, dopóki nie wybierzesz slotu poniżej."
+    },
+    "notRecognised": "{value} (nierozpoznane)",
+    "overrides": {
+      "apiHost": {
+        "label": "Host API",
+        "placeholder": "https://sandbox.eparagony.pl"
+      },
+      "authHost": {
+        "label": "Host logowania",
+        "placeholder": "https://login.sandbox.eparagony.pl"
+      },
+      "description": "Tylko do testów. Zostaw puste, aby o hoście decydowało środowisko wybrane podczas konfiguracji. Musi używać https.",
+      "groupLabel": "Nadpisania testowe:",
+      "summaryDefault": "Używane są hosty środowiska",
+      "summaryOverriding": "Nadpisano hosty środowiska"
+    },
+    "paymentForm": {
+      "description": "Jak płatność jest opisana na paragonie. Konfigurować można tylko etykietę - kwota to zawsze suma sprzedaży. Domyślnie {default}, czyli rzetelny opis opłaconego z góry zamówienia internetowego.",
+      "glosses": {
+        "bankTransfer": "przelew bankowy",
+        "card": "karta",
+        "cash": "gotówka",
+        "cheque": "czek",
+        "credit": "kredyt",
+        "foreignCurrency": "waluta obca",
+        "mobile": "płatność mobilna",
+        "other": "inna",
+        "voucher": "bon"
+      },
+      "label": "Forma płatności na paragonie",
+      "optionLabel": "{vendor} ({gloss})",
+      "unrecognised": "Zapisana wartość ({value}) nie jest akceptowana przez eparagony.pl, więc zapis tego połączenia zostanie odrzucony, dopóki nie wybierzesz wartości poniżej.",
+      "useDefault": "Użyj domyślnej ({default})"
+    },
+    "paymentName": {
+      "description": "Opcjonalny dowolny tekst opisujący płatność - np. system kartowy lub operator płatności. Tylko informacyjny.",
+      "label": "Nazwa płatności",
+      "placeholder": "Visa"
+    },
+    "pollTimeout": {
+      "description": "Jak długo czekać na zakończenie pracy urządzenia fiskalnego, zanim wynik zostanie zapisany jako nieznany. Domyślnie {receiptDefault}. Wartości spoza zakresu {min}-{max} są przyjmowane, a następnie sprowadzane do tego zakresu.",
+      "descriptionWithInvoicing": "Jak długo czekać na zakończenie pracy urządzenia fiskalnego lub dostawcy faktur, zanim wynik zostanie zapisany jako nieznany. Domyślnie {receiptDefault} dla e-paragonów i {invoicingDefault} dla e-faktur. Wartości spoza zakresu {min}-{max} są przyjmowane, a następnie sprowadzane do tego zakresu.",
+      "label": "Czas oczekiwania na urządzenie (ms)"
+    },
+    "print": {
+      "description": "Prosi usługę drukowania eparagony.pl o dodatkowe wydrukowanie papierowego paragonu. Przy sprzedaży internetowej nie ma lady ani nikogo, kto przy niej czeka, więc domyślnie paragon nie jest drukowany. „Nieustawione” i „Nie drukuj” dają ten sam paragon - wybranie „Nie drukuj” zapisuje, że była to świadoma decyzja.",
+      "label": "Paragon papierowy",
+      "options": {
+        "doNotPrint": "Nie drukuj",
+        "notSet": "Nieustawione",
+        "print": "Drukuj"
+      },
+      "unrecognised": "Zapisana wartość ({value}) nie jest wartością true ani false, więc zapis tego połączenia zostanie odrzucony, dopóki nie wybierzesz wartości poniżej."
+    },
+    "seconds": "{n} s",
+    "withProblems": {
+      "few": "{summary} - {n} problemy do poprawienia",
+      "many": "{summary} - {n} problemów do poprawienia",
+      "one": "{summary} - {n} problem do poprawienia",
+      "other": "{summary} - {n} problemu do poprawienia"
+    }
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "Fiskalizacja",
+      "description": "Wystawiaj polskie fiskalne e-paragony na własnej drukarce, faktury albo oba dokumenty."
+    }
+  },
+  "taxFallback": {
+    "fieldDescription": "Zostaw puste. Ustawienie jest używane tylko dla pozycji zamówienia, która przychodzi bez żadnej stawki VAT, a puste pole sprawia, że OpenLinker odrzuca taką pozycję zamiast zgadywać.",
+    "hazardNotes": {
+      "intendedUse": {
+        "caveat": "Odrzuconą rejestrację można naprawić. Wystawionego paragonu nie.",
+        "term": "Jak to ma działać",
+        "text": "Stawka należy do produktu w Twoim sklepie i trafia razem z pozycją zamówienia. Puste pole to zamierzona konfiguracja: pozycja bez stawki jest wtedy odrzucana z błędem wskazującym zamówienie, a stawkę poprawiasz w katalogu."
+      },
+      "risk": {
+        "term": "Dlaczego ustawienie jest ryzykowne",
+        "text": "Gdy slot jest ustawiony, taka pozycja zostaje zarejestrowana z tą stawką zamiast odrzucona. Paragon fiskalny trafia do kupującego i do raportu dobowego i nie można go wycofać, więc zły slot oznacza błędną kwotę podatku na dokumencie, za który odpowiadasz."
+      },
+      "whatThisIs": {
+        "term": "Co to jest",
+        "text": "Slot Twojego własnego urządzenia fiskalnego (od A do G). Służy tylko do jednego: pozycji zamówienia, która trafia do tego połączenia bez stawki VAT. To Ty wskazujesz slot urządzenia - OpenLinker nigdy nie wymyśla stawki."
+      },
+      "whenItFires": {
+        "caveat": "W standardowej instalacji jest wyłączone, więc to ustawienie zapasowe może zadziałać.",
+        "term": "Kiedy faktycznie działa",
+        "text": "Tylko dla pozycji z pustą stawką. OpenLinker może odrzucać takie pozycje, zanim dotrą do tego połączenia, ale ta ścisła kontrola jest wyłączona, dopóki ktoś jej nie włączy ({envVar})."
+      }
+    },
+    "infotipLabel": "Co robi zapasowa stawka VAT i dlaczego jest ryzykowna"
+  }
+}

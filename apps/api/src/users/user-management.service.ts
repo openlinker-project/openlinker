@@ -201,6 +201,18 @@ export class UserManagementService implements IUserManagementService {
     this.logger.log(`Pack station label set: ${userId} -> ${normalised ?? '(cleared)'}`);
   }
 
+  async getDisplayNames(userIds: readonly string[]): Promise<Map<string, string>> {
+    // UserRepositoryPort has no by-ids read; callers pass one page's distinct
+    // actors (at most a page size), so this is a bounded set of PK lookups.
+    const distinct = [...new Set(userIds)];
+    const users = await Promise.all(distinct.map((id) => this.userRepository.findById(id)));
+    const names = new Map<string, string>();
+    users.forEach((user) => {
+      if (user !== null) names.set(user.id, user.displayName?.trim() || user.username);
+    });
+    return names;
+  }
+
   async recordBenchActivity(userId: string): Promise<void> {
     // Best-effort, by the interface's own contract. No `requireUser` read
     // first: this runs on the bench's hot paths, the write is already

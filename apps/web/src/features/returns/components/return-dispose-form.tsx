@@ -24,7 +24,7 @@
  * @module apps/web/src/features/returns/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { z } from 'zod/v4';
 
@@ -35,9 +35,10 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Textarea } from '../../../shared/ui/textarea';
-import { RETURN_DISPOSE_COPY } from '../lib/return-custody.copy';
+import { BundleReturnPicker } from './bundle-return-picker';
+import { usePlural, useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { outstandingToDispose } from '../lib/return-line-quantities';
-import { describeRestockTarget, isRestockAvailable } from '../lib/restock-target-copy';
+import { describeRestockTarget, isRestockAvailable } from '../lib/restock-target';
 import type { ReturnDisposition, ReturnLine, ReturnRestockTarget } from '../api/returns.types';
 
 interface ReturnDisposeFormProps {
@@ -54,17 +55,30 @@ interface ReturnDisposeFormProps {
   restockBlocked: boolean;
   pending: boolean;
   error: string | null;
-  onSubmit: (input: { quantity: number; disposition: ReturnDisposition; note?: string }) => void;
+  /**
+   * Present only where the line may be a bundle (#3933): the picker then asks the
+   * server whether it is and, if so, which components came back. Omitted by
+   * callers that have no return to ask about.
+   */
+  bundleScope?: { returnId: string; currency: string | null };
+  onSubmit: (input: {
+    quantity: number;
+    disposition: ReturnDisposition;
+    note?: string;
+    returnedVariantIds?: string[];
+  }) => void;
   onCancel: () => void;
 }
 
-function buildSchema(outstanding: number) {
+type DisposeCopy = ResolvedCopy<Messages['returns']>['custody']['dispose'];
+
+function createDisposeSchema(copy: DisposeCopy, outstanding: number, overDisposition: string) {
   return z.object({
     quantity: z
-      .number({ error: RETURN_DISPOSE_COPY.nonPositive })
-      .int(RETURN_DISPOSE_COPY.notWholeUnits)
-      .min(1, RETURN_DISPOSE_COPY.nonPositive)
-      .max(outstanding, RETURN_DISPOSE_COPY.overDisposition.replace('{n}', String(outstanding))),
+      .number({ error: copy.nonPositive })
+      .int(copy.notWholeUnits)
+      .min(1, copy.nonPositive)
+      .max(outstanding, overDisposition),
     disposition: z.enum(['restock', 'scrap']),
     note: z.string().max(500).optional(),
   });
@@ -79,10 +93,18 @@ export function ReturnDisposeForm({
   restockBlocked,
   pending,
   error,
+  bundleScope,
   onSubmit,
   onCancel,
 }: ReturnDisposeFormProps): ReactElement {
+  const copy = useMessages('returns').custody.dispose;
+  const plural = usePlural();
   const outstanding = outstandingToDispose(line);
+  const overDisposition = plural(outstanding, copy.overDisposition);
+  const schema = useMemo(
+    () => createDisposeSchema(copy, outstanding, overDisposition),
+    [copy, outstanding, overDisposition]
+  );
   // Three independent reasons a restock cannot land, kept separate because they
   // are different facts with different remedies: no single master is a
   // configuration problem, an orphan is a matching problem, and an outstanding
@@ -97,7 +119,7 @@ export function ReturnDisposeForm({
     setValue,
     watch,
   } = useForm<DisposeFormValues>({
-    resolver: zodResolver(buildSchema(outstanding)),
+    resolver: zodResolver(schema),
     defaultValues: {
       quantity: outstanding,
       // Never defaults to an option that cannot be submitted.
@@ -107,6 +129,14 @@ export function ReturnDisposeForm({
   });
 
   const disposition = watch('disposition');
+  const watchedQuantity = watch('quantity');
+  const [returnedVariantIds, setReturnedVariantIds] = useState<string[] | undefined>(undefined);
+  const [bundleBlocked, setBundleBlocked] = useState(false);
+  const onSelectionChange = useCallback(
+    (ids: string[] | undefined) => setReturnedVariantIds(ids),
+    []
+  );
+  const onBlockedChange = useCallback((blocked: boolean) => setBundleBlocked(blocked), []);
 
   useEffect(() => {
     reset({
@@ -117,10 +147,17 @@ export function ReturnDisposeForm({
   }, [outstanding, reset, restockPossible]);
 
   const submit: SubmitHandler<DisposeFormValues> = (values) => {
+    if (values.disposition === 'restock' && bundleBlocked) {
+      return;
+    }
     onSubmit({
       quantity: values.quantity,
       disposition: values.disposition,
       note: values.note,
+      // Only a restock reads the selection; a scrap writes off the whole line.
+      ...(values.disposition === 'restock' && returnedVariantIds !== undefined
+        ? { returnedVariantIds }
+        : {}),
     });
   };
 
@@ -143,13 +180,13 @@ export function ReturnDisposeForm({
         void handleSubmit(submit)(event);
       }}
     >
-      <FormErrorSummary errors={messages} title={RETURN_DISPOSE_COPY.heading} />
+      <FormErrorSummary errors={messages} title={copy.heading} />
 
       <fieldset className="return-custody-form__fields" disabled={pending}>
         <FormField
-          description={RETURN_DISPOSE_COPY.quantityHint}
+          description={copy.quantityHint}
           error={errors.quantity?.message}
-          label={RETURN_DISPOSE_COPY.quantityLabel}
+          label={copy.quantityLabel}
           name="quantity"
         >
           <Input
@@ -164,7 +201,7 @@ export function ReturnDisposeForm({
 
         <div className="return-custody-form__disposition">
           <span className="form-field__label" id="dispose-disposition-label">
-            {RETURN_DISPOSE_COPY.dispositionLabel}
+            {copy.dispositionLabel}
           </span>
           <SegmentedControl
             aria-labelledby="dispose-disposition-label"
@@ -172,10 +209,10 @@ export function ReturnDisposeForm({
             options={[
               {
                 value: 'restock' as const,
-                label: RETURN_DISPOSE_COPY.restockLabel,
+                label: copy.restockLabel,
                 disabled: !restockPossible,
               },
-              { value: 'scrap' as const, label: RETURN_DISPOSE_COPY.scrapLabel },
+              { value: 'scrap' as const, label: copy.scrapLabel },
             ]}
             value={disposition}
           />
@@ -185,8 +222,8 @@ export function ReturnDisposeForm({
               this is the one thing an operator gets wrong, per § 5.3. */}
           <p className="return-custody-form__help text-muted">
             {disposition === 'restock'
-              ? RETURN_DISPOSE_COPY.restockHelp
-              : RETURN_DISPOSE_COPY.scrapHelp}
+              ? copy.restockHelp
+              : copy.scrapHelp}
           </p>
 
           {/* Under `restock`, this NAMES the destination. When restock is
@@ -207,27 +244,38 @@ export function ReturnDisposeForm({
             </p>
           ) : null}
 
+          {bundleScope !== undefined && disposition === 'restock' && restockPossible ? (
+            <BundleReturnPicker
+              currency={bundleScope.currency}
+              lineId={line.id}
+              onBlockedChange={onBlockedChange}
+              onSelectionChange={onSelectionChange}
+              quantity={Number.isFinite(watchedQuantity) ? watchedQuantity : 1}
+              returnId={bundleScope.returnId}
+            />
+          ) : null}
+
           {/* Stated up front, not discovered by submitting into a 409. */}
-          {isOrphan ? <Alert tone="warning">{RETURN_DISPOSE_COPY.orphanBlocked}</Alert> : null}
+          {isOrphan ? <Alert tone="warning">{copy.orphanBlocked}</Alert> : null}
           {restockBlocked && !isOrphan ? (
-            <Alert tone="warning">{RETURN_DISPOSE_COPY.awaitingAttestation}</Alert>
+            <Alert tone="warning">{copy.awaitingAttestation}</Alert>
           ) : null}
         </div>
 
-        <FormField error={errors.note?.message} label={RETURN_DISPOSE_COPY.noteLabel} name="note">
+        <FormField error={errors.note?.message} label={copy.noteLabel} name="note">
           <Textarea
-            placeholder={RETURN_DISPOSE_COPY.notePlaceholder}
+            placeholder={copy.notePlaceholder}
             rows={2}
             {...register('note')}
           />
         </FormField>
 
         <div className="return-custody-form__actions">
-          <Button type="submit">
-            {pending ? RETURN_DISPOSE_COPY.pending : RETURN_DISPOSE_COPY.submit}
+          <Button disabled={disposition === 'restock' && bundleBlocked} type="submit">
+            {pending ? copy.pending : copy.submit}
           </Button>
           <Button onClick={onCancel} tone="secondary" type="button">
-            {RETURN_DISPOSE_COPY.cancel}
+            {copy.cancel}
           </Button>
         </div>
       </fieldset>

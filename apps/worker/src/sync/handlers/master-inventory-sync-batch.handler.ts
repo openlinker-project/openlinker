@@ -80,7 +80,8 @@ export class MasterInventorySyncBatchHandler implements SyncJobHandler {
     try {
       result = await this.masterInventorySync.syncFromMasterByExternalIds(
         job.connectionId,
-        externalIds
+        externalIds,
+        { syncRunId: this.readSyncRunId(job) }
       );
     } catch (error) {
       // Only a whole-page failure reaches here - resolving the adapter, i.e. a
@@ -198,5 +199,14 @@ export class MasterInventorySyncBatchHandler implements SyncJobHandler {
       );
     }
     return { schemaVersion: 1, externalIds };
+  }
+
+  /**
+   * The sweep cycle this batch belongs to (#4062), or the job's own id when
+   * the batch was queued before the payload carried one.
+   */
+  private readSyncRunId(job: SyncJob): string {
+    const payload = job.payload as unknown as Partial<MasterInventorySyncBatchPayloadV1> | null;
+    return typeof payload?.syncRunId === 'string' && payload.syncRunId !== '' ? payload.syncRunId : job.id;
   }
 }

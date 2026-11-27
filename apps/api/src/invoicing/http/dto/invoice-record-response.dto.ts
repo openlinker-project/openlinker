@@ -89,6 +89,14 @@ export class InvoiceRecordResponseDto {
   @ApiProperty({ description: 'Authority-assigned clearance reference', nullable: true })
   clearanceReference!: string | null;
 
+  @ApiProperty({
+    description:
+      'Operator-facing clearance diagnostic (e.g. the authority rejection reason); ' +
+      'null unless a rejection detail was captured (#1582)',
+    nullable: true,
+  })
+  clearanceDetail!: string | null;
+
   @ApiProperty({ description: 'URL of the rendered document PDF', nullable: true })
   pdfUrl!: string | null;
 
@@ -183,6 +191,7 @@ export class InvoiceRecordResponseDto {
     dto.warehouseReleaseNumber = record.warehouseReleaseNumber;
     dto.regulatoryStatus = record.regulatoryStatus;
     dto.clearanceReference = record.clearanceReference;
+    dto.clearanceDetail = record.clearanceDetail;
     dto.pdfUrl = record.pdfUrl;
     dto.failureMode = record.failureMode;
     dto.failureCode = record.failureCode;

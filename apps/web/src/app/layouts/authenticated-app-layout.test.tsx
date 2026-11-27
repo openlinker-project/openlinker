@@ -70,7 +70,7 @@ function demoModeApiClient(demoMode: boolean): ApiClient {
 }
 
 const indexCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Dashboard' },
+  crumb: { group: 'operations', title: 'Dashboard' },
 };
 
 function renderLayout(
@@ -104,7 +104,7 @@ function renderLayout(
 
   render(
     <ThemeProvider>
-      <LocaleProvider>
+      <LocaleProvider locale="en">
         <SessionProvider adapter={adapter}>
           <ToastProvider>
             <ApiClientProvider client={options?.apiClient ?? createMockApiClient()}>

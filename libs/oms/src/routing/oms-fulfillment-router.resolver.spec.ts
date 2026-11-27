@@ -8,6 +8,7 @@ import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { IInventoryQueryService, ILocationService } from '@openlinker/core/inventory';
 
 import { OMS_PLATFORM_TYPE } from '../oms.constants';
+import { HOLDER_CANNOT_EXECUTE_REASON } from './evaluate-routing';
 import { createOmsFulfillmentRouterResolver } from './oms-fulfillment-router.resolver';
 import type { RoutingRuleSourcePort } from './routing-rule-source.port';
 
@@ -24,7 +25,7 @@ function build(connections: Pick<ConnectionPort, 'get'>) {
 describe('createOmsFulfillmentRouterResolver', () => {
   it('returns a router for an OMS connection', async () => {
     const resolver = build({
-      get: jest.fn().mockResolvedValue({ id: 'c1', platformType: OMS_PLATFORM_TYPE }),
+      get: jest.fn().mockResolvedValue({ id: 'c1', platformType: OMS_PLATFORM_TYPE, enabledCapabilities: ['FulfillmentExecutor'] }),
     });
 
     const router = await resolver.resolve('c1');
@@ -61,7 +62,7 @@ describe('createOmsFulfillmentRouterResolver', () => {
     const rules = { listActiveRules: jest.fn().mockResolvedValue([]) } as RoutingRuleSourcePort;
     const resolver = createOmsFulfillmentRouterResolver({
       connections: {
-        get: jest.fn().mockResolvedValue({ id: 'c3', platformType: OMS_PLATFORM_TYPE }),
+        get: jest.fn().mockResolvedValue({ id: 'c3', platformType: OMS_PLATFORM_TYPE, enabledCapabilities: ['FulfillmentExecutor'] }),
       } as unknown as ConnectionPort,
       rules,
       locations: {
@@ -69,6 +70,7 @@ describe('createOmsFulfillmentRouterResolver', () => {
       } as unknown as ILocationService,
       inventory: {
         listInventoryItems: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+        listPublishedReservedByLocation: jest.fn().mockResolvedValue([]),
       } as unknown as IInventoryQueryService,
       works: {
         listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
@@ -85,5 +87,49 @@ describe('createOmsFulfillmentRouterResolver', () => {
 
     // The ruleset is read for THIS connection, never for a fixed or default one.
     expect(rules.listActiveRules).toHaveBeenCalledWith('c3', expect.any(Date));
+  });
+
+  it('should still return a router, which refuses every line, when FulfillmentExecutor is not enabled', async () => {
+    // #3476 — returning null would mirror the order to every product master;
+    // the router instead reports every line unfulfillable with a named reason,
+    // so the order is held and re-routed once the capability is enabled.
+    const resolver = createOmsFulfillmentRouterResolver({
+      connections: {
+        get: jest
+          .fn()
+          .mockResolvedValue({ id: 'c4', platformType: OMS_PLATFORM_TYPE, enabledCapabilities: [] }),
+      } as unknown as ConnectionPort,
+      rules: { listActiveRules: jest.fn().mockResolvedValue([]) } as RoutingRuleSourcePort,
+      locations: {
+        listLocations: jest.fn().mockResolvedValue({
+          items: [{ id: 'loc-a', countryIso2: 'PL', postcode: '00-001' }],
+          total: 1,
+        }),
+      } as unknown as ILocationService,
+      inventory: {
+        listInventoryItems: jest.fn().mockResolvedValue({
+          items: [{ item: { id: 'inv-1', locationId: 'loc-a', availableQuantity: 10 } }],
+          total: 1,
+        }),
+        listPublishedReservedByLocation: jest.fn().mockResolvedValue([]),
+      } as unknown as IInventoryQueryService,
+      works: {
+        listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as IFulfillmentWorkQueryService,
+    });
+
+    const router = await resolver.resolve('c4');
+    const evaluation = await router?.evaluate({
+      orderId: 'ol_order_1',
+      lines: [{ orderLineId: 'line-1', productVariantId: 'ol_variant_1', quantity: 1 }],
+      shipTo: { mode: 'plain', countryIso2: 'PL', postalCode: '00-001', city: 'Warszawa' },
+      requestedDeliveryMethod: null,
+    });
+
+    expect(router).not.toBeNull();
+    expect(evaluation?.candidates).toEqual([]);
+    expect(evaluation?.unfulfillable).toEqual([
+      expect.objectContaining({ orderLineId: 'line-1', reason: HOLDER_CANNOT_EXECUTE_REASON }),
+    ]);
   });
 });

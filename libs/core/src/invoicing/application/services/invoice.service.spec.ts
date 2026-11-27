@@ -25,6 +25,7 @@ import { MissingNumberingSeriesException } from '../../domain/exceptions/missing
 import { OrderAlreadyInvoicedException } from '../../domain/exceptions/order-already-invoiced.exception';
 import { OrderAlreadyHasFiscalReceiptException } from '../../domain/exceptions/order-already-has-fiscal-receipt.exception';
 import { InvoiceIssueContendedException } from '../../domain/exceptions/invoice-issue-contended.exception';
+import { InvoiceRecordNotFoundException } from '../../domain/exceptions/invoice-record-not-found.exception';
 import type {
   InvoiceLine,
   IssueCorrectionCommand,
@@ -129,6 +130,15 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     overrides.paymentStatus ?? 'unknown',
     overrides.numberingSeriesId === undefined ? null : overrides.numberingSeriesId,
     overrides.documentNumber === undefined ? null : overrides.documentNumber,
+    overrides.allocatedSeq === undefined ? null : overrides.allocatedSeq,
+    overrides.buyerTaxId === undefined ? null : overrides.buyerTaxId,
+    null,
+    null,
+    null,
+    null,
+    null,
+    overrides.attempt ?? 0,
+    overrides.previousAttemptId === undefined ? null : overrides.previousAttemptId,
   );
 }
 
@@ -203,6 +213,7 @@ describe('InvoiceService', () => {
       findBySeriesId: jest.fn(),
       findLatestByOrderId: jest.fn(),
       findAllByOrderId: jest.fn(),
+      findSuccessorAttempt: jest.fn().mockResolvedValue(null),
       findLatestByOrderIds: jest.fn(),
       findAllByOrderIds: jest.fn(),
       findByProviderInvoiceId: jest.fn(),
@@ -250,6 +261,7 @@ describe('InvoiceService', () => {
       upsertRoute: jest.fn(),
       deleteRoute: jest.fn(),
       allocateNumber: jest.fn(),
+      inheritNumber: jest.fn().mockResolvedValue(null),
     };
 
     heldLocks = new Set<string>();
@@ -360,6 +372,40 @@ describe('InvoiceService', () => {
           issuedLineSnapshot: { buyer: cmd.buyer, currency: cmd.currency, lines: cmd.lines },
         }),
       );
+    });
+
+    it('(a3c) DEF-07/33: snapshots the dates the adapter printed and fills documentContent.saleDate', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue({
+        ...makeIssuedFromAdapter(),
+        documentDates: { issueDate: '2026-01-22', saleDate: '2026-01-20' },
+      });
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd({ saleDate: '2026-01-19' }));
+
+      const patch = repo.updateOutcome.mock.calls[0]?.[1] as {
+        issuedLineSnapshot?: { issueDate?: string; saleDate?: string };
+        documentContent?: { saleDate: string | null } | null;
+      };
+      expect(patch.issuedLineSnapshot).toMatchObject({ issueDate: '2026-01-22', saleDate: '2026-01-20' });
+      expect(patch.documentContent?.saleDate).toBe('2026-01-20');
+    });
+
+    it('(a3d) DEF-07: falls back to the command sale date when the adapter reports no dates', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd({ saleDate: '2026-01-19' }));
+
+      const patch = repo.updateOutcome.mock.calls[0]?.[1] as {
+        issuedLineSnapshot?: { issueDate?: string; saleDate?: string };
+      };
+      expect(patch.issuedLineSnapshot?.saleDate).toBe('2026-01-19');
+      expect(patch.issuedLineSnapshot?.issueDate).toBeUndefined();
     });
 
     it('persists a reported unlinked-catalogue-line count on the issued patch', async () => {
@@ -1399,6 +1445,8 @@ describe('InvoiceService', () => {
         )),
       );
 
+      repo.updateOutcome.mockResolvedValue(adapterRecord());
+
       await service.issueInvoice(command());
 
       expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-1', 'Invoicing');
@@ -1476,6 +1524,39 @@ describe('InvoiceService', () => {
       expect(repo.updateOutcome).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ sourceDocument: null }),
+      );
+    });
+
+    // #3620: the hash is taken once, from the bytes persisted in the same patch.
+    // The expected value is sha256 of `<Document>fake</Document>` computed outside
+    // the code under test (openssl, base64url), not by calling the same function.
+    it('should persist the Base64URL SHA-256 of the source document bytes beside it (#3620)', async () => {
+      const sourceDocument = {
+        contentType: 'application/xml',
+        contentBase64: 'PERvY3VtZW50PmZha2U8L0RvY3VtZW50Pg==',
+      };
+      adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER, sourceDocument });
+      repo.create.mockResolvedValue(adapterRecord());
+      repo.updateOutcome.mockResolvedValue(adapterRecord());
+
+      await service.issueInvoice(command());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ sourceDocumentHash: 'gOfnt_ANkNNtJoW0Vx99Kf-ks2URL9JVXkIfbgJzo30' }),
+      );
+    });
+
+    it('should persist no hash when the adapter surfaces no source document (#3620)', async () => {
+      adapter.issueInvoice.mockResolvedValue({ record: adapterRecord(), seller: SELLER });
+      repo.create.mockResolvedValue(adapterRecord());
+      repo.updateOutcome.mockResolvedValue(adapterRecord());
+
+      await service.issueInvoice(command());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ sourceDocumentHash: null }),
       );
     });
   });
@@ -1561,6 +1642,41 @@ describe('InvoiceService', () => {
       );
     });
 
+    it('DEF-09: refuses a buyer override before calling a provider that cannot carry it', async () => {
+      const override = makeBuyer();
+
+      await expect(
+        service.issueCorrection(makeCorrectionCmd({ buyerOverride: override })),
+      ).rejects.toThrow('BuyerIdentityCorrector');
+
+      expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({ status: 'failed', failureMode: 'rejected' }),
+      );
+    });
+
+    it('DEF-09: lets a buyer override through to a provider that declares it', async () => {
+      Object.assign(correctionAdapter, { honoursBuyerOverride: true });
+
+      await service.issueCorrection(makeCorrectionCmd({ buyerOverride: makeBuyer() }));
+
+      expect(correctionAdapter.issueCorrection).toHaveBeenCalled();
+    });
+
+    it('DEF-07: keeps the original sale date on the correction snapshot', async () => {
+      await service.issueCorrection(
+        makeCorrectionCmd({ originalDocument: { ...makeOriginalDocument(), saleDate: '2026-06-20' } }),
+      );
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({
+          issuedLineSnapshot: expect.objectContaining({ saleDate: '2026-06-20' }),
+        }),
+      );
+    });
+
     it('applies a quantity delta and leaves price untouched', async () => {
       await service.issueCorrection(
         makeCorrectionCmd({ lines: [{ originalLineNumber: 2, newQuantity: 5 }] }),
@@ -1577,6 +1693,87 @@ describe('InvoiceService', () => {
           }),
         }),
       );
+    });
+
+    it('scales the component counts and values of a set line when its quantity is corrected, so a correction of a correction starts from the right base', async () => {
+      const setLines: InvoiceLine[] = [
+        {
+          name: 'Coffee set',
+          quantity: 3,
+          unitPriceGross: 90,
+          taxRate: '23',
+          stockComponents: [
+            { productId: 'p1', variantId: 'v1', quantity: 3, totalGross: 180 },
+            { productId: 'p2', variantId: 'v2', quantity: 3, totalGross: 90 },
+          ],
+        },
+        { name: 'Gadget', quantity: 1, unitPriceGross: 50, taxRate: '23' },
+      ];
+      const originalDocument = { ...makeOriginalDocument(), lines: setLines };
+
+      // First correction: 3 -> 2.
+      await service.issueCorrection(
+        makeCorrectionCmd({ originalDocument, lines: [{ originalLineNumber: 1, newQuantity: 2 }] }),
+      );
+      const firstSnapshot = (
+        repo.updateOutcome.mock.calls[repo.updateOutcome.mock.calls.length - 1]![1] as {
+          issuedLineSnapshot: { lines: InvoiceLine[] };
+        }
+      ).issuedLineSnapshot;
+      expect(firstSnapshot.lines[0]).toMatchObject({
+        quantity: 2,
+        stockComponents: [
+          { variantId: 'v1', quantity: 2, totalGross: 120 },
+          { variantId: 'v2', quantity: 2, totalGross: 60 },
+        ],
+      });
+
+      // Correcting the correction: 2 -> 1 scales from the corrected counts, not the original ones.
+      await service.issueCorrection(
+        makeCorrectionCmd({
+          originalDocument: { ...originalDocument, lines: firstSnapshot.lines },
+          lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+          idempotencyKey: 'corr-key-2',
+        }),
+      );
+      const secondSnapshot = (
+        repo.updateOutcome.mock.calls[repo.updateOutcome.mock.calls.length - 1]![1] as {
+          issuedLineSnapshot: { lines: InvoiceLine[] };
+        }
+      ).issuedLineSnapshot;
+      expect(secondSnapshot.lines[0]).toMatchObject({
+        quantity: 1,
+        stockComponents: [
+          { variantId: 'v1', quantity: 1, totalGross: 60 },
+          { variantId: 'v2', quantity: 1, totalGross: 30 },
+        ],
+      });
+      // The second line has no components and is untouched.
+      expect(secondSnapshot.lines[1]).toEqual(setLines[1]);
+    });
+
+    it('leaves the components of a set line alone when only its price is corrected', async () => {
+      const setLine: InvoiceLine = {
+        name: 'Coffee set',
+        quantity: 2,
+        unitPriceGross: 90,
+        taxRate: '23',
+        stockComponents: [{ productId: 'p1', variantId: 'v1', quantity: 2, totalGross: 180 }],
+      };
+
+      await service.issueCorrection(
+        makeCorrectionCmd({
+          originalDocument: { ...makeOriginalDocument(), lines: [setLine] },
+          lines: [{ originalLineNumber: 1, newUnitPriceGross: 80 }],
+        }),
+      );
+
+      const snapshot = (
+        repo.updateOutcome.mock.calls[repo.updateOutcome.mock.calls.length - 1]![1] as {
+          issuedLineSnapshot: { lines: InvoiceLine[] };
+        }
+      ).issuedLineSnapshot;
+      expect(snapshot.lines[0]).toEqual({ ...setLine, unitPriceGross: 80 });
     });
 
     it('ignores a delta whose originalLineNumber is out of range (never throws)', async () => {
@@ -1621,6 +1818,24 @@ describe('InvoiceService', () => {
       expect(repo.updateOutcome).toHaveBeenLastCalledWith(
         'corr-rec',
         expect.objectContaining({ sourceDocument }),
+      );
+    });
+
+    it('persists the hash of a correction\'s own source document (#3620)', async () => {
+      const sourceDocument = {
+        contentType: 'application/xml',
+        contentBase64: 'PEZha3R1cmE+a29yZWtjamE8L0Zha3R1cmE+',
+      };
+      correctionAdapter.issueCorrection.mockResolvedValue({
+        record: makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' }),
+        sourceDocument,
+      });
+
+      await service.issueCorrection(makeCorrectionCmd());
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({ sourceDocumentHash: '90u_ugN9-ktgrlQNgZAhKIHccm-mEVI9ITjRh1STh7Q' }),
       );
     });
 
@@ -1841,6 +2056,104 @@ describe('InvoiceService', () => {
         expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
       });
     });
+
+    it('snapshots the buyerOverride buyer (not the original) when supplied (#1582)', async () => {
+      const override = new BuyerProfile(
+        'Corrected Buyer',
+        { scheme: 'pl-nip', value: '5252248481' },
+        { line1: 'ul. Nowa 5', line2: null, city: 'Gdansk', postalCode: '80-001', countryIso2: 'PL' },
+        'company',
+      );
+      // DEF-09 refuses an override for a provider that cannot carry it, so the
+      // snapshot is only reachable through one that declares it can.
+      Object.assign(correctionAdapter, { honoursBuyerOverride: true });
+
+      await service.issueCorrection(makeCorrectionCmd({ buyerOverride: override }));
+
+      expect(repo.updateOutcome).toHaveBeenLastCalledWith(
+        'corr-rec',
+        expect.objectContaining({
+          issuedLineSnapshot: expect.objectContaining({ buyer: override }),
+        }),
+      );
+    });
+  });
+
+  describe('operator retry of a refused invoice (#3960)', () => {
+    beforeEach(() => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-2', status: 'pending', attempt: 1 }));
+      repo.claimForIssue.mockResolvedValue(makeRecord({ id: 'rec-2', status: 'issuing' }));
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-2', status: 'issued' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+    });
+
+    it('should create the next attempt under a new key when retrying a refused invoice', async () => {
+      repo.findById.mockResolvedValue(
+        makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'rejected' }),
+      );
+
+      await service.issueInvoice(makeCmd({ idempotencyKey: KEY }), { retryOf: 'rec-1' });
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey: `${KEY}:r1`,
+          attempt: 1,
+          previousAttemptId: 'rec-1',
+        }),
+      );
+      expect(adapter.issueInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: `${KEY}:r1` }),
+      );
+    });
+
+    it('should root a keyless refused invoice on its connection and order', async () => {
+      // A keyless chain roots on the same derived key a keyed chain uses
+      // (`invoiceRetryRootKey`), so the two shapes cannot drift apart.
+      repo.findById.mockResolvedValue(
+        makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'rejected', idempotencyKey: null }),
+      );
+
+      await service.issueInvoice(makeCmd(), { retryOf: 'rec-1' });
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: `invoice:${CONNECTION}:${ORDER}:r1`, attempt: 1 }),
+      );
+    });
+
+    it('should resume the existing successor instead of starting a third attempt', async () => {
+      repo.findById.mockResolvedValue(
+        makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'rejected' }),
+      );
+      const successor = makeRecord({ id: 'rec-2', status: 'issued', attempt: 1, previousAttemptId: 'rec-1' });
+      repo.findSuccessorAttempt.mockResolvedValue(successor);
+
+      await expect(
+        service.issueInvoice(makeCmd(), { retryOf: 'rec-1' }),
+      ).resolves.toBe(successor);
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('should never re-send an invoice that was not refused', async () => {
+      const inDoubt = makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'in-doubt' });
+      repo.findById.mockResolvedValue(inDoubt);
+
+      await expect(service.issueInvoice(makeCmd(), { retryOf: 'rec-1' })).resolves.toBe(inDoubt);
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('should refuse to retry a record of another order', async () => {
+      repo.findById.mockResolvedValue(
+        makeRecord({ id: 'rec-1', status: 'failed', failureMode: 'rejected', orderId: 'other-order' }),
+      );
+
+      await expect(service.issueInvoice(makeCmd(), { retryOf: 'rec-1' })).rejects.toBeInstanceOf(
+        InvoiceRecordNotFoundException,
+      );
+      expect(repo.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('numbering allocation (#1575)', () => {
@@ -1863,6 +2176,45 @@ describe('InvoiceService', () => {
       repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
       repo.claimForIssue.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issuing' }));
       repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+    });
+
+    it('should take over the refused predecessor number for a retry attempt (#3960)', async () => {
+      repo.claimForIssue.mockResolvedValue(
+        makeRecord({ id: 'rec-2', status: 'issuing', previousAttemptId: 'rec-1', attempt: 1 }),
+      );
+      numberingRepo.findSeriesIdForDocument.mockResolvedValue('series-main');
+      numberingRepo.inheritNumber.mockResolvedValue({
+        documentNumber: 'FV/2026/06/0007',
+        allocatedSeq: 7,
+      });
+
+      await service.issueInvoice(makeCmd());
+
+      expect(numberingRepo.inheritNumber).toHaveBeenCalledWith({
+        fromRecordId: 'rec-1',
+        toRecordId: 'rec-2',
+        seriesId: 'series-main',
+      });
+      expect(numberingRepo.allocateNumber).not.toHaveBeenCalled();
+      expect(consumer.issueInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({ documentNumber: 'FV/2026/06/0007' }),
+      );
+    });
+
+    it('should allocate a fresh number when the predecessor number cannot be taken over (#3960)', async () => {
+      repo.claimForIssue.mockResolvedValue(
+        makeRecord({ id: 'rec-2', status: 'issuing', previousAttemptId: 'rec-1', attempt: 1 }),
+      );
+      numberingRepo.findSeriesIdForDocument.mockResolvedValue('series-main');
+      numberingRepo.inheritNumber.mockResolvedValue(null);
+      numberingRepo.allocateNumber.mockResolvedValue({
+        documentNumber: 'FV/2026/06/0008',
+        allocatedSeq: 8,
+      });
+
+      await service.issueInvoice(makeCmd());
+
+      expect(numberingRepo.allocateNumber).toHaveBeenCalled();
     });
 
     it('routes an invoice to the invoice series and passes the rendered number to the adapter', async () => {
@@ -1988,6 +2340,39 @@ describe('InvoiceService', () => {
       expect(consumer.issueInvoice).toHaveBeenCalledWith(
         expect.objectContaining({ documentNumber: 'FV/2026/06/0007' }),
       );
+    });
+  });
+
+  describe('applyRegulatoryClearance (#1582)', () => {
+    it('persists the clearanceDetail from the clearance result', async () => {
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1' }));
+
+      await service.applyRegulatoryClearance('rec-1', {
+        regulatoryStatus: 'rejected',
+        clearanceReference: null,
+        clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+      });
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
+        regulatoryStatus: 'rejected',
+        clearanceReference: null,
+        clearanceDetail: 'KSeF status 440: buyer NIP invalid',
+      });
+    });
+
+    it('clears a stale clearanceDetail when the result carries none (e.g. a resend)', async () => {
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1' }));
+
+      await service.applyRegulatoryClearance('rec-1', {
+        regulatoryStatus: 'submitted',
+        clearanceReference: null,
+      });
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', {
+        regulatoryStatus: 'submitted',
+        clearanceReference: null,
+        clearanceDetail: null,
+      });
     });
   });
 });

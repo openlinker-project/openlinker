@@ -20,7 +20,7 @@ import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
-import { benchWorkCopy } from '../lib/bench-work.copy';
+import { useMessages } from '../../../shared/i18n';
 
 export interface BenchWorkEmptyProps {
   /**
@@ -35,15 +35,16 @@ export interface BenchWorkEmptyProps {
 
 export function BenchWorkEmpty({ routingReady }: BenchWorkEmptyProps): ReactElement {
   const isAdmin = useIsAdmin();
+  const copy = useMessages('bench').work;
 
   if (routingReady) {
     return (
       <div className="bench-work-empty" data-testid="bench-work-empty-idle">
-        <h2 className="bench-work-empty__title">{benchWorkCopy.emptyIdle.title}</h2>
-        <p className="bench-work-empty__body">{benchWorkCopy.emptyIdle.body}</p>
+        <h2 className="bench-work-empty__title">{copy.emptyIdle.title}</h2>
+        <p className="bench-work-empty__body">{copy.emptyIdle.body}</p>
         {/* Says the pipe is healthy, which is the fact that distinguishes this
             screen from the other one. Without it the two read alike. */}
-        <p className="bench-work-empty__note">{benchWorkCopy.emptyIdle.reassurance}</p>
+        <p className="bench-work-empty__note">{copy.emptyIdle.reassurance}</p>
       </div>
     );
   }
@@ -51,10 +52,10 @@ export function BenchWorkEmpty({ routingReady }: BenchWorkEmptyProps): ReactElem
   if (isAdmin) {
     return (
       <div className="bench-work-empty" data-testid="bench-work-empty-not-set-up">
-        <h2 className="bench-work-empty__title">{benchWorkCopy.emptyNotSetUpAdmin.title}</h2>
-        <p className="bench-work-empty__body">{benchWorkCopy.emptyNotSetUpAdmin.body}</p>
+        <h2 className="bench-work-empty__title">{copy.emptyNotSetUpAdmin.title}</h2>
+        <p className="bench-work-empty__body">{copy.emptyNotSetUpAdmin.body}</p>
         <Link className="button button--primary" to="/settings/packing" data-testid="link-setup-oms">
-          {benchWorkCopy.emptyNotSetUpAdmin.action}
+          {copy.emptyNotSetUpAdmin.action}
         </Link>
       </div>
     );
@@ -62,18 +63,18 @@ export function BenchWorkEmpty({ routingReady }: BenchWorkEmptyProps): ReactElem
 
   return (
     <div className="bench-work-empty" data-testid="bench-work-empty-not-routed">
-      <h2 className="bench-work-empty__title">{benchWorkCopy.emptyNotRouted.title}</h2>
-      <p className="bench-work-empty__body">{benchWorkCopy.emptyNotRouted.body}</p>
+      <h2 className="bench-work-empty__title">{copy.emptyNotRouted.title}</h2>
+      <p className="bench-work-empty__body">{copy.emptyNotRouted.body}</p>
       <Alert
         tone="warning"
-        title={benchWorkCopy.emptyNotRouted.remedyTitle}
+        title={copy.emptyNotRouted.remedyTitle}
         action={
           <Link className="button button--secondary button--sm" to="/settings/packing" data-testid="link-packing-setup">
-            {benchWorkCopy.emptyNotRouted.remedyLink}
+            {copy.emptyNotRouted.remedyLink}
           </Link>
         }
       >
-        {benchWorkCopy.emptyNotRouted.remedyBody}
+        {copy.emptyNotRouted.remedyBody}
       </Alert>
     </div>
   );

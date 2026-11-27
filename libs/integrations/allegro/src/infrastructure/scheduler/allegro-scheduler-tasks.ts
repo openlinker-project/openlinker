@@ -2,7 +2,7 @@
  * Allegro Scheduler Tasks
  *
  * Builds the `SchedulerTaskConfig` instances Allegro contributes to the core
- * `SchedulerTaskRegistryService` (#584). Seven tasks today:
+ * `SchedulerTaskRegistryService` (#584). Eight tasks today:
  *
  *   - `allegro-orders-poll` — incremental `/order/events` ingest, default
  *     every minute (#2620 — shortened from 5 minutes). A tick costs exactly
@@ -42,6 +42,12 @@
  *     non-terminal returns is the ONLY way a transition is ever observed.
  *     Default hourly. Rolling scan-offset cursor key
  *     `allegro.customerReturns.scanOffset`.
+ *   - `allegro-source-fulfillment-status-sync` (ADR-012 amendment) - asks
+ *     Allegro, through `OrderFulfillmentReadback`, whether somebody other than
+ *     OL marked an order sent and attached a waybill, records a waybill OL does
+ *     not already know as a source-observed shipment, and relays it to the
+ *     order's destinations. Default OFF, every 15 minutes, page limit 50.
+ *     Rolling scan-offset cursor key `allegro.sourceFulfillmentStatus.scanOffset`.
  *
  * Env-var gating is preserved verbatim from the previous core implementation
  * for deployer back-compat: when `OL_ALLEGRO_POLL_SCHEDULER_ENABLED=false`
@@ -95,9 +101,9 @@ const getMasterCatalogConnectionId = (connection: Connection): string | null => 
 };
 
 /**
- * Build the Allegro scheduler-task list. Returns 0–7 tasks depending on
+ * Build the Allegro scheduler-task list. Returns 0–8 tasks depending on
  * the `OL_ALLEGRO_*_SCHEDULER_ENABLED` env-var gates. The two returns tasks
- * (#2330) are the only ones that default OFF — see `isEnabled`.
+ * (#2330) and the source fulfilment read-back default OFF - see `isEnabled`.
  */
 export function buildAllegroSchedulerTasks(configService: ConfigService): SchedulerTaskConfig[] {
   const tasks: SchedulerTaskConfig[] = [];
@@ -309,6 +315,46 @@ export function buildAllegroSchedulerTasks(configService: ConfigService): Schedu
       }),
       generateIdempotencyKey: (connection, timestamp) =>
         `marketplace:${connection.id}:returns:status:sync:${timestamp}`,
+    });
+  }
+
+  // Source-side fulfilment read-back (ADR-012 amendment). Default OFF, unlike
+  // the Shoper task: every candidate order costs two Allegro requests (the
+  // checkout form and its shipments), which on every existing Allegro
+  // connection at deploy is new recurring marketplace load, and an Allegro
+  // seller who ships OUTSIDE OpenLinker is the exception rather than the rule
+  // (OL dispatches its own labels and Allegro Delivery, whose waybills it
+  // already holds and never re-reads). Opt-in per deployment. `enabledDefault`
+  // repeats the default on the task itself so the scheduler's per-tick gate
+  // agrees with the registration gate.
+  if (
+    isEnabled(configService, 'OL_ALLEGRO_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED', 'false')
+  ) {
+    const cronExpression = configService.get<string>(
+      'OL_ALLEGRO_SOURCE_FULFILLMENT_STATUS_SYNC_INTERVAL_CRON',
+      '*/15 * * * *'
+    );
+    const pageLimitRaw = Number(
+      configService.get<string>('OL_ALLEGRO_SOURCE_FULFILLMENT_STATUS_SYNC_PAGE_LIMIT', '50')
+    );
+    const pageLimit = Number.isFinite(pageLimitRaw) && pageLimitRaw > 0 ? pageLimitRaw : 50;
+
+    tasks.push({
+      taskId: 'allegro-source-fulfillment-status-sync',
+      platformType: 'allegro',
+      requiredCapability: 'OrderSource',
+      jobType: 'marketplace.sourceFulfillment.statusSync',
+      cronExpression,
+      enabledEnvVar: 'OL_ALLEGRO_SOURCE_FULFILLMENT_STATUS_SYNC_SCHEDULER_ENABLED',
+      enabledDefault: false,
+      generatePayload: () => ({
+        schemaVersion: 1,
+        limit: pageLimit,
+        cursorKey: 'allegro.sourceFulfillmentStatus.scanOffset',
+        updatedSinceDays: 30,
+      }),
+      generateIdempotencyKey: (connection, timestamp) =>
+        `marketplace:${connection.id}:source:fulfillment:status:sync:${timestamp}`,
     });
   }
 

@@ -1,0 +1,173 @@
+##### Zestawy Produktów w Panelu Sellingo i Sellasist | https://sellasist.pl/pomoc/zestawy-produktow-w-panelu-sellasist/ | modified 2025-11-08
+Zestawy produktów (zestawy statyczne) w sklepie internetowym to pakiety produktów, które są sprzedawane razem. Jako sprzedawca sam ustalasz, które produkty dobrze do siebie pasują lub są często kupowane razem.
+ #### 
+ Mając zestawy w swojej ofercie sklepu: 
+- Wygenerujesz większą sprzedaż: Kiedy klienci kupują zestawy, zwykle wydają więcej pieniędzy niż przy zakupie pojedynczych produktów. 
+- Szybciej pozbędziesz się zapasów: Do produktów, które schodzą często możesz dokładać produkty mniej popularne, łącząc je w zestawy. 
+- Możesz promować je w sklepie jako oferty specjalne np. za niższą cenę.
+- Twoi klienci oszczędzają czas: Nie muszą szukać i dobierać produktów sami, mogą skorzystać z gotowej oferty.
+- Oferujesz proste zakupy: Dzięki gotowym zestawom łatwiej jest wybrać gotowy zestaw, zwłaszcza jeśli nie jest się pewnym, czego dokładnie się szuka.
+ #### 
+ Co to są zestawy statyczne? 
+- Zestawy statyczne –  to zestawy, w których oferowane produkty są stałe. Każdy produkt wchodzący w skład zestawu jest dokładnie sprecyzowany. Np. jeżeli produkt posiada kilka wariantów to w zestawie statycznym jest wybrany tylko jeden wariant.
+- Zestaw traktowany jest jako oddzielny produkt.
+- Stany magazynowe są pobierane z systemu z produktów wchodzących w skład zestawu.
+- Sam decydujesz z czego składa się zestaw, jaką ma cenę a system automatycznie oblicza sumę cen produktów w zestawie i stany magazynowe.
+- Nie musisz sam pilnować, ile jeszcze możesz sprzedać oferowanych zestawów. System sam przeliczy stan i ustali dostępność oferowanych produktów.
+- Na platformach takich jak Allegro, zestaw wystawiany jest jako jedna aukcja pojedynczego produktu. 
+- Pamiętaj! Zestawów utworzonych na Sellasist nie możesz powiązać z zestawami utworzonymi na Allegro.
+ #### 
+ Konfiguracja ceny dla zestawów produktów 
+ Podczas tworzenia zestawów produktów system używa regularnych cen poszczególnych produktów, a nie cen promocyjnych. Oznacza to, że nawet jeśli produkt jest obecnie w promocji i ma obniżoną cenę (cena promocyjna) to cena produktu, która będzie się zaciągać do zestawu produktów będzie jego regularną, niepromocyjną ceną. 
+Pamiętaj! 
+Konfiguracja zestawów produktów w Sellasist obsługuje również synchronizację cen. Oznacza to, że po utworzeniu zestawu, w przypadku zmiany ceny produktu składowego, cena tego produktu w zestawie również się zaktualizuje. 
+Więcej Automatyczna synchronizacja cen produktów w zestawie
+ #### 
+ UWAGA 
+ Zmieniono sposób ustawiania ceny zakupu zestawów. Nowy sposób automatycznie wylicza cenę zakupu na podstawie cen zakupu jego składników. Ręczna zmiana tej wartości jest niedostępna.
+ #### 
+ Jak stworzyć zestaw produktów statycznych w Sellasist? Dodawanie zestawu: 
+ 1. W panelu Sellasist przejdź do zakładki Asortyment -> Zestawy.
+2. Kliknij Dodaj zestaw produktowy.
+[IMG:]
+3. W sekcji Informacje podstawowe wprowadź nazwę zestawu oraz wszystkie niezbędne dane* i kliknij Zapisz.
+[IMG:]
+*Dane z tej sekcji możesz również uzupełnić i edytować po zapisaniu.
+Po zapisaniu, pojawią się dodatkowe zakładki do dalszej konfiguracji.
+ #### 
+ Dodawanie Produktów do Zestawu: 
+ 4. Przejdź do zakładki Produkty i kliknij Dodaj produkt.
+[IMG:]
+5. Kliknij Wybierz przy produkcie, który ma wejść w skład zestawu.
+[IMG:]
+Możesz ustalić ilość tego produktu w zestawie oraz cenę tego produktu w zestawie.
+W kolumnie Akcje, klikając X możesz usunąć ten produkt z zestawu, a klikając > możesz przejść do edycji tego produktu. 
+[IMG:]
+6. Aby dodać kolejny produkt, postępuj analogicznie klikając Dodaj Produkt.
+Jeżeli dodawany produkt ma określone warianty, musisz konkretnie wybrać, który wariant wchodzi w skład zestawu. 
+[IMG:]
+System automatycznie oblicza łączną wartość zestawu na podstawie cen poszczególnych produktów.
+Jeżeli chcesz zmienić cenę  produktu w zestawie, zmień ją w kolumnie Cena produktu w zestawie.  
+[IMG:]
+7. Kliknij Zapisz.
+Po zapisaniu zestawu, w sekcji Informacje podstawowe w sekcji Cena zostanie automatycznie uzupełniona cena zestawu  (suma produktów w zestawie). 
+Cena sprzedaży zestawu zależna jest od ustawień cen produktów znajdujących się w zestawie (w zakładce Produkty).
+Pamiętaj! Podczas tworzenia zestawów produktów system używa regularnych cen poszczególnych produktów, a nie cen promocyjnych. Oznacza to, że nawet jeśli produkt jest obecnie w promocji i ma obniżoną cenę (cena promocyjna – zakładka Promocje) to cena produktu, która będzie się zaciągać do zestawu produktów będzie jego regularną, niepromocyjną ceną. 
+Konfiguracja zestawów produktów w Sellasist nie obsługuje wykorzystania cen promocyjnych. 
+Jeżeli chcesz obniżyć cenę poszczególnego produktu w zestawie (co wpłynie na cenę całego zestawu) możesz to zrobić w Asortyment -> Zestawy -> edycja zestawu -> Produkty 
+W sekcji Magazyn – stan magazynowy zostanie automatycznie zliczony i zostanie przypisana odpowiednia wartość.
+Liczba zestawów jest określana na podstawie stanu magazynowego poszczególnych produktów wchodzących w skład zestawu. W podanym przykładzie mamy na magazynie 3 sztuki szali oraz 80 sztuk kurtek – > czyli z dostępnej ilości mogę utworzyć tylko 3 Zestawy jesienne (szal + kurtka).  
+[IMG:]
+8. Uzupełnij pozostałe zakładki:
+KATEGORIE – Przypisz odpowiednią kategorię dla danego zestawu.
+OPIS – Dla każdego zestawu musisz dodać nowy opis zestawu. Opisy poszczególnych produktów wchodzących w skład zestawu nie pobiorą się automatycznie do opisu zestawu. 
+Zobacz Czym są szablony opisów produktów? Do czego służą i jak ich używać?
+GALERIA  – Dla każdego zestawu należy dodać nowe zdjęcia. Zdjęcia poszczególnych produktów wchodzących w skład zestawu nie będą pobierane automatycznie do galerii zestawu produktów.
+PROMOCJE – Jeżeli chcesz dodać zestaw do nowości, polecanych produktów lub jako bestseller, ustaw to w tej zakładce. 
+Zobacz Jak ustawić promocję na wybrany produkt?
+POWIĄZANE – Jeżeli chcesz, aby pod Twoją ofertą wyświetlały się powiązane oferty podobnych produktów, ustaw to w tej sekcji.
+Zobacz Czym są grupy powiązanych? Jak w Sellasist dodać grupę powiązanych?
+Czym są i jak działają Powiązania w Produktach?
+POZYCJONOWANIE – Zobacz Co to jest Pozycjonowanie?
+ #### 
+ Przykład oferowanego zestawu na stronie sklepu: 
+ [IMG:]
+ #### 
+ Tworzenie i wystawianie zestawów produktowych w Sellasist na Allegro 
+- W Sellasist możesz łatwo tworzyć zestawy produktowe, które następnie możesz wystawić na Allegro jako pojedyncze aukcje.  Proces ten jest podobny do tworzenia opisu pojedynczego produktu. Wybierasz produkty na Sellasist, które chcesz dołączyć do zestawu i wystawiasz je razem jako 1 produkt na Allegro.
+- Każdy zestaw utworzony w panelu Sellasist jest traktowany jako jeden niepodzielny produkt. Oznacza to, że na Allegro, cały zestaw jest oferowany w ramach jednej aukcji, niezależnie od liczby produktów wchodzących w jego skład.
+- Pamiętaj, że zestawy utworzone w Sellasist nie mogą być powiązane z zestawami utworzonymi bezpośrednio na Allegro.
+- Automatyczne wyłączanie ofert na Allegro: Jeśli którykolwiek z produktów składowych zestawu będzie niedostępny w magazynie, po skonfigurowaniu ustawień oferta zestawu na Allegro zostanie automatycznie wyłączona. Dzięki temu unikniesz sytuacji, w której sprzedajesz zestaw, którego nie możesz skompletować. 
+Zobacz, Jak wykonać import powiązań produktów z zestawami?
+ #### 
+ Rozbijanie zestawów za pomocą akcji automatycznych 
+ Wprowadzamy zmiany w mechanizmie rozbijania zamówionych zestawów na poszczególne produkty. Proces ten będzie zarządzany przez nowo wprowadzoną akcję automatyczną, co pozwala na większą elastyczność i kontrolę nad realizacją zamówień.
+Dodatkowo, aby usprawnić proces rozbijania zestawów, wprowadziliśmy w ustawieniach zamówień (Zamówienia-> Ustawienia) funkcję konfiguracyjną „Automatycznie rozbijaj zestaw na produkty„. 
+ #### 
+ Pamiętaj! 
+- Przed 22 maja 2024 r.:
+Możesz samodzielnie ją wyłączyć oraz skonfigurować odpowiednie warunki i efekty w automatyzacji, aby rozbić zestaw w dogodnym dla Ciebie momencie. Dzięki temu na przykład na fakturze pojawi się zestaw, a nie pojedyncze produkty, a na karcie zamówienia zostanie zachowane powiązanie oferty Allegro z produktami zestawu.
+ #### 
+ Kroki: 
+ 1. Utwórz akcję automatyczną z warunkiem Zestaw nierozbity na produkty i efektem Rozbij zestaw na produkty.
+2. Wyłącz funkcję Automatycznie rozbijaj zestaw na produkty w ustawieniach zamówień.
+[IMG:]
+- Od 22.05.2024 r.:
+Sellasist automatycznie utworzy akcję, jeśli nie wykryje istniejącej akcji automatycznej odpowiedzialnej za rozbicie zestawu.
+ #### 
+ Pamiętaj! 
+ Stan magazynowy zmieniają się w momencie rozbicia zestawu na produkty. 
+Przykładowo, jeśli chcesz aby na fakturze zamówione produkty widniały jako zestaw, to należy tak ustawić akcję automatyczną aby rozbijała zestawy dopiero po wystawieniu FV. 
+ #### 
+ Jak skonfigurować akcję automatyczną dotyczącą rozbijania zestawów? 
+- Konfiguracja warunku automatyzacji „Zestaw nierozbity na produkty” 
+1. Przejdź do Administracja -> Automatyzacja -> Akcje dla zamówień
+lub Zamówienia -> Akcje automatyczne
+2. Na górze strony znajdziesz karty: Dziennik zdarzeń, Akcje dla asortymentu, Akcje dla zamówień.
+W Dzienniku zdarzeń znajdziesz wszystkie wykonane akcje.
+Możesz tu przeglądać raporty z ostatniego miesiąca i ręcznie uruchamiać akcje.
+Kliknij Dodaj akcję automatyczną.
+[IMG:]
+3. Uzupełnij nazwę akcji 
+Uwaga!
+Jeżeli chcesz dodać nową akcję w Sellasist  możesz wybrać między automatycznym uruchamianiem akcji po spełnieniu określonych warunków lub ręcznym aktywowaniem ich za pomocą przycisków (więcej o przyciskach: TUTAJ).
+Możesz również użyć obu sposobów uruchamiania akcji jednocześnie. Dzięki temu będziesz miał np. możliwość ponownego wykonania akcji, gdy automatyczna próba zakończy się niepowodzeniem.
+[IMG:]
+Dla uruchamiania samoczynnego:
+4. Ustaw opóźnienie jej wykonania w minutach.
+Opóźnienie określa czas, przez jaki wszystkie warunki muszą być spełnione, by akcja została wykonana. Dzięki temu można, np. sprawić, by produkty z zerowym stanem magazynowym zostały wyłączone dopiero wtedy, gdy ten stan utrzymuje się przez 5 dni. Jeżeli użyjesz opóźnienia nie może być ono niższe niż 5 minut. 
+Ustaw tryb działania akcji.
+Masz do wyboru: tryb ciągły lub wybrane dni i godziny. 
+Wybrane dni i godziny: w tym trybie akcje będą wykonywane tylko w wybranych dniach i godzinach. Zdarzenia, które miałyby się wykonać poza nimi będą wstrzymywane i realizowane dopiero w wybranym czasie. Jeśli nie podasz godzin działania, akcja będzie mogła być wykonywana całą dobę.
+Dzięki odpowiedniej konfiguracji możesz sprawić, by np. zamówienia trafiały do realizacji tylko w godzinach pracy Twojego magazynu.
+[IMG:]
+5.  Kliknij Dodaj warunek. Wybierz z listy Zestaw nierozbity na produkty i kliknij Dodaj warunek.
+[IMG:]
+6. Uzupełnij kryteria warunku: 
+Data złożenia– Możesz wybrać datę złożenia zamówienia, aby zastosować warunek do zamówień złożonych w określonym okresie.
+Pamiętaj!Data jest ustawiana na czas tworzenia danej nowej akcji, tak aby nowa akcja była skierowana dla nowo wpływających zamówień. Jeżeli ustawisz datę wstecz, system sprawdzi wszystkie zamówienia z tego okresu i zastosuje do nich wybrany efekt akcji, co może być problematyczne dla zamówień już zrealizowanych.  
+Pamiętaj!
+Zależnie od Twoich indywidualnych potrzeb procesu realizacji zamówień, masz możliwość elastycznego zarządzania momentem, w którym zestawy produktów zostają rozbijane na poszczególne składniki. Dla optymalizacji tego procesu, istotne jest ustawienie odpowiednich statusów zamówień, które będą sygnałem do rozbicia zestawu. 
+Przykładowo, możesz zdecydować, że rozbicie zestawów ma nastąpić w momencie, gdy zamówienie zmieni status na „Do pakowania”. W takiej sytuacji musisz do powyższego warunku „Zestaw nierozbity na produkty” dołożyć kolejny warunek „Status zamówienia” i wybrać odpowiedni status z listy (dla naszego przykładu: „Do pakowania”). 
+7. Kliknij Dodaj efekt.
+8. Wybierz odpowiedni efekt z listy np. Rozbij zestawy na produkty  i kliknij Dodaj efekt. 
+[IMG:]
+[IMG:]
+1
+
+##### Informacje o zestawach w karcie produktu | https://sellasist.pl/pomoc/informacje-o-zestawach-w-karcie-produktu/ | modified 2024-07-25
+W panelu administracyjnym Sellasist, w karcie produktu, znajdziesz sekcję Znajduje się w zestawie 
+(Asortyment -> Produkty -> Edycja wybranego produktu).
+Ta sekcja pokazuje, czy edytowany produkt jest częścią jakiegoś zestawu. Jeśli produkt jest częścią zestawu, wyświetlana jest tabelka zawierająca ID zestawu, nazwę zestawu oraz zdjęcie przy nazwie zestawu. 
+Kliknięcie dowolnego miejsce w tej sekcji (ID, nazwę zestawu lub ikonę zdjęcia) otworzy szczegóły tego zestawu w nowym oknie.
+[IMG:]
+Produkt „Bluzka Ola na wiosnę” wchodzi w skład zestawu o ID: 96
+[IMG:]
+ #### 
+ Komunikat o błędzie przy przekształcaniu produktu w zestaw 
+ Jeżeli spróbujesz przekształcić produkt będący już częścią zestawu, pojawi się komunikat o błędzie:
+„Nie możesz utworzyć zestawu z tego produktu, ponieważ jest częścią składową zestawu. Informacja na ten temat znajduje się w karcie produktu. Jeżeli chcesz utworzyć zestaw z tego produktu, skopiuj go i powtórz czynność.”
+[IMG:]
+ #### 
+ Jak skopiować produkt i przekształcić go w zestaw? 
+ 1. Przejdź do listy produktów (Asortyment -> Produkty).
+2. Wybierz produkt, a następnie w kolumnie Akcje znajdź przycisk kopiowania.
+[IMG:]
+3. Wpisz ilość kopii, które chcesz utworzyć i kliknij Utwórz.
+[IMG:]
+4. Na liście produktów pojawi się kopia produktu.
+[IMG:]
+5. Wejdź w edycję tej utworzonej kopii.
+6. Kliknij przycisk Przekształć w zestaw.
+7. Produkt został przekształcony w zestaw:
+[IMG:]
+Przechodząc do zakładki Produkty możesz teraz dodać produkty dla tego zestawu.
+*Alternatywnie, możesz usunąć produkt z istniejących zestawów lub stworzyć nowy produkt, aby go przekształcić w zestaw.
+POWIĄZANE ARTYKUŁY: 
+Zestawy Produktów w Panelu Sellingo i Sellasist
+Jak wykonać import powiązań produktów z zestawami?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+

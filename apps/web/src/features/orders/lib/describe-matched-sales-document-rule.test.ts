@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { getMessages } from '../../../shared/i18n';
 import {
   describeMatchedSalesDocumentRule,
   matchedRuleReadsBuyerTaxId,
@@ -8,7 +9,7 @@ import type {
   SalesDocumentMatchedRuleView,
 } from '../api/orders.types';
 
-const t = (_key: string, fallback: string): string => fallback;
+const t = getMessages('orders').matchedSalesDocumentRule;
 
 function rule(overrides: Partial<SalesDocumentMatchedRuleView> = {}): SalesDocumentMatchedRuleView {
   return {

@@ -74,6 +74,46 @@ on ATP, never on-hand stock. The decrement is a durable, at-most-once write (Pos
 before the boundary), and is the thing that finally lets a routed order's hold be consumed
 (`#3480`) rather than double-subtracting ATP for the life of the order.
 
+## Amendment (#3475): a second reader of the same ledger, partitioned by location
+
+`AvailabilityScope`'s `location` arm still throws, and that is unchanged: a variant-keyed sum
+dressed up as one location's answer is the oversell this ADR exists to prevent. The fulfilment
+router, however, chooses between locations, so it needs the question answered per
+`(location, variant)`. `ReservationLedgerReaderPort.sumReservedByLocation` answers exactly that and
+nothing else - same predicate as `sumReservedByVariantIds` (`held`, bound `atpEffect`, live
+position), grouped by position instead of collapsed to the variant, located positions only. It is
+exposed to the router as `IInventoryQueryService.listPublishedReservedByLocation`, which fixes the
+stamp to `published`. Two rules follow from the routed order's own lifecycle. The router subtracts
+**published holds only, never unshipped `FulfillmentWork` lines**: the hold stands in for the
+units until the sale decrement settles (#3453), after which the master's own quantity is already
+lower, so a work line - which outlives the hold until the parcel ships - would count them twice.
+And the order being placed is **left out of its own sum** (`excludeOrderRecordId`), because its
+hold is written before routing runs (#3480) and would otherwise make the last unit look promised
+to the very order claiming it. A ledger read that fails fails the routing - it is never read as
+zero.
+
+Two limits are stated rather than hidden. **Each unit is not subtracted exactly once.**
+`InventorySaleDecrementService` consumes the hold before it rewrites the mirror, so between those
+two writes the units are in neither term and a concurrent route can allocate them; and when the
+master reports no resulting quantity the mirror is not lowered until the next stock sync, so the
+router routes on units that no longer exist until then. Consuming first is right for the publish
+path (#3480) and is the unsafe order for this reader; closing it (for example, keeping the hold
+when the master reports no quantity) is not done here. **The subtraction does nothing where it is
+most needed.** A variant resolving to more than one live position raises
+`AmbiguousReservationPositionError` and writes no hold (the #2628 known limitation), and a
+multi-location install is exactly where the router chooses between locations - so on such an
+install nothing is subtracted for that variant. A spec that shows the router steering to the
+location whose stock is not promised exercises the reader with a ledger state the write path
+cannot yet produce for that shape.
+
+## Amendment (#3606, 2026-11-04): reservations are per component, all or nothing per bundle line
+
+A reservation is one row per `(orderRecordId, orderLineId, inventoryItemId)`. With bundles ([ADR-083](./083-commercial-and-physical-order-lines.md)), `reserveOrderInventory` reads the frozen physical list, so a bundle line holds one reservation per component, with quantity equal to bundle quantity times component quantity and `orderLineId` `{lineId}~c:{variantId}`. Quantities are aggregated per component first, so the partial unique index never sees a duplicate key.
+
+The claim stays one call, so the all-or-nothing rollback already covers a bundle: if one component cannot be held, no component of that bundle line is held, and the shortfall names the limiting component. `narrowForOrder` takes the component line ids of an edited bundle line and a target of bundle quantity times component quantity. `inventory-sale-reversal` gives stock back per component line.
+
+Availability of a bundle variant is not a stored position. `getPromisableQuantities` answers it as the minimum over components of floor(component ATP / quantity), with provenance `unknown` if any component is unknown (never `0`), and a stale component pauses the bundle through the existing #1689 primitive. A change to a component's ATP also enqueues propagation for the bundles that contain it. A gift slot inside a bundle reserves like any other component.
+
 ## References
 
 - Related ADRs: [ADR-058](./058-multi-location-positions-reservations-availability-authority.md), [ADR-028](./028-order-cancellation-stock-restore.md), [ADR-052](./052-independently-assignable-fulfillment-authorities.md), [ADR-062](./062-trust-posture-authority-holding-capabilities.md)

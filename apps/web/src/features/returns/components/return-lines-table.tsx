@@ -23,7 +23,8 @@
 import { useMemo, type ReactElement, type ReactNode } from 'react';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { KeyValueList } from '../../../shared/ui/key-value-list';
-import { RETURN_LINES_COPY, describeLineQuantity } from '../lib/return-detail.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
+import { describeLineQuantity } from '../lib/return-detail-text';
 import { ReturnLineStateChip } from './return-line-state-chips';
 import type { ReturnLine } from '../api/returns.types';
 
@@ -45,19 +46,29 @@ interface ReturnLinesTableProps {
 
 /** The item's own identity, name-first with SKU beneath. */
 function LineItemCell({ line }: { line: ReturnLine }): ReactElement {
+  const copy = useMessages('returns').detail.lines;
   return (
     <span className="returns-line-item">
-      <span>{line.name ?? RETURN_LINES_COPY.unnamedItem}</span>
+      <span>{line.name ?? copy.unnamedItem}</span>
       {line.sku !== null ? <span className="mono-text text-muted">{line.sku}</span> : null}
+      <span className="text-muted returns-line-item__reason">
+        {copy.orderLineLabel}: <OrderLineCell line={line} />
+      </span>
+      {line.reason !== '' ? (
+        <span className="text-muted returns-line-item__reason">
+          {copy.reasonLabel}: {line.reason}
+        </span>
+      ) : null}
     </span>
   );
 }
 
 function OrderLineCell({ line }: { line: ReturnLine }): ReactElement {
+  const copy = useMessages('returns').detail.lines;
   if (line.resolvedOrderLineId === null) {
     return (
-      <span className="text-muted" title={RETURN_LINES_COPY.unmatchedLineHint}>
-        {RETURN_LINES_COPY.unmatchedLine}
+      <span className="text-muted" title={copy.unmatchedLineHint}>
+        {copy.unmatchedLine}
       </span>
     );
   }
@@ -70,73 +81,50 @@ export function ReturnLinesTable({
   sourceName = null,
   renderCustody,
 }: ReturnLinesTableProps): ReactElement {
+  const copy = useMessages('returns').detail.lines;
   const columns = useMemo<DataTableColumn<ReturnLine>[]>(
     () => [
       {
         id: 'item',
-        header: RETURN_LINES_COPY.itemLabel,
+        header: copy.itemLabel,
         cell: (line) => <LineItemCell line={line} />,
       },
-      // Advised alone, now that `Received` has a column of its own (#2380). The
-      // derived "3 of 5 received" wording said both at once, which read as a
-      // contradiction sitting beside the counter it was derived from.
+      // Advised alone (#2380): "received" lives in the goods cell beside the state.
       {
         id: 'quantity',
-        header: RETURN_LINES_COPY.quantityLabel,
+        header: copy.quantityLabel,
         cell: (line) => <span className="tabular">{line.quantityAdvised}</span>,
       },
-      // The three counters the custody flow moves. Present at 768 px — this is
-      // the tablet the receiving work is done on, and an operator typing a
-      // received quantity has to see what is already recorded against the line.
-      {
-        id: 'received',
-        header: RETURN_LINES_COPY.receivedLabel,
-        cell: (line) => <span className="tabular">{line.quantityReceived}</span>,
-      },
-      {
-        id: 'restocked',
-        header: RETURN_LINES_COPY.restockedLabel,
-        cell: (line) => <span className="tabular">{line.quantityRestocked}</span>,
-        hideBelow: 768,
-      },
-      {
-        id: 'scrapped',
-        header: RETURN_LINES_COPY.scrappedLabel,
-        cell: (line) => <span className="tabular">{line.quantityScrapped}</span>,
-        hideBelow: 768,
-      },
-      {
-        id: 'reason',
-        header: RETURN_LINES_COPY.reasonLabel,
-        cell: (line) => <span>{line.reason}</span>,
-        // Dropped first at tablet width: the reason is context, whereas the
-        // counters above are what the operator is acting on.
-        hideBelow: 1024,
-      },
+      // The custody rail and what the counters say about it, in one cell, the way
+      // the mockup reads: a chip, and under it only the numbers that exist.
       {
         id: 'custody',
-        header: RETURN_LINES_COPY.custodyLabel,
-        cell: (line) => <ReturnLineStateChip axis="custody" value={line.custodyState} />,
-        hideBelow: 1024,
+        header: copy.custodyLabel,
+        cell: (line) => (
+          <span className="returns-line-goods">
+            <ReturnLineStateChip axis="custody" value={line.custodyState} />
+            {line.quantityReceived > 0 ? (
+              <span className="text-muted tabular returns-line-goods__counts">
+                {copy.receivedLabel} {line.quantityReceived}
+                {line.quantityRestocked > 0 ? ` · ${copy.restockedLabel} ${line.quantityRestocked}` : ''}
+                {line.quantityScrapped > 0 ? ` · ${copy.scrappedLabel} ${line.quantityScrapped}` : ''}
+              </span>
+            ) : null}
+          </span>
+        ),
       },
       {
         id: 'money',
-        header: RETURN_LINES_COPY.moneyLabel,
+        header: copy.moneyLabel,
         cell: (line) => <ReturnLineStateChip axis="money" value={line.moneyState} sourceName={sourceName} />,
-        hideBelow: 1024,
-      },
-      {
-        id: 'orderLine',
-        header: RETURN_LINES_COPY.orderLineLabel,
-        cell: (line) => <OrderLineCell line={line} />,
       },
     ],
-    [sourceName, renderCustody],
+    [copy, sourceName, renderCustody],
   );
 
   return (
     <DataTable
-      caption={RETURN_LINES_COPY.tableCaption}
+      caption={copy.tableCaption}
       columns={columns}
       rows={lines}
       rowKey={(line) => line.id}
@@ -146,16 +134,16 @@ export function ReturnLinesTable({
           : {
               renderDetail: (line) => renderCustody(line),
               toggleLabel: (line, expanded) =>
-                `${expanded ? RETURN_LINES_COPY.collapseLine : RETURN_LINES_COPY.expandLine} ${
-                  line.name ?? RETURN_LINES_COPY.unnamedItem
-                }`,
+                interpolate(expanded ? copy.collapseLine : copy.expandLine, {
+                  name: line.name ?? copy.unnamedItem,
+                }),
             }
       }
-      emptyState={<p className="text-muted">{RETURN_LINES_COPY.empty}</p>}
+      emptyState={<p className="text-muted">{copy.empty}</p>}
       cardView={{
         // Same renderers as the columns above, so the mobile card and the
         // desktop row cannot say different things (#2091).
-        title: (line) => line.name ?? RETURN_LINES_COPY.unnamedItem,
+        title: (line) => line.name ?? copy.unnamedItem,
         subtitle: (line) => describeLineQuantity(line.quantityAdvised, line.quantityReceived),
         // `KeyValueList`, the same primitive the peer card details use — a
         // bare `<dl>` under a class no stylesheet defines renders its terms and
@@ -163,26 +151,26 @@ export function ReturnLinesTable({
         detail: (line) => (
           <KeyValueList
             items={[
-              { id: 'reason', label: RETURN_LINES_COPY.reasonLabel, value: line.reason },
+              { id: 'reason', label: copy.reasonLabel, value: line.reason },
               {
                 id: 'custody',
-                label: RETURN_LINES_COPY.custodyLabel,
+                label: copy.custodyLabel,
                 value: <ReturnLineStateChip axis="custody" value={line.custodyState} />,
               },
               {
                 id: 'money',
-                label: RETURN_LINES_COPY.moneyLabel,
+                label: copy.moneyLabel,
                 value: <ReturnLineStateChip axis="money" value={line.moneyState} sourceName={sourceName} />,
               },
               {
                 id: 'orderLine',
-                label: RETURN_LINES_COPY.orderLineLabel,
+                label: copy.orderLineLabel,
                 value: <OrderLineCell line={line} />,
               },
               // Dropped rather than rendered empty: an absent note is not a
               // fact about the line worth a row of its own.
               ...(line.note !== null
-                ? [{ id: 'note', label: RETURN_LINES_COPY.noteLabel, value: line.note }]
+                ? [{ id: 'note', label: copy.noteLabel, value: line.note }]
                 : []),
             ]}
           />

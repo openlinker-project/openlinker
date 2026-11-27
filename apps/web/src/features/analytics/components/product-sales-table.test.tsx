@@ -402,6 +402,106 @@ describe('ProductSalesTable', () => {
     expect(getTopProducts).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'units' }));
   });
 
+  it('should read the ranking from the URL so a shared link and the CSV export agree', async () => {
+    const getTopProducts = vi.fn().mockResolvedValue(result([row()]));
+    const apiClient = createMockApiClient({
+      analytics: { getTopProducts },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, {
+      apiClient,
+      route: '/analytics?productSort=units',
+    });
+    await screen.findByText('Widget A');
+
+    expect(getTopProducts).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'units' }));
+    expect(screen.getByRole('radio', { name: 'By units' })).toBeChecked();
+  });
+
+  it('names an unmatched marketplace offer for what it is and never shows its synthetic id (#4280)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getTopProducts: vi.fn().mockResolvedValue(
+          result(
+            [
+              row({
+                productId: 'unmatched:conn-a:OFFER-7',
+                name: null,
+                sku: 'OFFER-7',
+                unmatchedOfferId: 'OFFER-7',
+              }),
+            ],
+            { unmatchedOfferCount: 1 }
+          )
+        ),
+      },
+      connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+    });
+
+    renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, { apiClient });
+
+    expect((await screen.findAllByText('Unmatched offer')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('OFFER-7').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/unmatched:conn-a/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/1 line on this page comes from a marketplace offer/)
+    ).toBeInTheDocument();
+  });
+
+  it('does not ask for variants, or show the synthetic id, when an unmatched offer is expanded on a phone (#4280 review)', async () => {
+    // The card breakpoint is a media query; trip it so DataTable renders cards.
+    const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query) =>
+        ({
+          matches: true,
+          media: query,
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false,
+        }) as MediaQueryList,
+    );
+    try {
+      const getTopProductVariantSales = vi.fn();
+      const apiClient = createMockApiClient({
+        analytics: {
+          getTopProducts: vi.fn().mockResolvedValue(
+            result(
+              [
+                row({
+                  productId: 'unmatched:conn-a:OFFER-7',
+                  name: null,
+                  sku: 'OFFER-7',
+                  unmatchedOfferId: 'OFFER-7',
+                }),
+              ],
+              { unmatchedOfferCount: 1 }
+            )
+          ),
+          getTopProductVariantSales,
+        },
+        connections: { list: vi.fn().mockResolvedValue(CONNECTIONS) },
+      });
+
+      renderWithProviders(<ProductSalesTable netGrossBasis="net" filters={FILTERS} />, {
+        apiClient,
+      });
+
+      await userEvent.click(await screen.findByRole('button', { name: /view full details/i }));
+
+      expect(
+        await screen.findByText(/no catalogue product, so there are no variants/i)
+      ).toBeInTheDocument();
+      expect(getTopProductVariantSales).not.toHaveBeenCalled();
+      expect(screen.queryByText(/unmatched:conn-a/)).not.toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('renders an empty value for a product with no SKU', async () => {
     const apiClient = createMockApiClient({
       analytics: {
@@ -775,7 +875,7 @@ describe('ProductSalesTable', () => {
 
       const p2Notes = p2Row!.querySelectorAll('.excl-note');
       expect(p2Notes).toHaveLength(1);
-      expect(p2Notes[0]).toHaveTextContent('1 order have no tax rate at all');
+      expect(p2Notes[0]).toHaveTextContent('1 order has no tax rate at all');
     });
 
     it('should annotate a product for every cross-referenceable category it has an excluded order in', async () => {

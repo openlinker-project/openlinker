@@ -80,13 +80,18 @@ jobs:
     name: Lint
     timeout-minutes: 30
     # runs-on: ubuntu-latest
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     needs: changes
     # Skip while draft, and skip when only docs/compose changed. Always run on
     # push (post-merge to main) where there's no PR draft context.
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check-release-center-catalog.mjs proves each release highlight hash
+          # with `git cat-file`, and the hash may be any commit on main, so a
+          # one-commit clone would report every older hash as missing.
+          fetch-depth: 0
       # actions/checkout@v4 shallow-fetches only the triggering ref, so
       # `refs/remotes/origin/main` is absent on pull_request builds. The
       # migration-ordering invariant (#1013) in check-migration-timestamps.mjs
@@ -106,7 +111,10 @@ jobs:
       - name: Fetch origin/main (baseline for migration-ordering + ADR-number invariants)
         run: |
           if command -v git >/dev/null 2>&1; then
-            git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+            # No --depth: this checkout is already full (fetch-depth: 0 above), and a
+            # depth-1 fetch would re-shallow it at main's tip, hiding the older commits
+            # the release highlight check looks up.
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           else
             echo "git not available on this runner — migration-ordering guard will skip (#1020/#662)"
           fi
@@ -116,6 +124,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -128,7 +137,7 @@ jobs:
     name: Type Check
     timeout-minutes: 30
     # runs-on: ubuntu-latest
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2
@@ -137,6 +146,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm type-check
@@ -158,7 +168,7 @@ jobs:
     name: Test
     timeout-minutes: 30
     # runs-on: ubuntu-latest
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     needs: changes
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
@@ -169,6 +179,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       # `actions/checkout` writes every file afresh, so each run sees new mtimes
       # for byte-identical content. Jest's transform-cache key is a function of
@@ -218,7 +229,7 @@ jobs:
   test-web:
     name: Test (web)
     timeout-minutes: 30
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     needs: changes
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
@@ -229,11 +240,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run web tests
         run: pnpm test:ci:web
+      # The development-only missing-translation inspector (#4017) must never
+      # reach a production bundle, even with its variable set.
+      - name: Check the translation inspector is not in a build
+        run: pnpm --filter @openlinker/web check:i18n-inspector-build
 
   test-integration:
     name: Integration Tests
@@ -242,7 +258,7 @@ jobs:
     # moves the failure here: 40 (api) + 15 (worker) + ~3 setup = 58.
     timeout-minutes: 65
     # runs-on: ubuntu-latest
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     # `needs: changes` only for the cheap path-gate output — NOT an artifact
     # dependency on `test`. This job re-installs deps + rebuilds libs itself;
     # gating on `test` previously serialized the two longest jobs (unit ~6min,
@@ -280,6 +296,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       # A cold ts-jest transform cache costs the FIRST suite of each
       # integration step ~32 s (measured: 6.4 s warm vs 76.3 s cold locally for
@@ -495,7 +512,7 @@ jobs:
     # run this job at all, silently. A pilot-readiness gate that can be
     # skipped by editing exactly the files it exists to verify is not a gate.
     timeout-minutes: 20
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     # One container name PER RUN, never a shared literal: every self-hosted
     # runner talks to the same Docker daemon, so with a fixed name a second
     # PR's opening `docker rm -f` (or its closing clean-up) removed the first
@@ -512,6 +529,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       # A throwaway Postgres this job fully owns, published to an
@@ -601,6 +619,9 @@ jobs:
       - name: Seed a database via the real migration chain
         working-directory: apps/api
         env:
+          # Skip ts-node's whole-project type check (~7 min per step); types are
+          # already checked by the Type Check job, and the SQL still runs as is.
+          TS_NODE_TRANSPILE_ONLY: 'true'
           DB_HOST: ${{ env.PG_GATEWAY_HOST }}
           DB_PORT: ${{ env.PG_HOST_PORT }}
           DB_USERNAME: postgres
@@ -636,6 +657,9 @@ jobs:
       - name: Assert 0 pending migrations against the restored database
         working-directory: apps/api
         env:
+          # Skip ts-node's whole-project type check (~7 min per step); types are
+          # already checked by the Type Check job, and the SQL still runs as is.
+          TS_NODE_TRANSPILE_ONLY: 'true'
           DB_HOST: ${{ env.PG_GATEWAY_HOST }}
           DB_PORT: ${{ env.PG_HOST_PORT }}
           DB_USERNAME: postgres
@@ -681,6 +705,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
       - name: Run PHP unit tests
         run: pnpm test:php
 
@@ -688,7 +713,7 @@ jobs:
     name: Build
     timeout-minutes: 30
 #    runs-on: ubuntu-latest
-    runs-on: self-hosted
+    runs-on: integration-tests-runner
     needs: changes
     if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
     steps:
@@ -699,6 +724,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          check-latest: true # a cached 22.x on self-hosted runners would skip security releases (#3781)
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build

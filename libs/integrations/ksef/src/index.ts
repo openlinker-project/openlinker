@@ -47,6 +47,9 @@ export {
 // non-retryable). An AuthFailureClassifier (reauth on 401, ADR-008) is a future
 // hook and is not registered yet.
 export { KsefApiException } from './domain/exceptions/ksef-api.exception';
+// A KSeF 403 - authenticated token lacks the required permission (least-privilege
+// signal). A KsefApiException subclass, so retry classification is unchanged (#1589).
+export { KsefPermissionDeniedException } from './domain/exceptions/ksef-permission-denied.exception';
 export { KsefAuthenticationException } from './domain/exceptions/ksef-authentication.exception';
 export { KsefConfigException } from './domain/exceptions/ksef-config.exception';
 // Transport + session-crypto exceptions (#1147 / C3).
@@ -55,10 +58,15 @@ export { KsefSessionCryptoException } from './domain/exceptions/ksef-session-cry
 // Online-session business-failure (zero-valid processed session) — surfaced to
 // the host classifier / core InvoiceService as a terminal failure (#1149 / C5).
 export { KsefSessionException } from './domain/exceptions/ksef-session.exception';
+export { KsefExchangeRateException } from './domain/exceptions/ksef-exchange-rate.exception';
 // Unsupported requested document type — a terminal input error (#1149 / C5).
 export { KsefUnsupportedDocumentTypeException } from './domain/exceptions/ksef-unsupported-document-type.exception';
 // documentType <-> correction command-shape mismatch — a terminal input error (#1151 / C7).
 export { KsefInvalidCorrectionException } from './domain/exceptions/ksef-invalid-correction.exception';
+// Interim cross-border refusal (#1586) — a terminal input/config error: the sale
+// crosses a border the pipeline cannot yet band correctly, unless the connection
+// opted in via `allowCrossBorder`.
+export { KsefCrossBorderUnsupportedException } from './domain/exceptions/ksef-cross-border-unsupported.exception';
 
 // FA(3) build/mapping + structural-validation exceptions (#1148 / C4). Public
 // so the host classifier / persistence layer can pattern-match a deterministic

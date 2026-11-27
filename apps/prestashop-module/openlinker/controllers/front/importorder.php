@@ -31,8 +31,15 @@
  *
  * Body (JSON):
  *   { id_cart: int, id_order_state: int, amount_paid: number,
- *     payment_method?: string, order_reference?: string,
+ *     payment_method?: string, payment_module?: string, order_reference?: string,
  *     line_prices?: [{ id_product: int, id_product_attribute?: int, price: string }] }
+ *
+ * `payment_module` (#3988) names the PrestaShop payment module the order is
+ * imported with (e.g. `ps_wirepayment`): the order's `module` column records it
+ * and `payment` becomes the module's display name. A module that is absent,
+ * inactive or not a PaymentModule is ignored with a log line and the import
+ * proceeds through `ps_checkpayment` as before - a payment label is not worth
+ * an order. An older build ignores the field.
  *
  * `line_prices` carries the buyer-paid tax-EXCLUSIVE unit price of every line
  * (#2597). When present the module pins them as cart-scoped `specific_prices`
@@ -251,6 +258,24 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
         $this->context->language = new Language((int) $cart->id_lang);
 
         $payment = Module::getInstanceByName(self::PAYMENT_MODULE);
+        $requestedModule = PaymentModuleGate::normalizeRequestedModule(
+            isset($data['payment_module']) ? $data['payment_module'] : null
+        );
+        if ($requestedModule !== null && $requestedModule !== self::PAYMENT_MODULE) {
+            $requested = Module::getInstanceByName($requestedModule);
+            $requestedProblem = PaymentModuleGate::reasonUnusable($requested);
+            if ($requestedProblem === null) {
+                $payment = $requested;
+                $paymentMethod = PaymentModuleGate::displayLabel($requested, $paymentMethod);
+            } else {
+                PrestaShopLogger::addLog(
+                    'OpenLinker: requested payment module "' . $requestedModule . '" not usable ('
+                        . $requestedProblem . ', id_cart=' . $idCart . '); importing via "'
+                        . self::PAYMENT_MODULE . '"',
+                    2, null, 'Cart', $idCart
+                );
+            }
+        }
         $paymentProblem = PaymentModuleGate::reasonUnusable($payment);
         if ($paymentProblem !== null) {
             PrestaShopLogger::addLog(
@@ -294,6 +319,27 @@ class OpenLinkerImportOrderModuleFrontController extends ModuleFrontController
                 return;
             }
         }
+
+        // validateOrder builds its OWN `new Cart($id_cart)` (PaymentModule.php,
+        // PrestaShop 9.0.2), so nothing cached on THIS cart object reaches it.
+        // What it does inherit is the process-wide static price caches, and those
+        // are where the stale catalogue price lives: the `getProducts()` call near
+        // the top ran before the context carried this cart's customer and
+        // currency, and the pins above were written after that read. Flushing
+        // them forces validateOrder's fresh cart to price every line again, from
+        // the pins. A pin equal to the catalogue price hid this; a 0.00 gift line
+        // did not. Guarded because both methods are core API but a shop on an
+        // unexpected build must degrade to the old behaviour, not fatal.
+        if (class_exists('SpecificPrice') && method_exists('SpecificPrice', 'flushCache')) {
+            SpecificPrice::flushCache();
+        }
+        if (method_exists('Product', 'flushPriceCache')) {
+            Product::flushPriceCache();
+        }
+        // Kept for the cart this controller still holds (shipping/package reads
+        // below it), not for validateOrder.
+        $cart->getProducts(true);
+        $cart->getPackageList(true);
 
         // validateOrder and the code it calls can end the request with die(),
         // which PHP sends as HTML with status 200 - a failure the caller reads

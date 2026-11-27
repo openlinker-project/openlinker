@@ -53,11 +53,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import {
+  buildFulfillmentDispatchDedupeKey,
   FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
   resolveFulfillmentDispatchTimeoutMs,
   type FulfillmentAcceptanceAttentionIntent,
   type IFulfillmentDispatchTimeoutService,
 } from '@openlinker/core/fulfillment';
+import { CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
 import type {
   FulfillmentWorkTimeoutSweepPayloadV1,
@@ -65,7 +67,15 @@ import type {
   SyncJobHandlerResult,
   SyncJob as SyncJobEntity,
 } from '@openlinker/core/sync';
-import { SyncJobExecutionError, SYNC_LOCK_TOKEN, SyncLockPort } from '@openlinker/core/sync';
+import {
+  JOB_ENQUEUE_TOKEN,
+  SYNC_CURSORS_SERVICE_TOKEN,
+  SyncJobExecutionError,
+  SYNC_LOCK_TOKEN,
+  SyncLockPort,
+  type ISyncCursorsService,
+  type JobEnqueuePort,
+} from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
 
 import { resolveSweepBudget, resolveSweepLockTtlMs } from '../bounded-sweep';
@@ -81,6 +91,12 @@ type SyncJob = SyncJobEntity;
  * for a child job doing a full per-product platform sync.
  */
 export const FULFILLMENT_TIMEOUT_SWEEP_PAGE_LIMIT_DEFAULT = 200;
+
+/** Keyset cursor of the stalled-`unsubmitted` pass (#3476). Empty = start. */
+export const FULFILLMENT_UNSUBMITTED_SWEEP_CURSOR_KEY = 'fulfillment.unsubmitted.after';
+
+/** The capability `fulfillment.work.dispatch` resolves the holder through. */
+const FULFILLMENT_EXECUTOR_CAPABILITY = 'FulfillmentExecutor';
 
 /**
  * This pass's own lock namespace.
@@ -101,6 +117,12 @@ export class FulfillmentWorkTimeoutSweepHandler implements SyncJobHandler {
     private readonly timeouts: IFulfillmentDispatchTimeoutService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connections: ConnectionPort,
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly cursors: ISyncCursorsService,
+    @Inject(JOB_ENQUEUE_TOKEN)
+    private readonly jobEnqueue: JobEnqueuePort,
     @Inject(SYNC_LOCK_TOKEN)
     private readonly syncLock: SyncLockPort,
     private readonly configService: ConfigService
@@ -144,6 +166,8 @@ export class FulfillmentWorkTimeoutSweepHandler implements SyncJobHandler {
           `failed=${String(result.failed)}, timeoutMs=${String(result.timeoutMs)}`
       );
 
+      await this.handleStalledUnsubmitted(scopeId, limit, timeoutMs, new Date());
+
       return { outcome: 'ok' };
     } catch (error) {
       // Nothing is persisted on this path — there is no cursor to hold — so a
@@ -168,6 +192,125 @@ export class FulfillmentWorkTimeoutSweepHandler implements SyncJobHandler {
           }`
         );
       }
+    }
+  }
+
+  /**
+   * The second pass (#3476): works routed to a holder and never offered to it.
+   *
+   * Such a work sits `unsubmitted` because its dispatch job died before the
+   * handshake could claim it — the holder's connection did not have
+   * `FulfillmentExecutor` enabled, so every attempt failed to resolve an
+   * executor. Nothing else ever looks at it: the reap above reads `submitted`
+   * only, re-routing answers `already-routed`, and the bare dispatch key
+   * swallows a second enqueue. So this pass raises A3-X for its order, and
+   * re-drives the dispatch once the connection can execute.
+   *
+   * Keyset-paged from a cursor: raising the state does not write the work row,
+   * so the set does not shrink and a frontier read would starve every work
+   * behind the first page. The cursor advances even when a write below fails —
+   * each failure is logged, and the keyset wraps to the start and retries it.
+   */
+  private async handleStalledUnsubmitted(
+    scopeId: string,
+    limit: number,
+    timeoutMs: number,
+    now: Date
+  ): Promise<void> {
+    const stored = await this.cursors.getCursor(scopeId, FULFILLMENT_UNSUBMITTED_SWEEP_CURSOR_KEY);
+    const afterWorkId = stored === null || stored === '' ? null : stored;
+
+    const result = await this.timeouts.findStalledUnsubmitted({
+      limit,
+      timeoutMs,
+      now,
+      afterWorkId,
+    });
+
+    await this.writeAttention(result.attentionIntents);
+
+    // One generation per timeout window, so a work is re-driven at most once a
+    // window and a still-retrying original job is not joined by a pile of
+    // copies. The handshake claim is the guarantee against a double dispatch;
+    // this only bounds the queue.
+    const generation = String(Math.floor(now.getTime() / timeoutMs));
+    const executable = new Map<string, boolean>();
+    let redriven = 0;
+    let waiting = 0;
+
+    for (const work of result.works) {
+      let canExecute = executable.get(work.assignedConnectionId);
+      if (canExecute === undefined) {
+        canExecute = await this.connectionCanExecute(work.assignedConnectionId);
+        executable.set(work.assignedConnectionId, canExecute);
+      }
+
+      if (!canExecute) {
+        // Re-driving now would only dead-letter another job. The A3-X state
+        // above is what tells the operator to enable the capability.
+        waiting += 1;
+        continue;
+      }
+
+      try {
+        await this.jobEnqueue.enqueueJob({
+          jobType: 'fulfillment.work.dispatch',
+          // The work's own holder — never a synthetic scope (#2609).
+          connectionId: work.assignedConnectionId,
+          payload: {
+            workId: work.workId,
+            orderId: work.orderId,
+            // `null`: the work was never claimed, so this is a first dispatch.
+            expectedAssignmentAttempt: null,
+          },
+          idempotencyKey: buildFulfillmentDispatchDedupeKey(work.workId, generation),
+        });
+        redriven += 1;
+      } catch (error) {
+        this.logger.error(
+          `Could not re-drive the dispatch of stalled work ${work.workId} (order ${work.orderId}): ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+
+    await this.cursors.advanceCursor(
+      scopeId,
+      FULFILLMENT_UNSUBMITTED_SWEEP_CURSOR_KEY,
+      result.nextAfterWorkId ?? ''
+    );
+
+    if (result.works.length > 0) {
+      this.logger.warn(
+        `fulfillment.work.timeoutSweep stalled-unsubmitted: found=${String(result.works.length)}, ` +
+          `redriven=${String(redriven)}, waitingForExecutor=${String(waiting)}`
+      );
+    }
+  }
+
+  /**
+   * Can a dispatch to this connection resolve an executor right now?
+   *
+   * The same two conditions `getCapabilityAdapter` checks before the adapter
+   * itself: the connection is active and has `FulfillmentExecutor` enabled. A
+   * failed read answers `false` — the work keeps its A3-X state and is looked
+   * at again next tick, which is safer than enqueueing a job bound to fail.
+   */
+  private async connectionCanExecute(connectionId: string): Promise<boolean> {
+    try {
+      const connection = await this.connections.get(connectionId);
+      return (
+        connection.status === 'active' &&
+        connection.enabledCapabilities.includes(FULFILLMENT_EXECUTOR_CAPABILITY)
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not read connection ${connectionId} while checking whether stalled work can be re-driven: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return false;
     }
   }
 

@@ -43,8 +43,12 @@ describe('invoicing.types', () => {
       'buyer-tax-id-invalid',
       'invalid-currency',
       'sale-classification-required',
+      'connection-setup-incomplete',
+      'acknowledgement-required',
+      'connection-setting-rejected',
       'provider-rejected',
       'transport-timeout',
+      'provider-answer-inconclusive',
       'provider-error',
     ]);
   });

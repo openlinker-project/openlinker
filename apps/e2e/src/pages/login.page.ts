@@ -13,13 +13,15 @@ export class LoginPage {
 
   async goto(): Promise<void> {
     await this.page.goto('/login');
-    await expect(this.page.getByRole('heading', { name: 'Sign in to your account' })).toBeVisible();
+    // The demo build titles the form "Sign in to the demo" and carries a second, hidden sign-up form, so the
+    // visible username field is the one thing both builds share.
+    await expect(this.page.locator('input[name="username"]:visible').first()).toBeVisible();
   }
 
   async login(username: string, password: string): Promise<void> {
-    await this.page.getByLabel('Username').fill(username);
-    await this.page.getByLabel('Password').fill(password);
-    await this.page.getByRole('button', { name: 'Sign in' }).click();
+    await this.page.locator('input[name="username"]:visible').first().fill(username);
+    await this.page.locator('input[type="password"]:visible').first().fill(password);
+    await this.page.keyboard.press('Enter');
     // The SPA redirects away from /login on success.
     await this.page.waitForURL((url) => !url.pathname.startsWith('/login'), {
       timeout: 15_000,

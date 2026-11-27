@@ -21,6 +21,7 @@ function view(over: Partial<BenchWorkListView> = {}): BenchWorkListView {
         parcelIndex: 1,
         parcelTotal: 2,
         lineCount: 2,
+        giftUnits: 1,
         // #3415 - the rail leads with what is in the box. Two named lines and
         // one un-resolvable variant, because `null` is a real answer here and
         // the projection must carry it through rather than drop the row.
@@ -37,6 +38,8 @@ function view(over: Partial<BenchWorkListView> = {}): BenchWorkListView {
         assignmentState: 'unassigned',
         claimable: true,
         completedAt: null,
+        hasBuyerNote: true,
+        buyerNoteAcknowledgedAt: '2026-09-25T14:31:00.000Z',
       },
     ],
     executorName: 'Warehouse packing',

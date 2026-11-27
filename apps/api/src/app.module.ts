@@ -19,6 +19,7 @@ import { HealthModule } from './health/health.module';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { CustomersModule } from '@openlinker/core/customers';
 import { ReturnsModule } from '@openlinker/core/returns';
+import { ReleaseCenterModule } from '@openlinker/core/release-center';
 import { AutomationModule } from '@openlinker/core/automation';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { FulfillmentRouterBindingModule } from './fulfillment/fulfillment-router-binding.module';
@@ -58,8 +59,12 @@ import { FulfillmentAuthorityApiModule } from './fulfillment-authority/fulfillme
 import { ReturnActionsApiModule } from './returns/return-actions.module';
 import { ReturnsReadApiModule } from './returns/returns-read.module';
 import { AutomationApiModule } from './automation/automation-api.module';
+import { PromotionsApiModule } from './promotions/promotions-api.module';
 import { CurrencyApiModule } from './currency/currency.module';
 import { OperationalSettingsApiModule } from './operational-settings/operational-settings.module';
+import { SavedViewsApiModule } from './saved-views/saved-views.module';
+import { ReleaseCenterApiModule } from './release-center/release-center-api.module';
+import { LoginPageSettingsApiModule } from './login-page-settings/login-page-settings.module';
 import { OmsApiModule } from './oms/oms-api.module';
 import { RequestPriorityModule } from './http/request-priority.module';
 
@@ -81,6 +86,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     // yet (#2334) — imported so the provider graph is proven at boot rather
     // than first exercised by whichever wave adds the first consumer.
     ReturnsModule,
+    ReleaseCenterModule, // #4141: release-center cursor and item-state persistence
     // #2358: registers the automation ORM entities + rule repository. No API
     // surface yet (#2363) — imported so the provider graph is proven at boot,
     // and so the two writer-less tables (#2360's firings, #2385's runs) are
@@ -138,6 +144,7 @@ import { RequestPriorityModule } from './http/request-priority.module';
     // per-rule fired log (#2363). Imports OrdersModule as well as AutomationModule:
     // the dry run composes both, and only an app-level module may.
     AutomationApiModule,
+    PromotionsApiModule,
     ContentApiModule, // REST surface for product content editor + AI suggest (#339 + #342)
     ShippingApiModule, // Shipment read + command HTTP API (#846); imports core ShippingModule (#763/#835)
     UsersApiModule, // User management: list, approve/reject pending, role + status ops (#1125)
@@ -148,6 +155,9 @@ import { RequestPriorityModule } from './http/request-priority.module';
     McpModule, // MCP Resource-Server auth (PATs) + Streamable-HTTP ingress (#1486, ADR-034)
     CurrencyApiModule, // Reporting-currency settings HTTP API (#2126, ADR-040)
     OperationalSettingsApiModule, // Operator-settable sweep budgets + deletion-audit cadence (#2651)
+    SavedViewsApiModule, // Named list views: personal + shared (#4241)
+    ReleaseCenterApiModule, // Release center state endpoints (#4142)
+    LoginPageSettingsApiModule, // Admin-editable login-page copy (#4028)
     // /connections/:id/sourcing-rules — authoring the OL fulfilment router's ordered
     // ruleset (#2953). Deliberately NOT `routing-rules`, which MappingsApiModule owns
     // for the unrelated ADR-012 dispatch surface.

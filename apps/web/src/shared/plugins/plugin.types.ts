@@ -34,7 +34,11 @@ import type { ApiRequest, PluginApiNamespaces } from '../../app/api/api-client';
 import type { GroupRoleGate } from '../../app/nav-registry.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { EditConnectionFormValues } from '../../features/connections/components/edit-connection.schema';
-import type { CorrectionSuggestedLine, InvoiceRecord } from '../../features/invoicing';
+import type {
+  CorrectionSuggestedLine,
+  InvoiceRecord,
+  IssueInvoiceOptions,
+} from '../../features/invoicing';
 import type { StructuredError } from '../types/structured-error.types';
 
 /**
@@ -43,8 +47,12 @@ import type { StructuredError } from '../types/structured-error.types';
  * that group; an unknown label creates a new group at the end of the sidebar.
  *
  * Soft contract: contributors should prefer matching one of the existing
- * groups ("Operations", "Diagnostics", "Platform"). Tightening to a closed
- * union is a follow-up if group sprawl becomes a problem.
+ * groups. Name a core group by its section key (`'operations'`,
+ * `'diagnostics'`, `'platform'`): the group's label follows the operator's
+ * language, so the key is the spelling that matches in every language. The
+ * English label (`'Operations'`) still matches too, for existing plugins.
+ * Tightening to a closed union is a follow-up if group sprawl becomes a
+ * problem.
  *
  * Note: `countKey` is intentionally omitted — count badges are wired to
  * internal queries via a closed key set (`NavCountKey`), not a plugin
@@ -268,6 +276,12 @@ export interface ExtraConfigSectionProps {
   form: UseFormReturn<EditConnectionFormValues>;
   configIsParseable: boolean;
   syncSellerDefaultsToJson: () => void;
+  /**
+   * Whole-object serializer for `config.senderAddress` (the host's
+   * `inpostSenderAddress` form field). Optional: the Allegro Delivery sender
+   * section uses it; other plugins ignore it.
+   */
+  syncInpostSenderAddressToJson?: () => void;
 }
 
 /**
@@ -375,6 +389,42 @@ export interface OfferBlockerDescriptor {
    * neutral ids. Absent ⇒ the modal opens unfocused, as before.
    */
   field?: OfferBlockerField;
+  /**
+   * The sentence the bulk editor and the Review chip show for this blocker
+   * (#4003). The platform owns the blocker, so it owns the words: without this
+   * the host can only say "needs attention", which names neither the problem
+   * nor the field. Must be pure and read only `context`. Absent ⇒ the host's
+   * generic sentence, which still names the chip label.
+   */
+  describe?: (context: OfferBlockerDescribeContext) => OfferBlockerCopy;
+}
+
+/**
+ * What the host knows when it asks a blocker for its sentence (#4003).
+ *
+ * `missingParameterNames` keeps three states apart on purpose, because an
+ * empty list must never read as "nothing is missing" when nobody checked:
+ * - `undefined` - this surface did not compute it (the Review chip tooltip);
+ * - `null` - it tried and the category's parameter list could not be loaded;
+ * - an array - the required product parameters still without a value, by
+ *   their marketplace name (possibly empty: everything is filled in now).
+ *
+ * It carries no destination name: a platform's sentence names its own
+ * marketplace, and an operator's connection label would read wrongly there.
+ */
+export interface OfferBlockerDescribeContext {
+  missingParameterNames?: readonly string[] | null;
+}
+
+/** A blocker's sentence (#4003): what is wrong, then what to do about it. */
+export interface OfferBlockerCopy {
+  title: string;
+  detail: string;
+  /**
+   * Values the title refers to, rendered as a list (e.g. the missing
+   * parameter names). Shown verbatim - they come from the marketplace.
+   */
+  items?: readonly string[];
 }
 
 /**
@@ -389,6 +439,7 @@ export const OfferBlockerFieldValues = [
   'images',
   'parameters',
   'category',
+  'bundle',
 ] as const;
 export type OfferBlockerField = (typeof OfferBlockerFieldValues)[number];
 
@@ -436,6 +487,13 @@ export interface OfferRowValidationInput {
    */
   catalogueConsulted?: boolean;
   /**
+   * The lookup DID find a catalogue product for this row's barcode, even though
+   * no card will be linked - it sat in a different category than the operator's
+   * mapping and was set aside (#3994). A "barcode not in the catalogue" warning
+   * would then be false. Absent ⇒ unknown, read as before.
+   */
+  barcodeMatchedCatalogue?: boolean;
+  /**
    * How many INCLUDED siblings of this row's product would create a catalogue
    * card of their own. On a multi-variant product Allegro binds the new card to
    * the first variant it accepts and rejects the others, so this is a
@@ -444,6 +502,32 @@ export interface OfferRowValidationInput {
   siblingsWithoutCatalogueCard?: number;
   /** Included sibling count for the row's product; 1 ⇒ nothing to group. */
   includedSiblingCount?: number;
+  /**
+   * Present when the row is a bundle published as ONE offer made of several
+   * products (#3520). Its own barcode and catalogue card then say nothing about
+   * the offer - the components carry them - so a destination skips the
+   * single-product checks and reads this instead.
+   */
+  bundle?: OfferRowBundleInput;
+}
+
+/** One component of a bundle row, as the destination's preview reported it (#3520). */
+export interface OfferRowBundleComponent {
+  variantId: string;
+  productId: string;
+  name: string;
+  /** Destination-neutral problems the preview attached; `code` is the destination's own. */
+  problems: readonly { code: string; message: string }[];
+  /** Category of the component's product card, when known. */
+  cardCategoryId?: string;
+}
+
+export interface OfferRowBundleInput {
+  components: readonly OfferRowBundleComponent[];
+  /** Category the destination requires: that of the first component's card. */
+  suggestedCategoryId: string | null;
+  /** Category the offer would be submitted under right now. */
+  chosenCategoryId: string | null;
 }
 
 /**
@@ -552,6 +636,39 @@ export interface OfferValidationContribution {
    * flag rather than on a `platformType` string. Absent ⇒ treated as `false`.
    */
   needsCategoryParameterSchema?: boolean;
+  /**
+   * Error codes with which this marketplace refuses an offer because of the
+   * SELLER ACCOUNT rather than the offer (#4004), plus the sentence the batch
+   * page shows once for them. Nothing in the offer can fix such a refusal, so
+   * the host states it once per batch and stops offering a per-row fix.
+   * Absent ⇒ every failure is treated as offer-level, as before.
+   */
+  accountLevelRefusal?: OfferAccountRefusalContribution;
+}
+
+/** See `OfferValidationContribution.accountLevelRefusal` (#4004). */
+export interface OfferAccountRefusalContribution {
+  /** The marketplace's own error codes, matched verbatim on `errors[].code`. */
+  errorCodes: readonly string[];
+  describe: (context: OfferAccountRefusalContext) => OfferAccountRefusalCopy;
+}
+
+/** What the host knows when it asks for the account-refusal notice (#4004). */
+export interface OfferAccountRefusalContext {
+  /** Failed records refused for an account-level reason. */
+  affected: number;
+  /** Variants in the batch. */
+  total: number;
+  /** The batch connection's config, e.g. to pick a sandbox or production link. */
+  connectionConfig: Record<string, unknown>;
+}
+
+/** The account-refusal notice (#4004): what happened, and where to fix it. */
+export interface OfferAccountRefusalCopy {
+  title: string;
+  detail: string;
+  /** A link to the marketplace's own seller surface, where the account is fixed. */
+  action?: { label: string; href: string };
 }
 
 /**
@@ -623,6 +740,33 @@ export interface InvoiceCorrectionFlowProps {
 }
 
 /**
+ * One order line as the per-issue options slot sees it: enough to name the
+ * line, nothing that identifies the buyer.
+ */
+export interface InvoiceIssueOptionsLine {
+  id: string;
+  name: string | null;
+  quantity: number;
+}
+
+/**
+ * Props the per-provider "options for this invoice" slot receives (DEF-20).
+ * Rendered by the host inside the manual-issue disclosure, before the Issue
+ * button. The plugin only collects what the operator states about THIS sale
+ * (fiscal annotations, an extra party, per-line markers) - never a default
+ * applied on its own, and never anything that sets a rate. The host owns the
+ * value and sends it with the issue request. Absent means the provider takes
+ * no per-issue options.
+ */
+export interface InvoiceIssueOptionsProps {
+  connection: Connection;
+  lines: InvoiceIssueOptionsLine[];
+  value: IssueInvoiceOptions;
+  onChange: (next: IssueInvoiceOptions) => void;
+  disabled?: boolean;
+}
+
+/**
  * Build-time contribution bag. Folded by the host at module load.
  */
 export interface BuildContribution {
@@ -653,6 +797,14 @@ export interface PlatformContribution {
    * its own name is detail - see `resolvePlatformShortLabel`.
    */
   shortLabel?: string;
+  /**
+   * The platform whose category IDs this destination accepts, when it takes
+   * another platform's category tree instead of its own (a borrowed
+   * taxonomy, #1045 - Erli uses Allegro category IDs). Surfaces that ask the
+   * operator to type a category ID name this platform, so the operator knows
+   * which ID to look up. Omitted, the destination's own name is used.
+   */
+  categoryIdSource?: string;
   /** Setup-card metadata for `PlatformPicker`. Omit if no guided wizard. */
   setupCard?: PlatformSetupCard;
   /**
@@ -673,6 +825,14 @@ export interface PlatformContribution {
   requiresExternalAuthRedirect?: boolean;
   /** Edit-connection: default value for the OL callback URL field. */
   getCallbackUrlDefault?: () => string | undefined;
+  /**
+   * Edit-connection: name of this plugin's settings in the page contents
+   * (#4133). Already resolved in the operator's language, from the plugin's
+   * own namespace (use a getter, like `setupCard.description`). Omitted, the
+   * contents shows one generic "Platform settings" entry. Additive: a plugin
+   * that does not set it behaves exactly as before.
+   */
+  sectionTitle?: string;
   /** Edit-connection: render the platform-specific structured config inputs. */
   StructuredConfigSection?: ComponentType<StructuredConfigSectionProps>;
   /**
@@ -800,6 +960,12 @@ export interface PlatformContribution {
    */
   invoiceCorrectionFlow?: ComponentType<InvoiceCorrectionFlowProps>;
   /**
+   * Invoicing: per-issue options the operator states about one sale when
+   * issuing by hand (DEF-20). Resolved via `usePlatform(connection.platformType)`.
+   * Absent means the issue request carries no per-issue options.
+   */
+  invoiceIssueOptions?: ComponentType<InvoiceIssueOptionsProps>;
+  /**
    * Pack bench: the body and actions of a registered fiscal receipt's card
    * (#3647). Resolved via `usePlatform(document.platformType)`. Absent means the
    * host's neutral default by artefact medium.
@@ -827,6 +993,12 @@ export interface OpenLinkerPlugin {
   build?: BuildContribution;
   /** Platform-side contributions. Resolved at render time via context. */
   platform?: PlatformContribution;
+  /**
+   * The plugin's own translation namespace, from `definePluginMessages`
+   * (ADR-081). Referencing it here keeps the namespace registered at module
+   * load, before the host loads the operator's language.
+   */
+  messages?: { readonly namespace: string };
 }
 
 /**

@@ -84,7 +84,7 @@ describe('OfferCommercialSnapshotRepository', () => {
       expect((row as { updatedAt: () => string }).updatedAt()).toBe('now()');
     });
 
-    it('persists a null price and a null quantity rather than coercing either to zero', async () => {
+    it('should leave availableQuantity out of the upsert when the observation has none, so an earlier quantity survives', async () => {
       ormRepository.upsert.mockResolvedValue({} as never);
 
       await repository.upsert({
@@ -95,7 +95,8 @@ describe('OfferCommercialSnapshotRepository', () => {
       });
 
       const [row] = ormRepository.upsert.mock.calls[0];
-      expect(row).toMatchObject({ price: null, currency: null, availableQuantity: null });
+      expect(row).toMatchObject({ price: null, currency: null });
+      expect(Object.keys(row)).not.toContain('availableQuantity');
     });
 
     it('resolves to void - no caller reads the persisted row back', async () => {

@@ -12,10 +12,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  ORDER_LIFECYCLE_PHASE_META,
-  ORDER_LIFECYCLE_PHASE_WAITING_ON,
+  ORDER_LIFECYCLE_PHASE_TONE,
   OrderLifecyclePhaseValues,
   isOrderLifecyclePhase,
+  orderLifecyclePhaseLabel,
+  orderLifecyclePhaseWaitingOn,
   phaseBadge,
 } from './order-lifecycle-phase';
 
@@ -35,22 +36,22 @@ describe('order lifecycle phase mirror', () => {
   });
 
   it.each(OrderLifecyclePhaseValues)('should carry a label and tone for %s', (phase) => {
-    const meta = ORDER_LIFECYCLE_PHASE_META[phase];
-    expect(meta.label.trim().length).toBeGreaterThan(0);
+    const label = orderLifecyclePhaseLabel(phase);
+    expect(label.trim().length).toBeGreaterThan(0);
     // #2081 — badge labels stay short enough not to wrap on a table row.
-    expect(meta.label.length).toBeLessThanOrEqual(17);
-    expect(meta.tone).toBeTruthy();
+    expect(label.length).toBeLessThanOrEqual(17);
+    expect(ORDER_LIFECYCLE_PHASE_TONE[phase]).toBeTruthy();
   });
 
   it.each(OrderLifecyclePhaseValues)('should carry a waiting-on line for %s', (phase) => {
-    expect(ORDER_LIFECYCLE_PHASE_WAITING_ON[phase].trim().length).toBeGreaterThan(0);
+    expect(orderLifecyclePhaseWaitingOn(phase).trim().length).toBeGreaterThan(0);
   });
 
   it('should keep OpenLinker design vocabulary out of every operator-facing string', () => {
     const internalVocabulary = /authority|posture|fulfillmentwork/i;
     for (const phase of OrderLifecyclePhaseValues) {
-      expect(ORDER_LIFECYCLE_PHASE_META[phase].label).not.toMatch(internalVocabulary);
-      expect(ORDER_LIFECYCLE_PHASE_WAITING_ON[phase]).not.toMatch(internalVocabulary);
+      expect(orderLifecyclePhaseLabel(phase)).not.toMatch(internalVocabulary);
+      expect(orderLifecyclePhaseWaitingOn(phase)).not.toMatch(internalVocabulary);
     }
   });
 });

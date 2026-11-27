@@ -26,6 +26,7 @@ import { OrderRecord } from '../../domain/entities/order-record.entity';
 import { OrdersModule } from '../../orders.module';
 import {
   ORDER_RECORD_REPOSITORY_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
 } from '../../orders.tokens';
 import { SalesDocumentViewService } from './sales-document-view.service';
@@ -140,6 +141,7 @@ describe('SalesDocumentViewService', () => {
   };
   let connections: { list: jest.Mock };
   let rules: { resolveRoutingBatch: jest.Mock; getRulesByIds: jest.Mock };
+  let refunds: { getRefundSummariesForOrders: jest.Mock };
 
   beforeEach(async () => {
     orderRecords = { findByIds: jest.fn().mockResolvedValue([]) };
@@ -157,6 +159,7 @@ describe('SalesDocumentViewService', () => {
       resolveRoutingBatch: jest.fn().mockResolvedValue([]),
       getRulesByIds: jest.fn().mockResolvedValue([]),
     };
+    refunds = { getRefundSummariesForOrders: jest.fn().mockResolvedValue(new Map()) };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -166,6 +169,7 @@ describe('SalesDocumentViewService', () => {
         { provide: FISCAL_REGISTRATION_SERVICE_TOKEN, useValue: fiscalRegistrations },
         { provide: CONNECTION_PORT_TOKEN, useValue: connections },
         { provide: SALES_DOCUMENT_RULES_SERVICE_TOKEN, useValue: rules },
+        { provide: ORDER_REFUND_SERVICE_TOKEN, useValue: refunds },
       ],
     }).compile();
 
@@ -568,6 +572,58 @@ describe('SalesDocumentViewService', () => {
     });
   });
 
+  describe('afterIssueAttention (DEF-26)', () => {
+    it('should be null for an ordinary issued order', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      invoices.listInvoicesForOrders.mockResolvedValue([invoiceRecord()]);
+
+      const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+      expect(view?.afterIssueAttention).toBeNull();
+    });
+
+    it('should flag an order cancelled after its invoice was issued', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord({ cancelledAt: NOW })]);
+      invoices.listInvoicesForOrders.mockResolvedValue([invoiceRecord()]);
+
+      const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+      expect(view?.afterIssueAttention).toBe('order-cancelled-after-issue');
+    });
+
+    it('should flag a partial refund recorded after the receipt was registered', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([fiscalRecord()]);
+      refunds.getRefundSummariesForOrders.mockResolvedValue(
+        new Map([['ol_order_1', { count: 1, totalAmount: '23.00', currency: 'PLN' }]]),
+      );
+
+      const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+      expect(view?.afterIssueAttention).toBe('order-partially-refunded-after-issue');
+    });
+
+    it('should flag a full refund', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      invoices.listInvoicesForOrders.mockResolvedValue([invoiceRecord()]);
+      refunds.getRefundSummariesForOrders.mockResolvedValue(
+        new Map([['ol_order_1', { count: 1, totalAmount: '123.00', currency: 'PLN' }]]),
+      );
+
+      const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+      expect(view?.afterIssueAttention).toBe('order-fully-refunded-after-issue');
+    });
+
+    it('should be null for a cancelled order with no document to correct', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord({ cancelledAt: NOW })]);
+
+      const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+      expect(view?.afterIssueAttention).toBeNull();
+    });
+  });
+
   it('should not grow its query count with the number of ids', async () => {
     const ids = Array.from({ length: 50 }, (_, index) => `ol_order_${index}`);
     orderRecords.findByIds.mockResolvedValue(
@@ -586,6 +642,7 @@ describe('SalesDocumentViewService', () => {
     expect(orderRecords.findByIds).toHaveBeenCalledTimes(1);
     expect(invoices.listInvoicesForOrders).toHaveBeenCalledTimes(1);
     expect(fiscalRegistrations.getByOrderIds).toHaveBeenCalledTimes(1);
+    expect(refunds.getRefundSummariesForOrders).toHaveBeenCalledTimes(1);
     expect(connections.list).toHaveBeenCalledTimes(1);
     expect(rules.resolveRoutingBatch).toHaveBeenCalledTimes(1);
   });

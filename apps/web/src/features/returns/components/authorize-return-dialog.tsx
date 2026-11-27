@@ -40,7 +40,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { useAuthorizeReturnMutation } from '../hooks/use-authorize-return-mutation';
 import { isSourceIngestedAuthorizeRefusal } from '../lib/authorize-error';
-import { AUTHORIZE_RETURN_DIALOG_COPY as COPY } from '../lib/authorize-return-dialog.copy';
+import { useMessages } from '../../../shared/i18n';
 
 interface AuthorizeReturnDialogProps {
   returnId: string;
@@ -56,6 +56,7 @@ export function AuthorizeReturnDialog({
   onOpenChange,
   onAuthorized,
 }: AuthorizeReturnDialogProps): ReactElement {
+  const copy = useMessages('returns').authorizeReturnDialog;
   const mutation = useAuthorizeReturnMutation(returnId);
 
   const refused = mutation.isError && isSourceIngestedAuthorizeRefusal(mutation.error);
@@ -82,24 +83,24 @@ export function AuthorizeReturnDialog({
       <DialogContent>
         {refused ? (
           <>
-            <DialogTitle>{COPY.refusedTitle}</DialogTitle>
-            <DialogDescription>{COPY.refusedBody}</DialogDescription>
+            <DialogTitle>{copy.refusedTitle}</DialogTitle>
+            <DialogDescription>{copy.refusedBody}</DialogDescription>
             <DialogFooter>
               <Button
                 onClick={() => {
                   onOpenChange(false);
                 }}
               >
-                {COPY.refusedAcknowledge}
+                {copy.refusedAcknowledge}
               </Button>
             </DialogFooter>
           </>
         ) : (
           <>
-            <DialogTitle>{COPY.title}</DialogTitle>
-            <DialogDescription>{COPY.description}</DialogDescription>
+            <DialogTitle>{copy.title}</DialogTitle>
+            <DialogDescription>{copy.description}</DialogDescription>
 
-            {mutation.isError ? <Alert tone="error">{COPY.genericError}</Alert> : null}
+            {mutation.isError ? <Alert tone="error">{copy.genericError}</Alert> : null}
 
             <DialogFooter>
               <Button
@@ -110,10 +111,10 @@ export function AuthorizeReturnDialog({
                   onOpenChange(false);
                 }}
               >
-                {COPY.cancel}
+                {copy.cancel}
               </Button>
               <Button type="button" disabled={mutation.isPending} onClick={handleConfirm}>
-                {mutation.isPending ? COPY.confirming : COPY.confirm}
+                {mutation.isPending ? copy.confirming : copy.confirm}
               </Button>
             </DialogFooter>
           </>

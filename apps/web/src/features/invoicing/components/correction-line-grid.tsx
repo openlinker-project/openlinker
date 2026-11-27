@@ -37,7 +37,7 @@
  * @module apps/web/src/features/invoicing/components
  */
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { useNumberFormat, useTranslation } from '../../../shared/i18n';
+import { interpolate, useMessages, useNumberFormat } from '../../../shared/i18n';
 import { unitGrossOf } from './correction-line-picker';
 import { useInvoiceContentQuery } from '../hooks/use-invoice-content-query';
 import type { CorrectionLineInput, IssuedDocumentLine } from '../api/invoicing.types';
@@ -91,7 +91,7 @@ export function CorrectionLineGrid({
   disabled,
   onChange,
 }: CorrectionLineGridProps): ReactElement | null {
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoicing.correction;
   const numberFormat = useNumberFormat({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const { query, linesAreAuthoritative } = useInvoiceContentQuery(invoiceId);
   const lines = linesAreAuthoritative ? query.data?.lines : undefined;
@@ -183,23 +183,20 @@ export function CorrectionLineGrid({
     <div className="credit-grid__scroll">
       <table className="data-table credit-grid">
         <caption className="sr-only">
-          {t(
-            'invoicing.correction.gridCaption',
-            'Invoice lines, in the order they appear on the issued document',
-          )}
+          {copy.gridCaption}
         </caption>
         <thead>
           <tr>
-            <th className="credit-grid__lp">{t('invoicing.correction.col.lp', '#')}</th>
-            <th>{t('invoicing.correction.col.item', 'Item')}</th>
+            <th className="credit-grid__lp">{copy.col.lp}</th>
+            <th>{copy.col.item}</th>
             <th className="data-table__cell--right">
-              {t('invoicing.correction.col.invoiced', 'As invoiced')}
+              {copy.col.invoiced}
             </th>
             <th className="data-table__cell--right">
-              {t('invoicing.correction.col.after', 'After correction')}
+              {copy.col.after}
             </th>
             <th className="data-table__cell--right">
-              {t('invoicing.correction.col.credit', 'Credit')}
+              {copy.col.credit}
             </th>
           </tr>
         </thead>
@@ -236,8 +233,8 @@ export function CorrectionLineGrid({
                       {line.quantity} × {unitGross !== undefined ? numberFormat.format(unitGross) : '—'}
                     </span>
                     <span className="text-muted tabular">
-                      {numberFormat.format(line.gross)} · {t('invoicing.correction.vat', 'VAT')}{' '}
-                      {line.taxRate}
+                      {numberFormat.format(line.gross)} ·{' '}
+                      {interpolate(copy.vat, { rate: line.taxRate })}
                     </span>
                   </span>
                 </td>
@@ -250,10 +247,7 @@ export function CorrectionLineGrid({
                       step="any"
                       value={row.qty}
                       onChange={(e) => updateRow(position, 'qty', e.target.value)}
-                      aria-label={`${t(
-                        'invoicing.correction.afterQty',
-                        'Quantity after correction, line',
-                      )} ${position}`}
+                      aria-label={interpolate(copy.afterQty, { position })}
                       disabled={disabled}
                     />
                     <span className="credit-cell__times" aria-hidden="true">
@@ -266,10 +260,7 @@ export function CorrectionLineGrid({
                       step="0.01"
                       value={row.price}
                       onChange={(e) => updateRow(position, 'price', e.target.value)}
-                      aria-label={`${t(
-                        'invoicing.correction.afterPrice',
-                        'Unit price after correction, line',
-                      )} ${position}`}
+                      aria-label={interpolate(copy.afterPrice, { position })}
                       disabled={disabled}
                     />
                   </span>
@@ -288,7 +279,7 @@ export function CorrectionLineGrid({
         <tfoot>
           <tr>
             <td colSpan={4} className="data-table__cell--right">
-              {t('invoicing.correction.totalCredit', 'Total credit')}
+              {copy.totalCredit}
             </td>
             <td className="credit-cell--credit data-table__cell--right">
               <span className="mono-text tabular">{numberFormat.format(-totalCredit)}</span>
@@ -297,10 +288,7 @@ export function CorrectionLineGrid({
         </tfoot>
       </table>
       <p className="ksef-correction__note">
-        {t(
-          'invoicing.correction.gridNote',
-          'Enter the quantity and unit price that should be on the invoice — quantity 0 credits the whole line, and a lower price credits the difference without anything being returned. Figures are a preview; your invoicing provider calculates the final amounts on the document.',
-        )}
+        {copy.gridNote}
       </p>
     </div>
   );

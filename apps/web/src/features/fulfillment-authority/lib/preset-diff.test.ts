@@ -60,7 +60,7 @@ describe('buildPresetDiff', () => {
 
     expect(diff.lines[0].meaning).toBe('OpenLinker will decide this from now on.');
     expect(diff.lines[1].meaning).toBe(
-      'Nothing will decide this automatically — you will handle it yourself.',
+      'Nothing will decide this automatically - you will handle it yourself.',
     );
   });
 

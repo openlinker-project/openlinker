@@ -29,6 +29,10 @@
 import { forwardRef, type ComponentPropsWithoutRef } from 'react';
 import { Button } from './button';
 import { formatPaginatedTotal, type PaginatedTotalState } from '../hooks/use-paginated-total';
+import { useMessages } from '../i18n/use-messages';
+import { interpolate } from '../i18n/interpolate';
+import { renderRich } from '../i18n/render-rich';
+import { useFormat } from '../i18n/use-format';
 
 export interface ListPaginationProps extends ComponentPropsWithoutRef<'nav'> {
   /** Zero-based index of the first row on this page. */
@@ -148,11 +152,26 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
     total !== null && rowsArePlaceholder ? Math.min(offset + rowCount, total) : offset + rowCount;
 
   const totalUnavailable = totalState === 'unavailable';
+  const copy = useMessages('ui').pagination;
+  const { number } = useFormat();
+
+  const totalNode =
+    total !== null ? (
+      <span className="tabular">{formatPaginatedTotal(total, offset + rowCount)}</span>
+    ) : (
+      <span
+        className="tabular pagination__total-pending"
+        title={totalUnavailable ? copy.totalFailed : copy.counting}
+      >
+        {formatPaginatedTotal(total, offset + rowCount)}
+        {showTotalLoader ? <span className="pagination__counting-dot" aria-hidden="true" /> : null}
+      </span>
+    );
 
   return (
     <nav
       ref={ref}
-      aria-label="Pagination"
+      aria-label={copy.label}
       className={['pagination', className].filter(Boolean).join(' ')}
       {...rest}
     >
@@ -163,27 +182,13 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
         */}
       <span className="text-muted" aria-live="polite" aria-busy={showTotalLoader || undefined}>
         {rowCount === 0 ? (
-          'No results'
+          copy.noResults
         ) : (
           <>
-            Showing {(offset + 1).toLocaleString()}&ndash;
-            {rangeEnd.toLocaleString()} of{' '}
-            {total !== null ? (
-              <span className="tabular">{formatPaginatedTotal(total, offset + rowCount)}</span>
-            ) : (
-              <span
-                className="tabular pagination__total-pending"
-                title={
-                  totalUnavailable
-                    ? 'The full count could not be loaded. At least this many match.'
-                    : 'Counting the full result set'
-                }
-              >
-                {formatPaginatedTotal(total, offset + rowCount)}
-                {showTotalLoader ? (
-                  <span className="pagination__counting-dot" aria-hidden="true" />
-                ) : null}
-              </span>
+            {renderRich(
+              interpolate(copy.showing, { start: number(offset + 1), end: number(rangeEnd) }),
+              // One sentence per key: the total sits inside it, styled on its own.
+              { total: () => totalNode },
             )}
             {/*
                 A FAILED count gets visible, machine-readable text - not just a
@@ -195,7 +200,7 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
                 the distinction a comment rather than a behaviour.
               */}
             {totalUnavailable ? (
-              <span className="pagination__total-failed"> (count unavailable)</span>
+              <span className="pagination__total-failed"> {copy.countUnavailable}</span>
             ) : null}
           </>
         )}
@@ -207,7 +212,7 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
             onOffsetChange(Math.max(0, offset - limit));
           }}
         >
-          Previous
+          {copy.previous}
         </Button>
         <Button
           disabled={!hasNext}
@@ -215,7 +220,7 @@ export const ListPagination = forwardRef<HTMLElement, ListPaginationProps>(funct
             onOffsetChange(offset + limit);
           }}
         >
-          Next
+          {copy.next}
         </Button>
       </div>
     </nav>

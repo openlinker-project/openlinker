@@ -1,14 +1,34 @@
 import { z } from 'zod';
 import type { StartAllegroOAuthInput } from '../api/allegro.api';
+import {
+  DEFAULT_DELIVERY_WIZARD_VALUE,
+  wizardConfig,
+  type DeliveryLineSuggestion,
+  type DeliveryWizardValue,
+} from '../../delivery-on-documents';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  toOrderSyncStart,
+} from '../../connections';
+import type { Messages, ResolvedCopy } from '../../../shared/i18n';
+import { CatalogueModeValues } from '../../connections';
+
+export type AllegroSetupSchemaCopy = ResolvedCopy<Messages['allegro-core']>['allegroSetupSchema'];
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const allegroSetupSchema = z.object({
-  name: z.string().trim().min(1, 'Connection name is required'),
+/**
+ * Built per render from the active language's copy: a module-level schema
+ * would freeze its messages in the first language.
+ */
+export function createAllegroSetupSchema(copy: AllegroSetupSchemaCopy) {
+  return z.object({
+  name: z.string().trim().min(1, copy.nameRequired),
   environment: z.enum(['sandbox', 'production']),
-  clientId: z.string().trim().min(1, 'Client ID is required'),
-  clientSecret: z.string().trim().min(1, 'Client secret is required'),
+  clientId: z.string().trim().min(1, copy.clientIdRequired),
+  clientSecret: z.string().trim().min(1, copy.clientSecretRequired),
   // The <select> registers a string value (empty string when "None" is picked),
   // so the input type stays `string | undefined` and per-step `form.trigger`
   // can validate cleanly. The transform coerces the empty string to undefined
@@ -18,13 +38,24 @@ export const allegroSetupSchema = z.object({
     .optional()
     .refine(
       (value) => !value || UUID_REGEX.test(value),
-      'Invalid connection ID',
+      copy.invalidConnectionId,
     )
     .transform((value) => (value && value.length > 0 ? value : undefined)),
-});
+  // Whether this connection expects its order lines to resolve to catalogue
+  // products (#4281). Structured state set through `setValue`, like the answer
+  // to the "Sales documents" step below.
+  catalogueMode: z.enum(CatalogueModeValues).optional(),
+  // The answer to the "Sales documents" step. Structured state rather than a
+  // registered input, so it is set through `setValue` (#3911).
+  deliveryOnDocuments: z.custom<DeliveryWizardValue>().optional(),
+  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
+  });
+}
 
-export type AllegroSetupFormValues = z.input<typeof allegroSetupSchema>;
-export type AllegroSetupFormSubmission = z.output<typeof allegroSetupSchema>;
+type AllegroSetupSchema = ReturnType<typeof createAllegroSetupSchema>;
+
+export type AllegroSetupFormValues = z.input<AllegroSetupSchema>;
+export type AllegroSetupFormSubmission = z.output<AllegroSetupSchema>;
 
 export const ALLEGRO_SETUP_DEFAULT_VALUES: AllegroSetupFormValues = {
   name: '',
@@ -32,12 +63,16 @@ export const ALLEGRO_SETUP_DEFAULT_VALUES: AllegroSetupFormValues = {
   clientId: '',
   clientSecret: '',
   masterCatalogConnectionId: '',
+  catalogueMode: 'linked',
+  deliveryOnDocuments: DEFAULT_DELIVERY_WIZARD_VALUE,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toStartOAuthInput(
   values: AllegroSetupFormSubmission,
   redirectUri: string,
   reauthConnectionId?: string,
+  suggestions: readonly DeliveryLineSuggestion[] = [],
 ): StartAllegroOAuthInput {
   return {
     clientId: values.clientId,
@@ -45,9 +80,25 @@ export function toStartOAuthInput(
     redirectUri,
     environment: values.environment,
     connectionName: values.name,
-    ...(values.masterCatalogConnectionId
+    // With no catalogue there is nothing to link a barcode to, so a catalogue
+    // connection picked before switching to "none" is not sent (#4281).
+    ...(values.masterCatalogConnectionId && values.catalogueMode !== 'none'
       ? { masterCatalogConnectionId: values.masterCatalogConnectionId }
       : {}),
+    // Only an explicit none is sent; linked is the default. A reauth rotates
+    // credentials only and must not carry config (#3911).
+    ...(values.catalogueMode === 'none' && !reauthConnectionId ? { catalogueMode: 'none' as const } : {}),
     ...(reauthConnectionId ? { connectionId: reauthConnectionId } : {}),
+    // A reauth only rotates credentials, so it carries no order start either.
+    ...(reauthConnectionId ? {} : { orderSyncStart: toOrderSyncStart(values.orderSyncStart) }),
+    // A reauth only rotates credentials; it must not carry config (#3911).
+    ...(reauthConnectionId
+      ? {}
+      : {
+          deliveryOnDocuments: wizardConfig(
+            values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE,
+            suggestions,
+          ),
+        }),
   };
 }

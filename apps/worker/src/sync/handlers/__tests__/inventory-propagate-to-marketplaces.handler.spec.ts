@@ -7,7 +7,10 @@
  * @module apps/worker/src/sync/handlers/__tests__
  */
 import { InventoryPropagateToMarketplacesHandler } from '../inventory-propagate-to-marketplaces.handler';
-import type { IIdentifierMappingService, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
+import type {
+  IIdentifierMappingService,
+  ExternalIdMapping,
+} from '@openlinker/core/identifier-mapping';
 import type { IInventoryService, IAvailabilityService } from '@openlinker/core/inventory';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { JobEnqueuePort } from '@openlinker/core/sync';
@@ -15,6 +18,8 @@ import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { InventoryItemEntity } from '@openlinker/core/inventory';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IProductsService } from '@openlinker/core/products';
+import type { IOrderRoutingRetryService } from '@openlinker/core/orders';
+import type { IListingSaleStatusService, ListingSaleHold } from '@openlinker/core/listings';
 
 /**
  * Build a lazy `listCapabilityAdapters` entry for the ShopProduct fan-out
@@ -35,8 +40,14 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
   let inventoryService: jest.Mocked<IInventoryService>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
   let integrationsService: jest.Mocked<IIntegrationsService>;
-  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant'>>;
+  let productsService: jest.Mocked<Pick<IProductsService, 'getVariant' | 'getVariantsByIds'>>;
+  let bundleDefinitions: { findCurrentContainingComponents: jest.Mock };
   let availabilityService: jest.Mocked<IAvailabilityService>;
+  let orderRoutingRetry: {
+    rerouteHeldOrdersForVariant: jest.Mock;
+    retryRouting: jest.Mock;
+  };
+  let listingSaleStatus: { findActiveHolds: jest.Mock };
 
   /**
    * #2324 — the variant-keyed path now reads the AGGREGATE through the
@@ -96,7 +107,9 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
     productsService = {
       getVariant: jest.fn().mockResolvedValue(null),
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
     };
+    bundleDefinitions = { findCurrentContainingComponents: jest.fn().mockResolvedValue([]) };
 
     availabilityService = {
       getPromisableQuantities: jest.fn(),
@@ -105,13 +118,23 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
     } as unknown as jest.Mocked<IAvailabilityService>;
     mockAvailability(100);
 
+    orderRoutingRetry = {
+      rerouteHeldOrdersForVariant: jest.fn().mockResolvedValue({ candidates: 0, enqueued: 0 }),
+      retryRouting: jest.fn(),
+    };
+
+    listingSaleStatus = { findActiveHolds: jest.fn().mockResolvedValue([]) };
+
     handler = new InventoryPropagateToMarketplacesHandler(
       identifierMapping,
       inventoryService,
       jobEnqueue,
       integrationsService,
       productsService as unknown as IProductsService,
-      availabilityService
+      availabilityService,
+      orderRoutingRetry as unknown as IOrderRoutingRetryService,
+      bundleDefinitions as never,
+      listingSaleStatus as unknown as IListingSaleStatusService
     );
   });
 
@@ -135,6 +158,126 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       lastError: null,
       createdAt: new Date(),
       updatedAt: new Date(),
+    });
+
+    describe('bundles fed by the changed component (#3931)', () => {
+      it('should enqueue one propagation per bundle containing the component', async () => {
+        bundleDefinitions.findCurrentContainingComponents.mockResolvedValue([
+          { variantId: 'set-variant', version: 1, components: [] },
+        ]);
+        productsService.getVariantsByIds.mockResolvedValue([
+          { id: 'set-variant', productId: 'set-product' } as never,
+        ]);
+
+        await handler.execute(
+          createJob({
+            productId: 'product-id',
+            variantId: 'variant-id',
+            inventoryUpdatedAt: '2026-10-27T10:00:00.000Z',
+          })
+        );
+
+        expect(bundleDefinitions.findCurrentContainingComponents).toHaveBeenCalledWith(['variant-id']);
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+          expect.objectContaining({
+            jobType: 'inventory.propagateToMarketplaces',
+            payload: {
+              productId: 'set-product',
+              variantId: 'set-variant',
+              inventoryUpdatedAt: '2026-10-27T10:00:00.000Z',
+            },
+            idempotencyKey:
+              'inventory:propagate:set-product:set-variant:2026-10-27T10:00:00.000Z',
+          })
+        );
+      });
+
+      it('should enqueue nothing extra for a variant that feeds no bundle', async () => {
+        await handler.execute(createJob({ productId: 'product-id', variantId: 'variant-id' }));
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      });
+
+      it('should still propagate bundles when the changed component is stale (known zero pauses them)', async () => {
+        productsService.getVariant.mockResolvedValue({ isStale: true } as never);
+        bundleDefinitions.findCurrentContainingComponents.mockResolvedValue([
+          { variantId: 'set-variant', version: 1, components: [] },
+        ]);
+        productsService.getVariantsByIds.mockResolvedValue([
+          { id: 'set-variant', productId: 'set-product' } as never,
+        ]);
+
+        await handler.execute(createJob({ productId: 'product-id', variantId: 'variant-id' }));
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+          expect.objectContaining({ payload: expect.objectContaining({ variantId: 'set-variant' }) })
+        );
+      });
+    });
+
+    describe('re-routing held orders on a stock change (#3558)', () => {
+      it('should ask the routing retry service about the variant whose stock changed', async () => {
+        await handler.execute(
+          createJob({
+            productId: 'product-id',
+            variantId: 'variant-id',
+            inventoryUpdatedAt: '2026-10-27T10:00:00.000Z',
+          })
+        );
+
+        expect(orderRoutingRetry.rerouteHeldOrdersForVariant).toHaveBeenCalledWith({
+          variantId: 'variant-id',
+          observedAt: '2026-10-27T10:00:00.000Z',
+        });
+      });
+
+      it('should re-route only after the channel fan-out was enqueued', async () => {
+        mockMappings({
+          Offer: [
+            {
+              entityType: 'Offer',
+              platformType: 'allegro',
+              connectionId: 'connection-id',
+              externalId: 'offer-id',
+            },
+          ],
+        });
+        jobEnqueue.enqueueJob.mockResolvedValue({ jobId: 'enqueued-job-id', isExisting: false });
+
+        await handler.execute(createJob({ productId: 'product-id', variantId: 'variant-id' }));
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+        expect(orderRoutingRetry.rerouteHeldOrdersForVariant).toHaveBeenCalledTimes(1);
+        expect(jobEnqueue.enqueueJob.mock.invocationCallOrder[0]).toBeLessThan(
+          orderRoutingRetry.rerouteHeldOrdersForVariant.mock.invocationCallOrder[0]
+        );
+      });
+
+      it('should not re-route anything for a product-level payload with no variant', async () => {
+        inventoryService.getInventory.mockResolvedValue(
+          new InventoryItemEntity('inventory-id', 'product-id', null, 5, 0, null, new Date())
+        );
+
+        await handler.execute(createJob({ productId: 'product-id' }));
+
+        expect(orderRoutingRetry.rerouteHeldOrdersForVariant).not.toHaveBeenCalled();
+      });
+
+      it('should not re-route when the available-to-promise could not be resolved', async () => {
+        availabilityService.getPromisableQuantities.mockResolvedValue([
+          {
+            variantId: 'variant-id',
+            quantity: null,
+            provenance: 'unknown',
+            observedAt: null,
+            olHeldNotReflected: null,
+          } as never,
+        ]);
+
+        await expect(
+          handler.execute(createJob({ productId: 'product-id', variantId: 'variant-id' }))
+        ).rejects.toBeInstanceOf(SyncJobExecutionError);
+        expect(orderRoutingRetry.rerouteHeldOrdersForVariant).not.toHaveBeenCalled();
+      });
     });
 
     it('should propagate inventory to Allegro offers', async () => {
@@ -316,6 +459,8 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         expect.objectContaining({
           payload: expect.objectContaining({
             quantity: 50,
+            // Recorded with the push so the history can say what was sent (#4062).
+            productVariantId: 'variant-id',
           }),
         })
       );
@@ -436,7 +581,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          idempotencyKey: 'inventory:connection-id:product-id:base:100:2026-01-01T12:00:00.000Z',
+          idempotencyKey: 'inventory:connection-id:product-id:base:100:2026-01-01T12:00:00.000Z:offer:offer-id',
         })
       );
     });
@@ -532,7 +677,7 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          idempotencyKey: 'inventory:connection-id:product-id:base:100:legacy',
+          idempotencyKey: 'inventory:connection-id:product-id:base:100:legacy:offer:offer-id',
         })
       );
     });
@@ -549,6 +694,30 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
       const job = createJob({ productId: '' as any });
 
       await expect(handler.execute(job)).rejects.toThrow(SyncJobExecutionError);
+    });
+
+    it('should enqueue one update per offer when two offers map to the same variant', async () => {
+      const job = createJob({
+        productId: 'product-id',
+        variantId: 'variant-id',
+        inventoryUpdatedAt: '2026-01-01T12:00:00.000Z',
+      });
+      mockMappings({
+        Offer: ['offer-a', 'offer-b'].map((externalId) => ({
+          entityType: 'Offer',
+          platformType: 'allegro',
+          connectionId: 'connection-id',
+          externalId,
+        })),
+      });
+
+      await handler.execute(job);
+
+      const keys = jobEnqueue.enqueueJob.mock.calls.map(
+        ([request]) => (request as { idempotencyKey: string }).idempotencyKey
+      );
+      expect(keys).toHaveLength(2);
+      expect(new Set(keys).size).toBe(2);
     });
 
     it('should handle multiple mappings across mixed platforms', async () => {
@@ -690,7 +859,9 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
         ([request]) => (request as { idempotencyKey: string }).idempotencyKey
       );
       expect(new Set(keys).size).toBe(2);
-      expect(keys).toContain('inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z');
+      expect(keys).toContain(
+        'inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z:offer:123'
+      );
       expect(keys).toContain(
         'inventory:wc-connection:product-id:variant-id:25:2026-01-01T12:00:00.000Z:shop:123'
       );
@@ -751,6 +922,183 @@ describe('InventoryPropagateToMarketplacesHandler', () => {
 
       expect(integrationsService.listCapabilityAdapters).not.toHaveBeenCalled();
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+    describe('sale holds and grouped shop products (#3962)', () => {
+      /** Route getExternalIds by entityType AND internal id, so the parent lookup is distinct. */
+      const mockMappingsById = (
+        byKey: Partial<Record<string, ExternalIdMapping[]>>
+      ): void => {
+        identifierMapping.getExternalIds.mockImplementation((entityType: string, id: string) =>
+          Promise.resolve(byKey[`${entityType}:${id}`] ?? [])
+        );
+      };
+
+      const heldListing = (connectionId: string, externalId: string): ListingSaleHold =>
+        ({ connectionId, externalId }) as unknown as ListingSaleHold;
+
+      const offerMapping = (connectionId: string, externalId: string): ExternalIdMapping => ({
+        entityType: 'Offer',
+        platformType: 'allegro',
+        connectionId,
+        externalId,
+      });
+
+      const enqueuedOfferIds = (): string[] =>
+        jobEnqueue.enqueueJob.mock.calls.map(
+          ([request]) => (request.payload as { offerId: string }).offerId
+        );
+
+      it('should skip the ShopProduct branch when the variant is stale', async () => {
+        const job = createJob({ productId: 'product-id', variantId: 'variant-id' });
+        productsService.getVariant.mockResolvedValue({
+          id: 'variant-id',
+          productId: 'product-id',
+          sku: null,
+          attributes: null,
+          ean: null,
+          gtin: null,
+          isStale: true,
+          staleAt: new Date(),
+        });
+        mockMappingsById({ 'ShopProduct:variant-id': [shopMapping('wc-connection', '123')] });
+        integrationsService.listCapabilityAdapters.mockResolvedValue([
+          makeWriteBackTarget('wc-connection', ['OfferManager']),
+        ] as never);
+
+        await handler.execute(job);
+
+        expect(identifierMapping.getExternalIds).not.toHaveBeenCalledWith(
+          'ShopProduct',
+          'variant-id'
+        );
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      });
+
+      it('should skip an offer with an active sale hold and still write the others when holds exist', async () => {
+        const job = createJob({ productId: 'product-id', variantId: 'variant-id' });
+        mockMappingsById({
+          'Offer:variant-id': [
+            offerMapping('allegro-1', 'offer-held'),
+            offerMapping('allegro-1', 'offer-live'),
+          ],
+        });
+        listingSaleStatus.findActiveHolds.mockImplementation(
+          (refs: { entityType: string; externalId: string; connectionId: string }[]) =>
+            Promise.resolve(
+              refs
+                .filter((r) => r.externalId === 'offer-held')
+                .map((r) => heldListing(r.connectionId, r.externalId))
+            )
+        );
+
+        await handler.execute(job);
+
+        expect(listingSaleStatus.findActiveHolds).toHaveBeenCalledWith([
+          { connectionId: 'allegro-1', entityType: 'Offer', externalId: 'offer-held' },
+          { connectionId: 'allegro-1', entityType: 'Offer', externalId: 'offer-live' },
+        ]);
+        expect(enqueuedOfferIds()).toEqual(['offer-live']);
+      });
+
+      it('should skip a shop product with an active sale hold when holds exist on the shop branch', async () => {
+        const job = createJob({ productId: 'product-id', variantId: 'variant-id' });
+        mockMappingsById({
+          'ShopProduct:variant-id': [
+            shopMapping('wc-connection', '123'),
+            shopMapping('wc-connection', '456'),
+          ],
+        });
+        integrationsService.listCapabilityAdapters.mockResolvedValue([
+          makeWriteBackTarget('wc-connection', ['OfferManager']),
+        ] as never);
+        listingSaleStatus.findActiveHolds.mockImplementation(
+          (refs: { entityType: string; externalId: string; connectionId: string }[]) =>
+            Promise.resolve(
+              refs
+                .filter((r) => r.entityType === 'ShopProduct' && r.externalId === '123')
+                .map((r) => heldListing(r.connectionId, r.externalId))
+            )
+        );
+
+        await handler.execute(job);
+
+        expect(listingSaleStatus.findActiveHolds).toHaveBeenCalledWith([
+          { connectionId: 'wc-connection', entityType: 'ShopProduct', externalId: '123' },
+          { connectionId: 'wc-connection', entityType: 'ShopProduct', externalId: '456' },
+        ]);
+        expect(enqueuedOfferIds()).toEqual(['456']);
+      });
+
+      it('should enqueue nothing on the shop branch when every shop listing is held', async () => {
+        const job = createJob({ productId: 'product-id', variantId: 'variant-id' });
+        mockMappingsById({ 'ShopProduct:variant-id': [shopMapping('wc-connection', '123')] });
+        listingSaleStatus.findActiveHolds.mockResolvedValue([heldListing('wc-connection', '123')]);
+
+        await handler.execute(job);
+
+        expect(integrationsService.listCapabilityAdapters).not.toHaveBeenCalled();
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      });
+
+      it('should carry the parent product id as externalParentId when the shop listing is a variation', async () => {
+        const job = createJob({
+          productId: 'product-id',
+          variantId: 'variant-id',
+          inventoryUpdatedAt: '2026-01-01T12:00:00.000Z',
+        });
+        mockMappingsById({
+          'ShopProduct:variant-id': [shopMapping('wc-connection', '123')],
+          'ShopProduct:product-id': [
+            shopMapping('other-connection', '900'),
+            shopMapping('wc-connection', '100'),
+          ],
+        });
+        integrationsService.listCapabilityAdapters.mockResolvedValue([
+          makeWriteBackTarget('wc-connection', ['OfferManager']),
+        ] as never);
+
+        await handler.execute(job);
+
+        expect(identifierMapping.getExternalIds).toHaveBeenCalledWith('ShopProduct', 'product-id');
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+          expect.objectContaining({
+            connectionId: 'wc-connection',
+            payload: expect.objectContaining({
+              offerId: '123',
+              quantity: 25,
+              externalParentId: '100',
+            }),
+          })
+        );
+      });
+
+      it('should omit externalParentId when the shop listing has no parent mapping on its connection', async () => {
+        const job = createJob({ productId: 'product-id', variantId: 'variant-id' });
+        mockMappingsById({
+          'ShopProduct:variant-id': [shopMapping('wc-connection', '123')],
+          'ShopProduct:product-id': [shopMapping('other-connection', '900')],
+        });
+        integrationsService.listCapabilityAdapters.mockResolvedValue([
+          makeWriteBackTarget('wc-connection', ['OfferManager']),
+        ] as never);
+
+        await handler.execute(job);
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledTimes(1);
+        const [request] = jobEnqueue.enqueueJob.mock.calls[0];
+        expect((request as { payload: Record<string, unknown> }).payload).not.toHaveProperty(
+          'externalParentId'
+        );
+      });
+
+      it('should not ask for sale holds when there are no mappings', async () => {
+        const job = createJob({ productId: 'product-id', variantId: 'variant-id' });
+        mockMappingsById({});
+
+        await handler.execute(job);
+
+        expect(listingSaleStatus.findActiveHolds).not.toHaveBeenCalled();
+      });
     });
   });
 });

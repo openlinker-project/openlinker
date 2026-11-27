@@ -33,21 +33,13 @@
  * @module features/connections/components
  * @see {@link ConnectionCell} for the desktop cell this mirrors.
  */
+import { useMessages } from '../../../shared/i18n';
 import type { ReactElement, ReactNode } from 'react';
 import { shortenId } from '../../../shared/ui/entity-label';
-import type { ConnectionStatus } from '../api/connections.types';
 import type { ConnectionCellFacts } from './ConnectionCell';
 import { ConnectionChip, type ConnectionChipChannel } from './ConnectionChip';
 import { ConnectionEntityLabel } from './ConnectionEntityLabel';
 
-/** Same vocabulary as `ConnectionCell`'s line 2, minus the label text: at this
- *  size the dot carries the signal and its `title` carries the word. */
-const STATUS_NOTES: Record<Exclude<ConnectionStatus, 'active'>, string> = {
-  disabled: 'Disabled',
-  error: 'Error',
-  needs_reauth: 'Re-auth',
-  archived: 'Archived',
-};
 
 export interface ConnectionFoldProps {
   connectionId: string;
@@ -84,6 +76,7 @@ export function ConnectionFold({
   adornment,
   channel,
 }: ConnectionFoldProps): ReactElement | null {
+  const copy = useMessages('connections').connectionCell;
   if (!connectionId) return null;
 
   const status = connection?.status ?? null;
@@ -94,7 +87,7 @@ export function ConnectionFold({
   // stopped issuing — dropping that here would hide the answer on the surface
   // where the operator is asking the question. Costs no height: the dot is
   // inline (#2094 review).
-  const statusNote = status && status !== 'active' ? STATUS_NOTES[status] : null;
+  const statusNote = status && status !== 'active' ? copy.statusNotes[status] : null;
 
   return (
     <span className="conn-fold">
@@ -102,7 +95,7 @@ export function ConnectionFold({
           gave the desktop rendering its meaning. Without this a screen reader
           reads "…, Invoice (faktura), link inFakt" with nothing saying what
           `inFakt` is. */}
-      <span className="sr-only">Connection: </span>
+      <span className="sr-only">{copy.foldPrefix} </span>
       {channel ? (
         <ConnectionChip
           connectionId={connectionId}

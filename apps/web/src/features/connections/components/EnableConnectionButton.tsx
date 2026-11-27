@@ -17,6 +17,7 @@
  * @module features/connections/components
  * @see {@link ConnectionActionsPanel} for the Actions-tab row
  */
+import { interpolate, useMessages } from '../../../shared/i18n';
 import type { ReactElement } from 'react';
 import type { Connection } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
@@ -24,8 +25,9 @@ import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { useDemoMode } from '../../system';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface EnableConnectionButtonProps {
   connection: Connection;
@@ -35,8 +37,9 @@ interface EnableConnectionButtonProps {
 
 export function EnableConnectionButton({
   connection,
-  label = 'Enable',
+  label,
 }: EnableConnectionButtonProps): ReactElement {
+  const copy = useMessages('connections').enableConnectionButton;
   const updateConnection = useUpdateConnectionMutation();
   const { showToast } = useToast();
 
@@ -51,25 +54,25 @@ export function EnableConnectionButton({
       });
       showToast({
         tone: 'success',
-        title: 'Connection enabled',
-        description: `"${connection.name}" is active again. Syncing resumes on the next scheduled run.`,
+        title: copy.successTitle,
+        description: interpolate(copy.successDescription, { name: connection.name }),
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Unable to enable connection',
-        description: (error as Error).message,
+        title: copy.errorTitle,
+        description: describeApiError(error, 'connections'),
       });
     }
   }
 
   return (
-    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+    <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
       <Button
         disabled={updateConnection.isPending || write.demoReadOnly}
         onClick={() => void handleEnable()}
       >
-        {updateConnection.isPending ? 'Enabling…' : label}
+        {updateConnection.isPending ? copy.enabling : (label ?? copy.enable)}
       </Button>
     </ReadOnlyLock>
   );

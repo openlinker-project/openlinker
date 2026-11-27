@@ -11,6 +11,29 @@ import { ProductVariantResponseDto } from './product-variant-response.dto';
 import { ExternalIdMappingDto } from './external-id-mapping.dto';
 import { ProductListingsCoverageDto } from './product-listings-coverage.dto';
 
+export class BundleComponentRefDto {
+  @ApiProperty() variantId!: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) name!: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) sku!: string | null;
+}
+
+export class ProductBundleSummaryDto {
+  @ApiProperty({ description: 'The bundle variant' }) variantId!: string;
+  @ApiProperty() componentCount!: number;
+  @ApiPropertyOptional({
+    type: () => BundleComponentRefDto,
+    nullable: true,
+    description: 'The component that supports the fewest bundles; null when availability is unknown',
+  })
+  limitedBy!: BundleComponentRefDto | null;
+  @ApiPropertyOptional({
+    type: () => BundleComponentRefDto,
+    nullable: true,
+    description: 'The first component whose stock OpenLinker does not know; why availability is unknown',
+  })
+  unknownComponent!: BundleComponentRefDto | null;
+}
+
 export class ProductResponseDto {
   @ApiProperty({ description: 'Internal product ID' })
   id!: string;
@@ -62,6 +85,18 @@ export class ProductResponseDto {
       'Distinct from variant-distinguishing attributes. Absent until a sync populates it.',
   })
   features?: { name: string; value: string }[];
+
+  @ApiPropertyOptional({
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: { id: { type: 'string' }, name: { type: 'string' } },
+    },
+    description:
+      "The master's own category path, root to leaf (source-shop category id + name). " +
+      'Absent until a sync populates it, or when the master reports no path.',
+  })
+  categoryBreadcrumb?: { id: string; name: string }[];
 
   @ApiPropertyOptional({
     nullable: true,
@@ -117,6 +152,23 @@ export class ProductResponseDto {
   totalAvailable?: number;
 
   @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Units OpenLinker will promise for the product (#3621, list only): the sum of its variants\' global-scope available-to-promise, ' +
+      'net of published reservation holds and with NO per-channel buffer applied. null means OpenLinker could not determine it ' +
+      '(any variant unknown, or the product has no variants) and is NEVER a zero. Independent of totalAvailable, which is the raw master sum.',
+  })
+  availableToPromise?: number | null;
+
+  @ApiPropertyOptional({
+    enum: ['computed', 'authority', 'unknown'],
+    description:
+      'Where availableToPromise came from (#3621, list only). unknown is paired with a null availableToPromise.',
+  })
+  atpProvenance?: 'computed' | 'authority' | 'unknown';
+
+  @ApiPropertyOptional({
     description: 'Total reserved quantity summed across the product inventory rows (#1720, list only)',
   })
   totalReserved?: number;
@@ -143,4 +195,18 @@ export class ProductResponseDto {
       'are stale; compare against variantCount to tell "some" apart from "all" (#2447).',
   })
   staleVariantCount?: number;
+
+  @ApiPropertyOptional({
+    type: () => ProductBundleSummaryDto,
+    nullable: true,
+    description:
+      'Set when one of the product\'s variants is a bundle (#3624, list only): which variant, how many components, and which component limits or blocks its availability.',
+  })
+  bundle?: ProductBundleSummaryDto | null;
+
+  @ApiPropertyOptional({
+    description:
+      'How many live bundles list one of this product\'s variants as a component (list only). Absent when the count could not be read; 0 means none.',
+  })
+  usedInBundlesCount?: number;
 }

@@ -17,6 +17,7 @@ import {
 } from '../../../test/test-utils';
 import type { SessionUser } from '../../../shared/auth/session.types';
 import type { ContentState } from '../api/content.types';
+import { getMessages } from '../../../shared/i18n';
 
 const viewerUser: SessionUser = {
   id: 'user_viewer',
@@ -282,7 +283,7 @@ describe('ContentEditor', () => {
 
       // Translated message renders (RESPONSIBLE_PRODUCER_NOT_SPECIFIED is in the
       // translator allowlist).
-      expect(await screen.findByText(/Responsible Producer entry/i)).toBeInTheDocument();
+      expect(await screen.findByText(/Set a responsible producer in the connection's seller defaults/i)).toBeInTheDocument();
       // Field path renders as a copy-button breadcrumb.
       expect(
         screen.getByRole('button', {
@@ -321,7 +322,7 @@ describe('ContentEditor', () => {
       await user.click(screen.getByRole('button', { name: 'Publish' }));
       await user.click(screen.getByRole('button', { name: 'Publish' }));
 
-      expect(await screen.findByText('plain old error')).toBeInTheDocument();
+      expect(await screen.findByText(getMessages('errors').status.other)).toBeInTheDocument();
       expect(screen.queryByRole('list', { name: /allegro errors/i })).toBeNull();
     });
   });

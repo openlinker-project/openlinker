@@ -1,0 +1,754 @@
+<!doctype html>
+
+<html lang="pl">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <title>ERLI marketplace dokumentacja API</title>
+
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+          integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <style>
+        body {
+            position: relative;
+        }
+        #navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 20rem;
+            bottom: 0;
+            overflow-y: auto;
+            align-items: start;
+        }
+        #navbar + div {
+            margin-left: 20rem;
+            padding: 5px 15px;
+        }
+        h2 {
+            border-top: 1px solid black;
+        }
+        h2, h3 {
+            font-weight: bold;
+        }
+        p + ul {
+            margin-top: -1rem;
+        }
+    </style>
+</head>
+<body data-spy="scroll" data-target="#navbar" data-offset="100">
+<nav id="navbar" class="navbar navbar-light bg-light">
+    <nav class="nav nav-pills flex-column">
+    </nav>
+</nav>
+<div>
+    <h1>Marketplace dokumentacja API</h1>
+
+    <h2>Dostęp do API</h2>
+
+    <h3>Komunikacja</h3>
+    <p>
+        API oparte jest na architekturze REST.
+        Wykorzystuje protokół HTTPS, w szczególności metody GET, POST, PATCH.
+    </p>
+
+    <h3>Autoryzacja</h3>
+    <p>
+        Aby uzyskać dostęp do API należy mieć zarejestrowany sklep na marketplace.<br />
+        W panelu zarządzania sklepem w sekcji <code><strong>Metoda integracji</strong> > <strong>Własna integracja po API</strong></code> można znaleźć <b>klucz API</b> służący do autoryzacji.<br />
+        Należy dołączać klucz API do wszystkich żądań do API w nagłówku authorization, tak jak w poniższym przykładzie:
+    </p>
+    <pre><code class="bash">curl -X PATCH 'https://erli.pl/svc/shop-api/products/8' \
+      -H 'Authorization: Bearer XXXXXXXXXXXXXXX' \
+      -H 'User-Agent: SuperShop v8.8 (marketplace-plugin v1.2)' \
+      -H 'Accept: application/json' \
+      -H 'Content-Type: application/json' \
+      -d '{"name": "Krzesło"}'</code></pre>
+
+    <h3>Limity żądań</h3>
+    <p>
+        Ilość dozwolonych zapytań zmienia się w zależności od obciążenia serwisu.<br />
+        W przypadku przekroczenia limitu serwer odpowiada z kodem <code>429</code>.
+    </p>
+    <p>
+        Zalecamy włączenie opcji keep-alive w kliencie HTTP gdy trzeba wykonać bardzo wiele żądań,
+        aby uniknąć wykonywania za każdym razem kosztownych SSL-owych handshake'ów.
+    </p>
+
+    <h3>User Agent</h3>
+    <p>
+        Zalecamy wypełnianie nagłówka <code>User Agent</code> tak,
+        aby możliwe było szybsze zidentyfikowanie problemu podczas integracji przez zespół Erli.
+    </p>
+
+    <h3>Rynki</h3>
+    <p>
+        Sklep prowadzi sprzedaż na swoim <b>rynku bazowym</b> i opcjonalnie na kolejnych rynkach
+        (obecnie dostępne są <code>pl</code> oraz <code>de</code>).
+        Rynek, w kontekście którego ma zostać obsłużone żądanie, wskazuje nagłówek <code>X-ERLI-MARKET</code>:
+    </p>
+    <pre><code class="bash">curl -X GET 'https://erli.pl/svc/shop-api/products/8' \
+      -H 'Authorization: Bearer XXXXXXXXXXXXXXX' \
+      -H 'X-ERLI-MARKET: de' \
+      -H 'Accept: application/json'</code></pre>
+    <p>
+        Pominięcie nagłówka oznacza rynek bazowy sklepu. Wartość nie jest wrażliwa na wielkość liter.
+        Podanie rynku, w którym sklep nie działa, kończy się błędem <code>400</code>.
+    </p>
+    <p>Nagłówek obsługują:</p>
+    <ul>
+        <li>
+            <code>GET /products/{externalId}</code> oraz <code>POST /products/_search</code> - odpowiedź
+            dotyczy wskazanego rynku. Podmieniane są teksty tłumaczone (<code>name</code>,
+            <code>description</code>, nazwy atrybutów i kategorii) oraz pola zależne od rynku - m.in.
+            <code>price</code>, <code>cataloguePrice</code>, <code>taxRate</code>, <code>currency</code>,
+            <code>status</code>, <code>dispatchTime</code>, <code>slug</code>, <code>buyableProblems</code>.
+            Produkt, który nie ma danych dla wskazanego rynku, zwraca dane rynku bazowego.
+            Rynek nie zmienia zestawu wyszukanych produktów.
+        </li>
+        <li>
+            <code>PATCH /products/{externalId}</code> oraz <code>PATCH /products/batch-update</code> - dla rynku
+            innego niż bazowy pola <code>name</code> i <code>description</code> zapisywane są jako tłumaczenia
+            dla tego rynku, a pozostałe pola aktualizują produkt niezależnie od rynku.
+            Przesłanie <code>null</code> albo pustego tekstu w <code>name</code> lub <code>description</code>
+            usuwa ręczne tłumaczenie i przywraca automatyczne - na rynku bazowym takie
+            <code>name</code> jest odrzucane błędem <code>400</code>, bo wyczyściłoby nazwę samego produktu.
+            W przypadku aktualizacji wsadowej nagłówek dotyczy wszystkich pozycji w żądaniu.
+        </li>
+    </ul>
+
+    <h2>Produkty</h2>
+
+    <h3>Id produktów</h3>
+    <p>
+        W API posługujemy się <b>ID produktów</b> z systemu sklepowego sprzedawcy.
+    </p>
+    <p>
+        Jeżeli kilka produktów w sklepie sprzedawcy ma ten sam ID (na przykład system sklepowy razem trzyma różne kolory tego samego produktu),
+        to należy ubogacić id zduplikowanych produktów, na przykład <code>123-czerwony</code>.
+    </p>
+
+    <h3>Metoda PATCH</h3>
+    <p>
+        Podczas aktualizacji produktu zachęcamy do przesyłania tylko zmienionych pól do marketplace.<br />
+        Gorąco zachęcamy też do <b>nie wykonywania niepotrzebnych zapytań</b> gdy w produkcie nie wystąpiły żadne zmiany.<br />
+        Zostaną zmienione wyłącznie pola, które zostaną podane w żądaniu.
+    </p>
+    <p>
+        Wysłanie żądania <code>PATCH</code> na adres <code>/svc/shop-api/products/8</code> może mieć następujące przykładowe skutki w zależności od treści żądania:
+    </p>
+    <ul>
+        <li>
+            <code>{"name": "Krzesło"}</code> zmieni wyłącznie nazwę produktu;
+        </li>
+        <li>
+            <code>{}</code> nie zmieni produktu, robienie takiego zapytania jest bezcelowe;
+        </li>
+        <li>
+            <code>{"images": []}</code> <b>opróżni</b> tablicę <code>images</code>;
+        </li>
+        <li>
+            <code>{"images": [{"url": "…"}]}</code> <b>zastąpi</b> tablicę <code>images</code> nową jedno-elementową tablicą;
+        </li>
+        <li>
+            <code>{"dispatchTime": {"period": 10}}</code> ustawi pole <code>unit</code> na domyślną wartość "dni",
+        </li>
+        <li>
+            <code>{"externalAttributes": [{"unit": "kg"}]}</code> zwróci błąd, bo obiekt wewnątrz <code>externalAttributes</code> wymaga pola <code>type</code>, więc zastąpienie obiektem bez tego pola jest błędem;
+        </li>
+        <li>
+            <code>{"voluntaryWarrantyIdentifier": null}</code> usunie opcjonalne pole <code>voluntaryWarrantyIdentifier</code>;
+        </li>
+        <li>
+            <code>{"voluntaryWarrantyIdentifier": undefined}</code> nie jest poprawnym JSON.
+        </li>
+    </ul>
+    <p>
+        Dodatkowo pole <code>frozen</code> jest wyjątkowe - zagnieżdżone w nim pola są uaktualniane pojedynczo
+        (np. przesłanie <code>{"frozen": {"price": false, "name": true}}</code> ustawi zedytuje tylko <code>frozen.price</code> i <code>frozen.name</code>;
+        pozostawi pozostałe pola wewnątrz <code>frozen</code> niezmienione).
+        Należy więc przesłać w <code>frozen</code> te zagnieżdżone pola, które mają zostać ustawione.
+    </p>
+    <h4>Mrożenie</h4>
+    <p>
+        Ręczna edycja produktu w panelu sprzedawcy powoduje zmrożenie pola.
+        Zamrożone pola nie są zmieniane przez api.
+        Status zamrożeń pól widać w API w polu <code>frozen</code>, a w edycji produktu w panelu sklepu zamrożone pola są oznaczone ikonką.
+    </p>
+    <p>
+        Należy unikać używania pola <code>overrideFrozen</code> (bądź przestawiania <code>frozen.…</code> na false),
+        aby nie nadpisać ręcznie zedytowanych informacji w produkcie (np. ręcznie dopracowanych opisów lub uzupełnionych atrybutów).
+    </p>
+    <p>
+        Dodatkowo próba zmiany pola <code>price</code> na <strong>promowanym</strong> aktualnie produkcie jest niemożliwa i jest ignorowana.
+    </p>
+
+    <h3>Cykl życia produktu i obsługa błędów</h3>
+    <p>Poniższy pseudokod pokazuje zalecane <i>flow</i> podczas wysyłania do nas produktów.</p>
+    <pre><code class="php">
+        function saveProductInMarketplace($product) {
+            // you may need foreach here tohandle products with variants/configurations
+            $marketplaceProduct = mapProductToMarketplaceProduct($product);
+            $previousData = $db->table('marketplace_product')->findOne($marketplaceProduct['externalId']);
+            if ($previousData === null) {
+                if ($marketplaceProduct['stock'] <= 0 || $marketplaceProduct['status'] === 'inactive') {
+                    return; // no point in sending some old products
+                }
+                try {
+                    $data = array_diff_key($marketplaceProduct, ['externalId' => '']);
+                    marketplaceApi('POST', '/products/{$marketplaceProduct['externalId']}', $data);
+                    $db->table('marketplace_product')->save($marketplaceProduct);
+                    return;
+                } catch (ConflictHttpException $e) { // 409
+                    // avoid being stuck here during every update
+                    $previousData = [];
+                }
+            }
+            $changes = [];
+            foreach ($marketplaceProduct as $field => $value) {
+                if ($value !== $previousData[$field] ?? null) { // this is deep compare
+                    $changes[$field] = $value;
+                    // to save space you can play comparing hashes instead of raw values
+                }
+            }
+            if ($changes) {
+                marketplaceApi('PATCH', '/products/{$marketplaceProduct['externalId']}', $changes);
+                $db->table('marketplace_product')->save($marketplaceProduct);
+            }
+        }
+
+        function marketplaceApi($method, $path, $body) {
+            for ($attempt = 1; $attempt <= 3; $attempt++) {
+                try {
+                    return makeHttpsRequest(…);
+                } catch (ServerException | RequestException $e) {
+                    // catch only 5XX and connection problems, let other exceptions escalate
+                    if ($attempt === $tries) {
+                        throw $e;
+                    }
+                    sleep((5 ** ($attempt)) * 1000);
+                }
+            }
+        }</code></pre>
+    <p>
+        Jak widać powyżej, zalecamy wysyłać możliwie mało danych do marketplace -
+        dużo taniej jest sprawdzić coś w lokalnej bazie danych niż wykonywać połączenie HTTPS.
+    </p>
+    <p>
+        Dodanie/aktualizacja produktu jest asynchroniczna - pozytywna odpowiedź https (kod 202) potwierdza tylko,
+        że dane przeszły podstawową walidację i zostały zapisane w bazie danych.
+        Kolejne etapy przetwarzania to między innymi:
+        przyporządkowanie kategorii,
+        atrybutów, grupy wariantowej,
+        pobieranie obrazków,
+        przyporządkowanie zasad rękojmi/gwarancji/zwrotu,
+        przyporządkowanie dostaw,
+        aktualizacja kupowalności produktu,
+        aktualizacja katalogu produktów (listy produktów, wyniki wyszukiwania, strony produktów).
+    </p>
+    <p>
+        Ze względu na cachowanie zmiany poczynione w produkcie mogą pojawić się z dodatkowym opóźnieniem (do 20 minut)
+        na stronie produktu, listach produktów i w wynikach wyszukiwania. Nie ma to oczywiście żadnego wpływu na API.
+    </p>
+    <p>
+        Aktualnie nie ma możliwości usuwania produktów, należy oznaczyć je jako nieaktywne.
+    </p>
+
+    <h3>Kategorie i atrybuty, warianty produktu</h3>
+    <p>
+        Pola <code>externalAttributes</code>, <code>externalCategories</code> oraz <code>externalVariantGroup</code> są przeznaczone na dane
+        o atrybutach, kategoriach i innych wariantach danego produktu.
+        W tych polach przesyłamy informacje o produkcie z systemu sklepowego sprzedawcy,
+        potem te informacje będą przypisywane do odpowiadających im kategorii/atrybutów w marketplace
+        poprzez <b>panel rozpoznawania kategorii</b> i <b>panel rozpoznawania atrybutów</b> w panelu sprzedawcy w marketplace.
+        Pozwala to oszczędzić dużo pracy programistycznej podczas tworzenia integracji.
+    </p>
+    <p>
+        Zamiast tego (albo dodatkowo) można przesłać dane o produkcie z identyfikatorami kategorii/atrybutów z Allegro -
+        marketplace utrzymuje aktualne przypisania z kategorii/atrybutów tego konkurencyjnego serwisu - należy wtedy zaznaczyć to w polu <code>source</code>.
+        Analogicznie można przesłać przypisane już dane z identyfikatorami z marketplace - należy wtedy zaznaczyć to w polu <code>source</code>.
+    </p>
+
+    <h4>Grupy wariantowe</h4>
+    <p>
+        Każdy produkt na marketplace ma swoją konkretną wartość atrybutów, stan magazynowy i cenę.
+        W przypadku posiadania w systemie sklepowym sprzedawcy produktów, które mają możliwość wyboru koloru lub innych parametrów,
+        to można użyć grup wariantowych: we wszystkich tych produktach należy ustawić pole <code>externalVariantGroup</code> analogicznie do przykładu:
+    </p>
+    <pre><code class="js">
+        {
+            // produkt 888 ma kilka wariantów, więc każdy z nich musi mieć swój własny deterministyczny i unikalny id
+            "externalId": "888-black-32",
+            "name": "Xiaomi Redmi Note 7 3/32GB Czarny",
+            "externalCategory": [
+                {
+                    "source": "allegro",
+                    "breadcrumb": [
+                        // gdy source wynosi allegro lub marketplace, to nie trzeba podawać całego breadcrumba
+                        {
+                            "id": "260781",
+                            "name": "Redmi Note 7" // gdy source wynosi allegro lub marketplace, to pole "name" nie jest nigdzie użyte
+                        }
+                    ]
+                    // index sam ustawia się na aktualny indeks w tablicy externalCategory, czyli 0
+                },
+                {
+                    // domyślnie "source": "shop", więc przekazujemy tu dane o kategorii w systemie sklepowym sprzedawcy
+                    "breadcrumb": [
+                        {
+                            "id": "64a52abb-7d1a-4a06-a1bf-9c24320c8830", // jak widać id MOŻE być tekstowe
+                            "name": "Elektronika" // name się przydaje, aby w narzędziu do mapowania wyświetlić ładne nazwy
+                        },
+                        {
+                            "id": "0ac260e3-e104-4816-9636-8774e92371e2",
+                            "name": "Komórki"
+                        },
+                        {
+                            "id": "b4410ff8-5665-4771-8640-cf2a17ea186f",
+                            "name": "Xiaomi"
+                        },
+                        {
+                            "id": "2235b23e-60a1-4079-959a-2b19cd95ff90",
+                            "name": "Redmi Note 7"
+                        }
+                    ],
+                    "index": 0 // pokazujemy, że wszystkie krotki z index:0 przekazują tę samą informację, więc wystarczy rozpoznać tylko jedną z nich
+                }
+            ],
+            "externalAttributes": [
+                {
+                    "source": "allegro",
+                    "id": "127448",
+                    "name": "Kolor", // ignorowane, gdy source wynosi allegro lub marketplace
+                    "type": "dictionary",
+                    "values": [
+                        {
+                            "id": "127448_1",
+                            "name": "czarny" // ignorowane, gdy source wynosi allegro lub marketplace
+                        }
+                    ]
+                    // domyślnie "index": 0
+                },
+                {
+                    // domyślnie "source": "shop"
+                    "id": "kolor", // jeżeli w systemie sklepowym nie ma żadnych id dla atrybutów to ewentualnie można jakieś wytworzyć
+                    "name": "Kolor",
+                    "type": "string",
+                    "values": ["czarny"],
+                    "index": 0
+                },
+                {
+                    "source": "marketplace", // oczywiście można posługiwać się id z marketplace, ale na razie nie ma ich skąd wziąć
+                    "id": "9913",
+                    "type": "dictionary",
+                    "values": [
+                        {
+                            "id": "73435",
+                        }
+                    ],
+                    "index": 0
+                },
+                {
+                    "source": "allegro",
+                    "id": "11369",
+                    "name": "Wbudowana pamięć", // ignorowane, gdy source wynosi allegro lub marketplace
+                    "type": "dictionary",
+                    "values": [
+                        {
+                            "id": "11369_214197",
+                            "name": "32 GB" // ignorowane, gdy source wynosi allegro lub marketplace
+                        }
+                    ]
+                    // domyślnie "index": 3
+                },
+                {
+                    // domyślnie "source": "shop"
+                    "id": "pojemność",
+                    "name": "Pojemność",
+                    "type": "number",
+                    "values": [32],
+                    "unit": "GB",
+                    "index": 3
+                }
+            ],
+            "externalVariantGroup": {
+                "id": "888", // tutaj zwykle będzie pasowało id produktu
+                "source": "integration",
+                "attributes": [
+                    "thumbnail", // "thumbnail" (czyli wariantowanie po obrazku produktu) może być wyłącznie na pierwszym miejscu na tej liście
+                    // nie powinniśmy tutaj wstawiać wartości 0 (kolor) gdy wcześniej wstawiliśmy "thumbnail", gdyż na obrazku produktu będzie widać kolor produktu
+                    3
+                ]
+            }
+            // komentarze są oczywiście zabronione w JSON, więc nie wolno ich przesyłać w żądaniach
+        }</code></pre>
+
+    <h3>Opisy</h3>
+    <p>Opis produktu należy przesłać w polu <code>description</code> z podziałem na sekcje (<code>sections</code>), a sekcje z podziałem na elementy tekstowe lub obrazkowe (<code>items</code>).</p>
+    <p>Każda sekcja może zawierać tylko jeden lub dwa elementy (<code>items</code>), które zostaną wyświetlone na stronie obok siebie.</p>
+    <p>W elemencie tekstowym można wykorzystywać wyłącznie określone znaczniki HTML:
+        <ul>
+            <li><code>&lt;h1&gt;</code> tytuł</li>
+            <li><code>&lt;h2&gt;</code> podtytuł</li>
+            <li><code>&lt;h3&gt;</code> nagłówek trzeciego poziomu</li>
+            <li><code>&lt;p&gt;</code> paragraf</li>
+            <li><code>&lt;b&gt;</code> pogrubienie</li>
+            <li><code>&lt;br/&gt;</code> łamanie wiersza</li>
+            <li><code>&lt;ol&gt;</code> lista uporządkowana</li>
+            <li><code>&lt;ul&gt;</code> lista nieuporządkowana</li>
+            <li><code>&lt;li&gt;</code> element listy</li>
+        </ul>
+    </p>
+    <p>
+        Przykładowa struktura opisu z dwoma sekcjami:
+        <pre><code class="js">
+            {
+                "sections": [{
+                    "items": [{
+                        "type": "TEXT",
+                        "content": "<h1>Nagłówek w lewej kolumnie</h1><p>opis w <b>lewej</b> kolumnie</p>"
+                    }, {
+                        "type": "TEXT",
+                        "content": "<p>opis w <b>prawej</b> kolumnie</p>"
+                    }]
+                }, {
+                    "items": [{
+                        "type": "IMAGE",
+                        "url": "https://obrazek-wycentrowany.jpg"
+                    }]
+                }]
+            }
+        </code></pre>
+    </p>
+    <p>
+        Przykładowy element opisu HTML:
+        <pre><code class="html">
+        &lt;h1&gt;Lorem ipsum&lt;/h1&gt;
+        &lt;h2&gt;dolor sit amet&lt;/h2&gt;
+        &lt;p&gt;Ut enim ad minim veniam, quis &lt;b&gt;nostrud&lt;/b&gt; exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.&lt;/p&gt;
+        &lt;ul&gt;
+            &lt;li&gt;&lt;b&gt;Duis&lt;/b&gt; aute irure dolor in reprehenderit in voluptate.&lt;/li&gt;
+            &lt;li&gt;Excepteur sint occaecat cupidatat non proident.&lt;/li&gt;
+        &lt;/ul&gt;
+        &lt;ol&gt;
+            &lt;li&gt;&lt;b&gt;Duis&lt;/b&gt; aute irure dolor in reprehenderit in voluptate.&lt;/li&gt;
+            &lt;li&gt;Excepteur sint occaecat cupidatat non proident.&lt;/li&gt;
+        &lt;/ol&gt;
+        </code></pre>
+    </p>
+    <p>
+        HTML musi spełniać kilka reguł:
+        <ul>
+            <li>znaczniki HTML pisane zawsze z małej litery</li>
+            <li>znaczniki HTML nie mogą mieć żadnych atrybutów</li>
+            <li><code>&lt;br/&gt;</code> musi być zapisany w formie samozamykającej — <code>&lt;br&gt;</code> bez ukośnika jest niedozwolone</li>
+            <li>nagłówki <code>&lt;h1&gt;</code>, <code>&lt;h2&gt;</code>, <code>&lt;h3&gt;</code> mogą zawierać wyłącznie tekst — zagnieżdżone znaczniki są w nich zakazane</li>
+            <li>tekst bezpośrednio na poziomie root (niezawinięty w żaden znacznik) jest niedozwolony</li>
+            <li>
+                zagnieżdżanie znaczników HTML jest zakazane z następującymi wyjątkami:
+                <ul>
+                    <li>pogrubienie <code>&lt;b&gt;</code> oraz łamanie wiersza <code>&lt;br/&gt;</code> mogą być użyte wewnątrz <code>&lt;p&gt;</code> oraz <code>&lt;li&gt;</code></li>
+                    <li>paragraf <code>&lt;p&gt;</code> może być użyty wewnątrz <code>&lt;li&gt;</code></li>
+                    <li>element listy <code>&lt;li&gt;</code> może być użyty wewnątrz <code>&lt;ol&gt;</code> oraz <code>&lt;ul&gt;</code></li>
+                </ul>
+            </li>
+        </ul>
+    </p>
+    <h4>Opisy HTML</h4>
+    <p>Istnieje alternatywny sposób przesyłania opisu w polu <code>description</code>.</p>
+    <p>
+        HTML przesłany w polu <code>description</code> jako tekst nie ma żadnych ograniczeń wobec przesyłanych znaczników i obrazków.
+        Po przesłaniu zostanie skonwertowany do opisanej powyżej struktury.
+    </p>
+    <p><b>Uwaga</b>: opis przesłany jako tekst po konwersji będzie wyglądał inaczej, ponieważ zostaną użyte tylko dozwolone znaczniki, a obrazki będą wyświetlone pojedynczo, zawsze w nowym akapicie.</p>
+
+    <h3>Obrazki</h3>
+    <p>
+        W polu <code>images</code> oczekujemy zdjęć produktów z dużą rozdzielczością (do 5120x5120),
+        bez znaków wodnych, w jednym z następujących formatów:
+        <code>WebP</code>, <code>PNG</code>, <code>JPEG</code>.
+    </p>
+    <p>
+        Obrazki produktów, a także obrazki z treści opisów produktów, są pobierane przez marketplace,
+        aby przygotować je w odpowiednich rozmiarach i wyświetlać kupującym z naszych serwerów.
+    </p>
+    <p>
+        W przypadku problemów z połączeniem lub błędami 5XX, próbujemy pobrać obrazek kilka razy po kilku minutach (a następnie godzinach),
+        następnie zaniechujemy dalszych prób pobierania.
+        W przypadku otrzymania kodu 4XX podczas pobierania, zaniechujemy dalszych prób pobierania.
+        Gdy pobrany plik nie jest obrazkiem, to zaniechujemy dalszych prób pobierania.
+    </p>
+    <p>
+        Po pobraniu (lub zaniechaniu pobierania) danego <code>url</code>'a już <b>nigdy</b> więcej go nie pobieramy.
+        Jeżeli na przykład system sklepowy sprzedawcy nie zmienia ścieżek do obrazków po zamianie obrazka,
+        to należy do przekazywanej ścieżki dopisywać coś, co pozwoli zauważyć zmianę obrazka.
+        Na przykład do ścieżki <code>https://example.shop/1.png</code> można dopisać crc32, md5 lub datę edycji obrazka
+        i wysłać <code>https://example.shop/1.png#706ecdc3f27eb93a4eae3de433ff127e</code>.
+    </p>
+
+    <h3>Metody dostawy</h3>
+    <p>Sklep może mieć wybrany <b>jeden</b> z trybów obliczania ceny dostawy: (<small>(aktualnie jest dostępny tylko jeden tryb)</small>)</p>
+
+    <h4>Tryb cenników dostaw</h4>
+    <p>
+        Cennik pozwala wybrać metody dostawy, dla każdej metody dostawy pozwala określić cenę, ilość sztuk w przesyłce, kwotę dopłaty za kolejne sztuki.
+    </p>
+    <p>
+        Dla każdego produktu sprzedawca wybiera jeden cennik - pierwszy element tablicy <code>packaging.tags</code>
+        jest traktowany jako identyfikator cennika.
+        Można najpierw zapisywać produkty z nieistniejącym cennikiem, a potem w panelu sklepu dodać ten cennik.
+        Listę zdefiniowanych cenników można pobrać z <code>/svc/shop-api/delivery/priceLists</code>.
+    </p>
+    <p>
+        Jeżeli sprzedawca ma identyczne reguły wysyłki dla wszystkich produktów, to tablica <code>packaging.tags</code> może pozostać pusta, wtedy produkty użyją domyślnego cennika.
+    </p>
+    <p>
+        Pole <code>packaging.weight</code> proszę wypełnić wagą w gramach.
+    </p>
+
+    <h3>Zasady gwarancji i zwrotów</h3>
+    <p>
+        Podczas rejestrowania sklepu sprzedawca ustala domyślne zasady rękojmi (<code>obligatoryWarranty</code>),
+        gwarancji (<code>voluntaryWarranty</code>) i zwrotu (<code>returnTerms</code>).
+        Sprzedawca może potem stworzyć kolejne zasady i zmieniać domyślne zasady w każdej z tych 3 grup.
+        Domyślne zasady rękojmi/gwarancji/zwrotu są przypisywane do produktu,
+        chyba że zostaną wybrane konkretne zasady poprzez wypełnienie odpowiednio pól
+        <code>obligatoryWarrantyId</code>, <code>voluntaryWarrantyId</code> lub <code>returnTermsId</code>.
+        Rękojmia i zwrot są obowiązkowe, zaś brak gwarancji ma 'magiczny' id 0.
+    </p>
+
+    <h2>Zamówienia</h2>
+    <p>
+        Informacje o wykonanych zamówieniach, opłacaniu zamówień, anulowaniu zamówień, itd. odkładają się w <code>inbox</code>'ie.
+        Można też "klasycznie" pobierać zamówienia z listy zamówień filtrując po dacie aktualizacji zamówienia i sortując po dacie aktualizacji zamówienia.
+    </p>
+    <p>
+        Sprzedawca <b>musi</b> aktualizować stan zamówień (przez API lub w panelu sprzedawcy) i wprowadzać informacje o śledzeniu przesyłki.
+    </p>
+    <p>
+        W przypadku gdy kupujący kupi produkty, które są dostarczane przez różne metody dostawy,
+        to dla każdej metody dostawy tworzy się osobne zamówienie.
+    </p>
+    <p>
+        Przy <strong>aktualizacji zamówienia </strong> dla <strong>przesyłek Erli</strong> sprzedawca <strong>nie</strong> podaje numeru nadania <code>trackingNumber</code>.
+        Numer nadania zostanie zaktualizowany automatycznie po wygenerowaniu przesyłki.
+    </p>
+
+    <h3>Stan zamówenia</h3>
+    <p>Zamówienia nieopłacone, czekające na płatość przez PayU mają w polu <code>status</code> wartość <code>pending</code>.</p>
+    <p>Zamówienia opłacone przez PayU mają w polu <code>status</code> wartość <code>purchased</code>.</p>
+    <p>Zamówienia COD mają w polu <code>status</code> wartość <code>purchased</code>.</p>
+    <p>Zamówienia anulowane mają w polu <code>status</code> wartość <code>cancelled</code>.</p>
+
+    <h3>Zmiany stanów magazynowych</h3>
+    <p>
+        Po dokonaniu zamówienia w marketplace pole <code>stock</code> w produktach jest <b>automatycznie zmniejszane</b>
+        o ilość zakupionych produktów.
+    </p>
+    <p>
+        W przypadku anulowania zamówienia pole <code>stock</code> <b>nie jest aktualizowane</b>,
+        więc należy dokonać stosownej aktualizacji przez API.
+    </p>
+
+    <h2>Inbox</h2>
+    <p>
+        Z adresu <code>/svc/shop-api/inbox</code> można pobrać zdarzenia związane ze sklepem sprzedawcy, czyli:
+    </p>
+    <ul>
+        <li>nowe zamówienia i zmiany związane z zamówieniami</li>
+        <li>notyfikacje, że produkty wymagają synchronizacji</li>
+        <li><b>Planujemy implementację</b>:
+          <ul>
+            <li>problemy z przypisaniami kategorii/atrybutów/grup wariantowych</li>
+            <li>problemy z zasadami rękojmi/gwarancji/zwrotu</li>
+            <li>problemy z pobieraniem obrazków</li>
+            <li>wiadomości od kupującego / pytania o produkt</li>
+            <li>blokowanie przedmiotów przez moderatorów marketplace</li>
+            <li>faktury za prowizję</li>
+          </ul>
+        </li>
+    </ul>
+    <p>
+        Jednokrotnie pobiera się maksymalnie 500 nieprzeczytanych wiadomości,
+        po ich odczytaniu i przetworzeniu należy oznaczyć je jako przeczytane używając id najnowszej (ostatniej) wiadomości.<br />
+        Osobne żądanie na potwierdzenie przeczytania wiadomości ma ochronić sprzedającego przed utratą wiadomości,
+        gdy przetwarzanie zostanie przerwane ze względu na problemy sprzętowe lub programistyczne.
+    </p>
+    <p>
+        Użycie <code>inbox</code> sprawia, że podczas używania API nie ma potrzeby pobierania danych z żadnych innych miejsc.
+        Dla przykładu można traktować inbox jako jedyne źródło informacji o zamówieniach i zmianach w nich.
+    </p>
+
+    <h2>Paginacja</h2>
+    <p>
+        Listy zamówień, produktów itp. mają wspólny interfejs związany z przeglądaniem wyników.
+        Dla przykładu jeżeli chcemy przejrzeć zamówienia utworzone od 1 maja, to wykonujemy zapytanie z następującą treścią:
+    </p>
+    <pre><code class="js">
+        {
+            "pagination": {
+                "sortField": "created",
+                "after": "2019-05-01T00:00:00.000Z"
+                // możemy też podać skróconą datę 2019-05-01
+                // albo uniknąć pominięcia pierwszej majowej milisekundy i podać 2019-04-30T23:59:59.999Z */
+
+                // domyślnie "order": "ASC"
+                // domyślnie "limit": 50
+            }
+        }</code></pre>
+    <p>
+        W naszym przykładzie jeżeli chcemy pobrać kolejne 50 zamówień, to zamieniamy wartość w polu <code>after</code>
+        na wartość pola <code>created</code> z ostatniego z pobranych zamówień i ponownie wykonujemy zapytanie.
+    </p>
+    <p>
+        Pole <code>after</code> pozwala uniknąć używania znienawidzonego przez bazy danych mechanizmu offset/skip.
+    </p>
+    <p>
+        W momencie tworzenia produktów, zamówień, itp. pole <code>updated</code> ma taką samą wartość jak pole <code>created</code>, nigdy nie jest puste.
+    </p>
+    <p>Aby zagwarantować brak duplikatów w przypadku remisu w sortowaniu (np. identyczna data i godzina złożenia zamówienia), zamówienie zawiera pole <code>cursor</code>, które można podać jako wartość <code>pagination.after</code>.</p>
+
+    <h2>Hooki</h2>
+    <p>
+
+        Istnieje możliwość zarejestrowania własnego hooka. Rejestracja odbywa się poprzez wysłania zapytania POST na endpoint `hooks`.
+        Hooki pozwalają obejść problemy z opóźnieniami w synchronizacji swojej oferty z Erli, które mogą być spowodowane np. oparciem integracji o crona.
+        Na przyład obsłużenie hooka checkBuyability wraz z zaplanowanym hookiem orderCreated powinny wyeliminować przypadki zakupu produktu pomimo wykupienia go przez inny kanał sprzedaży.
+    </p>
+    <details>
+        <summary>productsNeedSync - Produkty wymagają synchronizacji</summary>
+        <p>
+            Hook "productsNeedSync" jest wywoływany, gdy produkty wymagają ponownej synchronizacji (np. ich pola zostaną odmrożone). Zawiera on listę produktów oraz pól, które powinny być zsynchronizowane.
+        </p>
+        <p>
+            Przy założeniu, że zarejestrowano hook:
+        </p>
+        <pre><code class="js">
+        {
+           "hookName": "productsNeedSync",
+           "url": "https://moj-sklep.pl/hooks/products-need-sync",
+           "accessToken": "very-important-secret"
+        }</code></pre>
+        <p>Podczas odmrożenia system Erli wykona następujące przykładowe żądanie POST:</p>
+        <pre><code>
+        curl -X POST 'https://moj-sklep.pl/hooks/products-need-sync' \
+-H 'Authorization: Bearer very-important-secret' \
+-H 'Content-Type: application/json' \
+-d '{"externalProductIds": ["123", "456", "789"], "fields": ["status", "price"]}'</code></pre>
+        <p>
+            Odpowiedź na powyższe żądanie powinna zwrócić dowolny status 2XX. Nie jest oczekiwana żadna zawartość odpowiedzi.
+        </p>
+        <p>Brak pól oznacza, że wszystkie pola powinny być zsynchronizowane, na przykład:</p>
+        <pre><code>
+        curl -X POST 'https://moj-sklep.pl/hooks/sync-lost' \
+-H 'Authorization: Bearer very-important-secret' \
+-H 'Content-Type: application/json' \
+-d '{"externalProductIds": ["123", "456", "789"]}'</code></pre>
+        <p>
+            W przypadku błędów połączeń lub odpowiedź zajmie dłużej niż 5 sekund, wykonanie hooka nie zostanie ponowione, natomiast informacja o zdarzeniu pojawi się w inbox.
+        </p>
+        <p>
+            Testy hooka można przeprowadzać przy użyciu endpoint'a `/hooks/productsNeedSync/run`.
+        </p>
+    </details>
+    <details>
+        <summary>orderCreated / orderStatusChanged - Zostało złożone zamówienie w Erli.pl / zmieniono status zamówienia w Erli.pl</summary>
+        <p>
+            Hooki są wywoływany, gdy zostało złożone zamówienie / zmieniono status zamówienia i zawierają wskazane zamówienie.
+        </p>
+        <p>
+            Przy założeniu, że zarejestrowano hook:
+        </p>
+        <pre><code class="js">
+        {
+           "hookName": "orderCreated",
+           "url": "https://moj-sklep.pl/hooks/order-created",
+           "accessToken": "very-important-secret"
+        }</code></pre>
+        <p>Gdy powstanie zamówienie Erli.pl wykona następujące przykładowe żądanie POST:</p>
+        <pre><code>
+        curl -X POST 'https://moj-sklep.pl/hooks/order-created' \
+-H 'Authorization: Bearer very-important-secret' \
+-H 'Content-Type: application/json' \
+-d '{"id": "1234x5678", "status": "pending"}'</code></pre>
+        <p>
+            Pełna zawartość żądania znajduje się w dokumentacji: https://erli.pl/svc/shop-api/doc/reference/#/inbox/get_inbox
+        </p>
+        <p>
+            Odpowiedź na powyższe żądanie powinna zwrócić dowolny status 2XX. Nie jest oczekiwana żadna zawartość odpowiedzi.
+        </p>
+        <p>
+            W przypadku błędów połączeń lub odpowiedź zajmie dłużej niż 5 sekund, wykonanie hooka nie zostanie ponowione, natomiast informacja o zdarzeniu pojawi się w inbox.
+        </p>
+    </details>
+    <h2>Środowisko testowe</h2>
+    <p>
+        Jest możliwość testowania wtyczki/integracji bez dokonywania prawdziwych zakupów i oferowania przedmiotów:
+        Dostęp do środowiska testowego przydziela BOK.
+        Testowe środowisko znajduje się w innej domenie i dane do logowania są inne niż na środowisku produkcyjnym.
+    </p>
+
+    <h2>Przykłady</h2>
+
+    <p>
+        <a href="example.php">Przykład w PHP z użyciem Guzzle</a>
+    </p>
+
+    <h2>Referencja API</h2>
+    <p>
+        <a href="/svc/shop-api/doc/reference"><b>Referencja API</b></a> to szczegółowa dokumentacja wszystkich metod w API.
+    </p>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
+        integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo"
+        crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"
+        integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1"
+        crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"
+        integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM"
+        crossorigin="anonymous"></script>
+<link rel="stylesheet"
+      href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.15.8/styles/default.min.css">
+<script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.15.8/highlight.min.js"></script>
+<script>
+    const $nav = $('#navbar > nav')
+    $('h2, h3').each((index, element) => {
+      const $element = $(element)
+      if ($element.attr('id') === undefined) {
+        $element.attr('id', $element.text().replace(/[^\wąćęłńóśźż]/gi, '-'))
+      }
+      if ($element.is('h2')) {
+        $nav.append(`<a class="nav-link" href="#${$element.attr('id')}">${$element.text()}</a>`)
+      } else {
+        if (!$nav.children().last().is('nav')) {
+          $nav.append('<nav class="nav nav-pills flex-column">')
+        }
+        $nav.children().last().append(`<a class="nav-link ml-3 my-1" href="#${$element.attr('id')}">${$element.text()}</a>`)
+      }
+    })
+    $nav.children().last().attr('href', '/svc/shop-api/doc/reference').css('font-weight', 'bold')
+
+    $('pre > code').each((index, element) => {
+      const $element = $(element)
+      const lines = $element.text().split('\n')
+      while (!lines[0].match(/\W/)) {
+        lines.shift()
+      }
+      while (!lines[lines.length - 1].match(/\W/)) {
+        lines.pop()
+      }
+      const commonIndent = Math.min(
+        ...lines
+            .filter((line) => !!line.match(/\W/))
+            .map((line) => line.match(/^ */)[0].length)
+      )
+      $element.text(lines.map((line) => line.replace(RegExp(`^ {0,${commonIndent}}`), '')).join('\n'))
+    })
+    hljs.initHighlightingOnLoad()
+</script>
+<script>window.__CF$cv$params={r:'a54fd5b1fef3b710',t:'MTc5Mzc1NTYzMA==',u:'01a1a42acb577226a1c126f7354b6032',ut:'9dkw2ty_F40IEJLs4MtFXhExyje8nl8SYUBYsdakeBw-1793755630-1.2.1.1-HIBZrV2KUFLdSiL17UvsER1mfmERVd1AwvUOrpl1vxsTkcBTD4i6huyMp6ioLW4wO1_WbusuFUNAQSFEa6PeWoMLzynnsMey6w7a3Zi0dgg',i:60};(function(){if(!document.body)return;var l=window.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/precursor/main.js?ray=a54fd5b1fef3b710',s=document.createElement('script');s.src=o?new URL(u,o).href:u;document.head.appendChild(s);})();</script></body>
+</html>

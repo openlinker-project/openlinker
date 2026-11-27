@@ -10,7 +10,10 @@
  *
  * @module apps/web/src/features/listings/lib
  */
-import type { BulkBatchRecordSummary } from '../api/bulk-listings.types';
+import { getMessages, interpolate } from '../../../shared/i18n';
+import type { BulkBatchRecordSummary, BulkOfferOverrides } from '../api/bulk-listings.types';
+import type { OfferParameter } from '../api/listings.types';
+import type { CategoryParameterFormValues } from '../components/category-parameter-form.types';
 
 /**
  * Product cap enforced by the bulk wizard route, which redirects back to
@@ -71,8 +74,9 @@ export function selectFailedRecords(
 /**
  * Bulk wizard URL carrying a recovery selection.
  *
- * `fromBatch` is read only to render the wizard's "resuming" banner - nothing
- * in the submit path consumes it.
+ * `fromBatch` renders the wizard's "resuming" banner and tells the route which
+ * batch's saved requests to prefill from (#4037); nothing in the submit path
+ * consumes it.
  */
 export function buildBatchFixUrl(input: {
   productIds: readonly string[];
@@ -89,12 +93,75 @@ export function buildBatchFixUrl(input: {
   return `/listings/bulk-create/wizard?${params.toString()}`;
 }
 
+/**
+ * What the resumed wizard restores for one failed variant (#4037): the
+ * overrides it was submitted with, plus the category parameters as the editor's
+ * form state so the editor opens on them instead of empty.
+ */
+export interface RecoveryPrefillEntry {
+  overrides: BulkOfferOverrides;
+  formParameters: CategoryParameterFormValues;
+}
+
+/** Snapshot versions this reader understands; anything else degrades to no prefill. */
+const KNOWN_SNAPSHOT_SCHEMA_VERSION = 1;
+
+/**
+ * Wire parameters back to the editor's flat form state. The schema is not
+ * known here, so a parameter with several chosen ids becomes a list and one
+ * with a single value a string; the serializer tolerates a string for a
+ * multi-choice parameter.
+ */
+export function offerParametersToFormValues(
+  parameters: readonly OfferParameter[],
+): CategoryParameterFormValues {
+  const out: CategoryParameterFormValues = {};
+  for (const p of parameters) {
+    if (p.rangeValue) out[p.id] = { from: p.rangeValue.from, to: p.rangeValue.to };
+    else if (p.valuesIds && p.valuesIds.length > 1) out[p.id] = [...p.valuesIds];
+    else if (p.valuesIds && p.valuesIds.length === 1) out[p.id] = p.valuesIds[0];
+    else if (p.values && p.values.length > 0) out[p.id] = p.values[0];
+  }
+  return out;
+}
+
+/**
+ * Prefill for the failed variants of a batch, keyed by variant id.
+ *
+ * Reads only the saved request's overrides. Price and stock are deliberately
+ * not restored: they are the policy's resolved figures at submit time, and
+ * freezing them as overrides would stop the resumed wizard from following the
+ * master. Known limit: a barcode the operator cleared (#4036) is sent as an
+ * absent EAN, so it cannot be told apart from an unchanged master barcode and
+ * is not restored.
+ */
+export function buildRecoveryPrefill(
+  records: readonly BulkBatchRecordSummary[],
+  variantIds: ReadonlySet<string>,
+): Map<string, RecoveryPrefillEntry> {
+  const out = new Map<string, RecoveryPrefillEntry>();
+  for (const record of records) {
+    if (record.status !== 'failed') continue;
+    if (!variantIds.has(record.internalVariantId)) continue;
+    const request = record.request;
+    if (!request || request.schemaVersion !== KNOWN_SNAPSHOT_SCHEMA_VERSION) continue;
+    if (!request.overrides) continue;
+    const overrides = { ...request.overrides };
+    out.set(record.internalVariantId, {
+      overrides,
+      formParameters: offerParametersToFormValues(overrides.parameters ?? []),
+    });
+  }
+  return out;
+}
+
 /** Operator-facing reason a fix cannot be offered. */
 export function describeBatchFixBlocker(blocker: BatchFixBlocker): string {
+  const copy = getMessages('listings').batchRecovery.blockers;
   switch (blocker) {
     case 'no-product-link':
-      return 'Fix and resubmit needs the product link, which this batch did not record. Retry is unaffected.';
+      return copy.noProductLink;
     case 'over-product-cap':
-      return `Fix and resubmit handles up to ${MAX_WIZARD_PRODUCTS.toString()} products at a time. Retry is unaffected.`;
+      return interpolate(copy.overProductCap, { max: MAX_WIZARD_PRODUCTS });
   }
 }

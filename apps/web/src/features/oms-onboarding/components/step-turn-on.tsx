@@ -12,23 +12,24 @@
  * - **No active warehouse** (#2407). Step 1 creates one, so this is reachable
  *   only if it was retired since; mapped by code, never by message.
  *
- * State (mockup vocabulary): `step-7-turn-on`.
+ * State (mockup vocabulary): `step-8-turn-on`.
  *
  * @module features/oms-onboarding/components
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { SETUP_STEP_NUMBERS, TURN_ON_STEP, WIZARD_STEPS } from '../lib/onboarding-state';
 import { isRoutingRequiresLocationError } from '../lib/routing-requires-location-error';
 import type { SetupStepsView } from '../hooks/use-setup-steps';
 import { SetupStepKeys, describeSetupStep } from '../lib/setup-steps';
 import { SetupChecklist, type SetupChecklistRow } from './setup-checklist';
 import { StepPanel } from './step-panel';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 export interface StepTurnOnProps {
   readonly masterCount: number;
@@ -56,6 +57,7 @@ function RowLink({ testId, label, onClick }: { testId: string; label: string; on
 }
 
 export function StepTurnOn(props: StepTurnOnProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const rows: SetupChecklistRow[] = [
     {
       key: 'masters',
@@ -85,7 +87,7 @@ export function StepTurnOn(props: StepTurnOnProps): ReactElement {
   if (props.setup !== null) {
     for (const key of SetupStepKeys) {
       const state = props.setup.states[key];
-      const { title, detail } = describeSetupStep(key, state);
+      const { title, detail } = describeSetupStep(key, state, COPY);
       rows.push({
         key,
         ok: state === 'done' || state === 'skipped',
@@ -115,7 +117,7 @@ export function StepTurnOn(props: StepTurnOnProps): ReactElement {
           tone="primary"
           data-testid="btn-turn-on"
           disabled={!props.canWrite || props.otherSystemDecides || props.turningOn}
-          title={props.demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : !props.canWrite ? COPY.adminOnly : undefined}
+          title={props.demoReadOnly ? demoReadOnlyActionMessage() : !props.canWrite ? COPY.adminOnly : undefined}
           onClick={props.onTurnOn}
         >
           {props.turningOn ? COPY.step4.turningOn : COPY.step4.turnOn}
@@ -143,7 +145,7 @@ export function StepTurnOn(props: StepTurnOnProps): ReactElement {
         </Alert>
       ) : props.turnOnError !== null ? (
         <Alert tone="error" title={COPY.step4.failedTitle}>
-          {props.turnOnError.message}
+          {describeApiError(props.turnOnError)}
         </Alert>
       ) : null}
       {!props.canWrite && !props.demoReadOnly ? <Alert tone="info">{COPY.adminOnly}</Alert> : null}

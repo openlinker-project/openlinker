@@ -71,6 +71,7 @@ import { ConfigService } from '@nestjs/config';
 import { REROUTABLE_FULFILLMENT_BLOCK_REASONS } from '@openlinker/core/fulfillment';
 import {
   selectPrimaryFulfillmentRouter,
+  toRouterSelectionClaimants,
   type AuthorityClaimantInput,
 } from '@openlinker/core/fulfillment-authority';
 import { CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
@@ -273,13 +274,7 @@ export class FulfillmentWorkRerouteSweepHandler implements SyncJobHandler {
    */
   private async loadClaimants(): Promise<AuthorityClaimantInput[]> {
     const connections = await this.connections.list();
-    return connections.map((connection) => ({
-      connectionId: connection.id,
-      isActive: connection.status === 'active',
-      supportedCapabilities: [],
-      enabledCapabilities: connection.enabledCapabilities,
-      config: connection.config,
-    }));
+    return toRouterSelectionClaimants(connections);
   }
 
   /** A positive millisecond setting, else the default. */

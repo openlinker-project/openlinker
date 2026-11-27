@@ -5,6 +5,8 @@ import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { WIZARD_STEPS } from '../lib/onboarding-state';
 import { StepTurnOn, type StepTurnOnProps } from '../components/step-turn-on';
 
@@ -60,10 +62,13 @@ describe('StepTurnOn', () => {
     expect(screen.getByTestId('btn-turn-on')).toBeDisabled();
   });
 
-  it('should render a generic failure with the server message', () => {
-    renderWithProviders(<StepTurnOn {...baseProps({ turnOnError: new Error('Nope') })} />);
+  it('should render a generic failure in the copy for its status, not the server message', () => {
+    renderWithProviders(
+      <StepTurnOn {...baseProps({ turnOnError: new ApiError('Nope', 500, {}) })} />
+    );
 
-    expect(screen.getByText('Nope')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
+    expect(screen.queryByText('Nope')).not.toBeInTheDocument();
     expect(screen.queryByTestId('alert-turn-on-no-location')).not.toBeInTheDocument();
   });
 });

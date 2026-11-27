@@ -14,8 +14,8 @@ export type { BulkBatchSummary, BulkBatchStatus } from './api/bulk-listings.type
 export {
   selectPublishDestinations,
   publishDestinationKind,
-  PUBLISH_DESTINATION_KIND_HINT,
-  PUBLISH_DESTINATION_GROUP_LABEL,
+  publishDestinationKindHint,
+  publishDestinationGroupLabel,
   PUBLISH_DESTINATION_KIND_ORDER,
   MARKETPLACE_PUBLISH_CAPABILITY,
   SHOP_PUBLISH_CAPABILITY,
@@ -54,3 +54,11 @@ export type { ShopAttribute, ShopAttributeTerm } from './api/listings.types';
 // plugin consumes for `WoocommercePublishWizard`) would create a module-init
 // cycle (registry → woo plugin → listings barrel → launcher → registry). The
 // listings page imports the launcher via its direct component path instead.
+export { useListingsQuery } from './hooks/use-listings-query';
+export type { OfferLifecycle } from './api/listings.types';
+export { useVariantListingsQueries } from './hooks/use-variant-listings-queries';
+export type { OfferMapping } from './api/listings.types';
+// #3962 - the product page's sales-channels section and the products banner count.
+export { SalesChannelsSection } from './components/sales-channels-section';
+export type { SalesChannelsVariant } from './components/sales-channels-section';
+export { useSaleHoldAttentionCountQuery } from './hooks/use-sale-hold-attention-count-query';

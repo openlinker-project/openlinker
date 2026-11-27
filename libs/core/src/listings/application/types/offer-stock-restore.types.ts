@@ -22,7 +22,8 @@ export const OfferStockRestoreOutcomeValues = [
   'skipped-consumed',
   /**
    * The connection's adapter exposes no `OfferStockRestorer` — the routine case
-   * (Allegro restores its own stock on cancellation). The RELEASE still ran.
+   * for a marketplace that restores its own stock on cancellation. The RELEASE
+   * still ran.
    */
   'skipped-no-restorer',
   /**
@@ -48,7 +49,11 @@ export interface OfferStockRestoreResult {
   readonly released: number;
   /** Reservations that had already left `held` — expected, benign. */
   readonly alreadyTerminal: number;
-  /** Offers whose quantity was published. `0` on every skipped outcome. */
+  /**
+   * Offers the ordered write reported done: written, or found already carrying
+   * a newer quantity (#2617), which leaves nothing to restore. `0` on every
+   * skipped outcome.
+   */
   readonly offersRestored: number;
   readonly outcome: OfferStockRestoreOutcome;
 }

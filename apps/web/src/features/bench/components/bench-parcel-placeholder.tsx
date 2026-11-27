@@ -14,13 +14,14 @@
  */
 import type { ReactElement } from 'react';
 
-import { benchWorkCopy } from '../lib/bench-work.copy';
+import { useMessages } from '../../../shared/i18n';
 
 export function BenchParcelPlaceholder(): ReactElement {
+  const copy = useMessages('bench').work.placeholder;
   return (
     <div className="bench-parcel-placeholder" data-testid="bench-parcel-placeholder">
-      <p className="bench-parcel-placeholder__title">{benchWorkCopy.placeholder.title}</p>
-      <p className="bench-parcel-placeholder__body">{benchWorkCopy.placeholder.body}</p>
+      <p className="bench-parcel-placeholder__title">{copy.title}</p>
+      <p className="bench-parcel-placeholder__body">{copy.body}</p>
     </div>
   );
 }

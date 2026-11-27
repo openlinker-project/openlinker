@@ -2,7 +2,7 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const usersCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Administration', title: 'Users' },
+  crumb: { group: 'administration', page: 'users' },
 };
 
 export const usersRoute: RouteObject = {

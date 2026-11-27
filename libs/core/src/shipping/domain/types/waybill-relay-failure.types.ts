@@ -4,8 +4,8 @@
  * The vocabulary and the pure rules for "this shipment's waybill relay keeps
  * failing", plus the write shape the repository records one failure with.
  *
- * **Why this exists.** `ShipmentStatusSyncService.relayWaybillToParticipants`
- * releases its at-most-once claim on any transient participant failure so a
+ * **Why this exists.** `relayWaybillUnderClaim` (`waybill-relay.ts`, the
+ * shared body of `ShipmentStatusSyncService`'s waybill relay) releases its at-most-once claim on any transient participant failure so a
  * later poll tick retries (#1947). That is correct, and it has no terminal
  * case: a relay that fails on EVERY tick produces one `logger.error` per tick
  * forever while the job still reports `succeeded`. Nothing escalates, and the

@@ -1,0 +1,24 @@
+{
+  "body": "OpenLinker nigdy sam nie odlicza gratisu. Zdecyduj, co zrobić z każdym gratisem.",
+  "choice": {
+    "ask_back": "Poproś o zwrot",
+    "deduct": "Odlicz jego wartość",
+    "keep": "Zostaje u klienta"
+  },
+  "decision": "Co zrobić z gratisem",
+  "deductUnknown": "Gratis nie ma ceny w katalogu, więc nie ma czego odliczyć.",
+  "failed": "Nie udało się zapisać decyzji.",
+  "gift": "Gratis",
+  "loadFailed": "Nie udało się wczytać gratisów z tego zamówienia.",
+  "note": {
+    "ask_back": "Spodziewasz się zwrotu gratisu. Przyjmij go na stan jak każdy zwrócony towar.",
+    "deduct": "Odliczysz {amount}, cenę gratisu. Zrób to tylko wtedy, gdy mówią o tym warunki oferty.",
+    "keep": "Klient zatrzymuje gratis. Najczęstszy wybór przy taniej rzeczy."
+  },
+  "qty": "Ilość",
+  "refundHint": "Gratisy do odliczenia od zwrotu: {amount}. To podpowiedź; nic nie jest wpisane, dopóki sam nie zmienisz kwoty zwrotu.",
+  "saved": "Decyzja zapisana.",
+  "title": "Gratisy w tym zamówieniu",
+  "undecided": "Jeszcze nie zdecydowano",
+  "worth": "Cena osobno"
+}

@@ -19,10 +19,12 @@
  */
 import { useRef, type KeyboardEvent, type ReactElement } from 'react';
 
+import { useMessages } from '../../../shared/i18n';
+import { displayConnectionName } from '../../../shared/lib/display-connection-name';
 import {
-  PUBLISH_DESTINATION_GROUP_LABEL,
-  PUBLISH_DESTINATION_KIND_HINT,
   PUBLISH_DESTINATION_KIND_ORDER,
+  publishDestinationGroupLabel,
+  publishDestinationKindHint,
   type PublishDestination,
 } from '../lib/publish-destinations';
 
@@ -43,6 +45,7 @@ export function PublishDestinationRail({
   ariaLabel,
   labelledBy,
 }: PublishDestinationRailProps): ReactElement {
+  const copy = useMessages('listings');
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Flatten to visual/tab order (marketplaces first, then shops), so the
@@ -92,7 +95,7 @@ export function PublishDestinationRail({
   return (
     <div
       role="radiogroup"
-      aria-label={labelledBy ? undefined : (ariaLabel ?? 'Publish destination')}
+      aria-label={labelledBy ? undefined : (ariaLabel ?? copy.publishDestinationRail.ariaLabel)}
       aria-labelledby={labelledBy}
       className="publish-dest-rail"
     >
@@ -101,7 +104,7 @@ export function PublishDestinationRail({
         if (inKind.length === 0) return null;
         return (
           <div key={kind} className="publish-dest-rail__kind">
-            <div className="publish-dest-rail__group">{PUBLISH_DESTINATION_GROUP_LABEL[kind]}</div>
+            <div className="publish-dest-rail__group">{publishDestinationGroupLabel(kind, copy)}</div>
             {inKind.map((d) => {
               flatIndex += 1;
               const index = flatIndex;
@@ -125,10 +128,16 @@ export function PublishDestinationRail({
                   onClick={() => onSelect(d.connection.id)}
                   onKeyDown={(event) => handleKeyDown(event, index)}
                 >
-                  <span className="publish-dest-rail__meta">
-                    <span className="publish-dest-rail__name">{d.connection.name}</span>
+                  <span className="publish-dest-rail__meta" style={{ minWidth: 0, paddingRight: 36 }}>
+                    <span
+                      className="publish-dest-rail__name"
+                      title={d.connection.name}
+                      style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {displayConnectionName(d.connection.name)}
+                    </span>
                     <span className="publish-dest-rail__kind-hint">
-                      {PUBLISH_DESTINATION_KIND_HINT[d.kind]}
+                      {publishDestinationKindHint(d.kind, copy)}
                     </span>
                   </span>
                   <span className="publish-dest-rail__radio" aria-hidden="true" />

@@ -60,6 +60,9 @@ export const JOB_OUTCOME_REASON_VALUES = [
   'auto_dispatch_no_delivery_method',
   'auto_dispatch_work_not_eligible',
   'auto_dispatch_shipment_claimed_by_sibling_work',
+  'auto_dispatch_carrier_refused',
+  'auto_dispatch_preflight_failed',
+  'notification_queue_not_configured',
 ] as const;
 export type JobOutcomeReason = (typeof JOB_OUTCOME_REASON_VALUES)[number];
 
@@ -76,7 +79,9 @@ export type JobOutcomeReason = (typeof JOB_OUTCOME_REASON_VALUES)[number];
  */
 export const JOB_TYPE_VALUES = [
   'marketplace.orders.poll',
+  'marketplace.orders.import',
   'marketplace.order.sync',
+  'marketplace.notifications.drain', // Pull-based inbound notifications (#4179) — drains the connection's queue into order syncs.
   'marketplace.order.fxStamp', // Internal job — the bounded per-order reporting-currency stamp retry (#2125).
   'marketplace.order.fxStampSweep', // Internal job — the hourly reporting-currency stamp reconcile (#2125).
   'marketplace.returns.poll', // Returns discovery fan-out over the source feed (#2330).
@@ -96,12 +101,15 @@ export const JOB_TYPE_VALUES = [
   'marketplace.shipment.statusSync', // Internal job — marketplace shipment status read-back.
   'marketplace.shipment.syncByExternalId', // Internal job — per-shipment sync by marketplace id.
   'marketplace.fulfillment.statusSync', // Internal job — marketplace fulfilment read-back (#834); NOT the OMS one below.
+  'marketplace.sourceFulfillment.statusSync', // Internal job - reads a shipment a third party made in the order's source (ADR-012 amendment).
   'fulfillment.work.statusSync', // Internal job — OMS executor progress ingress (#2400).
   'fulfillment.work.dispatch', // Internal job — offers a routed fulfilment work to its holder (#2399).
   'fulfillment.work.autoDispatch', // Internal job — buys the shipping label on acceptance, when opted in (#3340).
   'fulfillment.work.route', // Internal job — commits where one order is fulfilled from (#2395).
   'fulfillment.work.timeoutSweep', // Internal job — reaps fulfilment work a holder never answered (#2712).
   'fulfillment.work.relaySweep', // Internal job — re-drives a missed dispatch relay (#2728).
+  'fulfillment.work.statusPoll', // Internal job - reads a polling holder's progress (Amazon MCF).
+  'fulfillment.routing.reapSweep', // Internal job — closes a routing decision stuck past its time limit and routes again (#2731).
   'master.product.syncAll',
   'master.product.syncDelta', // Internal job — not user-triggerable; listed here so an operator can filter the incremental pass (#2220).
   'master.product.reconcile', // Internal job — not user-triggerable; listed here so an operator can filter the deletion-reconciliation pass (#2222).
@@ -117,6 +125,9 @@ export const JOB_TYPE_VALUES = [
   'shop.product.statusSync', // Internal job — steady-state shop product-status reconcile (#1845).
   'shipping.pickupPoint.refreshFrequent', // Internal job — pickup-point directory refresh.
   'invoicing.issue', // Internal job — issues one invoice (#1120).
+  'invoicing.marketplaceUpload', // Internal job — attaches an issued invoice to its marketplace order (#3549).
+  'salesDocument.batch.tick', // Internal job — finds due batch-issuing slots (#3583).
+  'salesDocument.batch.run', // Internal job — issues one connection's batch queue (#3583).
   'invoicing.regulatoryStatus.reconcile', // Internal job — KSeF regulatory-status sweep (#1121).
   'invoicing.paymentStatus.refreshByExternalId', // Internal job — payment-status refresh from a provider webhook (#1354).
   'invoicing.offlineSubmission.resubmit', // Internal job — degraded-mode offline resubmission sweep (#1702).
@@ -135,8 +146,10 @@ export const JOB_TYPE_VALUES = [
   'analytics.currency.recalculate', // Internal job — Data Coverage currency restatement (#2468).
   'shipping.shipment.notifyDispatched', // Tells the source marketplace a parcel left, with its waybill.
   'subiekt.bridge.reachabilitySweep', // Internal job — periodic Subiekt bridge probe (#3358).
+  'order.paymentWriteback.push', // Tells one shop an order it holds as unpaid has been paid (#3963).
   'inventory.saleDecrement', // Internal job — lowers master stock once per routed order line.
   'fulfillment.work.rerouteSweep', // Internal job — re-routes orders held for lack of stock once it arrives.
+  'inventory.saleDecrement.reconcileSweep', // Internal job — enqueues a routed order's lost stock-decrement job.
   'marketplace.offer.pauseStale', // Internal job — not user-triggerable; listed here for status display only.
   'marketplace.offer.pauseStaleSweep',
 ] as const;

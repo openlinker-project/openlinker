@@ -1,0 +1,287 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/amazon-multi-channel-fulfillment"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Amazon Multi-Channel Fulfillment (MCF)</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Amazon Multi-Channel Fulfillment (MCF)';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span>&nbsp;
+<h1 style="" id="h1_1761149338" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+
+
+Amazon Multi-Channel Fulfillment (MCF)
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h1_1761149338" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h1_1761149338&#39;,this);"></a></h1>
+<p>
+  In this guide, you will learn what Amazon Multi-Channel Fulfillment (MCF) is and how to configure it in your Linnworks account. You will also find answers to frequently asked questions  about how Linnworks manages MCF orders.&nbsp;
+</p>
+<h2 style="" id="h2__127282681" data-has-heading-anchor="true">
+  What is MCF?
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h2__127282681" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h2__127282681&#39;,this);"></a></h2>
+<p>
+  Amazon Multi-Channel Fulfillment (MCF) provides low-cost, reliable fulfillment for your e-commerce sales channels (eBay, Walmart, etc.) as fast as 1-day. Learn more about Amazon MCF&nbsp;<a href="https://sell.amazon.com/fulfillment-by-amazon/fba-multi-channel#:~:text=Amazon%20Multi%2DChannel%20Fulfillment%20provides,with%20Prime%2Dlike%20delivery%20speeds." target="_blank">in this guide from Amazon</a>.
+</p>
+<p>
+  You can use Linnworks to send order information to <a href="/articles/documentation/amazon-fba" onclick="return n(&#39;!documentation/amazon-fba&#39;,this);">FBA</a> for a sale of a <b>non</b>-FBA listing. This may mean, for example, selling an item on eBay, downloading this order into Linnworks, and then sending the order information to Amazon to fulfill this order. This is called Amazon MCF.
+</p>
+<h2 style="" id="h2_1977125387" data-has-heading-anchor="true">
+  How to set up MCF in Linnworks?
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h2_1977125387" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h2_1977125387&#39;,this);"></a></h2>
+<p>
+  MCF is a part of <a href="/articles/documentation/amazon-fba" onclick="return n(&#39;!documentation/amazon-fba&#39;,this);">FBA functionality</a>. Once you have enabled and configured FBA  for your <a href="/articles/documentation/amazon-channel-integration" onclick="return n(&#39;!documentation/amazon-channel-integration&#39;,this);">Amazon channel integration</a>, which is fully explained <a href="/articles/documentation/amazon-fba/a/h2_488785844" onclick="return n(&#39;!documentation/amazon-fba/a/h2_488785844&#39;,this);">in this guide</a>, you can proceed to configure MCF. You <b>cannot</b> use MCF functionality without enabling FBA.
+</p>
+<img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/AmazonFBA-MCF.png" alt="Amazon FBA and MCF" class="size-50" style="" loading="lazy"/>
+<h2 style="" id="h2_1654601465" data-has-heading-anchor="true">
+  MCF settings
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h2_1654601465" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h2_1654601465&#39;,this);"></a></h2>
+<p>
+  You can configure additional settings for the MCF functionality to meet your requirements. These settings are optional for communication between Linnworks and FBA when fulfilling non-FBA orders.&nbsp;If you do not require these settings, it is suggested that they be disabled.&nbsp;
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/MCF-Settings.png" alt="MCF Settings" class="size-50" style="" loading="lazy"/>
+</p>
+<ul>
+  <li style="width: 747px;">
+    <strong>Send Declared Value<span style="font-weight: normal;"><b>:</b></span></strong>&nbsp;This setting&nbsp;will instruct Linnworks to send the total value of the order to Amazon when an order for a non-FBA listing is exported. This value will be sent using the currency from the order that was placed.
+  </li>
+  <li style="width: 747px;">
+    <b>Convert&nbsp;Currency<b>:</b></b><b>&nbsp;</b>This setting&nbsp;will change the currency of the declared value from its original currency to the currency that FBA expects. Linnworks swaps the currency code and does not change the value following exchange rates.
+  </li>
+  <li style="width: 747px;">
+    <b>Send composite parent items to Amazon:</b> When <u>enabled</u>, Linnworks will send the <a href="/articles/documentation/inventory-composite-items" onclick="return n(&#39;!documentation/inventory-composite-items&#39;,this);">composite <b>parent</b> item to Amazon</a>. If the setting is <u>disabled</u>, composite <b>child</b> items will be sent to Amazon. By default, this setting is disabled. &nbsp;
+  </li>
+  <li style="width: 747px;">
+    <b>Send notification email:</b> When enabled, Amazon will email the buyer about the shipment of their order.&nbsp;</li>
+<li style="width: 747px;"><b>Blank box, Blank box location, Block Amazon logistics:</b> These settings are related to the&nbsp;<i>MCF Blank Box</i> feature, which is fully explained in <a href="/articles/documentation/mcf-blank-box" onclick="return n(&#39;!documentation/mcf-blank-box&#39;,this);">the separate guide</a>.<ul><li class="alert-warning" style="width: 747px; border-color: #ffcc00;"> <b><span class="fa fa-info-circle icon-background-yellow"></span>&nbsp;Note:</b> Blank Box enablement via API is currently only available in the <b>United States</b>. EU sellers should contact Amazon to enable the Blank Box feature. <br/></li>
+</ul>
+</li>
+</ul>
+<h2 id="h4__1156989980" style="text-align: justify; width: 870px;" data-has-heading-anchor="true">
+  How to send orders to MCF manually
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4__1156989980" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4__1156989980&#39;,this);"></a></h2>
+<p>
+  To start using MCF,  which involves sending a non-FBA order to Amazon FBA for fulfillment, follow the steps below:
+</p>
+<ol>
+  <li style="width: 783px;">
+    Select the order(s) in the <i><a href="/articles/documentation/open-orders" onclick="return n(&#39;!documentation/open-orders&#39;,this);">Open Orders</a></i> screen.
+  </li>
+  <li style="width: 783px;">
+    Click&nbsp;<i>Actions</i> or right-click the order(s) and go to <i>Organize &gt; Location</i> and here you have two options:
+    <ul>
+      <li style="width: 783px;">
+        <b>Move to fulfillment center: </b>Choose the FBA location from which you want to fulfill the selected order(s).
+        <br/>
+        <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/MCF-Move%20to%20Fulfillment%20Center.png" alt="MCF - Move to Fulfillment Center" class="leftAlone" style="" loading="lazy"/>
+      </li>
+      <li style="width: 783px;">
+        <b>Run fulfillment network:</b> You can run a <a href="/articles/documentation/fulfillment-networks" onclick="return n(&#39;!documentation/fulfillment-networks&#39;,this);">fulfillment&nbsp;network</a> on the selected order(s) to determine the most appropriate FBA location for fulfilling them based on available stock levels. The fulfillment network must have been <a href="/articles/documentation/fulfillment-networks/a/h3_152689853" onclick="return n(&#39;!documentation/fulfillment-networks/a/h3_152689853&#39;,this);">set up</a> previously.
+        <br/>
+        <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/MCF-Run%20Fulfillment%20Network.png" alt="MCF - Run fulfillment network" class="leftAlone" loading="lazy"/>
+      </li>
+    </ul>
+  </li>
+  <li style="width: 783px;">
+    The order will then be moved to the FBA location and&nbsp;<u>locked</u> and <u>parked</u>. From this moment, Amazon will take care of this order and ship it to your buyer.
+  </li>
+</ol>
+<h2 style="" id="h2_1965384982" data-has-heading-anchor="true">
+  How&nbsp;to automate sending orders to MCF<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h2_1965384982" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h2_1965384982&#39;,this);"></a></h2>
+<p>
+  Instead of manually sending orders to MCF, you can automate this process using Linnworks functionality. You can use&nbsp;<i><a href="/articles/documentation/rules-engine" onclick="return n(&#39;!documentation/rules-engine&#39;,this);">Rules Engine</a></i> or <i><a href="/articles/documentation/fulfillment-networks" onclick="return n(&#39;!documentation/fulfillment-networks&#39;,this);">Fulfillment Networks</a></i>&nbsp;to automatically send MCF orders to Amazon based on your criteria.&nbsp;
+</p>
+<h3 style="" id="h3_944762391" data-has-heading-anchor="true">
+  Rules Engine
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h3_944762391" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h3_944762391&#39;,this);"></a></h3>
+<p>
+  The&nbsp;<i>Rules Engine</i> screen allows you to build a flowchart with the <a href="/articles/documentation/rules-engine-conditions-comparators" onclick="return n(&#39;!documentation/rules-engine-conditions-comparators&#39;,this);">defined conditions</a> based on input parameters. Each rule has an <a href="/articles/documentation/rules-engine-actions" onclick="return n(&#39;!documentation/rules-engine-actions&#39;,this);">action</a> that is applied on orders if the parameters meet the criteria defined by the rule. A full guide on how to set up rules in Linnworks is <a href="/articles/documentation/rules-engine-add" onclick="return n(&#39;!documentation/rules-engine-add&#39;,this);">here</a>.
+</p>
+<p>
+  For example, you can set up a rule to ensure that only orders containing certain SKUs and of a specific order total values are sent to MCF. In this case, the rule's condition group and the action will be the following:
+</p>
+<ul>
+  <li>
+    <b>Condition group:</b> Channel SKU starts with MCF, and the order's total charge is less than or equal to 100.
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/MCF-RulesEngine-Condition.png" alt="MCF - Rules Engine - Condition" class="size-75" loading="lazy"/>
+  </li>
+  <li>
+    <b>Action:</b> Assign order to location.&nbsp;
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/MCF-RulesEngine-Action.png" alt="MCF - Rules Engine - Action" class="size-50" style="width: 438.5px; height: 291.642px;" loading="lazy"/>
+  </li>
+</ul>
+<h3 style="" id="h3__606619817" data-has-heading-anchor="true">
+  Fulfillment Networks
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h3__606619817" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h3__606619817&#39;,this);"></a></h3>
+<p>
+  <i>Fulfillment Networks</i> in Linnworks allow you to send orders to a group of locations instead of just one. Linnworks will then determine which location to use to fulfill the order based on the stock availability in that location. A full guide on how to use <i>Fulfillment Networks</i> is available <a href="/articles/documentation/fulfillment-networks" onclick="return n(&#39;!documentation/fulfillment-networks&#39;,this);">here</a>.
+  <br/>
+</p>
+<p>
+  You can manually send MCF orders to fulfillment networks, as <a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4__1156989980" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4__1156989980&#39;,this);">explained here</a>, or use the <i>Fulfillment Networks</i> feature alongside the <i>Rules Engine</i>. This means that instead of automatically sending orders to a specific location, as shown <a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h3_944762391" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h3_944762391&#39;,this);">in this example</a>,&nbsp; the rule will send them to a fulfillment network, which will determine the most suitable location based on available stock levels.&nbsp;
+</p>
+<p>
+  The <i>Rules Engine</i> action in this case will look as follows:
+</p>
+<p>
+  <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/MCF-Run%20Fulfillment%20Network-%20Rules%20Engine.png" alt="MCF - Fulfillement Networks &amp; Rules Engine" class="size-50" style="" loading="lazy"/><a href="/articles/documentation/fulfillment-networks/a/h4__2043290839" onclick="return n(&#39;!documentation/fulfillment-networks/a/h4__2043290839&#39;,this);">See here</a> for full details on how to send orders to fulfillment networks with the <i>Rules Engine</i>.
+</p>
+<h2 id="h4_844150290" style="text-align: justify; width: 870px;" data-has-heading-anchor="true">
+  Tracking the status of the MCF orders
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4_844150290" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4_844150290&#39;,this);"></a></h2>
+<p>
+  Once an order is sent and accepted by Amazon FBA, the&nbsp;<i>label printed</i>&nbsp;status will be set on the outbound shipment, and the&nbsp;<i>label printed</i>&nbsp;will be shown on the Linnworks order.&nbsp;
+</p>
+<p>
+  If there were an error attempting to submit an order to FBA, for such an order, Linnworks would display a label printing error. The error message can be seen by hovering over the icon or looking in the&nbsp;<i>Audit Trail</i>&nbsp;via&nbsp;<i>Actions (or right-clicking</i><i>) &gt; View Order</i>. Linnworks will retry to submit the order the next time it synchronizes.
+</p>
+<p>
+  Linnworks keeps track of FBA state changes in the&nbsp;<a href="/articles/documentation/processed-order-audit-trail" onclick="return n(&#39;!documentation/processed-order-audit-trail&#39;,this);">order audit trail</a>. Once FBA ships the order, FULFIL_STATUS will change to COMPLETE,&nbsp;and the order will be assigned a tracking number (if specified) and moved to&nbsp;<i><a href="/articles/documentation/processed-orders" onclick="return n(&#39;!documentation/processed-orders&#39;,this);">Processed Orders</a></i>.
+</p>
+<h2 style="" id="h2_546471864" data-has-heading-anchor="true">
+  Additional functionality to consider<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h2_546471864" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h2_546471864&#39;,this);"></a></h2>
+<h4 style="" id="h3__2146450657" data-has-heading-anchor="true">Using Fulfillment SKUs<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h3__2146450657" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h3__2146450657&#39;,this);"></a></h4><p>
+  When sending an order from a non-FBA listing to FBA, the SKU you use to represent the stock item may not be the same SKU that FBA uses. This means that FBA will not know what items to ship and will be unable to fulfill the order.
+</p>
+<p>
+  You can save the FBA SKU on the stock item as an extended property to work around this discrepancy. This is called a Fulfilment SKU, using the format below:
+</p>
+<ul class="regular-list">
+  <li style="width: 747px;">
+    <b>Property&nbsp;</b><strong>Name:</strong>&nbsp;The name of the FBA location in Linnworks.
+  </li>
+  <li style="width: 747px;">
+    <b>Property&nbsp;</b><strong>Value:</strong>&nbsp;The Fulfilment SKU that Amazon will recognize.
+  </li>
+  <li style="width: 747px;">
+    <b>Property&nbsp;</b><strong>Type:</strong>&nbsp;Fulfilment SKU.
+  </li>
+</ul>
+<h4 id="h4__1099074715" style="width: 870px;" data-has-heading-anchor="true">
+  Partially fulfilled MCF orders from FBA
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4__1099074715" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4__1099074715&#39;,this);"></a></h4>
+<p>
+  Linnworks can effectively manage MCF orders partially fulfilled by Amazon FBA. If an order with multiple items or quantities was only partially fulfilled by Amazon, Linnworks will&nbsp;<a href="/articles/documentation/open-orders-merge-split/a/OpenOrders_Split" onclick="return n(&#39;!documentation/open-orders-merge-split/a/OpenOrders_Split&#39;,this);">split that order</a>&nbsp;into two separate orders. It will automatically mark the fulfilled order as processed and the unfilled order - as unfulfillable.
+  <br/>
+</p>
+<p>
+  The unfulfillable order will have a clear message in its&nbsp;<a href="/articles/documentation/processed-order-audit-trail" onclick="return n(&#39;!documentation/processed-order-audit-trail&#39;,this);">audit trail</a>: "<i>Order unfulfillable by FBA</i>." The shipping label will also display an error message indicating the same. This order will be stored in the Linnworks FBA location, allowing you to explore other ways to fulfill it. You can use a different fulfillment service or handle it from your warehouses. If you prefer to fulfill the order from your warehouse, you can move it from the FBA location into your&nbsp;<a href="/articles/documentation/inventory-locations-warehouse" onclick="return n(&#39;!documentation/inventory-locations-warehouse&#39;,this);">regular location</a>&nbsp;(<a href="/articles/documentation/amazon-fba-orders/a/h4__1156989980" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h4__1156989980&#39;,this);">the same way as you moved the order into the FBA location</a>) and process it from there.
+</p>
+<p>
+  Additionally, if you have no intention of fulfilling the order, you can&nbsp;<a href="/articles/documentation/open-orders-cancel" onclick="return n(&#39;!documentation/open-orders-cancel&#39;,this);">cancel</a>&nbsp;it from Linnworks.</p>
+<h4 id="h4_1467270254" style="" data-has-heading-anchor="true">Reverse shipping mapping for MCF orders
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4_1467270254" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4_1467270254&#39;,this);"></a></h4>
+<p>
+  Reverse shipping mapping was introduced for MCF orders shipped by FBA for the following cases. If FBA dispatches an MCF order using a&nbsp;<a href="/articles/documentation/shipping-postal-services" onclick="return n(&#39;!documentation/shipping-postal-services&#39;,this);">postal service</a>&nbsp;unknown to Linnworks, a new record for that postal service will be added under the Amazon channel's&nbsp;<i><a href="/articles/documentation/channels-shipping-mapping" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">Shipping Mapping</a></i>. The site ID for this postal service will display FBA in the&nbsp;<i>Shipping Allocation</i>&nbsp;pop-up window. You can access&nbsp;<i>Shipping Allocation</i>&nbsp;by clicking the following icon in&nbsp;<i>Settings &gt; Channel Integrations &gt; Amazon</i>.
+</p>
+<img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/ShippingAllocation%20-%20AmazonFBA.png" alt="Amazon FBA orders - Reverce mapping" class="size-50" style="height: auto; margin: 20px auto 40px; width: 435px;" loading="lazy"/>
+<p>
+  You can create a new postal service in Linnworks or use an existing one to map the new FBA shipping service to it.&nbsp;<a href="/articles/documentation/channels-shipping-mapping" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">This guide</a>&nbsp;fully explains how to complete shipping mapping for channel integrations in Linnworks.
+</p>
+<p>
+  The above is crucial for MCF orders because, in certain cases (depending on the&nbsp;<a href="/articles/documentation/channels" onclick="return n(&#39;!documentation/channels&#39;,this);">sales channel</a>), the orders will not be marked as dispatched on the channel unless a&nbsp;<a href="/articles/documentation/channels-shipping-mapping" onclick="return n(&#39;!documentation/channels-shipping-mapping&#39;,this);">postal service is mapped</a>&nbsp;in Linnworks.</p>
+<h3 style="" id="h3_107008172" data-has-heading-anchor="true">
+  <span class="fa fa-video icon-background-purple"></span>&nbsp;Video tutorial<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h3_107008172" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h3_107008172&#39;,this);"></a></h3>
+
+<p>
+  If you prefer a visual explanation,<font> this</font> video tutorial walks you through the Amazon Multi-Channel Fulfillment (MCF)&nbsp;<font>feature</font><font>&nbsp;</font>step by step. <font>It</font> can help clarify how the <font>feature&nbsp;</font>works and answer any additional questions.
+</p>
+<ul>
+  <li><a href="https://linnlearn.com/#/online-courses/b32d355f-3a84-46b2-9370-2fe52df9ab95" target="_blank">Video - How to set up and use Amazon&nbsp;Multi-Channel Fulfillment (MCF)</a></li>
+
+  </ul>
+<h2 style="" id="h2__728891130" data-has-heading-anchor="true">
+  FAQs
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h2__728891130" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h2__728891130&#39;,this);"></a></h2>
+<div>
+  Below, you can find answers to frequently asked questions about the MCF functionality.</div>
+<h4 id="h4__2121309801" style="text-align: justify; width: 870px;" data-has-heading-anchor="true">Why can Amazon (FBA) not fulfill my MCF order?<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4__2121309801" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4__2121309801&#39;,this);"></a></h4>
+  <p>This may be because the order address is invalid or the ordered item(s) do not have a proper fulfillment SKU.</p>
+  <h4 style="" id="h4_2027639042" data-has-heading-anchor="true">What happens next when Amazon cannot fulfill my MCF order?<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4_2027639042" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4_2027639042&#39;,this);"></a></h4>
+  <p>When you move an MCF order to an FBA location, Linnworks will send it to Amazon. If Amazon cannot fulfill the order for any reason, Linnworks will show a shipping label error explaining why the order was rejected, like insufficient stock or an incorrect address. To resubmit the order to Amazon FBA, you need to clear the shipping label error so Linnworks can try sending it again.</p><div>Another option is to move the order to a different location and fulfill it manually.</div><h4 id="h4__1104089966" style="text-align: justify;" data-has-heading-anchor="true">
+  When submitting an order to MCF, how does Amazon  know what Shipping Method to use?
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4__1104089966" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4__1104089966&#39;,this);"></a></h4>
+<p>
+  This depends on the postal service method assigned to the order in Linnworks.
+</p>
+<ul class="regular-list">
+  <li style="width: 747px;">
+    <span>If the Linnworks Postal Service Method's name contains the word&nbsp;<strong>EXPEDITED</strong>, Amazon will send it as&nbsp;<strong>Expedited (US, EU, and UK).</strong></span>
+  </li>
+  <li style="width: 747px;">
+    <span>If the Linnworks Postal Service Method's name contains the word&nbsp;<strong>PRIORITY</strong>, Amazon will send it with&nbsp;<strong>Priority  (US only).</strong></span>
+  </li>
+  <li style="width: 747px;">
+    <span>If the Linnworks Postal Service Method's name&nbsp;<strong>does not</strong>&nbsp;contain&nbsp;Expedited&nbsp;or Priority, Amazon will send it as&nbsp;<strong>Standard (US, EU, and UK).&nbsp;</strong></span>
+  </li>
+</ul>
+
+<h4 style="" id="h4_37498348" data-has-heading-anchor="true">
+  How do I only enroll specific ASINs/exclude MCF for specific orders (based on product value/specific order sizes, etc)?&nbsp;
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4_37498348" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4_37498348&#39;,this);"></a></h4>
+<p>
+  There is no specific functionality to do this. You can use <i><a href="/articles/documentation/rules-engine" onclick="return n(&#39;!documentation/rules-engine&#39;,this);">Rules Engine</a></i> to send only specific orders to MCF based on SKU. <a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h3_944762391" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h3_944762391&#39;,this);">See here</a> for more details.
+</p>
+<h4 style="" id="h4__814808554" data-has-heading-anchor="true">
+  How&nbsp;easy is MCF, and how do I sync other marketplaces for MCF using Linnworks?&nbsp;
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4__814808554" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4__814808554&#39;,this);"></a></h4>
+<p>
+  MCF is a rather easy functionality. You can <a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h3_944762391" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h3_944762391&#39;,this);">use the </a><i><a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h3_944762391" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h3_944762391&#39;,this);">Rules Engine</a></i><a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h3_944762391" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h3_944762391&#39;,this);"> to send orders to MCF</a>. 
+</p>
+<p>
+  <span>You can also configure your Linnworks account to download stock levels from FBA and share them with other marketplaces/channel integrations. This can be configured in the&nbsp;<i><a href="/articles/documentation/channels-location-mapping" onclick="return n(&#39;!documentation/channels-location-mapping&#39;,this);">Location Mapping screen</a></i></span>,&nbsp;specifically in the <b><i>Sync inventory from locations</i></b> section for the relevant channel integration.&nbsp;</p>
+<h4 style="" id="h4_89628905" data-has-heading-anchor="true">
+  How do I integrate stock across different countries? How do I set up MCF for other countries?
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4_89628905" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4_89628905&#39;,this);"></a></h4>
+<p>
+  You will need to add different countries as separate <a href="/articles/documentation/amazon-channel-integration" onclick="return n(&#39;!documentation/amazon-channel-integration&#39;,this);">channel integrations</a> (sites) and then use the&nbsp;<i><a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h3_944762391" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h3_944762391&#39;,this);">Rules Engine</a></i> or <i><a href="/articles/documentation/fulfillment-networks" onclick="return n(&#39;!documentation/fulfillment-networks&#39;,this);">Fulfillment Networks</a></i>&nbsp;functionalities to assign the orders to the right location.&nbsp;
+</p>
+<h4 style="" id="h4_714783757" data-has-heading-anchor="true">
+  How does Linnworks download/automate order tracking and sending of tracking numbers?&nbsp;
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4_714783757" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4_714783757&#39;,this);"></a></h4>
+<p>
+  <span>Linnworks uses API for that. After orders are sent to MFC for fulfillment by Amazon, Linnworks automatically verifies if Amazon has shipped the order. Upon shipment confirmation, Linnworks saves the tracking number and courier information to the order, processes the order, and sends a dispatch notification to the original channel (e.g., eBay).&nbsp;</span>
+</p>
+<h4 style="" id="h4__1065768123" data-has-heading-anchor="true">
+  How does Linnworks manage returns processes for MCF?&nbsp;
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4__1065768123" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4__1065768123&#39;,this);"></a></h4>
+<p>
+  Linnworks&nbsp;does not support returns for MCF at the moment.&nbsp;
+</p>
+<h4 style="" id="h4_917679573" data-has-heading-anchor="true">
+  How do I seek support within Linnworks? What are the emails for support and ETAs?&nbsp;
+<a href="/articles/documentation/amazon-multi-channel-fulfillment/a/h4_917679573" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment/a/h4_917679573&#39;,this);"></a></h4>
+<p>
+  You can contact our support lines at +44 2033227375 (UK &amp; Europe) and +1 347.391.2804 (North America). 
+</p>
+<p>
+  You can also <a href="/articles/documentation/raise-support-ticket" onclick="return n(&#39;!documentation/raise-support-ticket&#39;,this);">raise a support ticket via our Support Portal</a> or email the Support Team at <a href="mailto:support@linnworks.com" target="_top">support@linnworks.com</a>. 
+</p>
+<p>
+  The Support lines are available from 6 AM to 9 PM BST.&nbsp;
+</p><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

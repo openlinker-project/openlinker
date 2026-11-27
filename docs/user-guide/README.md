@@ -16,6 +16,13 @@ The guide is organized around the left-navigation groups in the admin UI:
 2. **[Connecting a Platform](./02-connecting-a-platform.md)**
    Full walkthrough: pick a platform, run the setup wizard, test the connection, read connection health. Uses PrestaShop as the worked example.
 
+   - **[Connecting Amazon](./02a-amazon.md)**
+     Connect an Amazon seller account, choose which orders to import, and configure tax codes, stock locations, notifications, mappings and pricing.
+   - **[Connecting Shopify](./02b-shopify.md)**
+     Connect a Shopify store (app credentials, access token or OAuth), choose its roles, and set the stock location, webhooks and refunds.
+   - **[Connecting Shoper](./02c-shoper.md)**
+     Connect a Shoper shop with its API token, choose its roles, and set the order defaults and webhooks.
+
 3. **[Catalog & Inventory](./03-catalog-and-inventory.md)**
    Products list and detail, inventory per-variant stock, sync state chips, and how to tell when a sync has stalled.
 
@@ -33,6 +40,9 @@ The guide is organized around the left-navigation groups in the admin UI:
 6. **[Orders](./06-orders.md)**
    Orders list, order detail, status timeline, line items, and the shipment panel.
 
+   - **[Buyer emails](./06a-buyer-emails.md)**
+     Opt-in emails to the buyer (order confirmed, shipped, document issued, return received), set per connection.
+
 7. **[Analytics](./07-analytics.md)**
    The revenue dashboard: date range, display currency, Net/Gross basis, KPI definitions, channel and product tables, Needs Attention, and the Data Coverage panel's five remediation flows.
 
@@ -41,6 +51,9 @@ The guide is organized around the left-navigation groups in the admin UI:
 
 9. **[Settings & Admin](./09-settings-and-admin.md)**
    General settings, AI provider configuration, prompt templates, and the Adapters registry.
+
+   - **[Login page](./09a-login-page.md)**
+     Your own headline, form text and sign-in help (with a link) on the login page, per language, and letting people request an account.
 
 10. **[Pack Bench & Assign Packing Work](./10-pack-bench.md)**
     The in-house fulfilment (OMS) workflow: the pack bench scanning terminal and the Assign Packing Work staffing board.

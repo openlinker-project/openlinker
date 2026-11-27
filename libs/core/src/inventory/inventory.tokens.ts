@@ -34,6 +34,11 @@ export const RESERVATION_SHORTFALL_REPOSITORY_TOKEN = Symbol(
 export const RESERVATION_SHORTFALL_SERVICE_TOKEN = Symbol('IReservationShortfallService');
 // Order-shaped seam over the ledger (#2344, ADR-061)
 export const RESERVATION_SERVICE_TOKEN = Symbol('IReservationService');
+// Consumes the holds a destination that is also their product master absorbed
+// by receiving the order.
+export const MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN = Symbol(
+  'IMasterAbsorbedReservationService'
+);
 // Connection-provenance backfill (#2317, ADR-058 ladder step (ii))
 export const INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN = Symbol(
   'IInventoryProvenanceBackfillService'
@@ -51,3 +56,10 @@ export const INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN = Symbol(
 export const INVENTORY_SALE_DECREMENT_SERVICE_TOKEN = Symbol('IInventorySaleDecrementService');
 // #3479 — the inverse: raising a cancelled routed order's decrements back.
 export const INVENTORY_SALE_REVERSAL_SERVICE_TOKEN = Symbol('IInventorySaleReversalService');
+
+// #3565 — the append-only stock movement ledger.
+export const INVENTORY_MOVEMENT_REPOSITORY_TOKEN = Symbol('InventoryMovementRepositoryPort');
+export const INVENTORY_MOVEMENT_SERVICE_TOKEN = Symbol('IInventoryMovementService');
+export const CHANNEL_QUANTITY_PUSH_REPOSITORY_TOKEN = Symbol('ChannelQuantityPushRepositoryPort');
+
+export const INVENTORY_CORRECTION_SERVICE_TOKEN = Symbol('IInventoryCorrectionService');

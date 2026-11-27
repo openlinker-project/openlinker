@@ -1,0 +1,1570 @@
+<title>Order detail v3</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Concept: the order as a story. A masthead carries identity, the amount, and a progress line from
+   "placed" to "delivered" with the failure marked where it happened; the systems it was sent to sit
+   directly under it. Below that, one loud "needs you" card, then quiet open sections (no card per
+   module). Boldness lives in the progress line only. Token names follow apps/web/src/index.css (status-* family, radius-*, accent-primary-*). A few are local to this preview: --bar, --fx, --fy, --tb, --tf, --tg, --tile-l, --tile-fg. */
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80); --bg-surface: #ffffff;
+  --bg-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(76% 0.010 80);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80); --text-muted: oklch(50% 0.008 80);
+  --text-disabled: oklch(66% 0.005 80); --text-on-primary: oklch(18% 0.012 50); --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50); --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+  --status-disabled: oklch(55% 0.008 80); --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --tile-l: 92%; --tile-fg: 42%;
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 8px 24px rgb(15 18 26 / 0.07);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-xl: 18px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+  --bg-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(66% 0.012 270);
+  --text-disabled: oklch(46% 0.012 270); --text-on-primary: oklch(16% 0.012 50); --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+  --tile-l: 30%; --tile-fg: 84%;
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+} }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+  --bg-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(66% 0.012 270);
+  --text-disabled: oklch(46% 0.012 270); --text-on-primary: oklch(16% 0.012 50); --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+  --tile-l: 30%; --tile-fg: 84%;
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.36);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+}
+* { box-sizing: border-box; }
+body { background: var(--bg-canvas); color: var(--text-primary); font-family: var(--font-sans); font-size: 14.5px; line-height: 1.5;
+  padding-block: 20px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; border-radius: 4px; }
+.mono { font-family: var(--font-mono); font-size: 12.5px; }
+.muted { color: var(--text-muted); }
+
+/* ---------- artifact chrome (not part of the product) ---------- */
+.wrap { max-width: 1360px; margin: 0 auto; display: grid; gap: 14px; }
+.intro { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+.intro h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.intro p { margin: 4px 0 0; color: var(--text-secondary); max-width: 62ch; }
+.picker { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px; background: var(--bg-muted); border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.picker button { border: 0; background: transparent; padding: 6px 12px; border-radius: 6px; color: var(--text-secondary); font-weight: 500; }
+.picker button[aria-selected="true"] { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+.parity { border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); }
+.parity summary { cursor: pointer; padding: 12px 16px; font-weight: 600; }
+.parity-body { padding: 0 16px 16px; overflow-x: auto; }
+.parity table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13px; }
+.parity th, .parity td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+.parity th { color: var(--text-muted); font-weight: 500; }
+
+/* ---------- app frame ---------- */
+.frame { position: relative; display: grid; grid-template-columns: 60px minmax(0, 1fr); height: min(920px, calc(100dvh - 150px)); min-height: 640px;
+  border: 1px solid var(--border-default); border-radius: var(--radius-xl); overflow: hidden; background: var(--bg-canvas); }
+.rail { background: var(--bg-shell); border-right: 1px solid var(--border-default); padding: 12px 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.logo { width: 34px; height: 34px; border-radius: 10px; background: oklch(20% 0.012 80); display: grid; place-items: center; margin-bottom: 10px; }
+.ri { position: relative; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; color: var(--text-muted); border: 0; background: none; }
+.ri:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.ri.on { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+.ri.on::before { content: ""; position: absolute; left: -11px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent-primary); }
+.rail .sp { flex: 1; }
+.mainwrap { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 52px minmax(0, 1fr); min-width: 0; min-height: 0; }
+.top { display: flex; align-items: center; gap: 12px; padding: 0 22px; border-bottom: 1px solid var(--border-default); background: var(--bg-canvas); }
+.search { flex: 1; max-width: 420px; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-muted); background: var(--bg-surface); white-space: nowrap; overflow: hidden; }
+.search kbd { margin-left: auto; font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border-default); border-radius: 4px; padding: 0 5px; }
+.top .sp { flex: 1; }
+.pill-top { display: inline-flex; gap: 6px; align-items: center; padding: 5px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); white-space: nowrap; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), oklch(60% 0.16 20)); color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 600; flex: none; }
+.scroller { position: relative; overflow-y: auto; min-height: 0; }
+
+/* ---------- order page ---------- */
+.page { container-type: inline-size; }
+.page-in { max-width: 1180px; margin: 0 auto; padding: 18px 28px 64px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+.page-in > * { min-width: 0; }
+.mast-top > div { min-width: 0; }
+@container (max-width: 700px) { .page-in { padding: 14px 14px 44px; gap: 18px; } }
+.minibar { position: sticky; top: 0; z-index: 6; height: 0; overflow: visible; }
+.minibar-in { position: absolute; inset: 0 0 auto 0; display: flex; align-items: center; gap: 12px; padding: 8px 28px; min-height: 54px;
+  background: color-mix(in oklab, var(--bg-canvas) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-default); box-shadow: var(--shadow-sm);
+  transform: translateY(-110%); transition: transform .34s cubic-bezier(.16,1,.3,1); }
+.minibar.show .minibar-in { transform: none; }
+.minibar-in strong { font-weight: 600; }
+.minibar-in .sp { flex: 1; }
+.crumb { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); border: 0; background: none; padding: 0; width: fit-content; }
+.crumb:hover { color: var(--text-primary); }
+
+/* masthead */
+.mast { position: relative; border: 1px solid var(--border-default); border-radius: var(--radius-xl); background: var(--bg-surface); box-shadow: var(--shadow-md); overflow: hidden; }
+.mast::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4px; background: var(--bar, var(--status-success)); }
+.mast.err { --bar: var(--status-error); } .mast.warn { --bar: var(--status-warning); }
+.mast-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px 32px; padding: 28px 30px 4px; }
+@container (max-width: 800px) { .mast-top { grid-template-columns: minmax(0, 1fr); padding: 24px 18px 2px; } }
+.h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.h1 h1 { margin: 0; font-size: 34px; line-height: 1.08; font-weight: 600; letter-spacing: -0.02em; text-wrap: balance; }
+@container (max-width: 520px) { .h1 h1 { font-size: 27px; } }
+.idchip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-default); background: var(--bg-canvas); border-radius: var(--radius-sm); padding: 1px 4px 1px 8px; color: var(--text-secondary); font-family: var(--font-mono); font-size: 12.5px; }
+.idchip button { border: 0; background: transparent; padding: 3px; border-radius: 4px; color: var(--text-muted); display: grid; }
+.idchip button:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.lead { margin: 10px 0 0; font-size: 16px; line-height: 1.45; max-width: 62ch; color: var(--text-primary); text-wrap: pretty; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 14px; color: var(--text-secondary); font-size: 13.5px; }
+.facts span { display: inline-flex; align-items: center; gap: 7px; }
+.facts .warn { color: var(--status-warning-fg); font-weight: 500; } .facts .err { color: var(--status-error-fg); font-weight: 500; }
+.side-r { display: grid; gap: 14px; justify-items: end; align-content: start; }
+@container (max-width: 800px) { .side-r { justify-items: start; } }
+.total-block { text-align: right; }
+@container (max-width: 800px) { .total-block { text-align: left; } }
+.total { font-family: var(--font-mono); font-weight: 500; font-size: 32px; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.total small { font-size: 15px; color: var(--text-muted); font-weight: 400; margin-right: 4px; letter-spacing: 0; }
+.pay { margin-top: 8px; display: flex; justify-content: flex-end; }
+@container (max-width: 800px) { .pay { justify-content: flex-start; } }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; position: relative; }
+
+/* the progress line */
+.jwrap { padding: 22px 30px 26px; }
+@container (max-width: 800px) { .jwrap { padding: 18px 18px 14px; } }
+.journey { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); }
+.jn { position: relative; display: grid; justify-items: center; text-align: center; gap: 10px; padding: 0 4px; }
+.node { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--border-strong); background: var(--bg-surface); position: relative; z-index: 1; color: var(--text-disabled); }
+.txt { display: grid; gap: 1px; justify-items: center; min-width: 0; }
+.txt b { font-weight: 600; font-size: 14px; }
+.txt time { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+.txt small { font-size: 12.5px; font-weight: 600; }
+.jseg { position: absolute; top: 15px; left: calc(50% + 22px); width: calc(100% - 44px); height: 3px; border-radius: 2px; background: var(--border-default);
+  transform-origin: 0 0; animation: grow .6s cubic-bezier(.16,1,.3,1) both; animation-delay: var(--d, 0ms); --fx: 0; --fy: 1; }
+@keyframes grow { from { transform: scale(var(--fx), var(--fy)); } }
+.jseg.ok { background: var(--status-success); } .jseg.err { background: var(--status-error); } .jseg.warn { background: var(--status-warning); }
+.s-done .node { background: var(--status-success); border-color: var(--status-success); color: #fff; }
+.s-current .node { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--text-on-primary); }
+.s-current .node::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--accent-primary); opacity: 0; animation: ping 2.8s ease-out 1.2s infinite; }
+@keyframes ping { 0% { transform: scale(.82); opacity: .75; } 100% { transform: scale(1.55); opacity: 0; } }
+.s-failed .node { background: var(--status-error); border-color: var(--status-error); color: #fff; }
+.s-warn .node { background: var(--status-warning); border-color: var(--status-warning); color: oklch(25% 0.06 80); }
+.s-stop .node { background: var(--text-primary); border-color: var(--text-primary); color: var(--bg-canvas); }
+.s-pending .txt b { color: var(--text-muted); font-weight: 500; }
+.s-failed .txt small { color: var(--status-error-fg); } .s-warn .txt small { color: var(--status-warning-fg); } .s-current .txt small { color: var(--accent-primary-soft-strong); } .s-stop .txt small { color: var(--text-secondary); }
+@container (max-width: 700px) {
+  .journey { grid-template-columns: minmax(0, 1fr); }
+  .jn { grid-template-columns: 32px minmax(0, 1fr); justify-items: start; text-align: left; column-gap: 14px; padding: 0 0 18px; align-items: start; }
+  .txt { justify-items: start; padding-top: 3px; }
+  .jseg { top: 38px; bottom: 4px; left: 14px; width: 3px; height: auto; --fx: 1; --fy: 0; }
+}
+
+/* destinations */
+.mast-dest { border-top: 1px solid var(--border-subtle); background: var(--bg-shell); padding: 16px 30px 20px; display: grid; gap: 10px; }
+@container (max-width: 800px) { .mast-dest { padding: 14px 18px 18px; } }
+.md-h { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; }
+.md-h span { font-weight: 400; color: var(--text-muted); font-size: 13.5px; }
+.flow { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.fl { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); transition: transform .18s cubic-bezier(.16,1,.3,1), box-shadow .18s; }
+.fl:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.fl.error { border-color: var(--status-error-border); background: color-mix(in oklab, var(--status-error-soft) 62%, var(--bg-surface)); }
+.ctile { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff; }
+.fl b { display: block; font-weight: 600; font-size: 13.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.fl small { display: block; font-size: 12.5px; color: var(--text-muted); }
+.fl.error small { color: var(--status-error-fg); font-weight: 500; } .fl.ok small { color: var(--status-success-fg); }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-primary);
+  border-radius: var(--radius-md); padding: 7px 14px; font-weight: 500; line-height: 1.4; transition: background .15s, border-color .15s, transform .12s; white-space: nowrap; }
+.btn:hover { background: var(--bg-surface-hover); }
+.btn:active { transform: translateY(1px) scale(.985); }
+.btn.primary { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--text-on-primary); font-weight: 600; }
+.btn.primary:hover { background: var(--accent-primary-hover); border-color: var(--accent-primary-hover); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--text-secondary); }
+.btn.ghost:hover { background: var(--bg-surface-hover); }
+.btn.sm { padding: 4px 10px; font-size: 13.5px; }
+.btn.danger { color: var(--status-error-fg); }
+.btn[disabled] { color: var(--text-disabled); background: var(--bg-muted); border-color: var(--border-subtle); cursor: not-allowed; }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--text-link); font-weight: 500; }
+.linkbtn:hover { text-decoration: underline; }
+.menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 8; min-width: 250px; padding: 5px; border: 1px solid var(--border-default); background: var(--bg-surface); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); }
+.menu button { display: flex; width: 100%; align-items: center; gap: 8px; text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 6px; }
+.menu button:hover:not([disabled]) { background: var(--bg-surface-hover); }
+.menu button[disabled] { color: var(--text-disabled); cursor: not-allowed; }
+.menu hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 4px 0; }
+.menu .dng { color: var(--status-error-fg); }
+.menu small { display: block; color: var(--text-muted); font-size: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 1px 9px; border-radius: var(--radius-sm); border: 1px solid; font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; }
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.pill.warn { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.pill.info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.pill.ok { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.pill.off { background: var(--status-disabled-soft); border-color: var(--status-disabled-border); color: var(--status-disabled-fg); }
+.st { display: inline-flex; align-items: center; gap: 7px; font-weight: 500; }
+.st svg { color: var(--status-success); }
+.st.muted { color: var(--text-muted); font-weight: 400; }
+.st .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--status-disabled); }
+.st.warn .dot { background: var(--status-warning); } .st.error .dot { background: var(--status-error); } .st.info .dot { background: var(--status-info); }
+
+/* needs you */
+.attn { border: 1px solid var(--status-error-border); border-radius: var(--radius-xl); background: color-mix(in oklab, var(--status-error-soft) 62%, var(--bg-surface)); overflow: hidden; }
+.attn.warn { border-color: var(--status-warning-border); background: color-mix(in oklab, var(--status-warning-soft) 62%, var(--bg-surface)); }
+.attn-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 16px 22px 6px; }
+.attn-h h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.ai { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 4px 14px; padding: 14px 22px 16px; border-top: 1px solid var(--status-error-border); }
+.attn.warn .ai { border-color: var(--status-warning-border); }
+.ai .ic { margin-top: 2px; color: var(--status-error); } .ai.warn .ic { color: var(--status-warning-fg); }
+.ai b { display: block; font-weight: 600; font-size: 15.5px; }
+.ai p { margin: 3px 0 0; color: var(--text-secondary); max-width: 70ch; }
+.ai .go { display: flex; gap: 8px; align-items: flex-start; }
+.ai .tech { grid-column: 2 / -1; }
+@container (max-width: 700px) { .ai { grid-template-columns: 22px minmax(0, 1fr); padding: 14px 16px 16px; } .ai .go { grid-column: 2; } .attn-h { padding: 14px 16px 4px; } }
+.tech-b { margin: 6px 0 0; padding: 8px 10px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.disc { border: 0; background: none; padding: 0; color: var(--text-muted); display: inline-flex; align-items: center; gap: 4px; font-size: 13.5px; }
+.disc:hover { color: var(--text-primary); }
+.disc svg { transition: transform .22s cubic-bezier(.16,1,.3,1); }
+.disc[aria-expanded="true"] svg { transform: rotate(90deg); }
+.collapse { overflow: hidden; }
+.pinned { display: flex; gap: 10px; align-items: center; padding: 10px 16px; border: 1px solid var(--accent-primary-border); background: var(--accent-primary-soft); border-radius: var(--radius-lg); color: var(--accent-primary-soft-strong); }
+.pinned b { font-weight: 600; }
+
+/* body: open sections, cards only where an object matters */
+.cols { display: grid; gap: 34px; grid-template-columns: minmax(0, 1fr); }
+.col { display: contents; }
+@container (min-width: 980px) { .cols { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 44px; } .col { display: flex; flex-direction: column; gap: 34px; min-width: 0; } }
+[data-o="1"] { order: 1; } [data-o="2"] { order: 2; } [data-o="3"] { order: 3; } [data-o="4"] { order: 4; }
+[data-o="5"] { order: 5; } [data-o="6"] { order: 6; } [data-o="7"] { order: 7; } [data-o="8"] { order: 8; }
+.sec { min-width: 0; }
+.sec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.sec-h h2 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.compact { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--border-subtle); color: var(--text-muted); }
+.compact b { color: var(--text-secondary); font-weight: 600; min-width: 84px; }
+.compact .sp { flex: 1; }
+.item { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 14px; padding: 14px 0; border-top: 1px solid var(--border-subtle); align-items: center; }
+.item:first-of-type { border-top: 0; }
+.tile { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; font-size: 20px; font-weight: 600; background: oklch(var(--tile-l) 0.05 var(--h)); color: oklch(var(--tile-fg) 0.12 var(--h)); }
+.item .nm { font-weight: 500; font-size: 15.5px; line-height: 1.3; }
+.item .sub { display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--text-muted); font-size: 13px; margin-top: 3px; align-items: center; }
+.item .amt { text-align: right; font-family: var(--font-mono); font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.item .amt small { display: block; color: var(--text-muted); font-size: 12px; }
+.giftrow { padding: 12px 0; border-top: 1px solid var(--border-subtle); }
+.totals { display: grid; gap: 6px; justify-items: end; padding: 14px 0 0; border-top: 1px solid var(--border-default); }
+.totals div { display: flex; gap: 40px; justify-content: space-between; min-width: 260px; color: var(--text-secondary); }
+.totals div.t { font-weight: 600; color: var(--text-primary); font-size: 18px; padding-top: 4px; }
+.totals .mono { font-size: 13.5px; }
+.totals .t .mono { font-size: 17px; }
+.basis { display: flex; align-items: center; gap: 6px; padding-top: 10px; color: var(--text-muted); font-size: 13px; justify-content: flex-end; }
+.parcel { border: 1px solid var(--border-default); border-radius: var(--radius-xl); background: var(--bg-shell); padding: 18px 20px; display: grid; gap: 16px; min-width: 0; }
+.p-h { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; }
+.p-h .who { display: flex; align-items: center; gap: 12px; }
+.dkind { width: 40px; height: 40px; border-radius: 12px; background: var(--bg-surface); border: 1px solid var(--border-default); display: grid; place-items: center; color: var(--text-secondary); flex: none; }
+.p-h b { display: block; font-size: 15.5px; font-weight: 600; }
+.p-h span.s { color: var(--text-muted); font-size: 13px; }
+.track { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.track .num { font-family: var(--font-mono); font-size: 17px; font-weight: 500; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.steps { display: flex; align-items: flex-start; }
+.step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; position: relative; font-size: 12.5px; color: var(--text-muted); text-align: center; }
+.step::before { content: ""; position: absolute; top: 7px; right: 50%; width: 100%; height: 3px; border-radius: 2px; background: var(--border-default); }
+.step:first-child::before { display: none; }
+.step i { position: relative; width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--bg-surface); z-index: 1; }
+.step.done i { background: var(--status-success); border-color: var(--status-success); } .step.done::before { background: var(--status-success); }
+.step.cur i { border-color: var(--accent-primary); background: var(--accent-primary); box-shadow: 0 0 0 4px var(--accent-ring); } .step.cur { color: var(--text-primary); font-weight: 600; } .step.cur::before { background: var(--status-success); }
+.p-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+@container (max-width: 640px) { .p-grid { grid-template-columns: minmax(0, 1fr); } }
+.p-grid h3 { margin: 0 0 6px; font-size: 12.5px; font-weight: 500; color: var(--text-muted); }
+.addr { line-height: 1.55; }
+.locker { display: inline-grid; gap: 2px; justify-items: start; border: 2px solid var(--text-primary); border-radius: 12px; padding: 8px 14px; background: var(--bg-surface); }
+.locker b { font-family: var(--font-mono); font-size: 22px; font-weight: 500; letter-spacing: 0.02em; line-height: 1.1; }
+.locker small { color: var(--text-muted); font-size: 12px; }
+.line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 0 0; border-top: 1px solid var(--border-default); }
+.line b { font-weight: 500; color: var(--text-muted); min-width: 84px; }
+.line .sp { flex: 1; }
+.task { padding: 12px 14px; border: 1px solid var(--status-info-border); border-radius: var(--radius-lg); background: var(--status-info-soft); display: grid; gap: 2px; }
+.task .row-end { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.callout { display: flex; gap: 10px; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--status-info-border); background: var(--status-info-soft); color: var(--status-info-fg); margin-top: 12px; }
+.callout.warn { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+.callout svg { flex: none; margin-top: 2px; }
+.doc-h { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
+.doc-h b { display: block; font-weight: 600; font-size: 15.5px; }
+.kv { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 6px 12px; margin: 10px 0 0; }
+.kv dt { color: var(--text-muted); } .kv dd { margin: 0; overflow-wrap: anywhere; }
+.cust-name { font-weight: 600; font-size: 17px; margin-top: 6px; }
+.email-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quote { margin: 12px 0 0; padding: 8px 12px; border-left: 3px solid var(--border-strong); background: var(--bg-muted); color: var(--text-secondary); border-radius: 0 6px 6px 0; }
+.notes-in { display: flex; gap: 8px; margin-top: 8px; }
+.notes-in input { flex: 1; min-width: 0; padding: 8px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: inherit; }
+.note { padding: 10px 0 0; } .note small { display: block; color: var(--text-muted); }
+.tl { position: relative; display: grid; margin: 6px 0 0; padding: 0; list-style: none; }
+.tl::before { content: ""; position: absolute; left: 7px; top: 14px; bottom: 14px; width: 2px; background: var(--border-default); }
+.tl li { position: relative; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 4px 12px; padding: 9px 0; }
+.tl .d { width: 12px; height: 12px; border-radius: 50%; margin: 5px 2px 0; background: var(--border-strong); border: 3px solid var(--bg-canvas); box-sizing: content-box; width: 8px; height: 8px; }
+.tl .d.error { background: var(--status-error); } .tl .d.warn { background: var(--status-warning); } .tl .d.ok { background: var(--status-success); }
+.tl time { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; white-space: nowrap; padding-top: 3px; }
+.tl small { display: block; color: var(--text-muted); }
+.tl .sub { grid-column: 2 / -1; }
+.seg { display: inline-flex; padding: 2px; background: var(--bg-muted); border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.seg button { border: 0; background: transparent; padding: 3px 10px; border-radius: 6px; color: var(--text-secondary); font-size: 13px; }
+.seg button[aria-pressed="true"] { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-sm); font-weight: 500; }
+.snap pre { margin: 8px 0 0; padding: 10px 12px; background: var(--bg-muted); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 12px; overflow-x: auto; max-height: 260px; }
+.row-end2 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+/* overlays */
+.scrim { position: absolute; inset: 0; z-index: 20; background: oklch(20% 0.01 80 / 0.38); display: grid; place-items: center; padding: 16px; }
+.modal { width: min(460px, 100%); border: 1px solid var(--border-default); background: var(--bg-surface); border-radius: var(--radius-xl); box-shadow: var(--shadow-overlay); padding: 20px 22px; display: grid; gap: 10px; }
+.modal h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.modal p { margin: 0; color: var(--text-secondary); }
+.modal ul { margin: 0; padding-left: 18px; color: var(--text-secondary); display: grid; gap: 4px; }
+.modal .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.field { display: grid; gap: 4px; } .field label { font-weight: 500; }
+.field select { padding: 8px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: inherit; }
+.check { display: flex; gap: 8px; align-items: flex-start; }
+.radios { display: flex; gap: 14px; }
+.toast { position: absolute; z-index: 30; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 9px 14px; border-radius: var(--radius-md); background: oklch(22% 0.01 80); color: oklch(96% 0.005 80); box-shadow: var(--shadow-overlay); }
+
+@media (max-width: 900px) { .frame { grid-template-columns: minmax(0, 1fr); } .rail { display: none; } .top { padding: 0 14px; } .minibar-in { padding: 8px 14px; } .search kbd { display: none; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+/* ---------- v2 after research: tabs with counters under a fixed header ---------- */
+.viewtabs { display: flex; gap: 4px; padding: 3px; width: fit-content; max-width: 100%; background: var(--bg-muted); border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.viewtabs button { border: 0; background: transparent; padding: 7px 14px; border-radius: 6px; color: var(--text-secondary); font-weight: 500; }
+.viewtabs button[aria-selected="true"] { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+.pg2 { container-type: inline-size; }
+.b-in { max-width: 1180px; margin: 0 auto; padding: 16px 28px 56px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.b-in > * { min-width: 0; }
+@container (max-width: 700px) { .b-in { padding: 12px 14px 40px; } }
+.b-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.b-pager { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 13.5px; }
+.b-pager button { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--border-default); background: var(--bg-surface); border-radius: var(--radius-sm); color: var(--text-secondary); }
+.b-pager button:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.b-head { position: relative; border: 1px solid var(--border-default); border-radius: var(--radius-xl); background: var(--bg-surface); box-shadow: var(--shadow-md); overflow: hidden; }
+.b-head::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4px; background: var(--bar, var(--status-success)); }
+.b-head.err { --bar: var(--status-error); } .b-head.warn { --bar: var(--status-warning); } .b-head.off { --bar: var(--border-strong); }
+.b-id { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 28px; padding: 24px 26px 16px; }
+@container (max-width: 820px) { .b-id { grid-template-columns: minmax(0, 1fr); padding: 22px 16px 12px; } }
+.b-h1 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.b-h1 h1 { margin: 0; font-size: 28px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; }
+.chan { display: inline-flex; align-items: center; gap: 7px; padding: 2px 10px 2px 3px; border: 1px solid var(--border-default); border-radius: 999px; color: var(--text-secondary); font-size: 13px; background: var(--bg-canvas); }
+.chan .ctile { width: 22px; height: 22px; border-radius: 50%; font-size: 11px; }
+.b-sub { margin-top: 8px; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 2px 14px; align-items: center; }
+.b-sub b { color: var(--text-primary); font-weight: 500; }
+.b-stat { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.bigst { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: var(--radius-md); border: 1px solid; font-weight: 600; font-size: 15px; }
+.bigst i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+.bigst.error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.bigst.warn { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.bigst.ok { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.bigst.off { background: var(--status-disabled-soft); border-color: var(--status-disabled-border); color: var(--status-disabled-fg); }
+.plus { border: 0; background: var(--bg-muted); color: var(--text-secondary); border-radius: 999px; padding: 3px 10px; font-weight: 600; font-size: 13px; }
+.plus:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.cap { color: var(--text-muted); font-size: 13.5px; }
+.b-tags { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; min-height: 26px; }
+.tag { display: inline-flex; align-items: center; gap: 6px; padding: 2px 11px 2px 9px; border-radius: 999px; border: 1px solid var(--tb, var(--border-default)); background: var(--tg, var(--bg-muted)); color: var(--tf, var(--text-secondary)); font-size: 12.5px; font-weight: 500; }
+.tag::before { content: "#"; opacity: .55; font-weight: 400; }
+.tag.error { --tb: var(--status-error-border); --tg: var(--status-error-soft); --tf: var(--status-error-fg); }
+.tag.warn { --tb: var(--status-warning-border); --tg: var(--status-warning-soft); --tf: var(--status-warning-fg); }
+.tag.ok { --tb: var(--status-success-border); --tg: var(--status-success-soft); --tf: var(--status-success-fg); }
+.tag.info { --tb: var(--status-info-border); --tg: var(--status-info-soft); --tf: var(--status-info-fg); }
+.b-r { display: grid; gap: 14px; justify-items: end; align-content: start; }
+@container (max-width: 820px) { .b-r { justify-items: start; } .b-r .total-block { text-align: left; } .b-r .pay { justify-content: flex-start; } }
+.b-act { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; position: relative; justify-content: flex-end; }
+@container (max-width: 820px) { .b-act { justify-content: flex-start; } }
+.b-j { padding: 0 0 18px; border-bottom: 1px solid var(--border-subtle); }
+.b-j .node { width: 24px; height: 24px; }
+.b-j .node svg { width: 13px; height: 13px; }
+.b-j .jseg { top: 11px; left: calc(50% + 17px); width: calc(100% - 34px); height: 3px; }
+.b-j .jn { gap: 7px; }
+.b-j .txt b { font-size: 13px; }
+.b-j .txt time { font-size: 11.5px; }
+.b-j .txt small { font-size: 12px; }
+@container (max-width: 700px) { .b-j .jseg { top: 30px; left: 11px; width: 3px; height: auto; } .b-j .jn { grid-template-columns: 24px minmax(0, 1fr); } }
+.b-next { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 20px; align-items: center; padding: 16px 26px 14px; border-top: 1px solid var(--border-subtle); min-height: 128px; background: var(--bg-shell); }
+.b-next.err { background: color-mix(in oklab, var(--status-error-soft) 58%, var(--bg-surface)); border-top-color: var(--status-error-border); }
+.b-next.warn { background: color-mix(in oklab, var(--status-warning-soft) 58%, var(--bg-surface)); border-top-color: var(--status-warning-border); }
+.b-next.ok { background: color-mix(in oklab, var(--status-success-soft) 50%, var(--bg-surface)); border-top-color: var(--status-success-border); }
+@container (max-width: 820px) { .b-next { grid-template-columns: minmax(0, 1fr); padding: 14px 16px; } }
+.b-next .lbl { font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.b-next .tx { font-size: 17px; font-weight: 500; line-height: 1.35; margin: 2px 0 0; max-width: 64ch; text-wrap: pretty; }
+.b-next .ctx { margin: 4px 0 0; color: var(--text-secondary); font-size: 13.5px; max-width: 70ch; }
+.b-next .btn { padding: 9px 18px; font-size: 15px; }
+.b-also { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-height: 24px; font-size: 13.5px; color: var(--text-secondary); border-top: 1px dashed var(--border-default); padding-top: 8px; margin-top: 4px; min-width: 0; }
+.b-also span.t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.b-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border-default); overflow-x: auto; scrollbar-width: thin; }
+.b-tab { display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; color: var(--text-secondary); font-weight: 500; white-space: nowrap; }
+.b-tab:hover { color: var(--text-primary); }
+.b-tab[aria-selected="true"] { color: var(--text-primary); border-bottom-color: var(--accent-primary); }
+.cnt { min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--bg-muted); color: var(--text-secondary); font-size: 12px; font-weight: 600; text-align: center; line-height: 20px; }
+.cnt.err { background: var(--status-error-soft); color: var(--status-error-fg); }
+.cnt.zero { background: transparent; color: var(--text-disabled); border: 1px solid var(--border-subtle); line-height: 18px; }
+.b-panel { min-height: 560px; padding-top: 22px; display: grid; gap: 28px; align-content: start; }
+.b-two { display: grid; gap: 32px; grid-template-columns: minmax(0, 1fr); }
+@container (min-width: 940px) { .b-two { grid-template-columns: minmax(0, 1fr) 300px; gap: 44px; align-items: start; } }
+.b-two > div { display: grid; gap: 28px; align-content: start; min-width: 0; }
+.b-sys .flow { grid-template-columns: minmax(0, 1fr); }
+.b-err { padding: 10px 0; border-top: 1px solid var(--border-subtle); }
+.b-err b { font-weight: 600; }
+.tag { gap: 4px; }
+.tag .tx { border: 0; background: none; padding: 1px; margin-left: 1px; border-radius: 50%; color: inherit; opacity: .6; display: grid; place-items: center; cursor: pointer; }
+.tag .tx:hover { opacity: 1; background: var(--bg-surface-hover); }
+.tag-btn { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border: 1px dashed var(--border-strong); border-radius: 999px; background: none; color: var(--text-muted); font-size: 12.5px; }
+.tag-btn:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
+.tag-add input { padding: 2px 10px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--bg-surface); color: var(--text-primary); font: inherit; font-size: 12.5px; width: 130px; }
+.b-facts { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--text-secondary); font-size: 13.5px; }
+.b-facts span { display: inline-flex; align-items: center; gap: 6px; } .b-facts .err { color: var(--status-error-fg); font-weight: 500; }
+.b-all { border-top: 1px solid var(--border-default); background: var(--bg-surface); display: grid; }
+.b-iss { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 4px 12px; padding: 14px 26px; border-top: 1px solid var(--border-subtle); }
+.b-iss:first-child { border-top: 0; }
+.b-iss > svg { margin-top: 3px; color: var(--status-error); } .b-iss.warn > svg { color: var(--status-warning-fg); } .b-iss.info > svg { color: var(--status-info); }
+.b-iss b { font-weight: 600; } .b-iss p { margin: 2px 0 0; color: var(--text-secondary); max-width: 70ch; }
+.b-iss ul { margin: 6px 0 0; padding-left: 18px; color: var(--text-secondary); font-size: 13px; }
+.b-iss .go { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: flex-start; }
+@container (max-width: 820px) { .b-iss { grid-template-columns: 20px minmax(0, 1fr); padding: 12px 16px; } .b-iss .go { grid-column: 2; justify-content: flex-start; } }
+.bnote { border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 12px 16px; background: var(--bg-surface); }
+.bn-h { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; } .bn-h .sp { flex: 1; }
+.lform { display: grid; gap: 12px; } .lgrid { display: grid; gap: 10px 14px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.lform input, .lform select { padding: 8px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: inherit; width: 100%; min-width: 0; }
+.holdcard { border: 1px solid var(--status-warning-border); background: var(--status-warning-soft); border-radius: var(--radius-lg); padding: 12px 14px; }
+.payrow { display: grid; grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1.4fr) auto; gap: 8px 14px; align-items: center; padding: 9px 0; border-top: 1px solid var(--border-subtle); }
+@container (max-width: 700px) { .payrow { grid-template-columns: minmax(0, 1fr) auto; } }
+.callout a, .track a { display: inline-flex; gap: 4px; align-items: center; }
+.ta { width: 100%; padding: 8px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: inherit; resize: vertical; min-height: 56px; }
+.retrow { display: grid; grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 1.4fr) auto; gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--border-subtle); align-items: center; }
+@container (max-width: 700px) { .retrow { grid-template-columns: minmax(0, 1fr); } }
+.nrow { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0 0; border-top: 1px solid var(--border-subtle); margin-top: 12px; } .nrow > div:first-child { min-width: 0; flex: 1; }
+.nact { display: flex; gap: 12px; align-items: flex-start; } .dng { color: var(--status-error-fg); }
+.tl .by { font-weight: 500; color: var(--text-secondary); } .tl .kd { color: var(--text-muted); font-size: 12px; margin-left: 6px; }
+.tools { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.tl-l { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; }
+.tl-l select { padding: 6px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font: inherit; }
+.pstate { display: grid; gap: 10px; justify-items: start; padding: 60px 0; max-width: 460px; } .pstate h2 { margin: 0; font-size: 20px; } .pstate p { margin: 0; color: var(--text-secondary); }
+.skel { border-radius: 8px; background: var(--bg-muted); animation: pulse 1.4s ease-in-out infinite; } @keyframes pulse { 50% { opacity: .5; } }
+.b-panel > [hidden] { display: none; }
+
+/* ---- fix wave: targets, tabs, tags, states ---- */
+.tag::before { content: none; } .tag i { width: 8px; height: 8px; border-radius: 50%; flex: none; } .tag { background: var(--bg-muted); border-color: var(--border-default); color: var(--text-primary); position: relative; }
+.tag .tx.tt44 { position: relative; } .tag .tx.tt44::after { content: ""; position: absolute; inset: -15px; }
+.tagdot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+.tt44.btn, .tt44.tag-btn, .tt44.plus, .tt44.linkbtn { min-height: 44px; display: inline-flex; align-items: center; }
+.tt44.tag-btn { min-height: 32px; position: relative; } .tt44.tag-btn::after { content: ""; position: absolute; inset: -6px 0; }
+.b-pager button { width: 44px; height: 44px; }
+.b-act .btn { min-height: 44px; }
+.b-nacts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.flagdot { width: 8px; height: 8px; border-radius: 50%; background: var(--status-error); display: inline-block; }
+.cnt.zero { display: none; }
+.b-tabs { position: relative; }
+@media (max-width: 700px) { .b-tab { padding: 10px 10px; font-size: 13px; gap: 5px; } .b-tabs { mask-image: linear-gradient(90deg, #000 88%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); } }
+.skel-head { height: 350px; border-radius: 18px; } @media (max-width: 700px) { .skel-head { height: 660px; } }
+.err-t { color: var(--status-error-fg); font-size: 12px; } .lform small.muted { font-size: 12px; }
+.lform { border-top: 1px solid var(--border-default); padding-top: 14px; }
+.parity .ph { font-size: 14px; margin: 14px 0 6px; }
+.menu button[role=option] { display: flex; align-items: center; }
+.b-tab { min-height: 44px; } .b-next .btn, .b-nacts .btn { min-height: 44px; }
+.idchip button { position: relative; } .idchip button::after { content: ""; position: absolute; inset: -12px; }
+
+/* ---- overview cards: clear separation, room to breathe ---- */
+.b-two { gap: 22px; } .b-two > div { gap: 18px; }
+@container (min-width: 940px) { .b-two { grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; } }
+.ocard { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 20px 24px 22px; }
+.ocard.ocard-slim { padding: 4px 24px; } .ocard.ocard-slim .compact { border-top: 0; padding: 14px 0; }
+.ocard .sec-h { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); }
+.ocard .sec-h h2 { font-size: 15px; }
+.ocard .item { padding: 18px 0; gap: 16px; }
+.ocard .item:first-of-type { padding-top: 6px; }
+.ocard .item .sub { margin-top: 6px; gap: 4px 14px; }
+.ocard .totals { background: var(--bg-muted); border: 0; border-radius: var(--radius-md); padding: 16px 18px; margin-top: 6px; gap: 10px; justify-items: stretch; }
+.ocard .totals div { min-width: 0; width: 100%; gap: 24px; }
+.ocard .totals div.t { border-top: 1px solid var(--border-default); padding-top: 12px; margin-top: 4px; }
+.ocard .kv { margin-top: 14px; gap: 10px 18px; }
+.ocard .addr { line-height: 1.7; }
+.ocard .doc-h { margin-top: 0; }
+.ocard .cust-name { margin-top: 0; }
+.ocard .email-line { margin-top: 4px; }
+/* overview cards use the same darker surface as the shipment box */
+.ocard { background: var(--bg-shell); }
+.ocard .totals { background: var(--bg-canvas); border: 1px solid var(--border-subtle); }
+.ocard .item + .item { border-top: 1px solid var(--border-subtle); }
+
+/* documents and payment cards: breathing room between the parts */
+#invoicing > *:not(.sec-h) + *:not(.sec-h), #payshops > *:not(.sec-h) + *:not(.sec-h) { margin-top: 16px; }
+#invoicing .doc-h { align-items: flex-start; gap: 14px; } #invoicing .doc-h b { font-size: 16px; } #invoicing .doc-h span.muted { display: block; margin-top: 3px; }
+#invoicing .kv { margin-top: 18px; padding: 14px 16px; background: var(--bg-canvas); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+#invoicing .callout, #payshops .callout { margin-top: 16px; padding: 12px 14px; }
+#invoicing > div[style*="gap: 8"] { padding-top: 16px; border-top: 1px solid var(--border-subtle); margin-top: 18px; }
+.payrow { padding: 12px 0; } .payrow:first-child { border-top: 0; }
+.ocard .nrow { padding: 16px 0 0; margin-top: 16px; } .ocard .retrow { padding: 14px 0; }
+.ocard .tl li { padding: 11px 0; } .ocard .notes-in { margin-top: 4px; gap: 10px; }
+.snap.ocard { padding: 14px 20px; }
+
+/* shipping tab: same card rhythm as Sales documents */
+.ocard .parcel { border: 0; background: transparent; padding: 0; gap: 20px; border-radius: 0; }
+.ocard .parcel .p-h { padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle); }
+.ocard .parcel .steps { padding: 14px 16px; background: var(--bg-canvas); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.ocard .parcel .p-grid { padding: 14px 16px; background: var(--bg-canvas); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.ocard .parcel .track { padding: 12px 16px; background: var(--bg-canvas); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.ocard .parcel .callout { margin: 0; padding: 12px 14px; }
+.ship-stack { display: grid; gap: 14px; margin-top: 12px; }
+.ship-stack > .line { padding: 14px 16px; background: var(--bg-canvas); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); border-top: 1px solid var(--border-subtle); }
+.ship-stack > #hold > .line { padding: 14px 16px; background: var(--bg-canvas); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+.ocard .task { background: var(--bg-canvas); margin-top: 12px; padding: 14px 16px; gap: 6px; }
+</style>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/motion@11.18.2/dist/motion.js"></script>
+<script>
+const { useState, useRef, useEffect, useLayoutEffect, useCallback } = React;
+const html = htm.bind(React.createElement);
+const REDUCE = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const EASE = [0.16, 1, 0.3, 1];
+
+/* ---------- motion helpers: Motion when it loaded, Web Animations otherwise ---------- */
+function enter(el, delay) {
+  if (!el || REDUCE) return;
+  try {
+    if (window.Motion && window.Motion.animate) {
+      window.Motion.animate(el, { opacity: [0, 1], transform: ['translateY(10px)', 'translateY(0px)'] }, { duration: 0.5, delay: delay / 1000, ease: EASE });
+    } else {
+      el.animate([{ opacity: 0, transform: 'translateY(10px)' }, { opacity: 1, transform: 'none' }], { duration: 500, delay, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'backwards' });
+    }
+  } catch (e) { /* decoration only */ }
+}
+function pop(el, delay) {
+  if (!el || REDUCE) return;
+  try {
+    if (window.Motion && window.Motion.animate) {
+      window.Motion.animate(el, { transform: ['scale(0.4)', 'scale(1)'], opacity: [0, 1] }, { type: 'spring', stiffness: 420, damping: 20, delay: delay / 1000 });
+    } else {
+      el.animate([{ transform: 'scale(.4)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { duration: 420, delay, easing: 'cubic-bezier(.34,1.56,.64,1)', fill: 'backwards' });
+    }
+  } catch (e) { /* decoration only */ }
+}
+function slide(el, open, done) {
+  if (!el || REDUCE) { done && done(); return; }
+  const h = el.scrollHeight;
+  const a = el.animate(open ? [{ height: '0px', opacity: 0 }, { height: h + 'px', opacity: 1 }] : [{ height: h + 'px', opacity: 1 }, { height: '0px', opacity: 0 }],
+    { duration: 260, easing: 'cubic-bezier(.16,1,.3,1)' });
+  a.onfinish = () => done && done();
+}
+
+/* ---------- icons ---------- */
+const P = {
+  back: 'M15 18l-6-6 6-6', copy: 'M9 9h10v11H9z M5 15V4h10', check: 'M5 12.5l4.5 4.5L19 7.5',
+  alert: 'M12 5l8.5 15h-17z M12 11v4 M12 17.8v.01', retry: 'M20 11a8 8 0 10-2.3 6 M20 5v6h-6',
+  chev: 'M9 6l6 6-6 6', more: 'M5 12h.01 M12 12h.01 M19 12h.01', pin: 'M12 17v5 M8 3h8l-1 6 3 4H6l3-4z',
+  mail: 'M4 6h16v12H4z M4 7l8 6 8-6', box: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8',
+  doc: 'M7 3h7l5 5v13H7z M14 3v5h5 M10 13h6 M10 17h6', user: 'M12 12a4 4 0 100-8 4 4 0 000 8z M4 21c0-4 4-6 8-6s8 2 8 6',
+  info: 'M12 21a9 9 0 100-18 9 9 0 000 18z M12 11v5 M12 7.5v.01', search: 'M11 18a7 7 0 100-14 7 7 0 000 14z M20 20l-4-4',
+  bell: 'M6 16v-5a6 6 0 1112 0v5l2 2H4z M10 21h4', gift: 'M4 11h16v10H4z M3 7h18v4H3z M12 7v14 M12 7c-2-4-6-3-5 0 M12 7c2-4 6-3 5 0',
+  truck: 'M3 6h11v10H3z M14 10h4l3 3v3h-7z M7 19a1.5 1.5 0 100-3 1.5 1.5 0 000 3z M17 19a1.5 1.5 0 100-3 1.5 1.5 0 000 3z',
+  x: 'M6 6l12 12 M18 6L6 18', link: 'M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1 M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1',
+  pack: 'M4 8l8-4 8 4v8l-8 4-8-4z M4 8l8 4 8-4', note: 'M5 4h14v16H5z M9 9h6 M9 13h6',
+  clock: 'M12 21a9 9 0 100-18 9 9 0 000 18z M12 7v5l3 2', minus: 'M6 12h12', dot: 'M12 12h.01',
+  settings: 'M12 15a3 3 0 100-6 3 3 0 000 6z M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2L14.2 3h-4l-.4 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 005 12a7 7 0 00.1 1.2l-2 1.5 2 3.4 2.3-.9a7 7 0 002 1.2l.4 2.6h4l.4-2.6a7 7 0 002-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z'
+};
+const Icon = ({ n, s = 16, w = 1.7 }) => html`<svg width=${s} height=${s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth=${w} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d=${P[n]} /></svg>`;
+
+/* ---------- small primitives ---------- */
+const Pill = ({ tone, dot = true, children }) => html`<span className=${'pill ' + tone}>${dot && html`<i />`}${children}</span>`;
+const StateText = ({ tone, children }) => tone === 'ok'
+  ? html`<span className="st"><${Icon} n="check" s=${15} w=${2.2} />${children}</span>`
+  : html`<span className=${'st ' + (tone === 'off' ? 'muted' : tone)}><span className="dot" />${children}</span>`;
+const Btn = ({ kind = '', icon, onClick, disabled, title, children, sm, da, submit }) =>
+  html`<button type=${submit ? 'submit' : 'button'} data-act=${da} className=${'btn ' + kind + (sm ? ' sm' : '')} onClick=${onClick} disabled=${disabled} title=${title}>${icon && html`<${Icon} n=${icon} s=${15} />`}${children}</button>`;
+const CopyId = ({ value, shown, say }) => html`<span className="idchip">${shown || value}
+  <button type="button" aria-label=${'Copy ' + (shown || value)} title="Copy" onClick=${() => { try { navigator.clipboard.writeText(value).then(() => say('Copied'), () => say('Select the text to copy it')); } catch (e) { say('Select the text to copy it'); } }}><${Icon} n="copy" s=${14} /></button></span>`;
+const hue = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; };
+
+function Disclosure({ label, children, open0 = false }) {
+  const [open, setOpen] = useState(open0);
+  const [mounted, setMounted] = useState(open0);
+  const box = useRef(null);
+  useLayoutEffect(() => { if (mounted && open) slide(box.current, true); }, [mounted]);
+  const toggle = () => {
+    if (!open) { setMounted(true); setOpen(true); }
+    else { setOpen(false); slide(box.current, false, () => setMounted(false)); }
+  };
+  return html`<div>
+    <button type="button" className="disc" aria-expanded=${open} onClick=${toggle}><${Icon} n="chev" s=${14} />${label}</button>
+    ${mounted && html`<div className="collapse" ref=${box}>${children}</div>`}
+  </div>`;
+}
+const Sec = ({ title, action, o, id, children }) => html`<section className="sec" data-o=${o} id=${id} data-enter="1">
+  <header className="sec-h"><h2>${title}</h2>${action}</header>${children}</section>`;
+const Compact = ({ o, icon, title, value, action }) => html`<div className="compact" data-o=${o} data-enter="1"><${Icon} n=${icon} /><b>${title}</b><span>${value}</span><span className="sp" />${action}</div>`;
+
+function Menu({ items, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const k = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', h); document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('keydown', k); };
+  }, []);
+  return html`<div className="menu" ref=${ref} role="menu">${items.map((it, i) => it === '-' ? html`<hr key=${i} />` :
+    html`<button key=${i} type="button" role="menuitem" className=${it.danger ? 'dng' : ''} disabled=${it.disabled} onClick=${() => { onClose(); it.run && it.run(); }}>
+      <span>${it.label}${it.hint && html`<small>${it.hint}</small>`}</span></button>`)}</div>`;
+}
+
+/* ---------- data: five real order situations ---------- */
+
+const NODE_ICON = { done: 'check', failed: 'alert', warn: 'alert', stop: 'x', current: 'dot', pending: 'minus' };
+function Journey({ j }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => { if (REDUCE || !ref.current) return; ref.current.querySelectorAll('.node').forEach((n, i) => pop(n, 240 + i * 90)); }, []);
+  return html`<ol className="journey" style=${{ '--n': j.length }} ref=${ref} aria-label="Order progress">${j.map((s, i) => {
+    const next = j[i + 1];
+    const seg = s.s === 'failed' ? 'err' : s.s === 'warn' ? 'warn' : next && next.s !== 'pending' ? 'ok' : '';
+    return html`<li key=${s.k} className=${'jn s-' + s.s}>
+      <span className="node"><${Icon} n=${NODE_ICON[s.s]} s=${s.s === 'current' ? 18 : 16} w=${s.s === 'current' ? 4 : 2.4} /></span>
+      <div className="txt"><b>${s.k}</b>${s.t && html`<time>${s.t}</time>`}${s.d && html`<small>${s.d}</small>`}</div>
+      ${next && html`<i className=${'jseg ' + seg} style=${{ '--d': (200 + i * 90) + 'ms' }} aria-hidden="true" />`}</li>`;
+  })}</ol>`;
+}
+
+/* ---------- sample data: twelve order situations (demo names, no real buyers) ---------- */
+const DEST_COLOR = { PrestaShop: 'oklch(52% 0.13 255)', Subiekt: 'oklch(50% 0.12 150)', WooCommerce: 'oklch(48% 0.14 300)' };
+const J = (k, s, t, d) => ({ k, s, t, d });
+const HOLD_REASONS = [['payment-review', 'Payment is being verified'], ['fraud-review', 'A risk check is outstanding'], ['operator', 'Paused by a person'], ['stock-shortfall', 'Stock is not available to pick'], ['address-invalid', 'The address failed validation'], ['awaiting-amendment', 'A change proposal is open'], ['awaiting-customer-confirmation', 'Waiting for the buyer'], ['external', 'Held by the source system, reason unknown']];
+const TAG_VOCAB = [{ n: 'VIP', c: 'violet' }, { n: 'Fragile', c: 'amber' }, { n: 'Gift', c: 'teal' }, { n: 'B2B', c: 'blue' }, { n: 'Customer called', c: 'orange' }, { n: 'Check address', c: 'pink' }];
+const tag = (n) => TAG_VOCAB.find((t) => t.n === n);
+const ACTION_LABEL = { schedule: 'Schedule', hold: 'Hold task', expedite: 'Expedite', mark_in_progress: 'Mark in progress', close: 'Close', release_hold: 'Release hold', force_cancel: 'Force cancel', release_expedite: 'Release expedite' };
+const CARRIER_URL = { InPost: 'https://inpost.pl/sledzenie-przesylek?number=', DPD: 'https://tracktrace.dpd.com.pl/parcelDetails?p1=', 'Allegro One': 'https://allegro.pl/moje-allegro/zakupy/kupione' };
+const A = (id, label, kind, say, extra) => Object.assign({ id, label, kind: kind || '', say: say || null }, extra || {});
+const base = {
+  channel: 'Allegro (sandbox)', cur: 'PLN', ship: '10.95', pii: 'full', tags: [], notes: [], buyerNote: null, tax: { state: 'unknown' }, dests: [], destNotice: null, handled: false,
+  routing: { on: false }, extra: [], hold: null, holdHistory: [], pack: {}, tasks: [], payRecs: null, returns: { state: 'ok', rows: [] }, parse: [], activity: [], paid: true,
+  doc: { routed: 'invoice', st: 'none' }, times: {}
+};
+const mk = (o) => Object.assign({}, base, o);
+const SUB = 'Subiekt GT (DEMO) - Invoicing';
+const ORDERS = {
+  failed: mk({
+    tab: 'Sync failed', num: '1d531460', full: '1d531460-b71b-11f1-98f9-9d29335f1b2f', src: '1790146740239995', buyer: 'Marta Wiśniewska', email: 'm.wisniewska+474f@user.allegrogroup.pl', prevOrders: 3,
+    placed: '23 Sep 2026, 08:50', age: '51 days ago', total: '94.96', chanStatus: 'Allegro: dispatched', phase: { label: 'Shipped', tone: 'ok' }, tags: ['VIP'],
+    times: { placed: '23 Sep 08:50', paid: '23 Sep 08:50', sync: '23 Sep 09:00', pack: '23 Sep 08:55', ship: '23 Sep 08:58' },
+    facts: [{ i: 'truck', t: 'InPost, locker BIK01M' }],
+    items: [{ n: 'Kubek ceramiczny 300ml', sku: '7782258987', vat: '23%', q: 1, u: '24.99' }, { n: 'So dezodorant perfumowany 100ml', sku: '7782364512', vat: '23%', q: 1, u: '59.02' }],
+    dests: [
+      { name: 'PrestaShop (demo store)', st: 'failed', note: 'Customer link conflict', err: 'Failed to provision customer in PrestaShop: Mapping conflict: Customer:35@44bb1f3f is already mapped to ol_customer_5d96beb657ca41b6', tries: [{ t: '09:00', s: 'failed', e: 'Mapping conflict on customer' }, { t: '08:52', s: 'failed', e: 'Mapping conflict on customer' }] },
+      { name: 'Subiekt GT (spike)', st: 'failed', note: 'No matching product', err: 'No product mapping for OL product ol_product_64aff6310d2d4ff88d23946dc201cf89', tries: [{ t: '09:00', s: 'failed', e: 'No product mapping' }, { t: '08:52', s: 'failed', e: 'No product mapping' }] },
+      { name: SUB, st: 'synced', note: 'Order ZK 36/2026' },
+      { name: 'WooCommerce (demo shop)', st: 'failed', note: 'No matching product', err: 'No WC product mapping for OL product ol_product_64aff6310d2d4ff88d23946dc201cf89', tries: [{ t: '09:00', s: 'failed', e: 'No product mapping' }, { t: '08:52', s: 'failed', e: 'No product mapping' }] }],
+    pack: { packed: { at: '23 Sep, 08:55', by: 'admin' } },
+    shipx: { kind: 'shipped', status: 'in-transit', step: 2, method: 'Allegro Paczkomaty InPost', to: ['Marta Wiśniewska', 'ul. Lipowa 12/4', '11-036 Gietrzwałd', 'PL'], pickup: { code: 'BIK01M', kind: 'Paczkomat', note: 'Chosen by the buyer on Allegro' }, tracking: '602222437611300017801635', carrier: 'InPost', by: 'OpenLinker bought the label from InPost (sandbox)' },
+    doc: { routed: 'invoice', st: 'issued', title: 'Invoice PA 26/2026', sub: 'Issued 23 Sep 2026, 08:52', provider: SUB, down: true, canCorrect: true, wz: 'released', wzNo: 'WZ 14/2026', lines: 0 },
+    payRecs: [{ shop: 'PrestaShop (demo store)', st: 'pending', note: 'The order is not in this shop yet' }, { shop: 'WooCommerce (demo shop)', st: 'pending', note: 'The order is not in this shop yet' }],
+    activity: [
+      { t: '23 Sep 09:00', tone: 'error', kind: 'sync', by: 'System', text: 'Could not send to WooCommerce (demo shop)', sub: 'No product to match in that shop.', tries: [{ t: '09:00', s: 'failed', e: 'No product mapping' }, { t: '08:52', s: 'failed', e: 'No product mapping' }] },
+      { t: '23 Sep 09:00', tone: 'error', kind: 'sync', by: 'System', text: 'Could not send to PrestaShop (demo store)', sub: 'Customer link conflict.', tries: [{ t: '09:00', s: 'failed', e: 'Mapping conflict on customer' }, { t: '08:52', s: 'failed', e: 'Mapping conflict on customer' }] },
+      { t: '23 Sep 08:55', tone: '', kind: 'pack', by: 'admin', text: 'Marked as packed' },
+      { t: '23 Sep 08:51', tone: '', kind: 'source', by: 'Allegro', text: 'Order received from Allegro (sandbox)' }]
+  }),
+  blocked: mk({
+    tab: 'Blocked, overdue', num: '5ea622d1', full: '5ea622d1-a759-4778-9944-99442b6e9c0f', src: '1790023981100872', buyer: 'Piotr Zawadzki', email: 'p.zawadzki+9c1e@user.allegrogroup.pl', prevOrders: 0,
+    placed: '16 Sep 2026, 13:39', age: '58 days ago', total: '60.94', chanStatus: 'Allegro: paid', phase: { label: 'Pending', tone: 'off' }, tax: { state: 'provided', v: '8261134465' }, tags: ['Fragile'],
+    times: { placed: '16 Sep 13:39', paid: '16 Sep 13:39' }, due: { t: 'Ship by 20 Sep, overdue 54 days', over: true },
+    facts: [{ i: 'truck', t: 'Allegro Kurier DPD' }, { i: 'clock', t: 'Ship by 20 Sep, overdue 54 days', c: 'err' }],
+    items: [{ n: 'Handmade Resin Ring with Pressed Botanicals', sku: '7781925023', vat: null, q: 1, u: '49.99' }],
+    dests: [{ name: 'PrestaShop (demo store)', st: 'pending', note: 'Waiting for the offer link' }, { name: 'WooCommerce (demo shop)', st: 'pending', note: 'Waiting for the offer link' }],
+    shipx: { kind: 'ready', method: 'Allegro Kurier DPD', to: ['Piotr Zawadzki', 'ul. Długa 3', '80-827 Gdańsk', 'PL'], gate: { text: 'No shipping route is set for Allegro Kurier DPD, so no label can be bought.', act: 'Add route' } },
+    doc: { routed: 'invoice', st: 'blocked', blockReason: 'tax-rate-missing' },
+    extra: [{ id: 'mapping', rank: 0, tone: 'warn', short: 'Offer not linked', title: 'Allegro offer 7781850283 is not linked to a product', why: 'Link it to a product in your catalogue. The order is sent to your shops as soon as it is linked.', acts: [A('link', 'Link offer', 'primary', 'Opens the offer link')], raw: 'Missing mapping for order item productRef (type=offer, externalId=7781850283)' }],
+    activity: [{ t: '16 Sep 13:40', tone: 'warn', kind: 'source', by: 'System', text: 'Order received and held', sub: 'Offer 7781850283 is not linked to a product yet.' }]
+  }),
+  cancelled: mk({
+    tab: 'Cancelled, refund due', num: '46d41800', full: '46d41800-b1c3-11f1-8843-c1be75cc2239', src: '1790023981100344', buyer: 'Joanna Kamińska', email: 'j.kaminska+3be1@user.allegrogroup.pl', prevOrders: 1,
+    placed: '16 Sep 2026, 13:39', age: '58 days ago', total: '60.94', chanStatus: 'Allegro: cancelled by the buyer', phase: { label: 'Cancelled', tone: 'off' }, cancelled: true, tax: { state: 'none' },
+    times: { placed: '16 Sep 13:39', paid: '16 Sep 13:39', cancel: '17 Sep 10:02' }, lead: 'Cancelled on 17 Sep by the buyer. The label was bought before that and is not dispatched.',
+    facts: [{ i: 'clock', t: 'Cancelled 17 Sep, 10:02' }],
+    items: [{ n: 'Handmade Resin Ring with Pressed Botanicals', sku: '7781925023', vat: '23%', q: 1, u: '49.99' }],
+    dests: [{ name: 'PrestaShop (demo store)', st: 'skipped', note: 'Cancelled before create' }, { name: 'WooCommerce (demo shop)', st: 'skipped', note: 'Cancelled before create' }],
+    shipx: { kind: 'shipped', status: 'generated', step: 0, method: 'Allegro Paczkomaty InPost', to: ['Joanna Kamińska', 'ul. Polna 2', '20-001 Lublin', 'PL'], pickup: { code: 'LUB012M', kind: 'Paczkomat', note: 'Chosen by the buyer on Allegro' }, tracking: '602222437611300017809001', carrier: 'InPost', by: 'OpenLinker bought the label from InPost (sandbox)' },
+    doc: { routed: 'receipt', st: 'final', title: 'Receipt FS 19/2026', sub: 'Registered 16 Sep 2026, 19:34', provider: 'eparagony.pl', down: false, canCorrect: false },
+    payRecs: [{ shop: 'PrestaShop (demo store)', st: 'skipped' }, { shop: 'WooCommerce (demo shop)', st: 'skipped' }], paidAfterCancel: true,
+    extra: [{ id: 'cancelResult', rank: 6, tone: 'info', short: 'Cancellation recorded', title: 'Allegro confirmed the cancellation', why: 'PrestaShop and WooCommerce skipped this order, it never reached them. The receipt was issued before the cancellation and cannot be corrected here, ask your accountant if a correction is needed.', acts: [] }],
+    activity: [
+      { t: '17 Sep 10:02', tone: 'warn', kind: 'cancel', by: 'Allegro', text: 'Order cancelled at Allegro', sub: 'Paid PLN 60.94, refund not confirmed.' },
+      { t: '17 Sep 10:02', tone: '', kind: 'sync', by: 'System', text: 'Skipped sending to PrestaShop and WooCommerce', sub: 'Cancelled before the order was created there.' },
+      { t: '16 Sep 13:40', tone: '', kind: 'source', by: 'Allegro', text: 'Order received from Allegro (sandbox)' }]
+  }),
+  picking: mk({
+    tab: 'Picking, handled in OpenLinker', num: '3e9714f0', full: '3e9714f0-b36a-11f1-87a5-d37f7d8f71df', src: '1790112200456011', buyer: 'Karol Mazur', email: 'k.mazur+2326@user.allegrogroup.pl', prevOrders: 5,
+    placed: '18 Sep 2026, 16:07', age: '56 days ago', total: '463.59', chanStatus: 'Allegro: paid', phase: { label: 'Picking', tone: 'info' }, tax: { state: 'provided', v: '8261134465' }, tags: ['Customer called'],
+    times: { placed: '18 Sep 16:07', paid: '18 Sep 16:07', sync: '21 Sep 10:34' }, due: { t: 'Ship by 21 Sep, overdue 53 days', over: true },
+    facts: [{ i: 'truck', t: 'InPost, locker WAW112M' }, { i: 'clock', t: 'Ship by 21 Sep, overdue 53 days', c: 'err' }],
+    items: [{ n: 'Black Tiger woda toaletowa', sku: '7782225041', vat: '23%', q: 1, u: '452.64' }],
+    handled: true,
+    dests: [
+      { name: 'Subiekt GT (spike)', st: 'failed', note: 'No matching product', err: 'No product mapping for OL product ol_product_40aa22cba3274ee5aca98bcabc4453d9', tries: [{ t: '10:34', s: 'failed', e: 'No product mapping' }] },
+      { name: 'PrestaShop (demo store)', st: 'failed', note: 'Server error 500', err: 'Failed to provision customer in PrestaShop: PrestaShop API server error (500)', tries: [{ t: '10:34', s: 'failed', e: 'Server error 500' }, { t: '09:12', s: 'failed', e: 'Server error 500' }, { t: '21:30', s: 'failed', e: 'Server error 500' }] },
+      { name: 'WooCommerce (demo shop)', st: 'failed', note: 'Shop did not respond', err: 'WooCommerce network error after 3 retries', tries: [{ t: '10:34', s: 'failed', e: 'No response' }, { t: '09:12', s: 'failed', e: 'No response' }] }],
+    routing: { on: true, state: 'routed', text: 'Routed automatically.' },
+    tasks: [{ id: 'w1', where: 'Main warehouse', line: 'Black Tiger woda toaletowa', picked: '0 of 1 picked', status: 'in_progress', ver: 7, accepted: 'Accepted by OpenLinker', actions: ['hold', 'expedite', 'force_cancel'] }],
+    shipx: { kind: 'ready', method: 'Allegro Paczkomaty InPost', to: ['Karol Mazur', 'ul. Wiejska 8', '00-902 Warszawa', 'PL'], pickup: { code: 'WAW112M', kind: 'Paczkomat', note: 'Chosen by the buyer on Allegro' } },
+    doc: { routed: 'invoice', st: 'issued', title: 'Invoice FS 19/2026', sub: 'Issued 21 Sep 2026, 19:34', provider: SUB, down: false, canCorrect: true, authority: null, wz: 'released', wzNo: 'WZ 21/2026', lines: 0 },
+    notes: [{ id: 'n1', by: 'Ola', at: '20 Sep, 11:15', text: 'Customer called, wants it before Friday.', pin: true }],
+    extra: [{ id: 'stock', rank: 3, tone: 'warn', short: 'Stock at risk', title: 'Short 1 x Black Tiger woda toaletowa', why: 'The stock master dropped below what this order was promised. Nothing was silently reduced - this order is the one at risk.', acts: [] }],
+    activity: [
+      { t: '21 Sep 10:34', tone: 'error', kind: 'sync', by: 'System', text: 'Could not send to WooCommerce (demo shop)', sub: 'Shop did not respond.', tries: [{ t: '10:34', s: 'failed', e: 'No response' }, { t: '09:12', s: 'failed', e: 'No response' }] },
+      { t: '20 Sep 11:15', tone: '', kind: 'note', by: 'Ola', text: 'Note added by Ola' },
+      { t: '18 Sep 16:08', tone: '', kind: 'source', by: 'Allegro', text: 'Order received from Allegro (sandbox)' }]
+  }),
+  ready: mk({
+    tab: 'Ready to ship, edited', num: '9a1c7e22', full: '9a1c7e22-c8d4-4f10-a1b7-3be0d6f2a590', src: '1790290045120987', buyer: 'Ewa Lewandowska', email: 'e.lewandowska+77aa@user.allegrogroup.pl', prevOrders: 2,
+    placed: '12 Nov 2026, 18:20', age: '1 day ago', total: '127.40', paidAmount: '176.40', chanStatus: 'Allegro: paid', phase: { label: 'Ready to ship', tone: 'ok' }, tags: ['Gift'],
+    times: { placed: '12 Nov 18:20', paid: '12 Nov 18:20', sync: '12 Nov 18:22' }, due: { t: 'Ship by 14 Nov, 23:59' }, facts: [{ i: 'truck', t: 'InPost, locker KRA044M' }, { i: 'clock', t: 'Ship by 14 Nov, 23:59' }],
+    items: [{ n: 'Świeca sojowa Cedr i Mech 220g', sku: '7783019920', vat: '23%', q: 2, u: '49.00', was: 3 }, { n: 'Zapach do szafy lawenda', sku: '7783019931', vat: '23%', q: 1, u: '33.45' }, { n: 'Greeting card', sku: 'GIFT-CARD', vat: '23%', q: 1, u: '0.00', gift: { by: 'You added it', doc: 'It is listed on the document as a free line' } }],
+    discount: { ch: '15.00', ol: '0.00' },
+    buyerNote: { text: 'Please include a gift receipt.', ch: 'Allegro checkout', at: '12 Nov, 18:20', read: false },
+    notes: [{ id: 'n2', by: 'Ola', at: '13 Nov, 09:10', text: 'Fragile, wrap twice.', packer: true }],
+    dests: [{ name: 'PrestaShop (demo store)', st: 'synced', note: 'Order #1043' }, { name: 'WooCommerce (demo shop)', st: 'synced', note: 'Order #4412' }],
+    shipx: { kind: 'ready', method: 'Allegro Paczkomaty InPost', to: ['Ewa Lewandowska', 'ul. Kwiatowa 5', '30-001 Kraków', 'PL'], pickup: { code: 'KRA044M', kind: 'Paczkomat', note: 'Chosen by the buyer on Allegro' }, carrier: 'InPost' },
+    doc: { routed: 'invoice', st: 'none' },
+    payRecs: [{ shop: 'PrestaShop (demo store)', st: 'recorded' }, { shop: 'WooCommerce (demo shop)', st: 'pending', note: 'The shop did not answer' }],
+    extra: [
+      { id: 'edited', rank: 4, tone: 'info', short: 'Edited after import', title: 'This order was edited after it arrived', why: 'Candles went from 3 to 2. The new total is PLN 127.40, the buyer paid PLN 176.40, so PLN 49.00 is due back to the buyer.', acts: [A('refundDiff', 'Refund the difference', '', 'Refund noted')] },
+      { id: 'gift', rank: 5, tone: 'warn', short: 'Gift unavailable', title: 'The promised gift "Candle sample" is out of stock', why: 'The promotion would add it to this order. Skip it, add another gift, or open the rule.', acts: [A('banner', 'Skip', '', 'Gift skipped'), A('banner', 'Add other gift', '', 'Opens the gift picker'), A('banner', 'Open rule', '', 'Opens the promotion rule')] }],
+    activity: [
+      { t: '13 Nov 09:10', tone: '', kind: 'note', by: 'Ola', text: 'Note added by Ola', sub: 'Shown to packer.' },
+      { t: '13 Nov 08:30', tone: 'info', kind: 'edit', by: 'admin', text: 'Order edited', sub: 'Candles 3 to 2. Total PLN 176.40 to 127.40.' },
+      { t: '12 Nov 18:21', tone: '', kind: 'source', by: 'Allegro', text: 'Order received from Allegro (sandbox)' },
+      { t: '', tone: '', kind: 'buyeremail', by: 'System', text: 'Confirmation email to the buyer: sent' }]
+  }),
+  doubt: mk({
+    tab: 'Invoice in doubt, label failed', num: 'c4072be9', full: 'c4072be9-0a55-4d3e-95ce-2d4a8a6f1b30', src: '1790300012000321', buyer: 'Tomasz Nowak', email: 't.nowak+5d2@user.allegrogroup.pl', prevOrders: 0,
+    placed: '10 Nov 2026, 11:05', age: '3 days ago', total: '203.95', chanStatus: 'Allegro: paid', phase: { label: 'Processing', tone: 'info' }, tax: { state: 'provided', v: 'PL5252556107' },
+    times: { placed: '10 Nov 11:05', paid: '10 Nov 11:06', sync: '10 Nov 11:08', pack: '11 Nov 09:40' }, due: { t: 'Ship by 12 Nov, passed', over: true }, facts: [{ i: 'truck', t: 'DPD Kurier' }, { i: 'clock', t: 'Ship by 12 Nov, passed', c: 'err' }],
+    items: [{ n: 'Zestaw kawy ziarnistej 1kg', sku: '7784001200', vat: '5%', q: 2, u: '96.50' }],
+    pack: { packed: { at: '11 Nov, 09:40', by: 'Ola' } },
+    dests: [{ name: 'PrestaShop (demo store)', st: 'synced', note: 'Order #1041' }, { name: 'WooCommerce (demo shop)', st: 'synced', note: 'Order #4402' }],
+    shipx: { kind: 'labelFailed', method: 'DPD Kurier', to: ['Tomasz Nowak', 'ul. Zielona 9', '60-101 Poznań', 'PL'], failedAt: '11 Nov, 09:44', carrierErr: 'Postcode 60-101 is not served for this service level.', traceId: 'dpd-7f3a92c1', carrier: 'DPD' },
+    doc: { routed: 'invoice', st: 'inDoubt', title: 'Invoice needs review', sub: 'The provider did not answer in time. We cannot tell whether it created the document.', provider: SUB, down: false, canCorrect: false },
+    payRecs: [{ shop: 'PrestaShop (demo store)', st: 'recorded' }, { shop: 'WooCommerce (demo shop)', st: 'failed', note: 'The shop did not accept the payment update' }],
+    returns: { state: 'error', rows: [] },
+    activity: [{ t: '11 Nov 09:44', tone: 'error', kind: 'sync', by: 'System', text: 'Payment update to WooCommerce failed', sub: 'The shop did not accept it.' }, { t: '10 Nov 11:08', tone: 'ok', kind: 'sync', by: 'System', text: 'Sent to PrestaShop and WooCommerce' }, { t: '10 Nov 11:05', tone: '', kind: 'source', by: 'Allegro', text: 'Order received from Allegro (sandbox)' }]
+  }),
+  ksef: mk({
+    tab: 'Rejected by KSeF, return blocked', num: '71be0a53', full: '71be0a53-22f4-49aa-8d0e-6bfb3c7e1a21', src: '1790310077000555', buyer: 'Anna Wójcik', email: 'a.wojcik+88@user.allegrogroup.pl', prevOrders: 2,
+    placed: '8 Nov 2026, 09:12', age: '5 days ago', total: '360.95', chanStatus: 'Allegro: dispatched', phase: { label: 'Shipped', tone: 'ok' }, tax: { state: 'provided', v: 'PL7740001454' }, tags: ['B2B'],
+    times: { placed: '8 Nov 09:12', paid: '8 Nov 09:14', sync: '8 Nov 09:15', pack: '9 Nov 11:50', ship: '9 Nov 12:10' }, facts: [{ i: 'truck', t: 'InPost, locker POZ21M' }],
+    items: [{ n: 'Lampa biurkowa LED', sku: '7785002200', vat: '23%', q: 2, u: '150.00' }, { n: 'Zasilacz 12V', sku: '7785002299', vat: '23%', q: 1, u: '50.00' }],
+    pack: { packed: { at: '9 Nov, 11:50', by: 'Ola' } },
+    dests: [{ name: 'PrestaShop (demo store)', st: 'synced', note: 'Order #1038' }, { name: 'WooCommerce (demo shop)', st: 'synced', note: 'Order #4398' }],
+    shipx: { kind: 'shipped', status: 'dispatched', step: 1, method: 'Allegro Paczkomaty InPost', to: ['Anna Wójcik', 'ul. Słoneczna 4', '61-001 Poznań', 'PL'], pickup: { code: 'POZ21M', kind: 'PaczkoPunkt', note: 'Chosen by the buyer on Allegro' }, tracking: '602222437611300099112', carrier: 'InPost', by: 'OpenLinker bought the label from InPost', channelKnows: false },
+    doc: { routed: 'invoice', st: 'authRejected', title: 'Invoice FV 88/2026', sub: 'Issued 9 Nov 2026, 12:20. KSeF rejected it.', provider: 'KSeF', down: false, canCorrect: true, authority: 'rejected', authErr: 'Invalid buyer tax number format.', wz: null, upo: false },
+    returns: { state: 'ok', rows: [{ id: 'RET-2041', stage: 'Received, awaiting disposition', counters: '2 expected, 2 received, 0 restocked', restockBlocked: true }] },
+    activity: [
+      { t: '10 Nov 08:20', tone: 'error', kind: 'return', by: 'An operator', text: 'Restock blocked for return RET-2041', sub: 'The stock master refused the write. Units stay received, not restocked.' },
+      { t: '10 Nov 08:05', tone: '', kind: 'return', by: 'An operator', text: 'Return RET-2041 received', sub: '2 of 2 units.' },
+      { t: '9 Nov 12:30', tone: 'error', kind: 'docblock', by: 'KSeF', text: 'Invoice FV 88/2026 rejected by KSeF', sub: 'Invalid buyer tax number format.' },
+      { t: '9 Nov 11:50', tone: '', kind: 'pack', by: 'Ola', text: 'Marked as packed' },
+      { t: '9 Nov 09:00', tone: '', kind: 'return', by: 'Allegro', text: 'Return RET-2041 opened' }]
+  }),
+  held: mk({
+    tab: 'Held, privacy mode', num: 'e8a14c70', full: 'e8a14c70-6c11-4f8a-bb02-3d9be71ac0d4', src: '1790320099000888', buyer: null, email: null, emailHash: '7f3c9a21e0', pii: 'hash',
+    placed: '11 Nov 2026, 15:30', age: '2 days ago', total: '108.95', chanStatus: 'Allegro: paid', phase: { label: 'On hold', tone: 'warn' },
+    times: { placed: '11 Nov 15:30', paid: '11 Nov 15:31', sync: '11 Nov 15:33' }, due: { t: 'Ship by 13 Nov, 23:59' }, facts: [{ i: 'truck', t: 'InPost, locker GDA10M' }, { i: 'clock', t: 'Ship by 13 Nov, 23:59' }],
+    items: [{ n: 'Mydło naturalne 3-pak', sku: '7786003300', vat: '8%', q: 2, u: '49.00', bundle: ['Mydło lawendowe', 'Mydło cytrusowe', 'Mydło cedrowe'] }],
+    dests: [{ name: 'PrestaShop (demo store)', st: 'synced', note: 'Order #1046' }, { name: 'WooCommerce (demo shop)', st: 'pending', note: 'Waiting' }],
+    hold: { reason: 'fraud-review', by: null, at: '11 Nov, 15:34', service: true },
+    holdHistory: [{ r: 'payment-review', by: null, at: '11 Nov, 15:32', released: '11 Nov, 15:34' }],
+    routing: { on: true, state: 'stuck', text: 'Routing has not finished for this order.' },
+    shipx: { kind: 'ready', method: 'Allegro Paczkomaty InPost', to: ['PL'], missing: ['Name', 'Street', 'Postcode'], pickup: { code: 'GDA10M', kind: 'Paczkomat', note: 'Chosen by the buyer on Allegro' }, carrier: 'InPost' },
+    doc: { routed: 'invoice', st: 'inflight', title: 'Invoice being issued', sub: 'Running for at least 38 s.', provider: SUB },
+    buyerNote: { text: null, ch: 'Allegro checkout', at: '11 Nov, 15:30', read: false },
+    extra: [
+      { id: 'source', rank: 2, tone: 'warn', short: 'Changed at the source', title: 'Allegro changed this order after we imported it', why: 'The delivery method changed from an InPost locker to a courier. The parcel and the shops were set up for the old one.', acts: [A('banner', 'Re-check', 'primary', 'Re-check queued'), A('banner', 'Keep parcel', '', 'Parcel kept')] },
+      { id: 'routingReason', rank: 3, tone: 'warn', short: 'Some destinations unavailable', title: 'Some routed destinations unavailable', why: 'This order reached some of the destinations routing chose, but not all of them. The rest are disabled, unknown, or cannot create orders.', acts: [] },
+      { id: 'multipack', rank: 6, tone: 'warn', short: 'Multipack to confirm', title: 'Confirm the multipack sale: 1 sale = 3 x Mydło naturalne', why: 'Stock is counted in single units, so confirm what one sale contains before packing.', acts: [A('banner', 'Confirm sale', '', 'Sale confirmed')] }],
+    activity: [
+      { t: '11 Nov 15:35', tone: 'warn', kind: 'source', by: 'Allegro', text: 'Order changed at the source', sub: 'Delivery method changed.' },
+      { t: '11 Nov 15:34', tone: 'warn', kind: 'hold', by: 'System', text: 'Held: a risk check is outstanding' },
+      { t: '11 Nov 15:34', tone: '', kind: 'hold', by: '', text: 'Hold released: payment is being verified', sub: 'The system does not record which service released it.' },
+      { t: '11 Nov 15:32', tone: 'warn', kind: 'automation', by: 'Rule "Large baskets"', text: 'Automation placed a hold' }]
+  }),
+  nodest: mk({
+    tab: 'Routed nowhere, receipt due', num: 'b0d29e11', full: 'b0d29e11-9a3c-4e0f-a6d8-12c4f7b93e05', src: '1790330001000042', buyer: 'Krzysztof Dąbrowski', email: 'k.dabrowski+17@user.allegrogroup.pl', noCustomer: true,
+    placed: '13 Nov 2026, 07:55', age: '8 hours ago', total: '90.85', chanStatus: 'Allegro: paid', phase: { label: 'Processing', tone: 'info' }, tax: { state: 'none' },
+    times: { placed: '13 Nov 07:55', paid: '13 Nov 07:56' }, due: { t: 'Ship by 15 Nov' }, facts: [{ i: 'truck', t: 'Allegro One Kurier' }, { i: 'clock', t: 'Ship by 15 Nov' }],
+    items: [{ n: 'Olej lniany 500ml', sku: '7787004400', vat: '5%', q: 1, u: '79.90' }],
+    destNotice: 'routed-to-no-destination', routing: { on: true, state: 'routed', text: 'Routed automatically.' },
+    shipx: { kind: 'outside', method: 'Allegro One Kurier', to: ['Krzysztof Dąbrowski', 'ul. Parkowa 1', '31-100 Kraków', 'PL'], note: 'Shipped by Allegro (One Kurier). OpenLinker did not buy this label.', tracking: 'ONE-99810023', carrier: 'Allegro One' },
+    doc: { routed: 'receipt', st: 'none' },
+    parse: [{ field: 'buyer.phone', message: 'Unexpected format, the value was ignored.' }, { field: 'delivery.pickupPoint', message: 'Missing point id.' }],
+    activity: [{ t: '13 Nov 07:56', tone: '', kind: 'source', by: 'Allegro', text: 'Order received from Allegro (sandbox)' }]
+  }),
+  docfail: mk({
+    tab: 'Invoice failed (safe to retry)', num: 'd7f03a18', full: 'd7f03a18-5c22-4d1a-9b6e-8a14c3d9e7b0', src: '1790290099000731', buyer: 'Magdalena Król', email: 'm.krol+3a@user.allegrogroup.pl', prevOrders: 1,
+    placed: '9 Nov 2026, 10:12', age: '4 days ago', total: '150.00', chanStatus: 'Allegro: dispatched', phase: { label: 'Delivered', tone: 'ok' }, tax: { state: 'provided', v: 'PL5260250995' },
+    times: { placed: '9 Nov 10:12', paid: '9 Nov 10:13', sync: '9 Nov 10:15', pack: '10 Nov 09:00', ship: '10 Nov 09:20' }, facts: [{ i: 'truck', t: 'DPD Kurier' }],
+    items: [{ n: 'Czajnik elektryczny 1.7l', sku: '7788005500', vat: '23%', q: 1, u: '139.05' }],
+    pack: { packed: { at: '10 Nov, 09:00', by: 'Ola' } },
+    dests: [{ name: 'PrestaShop (demo store)', st: 'synced', note: 'Order #1040' }],
+    shipx: { kind: 'shipped', status: 'delivered', step: 3, method: 'DPD Kurier', to: ['Magdalena Król', 'ul. Cicha 7', '40-001 Katowice', 'PL'], tracking: '1000012345678', carrier: 'DPD', by: 'OpenLinker bought the label from DPD' },
+    doc: { routed: 'invoice', st: 'failed', title: 'Invoice failed', sub: 'Rejected - nothing was issued, so it is safe to retry once the cause is fixed.', provider: SUB, down: false, reason: 'The buyer tax number is not accepted by the provider.' },
+    activity: [{ t: '10 Nov 09:20', tone: '', kind: 'pack', by: 'Ola', text: 'Marked as packed' }, { t: '9 Nov 10:12', tone: '', kind: 'source', by: 'Allegro', text: 'Order received from Allegro (sandbox)' }]
+  }),
+  receipt: mk({
+    tab: 'Receipt not confirmed', num: 'f2c8e4b7', full: 'f2c8e4b7-1d33-4a0e-bb91-4e7c9a2d5f18', src: '1790300055000212', buyer: 'Paweł Sikora', email: 'p.sikora+9@user.allegrogroup.pl', prevOrders: 0,
+    placed: '10 Nov 2026, 14:00', age: '3 days ago', total: '58.95', chanStatus: 'Allegro: dispatched', phase: { label: 'Shipped', tone: 'ok' }, tax: { state: 'none' },
+    times: { placed: '10 Nov 14:00', paid: '10 Nov 14:01', sync: '10 Nov 14:03', pack: '11 Nov 08:30', ship: '11 Nov 08:45' }, facts: [{ i: 'truck', t: 'InPost, locker WAW33M' }],
+    items: [{ n: 'Skarpety bawełniane 3-pak', sku: '7789006600', vat: '23%', q: 3, u: '16.00' }],
+    pack: { packed: { at: '11 Nov, 08:30', by: 'Ola' } },
+    dests: [{ name: 'PrestaShop (demo store)', st: 'synced', note: 'Order #1042' }],
+    shipx: { kind: 'shipped', status: 'in-transit', step: 2, method: 'Allegro Paczkomaty InPost', to: ['Paweł Sikora', 'ul. Ruchliwa 2', '02-001 Warszawa', 'PL'], pickup: { code: 'WAW33M', kind: 'Paczkomat', note: 'Chosen by the buyer on Allegro' }, tracking: '602222437611300077003', carrier: 'InPost', by: 'OpenLinker bought the label from InPost' },
+    doc: { routed: 'receipt', st: 'unconfirmed', title: 'Receipt not confirmed', sub: 'The provider has not confirmed the registration.', provider: 'eparagony.pl', down: false },
+    activity: [{ t: '11 Nov 08:30', tone: '', kind: 'pack', by: 'Ola', text: 'Marked as packed' }, { t: '10 Nov 14:00', tone: '', kind: 'source', by: 'Allegro', text: 'Order received from Allegro (sandbox)' }]
+  }),
+  clean: mk({
+    tab: 'Delivered, nothing to do', num: '0b5d6a92', full: '0b5d6a92-77ae-4c3f-8d10-6a2e5b9c1f34', src: '1790250033000155', buyer: 'Lena Pawlak', email: 'l.pawlak+21@user.allegrogroup.pl', prevOrders: 4,
+    placed: '3 Nov 2026, 09:40', age: '10 days ago', total: '129.90', chanStatus: 'Allegro: delivered', phase: { label: 'Delivered', tone: 'ok' }, tax: { state: 'none' },
+    times: { placed: '3 Nov 09:40', paid: '3 Nov 09:41', sync: '3 Nov 09:43', pack: '4 Nov 10:00', ship: '4 Nov 10:15' }, facts: [{ i: 'truck', t: 'InPost, locker KRA99M' }],
+    items: [{ n: 'Herbata zielona 100g', sku: '7790007700', vat: '5%', q: 3, u: '39.65' }],
+    pack: { packed: { at: '4 Nov, 10:00', by: 'Ola' } },
+    dests: [{ name: 'PrestaShop (demo store)', st: 'synced', note: 'Order #1035' }],
+    shipx: { kind: 'shipped', status: 'delivered', step: 3, method: 'Allegro Paczkomaty InPost', to: ['Lena Pawlak', 'ul. Zacisze 5', '31-002 Kraków', 'PL'], pickup: { code: 'KRA99M', kind: 'Paczkomat', note: 'Chosen by the buyer on Allegro' }, tracking: '602222437611300055881', carrier: 'InPost', by: 'OpenLinker bought the label from InPost' },
+    doc: { routed: 'invoice', st: 'issued', title: 'Invoice FS 11/2026', sub: 'Issued 3 Nov 2026, 09:50', provider: SUB, down: false, canCorrect: true, authority: null, wz: 'released', wzNo: 'WZ 9/2026', lines: 0 },
+    payRecs: [{ shop: 'PrestaShop (demo store)', st: 'recorded' }],
+    activity: [{ t: '4 Nov 10:00', tone: '', kind: 'pack', by: 'Ola', text: 'Marked as packed' }, { t: '3 Nov 09:40', tone: '', kind: 'source', by: 'Allegro', text: 'Order received from Allegro (sandbox)' }]
+  })
+};
+const ORDER_KEYS = ['failed', 'blocked', 'cancelled', 'picking', 'ready', 'doubt', 'ksef', 'held', 'nodest', 'docfail', 'receipt', 'clean'];
+
+/* ---------- logic: roles, one health function over every dimension, journey, links ---------- */
+const SEV = { error: 0, warn: 1, info: 2 };
+/* ONE role table. 'admin' = admin only, 'write' = admin or operator, 'author' = note author or admin, null = any role. */
+const PERMS = {
+  edit: 'admin', cancelOrder: 'admin', hold: 'admin', release: 'admin', issueDoc: 'admin', emailDoc: 'admin', correction: 'admin', addRoute: 'admin',
+  checkDoc: 'write', refund: 'write', retry: 'write', link: 'write', customerLink: 'write', pack: 'write', unpack: 'write', label: 'write', cancelShip: 'write', markDispatched: 'write',
+  sendTracking: 'write', banner: 'write', refundDiff: 'write', gift: 'write', record: 'write', routingRetry: 'write', task: 'write', payRetry: 'write', markHandled: 'write', markRead: 'write', note: 'write', tag: 'write',
+  pin: 'author', editNote: 'authorOnly', deleteNote: 'author', view: null
+};
+const rank = { admin: 2, operator: 1, viewer: 0 };
+function can(role, id, who) {
+  if (!(id in PERMS)) { try { console.error('Action without a role rule: ' + id); } catch (e) {} return false; }
+  const need = PERMS[id];
+  if (!need) return true;
+  if (need === 'admin') return role === 'admin';
+  if (need === 'write') return role === 'admin' || role === 'operator';
+  if (need === 'author') return role === 'admin' || (role === 'operator' && who === 'You');
+  if (need === 'authorOnly') return role !== 'viewer' && who === 'You';
+  return false;
+}
+const whyNot = (id) => (PERMS[id] === 'admin' ? 'Only admins can do this' : PERMS[id] === 'authorOnly' ? 'Only the author can edit a note' : PERMS[id] === 'author' ? 'Only the author or an admin can do this' : 'You can read this order. Changing it needs the operator or admin role.');
+const holdLabel = (r) => (HOLD_REASONS.find((h) => h[0] === r) || [r, r])[1];
+const money = (n) => Number(n).toFixed(2);
+const itemsSum = (o) => o.items.reduce((s, i) => s + i.q * parseFloat(i.u), 0);
+const ROUTED_NOTE = 'This order is handled by OMS routing, so it is not copied to destinations and cannot be retried here.';
+const DEST_NOTICE = {
+  'routed-to-no-destination': { label: 'Routed nowhere', hint: 'Fulfilment routing decided this order needs no destination shop. This is a routing decision, not a failure - nothing is waiting on you.' },
+  'no-destination-configured': { label: 'Kept in source shop', hint: 'No other connection creates orders, so there is nothing to copy this order to. Its sales document is still issued. Add an order destination in Connections if orders should be copied elsewhere.' }
+};
+const DOC_STATES_WITH_RECORD = ['issued', 'final', 'inDoubt', 'authRejected', 'failed', 'unconfirmed', 'inflight'];
+const A2 = (id, label, kind, extra) => Object.assign({ id, label, kind: kind || '' }, extra || {});
+
+function recipientMissing(o) { return (o.shipx && o.shipx.missing) || null; }
+function labelBlock(o) {
+  if (!o.shipx || o.shipx.kind !== 'ready') return null;
+  if (o.hold) return 'The order is on hold. Release the hold first.';
+  if (o.shipx.gate) return o.shipx.gate.text;
+  const m = recipientMissing(o);
+  if (m) return 'Missing recipient data - cannot generate label: ' + m.join(', ') + '.';
+  if (o.cancelled) return 'The order is cancelled.';
+  return null;
+}
+function deriveIssues(o) {
+  const L = [];
+  const failed = o.dests.filter((d) => d.st === 'failed');
+  if (failed.length) {
+    const blocked = o.handled;
+    const acts = [];
+    if (!blocked) acts.push(A2('retry', failed.length > 1 ? 'Retry ' + failed.length + ' systems' : 'Retry', 'primary'));
+    if (failed.some((d) => /mapping/i.test(d.err || '') && !/conflict/i.test(d.err || ''))) acts.push(A2('link', 'Link products', acts.length ? '' : 'primary'));
+    if (failed.some((d) => /conflict/i.test(d.err || ''))) acts.push(A2('customerLink', 'Open customer link', acts.length ? '' : 'primary'));
+    L.push({ id: 'sync', kind: 'sync', rank: 1, tone: 'error', short: 'Sync failed', title: failed.length + ' of ' + o.dests.length + ' destinations did not receive this order', why: (blocked ? ROUTED_NOTE : 'Retrying never creates the order twice.'), acts, raw: failed.map((d) => d.name + ': ' + d.err).join('\n') });
+  }
+  const d = o.doc;
+  if (d.st === 'inDoubt') L.push({ id: 'doc', kind: 'doc', rank: 1, tone: 'error', short: 'Document needs review', title: 'We do not know whether the invoice exists', why: 'The provider did not answer. Registering again could produce a second fiscal document, so OpenLinker will not do that on its own.', acts: [A2('checkDoc', 'Check with provider', 'primary')] });
+  if (d.st === 'authRejected') L.push({ id: 'doc', kind: 'doc', rank: 1, tone: 'error', short: 'Rejected by KSeF', title: 'KSeF rejected ' + d.title.replace('Invoice ', 'invoice '), why: d.authErr + ' The same document would be rejected again, so issue a correction instead. Emailing it is paused until it is resolved.', acts: d.canCorrect && !d.down ? [A2('correction', 'Issue correction', 'primary')] : [] });
+  if (d.st === 'failed') L.push({ id: 'doc', kind: 'doc', rank: 1, tone: 'error', short: 'Invoice failed', title: 'The invoice was rejected', why: d.reason + ' Nothing was issued, so it is safe to retry once the cause is fixed.', acts: [A2('issueDoc', 'Retry', 'primary')] });
+  if (d.st === 'unconfirmed') L.push({ id: 'doc', kind: 'doc', rank: 1, tone: 'warn', short: 'Receipt not confirmed', title: 'The provider has not confirmed the receipt', why: 'Registering again could produce a second fiscal receipt, so check with the provider first.', acts: [A2('checkDoc', 'Check with provider', 'primary')] });
+  if (d.st === 'blocked') L.push({ id: 'doc', kind: 'doc', rank: 2, tone: 'warn', short: 'Invoice on hold', title: 'The invoice is waiting for a VAT rate', why: 'The product has no VAT rate. Set it on the product in your shop and the block clears.', acts: [] });
+  if (d.wz === 'not-released') L.push({ id: 'wz', kind: 'doc', rank: 3, tone: 'warn', short: 'Goods not released', title: 'The goods release (WZ) did not happen', why: 'The invoice exists, but the warehouse document was not created.', acts: [] });
+  if (o.hold) L.push({ id: 'hold', kind: 'hold', rank: 0, tone: 'warn', short: 'On hold', title: 'On hold: ' + holdLabel(o.hold.reason), why: (o.hold.service ? 'Placed by the system. ' : 'Placed by ' + o.hold.by + '. ') + 'Nothing is sent to the warehouse until it is released.', acts: [A2('release', 'Release hold', 'primary')] });
+  if (o.cancelled && o.paid && !o.refunded) L.push({ id: 'refund', kind: 'refund', rank: 0, tone: 'warn', short: 'Refund needed', title: 'Refund PLN ' + o.total + ' to the buyer', why: 'The order was paid, then cancelled. Refund the buyer in ' + o.channel.split(' ')[0] + ' yourself, then confirm it here. Do not prepare a shipment.', acts: [A2('refund', 'Confirm refund', 'primary')] });
+  if (o.shipx && o.shipx.kind === 'labelFailed') L.push({ id: 'label', kind: 'label', rank: 2, tone: 'error', short: 'Label failed', title: 'The carrier refused the label', why: o.shipx.carrierErr, acts: [A2('view', 'Fix and retry', 'primary', { go: 'ship' })] });
+  if (o.shipx && o.shipx.gate) L.push({ id: 'gate', kind: 'label', rank: 1, tone: 'warn', short: 'No shipping route', title: o.shipx.gate.text, why: 'Add the route, then generate the label.', acts: [A2('addRoute', o.shipx.gate.act, 'primary')] });
+  if (recipientMissing(o)) L.push({ id: 'missing', kind: 'label', rank: 4, tone: 'warn', short: 'Recipient data missing', title: 'Missing recipient data - cannot generate label', why: recipientMissing(o).join(', ') + '. Open this order in the source platform to fix the buyer record, then re-poll.', acts: [] });
+  if (o.shipx && o.shipx.channelKnows === false) L.push({ id: 'track', kind: 'label', rank: 4, tone: 'warn', short: 'Channel has no tracking', title: o.channel.split(' ')[0] + ' has not received the tracking number yet', why: 'Send it again so the buyer can follow the parcel.', acts: [A2('sendTracking', 'Send tracking again')] });
+  if (o.tasks.some((t) => t.status === 'incomplete')) L.push({ id: 'task', kind: 'task', rank: 3, tone: 'warn', short: 'Task short picked', title: 'A fulfilment task was short picked', why: 'See the Packing tab for the task.', acts: [A2('view', 'Open task', '', { go: 'ship' })] });
+  if (o.payRecs && o.payRecs.some((p) => p.st === 'failed')) L.push({ id: 'payrec', kind: 'pay', rank: 3, tone: 'warn', short: 'Payment not in a shop', title: o.payRecs.filter((p) => p.st === 'failed').length + ' shop still shows this order as unpaid', why: 'Retry, or mark the order paid in the shop yourself.', acts: [A2('payRetry', 'Retry now'), A2('markHandled', 'Mark as handled')] });
+  if (o.returns.state === 'error') L.push({ id: 'readReturns', kind: 'readReturns', rank: 8, tone: 'info', short: 'Returns not loaded', title: 'Returns could not be loaded, so we cannot say whether there are any', why: 'Reload them. Until then, treat returns as unknown.', acts: [A2('view', 'Reload returns', '', { run: 'reloadReturns' })] });
+  if (o.returns.rows.some((r) => r.restockBlocked)) L.push({ id: 'restock', kind: 'readReturns', rank: 3, tone: 'error', short: 'Restock blocked', title: 'A returned item could not be put back in stock', why: 'The stock master refused the write. The units stay received, not restocked, until you handle it.', acts: [A2('view', 'Open returns', '', { go: 'ret' })] });
+  if (o.due && o.due.over && !o.cancelled) L.push({ id: 'overdue', kind: 'ship', rank: 9, tone: 'error', short: 'Past ship-by date', title: 'The ship-by date has passed (' + o.due.t.replace('Ship by ', '') + ')', why: 'The buyer is waiting longer than promised.', acts: [] });
+  o.extra.forEach((e) => L.push(Object.assign({ kind: 'extra', acts: [] }, e)));
+  L.sort((a, b) => SEV[a.tone] - SEV[b.tone] || a.rank - b.rank);
+  return L;
+}
+function derive(o) {
+  const issues = deriveIssues(o);
+  const top = issues[0] || null;
+  const nextIssue = issues.find((i) => i.acts.length > 0) || top;
+  let next;
+  if (nextIssue) next = { text: nextIssue.title + '.', acts: nextIssue.acts, ctx: o.lead || null };
+  else if (o.shipx && o.shipx.kind === 'ready') next = { text: 'Generate the label and pack the parcel.' + (o.due && o.due.t ? ' ' + o.due.t + '.' : ''), acts: [A2('view', 'Open shipping', 'primary', { go: 'ship' })], ctx: o.lead || null };
+  else if (o.doc.st === 'none' && !o.cancelled) next = { text: 'Issue the ' + (o.doc.routed === 'receipt' ? 'receipt' : 'invoice') + ' for this order.', acts: [A2('view', o.doc.routed === 'receipt' ? 'Open documents' : 'Open documents', 'primary', { go: 'docs' })], ctx: o.lead || null };
+  else next = { text: 'Nothing to do. The order is done.', acts: [], ctx: o.lead || null };
+  return { issues, top, nextIssue, next, tone: top ? top.tone : (o.phase.tone === 'off' ? 'off' : o.phase.tone), label: top ? top.short : o.phase.label, readFailures: o.returns.state === 'error' ? ['Returns'] : [] };
+}
+function journeyOf(o) {
+  const t = o.times || {};
+  const J2 = [J('Placed', 'done', t.placed)];
+  J2.push(o.paid ? J('Paid', 'done', t.paid) : J('Paid', 'current', 'Awaiting payment'));
+  const f = o.dests.filter((d) => d.st === 'failed').length, s = o.dests.filter((d) => d.st === 'synced').length, sk = o.dests.filter((d) => d.st === 'skipped').length, n = o.dests.length;
+  if (o.cancelled) { J2.push(J('Cancelled', 'stop', t.cancel, 'By the buyer')); J2.push(o.refunded ? J('Refund', 'done', 'Confirmed') : J('Refund', 'warn', 'Not confirmed', 'Needs you')); return J2; }
+  if (!n) J2.push(J('Sent to shops', 'pending', 'No destination'));
+  else if (f) J2.push(J('Sent to shops', 'failed', t.sync, s + ' of ' + n + ' sent'));
+  else if (o.dests.some((d) => d.st === 'pending')) J2.push(J('Sent to shops', 'warn', 'Waiting', o.extra.some((e) => e.id === 'mapping') ? 'Link the offer' : s + ' of ' + n + ' sent'));
+  else if (o.dests.some((d) => d.st === 'syncing')) J2.push(J('Sent to shops', 'current', 'Sending'));
+  else J2.push(J('Sent to shops', 'done', t.sync, (s) + ' of ' + n + ' sent' + (sk ? ', ' + sk + ' skipped' : '')));
+  const sh = o.shipx;
+  if (o.pack.destFulfils) J2.push(J('Packed', 'pending', 'At the destination'));
+  else if (o.pack.packed) J2.push(J('Packed', 'done', t.pack));
+  else if (o.tasks.length) J2.push(J('Packed', 'current', 'Picking', o.tasks.map((x) => x.picked).join(', ')));
+  else if (sh && sh.kind === 'ready' && !o.hold) J2.push(J('Packed', 'current', 'Ready to pack'));
+  else J2.push(J('Packed', 'pending'));
+  if (sh && sh.kind === 'outside') { J2.push(J('Shipped', 'done', 'Outside OpenLinker')); J2.push(J('Delivered', 'current', 'In transit')); return J2; }
+  if (sh && sh.kind === 'labelFailed') J2.push(J('Shipped', 'failed', sh.failedAt, 'Label failed'));
+  else if (sh && sh.kind === 'shipped' && sh.step >= 1) J2.push(J('Shipped', 'done', t.ship));
+  else if (sh && sh.kind === 'shipped') J2.push(J('Shipped', 'current', 'Label ready'));
+  else J2.push(J('Shipped', 'pending'));
+  const st = sh && sh.step;
+  J2.push(st >= 3 ? J('Delivered', 'done', 'Delivered') : st >= 1 ? J('Delivered', 'current', st === 1 ? 'Dispatched' : 'In transit') : J('Delivered', 'pending'));
+  return J2;
+}
+
+const TABS = [['over', 'Overview'], ['ship', 'Shipping'], ['pack', 'Packing'], ['docs', 'Sales documents'], ['ret', 'Returns'], ['notes', 'Notes'], ['hist', 'History'], ['tech', 'Technical']];
+const ALIAS = { shipment: ['ship', 'shipment'], invoicing: ['docs', 'invoicing'], packing: ['pack', 'packing'], pack: ['pack'], hold: ['pack', 'hold'], 'order-raw-snapshot': ['tech', 'order-raw-snapshot'], returns: ['ret'], shipping: ['ship'], documents: ['docs'], overview: ['over'], technical: ['tech'], history: ['hist'], notes: ['notes'], ret: ['ret'], ship: ['ship'], docs: ['docs'], over: ['over'], tech: ['tech'], hist: ['hist'] };
+function parseHash(cur) {
+  try {
+    const raw = location.hash.slice(1);
+    const qt = new URLSearchParams(location.search).get('tab');
+    if (qt && ALIAS[qt] && ORDERS[raw]) return { key: raw, tab: ALIAS[qt][0], anchor: null };
+    if (ALIAS[raw]) return { key: cur || 'failed', tab: ALIAS[raw][0], anchor: ALIAS[raw][1] || null };
+    const i = raw.indexOf('-');
+    const k = i < 0 ? raw : raw.slice(0, i);
+    const t = i < 0 ? '' : raw.slice(i + 1);
+    const key = ORDERS[k] ? k : (cur || 'failed');
+    const al = ALIAS[t] || ['over'];
+    return { key, tab: al[0], anchor: al[1] || null };
+  } catch (e) { return { key: cur || 'failed', tab: 'over', anchor: null }; }
+}
+const setHash = (key, tab) => { try { history.replaceState(null, '', (tab && tab !== 'over' ? '?tab=' + tab : location.pathname) + '#' + key); } catch (e) {} };
+
+Object.assign(P, {
+  lock: 'M7 11V8a5 5 0 0110 0v3 M5 11h14v10H5z', edit: 'M4 20h4L19 9l-4-4L4 16z', trash: 'M5 7h14 M9 7V4h6v3 M7 7l1 13h8l1-13', undo: 'M9 14L4 9l5-5 M4 9h11a5 5 0 010 10h-3',
+  ext: 'M14 4h6v6 M20 4l-9 9 M10 6H5v13h13v-5', plus: 'M12 5v14 M5 12h14'
+});
+const DEST_ST = { synced: ['ok', 'Synced'], failed: ['error', 'Failed'], pending: ['info', 'Pending'], skipped: ['off', 'Skipped (cancelled)'], syncing: ['warn', 'Syncing'] };
+const TAG_DOT = { amber: 'var(--status-warning)', blue: 'var(--status-info)', green: 'var(--status-success)', grey: 'var(--status-disabled)', orange: 'var(--accent-primary)', pink: 'oklch(70% 0.16 350)', teal: 'oklch(65% 0.1 195)', violet: 'oklch(62% 0.16 295)' };
+
+function ActBtn({ a, ctx, sm }) {
+  const ok = ctx.can(a.id, a.who);
+  const reason = !ok ? whyNot(a.id) : a.disabled ? (a.hint || '') : '';
+  return html`<${Btn} da=${a.id} sm=${sm} kind=${a.kind || ''} icon=${a.icon} disabled=${!ok || !!a.disabled} title=${reason} onClick=${() => ctx.run(a)}>${a.label}<//>`;
+}
+/* menu with the keyboard behaviour of a real menu */
+function Menu2({ items, onClose, anchor }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const first = ref.current && ref.current.querySelector('[role=menuitem]:not([disabled])'); if (first) first.focus();
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target) && !(anchor.current && anchor.current.contains(e.target))) onClose(); };
+    document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const onKey = (e) => {
+    const els = Array.from(ref.current.querySelectorAll('[role=menuitem]:not([disabled])')); const i = els.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); els[(i + 1) % els.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); els[(i - 1 + els.length) % els.length].focus(); }
+    else if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); onClose(); if (anchor.current) anchor.current.focus(); }
+  };
+  return html`<div className="menu" ref=${ref} role="menu" onKeyDown=${onKey}>${items.map((it, i) => it === '-' ? html`<hr key=${i} />` :
+    html`<button key=${i} type="button" role="menuitem" tabIndex="-1" className=${it.danger ? 'dng' : ''} disabled=${it.disabled} onClick=${() => { onClose(); it.run && it.run(); }}><span>${it.label}${it.hint && html`<small>${it.hint}</small>`}</span></button>`)}</div>`;
+}
+
+/* ---------- dialogs (copy follows the app: cancel-order-dialog, cancel-shipment-dialog) ---------- */
+function Modal({ m, o, ctx, close }) {
+  const ref = useRef(null);
+  const [v, setV] = useState({});
+  useEffect(() => {
+    const prev = document.activeElement;
+    if (ref.current) { ref.current.focus(); if (!REDUCE) { try { ref.current.animate([{ opacity: 0, transform: 'translateY(10px) scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.16,1,.3,1)' }); } catch (e) {} } }
+    const k = (e) => {
+      if (e.key === 'Escape') { close(); return; }
+      if (e.key !== 'Tab' || !ref.current) return;
+      const f = Array.from(ref.current.querySelectorAll('button:not([disabled]),input,select,textarea,a[href]')); if (!f.length) return;
+      const i = f.indexOf(document.activeElement);
+      if (e.shiftKey && (i <= 0)) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+    };
+    document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('keydown', k); if (prev && prev.focus) prev.focus(); };
+  }, []);
+  const ch = o.channel.split(' ')[0];
+  const units = o.items.reduce((s, i) => s + i.q, 0);
+  const done = (fn, msg) => () => { close(); if (fn) fn(); if (msg) ctx.say(msg); };
+  const foot = (primary, label, danger, disabled, keep) => html`<div className="foot"><${Btn} onClick=${close}>${keep || 'Cancel'}<//><${Btn} kind=${danger ? 'danger' : 'primary'} disabled=${disabled} onClick=${primary}>${label}<//></div>`;
+  const dispatched = o.shipx && o.shipx.kind === 'shipped' && o.shipx.step >= 1;
+  let body;
+  if (m.kind === 'cancel' && dispatched) body = html`<h2 id="dlg-title">This order can not be cancelled</h2>
+    <div className="callout warn" style=${{ margin: 0 }}><${Icon} n="alert" s=${16} /><span><b>The parcel is on its way.</b></span></div>
+    <p><b>What you can do instead</b></p>
+    <ul><li>Ask the buyer to refuse the parcel, or to send it back after delivery. The return shows up on this order once the buyer opens it.</li><li>Once the goods are back, refund the buyer and confirm the refund here.</li><li>The invoice stays as issued. The return proposes the correction invoice.</li></ul>
+    <div className="foot"><${Btn} kind="primary" onClick=${close}>Close<//></div>`;
+  else if (m.kind === 'cancel') body = html`<h2 id="dlg-title">Cancel order #${o.num}?</h2>
+    <p>OpenLinker asks ${ch} to cancel it. Once ${ch} confirms, the rest happens on its own, except the refund, which you make yourself.</p>
+    <p><b>What happens</b> (${units} ${units === 1 ? 'unit' : 'units'})</p>
+    <ul><li><b>${ch}</b>, sent: the order is marked as cancelled there.</li><li><b>Invoice</b>, you review: ${o.doc.st === 'none' ? 'nothing was issued, so there is nothing to correct.' : 'an issued invoice can not be withdrawn. OpenLinker opens a correction proposal for you to review and confirm.'}</li><li><b>Money</b>, your action: not refunded by OpenLinker. The payment keeps reading Paid until a refund is confirmed.</li><li><b>Stock</b>, automatic: reserved units are released, open fulfilment work is cancelled and a shipping label that was bought is voided where the carrier allows it.</li></ul>
+    <div className="field"><label htmlFor="co-r">Reason</label><select id="co-r" defaultValue="" onChange=${(e) => setV({ r: e.target.value })}><option value="" disabled>Choose why</option><option value="buyer-request">Buyer asked to cancel</option><option value="duplicate">Duplicate order</option><option value="fraud">Suspected fraud or payment problem</option><option value="out-of-stock">Out of stock</option><option value="other">Other</option></select></div>
+    ${foot(done(() => ctx.upd((x) => Object.assign({}, x, { cancelled: true, phase: { label: 'Cancelled', tone: 'off' }, times: Object.assign({}, x.times, { cancel: 'now' }) }))), 'Cancel order', true, !v.r, 'Keep order')}`;
+  else if (m.kind === 'cancelShipment') body = html`<h2 id="dlg-title">Cancel this shipment?</h2><p>The label will be voided with ${o.shipx.carrier}. This cannot be undone - to ship this order again you'll need to generate a new label.</p>
+    ${o.shipx.status === 'dispatched' || o.shipx.step >= 1 ? html`<div className="callout warn" style=${{ margin: 0 }}><${Icon} n="alert" s=${16} /><span>This shipment was already marked as dispatched, so the sales channel has been told the parcel is on its way. OpenLinker cannot take that back for you - tell the channel yourself after cancelling.</span></div>` : null}
+    ${foot(done(() => ctx.upd((x) => Object.assign({}, x, { shipx: Object.assign({}, x.shipx, { kind: x.cancelled ? 'cancelledNone' : 'ready', tracking: null, step: 0 }) }))), 'Cancel shipment', true, false, 'Keep')}`;
+  else if (m.kind === 'markDispatched') body = html`<h2 id="dlg-title">Mark this shipment as dispatched?</h2><p>Only needed when the automation stopped. ${ch} is told the parcel is on its way.</p>${foot(done(() => ctx.upd((x) => Object.assign({}, x, { shipx: Object.assign({}, x.shipx, { step: 1, status: 'dispatched' }) }))), 'Mark dispatched')}`;
+  else if (m.kind === 'refund') body = html`<h2 id="dlg-title">Confirm the refund</h2><p>Confirm only once you have refunded <b>${o.cur} ${o.total}</b> to the buyer in ${ch}. OpenLinker does not move money.</p>${foot(done(() => ctx.upd((x) => Object.assign({}, x, { refunded: true }))), 'Confirm refund', false, false, 'Not yet')}`;
+  else if (m.kind === 'email') {
+    const blocked = ['inflight', 'inDoubt', 'authRejected'].includes(o.doc.st);
+    body = html`<h2 id="dlg-title">Email the document to the buyer</h2>${blocked ? html`<div className="callout warn" style=${{ margin: 0 }}><${Icon} n="alert" s=${16} /><span>The document is not settled yet, so sending it is paused.</span></div>` : null}
+      <div className="check"><input type="checkbox" id="em-ok" defaultChecked=${true} /><label htmlFor="em-ok">Send to the address on the order<div className="mono muted" style=${{ overflowWrap: 'anywhere' }}>${o.email || 'Not stored, so there is no address to send to'}</div></label></div>
+      <div className="field"><span id="lang-l" style=${{ fontWeight: 500 }}>Language of the message</span><div className="radios" role="radiogroup" aria-labelledby="lang-l"><label><input type="radio" name="lang" defaultChecked=${true} /> Polish</label><label><input type="radio" name="lang" /> English</label></div></div>
+      <p className="muted" style=${{ fontSize: 12.5, margin: 0 }}>This only queues the email. The history shows whether it was sent, suppressed or bounced.</p>${foot(done(null, 'Email queued'), 'Queue email', false, blocked || !o.email)}`;
+  } else if (m.kind === 'gift') body = html`<h2 id="dlg-title">Add a gift</h2><p>Gifts ship in the same parcel and are not charged to the buyer.</p><div className="field"><label htmlFor="gift-sel">Gift</label><select id="gift-sel"><option>Greeting card</option><option>Candle sample</option></select></div>${foot(done(null, 'Gift added'), 'Add gift')}`;
+  else if (m.kind === 'hold') body = html`<h2 id="dlg-title">Place a hold</h2><p>A held order is not sent to the warehouse until you release it.</p><div className="field"><label htmlFor="hold-r">Reason</label><select id="hold-r" onChange=${(e) => setV(Object.assign({}, v, { r: e.target.value }))} defaultValue="operator">${HOLD_REASONS.filter((h) => h[0] !== 'external').map(([k, l]) => html`<option key=${k} value=${k}>${l}</option>`)}</select></div><div className="field"><label htmlFor="hold-n">Note (optional)</label><input id="hold-n" className="ta" style=${{ minHeight: 0 }} onChange=${(e) => setV(Object.assign({}, v, { n: e.target.value }))} /></div>${foot(done(() => ctx.upd((x) => Object.assign({}, x, { hold: { reason: v.r || 'operator', by: 'You', at: 'now', service: false, note: v.n } }))), 'Place hold')}`;
+  else if (m.kind === 'release') {
+    const need = !o.hold.by;
+    body = html`<h2 id="dlg-title">Release the hold?</h2><p>${holdLabel(o.hold.reason)}. ${need ? 'We do not know who placed this hold, so say why you release it.' : ''}</p>
+      <div className="field"><label htmlFor="rel-n">Note${need ? ' (required)' : ' (optional)'}</label><input id="rel-n" className="ta" style=${{ minHeight: 0 }} onChange=${(e) => setV({ n: e.target.value })} /></div>
+      ${foot(done(() => ctx.upd((x) => Object.assign({}, x, { hold: null, holdHistory: [{ r: x.hold.reason, by: x.hold.by, at: x.hold.at, released: 'now' }].concat(x.holdHistory), holdResult: 'queued' }))), 'Release hold', false, need && !(v.n || '').trim())}`;
+  } else if (m.kind === 'deleteNote') body = html`<h2 id="dlg-title">Delete this note?</h2><p>The text is removed for everyone, including the pack bench. The activity timeline keeps a line saying a note by <b>${m.by}</b> was deleted, without its text.</p>${foot(done(() => ctx.upd((x) => Object.assign({}, x, { notes: x.notes.filter((n) => n.id !== m.id), activity: [{ t: 'now', tone: '', kind: 'note', by: 'You', text: 'Note deleted', sub: 'The text was removed.' }].concat(x.activity) }))), 'Delete note', true, false, 'Keep note')}`;
+  else if (m.kind === 'return') body = html`<h2 id="dlg-title">Record a return</h2><p>Opens a return in OpenLinker for this order. It does not contact ${ch}. A line needs a SKU, or its stock cannot be restored.</p>
+    <div className="field"><label htmlFor="ret-l">Line</label><select id="ret-l" onChange=${(e) => setV(Object.assign({}, v, { l: e.target.value }))}><option value="">Choose a line</option>${o.items.filter((i) => i.sku).map((i) => html`<option key=${i.sku} value=${i.sku}>${i.n} (${i.sku})</option>`)}</select></div>
+    <div className="field"><label htmlFor="ret-q">Quantity</label><input id="ret-q" className="ta" style=${{ minHeight: 0 }} inputMode="numeric" defaultValue="1" /></div>
+    <div className="field"><label htmlFor="ret-r">Reason</label><select id="ret-r"><option>Item was faulty</option><option>Item did not match the listing</option><option>Wrong item was sent</option><option>Buyer changed their mind</option><option>Something else</option></select></div>
+    ${o.returns.rows.length ? html`<div className="callout warn" style=${{ margin: 0 }}><${Icon} n="alert" s=${16} /><span>This order already has a return. Record another only if this is a separate parcel.</span></div>` : null}
+    ${foot(done(() => ctx.upd((x) => (x.returns.state === 'error' ? x : Object.assign({}, x, { returns: { state: 'ok', rows: x.returns.rows.concat([{ id: 'RET-new', stage: 'Awaiting parcel', counters: '1 expected, 0 received, 0 restocked', restockBlocked: false }]) } }))), 'Return recorded'), 'Record return', false, !v.l)}`;
+  else body = html`<h2 id="dlg-title">Edit order</h2><p>The edit dialog is not modelled in this preview.</p>${foot(close, 'Close')}`;
+  return html`<div className="scrim" onMouseDown=${(e) => { if (e.target === e.currentTarget) close(); }}><div className="modal" ref=${ref} role="dialog" aria-modal="true" aria-labelledby="dlg-title" tabIndex="-1">${body}</div></div>`;
+}
+
+/* ---------- tags: closed vocabulary, the colour belongs to the tag ---------- */
+function Tags({ o, ctx }) {
+  const [open, setOpen] = useState(false);
+  const ok = ctx.can('tag');
+  if (!o.tags.length && !ok) return null;
+  const avail = TAG_VOCAB.filter((t) => !o.tags.includes(t.n));
+  return html`<div className="b-tags" aria-label="Order tags">${o.tags.map((n) => html`<span key=${n} className="tag"><i style=${{ background: TAG_DOT[(tag(n) || {}).c || 'grey'] }} />${n}${ok && html`<button type="button" className="tx tt44" aria-label=${'Remove tag ' + n} onClick=${() => ctx.upd((x) => Object.assign({}, x, { tags: x.tags.filter((y) => y !== n) }))}><${Icon} n="x" s=${12} w=${2.4} /></button>`}</span>`)}
+    ${ok && html`<span style=${{ position: 'relative' }}><button type="button" className="tag-btn tt44" aria-haspopup="listbox" aria-expanded=${open} onClick=${() => setOpen(!open)}><${Icon} n="plus" s=${12} w=${2.4} />Add tag</button>
+      ${open && html`<div className="menu" role="listbox" aria-label="Add tag" style=${{ right: 'auto', left: 0, minWidth: 200 }}>${avail.length ? avail.map((t) => html`<button key=${t.n} type="button" role="option" aria-selected="false" onClick=${() => { ctx.upd((x) => Object.assign({}, x, { tags: x.tags.concat([t.n]) })); setOpen(false); }}><i className="tagdot" style=${{ background: TAG_DOT[t.c] }} />${t.n}</button>`) : html`<span className="muted" style=${{ padding: '8px 10px', display: 'block' }}>No more tags.</span>`}<hr />${ctx.can('edit') ? html`<button type="button" onClick=${() => { setOpen(false); ctx.say('Opens Manage tags'); }}>Manage tags</button>` : null}</div>`}</span>`}</div>`;
+}
+
+/* ---------- header ---------- */
+function payText(o) { return o.cancelled && o.paid && !o.refunded ? ['warn', 'Paid, refund needed'] : o.refunded ? ['off', 'Refunded'] : o.paid ? ['ok', 'Paid on ' + o.channel.split(' ')[0]] : ['off', 'Not paid yet']; }
+function Header({ o, h, ctx, openAll, setOpenAll }) {
+  const [menu, setMenu] = useState(false);
+  const mref = useRef(null);
+  const cancelled = o.cancelled;
+  const dispatched = o.shipx && o.shipx.kind === 'shipped' && o.shipx.step >= 1;
+  const lb = labelBlock(o);
+  const items = [
+    { label: 'Add gift', disabled: !ctx.can('gift') || cancelled, hint: !ctx.can('gift') ? whyNot('gift') : cancelled ? 'Gifts cannot be added to a cancelled order' : null, run: () => ctx.ask({ kind: 'gift' }) },
+    { label: 'Email buyer', disabled: !ctx.can('emailDoc') || !DOC_STATES_WITH_RECORD.includes(o.doc.st) || o.doc.st === 'failed', hint: !ctx.can('emailDoc') ? whyNot('emailDoc') : 'There is no issued document to email', run: () => ctx.ask({ kind: 'email' }) },
+    { label: 'How gifts and bundles work', run: () => ctx.say('Opens the gifts guide') }, '-',
+    { label: o.hold ? 'Release hold' : 'Place hold', disabled: !ctx.can(o.hold ? 'release' : 'hold') || cancelled, hint: !ctx.can('hold') ? whyNot('hold') : cancelled ? 'The order is cancelled' : null, run: () => ctx.ask({ kind: o.hold ? 'release' : 'hold' }) }, '-',
+    { label: 'Cancel order', danger: true, disabled: !ctx.can('cancelOrder') || cancelled, hint: !ctx.can('cancelOrder') ? whyNot('cancelOrder') : cancelled ? 'Already cancelled' : dispatched ? 'Opens a dialog explaining what to do instead' : null, run: () => ctx.ask({ kind: 'cancel' }) }];
+  const vis = [];
+  if (!cancelled) vis.push({ id: 'edit', label: 'Edit order', icon: 'edit' });
+  if (o.shipx && o.shipx.kind === 'shipped') vis.push({ id: 'view', label: 'Download label', icon: 'doc', say: 'Label downloaded' });
+  if (o.cancelled && o.paid && !o.refunded) vis.push({ id: 'refund', label: 'Confirm refund', icon: 'check' });
+  else if (!cancelled && o.shipx && o.shipx.kind === 'ready') vis.push({ id: 'label', label: 'Generate label', icon: 'truck', go: 'ship', disabled: !!lb, hint: lb || '' });
+  const tone = h.tone === 'error' ? 'err' : h.tone === 'warn' ? 'warn' : h.tone === 'ok' ? 'ok' : 'off';
+  const N = h.issues.length;
+  const nextTone = h.top ? (h.top.tone === 'error' ? 'err' : h.top.tone === 'warn' ? 'warn' : '') : 'ok';
+  const ps = payText(o);
+  const who = o.pii === 'hash' ? 'Unknown name' : o.buyer;
+  const first = h.issues.find((i) => i !== h.nextIssue);
+  const othersN = h.issues.filter((i) => i !== h.nextIssue).length;
+  return html`<section className=${'b-head ' + tone} id="bhead" data-enter="1" data-state="ready">
+    <div className="b-id">
+      <div>
+        <div className="b-h1"><h1>Order #${o.num}</h1><${CopyId} value=${o.full} shown="Copy id" say=${ctx.say} />
+          <span className="chan"><span className="ctile" style=${{ background: 'oklch(62% 0.18 40)' }}>A</span>${o.channel}</span></div>
+        <div className="b-sub"><b>${who}</b><span>${o.placed}</span><span className="muted">${o.age}</span></div>
+        <div className="b-stat"><span className=${'bigst ' + h.tone}><i />${h.label}</span>
+          ${N > 1 ? html`<button type="button" className="plus tt44" aria-expanded=${openAll} aria-controls="all-issues" onClick=${() => setOpenAll(!openAll)}>All issues (${N})</button>` : null}
+          <span className="cap">${o.phase.label}${o.cancelled ? '' : ', ' + o.chanStatus}</span></div>
+        <div className="b-facts">${o.facts.map((f) => html`<span key=${f.t} className=${f.c || ''}><${Icon} n=${f.i} s=${14} />${f.t}</span>`)}</div>
+        <${Tags} key=${o.num} o=${o} ctx=${ctx} />
+      </div>
+      <div className="b-r">
+        <div className="total-block"><div className="total"><small>${o.cur}</small>${o.total}</div><div className="pay"><${StateText} tone=${ps[0]}>${ps[1]}<//></div></div>
+        <div className="b-act">${vis.map((x) => html`<${ActBtn} key=${x.label} a=${x} ctx=${ctx} />`)}
+          <button type="button" ref=${mref} className="btn ghost tt44" aria-haspopup="menu" aria-expanded=${menu} onClick=${() => setMenu(!menu)}><${Icon} n="more" s=${15} />See more</button>
+          ${menu && html`<${Menu2} items=${items} anchor=${mref} onClose=${() => setMenu(false)} />`}</div>
+      </div>
+    </div>
+    <div className=${'b-next ' + nextTone}>
+      <div><div className="lbl">Next step</div><p className="tx">${h.next.text}</p>${h.next.ctx ? html`<p className="ctx">${h.next.ctx}</p>` : null}</div>
+      <div className="b-nacts">${h.next.acts.map((a, i) => html`<${ActBtn} key=${a.label} a=${Object.assign({}, a, { kind: i === 0 ? 'primary' : '' })} ctx=${ctx} />`)}</div>
+      <div className="b-also">${first ? html`<${Icon} n="alert" s=${15} /><span className="t"><b>Also:</b> ${first.title}</span>${othersN > 1 ? html`<span className="muted">and ${othersN - 1} more</span>` : null}<button type="button" className="linkbtn" onClick=${() => setOpenAll(!openAll)}>${openAll ? 'Hide' : 'Show all'}</button>`
+        : h.readFailures.length ? html`<${Icon} n="info" s=${15} /><span className="t">Could not check: ${h.readFailures.join(', ')}.</span>` : html`<span className="muted">Nothing else needs you.</span>`}</div>
+    </div>
+    ${openAll && N > 0 && html`<div className="b-all" id="all-issues" role="list">${h.issues.map((i, n) => html`<div className=${'b-iss ' + i.tone} role="listitem" key=${n}><${Icon} n="alert" s=${17} /><div><b>${i.title}</b><p>${i.why}</p></div><div className="go">${i.acts.map((b) => html`<${ActBtn} key=${b.label} sm a=${b} ctx=${ctx} />`)}</div></div>`)}</div>`}
+  </section>`;
+}
+
+/* ---------- overview ---------- */
+function BuyerNote({ o, ctx }) {
+  const n = o.buyerNote;
+  if (!n) return null;
+  return html`<div className="bnote"><div className="bn-h"><b>Buyer note</b><span className="muted">Written by the buyer at checkout, ${n.at}</span><span className="sp" />
+    ${n.text ? html`<button type="button" className="linkbtn" onClick=${() => { try { navigator.clipboard.writeText(n.text).then(() => ctx.say('Copied'), () => ctx.say('Copy failed. Select the note and press Ctrl+C.')); } catch (e) { ctx.say('Copy failed. Select the note and press Ctrl+C.'); } }}>Copy</button>` : null}
+    ${n.text && !n.read && ctx.can('markRead') ? html`<button type="button" className="linkbtn" onClick=${() => ctx.run({ id: 'markRead' })}>Mark as read</button>` : n.text ? html`<span className="muted">${n.read ? 'Read' : 'Not read yet'}</span>` : null}</div>
+    ${n.text ? html`<blockquote className="quote" style=${{ margin: '8px 0 0' }}>${n.text}</blockquote>` : html`<p className="muted" style=${{ margin: '8px 0 0' }}>The buyer left a note, but this installation does not store its text.</p>`}</div>`;
+}
+function ItemsSec({ o }) {
+  const sub = itemsSum(o);
+  const units = o.items.reduce((s, i) => s + i.q, 0);
+  return html`<${Sec} id="items" title="Items" action=${html`<span className="muted">${units} ${units === 1 ? 'unit' : 'units'}</span>`}>
+    ${o.items.map((i) => html`<div className="item" key=${i.sku}>
+      <span className="tile" style=${{ '--h': hue(i.sku) }}>${i.n[0]}</span>
+      <div><div className="nm">${i.n}${i.gift ? html` <${Pill} tone="warn" dot=${false}>Gift<//>` : null}</div>
+        <div className="sub"><span className="mono">${i.sku}</span>${i.was ? html`<span>${i.q} now, was ${i.was}</span>` : null}${i.vat ? html`<span>${i.vat} VAT</span>` : html`<${Pill} tone="warn">VAT rate missing<//>`}</div>
+        ${i.gift ? html`<div style=${{ marginTop: 4 }}><${Disclosure} label="Why this gift is here"><p className="tech-b">${i.gift.by}. ${i.gift.doc}.</p><//></div>` : null}
+        ${i.bundle ? html`<div style=${{ marginTop: 4 }}><${Disclosure} label=${'Bundle of ' + i.bundle.length}><p className="tech-b">${i.bundle.join(', ')}</p><//></div>` : null}</div>
+      <div className="amt">${money(i.q * parseFloat(i.u))}<small>${i.q} x ${i.u}</small></div></div>`)}
+    <div className="totals">
+      <div><span>Items</span><span className="mono">${o.cur} ${money(sub)}</span></div>
+      ${o.discount && parseFloat(o.discount.ch) > 0 ? html`<div><span>Discount from the channel</span><span className="mono">-${o.cur} ${o.discount.ch}</span></div>` : null}
+      ${o.discount && parseFloat(o.discount.ol) > 0 ? html`<div><span>Discount from OpenLinker</span><span className="mono">-${o.cur} ${o.discount.ol}</span></div>` : null}
+      <div><span>Shipping</span><span className="mono">${o.cur} ${o.ship}</span></div>
+      <div className="t"><span>Total</span><span className="mono">${o.cur} ${o.total}</span></div></div>
+  <//>`;
+}
+function PaymentSec({ o }) {
+  const ps = payText(o);
+  const paid = o.paidAmount || o.total;
+  return html`<${Sec} title="Payment"><div className="doc-h"><${StateText} tone=${ps[0]}>${ps[1]}<//>${o.paid ? html`<span className="muted">${o.cur} ${paid} paid in the channel${o.paidAmount && o.paidAmount !== o.total ? ', the order total is now ' + o.cur + ' ' + o.total : ''}</span>` : null}</div><//>`;
+}
+function TaxLine({ o }) {
+  const t = o.tax;
+  return html`<dt>Tax number</dt><dd>${t.state === 'provided' ? t.v : t.state === 'none' ? 'None - asserted' : html`<span className="muted">Not reported</span>`}</dd>`;
+}
+function CustomerSec({ o, ctx }) {
+  const hash = o.pii === 'hash';
+  return html`<${Sec} id="customer" title="Buyer" action=${o.noCustomer ? null : html`<button type="button" className="linkbtn" onClick=${() => ctx.say('Opens the customer')}>View customer</button>`}>
+    <div className="cust-name">${hash ? html`<span className="muted">Unknown name</span>` : o.buyer}</div>
+    ${hash ? html`<div className="muted" style=${{ marginTop: 4 }}>Email hash <span className="idchip" style=${{ paddingRight: 8 }}>${o.emailHash}</span></div>` : html`<div className="mono muted email-line" title=${o.email}>${o.email}</div>`}
+    <dl className="kv"><${TaxLine} o=${o} />${o.noCustomer ? html`<dt>Customer</dt><dd>No linked customer. <button type="button" className="linkbtn" onClick=${() => ctx.say('Opens the failed orders')}>View failed orders</button></dd>` : o.prevOrders ? html`<dt>Previous orders</dt><dd>${o.prevOrders}</dd>` : null}</dl>
+  <//>`;
+}
+function Overview({ o, h, ctx }) {
+  const pinned = o.notes.find((n) => n.pin);
+  const shipTo = o.shipx ? o.shipx.to : null;
+  const notice = o.destNotice ? DEST_NOTICE[o.destNotice] : null;
+  return html`<div style=${{ display: 'grid', gap: '26px' }}>
+    <div className="jwrap b-j"><${Journey} j=${journeyOf(o)} /></div>
+    <div className="b-two"><div>
+        ${pinned ? html`<div className="pinned" role="note"><${Icon} n="pin" s=${16} /><span><b>${pinned.by}</b>, ${pinned.at}: ${pinned.text}${pinned.packer ? ' (shown to packer)' : ''} <button type="button" className="linkbtn" onClick=${() => ctx.setTab('notes')}>All notes (${o.notes.length})</button></span></div>` : null}
+        <${BuyerNote} o=${o} ctx=${ctx} />
+        <div className="ocard"><${ItemsSec} o=${o} /></div>
+        <div className="ocard"><${PaymentSec} o=${o} /></div>
+        ${o.payRecs ? html`<div className="ocard"><${PaySec} o=${o} ctx=${ctx} /></div>` : null}
+      </div><div>
+        <div className="ocard"><${Sec} title="Delivery" action=${html`<button type="button" className="linkbtn" onClick=${() => ctx.setTab('ship')}>Open shipping</button>`}>
+          <div className="addr" style=${{ marginTop: 4 }}>${shipTo ? shipTo.map((l, i) => html`<div key=${i} style=${i === 0 && shipTo.length > 1 ? { fontWeight: 500 } : null}>${l}</div>`) : null}</div>
+          ${o.shipx ? html`<dl className="kv"><dt>Method</dt><dd>${o.shipx.method}</dd>${o.shipx.pickup ? html`<dt>${o.shipx.pickup.kind}</dt><dd className="mono">${o.shipx.pickup.code}</dd>` : null}</dl>` : null}
+          ${notice ? html`<div className="callout" style=${{ marginTop: 10 }}><${Icon} n="info" s=${16} /><span><b>${notice.label}.</b> ${notice.hint}</span></div>` : null}<//></div>
+        <div className="ocard"><${CustomerSec} o=${o} ctx=${ctx} /></div>
+        <div className="ocard ocard-slim"><${Compact} icon="doc" title="Document" value=${o.doc.title || (o.doc.routed === 'receipt' ? 'No receipt yet' : 'No invoice yet')} action=${html`<button type="button" className="linkbtn" onClick=${() => ctx.setTab('docs')}>Open</button>`} /></div>
+      </div></div></div>`;
+}
+
+/* ---------- shipping tab ---------- */
+function LabelForm({ o, ctx }) {
+  const s = o.shipx;
+  const [f, setF] = useState({ w: '', l: '', wd: '', h: '', size: 'medium', cod: '', ins: '' });
+  const set = (k) => (e) => setF(Object.assign({}, f, { [k]: e.target.value }));
+  const int = (v) => /^[1-9][0-9]*$/.test(v);
+  const bad = { w: f.w && !int(f.w), l: f.l && !int(f.l), wd: f.wd && !int(f.wd), h: f.h && !int(f.h) };
+  const ready = int(f.w) && int(f.l) && int(f.wd) && int(f.h);
+  const blocked = labelBlock(o);
+  const carrier = s.carrier || s.method;
+  const codCur = carrier === 'DPD' ? 'PLN' : o.cur;
+  return html`<form className="lform" aria-label="Generate label" onSubmit=${(e) => { e.preventDefault(); if (ready && !blocked) ctx.run({ id: 'label', run: 'generate', f }); }}>
+    <b>Generate label</b>
+    ${blocked ? html`<div className="callout warn" style=${{ margin: 0 }}><${Icon} n="alert" s=${16} /><span>${blocked}${s.gate ? html` <${ActBtn} sm a=${{ id: 'addRoute', label: s.gate.act }} ctx=${ctx} />` : ''}</span></div>` : null}
+    <div className="lgrid">
+      <div className="field"><label htmlFor="lw">Weight (g)</label><input id="lw" inputMode="numeric" value=${f.w} onChange=${set('w')} aria-invalid=${!!bad.w} />${bad.w ? html`<small className="err-t">Weight must be a positive integer</small>` : null}</div>
+      <div className="field"><label htmlFor="ll">Length (mm)</label><input id="ll" inputMode="numeric" value=${f.l} onChange=${set('l')} aria-invalid=${!!bad.l} />${bad.l ? html`<small className="err-t">Length must be a positive integer</small>` : null}</div>
+      <div className="field"><label htmlFor="lwd">Width (mm)</label><input id="lwd" inputMode="numeric" value=${f.wd} onChange=${set('wd')} aria-invalid=${!!bad.wd} />${bad.wd ? html`<small className="err-t">Width must be a positive integer</small>` : null}</div>
+      <div className="field"><label htmlFor="lh">Height (mm)</label><input id="lh" inputMode="numeric" value=${f.h} onChange=${set('h')} aria-invalid=${!!bad.h} />${bad.h ? html`<small className="err-t">Height must be a positive integer</small>` : null}</div>
+      ${s.pickup ? html`<div className="field"><label htmlFor="ls">Locker size</label><select id="ls" value=${f.size} onChange=${set('size')}><option value="small">small</option><option value="medium">medium</option><option value="large">large</option></select><small className="muted">Locker size template - required for a locker shipment.</small></div>
+      <div className="field"><label htmlFor="lp">${s.pickup.kind}</label><input id="lp" value=${s.pickup.code} readOnly /><small className="muted">Buyer-selected - read-only.</small></div>` : null}
+      <div className="field"><label htmlFor="li">Insurance (${o.cur})</label><input id="li" inputMode="decimal" value=${f.ins} onChange=${set('ins')} /><small className="muted">Declared value to insure the parcel for. Leave blank for the carrier default.</small></div>
+      ${o.paid ? null : html`<div className="field"><label htmlFor="lc">Cash on delivery (${codCur})</label><input id="lc" inputMode="decimal" value=${f.cod} onChange=${set('cod')} /><small className="muted">This carrier collects cash on delivery in ${codCur} only.</small></div>`}
+    </div>
+    <div style=${{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}><${ActBtn} a=${{ id: 'label', label: 'Generate label', kind: 'primary', icon: 'truck', disabled: !ready || !!blocked, hint: blocked || 'Fill in the weight and the three dimensions.', run: 'generate', f }} ctx=${ctx} /><span className="muted" style=${{ fontSize: 12.5 }}>Buying the label is simulated in this preview.</span></div>
+  </form>`;
+}
+function ShipmentCard({ o, ctx }) {
+  const s = o.shipx;
+  const steps = ['Label ready', 'Dispatched', 'In transit', 'Delivered'];
+  const has = s.kind === 'shipped';
+  const cancellable = has && (s.status === 'generated' || s.status === 'dispatched');
+  const url = s.tracking && CARRIER_URL[s.carrier] ? CARRIER_URL[s.carrier] + s.tracking : null;
+  return html`<div className="parcel" id="shipment">
+    <div className="p-h"><div className="who"><span className="dkind"><${Icon} n="truck" s=${20} /></span><div><b>${s.method}</b>${s.by ? html`<span className="s">${s.by}</span>` : null}</div></div>
+      ${has ? html`<div style=${{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><${ActBtn} sm a=${{ id: 'view', label: 'Download label', icon: 'doc', say: 'Label downloaded' }} ctx=${ctx} />${s.status === 'generated' && !o.cancelled ? html`<${ActBtn} sm a=${{ id: 'markDispatched', label: 'Mark dispatched' }} ctx=${ctx} />` : null}${cancellable ? html`<${ActBtn} sm a=${{ id: 'cancelShip', label: 'Cancel' }} ctx=${ctx} />` : null}</div>` : null}</div>
+    ${s.kind === 'shipped' && o.cancelled ? html`<div className="callout warn"><${Icon} n="alert" s=${16} /><span>The order is cancelled, but this label still exists. Cancel the shipment so the carrier does not deliver it.</span></div>` : null}
+    ${s.kind === 'cancelledNone' ? html`<p className="muted" style=${{ margin: 0 }}>The shipment was cancelled. The order is cancelled, so no new label is needed.</p>` : null}
+    ${has && !s.tracking ? html`<p className="muted" style=${{ margin: 0 }}>Label generated. The tracking number will appear within about 5 minutes.</p>` : null}
+    ${s.tracking ? html`<div className="track"><span className="muted">Tracking</span><span className="num">${s.tracking}</span><${CopyId} value=${s.tracking} shown="Copy" say=${ctx.say} />${url ? html`<a className="linkbtn" href=${url} target="_blank" rel="noreferrer">Track at ${s.carrier} <${Icon} n="ext" s=${12} /></a>` : null}</div>` : null}
+    ${has ? html`<div className="steps" aria-label="Shipment progress">${steps.map((l, i) => html`<div key=${l} className=${'step ' + (i < s.step ? 'done' : i === s.step ? 'cur' : '')}><i />${l}</div>`)}</div>` : null}
+    <div className="p-grid"><div><h3>Ship to</h3><div className="addr">${s.to.map((l, i) => html`<div key=${i} style=${i === 0 && s.to.length > 1 ? { fontWeight: 500 } : null}>${l}</div>`)}</div></div>
+      ${s.pickup ? html`<div className="locker"><small>${s.pickup.kind}</small><b>${s.pickup.code}</b><small>${s.pickup.note}</small></div>` : null}</div>
+    ${s.kind === 'labelFailed' ? html`<div className="callout warn" style=${{ margin: 0 }}><${Icon} n="alert" s=${16} /><span><b>Failed ${s.failedAt}.</b> ${s.carrierErr} Reference for carrier support: <span className="mono">${s.traceId}</span> <${CopyId} value=${s.traceId} shown="Copy" say=${ctx.say} /></span></div>` : null}
+    ${(s.kind === 'ready' || s.kind === 'labelFailed') && !o.cancelled ? html`<${LabelForm} o=${o} ctx=${ctx} />` : null}
+  </div>`;
+}
+function OutsideCard({ o, ctx }) {
+  const s = o.shipx;
+  return html`<div className="parcel" id="shipment"><div className="p-h"><div className="who"><span className="dkind"><${Icon} n="truck" s=${20} /></span><div><b>Shipped outside OpenLinker</b><span className="s">${s.note}</span></div></div></div><div className="track"><span className="muted">Tracking</span><span className="num">${s.tracking}</span><${CopyId} value=${s.tracking} shown="Copy" say=${ctx.say} /></div><div className="p-grid"><div><h3>Ship to</h3><div className="addr">${s.to.map((l, i) => html`<div key=${i} style=${i === 0 ? { fontWeight: 500 } : null}>${l}</div>`)}</div></div></div></div>`;
+}
+function PackingLine({ o, ctx }) {
+  if (o.pack.destFulfils) return html`<div className="line" id="packing"><b>Packing</b><span className="muted">Handled at the destination.</span></div>`;
+  const p = o.pack.packed;
+  return html`<div className="line" id="packing"><b>Packing</b><span>${p ? 'Packed ' + p.at + ' by ' + p.by : 'Not packed yet.'}</span><span className="sp" />
+    ${p ? html`<${ActBtn} sm a=${{ id: 'unpack', label: 'Undo', icon: 'undo' }} ctx=${ctx} />` : html`<${ActBtn} sm a=${{ id: 'pack', label: 'Mark packed', disabled: o.cancelled, hint: 'The order is cancelled' }} ctx=${ctx} />`}</div>`;
+}
+function HoldPanel({ o, ctx }) {
+  const h = o.hold;
+  return html`<div id="hold" style=${{ display: 'grid', gap: 10 }}>
+    ${h ? html`<div className="holdcard"><div className="p-h"><div><b>On hold: ${holdLabel(h.reason)}</b><span className="muted" style=${{ display: 'block', fontSize: 13 }}>${h.service ? 'Placed by the system' : 'Placed by ' + h.by}, ${h.at}.${h.note ? ' Note: ' + h.note : ''}</span></div><${ActBtn} sm a=${{ id: 'release', label: 'Release hold', kind: 'primary' }} ctx=${ctx} /></div></div>`
+      : html`<div className="line"><b>Hold</b><span>None</span><span className="sp" />${o.cancelled ? null : html`<${ActBtn} sm a=${{ id: 'hold', label: 'Place hold' }} ctx=${ctx} />`}</div>`}
+    ${o.holdResult ? html`<div className="callout"><${Icon} n="check" s=${16} /><span>Hold released. Provisioning was ${o.holdResult === 'queued' ? 'queued again, the order continues to your destinations.' : o.holdResult}</span></div>` : null}
+    ${o.holdHistory.length ? html`<${Disclosure} label=${'Hold history (' + o.holdHistory.length + ')'}>${o.holdHistory.map((x) => html`<p className="tech-b" key=${x.at}>${holdLabel(x.r)}, placed ${x.by ? 'by ' + x.by : 'by the system'} ${x.at}, released ${x.released}</p>`)}<//>` : null}
+  </div>`;
+}
+function TaskPanel({ o, ctx }) {
+  if (!o.tasks.length) return null;
+  return html`<${Sec} title="Fulfilment tasks" action=${html`<span className="muted">${o.tasks.length} ${o.tasks.length === 1 ? 'task' : 'tasks'}</span>`}>
+    ${o.tasks.map((t) => html`<div className="task" key=${t.id} style=${{ marginTop: 10 }}>
+      <div className="row-end"><b>${t.where}</b><${Pill} tone=${t.status === 'incomplete' ? 'warn' : t.status === 'in_progress' ? 'info' : 'off'}>${t.status.replace('_', ' ')}<//></div>
+      <span>${t.line}, ${t.picked}</span><span className="muted" style=${{ fontSize: 12.5 }}>${t.accepted}. Counts come from the person picking and can lag a little.</span>
+      <div style=${{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>${t.actions.length ? t.actions.map((a) => html`<${ActBtn} key=${a} sm a=${{ id: 'task', label: ACTION_LABEL[a], run: 'task' }} ctx=${ctx} />`) : html`<span className="muted">The server offers no actions for this task.</span>`}</div></div>`)}
+  <//>`;
+}
+function RoutingPanel({ o }) {
+  if (!o.routing.on) return null;
+  return html`<${Sec} title="Routing decision"><div className=${'callout' + (o.routing.state === 'stuck' ? ' warn' : '')} style=${{ marginTop: 6 }}><${Icon} n=${o.routing.state === 'stuck' ? 'alert' : 'info'} s=${16} /><span>${o.routing.text}</span></div><//>`;
+}
+function ShippingTab({ o, ctx }) {
+  const s = o.shipx;
+  return html`<div style=${{ display: 'grid', gap: 18 }}>
+    <div className="ocard"><${Sec} title="Shipment" id="fulfilment">${!s ? html`<p className="muted" style=${{ margin: '6px 0 0' }}>No shipment.</p>` : s.kind === 'outside' ? html`<${OutsideCard} o=${o} ctx=${ctx} />` : html`<${ShipmentCard} o=${o} ctx=${ctx} />`}<//></div>
+  </div>`;
+}
+function PackingTab({ o, ctx }) {
+  return html`<div style=${{ display: 'grid', gap: 18 }}>
+    <div className="ocard" id="shipping-packing"><${Sec} title="Packing and hold"><div className="ship-stack"><${PackingLine} o=${o} ctx=${ctx} /><${HoldPanel} o=${o} ctx=${ctx} /></div><//></div>
+    ${o.tasks.length ? html`<div className="ocard"><${TaskPanel} o=${o} ctx=${ctx} /></div>` : null}
+    ${o.routing.on ? html`<div className="ocard"><${RoutingPanel} o=${o} /></div>` : null}
+  </div>`;
+}
+
+/* ---------- documents tab ---------- */
+function DocSec({ o, ctx }) {
+  const d = o.doc;
+  const kind = d.routed === 'receipt' ? 'receipt' : 'invoice';
+  const issueLabel = kind === 'receipt' ? 'Register receipt' : 'Issue invoice';
+  const authTone = { accepted: 'ok', pending: 'info', rejected: 'error' };
+  const wzPill = d.wz === 'not-released' ? html`<${Pill} tone="warn">Goods not released<//>` : d.wz === 'released' ? html`<${Pill} tone="ok">Goods released, ${d.wzNo}<//>` : null;
+  const settled = !['inflight', 'inDoubt', 'authRejected'].includes(d.st);
+  const hasDoc = ['issued', 'final', 'authRejected'].includes(d.st);
+  const title = d.title || (d.st === 'none' || d.st === 'blocked' ? 'No ' + kind + ' yet' : '');
+  return html`<${Sec} id="invoicing" title="Sales document">
+    <div className="doc-h"><span className="dkind"><${Icon} n="doc" s=${20} /></span><div><b>${title}</b>${d.sub ? html`<span className="muted">${d.sub}</span>` : null}</div></div>
+    <div style=${{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>${d.authority ? html`<${Pill} tone=${authTone[d.authority]}>${d.provider}: ${d.authority}<//>` : null}${wzPill}</div>
+    ${d.st === 'none' ? html`<div style=${{ marginTop: 12 }}><${ActBtn} sm a=${{ id: 'issueDoc', label: issueLabel, icon: 'doc', say: kind === 'receipt' ? 'Receipt registration queued' : 'Invoice queued' }} ctx=${ctx} /><div className="muted" style=${{ fontSize: 12.5, marginTop: 6 }}>Routing chose ${kind === 'receipt' ? 'a receipt' : 'an invoice'} for this order, so that is the only document offered.</div></div>` : null}
+    ${d.st === 'blocked' ? html`<div style=${{ marginTop: 12 }}><${ActBtn} sm a=${{ id: 'issueDoc', label: issueLabel, icon: 'doc', disabled: true, hint: 'Set the VAT rate on the product first' }} ctx=${ctx} /><div className="muted" style=${{ fontSize: 12.5, marginTop: 6 }}>Blocked until the VAT rate is set on the product. When it is, the block clears.</div></div>` : null}
+    ${d.st === 'inflight' ? html`<div className="callout"><${Icon} n="clock" s=${16} /><span>Another attempt is running right now, for at least 38 s. There is nothing to click until it finishes.</span></div>` : null}
+    ${d.st === 'inDoubt' ? html`<div className="callout warn"><${Icon} n="alert" s=${16} /><span>Registering again could produce a second fiscal document, so OpenLinker will not do that on its own.</span></div><div style=${{ marginTop: 12 }}><${ActBtn} sm a=${{ id: 'checkDoc', label: 'Check with provider', kind: 'primary', icon: 'retry' }} ctx=${ctx} /></div>` : null}
+    ${d.st === 'unconfirmed' ? html`<div className="callout warn"><${Icon} n="alert" s=${16} /><span>Registering again could produce a second fiscal receipt, so check with the provider first.</span></div><div style=${{ marginTop: 12 }}><${ActBtn} sm a=${{ id: 'checkDoc', label: 'Check with provider', kind: 'primary', icon: 'retry', recpt: true }} ctx=${ctx} /></div>` : null}
+    ${d.st === 'failed' ? html`<div style=${{ marginTop: 12 }}><${ActBtn} sm a=${{ id: 'issueDoc', label: 'Retry', kind: 'primary', icon: 'retry', say: 'Retry queued' }} ctx=${ctx} /></div>` : null}
+    ${hasDoc ? html`<dl className="kv"><dt>Issued by</dt><dd>${d.provider} ${d.down ? html`<${Pill} tone="warn">Disconnected<//>` : ''}</dd></dl>
+      ${d.down ? html`<div className="callout warn"><${Icon} n="alert" s=${16} /><span>This connection is disconnected, so corrections are paused. The document stays valid. <button type="button" className="linkbtn" onClick=${() => ctx.say('Opens the connection')}>Reconnect</button></span></div>` : null}
+      ${d.st === 'authRejected' ? html`<div className="callout warn"><${Icon} n="alert" s=${16} /><span>KSeF rejected this document: ${d.authErr} Issue a correction. Emailing it is paused until it is resolved.</span></div>` : null}
+      ${d.st === 'final' && !d.canCorrect ? html`<div className="callout warn"><${Icon} n="info" s=${16} /><span>This registration is final and cannot be corrected here.</span></div>` : null}
+      <div style=${{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+        <${ActBtn} sm a=${{ id: 'emailDoc', label: 'Email to buyer', icon: 'mail', disabled: !settled, hint: 'Paused until the document is settled', run: 'email' }} ctx=${ctx} />
+        ${d.canCorrect ? html`<${ActBtn} sm a=${{ id: 'correction', label: 'Issue correction', kind: d.st === 'authRejected' ? 'primary' : '', disabled: d.down, hint: 'Reconnect the provider first', say: 'Correction started' }} ctx=${ctx} />` : null}</div>` : null}
+  <//>`;
+}
+function PaySec({ o, ctx }) {
+  if (!o.payRecs) return null;
+  const recs = o.payRecs;
+  const counted = recs.filter((p) => p.st !== 'skipped' && p.st !== 'notTracked');
+  const ok = counted.filter((p) => p.st === 'recorded').length;
+  const hasFail = recs.some((p) => p.st === 'failed');
+  const LBL = { recorded: ['ok', 'Paid in shop'], pending: ['info', 'Updating'], failed: ['error', 'Not sent'], skipped: ['off', 'Order cancelled'], handled: ['off', 'Handled'], notTracked: ['off', 'Not tracked here'] };
+  return html`<${Sec} id="payshops" title="Payment in each shop" action=${html`<span className="muted">${ok} of ${counted.length} shops updated</span>`}>
+    ${o.paidAfterCancel ? html`<div className="callout warn"><${Icon} n="alert" s=${16} /><span><b>The buyer paid a cancelled order.</b> The order stays cancelled and the shops were not changed. Check the refund in the marketplace.</span></div>` : null}
+    <div style=${{ marginTop: 8 }}>${recs.map((p) => html`<div className="payrow" key=${p.shop}><span>${p.shop}</span><${Pill} tone=${LBL[p.st][0]}>${LBL[p.st][1]}<//>${p.note ? html`<span className="muted">${p.note}</span>` : html`<span />`}<span /></div>`)}</div>
+    ${hasFail ? html`<div style=${{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}><${ActBtn} sm a=${{ id: 'payRetry', label: 'Retry now' }} ctx=${ctx} /><${ActBtn} sm a=${{ id: 'markHandled', label: 'Mark as handled' }} ctx=${ctx} /></div>` : null}
+    <p className="muted" style=${{ fontSize: 12.5, margin: '8px 0 0' }}>Handled shops are not counted as updated. Retry and Mark as handled apply to the whole order.</p>
+  <//>`;
+}
+function DocsTab({ o, ctx }) { return html`<div style=${{ display: 'grid', gap: 18 }}><div className="ocard"><${DocSec} o=${o} ctx=${ctx} /></div></div>`; }
+
+/* ---------- returns, notes, history, technical ---------- */
+function ReturnsTab({ o, ctx }) {
+  const r = o.returns;
+  return html`<${Sec} title="Returns" action=${html`<${ActBtn} sm a=${{ id: 'record', label: 'Record a return', icon: 'pack', run: 'recordReturn' }} ctx=${ctx} />`}>
+    ${r.state === 'error' ? html`<div className="callout warn"><${Icon} n="alert" s=${16} /><span>Returns could not be loaded, so we cannot say whether this order has any. <${ActBtn} sm a=${{ id: 'view', label: 'Reload returns', run: 'reloadReturns' }} ctx=${ctx} /></span></div>`
+      : r.rows.length === 0 ? html`<p className="muted" style=${{ margin: '6px 0 0' }}>No returns for this order.</p>`
+      : r.rows.map((x) => html`<div className="retrow" key=${x.id}><button type="button" className="linkbtn mono" onClick=${() => ctx.say('Opens return ' + x.id)}>${x.id}</button><span>${x.stage}</span><span className="muted">${x.counters}</span>${x.restockBlocked ? html`<${Pill} tone="error">Restock blocked<//>` : html`<span />`}</div>`)}
+  <//>`;
+}
+function NotesTab({ o, ctx }) {
+  const [txt, setTxt] = useState('');
+  const [packer, setPacker] = useState(false);
+  const [pinTop, setPinTop] = useState(false);
+  const [edit, setEdit] = useState(null);
+  const ok = ctx.can('note');
+  const log = (text, sub) => ({ t: 'now', tone: '', kind: 'note', by: 'You', text, sub: sub || '' });
+  const add = (e) => { e.preventDefault(); const v = txt.trim(); if (!v) return; const id = 'n' + Date.now(); ctx.upd((x) => Object.assign({}, x, { notes: [{ id, by: 'You', at: 'now', text: v, packer, pin: pinTop }].concat(x.notes.map((n) => (pinTop ? Object.assign({}, n, { pin: false }) : n))), activity: [log('Note added', packer ? 'Shown to packer.' : '')].concat(x.activity) })); ctx.say('Note added'); setTxt(''); setPacker(false); setPinTop(false); };
+  return html`<${Sec} title=${'Notes (' + o.notes.length + ')'}>
+    ${ok ? html`<form className="notes-in" style=${{ flexDirection: 'column' }} onSubmit=${add}>
+      <label htmlFor="note-input" className="muted" style=${{ fontSize: 12.5 }}>New note</label>
+      <textarea id="note-input" rows="2" maxLength="2000" placeholder="Add a note for your team" value=${txt} onChange=${(e) => setTxt(e.target.value)} className="ta" />
+      <div style=${{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}><label className="check"><input type="checkbox" id="note-packer" checked=${packer} onChange=${(e) => setPacker(e.target.checked)} />Show to packer on the pack bench</label><label className="check"><input type="checkbox" id="note-pin" checked=${pinTop} onChange=${(e) => setPinTop(e.target.checked)} />Pin to the top</label><span className="muted" style=${{ fontSize: 12.5 }}>${txt.length} / 2000</span><span style=${{ flex: 1 }} /><${Btn} submit sm kind=${txt.trim() ? 'primary' : ''} disabled=${!txt.trim()}>Add note<//></div>
+      ${packer ? html`<div className="callout warn" style=${{ margin: 0 }}><${Icon} n="alert" s=${16} /><span>Packers see this text on the pack bench. Leave out phone numbers, emails and addresses.</span></div>` : null}
+    </form>` : html`<p className="muted" style=${{ margin: '6px 0 0' }}>You can read notes. Adding or changing them needs the operator or admin role.</p>`}
+    <p className="muted" style=${{ fontSize: 12.5, margin: '8px 0 0' }}>Only your team sees these. Never sent to ${o.channel.split(' ')[0]}.</p>
+    ${o.notes.length === 0 ? html`<p style=${{ margin: '14px 0 0' }}><b>No notes yet</b><br /><span className="muted">Write down anything the next person handling this order should know: a buyer's request, a phone call, a packing instruction.</span></p>` : o.notes.map((n) => html`<div className="nrow" key=${n.id}>
+      ${edit === n.id ? html`<form style=${{ flex: 1 }} onSubmit=${(e) => { e.preventDefault(); const v = e.target.elements.en.value.trim(); if (v) ctx.upd((x) => Object.assign({}, x, { notes: x.notes.map((y) => (y.id === n.id ? Object.assign({}, y, { text: v, edited: true }) : y)), activity: [log('Note edited')].concat(x.activity) })); setEdit(null); }}><textarea name="en" className="ta" defaultValue=${n.text} rows="2" maxLength="2000" aria-label="Edit note" /><div className="muted" style=${{ fontSize: 12.5 }}>Everyone sees that it was edited.</div><div style=${{ display: 'flex', gap: 8, marginTop: 6 }}><${Btn} submit sm kind="primary">Save<//><${Btn} sm kind="ghost" onClick=${() => setEdit(null)}>Cancel<//></div></form>`
+        : html`<div>${n.pin ? html`<${Icon} n="pin" s=${14} /> ` : null}${n.text}${n.edited ? html` <span className="muted">(edited)</span>` : null}${n.packer ? html` <${Pill} tone="info" dot=${false}>Shown to packer<//>` : null}<small className="muted" style=${{ display: 'block' }}>${n.by}, ${n.at}</small></div>
+        <div className="nact">${ctx.can('pin', n.by) ? html`<button type="button" className="linkbtn tt44" onClick=${() => ctx.upd((x) => Object.assign({}, x, { notes: x.notes.map((y) => Object.assign({}, y, { pin: y.id === n.id ? !y.pin : false })), activity: [log(n.pin ? 'Note unpinned' : 'Note pinned')].concat(x.activity) }))}>${n.pin ? 'Unpin' : 'Pin'}</button>` : null}${ctx.can('editNote', n.by) ? html`<button type="button" className="linkbtn tt44" onClick=${() => setEdit(n.id)}>Edit</button>` : null}${ctx.can('deleteNote', n.by) ? html`<button type="button" className="linkbtn dng tt44" onClick=${() => ctx.ask({ kind: 'deleteNote', id: n.id, by: n.by })}>Delete</button>` : null}</div>`}</div>`)}
+  <//>`;
+}
+const KIND_LABEL = { sync: 'Sync', pack: 'Packing', source: 'Source', cancel: 'Cancellation', note: 'Note', edit: 'Edit', hold: 'Hold', automation: 'Automation', return: 'Return', docblock: 'Document', buyeremail: 'Email' };
+function HistoryTab({ o }) {
+  const [f, setF] = useState('all');
+  const [all, setAll] = useState(false);
+  const rows = o.activity.filter((a) => f === 'all' || a.tone === 'error' || a.tone === 'warn');
+  const dated = rows.filter((a) => a.t).concat(rows.filter((a) => !a.t));
+  const shown = all ? dated : dated.slice(0, 6);
+  const fail = o.returns.state === 'error';
+  return html`<${Sec} title="History" action=${html`<div className="seg" role="group" aria-label="Filter history"><button type="button" aria-pressed=${f === 'all'} onClick=${() => setF('all')}>All</button><button type="button" aria-pressed=${f === 'problems'} onClick=${() => setF('problems')}>Problems</button></div>`}>
+    ${fail ? html`<div className="callout warn" style=${{ marginTop: 6 }}><${Icon} n="alert" s=${16} /><span>Return events could not be loaded, so they are missing from this history.</span></div>` : null}
+    ${dated.length === 0 ? html`<p className="muted" style=${{ margin: '8px 0 0' }}>${f === 'problems' ? 'No problems in what loaded.' : 'No events recorded for this order.'}</p>` : html`<ul className="tl">${shown.map((a, i) => html`<li key=${i + a.text}>
+      <span className=${'d ' + (a.tone === 'info' ? '' : a.tone)} /><div><span>${a.text}</span><small>${a.sub || ''}</small></div><time>${a.t || 'Undated'}</time>
+      <div className="sub">${a.by ? html`<span className="by">${a.by}</span>` : null} <span className="kd">${KIND_LABEL[a.kind] || a.kind}</span></div>
+      ${a.tries ? html`<div className="sub"><${Disclosure} label=${'Show ' + a.tries.length + ' attempts'}>${a.tries.map((t, n) => html`<p className="tech-b" key=${n}>${t.t}  ${t.s}: ${t.e}</p>`)}<//></div>` : null}</li>`)}</ul>
+      ${dated.length > 6 ? html`<div style=${{ marginTop: 8 }}><button type="button" className="linkbtn tt44" onClick=${() => setAll(!all)}>${all ? 'Show fewer' : 'Show all ' + dated.length + ' events'}</button></div>` : null}`}
+  <//>`;
+}
+function TechTab({ o, ctx }) {
+  const cnt = (st) => o.dests.filter((d) => d.st === st).length;
+  const summary = [cnt('synced') + ' synced', cnt('failed') ? cnt('failed') + ' failed' : null, cnt('skipped') ? cnt('skipped') + ' skipped' : null, cnt('pending') ? cnt('pending') + ' pending' : null, cnt('syncing') ? cnt('syncing') + ' syncing' : null].filter(Boolean).join(', ');
+  const snap = JSON.stringify({ internalOrderId: o.full, source: o.src, total: o.cur + ' ' + o.total, items: o.items.map((i) => ({ sku: i.sku, qty: i.q, unitPrice: i.u })) }, null, 2);
+  const notice = o.destNotice ? DEST_NOTICE[o.destNotice] : null;
+  return html`<div className="b-two"><div>
+    <div className="ocard"><${Sec} title="Destinations" action=${html`<span className="muted">${o.dests.length ? summary : ''}</span>`}>
+      ${o.dests.length === 0 ? html`<div className="callout" style=${{ marginTop: 8 }}><${Icon} n="info" s=${16} /><span>${notice ? html`<b>${notice.label}.</b> ${notice.hint}` : 'No sync destinations configured.'}</span></div>`
+        : html`${o.handled ? html`<div className="callout" style=${{ marginTop: 8 }}><${Icon} n="info" s=${16} /><span>${ROUTED_NOTE}</span></div>` : null}<div className="flow" style=${{ marginTop: 10, gridTemplateColumns: 'minmax(0,1fr)' }}>${o.dests.map((d) => html`<div key=${d.name} className=${'fl ' + (d.st === 'failed' ? 'error' : d.st === 'synced' ? 'ok' : '')} style=${{ gridTemplateColumns: '30px minmax(0,1fr) auto' }}>
+          <span className="ctile" style=${{ background: DEST_COLOR[d.name.split(' ')[0]] || 'var(--status-disabled)' }}>${d.name[0]}</span>
+          <div><b>${d.name}</b><small>${DEST_ST[d.st][1]}${d.note ? ', ' + d.note : ''}</small>
+            ${d.err ? html`<p className="tech-b">${d.err}</p>` : null}
+            ${d.tries ? html`<${Disclosure} label=${'Attempts (' + d.tries.length + ')'}>${d.tries.map((t, n) => html`<p className="tech-b" key=${n}>${t.t}  ${t.s}: ${t.e}</p>`)}${d.tries.length >= 20 ? html`<p className="tech-b">No more automatic retries. <button type="button" className="linkbtn" onClick=${() => ctx.say('Opens Sync jobs')}>View all attempts in Sync jobs</button></p>` : null}<//>` : null}</div>
+          <div style=${{ display: 'grid', gap: 6, justifyItems: 'end' }}>${d.st === 'failed' && !o.handled ? html`<${ActBtn} sm a=${{ id: 'retry', label: 'Retry', icon: 'retry', kind: 'ghost', dest: d.name }} ctx=${ctx} />` : null}
+            ${d.st === 'failed' && /mapping/i.test(d.err || '') && !/conflict/i.test(d.err || '') ? html`<${ActBtn} sm a=${{ id: 'link', label: 'Link product', say: 'Opens the product link' }} ctx=${ctx} />` : null}</div></div>`)}</div>`}
+    <//></div>
+    ${o.parse.length ? html`<div className="ocard"><${Sec} title="Parsing warnings" action=${html`<${Pill} tone="warn">${o.parse.length}<//>`}>${o.parse.map((w) => html`<p className="tech-b" key=${w.field}><span className="mono">${w.field}</span>: ${w.message}</p>`)}<//></div>` : null}
+  </div><div>
+    <div className="ocard"><${Sec} title="Order details"><dl className="kv" style=${{ marginTop: 4 }}><dt>Stage</dt><dd>${o.phase.label}</dd><dt>Channel</dt><dd>${o.channel}, ${o.chanStatus}</dd><dt>Channel order</dt><dd className="mono">${o.src}</dd><dt>Source event</dt><dd className="mono">${o.src}</dd><dt>OpenLinker id</dt><dd><${CopyId} value=${o.full} say=${ctx.say} /></dd><dt>Received</dt><dd>${o.times.placed || o.placed}</dd><dt>Updated in OpenLinker</dt><dd>${o.times.sync || o.times.placed || o.placed}</dd></dl><//></div>
+    <div className="snap ocard" id="order-raw-snapshot"><div className="row-end2"><${Disclosure} label="Order snapshot (raw JSON)"><pre>${snap}</pre><//><${Btn} sm kind="ghost" icon="copy" onClick=${() => { try { navigator.clipboard.writeText(snap).then(() => ctx.say('Snapshot copied'), () => ctx.say('Select the text to copy it')); } catch (e) { ctx.say('Select the text to copy it'); } }}>Copy<//></div></div>
+  </div></div>`;
+}
+
+/* ---------- page, state and shell ---------- */
+const TAB_ISSUE = { ship: ['label', 'ship'], docs: ['doc'], ret: ['readReturns'], tech: ['sync'], pack: ['hold', 'task'], over: ['refund', 'extra', 'pay'] };
+function PageB({ k, o, h, tab, setTab, ctx, scroller }) {
+  const [openAll, setOpenAll] = useState(false);
+  const [stuck, setStuck] = useState(false);
+  const panel = useRef(null);
+  const first = useRef(true);
+  useEffect(() => {
+    const el = document.getElementById('bhead'); if (!el || !scroller.current || !window.IntersectionObserver) return;
+    const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting), { root: scroller.current, threshold: 0 });
+    io.observe(el); return () => io.disconnect();
+  }, [k]);
+  useLayoutEffect(() => {
+    if (first.current) { first.current = false; return; }
+    enter(panel.current, 0);
+    const bar = document.getElementById('tabbar'); const sc = scroller.current;
+    if (bar && sc) { const mb = sc.querySelector('.minibar-in'); const off = mb ? mb.offsetHeight + 8 : 0; const d = bar.getBoundingClientRect().top - sc.getBoundingClientRect().top - off; if (d < 0) sc.scrollTop += d; }
+    const b = document.getElementById('tab-' + tab); if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [tab]);
+  const failedN = o.dests.filter((d) => d.st === 'failed').length;
+  const shipN = (o.shipx && ['shipped', 'outside'].includes(o.shipx.kind) ? 1 : 0);
+  const packN = o.tasks.length + (o.hold ? 1 : 0);
+  const docN = DOC_STATES_WITH_RECORD.includes(o.doc.st) ? 1 : 0;
+  const techN = failedN + o.parse.length;
+  const readUnknown = o.returns.state === 'error';
+  const cnt = { ship: shipN, pack: packN, docs: docN, ret: readUnknown ? '?' : o.returns.rows.length, notes: o.notes.length, hist: readUnknown ? o.activity.length + '+' : o.activity.length, tech: techN };
+  const flag = (id) => (TAB_ISSUE[id] || []).some((kk) => h.issues.some((i) => i.kind === kk && i.tone !== 'info'));
+  const onKey = (e) => { const i = TABS.findIndex((t) => t[0] === tab); const n = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : null; if (n === null) return; e.preventDefault(); const t = TABS[(n + TABS.length) % TABS.length][0]; setTab(t); setTimeout(() => { const b = document.getElementById('tab-' + t); if (b) b.focus(); }, 0); };
+  const bodies = { over: html`<${Overview} o=${o} h=${h} ctx=${ctx} />`, ship: html`<${ShippingTab} o=${o} ctx=${ctx} />`, pack: html`<${PackingTab} o=${o} ctx=${ctx} />`, docs: html`<${DocsTab} o=${o} ctx=${ctx} />`, ret: html`<div className="ocard"><${ReturnsTab} o=${o} ctx=${ctx} /></div>`, notes: html`<div className="ocard"><${NotesTab} o=${o} ctx=${ctx} /></div>`, hist: html`<div className="ocard"><${HistoryTab} o=${o} /></div>`, tech: html`<${TechTab} o=${o} ctx=${ctx} />` };
+  const b = h.next.acts[0];
+  return html`<div className="pg2" data-state="ready">
+    <div className=${'minibar' + (stuck ? ' show' : '')} inert=${stuck ? undefined : ''}><div className="minibar-in"><strong>Order #${o.num}</strong><${Pill} tone=${h.tone}>${h.label}<//><span className="sp" />${b ? html`<${ActBtn} sm a=${Object.assign({}, b, { kind: 'primary' })} ctx=${ctx} />` : null}</div></div>
+    <div className="b-in">
+      <div className="b-nav"><button type="button" className="crumb" onClick=${() => ctx.say('Back to Orders')}><${Icon} n="back" s=${15} />Orders</button>
+        <span className="b-pager"><span>${ORDER_KEYS.indexOf(k) + 1} of ${ORDER_KEYS.length} examples</span><button type="button" aria-label="Previous order" onClick=${() => ctx.go(-1)}><${Icon} n="back" s=${14} /></button><button type="button" aria-label="Next order" onClick=${() => ctx.go(1)}><span style=${{ display: 'grid', transform: 'scaleX(-1)' }}><${Icon} n="back" s=${14} /></span></button></span></div>
+      <${Header} o=${o} h=${h} ctx=${ctx} openAll=${openAll} setOpenAll=${setOpenAll} />
+      <div className="b-tabs" id="tabbar" role="tablist" aria-label="Order sections" onKeyDown=${onKey}>${TABS.map(([id, label]) => html`<button key=${id} id=${'tab-' + id} type="button" role="tab" className="b-tab" aria-selected=${tab === id} aria-controls=${'panel-' + id} tabIndex=${tab === id ? 0 : -1} onClick=${() => setTab(id)}>${label}${id !== 'over' && cnt[id] !== 0 ? html`<span className="cnt">${cnt[id]}</span>` : null}${flag(id) ? html`<i className="flagdot" role="img" aria-label="Needs attention" />` : null}</button>`)}</div>
+      <div className="b-panel" ref=${panel}>${TABS.map(([id]) => html`<div key=${id} id=${'panel-' + id} role="tabpanel" aria-labelledby=${'tab-' + id} hidden=${tab !== id}>${bodies[id]}</div>`)}</div>
+    </div></div>`;
+}
+function PageState({ kind, retry }) {
+  if (kind === 'loading') return html`<div className="b-in" aria-busy="true" data-state="loading"><div className="skel" style=${{ height: 22, width: 120 }} /><div className="skel skel-head" /><div className="skel" style=${{ height: 44 }} /><div className="skel" style=${{ height: 280 }} /></div>`;
+  const m = { error: ['This order could not be loaded', 'The server did not answer. Nothing was changed.', 'Try again'], notfound: ['Order not found', 'It may have been deleted, or the link is wrong.', 'Back to Orders'], denied: ['Redirected to the pack bench', 'In the app a packer who opens an order is sent to the bench. The bench is not part of this preview.', 'Preview as admin'] }[kind];
+  return html`<div className="b-in" data-state=${kind === 'notfound' ? 'empty' : 'error'}><div className="pstate"><h2>${m[0]}</h2><p>${m[1]}</p><${Btn} kind="primary" onClick=${retry}>${m[2]}<//></div></div>`;
+}
+const RAIL = [['box', 'Orders', 1], ['pack', 'Products'], ['user', 'Customers'], ['truck', 'Shipments'], ['doc', 'Sales documents'], ['link', 'Connections']];
+const Logo = () => html`<span className="logo"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="oklch(72% 0.18 50)" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M9 15l6-6"/><path d="M11 6.5l1.2-1.2a4 4 0 015.7 5.7L16.7 12.2"/><path d="M13 17.5l-1.2 1.2a4 4 0 01-5.7-5.7L7.3 11.8"/></svg></span>`;
+
+function Parity() {
+  const a = [
+    ['Header, status, Next step', 'Status and Next step come from one function over sync, document, hold, refund, label, tasks, returns, ship-by date and recipient data. The Next step shows every action of the issue it names.', 'order-health.ts, destination-routing.ts'],
+    ['Roles', 'One table. Admin: edit, cancel, hold, issue document, email, correction. Operator and admin: retry, refund, pack, label, notes, tags. Viewer: read only. Actions a role cannot use are shown disabled with the reason. The app hides them, except in demo mode.', 'order-detail-page.tsx, order-notes-panel.tsx'],
+    ['Shipment', 'Label form in grams and millimetres with four required fields and a locker size, cash on delivery only for unpaid orders, cancel shipment with the dispatched warning, mark dispatched with a confirmation, tracking link per carrier.', 'generate-label-form, cancel-shipment-dialog.ts'],
+    ['Cancel order', 'Refuses a dispatched order and points to the return and the refund. Otherwise the app dialog: impact table and a required reason.', 'cancel-order-dialog'],
+    ['Hold', 'Eight reasons, note required when the placer is unknown, history kept, the release result shown.', 'order-hold-panel'],
+    ['Documents', '9 of the 24 document states have an example: none, blocked, in flight, issued, final receipt, in doubt, rejected by KSeF, failed, unconfirmed. Only the routed document type is offered.', 'sales-documents-state-reference.md'],
+    ['Payment, notes, tags, returns, history', 'Payment per shop with order-level retry and a separate Handled state. Notes: edit by the author, pin and delete by the author or an admin. Tags from a closed list. Returns and history keep an unknown read as unknown. History shows who and what, undated entries last.', 'payment-writeback, order-tags'],
+    ['Link and tab in the address', '#order-tab, and #shipment, #invoicing, #packing, #order-raw-snapshot open the right tab and scroll to the section. All tabs stay mounted, so a draft survives a tab change.', 'order-detail-page.tsx']
+  ];
+  const b = [
+    ['Polish and English', 'This preview is English only.'],
+    ['Real queries, polling, server answers', 'Retry, label purchase, refund and dispatch are simulated. 403 and 409 answers, polling of the invoice, and loading states per panel are not modelled.'],
+    ['Task actions', 'The server computes which actions a task offers, so the sample carries the list. Clicking sends nothing and changes nothing. Routing retry and the abandoned routing state are not shown.'],
+    ['Document states without an example', 'Queued, registering, stalled, interrupted, rejected receipt, the invoice sent to KSeF, the confirmation document, PDF download, resend for providers that support it.'],
+    ['Not shown', 'Cost and margin, VAT conflict, pickup-point retry, carrier choice, the pack bench read of the buyer note, the demo mode, retryShipmentId, the shipments back link, the order peek keys.'],
+    ['Data from the app', 'Names, amounts and dates are sample data. Tag colours come from the app list. "Previous orders" appears only where the sample says so.']
+  ];
+  return html`<details className="parity"><summary>What this preview covers, and what it does not</summary><div className="parity-body"><h3 className="ph">Modelled, with the source in the app</h3><table><thead><tr><th>Part</th><th>What is modelled</th><th>Source in the app</th></tr></thead><tbody>${a.map((r) => html`<tr key=${r[0]}><td>${r[0]}</td><td>${r[1]}</td><td className="mono">${r[2]}</td></tr>`)}</tbody></table>
+    <h3 className="ph">Not modelled, or simplified</h3><table><thead><tr><th>Part</th><th>What is missing</th></tr></thead><tbody>${b.map((r) => html`<tr key=${r[0]}><td>${r[0]}</td><td>${r[1]}</td></tr>`)}</tbody></table></div></details>`;
+}
+
+function App() {
+  const init = parseHash();
+  const [key, setKey] = useState(init.key);
+  const [tab, setTabS] = useState(init.tab);
+  const [role, setRole] = useState('admin');
+  const [pstate, setPstate] = useState('normal');
+  const [ords, setOrds] = useState({});
+  const [modal, setModal] = useState(null);
+  const [toast, setToast] = useState(null);
+  const scroller = useRef(null);
+  const tt = useRef(0);
+  const anchor = useRef(init.anchor);
+  const keyRef = useRef(key); keyRef.current = key;
+  const say = useCallback((m) => { setToast(m); clearTimeout(tt.current); tt.current = setTimeout(() => setToast(null), 2600); }, []);
+  const o0 = ords[key] || ORDERS[key];
+  const o = Object.assign({}, o0);
+  const h = derive(o);
+  const upd = (fn) => setOrds((p) => Object.assign({}, p, { [keyRef.current]: fn(p[keyRef.current] || ORDERS[keyRef.current]) }));
+  const setTab = (t) => { setTabS(t); setHash(key, t); };
+  const pick = (k) => { setKey(k); setTabS('over'); setHash(k, 'over'); };
+  const go = (d) => pick(ORDER_KEYS[(ORDER_KEYS.indexOf(key) + d + ORDER_KEYS.length) % ORDER_KEYS.length]);
+  useEffect(() => { const f = () => { const p = parseHash(keyRef.current); setKey(p.key); setTabS(p.tab); anchor.current = p.anchor; }; window.addEventListener('hashchange', f); return () => window.removeEventListener('hashchange', f); }, []);
+  useLayoutEffect(() => {
+    const a = anchor.current; anchor.current = null;
+    if (a) setTimeout(() => { const el = document.getElementById(a); if (el) { const sc = scroller.current; const mb = sc && sc.querySelector('.minibar-in'); el.scrollIntoView({ block: 'start' }); if (sc) sc.scrollTop -= (mb ? mb.offsetHeight + 12 : 12); const f = el.querySelector('button,a,input'); if (f && f.focus) try { f.focus({ preventScroll: true }); } catch (e) {} } }, 60);
+  }, [key, tab]);
+  useLayoutEffect(() => { if (scroller.current && !anchor.current) scroller.current.scrollTop = 0; }, [key]);
+  const later = (fn, ms) => setTimeout(fn, ms);
+  const run = (a) => {
+    const R = () => ords[key] || ORDERS[key];
+    switch (a.id) {
+      case 'view': if (a.run === 'reloadReturns') { upd((x) => Object.assign({}, x, { returns: { state: 'ok', rows: x.returns.rows } })); say('Returns reloaded'); } else if (a.go) setTab(a.go); else if (a.say) say(a.say); break;
+      case 'retry': {
+        upd((x) => Object.assign({}, x, { dests: x.dests.map((d) => (d.st === 'failed' && (!a.dest || d.name === a.dest) ? Object.assign({}, d, { st: 'pending', note: 'Sync queued' }) : d)) }));
+        say('Retry queued. A retry never creates the order twice.');
+        later(() => setOrds((p) => { const x = p[key] || ORDERS[key]; return Object.assign({}, p, { [key]: Object.assign({}, x, { dests: x.dests.map((d) => (d.note === 'Sync queued' ? (/mapping/i.test(d.err || '') ? Object.assign({}, d, { st: 'failed', note: 'No matching product' }) : Object.assign({}, d, { st: 'synced', note: 'Synced', err: null })) : d)) }) }); }), 1600); break; }
+      case 'refund': setModal({ kind: 'refund' }); break;
+      case 'cancelOrder': setModal({ kind: 'cancel' }); break;
+      case 'edit': setModal({ kind: 'edit' }); break;
+      case 'hold': setModal({ kind: 'hold' }); break;
+      case 'release': setModal({ kind: 'release' }); break;
+      case 'emailDoc': setModal({ kind: 'email' }); break;
+      case 'record': setModal({ kind: 'return' }); break;
+      case 'cancelShip': setModal({ kind: 'cancelShipment' }); break;
+      case 'markDispatched': setModal({ kind: 'markDispatched' }); break;
+      case 'pack': upd((x) => Object.assign({}, x, { pack: Object.assign({}, x.pack, { packed: { at: 'now', by: 'You' } }), activity: [{ t: 'now', tone: '', kind: 'pack', by: 'You', text: 'Marked as packed' }].concat(x.activity) })); say('Order marked packed.'); break;
+      case 'unpack': upd((x) => Object.assign({}, x, { pack: Object.assign({}, x.pack, { packed: null }) })); say('Packed mark cleared.'); break;
+      case 'label':
+        if (a.f) { upd((x) => Object.assign({}, x, { shipx: Object.assign({}, x.shipx, { kind: 'shipped', status: 'generated', step: 0, tracking: null, by: 'OpenLinker bought the label from ' + (x.shipx.carrier || 'the carrier') + ' (simulated)' }) })); say('Label generated. Tracking number will appear within ~5 minutes.'); setTab('ship'); }
+        else setTab('ship'); break;
+      case 'checkDoc': say(a.recpt ? 'Asked the provider. This preview does not show its answer.' : 'Open the provider portal to check whether this document exists.'); break;
+      case 'payRetry': upd((x) => Object.assign({}, x, { payRecs: x.payRecs.map((p) => (p.st === 'failed' ? { shop: p.shop, st: 'pending' } : p)) })); say('Queued 1 shop update. OpenLinker will mark the order paid in the shop in a moment.'); break;
+      case 'markHandled': upd((x) => Object.assign({}, x, { payRecs: x.payRecs.map((p) => (p.st === 'failed' ? { shop: p.shop, st: 'handled' } : p)) })); say('Marked as handled'); break;
+      case 'markRead': upd((x) => Object.assign({}, x, { buyerNote: Object.assign({}, x.buyerNote, { read: true }) })); say('Marked as read'); break;
+      case 'task': say('Sent to the server. This preview does not change the task.'); break;
+      default: say(a.say || (a.label + ': not modelled in this preview'));
+    }
+  };
+  const ctx = { role, can: (id, who) => can(role, id, who), say, ask: setModal, upd, run, go, setTab };
+  const denied = role === 'packer';
+  const state = denied ? 'denied' : pstate;
+  return html`<div className="wrap">
+    <div className="intro"><div><h1>Order detail v3</h1><p>The research design after the audit: status and next step computed from every dimension, one role table, rules copied from the app, and unknown reads shown as unknown. Twelve order situations.</p></div></div>
+    <div className="tools"><label className="tl-l">Order <select id="pick-order" value=${key} onChange=${(e) => pick(e.target.value)}>${ORDER_KEYS.map((k) => html`<option key=${k} value=${k}>${ORDERS[k].tab}</option>`)}</select></label>
+      <label className="tl-l">Preview as <select id="pick-role" value=${role} onChange=${(e) => setRole(e.target.value)}><option value="admin">Admin</option><option value="operator">Operator</option><option value="viewer">Viewer</option><option value="packer">Packer</option></select></label>
+      <label className="tl-l">Page <select id="pick-state" value=${pstate} onChange=${(e) => setPstate(e.target.value)}><option value="normal">Loaded</option><option value="loading">Loading</option><option value="error">Load error</option><option value="notfound">Not found</option></select></label></div>
+    <div className="frame">
+      <aside className="rail"><${Logo} />${RAIL.map(([ic, t, on]) => html`<button key=${t} type="button" className=${'ri' + (on ? ' on' : '')} title=${t} aria-label=${t}><${Icon} n=${ic} s=${19} /></button>`)}<span className="sp" /><button type="button" className="ri" title="Settings" aria-label="Settings"><${Icon} n="settings" s=${19} /></button></aside>
+      <div className="mainwrap">
+        <div className="top"><div className="search"><${Icon} n="search" s=${15} />Search orders, products, connections<kbd>Ctrl K</kbd></div><span className="sp" /><span className="pill-top"><${Icon} n="bell" s=${15} />Alerts 4</span><span className="avatar">AD</span></div>
+        <main className="scroller" ref=${scroller}>${state === 'normal' ? html`<${PageB} key=${key} k=${key} o=${o} h=${h} tab=${tab} setTab=${setTab} ctx=${ctx} scroller=${scroller} />` : html`<${PageState} kind=${state} retry=${() => { if (denied) { setRole('admin'); say('Switched back to admin in this preview'); } else { setPstate('normal'); say('Reloaded'); } }} />`}</main>
+      </div>
+      ${modal && html`<${Modal} m=${modal} o=${o} ctx=${ctx} close=${() => setModal(null)} />`}
+      ${toast && html`<div className="toast" role="status">${toast}</div>`}
+    </div>
+    <${Parity} />
+  </div>`;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+
+</script>

@@ -11,7 +11,9 @@
  * @module libs/core/src/listings/infrastructure/persistence/entities
  * @see {@link BulkBatchAdvancement} for the corresponding domain entity
  */
-import { Entity, PrimaryColumn, CreateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
+
+import type { BulkChildOutcome } from '../../../domain/types/bulk-child-outcome.types';
 
 @Entity('bulk_batch_advancements')
 export class BulkBatchAdvancementOrmEntity {
@@ -23,4 +25,11 @@ export class BulkBatchAdvancementOrmEntity {
 
   @CreateDateColumn()
   advancedAt!: Date;
+
+  /**
+   * Which counter this advancement incremented. Nullable: rows written before
+   * the column existed carry no recorded outcome and are never reclassified.
+   */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  outcome!: BulkChildOutcome | null;
 }

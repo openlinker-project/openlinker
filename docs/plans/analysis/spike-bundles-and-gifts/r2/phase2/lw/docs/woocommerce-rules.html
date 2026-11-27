@@ -1,0 +1,139 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/woocommerce-rules"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>WooCommerce: Rules &amp; Guidelines</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='WooCommerce: Rules & Guidelines';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link><div class="doc-container">
+  <h1 id="h1__1728026186" data-has-heading-anchor="true">
+    WooCommerce: Rules &amp; Guidelines
+  <a href="/articles/documentation/woocommerce-rules/a/h1__1728026186" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-rules/a/h1__1728026186&#39;,this);"></a></h1>
+  <p style="text-align: justify;">
+    This page explains some rules and concepts that are relevant to working with WooCommerce via Linnworks.</p>
+<div class="alert-warning">
+  <b><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:</b>&nbsp;Your WooCommerce site will need to be a <b>minimum of 5.8</b> to integrate with Linnworks successfully.&nbsp;
+</div>
+  
+  <h2 id="mapping" data-has-heading-anchor="true">
+    Inventory mapping
+  <a href="/articles/documentation/woocommerce-rules/a/mapping" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-rules/a/mapping&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    In order for all items from WooCommerce to appear in the <a href="/articles/documentation/channels-inventory-mapping" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);"><i>Inventory Mapping</i></a>&nbsp;screen in Linnworks, there is a list of criteria that the item must meet.
+  </p>
+  <p style="text-align: justify;">
+    <strong>Simple single items:</strong></p>
+  <ul style="text-align: justify;">
+    <li>
+      The product must have an SKU.
+    </li>
+    <li>
+      The product type must be set to <em>Simple</em> and not <em>Grouped</em>.
+    </li>
+    <li>
+      The <em>Downloadable</em> and <em>Virtual</em> product attributes must both be set to <em>False</em>.
+    </li>
+    <li>
+      The product visibility setting must be ​<em>Public</em>.
+    </li>
+    <li>
+      The product must be published publicly.</li>
+  </ul>
+  <p style="text-align: justify;">
+    <strong>Variation items:</strong></p>
+  <ul>
+    <li style="text-align: justify;">
+      At least one variation child item must be present in the variation group.
+    </li>
+    <li style="text-align: justify;">
+      Both Parent and Child products must have SKUs.
+    </li>
+    <li style="text-align: justify;">
+      The Parent SKU must not match any of the Child SKUs.
+    </li>
+    <li style="text-align: justify;">
+      The Parent item product type on Woocommerce must be set to <em>Variable</em>.
+    </li>
+    <li style="text-align: justify;">
+      Parent and Child products <em>Downloadable</em> and <em>Virtual</em> product attributes must both be set to <em>False</em>.
+    </li>
+    <li style="text-align: justify;">
+      Parent and Child products product visibility setting must be <em>Public</em>.
+    </li>
+    <li style="text-align: justify;">
+      Parent and Child products must be published publicly.
+    </li>
+  </ul>
+  <h2 id="inventory" data-has-heading-anchor="true">
+    Inventory sync<a href="/articles/documentation/woocommerce-rules/a/inventory" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-rules/a/inventory&#39;,this);"></a></h2>
+  <p>For the inventory sync between WooCommerce and Linnworks to work, you need to meet two main requirements.</p><h4 style="" id="h4__295553283" data-has-heading-anchor="true">Enable stock management at the system level<a href="/articles/documentation/woocommerce-rules/a/h4__295553283" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-rules/a/h4__295553283&#39;,this);"></a></h4><p style="text-align: justify;">
+    The <i>Manage Stock</i> option must be enabled on the Woocommerce backend for stock-level updates to work.&nbsp;
+  </p>
+  <ol class="X5LH0c">
+    <li class="TrT0Xe" style="text-align: justify;">
+      Go to<span>&nbsp;</span><em>WooCommerce&nbsp;&gt;&nbsp;Settings</em>.
+    </li>
+    <li class="TrT0Xe" style="text-align: justify;">
+      Click the <em>Products</em> tab and then the <em>Inventory</em> link.
+    </li>
+    <li class="TrT0Xe" style="text-align: justify;">
+      Check the<span>&nbsp;</span><em>Manage Stock</em><span>&nbsp;</span>option to<span>&nbsp;</span>enable<span>&nbsp;</span>stock updates for all products.
+    </li>
+  </ol>
+  <p>
+    <img src="/resources/Storage/documentation/Screenshots/Channels/WooCommerce/Woocommerce-ManageStock.png" alt="WooCommerce Manage Stock" class="leftAlone lightense"/></p>
+  <h4 style="" id="h4__1186027225" data-has-heading-anchor="true">Enable stock management at the product level<a href="/articles/documentation/woocommerce-rules/a/h4__1186027225" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-rules/a/h4__1186027225&#39;,this);"></a></h4>
+  <p>It is also important for successful inventory sync to enable stock management at the product level. To ensure it is enabled:&nbsp;</p><ol><li>Find the product that does not receive stock-level updates from Linnworks.</li><li>Go to <i>Edit Product screen &gt; Product Data &gt; Inventory</i>.&nbsp;</li><li>Ensure the <i>Enable stock management at product level</i> checkbox is checked.<br/><img src="/resources/Storage/documentation/Screenshots/Channels/WooCommerce/WooCommerce-Enable%20stock%20management%20on%20product%20level.png" alt="WooCommerce - Enable stock management at the product level" class="leftAlone"/></li><li>If the checkbox is unchecked, Linnworks&nbsp;will not be sending stock-level updates, and <i><a href="/articles/documentation/channels-inventory-mapping/a/cog" onclick="return n(&#39;!documentation/channels-inventory-mapping/a/cog&#39;,this);">Ignore Sync</a></i> will be enabled for that item.</li></ol><h2 id="ioss" data-has-heading-anchor="true">IOSS and EORI numbers
+  <a href="/articles/documentation/woocommerce-rules/a/ioss" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-rules/a/ioss&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    Linnworks is able to automatically download IOSS and EORI numbers from WooCommerce with the rest of the order data and save them on Linnworks orders as <a href="/articles/documentation/open-orders-create-edit/a/NewOrder_properties" onclick="return n(&#39;!documentation/open-orders-create-edit/a/NewOrder_properties&#39;,this);">order extended properties</a>. The values need to be provided by WooCommerce under metadata fields called&nbsp;<span style="font-weight: normal;"><i>SenderIOSSNumber</i></span> and&nbsp;<i><span style="font-weight: normal;">SenderEORINumber</span></i>. For assistance on how to set this up on WooCommerce, contact WooCommerce directly.
+  </p>
+  <p style="">
+    <img src="/resources/Storage/documentation/Screenshots/Channels/WooCommerce/Woocommerce-SenderEORINumber.png" alt="WooCommerce SenderEORINumber" class="leftAlone"/></p>
+  <p style="text-align: justify;">The values are then saved as order extended properties called&nbsp;MARKETPLACE_IOSS&nbsp;and<i> </i>MARKETPLACE_EORI<i> </i>respectively, which can be mapped to the needed properties in the <i><a href="/articles/documentation/shipping-integrations-screen" onclick="return n(&#39;!documentation/shipping-integrations-screen&#39;,this);">Shipping Integrations</a></i> screen.
+  </p>
+  <h2 id="orderstatus" data-has-heading-anchor="true">
+    Order status
+  <a href="/articles/documentation/woocommerce-rules/a/orderstatus" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-rules/a/orderstatus&#39;,this);"></a></h2>
+  <p>
+    Linnworks will download orders from WooCommerce if they are in status <span style="font-weight: normal;"><b>processing&nbsp;</b></span>or <span style="font-weight: normal;"><b>pending</b></span>.&nbsp;
+  </p>
+  <p style="text-align: justify;">
+    An order will be marked as <i>p</i><em>aid&nbsp;</em>in Linnworks only if the WooCommerce status is <i>p</i><em>rocessing&nbsp;</em>and the payment method is <i>paid&nbsp;</i>in the information provided by WooCommerce.
+  </p>
+  <p style="text-align: justify;">
+    A <i>p</i><em>ending&nbsp;</em>order will be downloaded but marked as <i>u</i><em>npaid&nbsp;</em>in Linnworks only if the <em>Download Unpaid Orders&nbsp;</em>setting is enabled. It will receive an update from the channel with further order syncs if and when the status changes to <i>p</i><em>rocessing</em>.
+  </p>
+  <p style="text-align: justify;">
+    An order that is in status <i>p</i><em>rocessing&nbsp;</em>but e.g., a credit card transaction for the order has failed, will be considered as <i>u</i><em>npaid&nbsp;</em>and downloaded only if&nbsp;<em>Download Unpaid orders&nbsp;</em>setting is enabled.
+  </p>
+  <h2 id="serviceitem" data-has-heading-anchor="true">
+    Service item titles
+  <a href="/articles/documentation/woocommerce-rules/a/serviceitem" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-rules/a/serviceitem&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    <span>When a WooCommerce order is downloaded into Linnworks containing a service item, but the title is not provided, the item will be saved with the title UNKNOWN.</span>
+  </p>
+</div>
+<span class=" CHNavCaption"><h4 id="h4_1682825292" data-has-heading-anchor="true">Next steps<a href="/articles/documentation/woocommerce-rules/a/h4_1682825292" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/woocommerce-rules/a/h4_1682825292&#39;,this);"></a></h4></span><ul class="CHSeeAlso_hasChildren CHSeeAlso"><li class="CHSeeAlso_item CHSeeAlso_itemSibling"><a href="/articles/documentation/woocommerce-add-new" onclick="return n(&#39;!documentation/woocommerce-add-new&#39;,this);">Add New</a></li><li class="CHSeeAlso_item CHSeeAlso_itemSibling"><a href="/articles/documentation/woocommerce-settings" onclick="return n(&#39;!documentation/woocommerce-settings&#39;,this);">Configure</a></li></ul>&nbsp;<script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

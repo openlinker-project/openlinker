@@ -1,0 +1,12 @@
+=== template-designer-packing-list | Template Designer: Packing List
+ 
+ Template Designer: Packing List 
+ Template Type: Packing List
+ Packing Lists are used to ensure that the correct items are added to the correct packages. By including this information onto a single sheet, the packer needs less paper and can work faster.
+ Packing Lists are documents that list all items that need to be shipped, grouped by order ID. They can be customized to highlight important information such as the quantity of a particular SKU if is greater than one in order.
+ Available elements
+ For all the templates  images will be available as well as labels and variables . Specifically for use in packing lists, the following pre-defined table elements are available:
+ Order : A customizable table that includes information about the items in the order. 
+ Orders (No Composite Parents) : Composite Parent items do not have batches, because this box does not allow Composite Parents in the table, it has an option to specify all the batch information containing item variables such as Sell and Expire dates or Batch Numbers .
+ These can be customized by double-clicking the element on the template. Further information on customizing table elements can be found  here .
+ 

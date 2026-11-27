@@ -32,14 +32,14 @@
  * reaches the rule from the order in one click — but via the trigger page rather
  * than the rule itself.
  *
- * ## The copy comes from `features/automation`, deliberately
+ * ## Where the copy comes from
  *
- * `AUTOMATION_ACTION_LABELS` / `AUTOMATION_TRIGGER_COPY` are imported from that
- * feature's public barrel rather than re-declared here. Two reasons, and the
- * second is easy to lose: a local copy would drift from the composer, and
- * `check-ui-vocabulary` scans `features/automation` and **not**
- * `features/orders` — so operator copy declared on this side would sit outside
- * the gate entirely.
+ * The action and trigger LABELS come from `features/automation`'s public barrel
+ * (`AUTOMATION_ACTION_LABELS` / `AUTOMATION_TRIGGER_COPY`) rather than being
+ * re-declared, so they cannot drift from the composer. The timeline's own
+ * sentences (the past-tense action titles, "Ran because: ...", "Skipped: ...")
+ * live in the `orders.automationTimeline` namespace and are read when the events
+ * are built, so they follow the active language.
  *
  * @module apps/web/src/features/orders/lib
  */
@@ -51,6 +51,14 @@ import {
   type AutomationRun,
   type AutomationStepResult,
 } from '../../automation';
+import {
+  getBcp47Locale,
+  getLocale,
+  getMessages,
+  interpolate,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 
 /** The subset of the timeline's own event shape this module produces. */
 export interface AutomationTimelineEvent {
@@ -86,25 +94,13 @@ export interface AutomationTimelineEvent {
  * "Buy the shipping label" would be the wrong tense in the one place the
  * operator is reading history.
  */
-const ACTION_PAST_TENSE: Record<string, string> = {
-  'issue-sales-document': 'Issued the sales document',
-  'dispatch-shipment': 'Bought the shipping label',
-  'relay-status-to-source': 'Told the marketplace the order shipped',
-  'send-email': 'Sent an email',
-  'place-hold': 'Put the order on hold',
-  'release-hold': 'Lifted the hold',
-};
+type AutomationTimelineCopy = ResolvedCopy<Messages['orders']>['automationTimeline'];
 
-export const AUTOMATION_TIMELINE_COPY = {
-  byPrefix: 'Automation',
-  ranBecause: 'Ran because:',
-  stoppedAfterFailure: 'The automation stopped after the step that failed.',
-  skippedPrefix: 'Skipped:',
-  nothingToDoSuffix: 'nothing to do',
-} as const;
-
-function actionTitle(action: string): string {
-  return ACTION_PAST_TENSE[action] ?? AUTOMATION_ACTION_LABELS[action] ?? action;
+function actionTitle(action: string, copy: AutomationTimelineCopy): string {
+  const pastTense: Readonly<Record<string, string>> = copy.actions;
+  return Object.prototype.hasOwnProperty.call(pastTense, action)
+    ? pastTense[action]
+    : (AUTOMATION_ACTION_LABELS[action] ?? action);
 }
 
 function triggerName(trigger: string): string {
@@ -135,11 +131,12 @@ function isStepResult(step: unknown): step is AutomationStepResult {
 export function buildAutomationTimelineEvents(
   runs: readonly AutomationRun[],
 ): AutomationTimelineEvent[] {
+  const copy = getMessages('orders').automationTimeline;
   const events: AutomationTimelineEvent[] = [];
 
   for (const run of runs) {
-    const by = `${AUTOMATION_TIMELINE_COPY.byPrefix} · ${run.ruleName}`;
-    const footer = `${AUTOMATION_TIMELINE_COPY.ranBecause} ${triggerName(run.trigger)}`;
+    const by = interpolate(copy.by, { rule: run.ruleName });
+    const footer = interpolate(copy.ranBecause, { trigger: triggerName(run.trigger) });
     const steps = run.steps.filter(isStepResult);
 
     for (const step of steps) {
@@ -150,9 +147,11 @@ export function buildAutomationTimelineEvents(
         events.push({
           id: `${run.id}:${step.stepIndex}:skipped`,
           timestamp: run.firedAt,
-          title: `${AUTOMATION_TIMELINE_COPY.skippedPrefix} ${actionTitle(step.action).toLowerCase()}`,
+          title: interpolate(copy.skipped, {
+            action: actionTitle(step.action, copy).toLocaleLowerCase(getBcp47Locale(getLocale())),
+          }),
           by,
-          footer: AUTOMATION_TIMELINE_COPY.stoppedAfterFailure,
+          footer: copy.stoppedAfterFailure,
           tone: 'default',
           ruleId: run.ruleId,
           trigger: run.trigger,
@@ -171,7 +170,7 @@ export function buildAutomationTimelineEvents(
         // about what to do next, and the six fixes are six different errands.
         title: failed
           ? automationFailureTitle(step.action, run.subjectId)
-          : actionTitle(step.action),
+          : actionTitle(step.action, copy),
         // The RUN-level outcome, on one event per run — a run-level fact
         // repeated per step would state N times something true once.
         //
@@ -190,7 +189,7 @@ export function buildAutomationTimelineEvents(
           stepReasonText(step) ??
           step.unavailableReason ??
           (step.status === 'nothing-to-do'
-            ? AUTOMATION_TIMELINE_COPY.nothingToDoSuffix
+            ? copy.nothingToDo
             : undefined),
         footer,
         tone: failed ? 'error' : 'default',

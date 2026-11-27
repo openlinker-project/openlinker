@@ -26,7 +26,7 @@
  * @module apps/web/src/features/returns/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { z } from 'zod/v4';
 
@@ -35,7 +35,7 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Textarea } from '../../../shared/ui/textarea';
-import { RETURN_RECEIVE_COPY } from '../lib/return-custody.copy';
+import { useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { outstandingToReceive } from '../lib/return-line-quantities';
 import type { ReturnLine } from '../api/returns.types';
 
@@ -55,14 +55,16 @@ interface ReturnReceiveFormProps {
  * out of the resolver, which is where the operator sees it as a field error
  * rather than as a failed request.
  */
-function buildSchema(outstanding: number) {
+type ReceiveCopy = ResolvedCopy<Messages['returns']>['custody']['receive'];
+
+function createReceiveSchema(copy: ReceiveCopy, outstanding: number) {
   return z.object({
     quantity: z
-      .number({ error: RETURN_RECEIVE_COPY.nonPositive })
-      .int(RETURN_RECEIVE_COPY.notWholeUnits)
-      .min(1, RETURN_RECEIVE_COPY.nonPositive)
+      .number({ error: copy.nonPositive })
+      .int(copy.notWholeUnits)
+      .min(1, copy.nonPositive)
       // The spec's sentence, and the same bound the server enforces.
-      .max(outstanding, RETURN_RECEIVE_COPY.overReceipt),
+      .max(outstanding, copy.overReceipt),
     note: z.string().max(500).optional(),
   });
 }
@@ -76,7 +78,9 @@ export function ReturnReceiveForm({
   onSubmit,
   onCancel,
 }: ReturnReceiveFormProps): ReactElement {
+  const copy = useMessages('returns').custody.receive;
   const outstanding = outstandingToReceive(line);
+  const schema = useMemo(() => createReceiveSchema(copy, outstanding), [copy, outstanding]);
 
   const {
     formState: { errors },
@@ -84,7 +88,7 @@ export function ReturnReceiveForm({
     register,
     reset,
   } = useForm<ReceiveFormValues>({
-    resolver: zodResolver(buildSchema(outstanding)),
+    resolver: zodResolver(schema),
     // The common case is one press: everything still outstanding arrived.
     defaultValues: { quantity: outstanding, note: '' },
   });
@@ -119,15 +123,15 @@ export function ReturnReceiveForm({
         void handleSubmit(submit)(event);
       }}
     >
-      <FormErrorSummary errors={messages} title={RETURN_RECEIVE_COPY.heading} />
+      <FormErrorSummary errors={messages} title={copy.heading} />
 
       {/* Disabled wholesale while the write is in flight, so no field can be
           edited into disagreement with the request already on the wire. */}
       <fieldset className="return-custody-form__fields" disabled={pending}>
         <FormField
-          description={RETURN_RECEIVE_COPY.quantityHint}
+          description={copy.quantityHint}
           error={errors.quantity?.message}
-          label={RETURN_RECEIVE_COPY.quantityLabel}
+          label={copy.quantityLabel}
           name="quantity"
         >
           <Input
@@ -140,9 +144,9 @@ export function ReturnReceiveForm({
           />
         </FormField>
 
-        <FormField error={errors.note?.message} label={RETURN_RECEIVE_COPY.noteLabel} name="note">
+        <FormField error={errors.note?.message} label={copy.noteLabel} name="note">
           <Textarea
-            placeholder={RETURN_RECEIVE_COPY.notePlaceholder}
+            placeholder={copy.notePlaceholder}
             rows={2}
             {...register('note')}
           />
@@ -150,10 +154,10 @@ export function ReturnReceiveForm({
 
         <div className="return-custody-form__actions">
           <Button type="submit">
-            {pending ? RETURN_RECEIVE_COPY.pending : RETURN_RECEIVE_COPY.submit}
+            {pending ? copy.pending : copy.submit}
           </Button>
           <Button onClick={onCancel} tone="secondary" type="button">
-            {RETURN_RECEIVE_COPY.cancel}
+            {copy.cancel}
           </Button>
         </div>
       </fieldset>

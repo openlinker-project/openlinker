@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient, sampleConnection } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import { LocationDialog } from './location-dialog';
 import type { InventoryLocation } from '../api/inventory-locations.types';
 
@@ -96,7 +97,12 @@ describe('LocationDialog', () => {
   it('should map a 409 duplicate-code response to a field error and keep the dialog open', async () => {
     const createLocation = vi
       .fn()
-      .mockRejectedValue(new ApiError('Inventory location code already exists: WH1', 409, {}));
+      .mockRejectedValue(
+        new ApiError('Inventory location code already exists: WH1', 409, {
+          code: 'INVENTORY_LOCATION_CODE_DUPLICATE',
+          params: { code: 'WH1' },
+        })
+      );
     const apiClient = createMockApiClient({
       inventory: { createLocation },
       connections: { list: vi.fn().mockResolvedValue([]) },
@@ -110,7 +116,11 @@ describe('LocationDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /save location/i }));
 
     expect(
-      (await screen.findAllByText('Inventory location code already exists: WH1')).length,
+      (
+        await screen.findAllByText(
+          interpolate(getMessages('errors').codes.INVENTORY_LOCATION_CODE_DUPLICATE, { code: 'WH1' })
+        )
+      ).length,
     ).toBeGreaterThan(0);
     expect(onClose).not.toHaveBeenCalled();
   });

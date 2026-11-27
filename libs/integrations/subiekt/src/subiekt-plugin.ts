@@ -76,6 +76,7 @@ export const subiektAdapterManifest: AdapterMetadata = {
     'OrderSource',
     'OrderProcessorManager',
   ],
+  orderSyncStartModes: ['now', 'from', 'all'],
   // Driving Subiekt GT (InsERT GT product line) via the classic COM "Sfera GT"
   // automation surface (ProgID InsERT.GT) — NOT Subiekt nexo, which is a
   // different InsERT product with its own, unrelated .NET Sfera API

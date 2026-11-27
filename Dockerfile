@@ -1,4 +1,4 @@
-FROM node:22.23.1-alpine3.24 AS base
+FROM node:22.23.4-alpine3.24 AS base
 
 # Install pnpm — pinned to match the repo's packageManager field (package.json)
 # so the Docker build resolves the exact same pnpm release as local dev/CI.
@@ -40,6 +40,8 @@ COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
 COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
 COPY libs/integrations/shoper/package.json ./libs/integrations/shoper/
+COPY libs/integrations/amazon/package.json ./libs/integrations/amazon/
+COPY libs/integrations/shopify/package.json ./libs/integrations/shopify/
 COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
 # Subiekt nexo is a SEPARATE package for a separate InsERT product. This list is
 # enumerated by hand for layer caching, so a new workspace package is invisible
@@ -69,7 +71,7 @@ RUN chown -R node:node /app
 USER node
 
 # Production stage
-FROM node:22.23.1-alpine3.24 AS production
+FROM node:22.23.4-alpine3.24 AS production
 
 WORKDIR /app
 
@@ -96,6 +98,8 @@ COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
 COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
 COPY libs/integrations/shoper/package.json ./libs/integrations/shoper/
+COPY libs/integrations/amazon/package.json ./libs/integrations/amazon/
+COPY libs/integrations/shopify/package.json ./libs/integrations/shopify/
 COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
 # Subiekt nexo is a SEPARATE package for a separate InsERT product. This list is
 # enumerated by hand for layer caching, so a new workspace package is invisible
@@ -138,6 +142,8 @@ COPY --from=base --chown=node:node /app/libs/integrations/inpost/dist ./libs/int
 COPY --from=base --chown=node:node /app/libs/integrations/ksef/dist ./libs/integrations/ksef/dist
 COPY --from=base --chown=node:node /app/libs/integrations/prestashop/dist ./libs/integrations/prestashop/dist
 COPY --from=base --chown=node:node /app/libs/integrations/shoper/dist ./libs/integrations/shoper/dist
+COPY --from=base --chown=node:node /app/libs/integrations/amazon/dist ./libs/integrations/amazon/dist
+COPY --from=base --chown=node:node /app/libs/integrations/shopify/dist ./libs/integrations/shopify/dist
 COPY --from=base --chown=node:node /app/libs/integrations/subiekt/dist ./libs/integrations/subiekt/dist
 COPY --from=base --chown=node:node /app/libs/integrations/subiekt-nexo/dist ./libs/integrations/subiekt-nexo/dist
 COPY --from=base --chown=node:node /app/libs/integrations/woocommerce/dist ./libs/integrations/woocommerce/dist

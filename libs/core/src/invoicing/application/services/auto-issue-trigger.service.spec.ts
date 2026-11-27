@@ -17,6 +17,7 @@ import {
   AUTO_ISSUE_RETRY_BUDGET,
 } from './auto-issue-trigger.service';
 import { BuyerProfile } from '../../domain/entities/buyer-profile.entity';
+import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { ISyncJobsService } from '@openlinker/core/sync';
@@ -25,7 +26,11 @@ import type { Order } from '@openlinker/core/orders';
 import type { IInvoiceService } from './invoice.service.interface';
 import { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
 import type { InvoiceStatus, InvoiceFailureMode } from '../../domain/types/invoicing.types';
-import type { ISalesDocumentRulesService, SalesDocumentDecision } from '@openlinker/core/sales-documents';
+import type {
+  ISalesDocumentRulesService,
+  ISalesDocumentSettingsService,
+  SalesDocumentDecision,
+} from '@openlinker/core/sales-documents';
 import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
@@ -194,6 +199,9 @@ describe('AutoIssueTriggerService', () => {
       integrations as unknown as IIntegrationsService,
       invoices as unknown as IInvoiceService,
       salesDocumentRules as unknown as ISalesDocumentRulesService,
+      {
+        getGiftDocumentForm: jest.fn().mockResolvedValue({ form: 'technical-cent', source: 'default' }),
+      } as unknown as ISalesDocumentSettingsService,
       moduleRef as unknown as ModuleRef,
     );
     // Silence + capture the PII-safe envelope log.
@@ -214,6 +222,82 @@ describe('AutoIssueTriggerService', () => {
   });
 
   afterEach(() => jest.restoreAllMocks());
+
+  describe('gift form reaches the invoice mapper (#3930)', () => {
+    const giftOrder = (): Order =>
+      makeOrder({
+        paymentStatus: 'paid',
+        items: [
+          { id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget', taxRate: '23' },
+          {
+            id: 'i2',
+            productId: 'p2',
+            quantity: 1,
+            price: 0,
+            name: 'Spoon',
+            taxRate: '23',
+            gift: { source: 'channel' },
+          },
+        ],
+      });
+    const scheduledLines = (): { unitPriceGross: number; quantity: number }[] =>
+      syncJobs.schedule.mock.calls[0][0].payload.lines as { unitPriceGross: number; quantity: number }[];
+
+    it('should carry the gift as a technical cent by default', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(giftOrder(), 'src-1', 'evt-1');
+      const lines = scheduledLines();
+      expect(lines).toHaveLength(3);
+      expect(lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+      const total = lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(total).toBe(2000);
+    });
+
+    it('should omit the gift when the connection chose omit', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(
+        makeConnection('auto-on-paid', { id: 'src-1', config: { giftOnDocuments: { form: 'omit' } } }),
+      );
+      await service.onOrderTransition(giftOrder(), 'src-1', 'evt-1');
+      expect(scheduledLines()).toHaveLength(1);
+    });
+
+    it('should take 0.01 from a paid line when the source connection chose show and the adapter refuses zero', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(
+        makeConnection('auto-on-paid', {
+          id: 'src-1',
+          config: { giftOnDocuments: { form: 'show' } },
+        }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        getSupportedDocumentTypes: () => ['invoice'],
+        acceptsZeroValueLine: () => false,
+      });
+      await service.onOrderTransition(giftOrder(), 'src-1', 'evt-1');
+      const lines = scheduledLines();
+      expect(lines).toHaveLength(3);
+      expect(lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+      const total = lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(total).toBe(2000);
+    });
+
+    it('should keep a 0.00 line when the adapter declares it accepts zero', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(
+        makeConnection('auto-on-paid', {
+          id: 'src-1',
+          config: { giftOnDocuments: { form: 'show' } },
+        }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue({
+        getSupportedDocumentTypes: () => ['invoice'],
+        acceptsZeroValueLine: () => true,
+      });
+      await service.onOrderTransition(giftOrder(), 'src-1', 'evt-1');
+      expect(scheduledLines().at(-1)?.unitPriceGross).toBe(0);
+    });
+  });
 
   describe('onOrderTransition — trigger-model gating (invoice kind)', () => {
     it('auto-on-paid: paid order enqueues exactly one invoicing.issue job', async () => {
@@ -319,12 +403,82 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
-    it('batched: caught + skipped (no enqueue), logged (deferred, never silently ignored)', async () => {
+    // #3583: batched queues a paid order for its connection's next run.
+    it('batched: a paid order is queued for its connection and kind, nothing enqueued', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('batched')]);
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const outcome = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      expect(warnSpy.mock.calls[0][0]).toContain('BatchedTriggerNotImplementedError');
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        block: {
+          reason: 'trigger-model-batched',
+          connectionId: 'conn-inv-1',
+          documentKind: 'invoice',
+        },
+      });
+    });
+
+    it('batched: an unpaid order is only waiting, never queued', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('batched')]);
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'awaiting' }),
+        'src-1',
+      );
+      expect(outcome).toEqual({ kind: 'none' });
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
+    it("batched: inside the connection's own run, enqueues the same job and key as auto-on-paid", async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('batched')]);
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+        undefined,
+        null,
+        null,
+        undefined,
+        { batchRun: { connectionId: 'conn-inv-1', documentKinds: ['invoice'] } },
+      );
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule.mock.calls[0][0]).toMatchObject({
+        jobType: 'invoicing.issue',
+        idempotencyKey: 'invoice:conn-inv-1:order-1',
+      });
+      expect(outcome).toEqual({
+        kind: 'none',
+        enqueued: {
+          connectionId: 'conn-inv-1',
+          documentKind: 'invoice',
+          idempotencyKey: 'invoice:conn-inv-1:order-1',
+        },
+      });
+    });
+
+    it.each([
+      ['another connection', { connectionId: 'other-conn', documentKinds: ['invoice'] }],
+      ['another kind', { connectionId: 'conn-inv-1', documentKinds: ['fiscal-receipt'] }],
+    ])('batched: a run for %s leaves the order queued', async (_label, batchRun) => {
+      connectionPort.list.mockResolvedValue([makeConnection('batched')]);
+      const outcome = await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+        undefined,
+        null,
+        null,
+        undefined,
+        { batchRun },
+      );
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'trigger-model-batched' } });
+    });
+
+    it('batched: a run reports an order that already carries a document, and enqueues nothing', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('batched')]);
+      invoices.getLatestInvoiceForOrder.mockResolvedValue({
+        blocksIssuanceElsewhere: true,
+      } as never);
+      const outcome = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      expect(outcome).toEqual({ kind: 'none', alreadyDocumented: true });
     });
 
     // One connection per case: with two candidates and no primary the router
@@ -342,6 +496,81 @@ describe('AutoIssueTriggerService', () => {
         'src-1',
       );
       expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+  });
+
+  // #3582: each kind reads its own trigger model, with the legacy key as the
+  // fallback. Both map entries are set on single-kind connections, so a gate
+  // that read the wrong kind's entry would fail these, not pass by accident.
+  describe('kind-scoped trigger model (#3582)', () => {
+    const both = { invoice: 'batched', 'fiscal-receipt': 'auto-on-paid' };
+
+    it('registers a receipt at once while invoices on the same config are batched', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeFiscalConnection(undefined, {
+          config: { salesDocument: { documentKind: 'fiscal-receipt', triggerModels: both } },
+        }),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('fiscalization.register');
+    });
+
+    it('holds an invoice for the batch while receipts on the same config issue at once', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection(undefined, {
+          config: { salesDocument: { documentKind: 'invoice', triggerModels: both } },
+        }),
+      ]);
+
+      const outcome = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(outcome).toMatchObject({
+        kind: 'blocked',
+        block: { reason: 'trigger-model-batched', documentKind: 'invoice' },
+      });
+    });
+
+    it('lets the kind-scoped value override the legacy key for that kind only', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection(undefined, {
+          config: {
+            invoicing: { triggerModel: 'manual' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'auto-on-paid' } },
+          },
+        }),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('invoicing.issue');
+    });
+
+    it('falls back to the legacy key when the kind-scoped value is unrecognised', async () => {
+      connectionPort.list.mockResolvedValue([
+        makeConnection(undefined, {
+          config: {
+            invoicing: { triggerModel: 'auto-on-paid' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'nonsense' } },
+          },
+        }),
+      ]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a legacy-only config issuing the receipt kind exactly as before the split', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+
+      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+      expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('fiscalization.register');
     });
   });
 
@@ -617,6 +846,44 @@ describe('AutoIssueTriggerService', () => {
       expect(input.connectionId).toBe('conn-fiscal-1');
     });
 
+    it('takes 0.01 from a paid line for a gift when show is chosen and the Fiscalization adapter refuses zero (#3930)', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(
+        makeConnection('auto-on-paid', {
+          id: 'src-1',
+          config: { giftOnDocuments: { form: 'show' } },
+        }),
+      );
+      integrations.getCapabilityAdapter.mockResolvedValue({ acceptsZeroValueLine: () => false });
+      await service.onOrderTransition(
+        makeOrder({
+          paymentStatus: 'paid',
+          items: [
+            { id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget', taxRate: '23' },
+            {
+              id: 'i2',
+              productId: 'p2',
+              quantity: 1,
+              price: 0,
+              name: 'Spoon',
+              taxRate: '23',
+              gift: { source: 'channel' },
+            },
+          ],
+        }),
+        'src-1',
+      );
+      expect(integrations.getCapabilityAdapter).toHaveBeenCalledWith('conn-fiscal-1', 'Fiscalization');
+      const lines = syncJobs.schedule.mock.calls[0][0].payload.lines as {
+        unitPriceGross: number;
+        quantity: number;
+      }[];
+      expect(lines).toHaveLength(3);
+      expect(lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+      const total = lines.reduce((n, l) => n + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(total).toBe(2000);
+    });
+
     it('manual: enqueues ZERO jobs', async () => {
       connectionPort.list.mockResolvedValue([makeFiscalConnection('manual')]);
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
@@ -651,7 +918,10 @@ describe('AutoIssueTriggerService', () => {
           'src-1',
         );
 
-        expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'missing-tax-rate' } });
+        expect(outcome).toMatchObject({
+          kind: 'blocked',
+          block: { reason: 'missing-tax-rate', params: { taxRateScope: 'lines' } },
+        });
         expect(syncJobs.schedule).not.toHaveBeenCalled();
       } finally {
         if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
@@ -681,7 +951,7 @@ describe('AutoIssueTriggerService', () => {
           'src-1',
         );
 
-        expect(outcome).toEqual({ kind: 'none' });
+        expect(outcome).toMatchObject({ kind: 'none' });
         expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
       } finally {
         if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
@@ -792,7 +1062,7 @@ describe('AutoIssueTriggerService', () => {
           'pre-rollout',
         );
 
-        expect(outcome).toEqual({ kind: 'none' });
+        expect(outcome).toMatchObject({ kind: 'none' });
         expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
       } finally {
         if (previous === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
@@ -803,7 +1073,7 @@ describe('AutoIssueTriggerService', () => {
     it('does NOT call the Invoicing capability-adapter check for a fiscal-receipt candidate', async () => {
       connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
       await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
-      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalledWith(expect.anything(), 'Invoicing');
     });
 
     it('a net-priced order surfaces UnsupportedFiscalPriceTreatmentError, caught + logged, no enqueue', async () => {
@@ -1016,6 +1286,7 @@ describe('AutoIssueTriggerService', () => {
           reason: 'unresolved-routing',
           unresolvedReason: 'ambiguous-connection-no-primary',
           detail: '2 invoicing connections, none marked primary',
+          params: { eligibleCount: 2, primaryCount: 0, poolKind: 'invoice' },
         },
       });
     });
@@ -1037,7 +1308,10 @@ describe('AutoIssueTriggerService', () => {
       );
 
       expect(outcome).toMatchObject({
-        block: { detail: '2 invoicing connections, more than one marked primary' },
+        block: {
+          detail: '2 invoicing connections, more than one marked primary',
+          params: { eligibleCount: 2, primaryCount: 2, poolKind: 'invoice' },
+        },
       });
     });
 
@@ -1100,7 +1374,7 @@ describe('AutoIssueTriggerService', () => {
           'src-1',
         );
 
-        expect(outcome).toEqual({ kind: 'none' });
+        expect(outcome).toMatchObject({ kind: 'none' });
         expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
       } finally {
         if (previousStrict === undefined) delete process.env['OL_TAX_RATE_STRICT_ENABLED'];
@@ -1121,11 +1395,11 @@ describe('AutoIssueTriggerService', () => {
         'src-1',
       );
 
-      expect(outcome).toEqual({ kind: 'none' });
+      expect(outcome).toMatchObject({ kind: 'none' });
       expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
     });
 
-    it('should report trigger-model-batched, keeping the existing PII-safe log', async () => {
+    it('should report trigger-model-batched with its queue target (#3583)', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('batched')]);
 
       const outcome = await service.onOrderTransition(
@@ -1133,10 +1407,14 @@ describe('AutoIssueTriggerService', () => {
         'src-1',
       );
 
-      expect(outcome).toEqual({ kind: 'blocked', block: { reason: 'trigger-model-batched' } });
-      // The reason is ADDITIVE (§54) — the log envelope must not have been dropped.
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      expect(warnSpy.mock.calls[0][0]).toContain('BatchedTriggerNotImplementedError');
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        block: {
+          reason: 'trigger-model-batched',
+          connectionId: 'conn-inv-1',
+          documentKind: 'invoice',
+        },
+      });
     });
 
     it('should report `none` when the job is enqueued — this is what clears a stale reason', async () => {
@@ -1147,7 +1425,7 @@ describe('AutoIssueTriggerService', () => {
         'src-1',
       );
 
-      expect(outcome).toEqual({ kind: 'none' });
+      expect(outcome).toMatchObject({ kind: 'none' });
     });
 
     it('should report `none` for an unmet auto-on-paid condition — waiting is not blocked', async () => {
@@ -1160,7 +1438,7 @@ describe('AutoIssueTriggerService', () => {
 
       // An unpaid order is early in its lifecycle, not misconfigured. Badging it
       // would put a permanent warning on every order that has not been paid yet.
-      expect(outcome).toEqual({ kind: 'none' });
+      expect(outcome).toMatchObject({ kind: 'none' });
     });
 
     it('should report `none` for an unmet auto-on-shipped condition', async () => {
@@ -1171,7 +1449,7 @@ describe('AutoIssueTriggerService', () => {
         'src-1',
       );
 
-      expect(outcome).toEqual({ kind: 'none' });
+      expect(outcome).toMatchObject({ kind: 'none' });
     });
 
     it('should report `none` when no connection has the Invoicing capability', async () => {
@@ -1186,7 +1464,7 @@ describe('AutoIssueTriggerService', () => {
 
       // Nothing for an operator to unblock ON THIS ORDER — an install that simply
       // does not do invoicing must not badge every order it ingests.
-      expect(outcome).toEqual({ kind: 'none' });
+      expect(outcome).toMatchObject({ kind: 'none' });
       // No document read is needed to answer that, so none is made.
       expect(invoices.getLatestInvoiceForOrder).not.toHaveBeenCalled();
     });
@@ -1230,7 +1508,7 @@ describe('AutoIssueTriggerService', () => {
       // The decisive case: `manual` is true forever, so without this the gate
       // re-blocked an order the operator had already invoiced by hand — making the
       // aggregate count wrong and the timeline contradict the invoice panel.
-      expect(outcome).toEqual({ kind: 'none' });
+      expect(outcome).toMatchObject({ kind: 'none' });
       expect(invoices.getLatestInvoiceForOrder).toHaveBeenCalledWith('order-1');
     });
 
@@ -1245,7 +1523,7 @@ describe('AutoIssueTriggerService', () => {
 
       // Issuance is under way and visible on its own terms; re-labelling the order
       // "blocked" adds nothing.
-      expect(outcome).toEqual({ kind: 'none' });
+      expect(outcome).toMatchObject({ kind: 'none' });
     });
 
     it('should NOT suppress on a terminal REJECTED failure — the config problem is still real', async () => {
@@ -1286,7 +1564,7 @@ describe('AutoIssueTriggerService', () => {
       // created a document, so recording "no fiscal document was issued" against it
       // is a claim OL cannot support. This is why the check delegates to
       // `blocksIssuanceElsewhere` instead of testing `status !== 'failed'`.
-      expect(outcome).toEqual({ kind: 'none' });
+      expect(outcome).toMatchObject({ kind: 'none' });
     });
 
     it('should SUPPRESS a block when the order already has a blocking fiscal-registration record (review finding 6)', async () => {
@@ -1326,7 +1604,7 @@ describe('AutoIssueTriggerService', () => {
       // Without checking the fiscal-registration side too, a `manual` connection
       // would keep re-reporting `trigger-model-manual` on an order that already
       // has a registered receipt from a DIFFERENT connection.
-      expect(outcome).toEqual({ kind: 'none' });
+      expect(outcome).toMatchObject({ kind: 'none' });
       expect(fiscalRegistrations.getByOrderId).toHaveBeenCalledWith('order-1');
     });
 
@@ -1358,6 +1636,43 @@ describe('AutoIssueTriggerService', () => {
       );
 
       expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'line-total-mismatch' } });
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
+    // ADR-083: a set whose components carry different rates is presented as
+    // its components, and when a component's rate is unknown nothing is
+    // guessed - the document is HELD with a named reason.
+    it('should BLOCK with bundle-split-unknown when a set component has no known tax rate', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({
+          paymentStatus: 'paid',
+          items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 100, name: 'Set', taxRate: '23' }],
+          totals: {
+            subtotal: 100,
+            tax: 0,
+            shipping: 0,
+            total: 100,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+          },
+        }),
+        'src-1',
+        undefined,
+        undefined,
+        undefined,
+        {
+          byLineId: {
+            i1: [
+              { lineId: 'i1~c:a', variantId: 'a', productId: 'pa', name: 'A', quantity: 1, unitPriceGross: 60, taxRate: '23' },
+              { lineId: 'i1~c:b', variantId: 'b', productId: 'pb', name: 'B', quantity: 1, unitPriceGross: 40 },
+            ],
+          },
+        },
+      );
+
+      expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'bundle-split-unknown' } });
       expect(syncJobs.schedule).not.toHaveBeenCalled();
     });
 
@@ -1596,6 +1911,7 @@ describe('AutoIssueTriggerService', () => {
           reason: 'unresolved-routing',
           unresolvedReason: 'threshold-currency-mismatch',
           detail: expect.stringContaining('threshold-currency-mismatch') as unknown as string,
+          params: { eligibleCount: expect.any(Number) as unknown as number },
         },
       });
     });
@@ -1632,7 +1948,246 @@ describe('AutoIssueTriggerService', () => {
           // The count an operator can act on is the pool they go and fix, not
           // the empty eligible set.
           detail: '1 capable connection, none declaring a document kind',
+          params: { candidateCount: 1 },
         },
+      });
+    });
+  });
+
+  // A rule's connection is a persisted value checked only when the rule is
+  // saved. Disabling, removing or stripping that connection afterwards used to
+  // reach a branch the gate called unreachable and answered `indeterminate`,
+  // so the order got no document, no job and no badge.
+  describe('a rule routing to a connection that cannot issue (routed-connection-unavailable)', () => {
+    const disabledSubiekt = (): Connection =>
+      makeConnection('auto-on-paid', { id: 'conn-disabled', status: 'disabled' });
+
+    const issuedInvoice = (): InvoiceRecord =>
+      new InvoiceRecord(
+        'inv-1',
+        'conn-disabled',
+        'order-1',
+        'subiekt-gt',
+        'invoice',
+        'issued',
+        null,
+        null,
+        'not-applicable',
+        null,
+        null,
+        null,
+        null,
+        null,
+        new Date('2026-08-01T10:00:00Z'),
+        new Date('2026-08-01T10:00:00Z'),
+        null,
+      );
+
+    function routeTo(
+      documentKind: 'invoice' | 'fiscal-receipt',
+      connectionId: string,
+      // `null` = a country default routed it, so no rule id travels along.
+      ruleId: string | null = 'rule-1',
+    ): void {
+      salesDocumentRules.resolveRouting.mockResolvedValue({
+        kind: 'route',
+        documentKind,
+        connectionId,
+        ...(ruleId === null ? {} : { ruleId }),
+      } satisfies SalesDocumentDecision);
+    }
+
+    it('reports a persisted block naming the connection when the rule targets a disabled invoicing connection', async () => {
+      // Another connection is active, so the gate reaches the dispatch step -
+      // the shape of the live report.
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(disabledSubiekt());
+      routeTo('invoice', 'conn-disabled');
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(connectionPort.get).toHaveBeenCalledWith('conn-disabled');
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        block: {
+          reason: 'unresolved-routing',
+          unresolvedReason: 'routed-connection-unavailable',
+          detail: "Rule rule-1 routes this order's invoice to connection conn-disabled, which is disabled",
+          params: {
+            connectionId: 'conn-disabled',
+            connectionState: 'disabled',
+            ruleId: 'rule-1',
+            documentKind: 'invoice',
+          },
+        },
+        matchedRuleId: 'rule-1',
+      });
+    });
+
+    it('reports the block for a fiscal-receipt rule whose connection no longer exists', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('conn-gone'));
+      routeTo('fiscal-receipt', 'conn-gone', null);
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        block: {
+          reason: 'unresolved-routing',
+          unresolvedReason: 'routed-connection-unavailable',
+          detail: "Routing sends this order's receipt to connection conn-gone, which no longer exists",
+          params: {
+            connectionId: 'conn-gone',
+            connectionState: 'not-found',
+            documentKind: 'fiscal-receipt',
+          },
+        },
+      });
+    });
+
+    it('reports the block, and enqueues nothing, for a fiscal-receipt rule whose active connection lost Fiscalization', async () => {
+      // Active and still an Invoicing candidate, so it IS in `connections` -
+      // the check has to be about the capability, not only about presence.
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid', { id: 'conn-inv' })]);
+      routeTo('fiscal-receipt', 'conn-inv');
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(connectionPort.get).not.toHaveBeenCalled();
+      expect(outcome).toMatchObject({
+        kind: 'blocked',
+        block: {
+          unresolvedReason: 'routed-connection-unavailable',
+          detail: "Rule rule-1 routes this order's receipt to connection conn-inv, which does not have Fiscalization enabled",
+          params: {
+            connectionState: 'missing-capability',
+            missingCapabilities: ['Fiscalization'],
+          },
+        },
+      });
+    });
+
+    it('names the missing capability when the connection is active but carries neither sales-document capability', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(
+        makeConnection('auto-on-paid', { id: 'conn-stripped', enabledCapabilities: ['OrderSource'] }),
+      );
+      routeTo('invoice', 'conn-stripped');
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(outcome).toMatchObject({
+        block: {
+          unresolvedReason: 'routed-connection-unavailable',
+          detail: expect.stringContaining('which does not have Invoicing enabled') as unknown as string,
+        },
+      });
+    });
+
+    it('still blocks when the connection cannot be read back - only the detail gets vaguer', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      connectionPort.get.mockRejectedValue(new Error('db unavailable'));
+      routeTo('invoice', 'conn-disabled');
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(outcome).toMatchObject({
+        kind: 'blocked',
+        block: {
+          unresolvedReason: 'routed-connection-unavailable',
+          detail: expect.stringContaining(
+            'which is not an active connection that can issue it',
+          ) as unknown as string,
+          params: { connectionState: 'unreadable' },
+        },
+      });
+    });
+
+    it('reports none when the order already carries a document - the block is about configuration, which stays true after issuance', async () => {
+      connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+      connectionPort.get.mockResolvedValue(disabledSubiekt());
+      invoices.getLatestInvoiceForOrder.mockResolvedValue(issuedInvoice());
+      routeTo('invoice', 'conn-disabled');
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      expect(outcome).toMatchObject({ kind: 'none', matchedRuleId: 'rule-1' });
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
+    describe('when no active connection can issue at all', () => {
+      it('still reports the block when a rule routes the order to the disabled connection', async () => {
+        // The only invoicing connection was disabled, so the active list is
+        // empty - which used to answer `none` before the rules were consulted.
+        connectionPort.list.mockResolvedValue([]);
+        connectionPort.get.mockResolvedValue(disabledSubiekt());
+        routeTo('invoice', 'conn-disabled');
+
+        const outcome = await service.onOrderTransition(
+          makeOrderWithDelivery({ paymentStatus: 'paid' }),
+          'src-1',
+        );
+
+        expect(outcome).toMatchObject({
+          kind: 'blocked',
+          block: { unresolvedReason: 'routed-connection-unavailable' },
+          matchedRuleId: 'rule-1',
+        });
+      });
+
+      it('keeps reporting none when the rules route nowhere', async () => {
+        connectionPort.list.mockResolvedValue([]);
+
+        const outcome = await service.onOrderTransition(
+          makeOrderWithDelivery({ paymentStatus: 'paid' }),
+          'src-1',
+        );
+
+        expect(salesDocumentRules.resolveRouting).toHaveBeenCalledTimes(1);
+        expect(outcome).toMatchObject({ kind: 'none' });
+      });
+
+      it('does not consult the rules for an order with no delivery country', async () => {
+        connectionPort.list.mockResolvedValue([]);
+
+        const outcome = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+
+        expect(salesDocumentRules.resolveRouting).not.toHaveBeenCalled();
+        expect(outcome).toMatchObject({ kind: 'none' });
+      });
+
+      it('leaves the persisted reason alone when the rules cannot be read', async () => {
+        connectionPort.list.mockResolvedValue([]);
+        salesDocumentRules.resolveRouting.mockRejectedValue(new Error('db unavailable'));
+
+        const outcome = await service.onOrderTransition(
+          makeOrderWithDelivery({ paymentStatus: 'paid' }),
+          'src-1',
+        );
+
+        expect(outcome).toEqual({ kind: 'indeterminate' });
       });
     });
   });
@@ -1664,7 +2219,7 @@ describe('AutoIssueTriggerService', () => {
         'src-1',
       );
 
-      expect(outcomeA).toEqual({ kind: 'none' });
+      expect(outcomeA).toMatchObject({ kind: 'none' });
       expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
       expect(syncJobs.schedule.mock.calls[0][0].connectionId).toBe('conn-both');
       expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('invoicing.issue');
@@ -1680,7 +2235,7 @@ describe('AutoIssueTriggerService', () => {
         'src-2',
       );
 
-      expect(outcomeB).toEqual({ kind: 'none' });
+      expect(outcomeB).toMatchObject({ kind: 'none' });
       expect(syncJobs.schedule).toHaveBeenCalledTimes(2);
       expect(syncJobs.schedule.mock.calls[1][0].connectionId).toBe('conn-both');
       expect(syncJobs.schedule.mock.calls[1][0].jobType).toBe('fiscalization.register');

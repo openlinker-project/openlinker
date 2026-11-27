@@ -10,7 +10,8 @@
  * `category_mappings` / `attribute_mappings`.
  *
  * Open-world by intent (mirrors the capability/platformType open sets); today
- * only `allegro` is a borrowed owner taxonomy.
+ * only `allegro` is a borrowed owner taxonomy. Amazon owns its trees (#4181)
+ * but nothing borrows them.
  *
  * @module libs/core/src/listings/domain/types
  */
@@ -53,4 +54,28 @@
  */
 export const TaxonomyOwnerValues = ['allegro', 'allegro:sandbox'] as const;
 
-export type TaxonomyOwner = (typeof TaxonomyOwnerValues)[number];
+/**
+ * Amazon's product types, per marketplace (#4181).
+ *
+ * Amazon publishes a product type's schema per `MarketplaceId`, so each
+ * marketplace is its own tree (`'amazon:A1PA6795UKMFR9'`), exactly as the
+ * note above anticipated; the sandbox host is a separate environment and
+ * qualifies the same way (`'amazon:sandbox:A1PA6795UKMFR9'`). Marketplace ids
+ * are an open set Amazon grows, so the family is a pattern rather than an
+ * enumeration; `isTaxonomyOwner` is the runtime check for both halves.
+ */
+export type AmazonTaxonomyOwner = `amazon:${string}`;
+
+export type TaxonomyOwner = (typeof TaxonomyOwnerValues)[number] | AmazonTaxonomyOwner;
+
+/** An Amazon marketplace id: upper-case alphanumeric, 10 to 14 characters. */
+const AMAZON_TAXONOMY_OWNER_PATTERN = /^amazon:(sandbox:)?[A-Z0-9]{10,14}$/;
+
+export function isTaxonomyOwner(value: string): value is TaxonomyOwner {
+  return (TaxonomyOwnerValues as readonly string[]).includes(value) || AMAZON_TAXONOMY_OWNER_PATTERN.test(value);
+}
+
+/** The Amazon tree of one marketplace in one environment. */
+export function amazonTaxonomyOwner(marketplaceId: string, sandbox: boolean): AmazonTaxonomyOwner {
+  return sandbox ? `amazon:sandbox:${marketplaceId}` : `amazon:${marketplaceId}`;
+}

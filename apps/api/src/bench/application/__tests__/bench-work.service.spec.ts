@@ -77,6 +77,8 @@ function orderRecord(over: Partial<OrderRecord> = {}): OrderRecord {
   return {
     internalOrderId: 'ol_order_1',
     dispatchByAt: new Date('2026-09-04T16:00:00Z'),
+    orderItems: [],
+    bundleLines: [],
     orderSnapshot: {
       orderNumber: 'OL-4471',
       shippingAddress: { firstName: 'Jan', lastName: 'Wiśniewski', address1: 'Secret 1' },
@@ -107,6 +109,8 @@ function harness(options: {
   orders?: OrderRecord[];
   siblingIds?: Map<string, string[]>;
   adapterKey?: string;
+  /** #3586 — catalogue rows behind the rail's item images. */
+  catalogue?: { variants: unknown[]; products: unknown[] };
 } = {}): Harness {
   const page: FulfillmentWorkPageView = {
     works: [workView()],
@@ -149,8 +153,8 @@ function harness(options: {
     // in this harness is about scoping, sorting and eligibility, and a row with
     // no resolvable products still carries its counts.
     {
-      getVariantsByIds: jest.fn().mockResolvedValue([]),
-      getProductsByIds: jest.fn().mockResolvedValue([]),
+      getVariantsByIds: jest.fn().mockResolvedValue(options.catalogue?.variants ?? []),
+      getProductsByIds: jest.fn().mockResolvedValue(options.catalogue?.products ?? []),
     } as never
   );
 
@@ -166,6 +170,27 @@ function harness(options: {
     parcels,
   };
 }
+
+describe('BenchWorkService rail images (#3586)', () => {
+  it("should use the variant's own picture, else the product's", async () => {
+    const { service } = harness({
+      catalogue: {
+        variants: [
+          { id: 'v-1', productId: 'p-1', images: ['https://shop.test/red.jpg'] },
+          { id: 'v-2', productId: 'p-1', images: null },
+        ],
+        products: [{ id: 'p-1', name: 'Mug', images: ['https://shop.test/p.jpg'] }],
+      },
+    });
+
+    const view = await service.listBenchWork('viewer-1', true);
+
+    expect(view.works[0].items.map((item) => item.imageUrl)).toEqual([
+      '/products/variants/v-1/images/0',
+      '/products/p-1/images/0',
+    ]);
+  });
+});
 
 describe('BenchWorkService (#2416)', () => {
   describe('scoping (story B1, decision D8)', () => {
@@ -289,6 +314,32 @@ describe('BenchWorkService (#2416)', () => {
       expect(view.works[0].unitsToVerify).toBe(3);
     });
 
+    it('should count gift units from standalone gift lines and bundle gift slots, not cancelled ones (#3935)', async () => {
+      const { service } = harness({
+        orders: [
+          orderRecord({
+            orderItems: [{ id: 'gift-line', gift: { source: 'ol-rule' } }],
+            bundleLines: [{ lineId: 'b', components: [{ lineId: 'slot', giftSlot: true }, { lineId: 'plain' }] }],
+          } as never),
+        ],
+        page: {
+          works: [
+            workView({
+              lines: [
+                { id: 'l-1', orderLineId: 'gift-line', productVariantId: 'v', totalQuantity: 2, fulfilledQuantity: 0, cancelledQuantity: 1 },
+                { id: 'l-2', orderLineId: 'slot', productVariantId: 'v', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 },
+                { id: 'l-3', orderLineId: 'plain', productVariantId: 'v', totalQuantity: 4, fulfilledQuantity: 0, cancelledQuantity: 0 },
+              ],
+            }),
+          ],
+        },
+      });
+
+      const view = await service.listBenchWork('viewer-1', true);
+
+      expect(view.works[0].giftUnits).toBe(2);
+    });
+
     it('should carry the order reference and buyer name, and NOTHING else from the snapshot', async () => {
       const { service } = harness();
 
@@ -372,7 +423,7 @@ describe('BenchWorkService (#2416)', () => {
             workView({
               status: 'open',
               activeHolds: [
-                { id: 'h-1', reason: 'address-invalid', note: null, placedAt: new Date('2026-09-04T09:12:00Z') },
+                { id: 'h-1', reason: 'address-invalid', note: null, placedAt: new Date('2026-09-04T09:12:00Z'), fromSourceChange: false },
               ],
             }),
           ],
@@ -610,6 +661,7 @@ describe('BenchWorkService (#2416)', () => {
                   reason: 'address-invalid' as const,
                   note: null,
                   placedAt: new Date('2026-09-04T09:00:00Z'),
+                  fromSourceChange: false,
                 })),
               }),
             ],
@@ -679,6 +731,7 @@ describe('BenchWorkService (#2416)', () => {
                   reason: 'address-invalid' as const,
                   note: null,
                   placedAt: new Date('2026-09-04T09:00:00Z'),
+                  fromSourceChange: false,
                 },
               ],
               supportedActions: ['release_hold'],
@@ -692,6 +745,37 @@ describe('BenchWorkService (#2416)', () => {
 
       expect(row.state).toBe('held');
       expect(row.supportedActions).toEqual(['release_hold']);
+    });
+  });
+
+  describe('buyer note facts on the rail (#3538, D12)', () => {
+    it('should flag a row whose order has a buyer note and carry this parcel acknowledgement', async () => {
+      const { service } = harness({
+        orders: [orderRecord({ hasBuyerNote: true } as Partial<OrderRecord>)],
+        page: {
+          works: [
+            workView({
+              buyerNoteAcknowledgedAt: new Date('2026-09-25T14:31:00Z'),
+            } as unknown as Partial<FulfillmentWorkView>),
+          ],
+        },
+      });
+
+      const row = (await service.listBenchWork('viewer-1', true)).works[0];
+
+      expect(row.hasBuyerNote).toBe(true);
+      expect(row.buyerNoteAcknowledgedAt).toBe('2026-09-25T14:31:00.000Z');
+    });
+
+    it('should report no note and no acknowledgement when the order has none', async () => {
+      const { service } = harness({ orders: [orderRecord({ hasBuyerNote: false } as Partial<OrderRecord>)] });
+
+      const row = (await service.listBenchWork('viewer-1', true)).works[0];
+
+      expect(row.hasBuyerNote).toBe(false);
+      expect(row.buyerNoteAcknowledgedAt).toBeNull();
+      // The rail never carries the text itself.
+      expect(Object.keys(row)).not.toContain('buyerNote');
     });
   });
 

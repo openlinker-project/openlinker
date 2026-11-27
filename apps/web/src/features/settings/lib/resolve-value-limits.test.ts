@@ -29,13 +29,20 @@ const BOUND = {
 };
 
 describe('resolveValueLimits', () => {
-  it('should read both ceilings and both reasons off the value', () => {
-    const limits = resolveValueLimits(RESOLVED, BOUND);
+  it('should read both ceilings off the value and the reasons from its own copy', () => {
+    const limits = resolveValueLimits(RESOLVED, BOUND, 'catalogueSweepBudget');
 
     expect(limits.recommendedMax).toBe(2000);
     expect(limits.absoluteMax).toBe(20_000);
-    expect(limits.recommendedReason).toBe('Past this the queue deepens.');
+    // The API's English reason is a developer detail (#3866); the operator
+    // reads the frontend's copy for this setting.
+    expect(limits.recommendedReason).toMatch(/^At 2000 products, one run takes about 3 minutes/);
+    expect(limits.absoluteReason).toMatch(/^A guard against a mistyped number/);
     expect(limits.complete).toBe(true);
+  });
+
+  it('should quote no reason when it does not know which setting it is', () => {
+    expect(resolveValueLimits(RESOLVED, BOUND).recommendedReason).toBeNull();
   });
 
   it('should range the control to the absolute ceiling, not the recommendation', () => {
@@ -62,7 +69,11 @@ describe('resolveValueLimits', () => {
   });
 
   it('should quote no recommendation reason it was not given', () => {
-    const limits = resolveValueLimits({ value: 500, source: 'default' }, undefined);
+    const limits = resolveValueLimits(
+      { value: 500, source: 'default' },
+      undefined,
+      'catalogueSweepBudget',
+    );
 
     expect(limits.recommendedMax).toBeNull();
     expect(limits.recommendedReason).toBeNull();

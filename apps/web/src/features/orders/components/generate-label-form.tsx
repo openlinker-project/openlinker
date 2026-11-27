@@ -28,6 +28,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { useConnectionsQuery } from '../../connections';
 import { captureDemoEvent } from '../../demo';
+import { interpolate, useMessages, usePlural, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -65,7 +66,7 @@ import {
 import {
   INSURED_CURRENCY_VALUES,
   LOCKER_TEMPLATE_VALUES,
-  generateLabelSchema,
+  createGenerateLabelSchema,
   type GenerateLabelFormSubmission,
   type GenerateLabelFormValues,
   type LockerTemplate,
@@ -76,8 +77,13 @@ import {
   buildDispatchItem,
   classifyDeliveryMethod,
   detectMissingFields,
+  missingFieldMessage,
   resolveShippingMethod,
 } from '../lib/dispatch-input';
+import { ApiError } from '../../../shared/api/api-error';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+
+type GenerateLabelCopy = ResolvedCopy<Messages['orders']>['generateLabelForm'];
 
 interface GenerateLabelFormProps {
   /** The full order record — supplies recipient pre-fill + routing keys. */
@@ -133,8 +139,15 @@ export function GenerateLabelForm({
   onSuccess,
   onCancel,
 }: GenerateLabelFormProps): ReactElement {
+  const ordersCopy = useMessages('orders');
+  const technicalDetails = useMessages('ui').apiError.technicalDetailsWith;
+  const copy = ordersCopy.generateLabelForm;
+  const schema = useMemo(() => createGenerateLabelSchema(copy.validation), [copy]);
   const snapshot = parseOrderSnapshot(order.orderSnapshot);
-  const recipient = buildRecipientPreview(snapshot);
+  const recipient = buildRecipientPreview(snapshot, copy.recipient);
+  const bundleCopy = useMessages('bundles');
+  const plural = usePlural();
+  const packComponents = (order.bundleLines ?? []).flatMap((bundle) => bundle.components);
   const hasPickupPoint = snapshot.pickupPoint !== undefined;
   // Locker-vs-courier is driven by the actual delivery method (#954), not by
   // `pickupPoint` presence alone (which was circular). A resolved pickup point
@@ -182,8 +195,13 @@ export function GenerateLabelForm({
   // `pickupPointResolvesAsync` PlatformContribution slot. `usePlatform` is a
   // hook — keep this call unconditional at the top of the component.
   const sourcePlatform = usePlatform(sourceConnection?.platformType);
+  // E-59: an operator who changed the delivery method in OpenLinker and left no
+  // pickup point removed it on purpose. Allegro is not going to supply one, so
+  // "waiting for Allegro" would be false and its Retry button would do nothing.
+  const pickupRemovedInOpenLinker = !hasPickupPoint && order.edits?.deliveryMethod != null;
   const showPickupRetryHint =
     !hasPickupPoint &&
+    !pickupRemovedInOpenLinker &&
     !isLikelyCourier &&
     sourcePlatform?.pickupPointResolvesAsync === true &&
     isWithinPickupPointRetryWindow(order.createdAt);
@@ -233,7 +251,7 @@ export function GenerateLabelForm({
       insuredAmount: '',
       insuredCurrency: 'PLN',
     },
-    resolver: zodResolver(generateLabelSchema),
+    resolver: zodResolver(schema),
   });
 
   // Cache the `register('length')` call so the spread and the explicit-ref
@@ -255,11 +273,11 @@ export function GenerateLabelForm({
   const lockerTemplateRegister = form.register('lockerTemplate');
   const lockerTemplate = form.watch('lockerTemplate');
 
-  // Default parcel of the routing rule this delivery method matches (#3652).
-  // Rules load asynchronously, so prefill once when the profile arrives and
-  // never overwrite a field the operator already touched. No profile -> no-op,
+  // Default parcel of the routing rule this delivery method matches (#3652),
+  // carried on the order itself (#3958). Prefill when the profile arrives or
+  // changes and never overwrite a field the operator already touched. No profile -> no-op,
   // leaving the empty fields and 'medium' locker size exactly as before.
-  const routedParcel = useRoutedParcelProfile(order.sourceConnectionId, snapshot.shipping?.methodId);
+  const routedParcel = useRoutedParcelProfile(order.deliveryResolution);
   useEffect(() => {
     if (!routedParcel) return;
     const dirty = form.formState.dirtyFields;
@@ -313,11 +331,7 @@ export function GenerateLabelForm({
   // backstop). Only relevant for the editable fallback field, not the read-only
   // sourced panel.
   const orderCurrency = snapshot.totals?.currency;
-  const routedCarrierPlatform = useRoutedCarrierPlatform(
-    order.sourceConnectionId,
-    snapshot.shipping?.methodId,
-    { enabled: codAllowed && !showSourcedCod },
-  );
+  const routedCarrierPlatform = useRoutedCarrierPlatform(order.deliveryResolution);
   const allowedCodCurrencies = useMemo(
     () => codCurrenciesForPlatform(routedCarrierPlatform),
     [routedCarrierPlatform],
@@ -348,23 +362,21 @@ export function GenerateLabelForm({
     if (orderCurrency && effectiveCurrency && effectiveCurrency !== orderCurrency) {
       return (
         <p className="generate-label-form__cod-caption">
-          Order is in {orderCurrency}, but this carrier collects cash on delivery in{' '}
-          {effectiveCurrency} — the amount will be collected in {effectiveCurrency}.
+          {interpolate(copy.cod.captionMismatch, { orderCurrency, currency: effectiveCurrency })}
         </p>
       );
     }
     if (allowedCodCurrencies.length <= 1) {
       return (
         <p className="generate-label-form__cod-caption">
-          This carrier collects cash on delivery in {effectiveCurrency} only.
+          {interpolate(copy.cod.captionOnly, { currency: effectiveCurrency ?? '' })}
         </p>
       );
     }
     if (orderCurrency && !currencyDirty) {
       return (
         <p className="generate-label-form__cod-caption">
-          Set from the order currency ({orderCurrency}). Change it if the carrier requires a
-          different one.
+          {interpolate(copy.cod.captionFromOrder, { currency: orderCurrency })}
         </p>
       );
     }
@@ -439,8 +451,8 @@ export function GenerateLabelForm({
       if (result.kind === 'dispatched') {
         showToast({
           tone: 'success',
-          title: 'Label generated',
-          description: 'Tracking number will appear within ~5 minutes.',
+          title: copy.toast.generatedTitle,
+          description: copy.toast.generatedBody,
         });
         // Auto-download the freshly-issued label (AC: "download triggered
         // immediately after successful generation"). Imperative + guarded on the
@@ -458,7 +470,7 @@ export function GenerateLabelForm({
               const mapped = resolveLabelDownloadError(downloadResult.error);
               showToast({
                 tone: mapped.tone,
-                title: "Couldn't fetch the label file",
+                title: mapped.pending ? mapped.title : copy.toast.downloadFailed,
                 description: mapped.description,
               });
             }
@@ -470,9 +482,8 @@ export function GenerateLabelForm({
         // fulfillment-routing rule matches). Don't claim a label was generated.
         showToast({
           tone: 'info',
-          title: 'Fulfilled by destination store',
-          description:
-            'This order is fulfilled by the destination store — no OpenLinker label is issued.',
+          title: copy.toast.destinationTitle,
+          description: copy.toast.destinationBody,
         });
       }
       form.reset();
@@ -490,6 +501,7 @@ export function GenerateLabelForm({
     shippingMethod === 'paczkomat' && hasPickupPoint;
 
   const submitDisabled = mutation.isPending || missingFields.length > 0;
+  const carrierDetail = carrierRejectionDetail(mutation.error);
 
   return (
     <form
@@ -501,19 +513,24 @@ export function GenerateLabelForm({
       aria-labelledby="generate-label-form-heading"
     >
       <h4 id="generate-label-form-heading" className="generate-label-form__heading">
-        Generate label
+        {copy.heading}
       </h4>
 
       {/* AC-3 retry hint (#839) — Allegro-source order whose pickup-point
           hasn't arrived yet. Non-blocking: operator can still proceed with
           the kurier fallback, or refetch to see if Allegro has caught up. */}
+      {pickupRemovedInOpenLinker && !isLikelyCourier ? (
+        <Alert tone="info" className="generate-label-form__pickup-removed">
+          <strong>{copy.pickupRemoved.title}</strong>
+          <p>{copy.pickupRemoved.body}</p>
+        </Alert>
+      ) : null}
+
       {showPickupRetryHint ? (
         <Alert tone="info" className="generate-label-form__pickup-retry">
-          <strong>Pickup point not yet available</strong>
+          <strong>{copy.pickupRetry.title}</strong>
           <p>
-            Allegro hasn&apos;t returned the buyer&apos;s pickup point for this order yet. It
-            usually arrives within a few hours of the order — the next poll will populate it.
-            You can retry now, or proceed with a courier shipment.
+            {interpolate(copy.pickupRetry.body, { provider: sourcePlatform?.displayName ?? '' })}
           </p>
           <Button
             type="button"
@@ -524,7 +541,7 @@ export function GenerateLabelForm({
             }}
             disabled={pickupRetryInFlight}
           >
-            {pickupRetryInFlight ? 'Retrying…' : 'Retry pickup-point lookup'}
+            {pickupRetryInFlight ? copy.pickupRetry.retrying : copy.pickupRetry.retry}
           </Button>
         </Alert>
       ) : null}
@@ -533,15 +550,13 @@ export function GenerateLabelForm({
           block submission so the operator can't fire a doomed BE call. */}
       {missingFields.length > 0 ? (
         <Alert tone="warning" className="generate-label-form__missing">
-          <strong>Missing recipient data — cannot generate label:</strong>
+          <strong>{copy.missing.title}</strong>
           <ul className="generate-label-form__missing-list">
             {missingFields.map((field) => (
-              <li key={field.id}>{field.message}</li>
+              <li key={field.id}>{missingFieldMessage(field.id, ordersCopy.dispatchInput)}</li>
             ))}
           </ul>
-          <p className="generate-label-form__missing-hint">
-            Open this order in the source platform to fix the buyer record, then re-poll.
-          </p>
+          <p className="generate-label-form__missing-hint">{copy.missing.hint}</p>
         </Alert>
       ) : null}
 
@@ -554,7 +569,12 @@ export function GenerateLabelForm({
           can quote it to carrier support without a log dive. */}
       {mutation.error ? (
         <Alert tone="error" className="generate-label-form__error">
-          <p className="generate-label-form__error-message">{mutation.error.message}</p>
+          <p className="generate-label-form__error-message">
+            {describeApiError(mutation.error, 'orders')}
+          </p>
+          {carrierDetail ? (
+            <p className="generate-label-form__error-detail">{interpolate(technicalDetails, { details: carrierDetail })}</p>
+          ) : null}
           <StructuredErrorList errors={extractShippingFieldErrors(mutation.error)} />
           <ShippingTraceReference traceId={extractShippingTraceId(mutation.error)} />
         </Alert>
@@ -568,9 +588,41 @@ export function GenerateLabelForm({
       <fieldset disabled={mutation.isPending} className="generate-label-form__fieldset">
         {/* Recipient — reference display, never editable. */}
         <div className="generate-label-form__recipient">
-          <p className="generate-label-form__section-label">Recipient</p>
+          <p className="generate-label-form__section-label">{copy.recipient.sectionLabel}</p>
           <KeyValueList items={recipient} />
         </div>
+
+        {/* What goes in the box. A bundle order ships its components, not the
+            bundle line, so the operator sizing the parcel sees them here. */}
+        {packComponents.length > 0 ? (
+          <div className="ux-pack-list" data-testid="label-pack-list">
+            <p className="generate-label-form__section-label">{bundleCopy.order.packTitle}</p>
+            {(order.bundleLines ?? []).map((bundle) => {
+              const soldLine = snapshot.items.find((item) => item.id === bundle.lineId);
+              return (
+                <div key={bundle.lineId} className="ux-pack-list__group">
+                  {soldLine ? (
+                    <p className="ux-pack-list__bundle">
+                      {interpolate(bundleCopy.order.packBundle, {
+                        name: soldLine.name ?? bundle.bundleVariantId,
+                        qty: soldLine.quantity,
+                      })}
+                    </p>
+                  ) : null}
+                  <ul>
+                    {bundle.components.map((component) => (
+                      <li key={component.lineId}>
+                        <span>{component.name ?? component.sku ?? component.variantId}</span>
+                        <strong>{plural(component.quantity, ordersCopy.generateLabelForm.packPieces)}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+            <p className="ux-pack-list__hint">{bundleCopy.order.packHint}</p>
+          </div>
+        ) : null}
 
         {/* Dimensions composite (3 inputs in one labeled row). FormField only
             accepts a single control child, so render the composite directly
@@ -578,9 +630,9 @@ export function GenerateLabelForm({
             primitive uses. */}
         <div className="form-field">
           <label className="form-field__label" htmlFor={`${dimsBaseId}-length`}>
-            Dimensions (mm)
+            {copy.dimensions.label}
           </label>
-          <p className="form-field__description">Length × Width × Height</p>
+          <p className="form-field__description">{copy.dimensions.description}</p>
           <div className="generate-label-form__dimensions">
             <Input
               {...lengthRegister}
@@ -588,8 +640,8 @@ export function GenerateLabelForm({
               type="number"
               inputMode="numeric"
               min={1}
-              placeholder="L"
-              aria-label="Length in millimetres"
+              placeholder={copy.dimensions.lengthPlaceholder}
+              aria-label={copy.dimensions.lengthAria}
               ref={(el) => {
                 lengthRegister.ref(el);
                 firstInputRef.current = el;
@@ -602,8 +654,8 @@ export function GenerateLabelForm({
               type="number"
               inputMode="numeric"
               min={1}
-              placeholder="W"
-              aria-label="Width in millimetres"
+              placeholder={copy.dimensions.widthPlaceholder}
+              aria-label={copy.dimensions.widthAria}
               invalid={Boolean(form.formState.errors.width)}
             />
             <Input
@@ -612,8 +664,8 @@ export function GenerateLabelForm({
               type="number"
               inputMode="numeric"
               min={1}
-              placeholder="H"
-              aria-label="Height in millimetres"
+              placeholder={copy.dimensions.heightPlaceholder}
+              aria-label={copy.dimensions.heightAria}
               invalid={Boolean(form.formState.errors.height)}
             />
           </div>
@@ -628,7 +680,7 @@ export function GenerateLabelForm({
         </div>
 
         <FormField
-          label="Weight (g)"
+          label={copy.weight}
           name="weightGrams"
           error={form.formState.errors.weightGrams?.message}
         >
@@ -640,6 +692,11 @@ export function GenerateLabelForm({
             invalid={Boolean(form.formState.errors.weightGrams)}
           />
         </FormField>
+        {routedParcel?.weightGrams !== undefined && !form.formState.dirtyFields.weightGrams ? (
+          <p className="form-field__description" data-testid="label-weight-from-rule">
+            {copy.weightFromRule}
+          </p>
+        ) : null}
 
         {shippingMethod === 'paczkomat' ? (
           <FormField
@@ -647,8 +704,12 @@ export function GenerateLabelForm({
             name="paczkomatId"
             description={
               paczkomatIsBuyerSelected
-                ? 'Buyer-selected via Allegro — read-only.'
-                : `Type the ${pickupFieldLabel} code (e.g. POZ08A). Picker coming in a follow-up.`
+                ? sourcePlatform?.displayName
+                  ? interpolate(copy.pickup.buyerSelectedVia, {
+                      provider: sourcePlatform.displayName,
+                    })
+                  : copy.pickup.buyerSelected
+                : interpolate(copy.pickup.typeCode, { pointKind: pickupFieldLabel })
             }
             error={form.formState.errors.paczkomatId?.message}
           >
@@ -670,12 +731,12 @@ export function GenerateLabelForm({
             registered input keeping the field tracked by RHF. */}
         {shippingMethod === 'paczkomat' ? (
           <div className="form-field">
-            <span className="form-field__label">Locker size</span>
+            <span className="form-field__label">{copy.lockerSize.label}</span>
             <p className="form-field__description" id="lockerTemplate-description">
-              InPost parcel template — required for a paczkomat shipment.
+              {copy.lockerSize.description}
             </p>
             <SegmentedControl
-              aria-label="Locker size"
+              aria-label={copy.lockerSize.label}
               aria-describedby="lockerTemplate-description"
               aria-invalid={form.formState.errors.lockerTemplate ? true : undefined}
               aria-errormessage={
@@ -685,7 +746,7 @@ export function GenerateLabelForm({
               onChange={(t) => form.setValue('lockerTemplate', t, { shouldValidate: true })}
               options={LOCKER_TEMPLATE_VALUES.map((t) => ({
                 value: t,
-                label: t,
+                label: copy.lockerSize.options[t],
                 hint: LOCKER_TEMPLATE_GABARYT[t],
               }))}
             />
@@ -707,28 +768,27 @@ export function GenerateLabelForm({
           <div className="form-field generate-label-form__cod-panel">
             <div className="generate-label-form__cod-head">
               <StatusBadge tone="warning" withDot>
-                Cash on delivery
+                {copy.cod.badge}
               </StatusBadge>
               {showSourcedCod ? (
-                <span className="generate-label-form__cod-source">from the order</span>
+                <span className="generate-label-form__cod-source">{copy.cod.fromOrder}</span>
               ) : null}
             </div>
 
             {showSourcedCod && sourcedCod ? (
               <>
                 <p className="generate-label-form__cod-amount tabular">
-                  {sourcedCod.amount} {sourcedCod.currency}
+                  {interpolate(copy.cod.sourcedAmount, {
+                    amount: sourcedCod.amount,
+                    currency: sourcedCod.currency,
+                  })}
                 </p>
-                <p className="generate-label-form__cod-note">
-                  Collected on delivery — set by the order, not editable here.
-                </p>
+                <p className="generate-label-form__cod-note">{copy.cod.sourcedNote}</p>
               </>
             ) : (
               <>
                 <p className="generate-label-form__cod-note">
-                  {isCodOrder
-                    ? "This order is cash-on-delivery, but the collect amount didn't come from the source (non-Allegro or missing). Enter the amount to collect."
-                    : 'Amount to collect on delivery. Leave blank for a prepaid shipment.'}
+                  {isCodOrder ? copy.cod.manualCodOrder : copy.cod.manualOptional}
                 </p>
                 {/* Amount + currency as one control (#1569). The currency
                     defaults from the order and is scoped to the routed carrier:
@@ -742,8 +802,10 @@ export function GenerateLabelForm({
                     placeholder="129.90"
                     aria-label={
                       allowedCodCurrencies.length > 1
-                        ? 'COD amount to collect'
-                        : `COD amount to collect in ${allowedCodCurrencies[0]}`
+                        ? copy.cod.amountAria
+                        : interpolate(copy.cod.amountAriaIn, {
+                            currency: allowedCodCurrencies[0] ?? '',
+                          })
                     }
                     invalid={Boolean(form.formState.errors.codAmount)}
                   />
@@ -751,7 +813,7 @@ export function GenerateLabelForm({
                     <Select
                       {...codCurrencyRegister}
                       className="generate-label-form__money-ccy"
-                      aria-label="COD currency"
+                      aria-label={copy.cod.currencyAria}
                     >
                       {allowedCodCurrencies.map((c) => (
                         <option key={c} value={c}>
@@ -779,21 +841,19 @@ export function GenerateLabelForm({
         <div className="form-field generate-label-form__insured-panel">
           <div className="generate-label-form__insured-head">
             <StatusBadge tone="info" withDot>
-              Insurance
+              {copy.insurance.badge}
             </StatusBadge>
           </div>
-          <p className="generate-label-form__insured-note">
-            Declared value to insure the parcel for. Leave blank for the carrier default.
-          </p>
+          <p className="generate-label-form__insured-note">{copy.insurance.note}</p>
           <div className="generate-label-form__insured">
             <Input
               {...insuredAmountRegister}
               inputMode="decimal"
               placeholder="150.00"
-              aria-label="Declared value to insure"
+              aria-label={copy.insurance.amountAria}
               invalid={Boolean(form.formState.errors.insuredAmount)}
             />
-            <Select {...insuredCurrencyRegister} aria-label="Insurance currency">
+            <Select {...insuredCurrencyRegister} aria-label={copy.insurance.currencyAria}>
               {INSURED_CURRENCY_VALUES.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -809,48 +869,66 @@ export function GenerateLabelForm({
 
         {showSlowNotice ? (
           <div role="status" aria-live="polite" className="generate-label-form__slow-notice">
-            Allegro is processing your label. This typically takes 10–30 seconds.
+            {copy.slowNotice}
           </div>
         ) : null}
       </fieldset>
 
       <div className="generate-label-form__actions">
         <Button type="button" tone="ghost" onClick={onCancel} disabled={mutation.isPending}>
-          Cancel
+          {copy.cancel}
         </Button>
         <Button type="submit" tone="primary" disabled={submitDisabled}>
-          {mutation.isPending ? 'Generating label… (~30s)' : 'Generate label'}
+          {mutation.isPending ? copy.submitting : copy.submit}
         </Button>
       </div>
     </form>
   );
 }
 
-function buildRecipientPreview(snapshot: ParsedOrderSnapshot): KeyValueItem[] {
+/**
+ * The carrier's own words for a refused label (`SHIPPING_PROVIDER_*`). The
+ * coded sentence only names the carrier; what it objected to (e.g. DPD's
+ * `NOT_PROCESSED` text) travels in `message` alone and is what the operator
+ * quotes to carrier support, so it stays visible, labelled as untranslated.
+ */
+function carrierRejectionDetail(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  if (error.code !== 'SHIPPING_PROVIDER_REJECTED' && error.code !== 'SHIPPING_PROVIDER_AUTH_FAILED') {
+    return undefined;
+  }
+  // eslint-disable-next-line no-restricted-syntax -- the carrier's own words, shown beside describeApiError under the untranslated technical-details label
+  return error.message.length > 0 ? error.message : undefined;
+}
+
+function buildRecipientPreview(
+  snapshot: ParsedOrderSnapshot,
+  copy: GenerateLabelCopy['recipient'],
+): KeyValueItem[] {
   const items: KeyValueItem[] = [];
   const a = snapshot.shippingAddress;
 
   const nameParts = [a?.firstName, a?.lastName].filter(Boolean).join(' ').trim();
-  if (nameParts) items.push({ id: 'name', label: 'Name', value: nameParts });
+  if (nameParts) items.push({ id: 'name', label: copy.name, value: nameParts });
   if (snapshot.customerEmail) {
-    items.push({ id: 'email', label: 'Email', value: snapshot.customerEmail, mono: true });
+    items.push({ id: 'email', label: copy.email, value: snapshot.customerEmail, mono: true });
   }
-  if (a?.phone) items.push({ id: 'phone', label: 'Phone', value: a.phone, mono: true });
+  if (a?.phone) items.push({ id: 'phone', label: copy.phone, value: a.phone, mono: true });
   if (a) {
     const line1 = a.address1;
     const line2 = [a.postalCode, a.city, a.country].filter(Boolean).join(', ');
-    items.push({ id: 'addr1', label: 'Street', value: line1 });
-    items.push({ id: 'addr2', label: 'City', value: line2 });
+    items.push({ id: 'addr1', label: copy.street, value: line1 });
+    items.push({ id: 'addr2', label: copy.city, value: line2 });
   }
   if (snapshot.shipping?.methodName) {
-    items.push({ id: 'method', label: 'Method', value: snapshot.shipping.methodName });
+    items.push({ id: 'method', label: copy.method, value: snapshot.shipping.methodName });
   }
 
   if (items.length === 0) {
     items.push({
       id: 'noPrefill',
-      label: 'Recipient',
-      value: 'Could not extract from order — operator must contact buyer.',
+      label: copy.sectionLabel,
+      value: copy.noPrefill,
     });
   }
 
@@ -876,11 +954,12 @@ function collectValidationMessages(
  * caller can pass `extractShippingTraceId(...)` unconditionally.
  */
 function ShippingTraceReference({ traceId }: { traceId: string | null }): ReactElement | null {
+  const copy = useMessages('orders').generateLabelForm;
   if (traceId === null) return null;
 
   return (
     <p className="generate-label-form__error-trace">
-      Reference for carrier support: <CopyableId id={traceId} />
+      {copy.traceReference} <CopyableId id={traceId} />
     </p>
   );
 }

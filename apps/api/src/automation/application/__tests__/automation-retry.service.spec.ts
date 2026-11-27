@@ -168,7 +168,12 @@ describe('AutomationRetryService', () => {
     rules.getRule.mockResolvedValue(null);
     await service.retry({ runId: 'run-1' }).catch((error: unknown) => {
       const response = (error as BadRequestException).getResponse();
-      expect(response).toMatchObject({ reason: 'rule-deleted' });
+      expect(response).toMatchObject({
+        statusCode: 400,
+        code: 'AUTOMATION_RETRY_REFUSED',
+        params: { reason: 'rule-deleted' },
+        reason: 'rule-deleted',
+      });
     });
     expect.assertions(1);
   });
@@ -177,6 +182,14 @@ describe('AutomationRetryService', () => {
     runs.getRunById.mockResolvedValue(null);
     await expect(service.retry({ runId: 'nope' })).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('should name the missing run by code and id when the run is unknown (#3865)', async () => {
+    runs.getRunById.mockResolvedValue(null);
+    await expect(service.retry({ runId: 'nope' })).rejects.toMatchObject({
+      response: { statusCode: 404, code: 'AUTOMATION_RUN_NOT_FOUND', params: { runId: 'nope' } },
+    });
+  });
+
 
   it('should 404 when the order behind the run is gone', async () => {
     orders.getOrderRecord.mockResolvedValue(null);

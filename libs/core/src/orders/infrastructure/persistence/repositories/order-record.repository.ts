@@ -8,6 +8,7 @@
  * @module libs/core/src/orders/infrastructure/persistence/repositories
  * @implements {OrderRecordRepositoryPort}
  */
+import { readLineExpansion, type LineExpansion } from '@openlinker/core/products';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { ObservedSourcePaymentMethod } from '../../../domain/types/observed-source-payment-method.types';
@@ -27,10 +28,18 @@ import { OrderLineItemOrmEntity } from '../entities/order-line-item.orm-entity';
 import type {
   HeldOrderRef,
   OrderRecordRepositoryPort,
+  HeldOrdersFilter,
 } from '../../../domain/ports/order-record-repository.port';
+import type { OrderGiftReportReaderPort } from '../../../domain/ports/order-gift-report-reader.port';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
+import { carryForwardLineCosts } from '../../../domain/order-line-cost-snapshot';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
+import {
+  isOrderDeliveryRefusalReason,
+  isOrderDeliveryUpdateOutcome,
+  type OrderDeliveryUpdateReport,
+} from '../../../domain/types/order-delivery-update.types';
 import {
   isFulfillmentRoutingSkipReason,
   type FulfillmentRoutingSkipReason,
@@ -51,10 +60,15 @@ import type {
   OrderLifecyclePhaseSummary,
   SalesDocumentMatchedRuleWrite,
 } from '../../../domain/types/order-record.types';
+import { resolveOrderChangeOpenTtlMs } from '../../../domain/types/order-change-ttl.types';
+import {
+  OPEN_ORDER_CHANGE_STATUSES,
+  OrderAmendmentRequestKindValues,
+} from '../../../domain/types/order-change.types';
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import { isHoldReason, OrderLifecyclePhaseValues } from '@openlinker/core/order-lifecycle';
-import { SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
+import { DUE_WITHIN_WINDOW_MS, SLA_AT_RISK_WINDOW_MS } from '../../../domain/types/order-sla.types';
 import type { FulfillmentRollupState } from '../../../domain/types/order-fulfillment.types';
 import {
   grossRevenueLineAmountSql,
@@ -63,15 +77,37 @@ import {
 } from '../../../domain/types/net-sales-tax-rate.types';
 import {
   isFulfillmentBlockReason,
+  PackingFlowFulfillmentWorkStatusValues,
+  UnpackedFulfillmentWorkStatusValues,
+  WaitingFulfillmentBlockReasonValues,
   type FulfillmentBlock,
   type FulfillmentBlockReason,
 } from '@openlinker/core/fulfillment';
+import type { DestinationRoutingBlock } from '../../../domain/types/destination-routing-block.types';
+import {
+  DestinationRoutingAttentionReasonValues,
+  isDestinationRoutingBlockReason,
+} from '../../../domain/types/destination-routing-block.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { FxRestatementRemainingSummary } from '../../../domain/types/order-fx-restatement.types';
+import type {
+  BuyerDataAgeHistogramRows,
+  BuyerDataRetentionCounts,
+  BuyerDataRetentionSample,
+  BuyerDataRetentionScope,
+  ErasableOrderRow,
+  PersonalDataErasure,
+  PersonalDataErasureResult,
+} from '../../../domain/types/buyer-data-retention.types';
+import { buildBuyerPlaceholder } from '../../../domain/buyer-data-retention';
 import type {
   OrderSearchTextReindexRow,
   OrderSearchTextRewrite,
 } from '../../../domain/types/order-search-text-reindex.types';
+import type {
+  OrderBuyerDataRedaction,
+  OrderBuyerDataRetentionCandidate,
+} from '../../../domain/types/order-buyer-data-retention.types';
 import {
   AuthorityAttentionCountedReasonValues,
   buildAuthorityAttentionPayload,
@@ -83,19 +119,32 @@ import type {
   AuthorityAttentionProducer,
 } from '@openlinker/core/fulfillment-authority';
 import { getEnvBoolean } from '@openlinker/shared/config';
+import { normaliseCountryColumn } from '../../../domain/types/buyer-note.types';
 import { deriveOrderSearchText, normalizeOrderSearchText } from '../../../domain/order-search-text';
+import {
+  applyOrderEditsToSnapshot,
+  readOrderEdits,
+  type ApplyOrderEditInput,
+} from '../../../domain/types/order-edits.types';
 import {
   SalesDocumentAttentionReasonValues,
   SalesDocumentUncountedUnresolvedReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
   isTaxRateEra,
+  readSalesDocumentBlockParams,
 } from '@openlinker/core/sales-documents';
 import type { PriceTaxTreatment } from '../../../domain/types/order.types';
 import { isPaymentMethod } from '../../../domain/types/payment-method.types';
+import {
+  readPaymentWriteback,
+  type PaymentWritebackEntry,
+} from '../../../domain/types/payment-writeback.types';
 import type { OrderFxIntent, OrderFxStamp } from '../../../domain/types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../../../domain/types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../../../domain/order-amendment-diff';
+import type { DeliveryCountryFact } from '../../../domain/types/delivery-country-facts.types';
+import { toDeliveryCountryExample } from '../../../domain/delivery-country-example';
 import type {
   DailyOrderAggregateRow,
   SalesAnalyticsFilters,
@@ -121,6 +170,36 @@ import type {
 const NET_EXCLUDED_CANDIDATE_PAGE_SIZE = 500;
 
 /**
+ * The order's age for buyer data retention (#4289): when the buyer placed it,
+ * falling back to when OpenLinker first stored it for a source that reports no
+ * placement instant.
+ */
+const BUYER_DATA_AGE_SQL = 'COALESCE(rec."placedAt", rec."createdAt")';
+
+/**
+ * Orders the retention rule must never act on (#4289): an open hold, an open
+ * return, or a sales document still being issued. Hiding or erasing under any
+ * of them would change what an operator is in the middle of working on.
+ * Issued documents are NOT protective - erasing the order's personal data does
+ * not touch an issued document, and a document-protected rule would exempt
+ * nearly every order of an install that issues invoices.
+ */
+const BUYER_DATA_HOLD_SQL = `EXISTS (SELECT 1 FROM "order_holds" oh
+          WHERE oh."internalOrderId" = rec."internalOrderId" AND oh."releasedAt" IS NULL)`;
+const BUYER_DATA_OPEN_RETURN_SQL = `EXISTS (SELECT 1 FROM "returns" ret
+             WHERE ret."internalOrderId" = rec."internalOrderId" AND ret."closedAt" IS NULL)`;
+const BUYER_DATA_INVOICE_PENDING_SQL = `EXISTS (SELECT 1 FROM "invoice_records" ir
+             WHERE ir."orderId" = rec."internalOrderId" AND ir."status" IN ('pending', 'issuing'))`;
+const BUYER_DATA_PROTECTED_SQL = `(
+  ${BUYER_DATA_HOLD_SQL}
+  OR ${BUYER_DATA_OPEN_RETURN_SQL}
+  OR ${BUYER_DATA_INVOICE_PENDING_SQL}
+)`;
+
+/** Orders at or past this many 30-day months share the last histogram bucket. */
+const BUYER_DATA_HISTOGRAM_CAP_MONTHS = 120;
+
+/**
  * Empty defaults for the columns whose "unwritten" value is not `null`, keyed
  * by ORM property name. Consumed by `fromRawRow`'s derived reset; every other
  * column resets to `null`. Factories, not shared literals, so no two returned
@@ -129,6 +208,7 @@ const NET_EXCLUDED_CANDIDATE_PAGE_SIZE = 500;
 const EMPTY_COLUMN_DEFAULTS: Record<string, (() => unknown) | undefined> = {
   syncStatus: () => [],
   syncAttempts: () => [],
+  hasBuyerNote: () => false,
 };
 
 /**
@@ -151,8 +231,26 @@ function orderRecordColumnProperties(): readonly string[] {
   return orderRecordColumnPropertiesCache;
 }
 
+/** Rollup states that mean the order's parcels left (#3554, `order.shipped`). */
+const SHIPPED_FULFILLMENT_STATES = ['dispatched', 'delivered'] as const;
+
+/**
+ * The retention anchor (#4178), text-identical to the partial index
+ * `IDX_order_records_buyer_data_retention` so the planner can use it.
+ */
+/**
+ * "This order's buyer data is already gone" as seen by the upsert's own
+ * `ON CONFLICT` clauses: erased by a retention rule or an erasure (#4289), or
+ * redacted by the source's retention period (#4178). The redaction now sets
+ * `personalDataErasedAt` too, so the second arm only covers orders redacted
+ * before it did; one definition keeps the clauses from drifting apart.
+ */
+const BUYER_DATA_GONE_SQL = `("order_records"."personalDataErasedAt" IS NOT NULL OR "order_records"."buyerDataRedactedAt" IS NOT NULL)`;
+
+const BUYER_DATA_RETENTION_ANCHOR_SQL = `COALESCE(rec."dispatchByAt", rec."placedAt", rec."createdAt" AT TIME ZONE 'UTC')`;
+
 @Injectable()
-export class OrderRecordRepository implements OrderRecordRepositoryPort {
+export class OrderRecordRepository implements OrderRecordRepositoryPort, OrderGiftReportReaderPort {
   /**
    * The "currency mismatch" predicate (#2464/#2713/#2468 review) — a row
    * that either never got an FX stamp (`reportingCurrency IS NULL`) or was
@@ -181,6 +279,22 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return this.repository.manager.connection;
   }
 
+  async countOrdersMatchingSearchSince(terms: readonly string[], since: Date): Promise<number> {
+    const patterns = terms
+      .map((term) => normalizeOrderSearchText(term))
+      .filter((normalized) => normalized.length > 0)
+      .map((normalized) => `%${OrderRecordRepository.escapeLikePattern(normalized)}%`);
+    if (patterns.length === 0) return 0;
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where('rec."createdAt" >= :since', { since });
+    qb.andWhere(
+      `(${patterns.map((_, index) => `rec."searchText" LIKE :p${index} ESCAPE '\\'`).join(' OR ')})`,
+      Object.fromEntries(patterns.map((pattern, index) => [`p${index}`, pattern]))
+    );
+    return qb.getCount();
+  }
+
   async findById(internalOrderId: string): Promise<OrderRecord | null> {
     const entity = await this.repository.findOne({
       where: { internalOrderId },
@@ -207,6 +321,37 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return entities.map((e) => this.toDomain(e));
   }
 
+  async findForGiftReport(
+    filters: { from: Date; to: Date; sourceConnectionId?: string; scope: 'gifts' | 'bundles' },
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where(`rec."recordStatus" = 'ready'`)
+      .andWhere('rec."cancelledAt" IS NULL')
+      .andWhere('rec."placedAt" >= :giftFrom', { giftFrom: filters.from })
+      .andWhere('rec."placedAt" < :giftTo', { giftTo: filters.to });
+    if (filters.scope === 'gifts') {
+      qb.andWhere(
+        `(jsonb_path_exists(rec."orderSnapshot", '$.items[*].gift')
+          OR rec."orderEdits" -> 'addedLines' IS NOT NULL
+          OR jsonb_path_exists(rec."lineExpansion", '$.** ? (@.giftSlot == true)'))`
+      );
+    } else {
+      qb.andWhere('rec."lineExpansion" IS NOT NULL');
+    }
+    if (filters.sourceConnectionId !== undefined) {
+      qb.andWhere('rec."sourceConnectionId" = :giftConnection', {
+        giftConnection: filters.sourceConnectionId,
+      });
+    }
+    if (page.afterId !== null) {
+      qb.andWhere('rec."internalOrderId" > :giftAfter', { giftAfter: page.afterId });
+    }
+    const entities = await qb.orderBy('rec."internalOrderId"', 'ASC').limit(page.limit).getMany();
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   /**
    * Batch earliest-order-date lookup by source connection (#2083). One
    * `GROUP BY` aggregate query, not a per-connection fan-out — mirrors
@@ -228,6 +373,45 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .getRawMany<{ source_connection_id: string; earliest_at: Date }>();
 
     return new Map(rows.map((row) => [row.source_connection_id, row.earliest_at]));
+  }
+
+  async findHeldByReasonCode(
+    filter: HeldOrdersFilter,
+    page: { afterId: string | null; limit: number }
+  ): Promise<OrderRecord[]> {
+    if (filter.offerRefs !== undefined && filter.offerRefs.length === 0) {
+      return [];
+    }
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where('rec.recordStatus = :held', { held: 'awaiting_mapping' })
+      // `[code]` is a literal marker, so the pattern's wildcards are only ours.
+      .andWhere('rec."mappingFailureReason" LIKE :marker', { marker: `%[${filter.reasonCode}]%` });
+    if (page.afterId !== null) {
+      qb.andWhere('rec.internalOrderId > :afterId', { afterId: page.afterId });
+    }
+    const itemConditions: string[] = [];
+    const params: Record<string, unknown> = {};
+    if (filter.packQuantity !== undefined) {
+      itemConditions.push(`(item->>'packQuantity')::numeric = :packQuantity`);
+      params.packQuantity = filter.packQuantity;
+    }
+    if (filter.offerRefs !== undefined) {
+      const refs = filter.offerRefs.map((ref, i) => {
+        params[`refConn${String(i)}`] = ref.connectionId;
+        params[`refExt${String(i)}`] = ref.externalId;
+        return `(rec."sourceConnectionId" = :refConn${String(i)} AND item->'productRef'->>'type' = 'offer' AND item->'productRef'->>'externalId' = :refExt${String(i)})`;
+      });
+      itemConditions.push(`(${refs.join(' OR ')})`);
+    }
+    if (itemConditions.length > 0) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM jsonb_array_elements(rec."orderSnapshot"->'items') item WHERE ${itemConditions.join(' AND ')})`,
+        params
+      );
+    }
+    const entities = await qb.orderBy('rec.internalOrderId', 'ASC').take(page.limit).getMany();
+    return entities.map((e) => this.toDomain(e));
   }
 
   async listObservedSourcePaymentMethods(
@@ -283,6 +467,109 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // pg returns COUNT(*) as a string at the driver level, mirroring the
     // Number() the money columns already get in `toDomain`.
     return rows.map((row) => ({ country: row.country, orderCount: Number(row.order_count) }));
+  }
+
+  async getDeliveryCountryFacts(
+    sourceConnectionId: string,
+    since: Date
+  ): Promise<DeliveryCountryFact[]> {
+    const countryExpr = OrderRecordRepository.ROUTING_COUNTRY_EXPR;
+    const windowExpr = `COALESCE(rec."placedAt", rec."createdAt") >= :since`;
+
+    // Query 1: orders per (country, currency). Summing the currency rows gives
+    // the order count and the biggest row names the currency, so one grouped
+    // read serves both. The 20-country cap bounds every later query.
+    const countRows = await this.repository
+      .createQueryBuilder('rec')
+      .select(countryExpr, 'country')
+      .addSelect('rec.currency', 'currency')
+      .addSelect('COUNT(*)', 'order_count')
+      .where('rec.sourceConnectionId = :sourceConnectionId', { sourceConnectionId })
+      .andWhere(windowExpr, { since })
+      .andWhere(`${countryExpr} IS NOT NULL`)
+      .groupBy(countryExpr)
+      .addGroupBy('rec.currency')
+      .getRawMany<{ country: string; currency: string | null; order_count: string }>();
+
+    const ordersByCountry = new Map<string, number>();
+    const currencyCounts = new Map<string, Map<string, number>>();
+    for (const row of countRows) {
+      const count = Number(row.order_count);
+      ordersByCountry.set(row.country, (ordersByCountry.get(row.country) ?? 0) + count);
+      if (row.currency) {
+        const perCurrency = currencyCounts.get(row.country) ?? new Map<string, number>();
+        perCurrency.set(row.currency, (perCurrency.get(row.currency) ?? 0) + count);
+        currencyCounts.set(row.country, perCurrency);
+      }
+    }
+
+    const countries = [...ordersByCountry.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 20)
+      .map(([country]) => country);
+    if (countries.length === 0) {
+      return [];
+    }
+
+    // Query 2: line rate codes per country, joined through the denormalised
+    // line table rather than expanding snapshot JSON.
+    const rateRows = await this.repository
+      .createQueryBuilder('rec')
+      .innerJoin(OrderLineItemOrmEntity, 'oli', 'oli.orderRecordId = rec.internalOrderId')
+      .select(countryExpr, 'country')
+      .addSelect('oli.taxRate', 'tax_rate')
+      .addSelect('COUNT(*)', 'line_count')
+      .where('rec.sourceConnectionId = :sourceConnectionId', { sourceConnectionId })
+      .andWhere(windowExpr, { since })
+      .andWhere(`${countryExpr} IN (:...countries)`, { countries })
+      .andWhere('oli.taxRate IS NOT NULL')
+      .groupBy(countryExpr)
+      .addGroupBy('oli.taxRate')
+      .getRawMany<{ country: string; tax_rate: string; line_count: string }>();
+
+    const ratesByCountry = new Map<string, { rate: string; count: number }[]>();
+    for (const row of rateRows) {
+      const list = ratesByCountry.get(row.country) ?? [];
+      list.push({ rate: row.tax_rate, count: Number(row.line_count) });
+      ratesByCountry.set(row.country, list);
+    }
+
+    // Query 3: the latest READY order per country. Only the items and totals
+    // fragments are selected - never the whole snapshot - so no buyer field
+    // leaves the database.
+    const exampleRows = await this.repository
+      .createQueryBuilder('rec')
+      .distinctOn([countryExpr])
+      .select(countryExpr, 'country')
+      .addSelect(`rec."orderSnapshot"->'items'`, 'items')
+      .addSelect(`rec."orderSnapshot"->'totals'`, 'totals')
+      .where('rec.sourceConnectionId = :sourceConnectionId', { sourceConnectionId })
+      .andWhere(windowExpr, { since })
+      .andWhere('rec.recordStatus = :ready', { ready: 'ready' })
+      .andWhere(`${countryExpr} IN (:...countries)`, { countries })
+      .orderBy(countryExpr, 'ASC')
+      .addOrderBy('COALESCE(rec."placedAt", rec."createdAt")', 'DESC')
+      .getRawMany<{ country: string; items: unknown; totals: unknown }>();
+
+    const exampleByCountry = new Map(
+      exampleRows.map((row) => [row.country, toDeliveryCountryExample(row.items, row.totals)])
+    );
+
+    return countries.map((country) => {
+      const rates = [...(ratesByCountry.get(country) ?? [])].sort(
+        (a, b) => b.count - a.count || a.rate.localeCompare(b.rate)
+      );
+      const currencies = [...(currencyCounts.get(country) ?? new Map<string, number>())].sort(
+        (a, b) => b[1] - a[1] || a[0].localeCompare(b[0])
+      );
+      return {
+        country,
+        orders: ordersByCountry.get(country) ?? 0,
+        ratesSeen: rates.map((r) => r.rate),
+        currency: currencies[0]?.[0] ?? null,
+        example: exampleByCountry.get(country) ?? null,
+      };
+    });
   }
 
   /**
@@ -363,9 +650,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // v1 scale (≤30k rows in the typical 30-day window), file a follow-up
       // if scan time creeps.
       qb.andWhere(`rec."syncStatus" @> :destFilter::jsonb`, {
-        destFilter: JSON.stringify([
-          { destinationConnectionId: filters.destinationConnectionId },
-        ]),
+        destFilter: JSON.stringify([{ destinationConnectionId: filters.destinationConnectionId }]),
       });
     }
 
@@ -376,9 +661,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     if (filters.dueBefore) {
       // SLA "breaching / overdue" filter (#927) — only records with a known
       // ship-by deadline at or before the cutoff. NULL deadlines are excluded.
-      qb.andWhere('rec.dispatchByAt IS NOT NULL AND rec.dispatchByAt <= :dueBefore', {
-        dueBefore: filters.dueBefore,
-      });
+      // #4025 - `DUE_BEFORE` is shared with `countByHealth.dueWithin24h`.
+      qb.andWhere(OrderRecordRepository.DUE_BEFORE, { dueBefore: filters.dueBefore });
     }
 
     if (filters.health) {
@@ -410,6 +694,37 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.destinationRoutingBlocked !== undefined) {
+      // #2703 / #2704 — its own axis, ANDed with the others exactly like
+      // `salesDocumentBlocked`. An order whose routing named an unreachable
+      // destination is usually ALSO `needs_attention` (its sync failed), so
+      // folding this into `health` would hide one behind the other.
+      qb.andWhere(
+        filters.destinationRoutingBlocked
+          ? OrderRecordRepository.IS_DESTINATION_ROUTING_BLOCKED
+          : OrderRecordRepository.NOT_DESTINATION_ROUTING_BLOCKED
+      );
+    }
+
+    if (filters.waitingInOpenLinker !== undefined) {
+      // #3482 — its own axis, ANDed with the others; the same predicate the
+      // `waitingInOpenLinker` count reads, so the chip and its rows agree.
+      qb.andWhere(
+        filters.waitingInOpenLinker
+          ? OrderRecordRepository.IS_WAITING_IN_OPENLINKER
+          : OrderRecordRepository.NOT_WAITING_IN_OPENLINKER
+      );
+    }
+
+    if (filters.onPackBench !== undefined) {
+      // #3482 — its own axis; the same predicate the `onPackBench` count reads.
+      qb.andWhere(
+        filters.onPackBench
+          ? OrderRecordRepository.IS_ON_PACK_BENCH
+          : `NOT (${OrderRecordRepository.IS_ON_PACK_BENCH})`
+      );
+    }
+
     if (filters.lifecyclePhase) {
       // #2309 — the derived-phase axis, deliberately ANDed with `health` rather
       // than folded into it (ADR-059, the #2100 trap): a held order is usually
@@ -428,6 +743,47 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    if (filters.withGift !== undefined) {
+      // #3940 - its own axis, ANDed like `taxRateConflict`: a gifted order is
+      // usually also synced, so folding it into `health` would hide one or the other.
+      qb.andWhere(
+        filters.withGift
+          ? OrderRecordRepository.HAS_GIFT
+          : `NOT (${OrderRecordRepository.HAS_GIFT})`
+      );
+    }
+
+    if (filters.withBundle !== undefined) {
+      // #3935 - its own axis like `withGift`: a bundle order is usually also synced.
+      qb.andWhere(
+        filters.withBundle
+          ? OrderRecordRepository.HAS_BUNDLE
+          : `NOT (${OrderRecordRepository.HAS_BUNDLE})`
+      );
+    }
+
+    if (filters.giftNotAdded !== undefined) {
+      const ids = filters.giftNotAddedOrderIds ?? [];
+      if (ids.length > 0) {
+        qb.andWhere(
+          filters.giftNotAdded
+            ? 'rec."internalOrderId" IN (:...giftNotAddedOrderIds)'
+            : 'rec."internalOrderId" NOT IN (:...giftNotAddedOrderIds)',
+          { giftNotAddedOrderIds: ids }
+        );
+      } else if (filters.giftNotAdded) {
+        qb.andWhere('1 = 0');
+      }
+    }
+
+    if (filters.giftShopRejected !== undefined) {
+      qb.andWhere(
+        filters.giftShopRejected
+          ? OrderRecordRepository.GIFT_SHOP_REJECTED
+          : `NOT (${OrderRecordRepository.GIFT_SHOP_REJECTED})`
+      );
+    }
+
     if (filters.omsAttention !== undefined) {
       // #2353 - the OMS inert-state axis, ANDed with `health` exactly like
       // `salesDocumentBlocked` and `taxRateConflict`. It is NOT the
@@ -438,6 +794,26 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         filters.omsAttention
           ? OrderRecordRepository.HAS_OMS_ATTENTION
           : `NOT (${OrderRecordRepository.HAS_OMS_ATTENTION})`
+      );
+    }
+
+    if (filters.omsAttentionReason !== undefined) {
+      // #3961 - one named attention reason. The reason is BOUND as a jsonpath
+      // variable, never interpolated: it arrives from a query string.
+      qb.andWhere(
+        `jsonb_path_exists(COALESCE(rec."omsAttention", '[]'::jsonb), '$[*] ? (@.reason == $r)', jsonb_build_object('r', CAST(:omsAttentionReason AS text)))`,
+        { omsAttentionReason: filters.omsAttentionReason }
+      );
+    }
+
+    if (filters.paymentNotSent !== undefined) {
+      // #3963 - its own axis, ANDed like `omsAttention`. Reads the flag the
+      // writer recomputes in the same statement as the jsonb, served by a
+      // partial index, so the filter never scans the jsonb.
+      qb.andWhere(
+        filters.paymentNotSent
+          ? OrderRecordRepository.HAS_PAYMENT_NOT_SENT
+          : `NOT (${OrderRecordRepository.HAS_PAYMENT_NOT_SENT})`
       );
     }
 
@@ -500,6 +876,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere(filters.packed ? 'rec."packedAt" IS NOT NULL' : 'rec."packedAt" IS NULL');
     }
 
+    if (filters.hasBuyerNote !== undefined) {
+      // #3538 - denormalized boolean, indexed, so the list total never expands
+      // the snapshot JSONB. `true` also requires `recordStatus = 'ready'` (N-20):
+      // an order that went back to `awaiting_mapping` keeps the flag but is not
+      // one an operator can work on. `false` is deliberately unchanged.
+      qb.andWhere(
+        filters.hasBuyerNote
+          ? OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE
+          : 'rec."hasBuyerNote" = false'
+      );
+    }
+
+    // #4289: hidden orders are out of the default list and search. `hidden: true`
+    // is the explicit "show hidden" view. Detail reads (`findById`) do not go
+    // through this builder, so a direct link to a hidden order still opens.
+    qb.andWhere(OrderRecordRepository.hiddenScopePredicate(filters.hidden));
+
     if (filters.search !== undefined) {
       // #3527 — free-text search over the denormalized, diacritic-folded
       // `searchText` column, GIN-trigram-indexed. Normalizing the incoming
@@ -514,26 +907,52 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       if (normalized.length > 0) {
         const pattern = `%${OrderRecordRepository.escapeLikePattern(normalized)}%`;
         const trackingOrderIds = filters.searchTrackingOrderIds ?? [];
+        const idNeedle = OrderRecordRepository.toOrderIdNeedle(normalized);
+        const idPattern =
+          idNeedle === null ? null : `%${OrderRecordRepository.escapeLikePattern(idNeedle)}%`;
+        // #4229 - the id predicate is built separately from the text one, so it
+        // can drop dashes and the shared prefix; `null` means "do not match ids".
+        const matches = ['rec."searchText" LIKE :searchPattern ESCAPE \'\\\''];
+        const params: Record<string, unknown> = { searchPattern: pattern };
+        if (idPattern !== null) {
+          matches.push('rec."internalOrderId" LIKE :searchIdPattern ESCAPE \'\\\'');
+          params.searchIdPattern = idPattern;
+        }
         if (trackingOrderIds.length > 0) {
-          // #3528 — the tracking-number search resolves a shipment's owning
+          // #3528 - the tracking-number search resolves a shipment's owning
           // order BEFORE `orders` is ever asked (`orders` must not import
           // `shipping`, which already depends on `orders`), so by the time
           // this filter runs it is just a plain id list. ORed with the text
           // match, never ANDed: both are alternate ways ONE query can match
           // an order, not two conditions the order must satisfy together.
-          qb.andWhere(
-            '(rec."searchText" LIKE :searchPattern ESCAPE \'\\\' OR rec."internalOrderId" IN (:...searchTrackingOrderIds))',
-            { searchPattern: pattern, searchTrackingOrderIds: trackingOrderIds }
-          );
-        } else {
-          qb.andWhere('rec."searchText" LIKE :searchPattern ESCAPE \'\\\'', {
-            searchPattern: pattern,
-          });
+          matches.push('rec."internalOrderId" IN (:...searchTrackingOrderIds)');
+          params.searchTrackingOrderIds = trackingOrderIds;
         }
+        qb.andWhere(`(${matches.join(' OR ')})`, params);
       }
     }
 
     return qb;
+  }
+
+  /**
+   * The substring to match against `internalOrderId`, or `null` when the query
+   * should not match ids at all (#4229 review). Every id is
+   * `ol_order_<uuid without dashes>`, so dashes are dropped (a UUID pasted from
+   * a log still matches), the shared prefix is stripped, and a query that lies
+   * inside the prefix (`ol`, `order`, `_`) or is under 3 characters is refused -
+   * it would match every order and only add noise to a text search.
+   */
+  private static toOrderIdNeedle(normalized: string): string | null {
+    const prefix = 'ol_order_';
+    let needle = normalized.replace(/-/g, '');
+    if (prefix.includes(needle)) {
+      return null;
+    }
+    if (needle.startsWith(prefix)) {
+      needle = needle.slice(prefix.length);
+    }
+    return needle.length >= 3 ? needle : null;
   }
 
   /** Escape LIKE metacharacters so a search term is matched literally. */
@@ -616,11 +1035,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'needs_attention'
       )
       .addSelect(
-        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED})`,
+        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.IS_SYNCED_HEALTH})`,
         'synced'
       )
       .addSelect(
-        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED}))`,
+        `COUNT(*) FILTER (WHERE ${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.IS_SYNCED_HEALTH}))`,
         'awaiting_dispatch'
       )
       // #2100 — ORTHOGONAL to the five buckets above, not a sixth partition
@@ -651,6 +1070,32 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_OMS_ATTENTION})`,
         'oms_attention'
       )
+      // #3963 - same predicate as the filter arm, so the chip and its rows agree.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_PAYMENT_NOT_SENT})`,
+        'payment_not_sent'
+      )
+      // #2703 / #2704 — its own count, never inside any health bucket. Reads the
+      // SAME predicate the filter arm does, so the chip's number and the rows it
+      // reveals can never disagree (#2100's badge/count/filter rule).
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_DESTINATION_ROUTING_BLOCKED})`,
+        'destination_routing_blocked'
+      )
+      // #3482 — two more counts beside the partition, never inside it. Each
+      // reads the SAME predicate as its filter arm.
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_WAITING_IN_OPENLINKER})`,
+        'waiting_in_openlinker'
+      )
+      .addSelect(
+        `MIN(rec."fulfillmentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_WAITING_IN_OPENLINKER})`,
+        'waiting_in_openlinker_oldest_at'
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.IS_ON_PACK_BENCH})`,
+        'on_pack_bench'
+      )
       .addSelect(
         `MIN(rec."salesDocumentBlockedAt") FILTER (WHERE ${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
         'sales_document_blocked_oldest_at'
@@ -664,21 +1109,115 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'sales_document_issued_on_request'
       );
 
+    // #4025 - counts for the redesigned orders filters. Every one reads the
+    // SAME predicate its list filter arm uses, and the three `attention_*`
+    // totals are UNIONS (an order matching two members counts once), which is
+    // why they are computed here rather than summed in the browser.
+    const now = new Date();
+    const openReturnIds = filters.openReturnOrderIds ?? [];
+    const hasOpenReturn =
+      openReturnIds.length > 0 ? `rec."internalOrderId" IN (:...summaryOpenReturnIds)` : 'FALSE';
+    const giftNotAddedIds = filters.giftNotAddedOrderIds ?? [];
+    const giftNotAdded =
+      giftNotAddedIds.length > 0
+        ? `rec."internalOrderId" IN (:...summaryGiftNotAddedIds)`
+        : 'FALSE';
+    const notShipped = OrderRecordRepository.NOT_SHIPPED;
+    // SLA overdue OR at risk == not shipped with a deadline at or before the
+    // at-risk cutoff - the union of `applySlaFilter`'s two arms.
+    const slaLate = `${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :summarySlaCutoff`;
+    // Bound under its own name so a list-filter `:dueBefore` on a shared scope
+    // can never replace the summary's window.
+    const dueSoon = OrderRecordRepository.DUE_BEFORE.replace(':dueBefore', ':summaryDueBefore');
+    const stuck = [
+      OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED,
+      OrderRecordRepository.HAS_OMS_ATTENTION,
+      OrderRecordRepository.IS_DESTINATION_ROUTING_BLOCKED,
+      OrderRecordRepository.IS_WAITING_IN_OPENLINKER,
+      OrderRecordRepository.HAS_TAX_RATE_CONFLICT,
+    ]
+      .map((predicate) => `(${predicate})`)
+      .join(' OR ');
+    const toHandle = [
+      OrderRecordRepository.IS_ON_PACK_BENCH,
+      OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE,
+      hasOpenReturn,
+    ]
+      .map((predicate) => `(${predicate})`)
+      .join(' OR ');
+    qb.addSelect(`COUNT(*) FILTER (WHERE ${hasOpenReturn})`, 'open_return')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_ACTIONABLE_BUYER_NOTE})`,
+        'has_buyer_note'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_GIFT})`, 'with_gift')
+      .addSelect(`COUNT(*) FILTER (WHERE ${OrderRecordRepository.HAS_BUNDLE})`, 'with_bundle')
+      .addSelect(`COUNT(*) FILTER (WHERE ${giftNotAdded})`, 'gift_not_added')
+      .addSelect(
+        `COUNT(*) FILTER (WHERE ${OrderRecordRepository.GIFT_SHOP_REJECTED})`,
+        'gift_shop_rejected'
+      )
+      .addSelect(`COUNT(*) FILTER (WHERE ${dueSoon})`, 'due_within_24h')
+      .addSelect(`COUNT(*) FILTER (WHERE (${slaLate}) OR (${dueSoon}))`, 'attention_late_to_ship')
+      .addSelect(`COUNT(*) FILTER (WHERE ${stuck})`, 'attention_stuck')
+      .addSelect(`COUNT(*) FILTER (WHERE ${toHandle})`, 'attention_to_handle')
+      .setParameters({
+        summaryDueBefore: new Date(now.getTime() + DUE_WITHIN_WINDOW_MS),
+        summarySlaCutoff: new Date(now.getTime() + SLA_AT_RISK_WINDOW_MS),
+        ...(openReturnIds.length > 0 ? { summaryOpenReturnIds: openReturnIds } : {}),
+        ...(giftNotAddedIds.length > 0 ? { summaryGiftNotAddedIds: giftNotAddedIds } : {}),
+      });
+
     OrderRecordRepository.applySummaryScope(qb, filters);
 
-    const raw = await qb.getRawOne<{
-      total: string;
-      source_deleted: string;
-      awaiting_mapping: string;
-      needs_attention: string;
-      synced: string;
-      awaiting_dispatch: string;
-      sales_document_blocked: string;
-      tax_rate_conflict: string;
-      oms_attention: string;
-      sales_document_blocked_oldest_at: Date | null;
-      sales_document_issued_on_request: string;
-    }>();
+    // #4025 - per-source counts with the source axis itself removed, so the
+    // Source filter keeps a number beside every option while one is selected.
+    // Independent of the main aggregate, so the two scans run concurrently.
+    const bySourceQb = this.repository
+      .createQueryBuilder('rec')
+      .select('rec."sourceConnectionId"', 'source_connection_id')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('rec."sourceConnectionId"');
+    OrderRecordRepository.applySummaryScope(bySourceQb, {
+      ...filters,
+      sourceConnectionId: undefined,
+    });
+
+    const [raw, bySourceRows] = await Promise.all([
+      qb.getRawOne<{
+        total: string;
+        source_deleted: string;
+        awaiting_mapping: string;
+        needs_attention: string;
+        synced: string;
+        awaiting_dispatch: string;
+        sales_document_blocked: string;
+        tax_rate_conflict: string;
+        oms_attention: string;
+        payment_not_sent: string;
+        destination_routing_blocked: string;
+        waiting_in_openlinker: string;
+        waiting_in_openlinker_oldest_at: Date | null;
+        on_pack_bench: string;
+        sales_document_blocked_oldest_at: Date | null;
+        sales_document_issued_on_request: string;
+        open_return: string;
+        has_buyer_note: string;
+        with_gift: string;
+        with_bundle: string;
+        gift_not_added: string;
+        gift_shop_rejected: string;
+        due_within_24h: string;
+        attention_late_to_ship: string;
+        attention_stuck: string;
+        attention_to_handle: string;
+      }>(),
+      bySourceQb.getRawMany<{ source_connection_id: string; count: string }>(),
+    ]);
+    const bySource: Record<string, number> = {};
+    for (const row of bySourceRows) {
+      bySource[row.source_connection_id] = Number(row.count);
+    }
 
     return {
       total: Number(raw?.total ?? 0),
@@ -690,8 +1229,26 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       salesDocumentBlocked: Number(raw?.sales_document_blocked ?? 0),
       taxRateConflict: Number(raw?.tax_rate_conflict ?? 0),
       omsAttention: Number(raw?.oms_attention ?? 0),
+      paymentNotSent: Number(raw?.payment_not_sent ?? 0),
+      destinationRoutingBlocked: Number(raw?.destination_routing_blocked ?? 0),
+      waitingInOpenLinker: Number(raw?.waiting_in_openlinker ?? 0),
+      waitingInOpenLinkerOldestAt: raw?.waiting_in_openlinker_oldest_at ?? null,
+      onPackBench: Number(raw?.on_pack_bench ?? 0),
       salesDocumentBlockedOldestAt: raw?.sales_document_blocked_oldest_at ?? null,
       salesDocumentIssuedOnRequest: Number(raw?.sales_document_issued_on_request ?? 0),
+      openReturn: Number(raw?.open_return ?? 0),
+      hasBuyerNote: Number(raw?.has_buyer_note ?? 0),
+      withGift: Number(raw?.with_gift ?? 0),
+      withBundle: Number(raw?.with_bundle ?? 0),
+      giftNotAdded: Number(raw?.gift_not_added ?? 0),
+      giftShopRejected: Number(raw?.gift_shop_rejected ?? 0),
+      dueWithin24h: Number(raw?.due_within_24h ?? 0),
+      bySource,
+      attention: {
+        lateToShip: Number(raw?.attention_late_to_ship ?? 0),
+        stuck: Number(raw?.attention_stuck ?? 0),
+        toHandle: Number(raw?.attention_to_handle ?? 0),
+      },
     };
   }
 
@@ -988,10 +1545,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const qb = this.repository
       .createQueryBuilder('rec')
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere(
-        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
-        { currentReportingCurrency }
-      )
+      .andWhere(OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT, { currentReportingCurrency })
       .orderBy('rec."placedAt"', 'DESC')
       .take(pagination.limit)
       .skip(pagination.offset);
@@ -1034,10 +1588,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .select('rec.sourceConnectionId', 'source_connection_id')
       .addSelect('COUNT(*)', 'affected_count')
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere(
-        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
-        { currentReportingCurrency }
-      )
+      .andWhere(OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT, { currentReportingCurrency })
       .groupBy('rec.sourceConnectionId');
 
     this.applySalesAnalyticsScope(qb, filters);
@@ -1072,10 +1623,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .createQueryBuilder('rec')
       .select('rec."internalOrderId"', 'internal_order_id')
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere(
-        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
-        { currentReportingCurrency }
-      )
+      .andWhere(OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT, { currentReportingCurrency })
       .orderBy('rec."internalOrderId"', 'ASC')
       .limit(page.limit);
 
@@ -1170,10 +1718,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'terminal_marked'
       )
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere(
-        OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT,
-        { currentReportingCurrency }
-      );
+      .andWhere(OrderRecordRepository.CURRENCY_MISMATCH_FRAGMENT, { currentReportingCurrency });
 
     this.applySalesAnalyticsScope(qb, filters);
 
@@ -1199,6 +1744,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .createQueryBuilder('rec')
       .select('rec."internalOrderId"', 'internal_order_id')
       .addSelect('rec."orderSnapshot"', 'order_snapshot')
+      .addSelect('rec."orderEdits"', 'order_edits')
       .addSelect('rec."searchText"', 'search_text')
       .orderBy('rec."internalOrderId"', 'ASC')
       .limit(limit);
@@ -1210,8 +1756,57 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const rows = await qb.getRawMany<{
       internal_order_id: string;
       order_snapshot: unknown;
+      order_edits: unknown;
       search_text: string | null;
     }>();
+
+    // #3542: the corpus is rebuilt from the EFFECTIVE order. A reindex over the
+    // raw column would rewrite an edited order's text from the channel's address
+    // and make the edited one unsearchable.
+    return rows.map((row) => {
+      const channel =
+        typeof row.order_snapshot === 'object' && row.order_snapshot !== null
+          ? (row.order_snapshot as Record<string, unknown>)
+          : {};
+      return {
+        internalOrderId: row.internal_order_id,
+        orderSnapshot: applyOrderEditsToSnapshot(channel, readOrderEdits(row.order_edits)),
+        searchText: row.search_text ?? '',
+      };
+    });
+  }
+
+  /**
+   * Retention candidates (#4178), see the port. The anchor is
+   * `COALESCE(dispatchByAt, placedAt, createdAt)`: the ship-by deadline and the
+   * placement both precede delivery, so a deletion counted from them is never
+   * later than one counted from delivery. `createdAt` is a `timestamp` (no zone)
+   * while the other two are `timestamptz`; reading it as UTC keeps the
+   * expression IMMUTABLE so the partial index can be built on exactly this text.
+   */
+  async findBuyerDataRetentionCandidates(input: {
+    sourceConnectionId: string;
+    anchorBefore: Date;
+    limit: number;
+  }): Promise<OrderBuyerDataRetentionCandidate[]> {
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec."internalOrderId"', 'internal_order_id')
+      .addSelect('rec."orderSnapshot"', 'order_snapshot')
+      .where('rec."sourceConnectionId" = :sourceConnectionId', {
+        sourceConnectionId: input.sourceConnectionId,
+      })
+      .andWhere('rec."buyerDataRedactedAt" IS NULL')
+      // An order whose personal data a retention rule (#4289) or an erasure
+      // already removed has nothing left to redact.
+      .andWhere('rec."personalDataErasedAt" IS NULL')
+      .andWhere(`${BUYER_DATA_RETENTION_ANCHOR_SQL} < :anchorBefore`, {
+        anchorBefore: input.anchorBefore,
+      })
+      .orderBy(BUYER_DATA_RETENTION_ANCHOR_SQL, 'ASC')
+      .addOrderBy('rec."internalOrderId"', 'ASC')
+      .limit(input.limit)
+      .getRawMany<{ internal_order_id: string; order_snapshot: unknown }>();
 
     return rows.map((row) => ({
       internalOrderId: row.internal_order_id,
@@ -1219,8 +1814,48 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         typeof row.order_snapshot === 'object' && row.order_snapshot !== null
           ? (row.order_snapshot as Record<string, unknown>)
           : {},
-      searchText: row.search_text ?? '',
     }));
+  }
+
+  /**
+   * One-shot buyer-data removal (#4178), see the port. `updatedAt` is assigned
+   * to itself, as in `rewriteSearchText`: nothing about the order changed.
+   */
+  async redactBuyerData(redaction: OrderBuyerDataRedaction): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(OrderRecordOrmEntity)
+      .set({
+        orderSnapshot: () => 'CAST(:orderSnapshot AS jsonb)',
+        searchText: redaction.searchText,
+        buyerNote: null,
+        // The note is gone, so the flag that drives the list badge and the
+        // `hasBuyerNote` filter must say so, or the order claims a note nobody can read.
+        hasBuyerNote: false,
+        buyerTaxId: null,
+        orderEdits: () => `CASE WHEN "orderEdits" ? 'address' THEN "orderEdits" - 'address' ELSE "orderEdits" END`,
+        buyerDataRedactedAt: () => 'now()',
+        // The same fact as an erasure: every guard keyed on `personalDataErasedAt`
+        // (the upsert, the customer-projection write, the amendment diff) then
+        // protects a redacted order as well, with no second definition to keep.
+        personalDataErasedAt: () => 'now()',
+        updatedAt: () => '"updatedAt"',
+      })
+      .setParameter('orderSnapshot', JSON.stringify(redaction.orderSnapshot))
+      .where('"internalOrderId" = :internalOrderId', { internalOrderId: redaction.internalOrderId })
+      .andWhere('"buyerDataRedactedAt" IS NULL')
+      .andWhere('"personalDataErasedAt" IS NULL')
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
+  async isBuyerDataRedacted(internalOrderId: string): Promise<boolean> {
+    const row = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec."buyerDataRedactedAt"', 'redacted_at')
+      .where('rec."internalOrderId" = :internalOrderId', { internalOrderId })
+      .getRawOne<{ redacted_at: Date | null }>();
+    return row !== undefined && row !== null && row.redacted_at !== null;
   }
 
   /**
@@ -1443,7 +2078,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         'median'
       )
       .andWhere('rec."cancelledAt" IS NULL')
-      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', { currentReportingCurrency });
+      .andWhere('rec."reportingCurrency" = :currentReportingCurrency', {
+        currentReportingCurrency,
+      });
 
     this.applySalesAnalyticsScope(qb, filters);
 
@@ -1587,7 +2224,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
     filters: SalesAnalyticsFilters
   ): void {
-    qb.andWhere(`rec."recordStatus" = 'ready'`)
+    // #4289: an order hidden by buyer-data retention is out of every sum, summary
+    // and KPI - the same scope the order list applies (hiddenScopePredicate).
+    qb.andWhere(OrderRecordRepository.hiddenScopePredicate(false))
+      .andWhere(`rec."recordStatus" = 'ready'`)
       .andWhere('rec."placedAt" IS NOT NULL')
       .andWhere('rec."totalAmount" IS NOT NULL')
       .andWhere('rec."placedAt" >= :salesFrom', { salesFrom: filters.from })
@@ -1599,6 +2239,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       });
     }
   }
+
+  /**
+   * #4025 - the `hasBuyerNote: true` list filter and `countByHealth.hasBuyerNote`
+   * read this ONE predicate (`recordStatus = 'ready'` per #3538 N-20), so the
+   * count and the rows it reveals cannot disagree.
+   */
+  private static readonly HAS_ACTIONABLE_BUYER_NOTE = `rec."hasBuyerNote" = true AND rec."recordStatus" = 'ready'`;
+  /**
+   * #4025 - the `dueBefore` list filter (#927) and `countByHealth.dueWithin24h`
+   * read this ONE predicate; the caller binds `:dueBefore`.
+   */
+  private static readonly DUE_BEFORE = `rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :dueBefore`;
 
   /**
    * Constant SQL fragments shared by `applyHealthFilter` and `countByHealth`
@@ -1614,10 +2266,76 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   private static readonly IS_SOURCE_DELETED = `rec."recordStatus" = 'source_deleted'`;
   private static readonly IS_MAPPING = `rec."recordStatus" = 'awaiting_mapping'`;
-  private static readonly NOT_MAPPING_OR_DELETED =
-    `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
+  private static readonly NOT_MAPPING_OR_DELETED = `NOT (${OrderRecordRepository.IS_MAPPING}) AND NOT (${OrderRecordRepository.IS_SOURCE_DELETED})`;
   private static readonly HAS_FAILED = `rec."syncStatus" @> '[{"status":"failed"}]'::jsonb`;
   private static readonly HAS_SYNCED = `rec."syncStatus" @> '[{"status":"synced"}]'::jsonb`;
+  /**
+   * `'a', 'b'` for a SQL `IN (...)` over a core value array. The values are
+   * compile-time constants (status / reason literals), never user input, so
+   * inlining them keeps the predicates parameter-free (ADR-036). A single quote
+   * is still doubled, so a future value containing one cannot end the literal.
+   */
+  private static sqlInList(values: readonly string[]): string {
+    return values.map((value) => `'${value.replace(/'/g, "''")}'`).join(', ');
+  }
+  /**
+   * #3482 — the order has a live pack-bench work: OpenLinker handles it itself.
+   *
+   * A RAW TABLE NAME on purpose — ADR-036's sanctioned escape hatch for a
+   * cross-context read that a filter / count needs (`fulfillment_works` belongs
+   * to the `fulfillment` context, and its ORM entity must not be imported into
+   * `orders`). Read-only and parameter-free. Depends on `fulfillment_works`
+   * columns `orderId` (leads `IDX_fulfillment_works_grouping`, so this is an
+   * index lookup) and `status`. "Live" is `PackingFlowFulfillmentWorkStatusValues`,
+   * the same list `stageOfFulfillmentWork` is pinned to, so this agrees with the
+   * row's `handledInOpenLinker` field status by status (an unknown status is out
+   * on both sides).
+   */
+  private static readonly IS_HANDLED_IN_OPENLINKER =
+    `EXISTS (SELECT 1 FROM "fulfillment_works" fw WHERE fw."orderId" = rec."internalOrderId" ` +
+    `AND fw."status" IN (${OrderRecordRepository.sqlInList(PackingFlowFulfillmentWorkStatusValues)}))`;
+  /**
+   * The `synced` side of the health partition (#3482).
+   *
+   * A destination row synced, OR an order OpenLinker handles itself that has
+   * SHIPPED. Before #3482 a handled order had no `syncStatus` and stayed the
+   * residual `awaiting_dispatch` for ever, even after delivery; while it is still
+   * on the bench it IS awaiting dispatch, so only shipping moves it. The handled
+   * condition is required so an order with nothing configured that a marketplace
+   * shipped keeps its old bucket. Twin of the FE `deriveOrderHealth` — change both,
+   * and both are pinned to `ORDER_HEALTH_FIXTURES` (`order-health.fixtures.ts`).
+   *
+   * `fulfillmentState` is NULLABLE and stays `NULL` until the first shipment
+   * mutation, which is exactly the state of an order sitting on the bench. Read
+   * bare, `TRUE AND NULL IN (...)` is `NULL`, so the order was neither `synced`
+   * nor (through `NOT (...)`) `awaiting_dispatch` and counted in no bucket at all -
+   * the partition stopped summing to the total. `COALESCE(..., 'not-shipped')` is
+   * the same reading `LIFECYCLE_FULFILLMENT` applies, and is what makes the NULL
+   * case fall into the residual bucket where the FE row already shows it.
+   */
+  private static readonly IS_SYNCED_HEALTH =
+    `(${OrderRecordRepository.HAS_SYNCED} OR (${OrderRecordRepository.IS_HANDLED_IN_OPENLINKER} ` +
+    `AND COALESCE(rec."fulfillmentState", 'not-shipped') IN ('dispatched', 'delivered')))`;
+  /**
+   * #3482 — a live pack-bench work whose box is not shut: To pack or Packing.
+   * ADR-036 raw read as above; also depends on `parcelClosedAt`. The statuses are
+   * `UnpackedFulfillmentWorkStatusValues` (the packing flow minus `closed`, which
+   * is packed), pinned to `stageOfFulfillmentWork` like the list above.
+   */
+  private static readonly IS_ON_PACK_BENCH =
+    `EXISTS (SELECT 1 FROM "fulfillment_works" fw WHERE fw."orderId" = rec."internalOrderId" ` +
+    `AND fw."status" IN (${OrderRecordRepository.sqlInList(UnpackedFulfillmentWorkStatusValues)}) ` +
+    `AND fw."parcelClosedAt" IS NULL)`;
+  /**
+   * #3482 — held as "waiting in OpenLinker". The positive arm is the bare
+   * `IN (...)`; only the negation needs `COALESCE`, for the reason
+   * `NOT_DESTINATION_ROUTING_BLOCKED` documents (`NOT (NULL IN ...)` drops rows).
+   */
+  private static readonly WAITING_IN_OPENLINKER_IN_LIST = OrderRecordRepository.sqlInList(
+    WaitingFulfillmentBlockReasonValues
+  );
+  private static readonly IS_WAITING_IN_OPENLINKER = `rec."fulfillmentBlockReason" IN (${OrderRecordRepository.WAITING_IN_OPENLINKER_IN_LIST})`;
+  private static readonly NOT_WAITING_IN_OPENLINKER = `COALESCE(rec."fulfillmentBlockReason", '') NOT IN (${OrderRecordRepository.WAITING_IN_OPENLINKER_IN_LIST})`;
   /**
    * #2100 — NOT part of the health partition. Deliberately kept out of the
    * `IS_*` bucket set above so it can never be pasted into `applyHealthFilter`
@@ -1664,6 +2382,25 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    */
   private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
 
+  /**
+   * "Carries a gift" (#3940): a channel/shop line flagged `gift` in the persisted
+   * snapshot, or any overlay-added line (gifts are the only added lines).
+   */
+  private static readonly HAS_GIFT =
+    `(COALESCE(jsonb_path_exists(rec."orderSnapshot", '$.items[*] ? (@.gift != null)'), false) OR ` +
+    // `orderEdits` is NULL on an order nobody edited; a NULL here would make the
+    // negated filter drop that order instead of keeping it.
+    `COALESCE(jsonb_path_exists(rec."orderEdits", '$.addedLines.*'), false))`;
+
+  /**
+   * "Carries a bundle" (#3935): the order froze at least one bundle definition
+   * into `lineExpansion` at ingestion. Same signal the gift report's bundle scope reads.
+   */
+  private static readonly HAS_BUNDLE = `rec."lineExpansion" IS NOT NULL`;
+
+  /** "Shop rejected the gift" (#3935): a gift order whose destination sync failed. */
+  private static readonly GIFT_SHOP_REJECTED = `(${OrderRecordRepository.HAS_GIFT} AND rec."syncStatus" @> '[{"status":"failed"}]'::jsonb)`;
+
   private static readonly IS_SALES_DOCUMENT_BLOCKED =
     OrderRecordRepository.buildSalesDocumentBlockedPredicate();
 
@@ -1708,6 +2445,39 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Did a routing decision narrow this order's fan-out in a way that needs
+   * attention (#2703 / #2704)?
+   *
+   * An explicit IN-list over the COUNTED subset, never `IS NOT NULL` — the
+   * vocabulary's `'routed-to-no-destination'` is a working router making a
+   * decision, and counting it would put a permanent red badge on an install that
+   * legitimately routes some orders nowhere (the #2100 `trigger-model-manual`
+   * trap). It follows that a reason written by a newer release and rolled back is
+   * not counted either, since it cannot match the list.
+   *
+   * Two predicates, not one, and the split is what keeps the partial index
+   * `IDX_order_records_destinationRoutingBlockReason` usable. The POSITIVE form
+   * is the bare `reason IN (…)`: `NULL IN (…)` is NULL and `WHERE` drops the row,
+   * which is exactly the wanted answer for `blocked = true`, and an unwrapped
+   * column is an indexable qual the planner can match against the partial index.
+   * Only the NEGATION needs `COALESCE(…, '')`: `NOT (NULL IN (…))` is NULL and
+   * would DROP every unblocked row, so `destinationRoutingBlocked=false` would
+   * return ZERO orders on an install where nothing is blocked instead of all of
+   * them. The empty string is never a valid reason, so both directions stay
+   * two-valued. Wrapping the column in `COALESCE` for the positive arm too would
+   * leave no indexable qual and make the index dead for its stated purpose.
+   *
+   * `static readonly` constants rather than a per-call build, which is also what
+   * keeps `countMany` pure for `order-record.repository.predicate-parity.spec.ts`.
+   */
+  private static readonly DESTINATION_ROUTING_ATTENTION_IN_LIST =
+    DestinationRoutingAttentionReasonValues.map((reason) => `'${reason}'`).join(', ');
+
+  private static readonly IS_DESTINATION_ROUTING_BLOCKED = `rec."destinationRoutingBlockReason" IN (${OrderRecordRepository.DESTINATION_ROUTING_ATTENTION_IN_LIST})`;
+
+  private static readonly NOT_DESTINATION_ROUTING_BLOCKED = `COALESCE(rec."destinationRoutingBlockReason", '') NOT IN (${OrderRecordRepository.DESTINATION_ROUTING_ATTENTION_IN_LIST})`;
+
+  /**
    * Does this order carry at least one COUNTED OMS inert state (#2352)?
    *
    * Like {@link IS_SALES_DOCUMENT_BLOCKED} this is an explicit list of
@@ -1729,6 +2499,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * `COALESCE(…, '')` for — `jsonb_path_exists(NULL, …)` yields NULL, so the
    * column is coalesced to an empty array before the test rather than after.
    */
+  /** #3963 - a shop still shows the order unpaid and OpenLinker gave up. */
+  private static readonly HAS_PAYMENT_NOT_SENT = `rec."paymentWritebackProblem" = true`;
+
   private static readonly HAS_OMS_ATTENTION =
     AuthorityAttentionCountedReasonValues.length === 0
       ? // An empty counted set means nothing is attention-worthy, so the honest
@@ -1772,7 +2545,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     `CASE WHEN ${OrderRecordRepository.IS_SOURCE_DELETED} THEN -1 ` +
     `WHEN ${OrderRecordRepository.IS_MAPPING} THEN 1 ` +
     `WHEN ${OrderRecordRepository.HAS_FAILED} THEN 0 ` +
-    `WHEN ${OrderRecordRepository.HAS_SYNCED} THEN 3 ELSE 2 END`;
+    `WHEN ${OrderRecordRepository.IS_SYNCED_HEALTH} THEN 3 ELSE 2 END`;
 
   /** JSONB ORDER-BY expressions for the derived sortable columns (#944). */
   // Guarded with `jsonb_typeof(...) = 'number'` (mirrors ITEMS_EXPR) so a
@@ -1824,6 +2597,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     const d = (fallback: 'ASC' | 'DESC'): 'ASC' | 'DESC' =>
       dir === 'asc' ? 'ASC' : dir === 'desc' ? 'DESC' : fallback;
     switch (sort) {
+      case 'placedAt':
+        // #4025 - NULLS LAST in BOTH directions: a source that reports no
+        // placement time must never put its orders on top of "newest first".
+        // `IDX_order_records_placedAt_desc` matches the DESC form exactly.
+        qb.orderBy('rec.placedAt', d('DESC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
+        return;
       case 'dispatchBy':
         qb.orderBy('rec.dispatchByAt', d('ASC'), 'NULLS LAST')
           .addOrderBy('rec.createdAt', 'DESC')
@@ -1892,12 +2673,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         break;
       case 'synced':
         qb.andWhere(
-          `${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.HAS_SYNCED}`
+          `${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND ${OrderRecordRepository.IS_SYNCED_HEALTH}`
         );
         break;
       case 'awaiting_dispatch':
         qb.andWhere(
-          `${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.HAS_SYNCED})`
+          `${notMappingOrDeleted} AND NOT (${OrderRecordRepository.HAS_FAILED}) AND NOT (${OrderRecordRepository.IS_SYNCED_HEALTH})`
         );
         break;
     }
@@ -1909,8 +2690,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * shipped. Shared by the SLA filter + the SLA summary so the badge, filter,
    * and KPI all agree.
    */
-  private static readonly NOT_SHIPPED =
-    `(rec."fulfillmentState" IS NULL OR rec."fulfillmentState" NOT IN ('dispatched','delivered'))`;
+  private static readonly NOT_SHIPPED = `(rec."fulfillmentState" IS NULL OR rec."fulfillmentState" NOT IN ('dispatched','delivered'))`;
 
   /**
    * Fulfillment-rollup sort ordinal (#1108) — most-actionable first when
@@ -1985,9 +2765,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         qb.andWhere(`(NOT ${notShipped}) OR rec."dispatchByAt" IS NULL`);
         break;
       case 'overdue':
-        qb.andWhere(`${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :slaNow`, {
-          slaNow: now,
-        });
+        qb.andWhere(
+          `${notShipped} AND rec."dispatchByAt" IS NOT NULL AND rec."dispatchByAt" <= :slaNow`,
+          {
+            slaNow: now,
+          }
+        );
         break;
       case 'at_risk':
         qb.andWhere(
@@ -2116,9 +2899,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     //    `ready` there and `held` here. Unreachable while `OrderHoldService` is
     //    the only writer, and the reconcile clears such a value.
     held: `rec."activeHoldReason" IS NOT NULL`,
-    // 7. An OL-authored intention in flight; no persisted source until Wave 2
-    //    widens `order_changes.kind`.
-    amending: 'FALSE',
+    // 7. An OL-authored intention in flight (#3540): an OPEN `order_changes` row
+    //    of an order-amending kind. `return.*` kinds are about a return, not the
+    //    order, so they are excluded by prefix. The status list and the prefix
+    //    are the same facts as `OPEN_ORDER_CHANGE_STATUSES` and
+    //    `OrderAmendmentRequestKindValues`, rendered from them rather than
+    //    restated.
+    amending: `EXISTS (SELECT 1 FROM order_changes oc WHERE oc."internalOrderId" = rec."internalOrderId" AND oc."status" IN (${OPEN_ORDER_CHANGE_STATUSES.map((s) => `'${s}'`).join(', ')}) AND oc."kind" IN (${OrderAmendmentRequestKindValues.map((k) => `'${k}'`).join(', ')}) AND oc."requestedAt" > now() - (CAST(:openChangeTtlMs AS bigint) * interval '1 millisecond'))`,
     // 8. OL's own ingest incompleteness.
     blocked: `rec."recordStatus" IN ('awaiting_mapping','source_deleted')`,
     // 9. Residual — always matches, which is what makes the `CASE` total.
@@ -2179,10 +2966,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * disagreement stops being visible. This helper carries only what is
    * genuinely common; the asymmetry stays where a reader can see it.
    */
+  /**
+   * #4289 - the ONE definition of the hidden-order scope. The list builder and
+   * every summary reader apply it, so the KPI cards cannot count orders the
+   * list excludes by default.
+   */
+  private static hiddenScopePredicate(hidden: boolean | undefined): string {
+    return hidden === true ? 'rec."hiddenAt" IS NOT NULL' : 'rec."hiddenAt" IS NULL';
+  }
+
   private static applySummaryScope(
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
     filters: OrderHealthSummaryFilters
   ): void {
+    qb.andWhere(OrderRecordRepository.hiddenScopePredicate(filters.hidden));
     if (filters.sourceConnectionId) {
       qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
         sourceConnectionId: filters.sourceConnectionId,
@@ -2205,6 +3002,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   ): void {
     qb.andWhere(`${OrderRecordRepository.LIFECYCLE_PHASE_EXPR} = :lifecyclePhase`, {
       lifecyclePhase,
+      openChangeTtlMs: resolveOrderChangeOpenTtlMs(),
     });
   }
 
@@ -2248,6 +3046,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       );
     }
 
+    // The `amending` arm's TTL bound (#3540): an open change older than the TTL is
+    // not open, matching `OrderChangeRepository.findOrderIdsWithOpenChanges`.
+    qb.setParameter('openChangeTtlMs', resolveOrderChangeOpenTtlMs());
     OrderRecordRepository.applySummaryScope(qb, filters);
 
     const raw = await qb.getRawOne<Record<string, string>>();
@@ -2277,8 +3078,124 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   async updateFulfillmentState(
     internalOrderId: string,
     fulfillmentState: FulfillmentRollupState
-  ): Promise<void> {
+  ): Promise<boolean> {
+    if ((SHIPPED_FULFILLMENT_STATES as readonly string[]).includes(fulfillmentState)) {
+      // The transition write: only a row not already shipped matches, so of two
+      // racing recomputes exactly one sees `affected > 0`.
+      const entered = await this.repository
+        .createQueryBuilder()
+        .update(OrderRecordOrmEntity)
+        .set({ fulfillmentState })
+        .where('"internalOrderId" = :internalOrderId', { internalOrderId })
+        .andWhere('("fulfillmentState" IS NULL OR "fulfillmentState" NOT IN (:...shipped))', {
+          shipped: SHIPPED_FULFILLMENT_STATES,
+        })
+        .execute();
+      if ((entered.affected ?? 0) > 0) {
+        return true;
+      }
+    }
     await this.repository.update({ internalOrderId }, { fulfillmentState });
+    return false;
+  }
+
+  /**
+   * The `paymentWritebackProblem` flag computed from a jsonb expression that is
+   * ALSO the value being written, so the flag can never disagree with the
+   * column it summarises. Reads the reasons straight from
+   * `isPaymentWritebackProblem`'s definition: `not-sent` for a reason an
+   * operator has to act on.
+   */
+  private static paymentWritebackProblemSql(nextValueSql: string): string {
+    return (
+      `EXISTS (SELECT 1 FROM jsonb_each(${nextValueSql}) AS e ` +
+      `WHERE e.value->>'state' = 'not-sent' ` +
+      `AND e.value->>'reason' IN ('retries-exhausted', 'rejected', 'no-total'))`
+    );
+  }
+
+  async claimPaymentWriteback(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    staleBefore: Date
+  ): Promise<boolean> {
+    // SET expressions are evaluated against the row version the UPDATE locks,
+    // so a racing claim that lost the row lock re-reads the winner's `sending`
+    // entry in the WHERE and affects nothing (READ COMMITTED re-check).
+    const next =
+      `jsonb_set(COALESCE("paymentWriteback", '{}'::jsonb), ARRAY[$2]::text[], ` +
+      `jsonb_build_object('state', 'sending', 'at', $3::text, 'attempts', ` +
+      `COALESCE(("paymentWriteback"->$2->>'attempts')::int, 0)))`;
+    const rows = (await this.repository.query(
+      `UPDATE "order_records" SET "paymentWriteback" = ${next}, ` +
+        `"paymentWritebackProblem" = ${OrderRecordRepository.paymentWritebackProblemSql(next)} ` +
+        `WHERE "internalOrderId" = $1 AND (` +
+        `"paymentWriteback" IS NULL OR NOT ("paymentWriteback" ? $2) ` +
+        `OR "paymentWriteback"->$2->>'state' IN ('awaiting', 'retrying') ` +
+        `OR ("paymentWriteback"->$2->>'state' = 'sending' ` +
+        `AND ("paymentWriteback"->$2->>'at')::timestamptz < $4)) ` +
+        `RETURNING "internalOrderId"`,
+      [
+        internalOrderId,
+        destinationConnectionId,
+        new Date().toISOString(),
+        staleBefore.toISOString(),
+      ]
+    )) as unknown[];
+    return OrderRecordRepository.affectedRows(rows) > 0;
+  }
+
+  async recordPaymentWriteback(
+    internalOrderId: string,
+    destinationConnectionId: string,
+    entry: PaymentWritebackEntry
+  ): Promise<void> {
+    const next = `jsonb_set(COALESCE("paymentWriteback", '{}'::jsonb), ARRAY[$2]::text[], $3::jsonb)`;
+    await this.repository.query(
+      `UPDATE "order_records" SET "paymentWriteback" = ${next}, ` +
+        `"paymentWritebackProblem" = ${OrderRecordRepository.paymentWritebackProblemSql(next)} ` +
+        `WHERE "internalOrderId" = $1`,
+      [internalOrderId, destinationConnectionId, JSON.stringify(entry)]
+    );
+  }
+
+  async markPaymentWritebackHandled(internalOrderIds: readonly string[]): Promise<number> {
+    if (internalOrderIds.length === 0) return 0;
+    const rows = (await this.repository.query(
+      `UPDATE "order_records" AS r SET "paymentWriteback" = (` +
+        `SELECT jsonb_object_agg(e.key, CASE WHEN e.value->>'state' = 'not-sent' ` +
+        `AND e.value->>'reason' IN ('retries-exhausted', 'rejected', 'no-total') ` +
+        `THEN e.value || jsonb_build_object('state', 'handled', 'at', $2::text) ELSE e.value END) ` +
+        `FROM jsonb_each(r."paymentWriteback") AS e), ` +
+        `"paymentWritebackProblem" = false ` +
+        `WHERE r."internalOrderId" = ANY($1::text[]) AND r."paymentWritebackProblem" = true ` +
+        `RETURNING r."internalOrderId"`,
+      [internalOrderIds, new Date().toISOString()]
+    )) as unknown[];
+    return OrderRecordRepository.affectedRows(rows);
+  }
+
+  /**
+   * `repository.query` returns the RETURNING rows for a plain UPDATE on the
+   * postgres driver, but `[rows, count]` when TypeORM wraps it; accept both.
+   */
+  private static affectedRows(result: unknown[]): number {
+    if (result.length === 2 && Array.isArray(result[0]) && typeof result[1] === 'number') {
+      return result[1];
+    }
+    return result.length;
+  }
+
+  async claimShippedNotification(internalOrderId: string): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(OrderRecordOrmEntity)
+      .set({ shippedNotifiedAt: () => 'now()' })
+      .where('"internalOrderId" = :internalOrderId', { internalOrderId })
+      .andWhere('"shippedNotifiedAt" IS NULL')
+      .andWhere('"fulfillmentState" IN (:...shipped)', { shipped: SHIPPED_FULFILLMENT_STATES })
+      .execute();
+    return (result.affected ?? 0) > 0;
   }
 
   /**
@@ -2305,14 +3222,19 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * `Repository.update()`'s partial-entity API cannot express a `COALESCE(...)`
    * right-hand side without an unsafe string-interpolated function value.
    * No-op (no throw, no rows affected) when the order row doesn't exist yet.
+   * Returns true only when this call wrote the instant (the first transition).
    */
-  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
-    await this.repository.query(
+  async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<boolean> {
+    // `WHERE "cancelledAt" IS NULL` keeps first-write-wins and makes the affected
+    // count the answer to "did THIS call make the transition"; for a raw UPDATE
+    // the count is `result[1]` (rows.length is always 2 on this driver).
+    const result = (await this.repository.query(
       `UPDATE "order_records"
-       SET "cancelledAt" = COALESCE("cancelledAt", $1)
-       WHERE "internalOrderId" = $2`,
+       SET "cancelledAt" = $1
+       WHERE "internalOrderId" = $2 AND "cancelledAt" IS NULL`,
       [cancelledAt, internalOrderId]
-    );
+    )) as [unknown, number];
+    return result[1] > 0;
   }
 
   /**
@@ -2363,10 +3285,17 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // and a read-then-write there would reintroduce exactly the race this
     // statement's caller-free guard exists to avoid. Only `$n` placeholders are
     // composed below — never a value — so the statement stays fully bound.
+    // $4/$5 (#3583): the connection and kind the block is about. Set for a
+    // batched order (its place in that connection's batch queue), null
+    // otherwise, and moved in the SAME statement so the queue can never name a
+    // connection the reason has already left.
     const params: Array<string | null> = [
       block?.reason ?? null,
       block?.unresolvedReason ?? null,
       block?.detail ?? null,
+      block?.connectionId ?? null,
+      block?.documentKind ?? null,
+      block?.params ? JSON.stringify(block.params) : null,
     ];
     let matchedRuleAssignment = '';
     let matchedRuleGuard = '';
@@ -2384,6 +3313,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
+              "salesDocumentBlockConnectionId" = $4,
+              "salesDocumentBlockDocumentKind" = $5,
+              "salesDocumentBlockParams" = $6::jsonb,
               ${matchedRuleAssignment}
               "salesDocumentBlockedAt" = CASE
                 WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
@@ -2399,6 +3331,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
             OR "salesDocumentUnresolvedReason" IS DISTINCT FROM $2
             OR "salesDocumentBlockDetail" IS DISTINCT FROM $3
+            OR "salesDocumentBlockConnectionId" IS DISTINCT FROM $4
+            OR "salesDocumentBlockDocumentKind" IS DISTINCT FROM $5
+            OR "salesDocumentBlockParams" IS DISTINCT FROM $6::jsonb
             ${matchedRuleGuard})`,
       params
     );
@@ -2444,6 +3379,36 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * #2703 / #2704 — the destination-routing block, copying
+   * {@link updateFulfillmentBlock} exactly.
+   *
+   * The no-op guard lives HERE, in the `WHERE`, rather than in the caller.
+   * `IS DISTINCT FROM` is NULL-safe, so it is exact for the clear case too, and
+   * it keeps the `@UpdateDateColumn` bump off the overwhelmingly common
+   * `null -> null` path — which is EVERY order on every install today, since no
+   * production caller populates `destinationConnectionIds`. `updatedAt` is a live
+   * filter axis (`FulfillmentStatusSyncService` scans `updatedSince`), so bumping
+   * it on every order for a column that did not change would be a real cost.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  async updateDestinationRoutingBlock(
+    internalOrderId: string,
+    block: DestinationRoutingBlock | null
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "destinationRoutingBlockReason" = $1,
+              "destinationRoutingBlockDetail" = $2,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $3
+          AND ("destinationRoutingBlockReason" IS DISTINCT FROM $1
+            OR "destinationRoutingBlockDetail" IS DISTINCT FROM $2)`,
+      [block?.reason ?? null, block?.detail ?? null, internalOrderId]
+    );
+  }
+
+  /**
    * #3485 — keyset page for `fulfillment.work.rerouteSweep`. Served by the
    * primary key at v1 volumes; see the port for why it is keyset and why it is
    * keyed on `internalOrderId` rather than `updatedAt`.
@@ -2474,6 +3439,31 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       orderId: row.internalOrderId,
       blockedAt: row.fulfillmentBlockedAt === null ? null : new Date(row.fulfillmentBlockedAt),
     }));
+  }
+
+  /**
+   * #3558 — held orders that contain a variant. A join on the indexed
+   * `order_line_items.orderRecordId`; `DISTINCT` because an order may carry the
+   * same variant on two lines.
+   */
+  async listOrderIdsHeldForVariant(
+    reasons: readonly FulfillmentBlockReason[],
+    variantId: string,
+    limit: number
+  ): Promise<string[]> {
+    if (reasons.length === 0 || limit <= 0) return [];
+
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .select('rec.internalOrderId', 'internalOrderId')
+      .distinct(true)
+      .innerJoin(OrderLineItemOrmEntity, 'line', 'line.orderRecordId = rec.internalOrderId')
+      .where('rec.fulfillmentBlockReason IN (:...reasons)', { reasons: [...reasons] })
+      .andWhere('line.variantId = :variantId', { variantId })
+      .orderBy('rec.internalOrderId', 'ASC')
+      .limit(limit)
+      .getRawMany<{ internalOrderId: string }>();
+    return rows.map((row) => row.internalOrderId);
   }
 
   /**
@@ -2623,6 +3613,375 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * Mark this order's buyer note read (#3538). Fill-once, in the
+   * {@link markPacked} shape: `buyerNoteReadAt: IsNull()` in the WHERE makes the
+   * first mark win and a replay affect zero rows, and both columns move in one
+   * statement so the instant and the actor are never split across two callers.
+   */
+  async markBuyerNoteRead(
+    internalOrderId: string,
+    readAt: Date,
+    readByUserId: string
+  ): Promise<boolean> {
+    const result = await this.repository.update(
+      { internalOrderId, buyerNoteReadAt: IsNull() },
+      { buyerNoteReadAt: readAt, buyerNoteReadByUserId: readByUserId }
+    );
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * The eligibility predicate shared by the trial run and the live sweep
+   * (#4289). Returns the SQL fragments and their parameters so the two cannot
+   * disagree about which orders a rule reaches.
+   */
+  private buildBuyerDataEligibility(scope: BuyerDataRetentionScope): {
+    hide: string;
+    erase: string;
+    eraseHides: string;
+    any: string;
+    where: string;
+    params: unknown[];
+  } {
+    const params: unknown[] = [];
+    const bind = (value: unknown, cast: string): string => {
+      params.push(value);
+      return `$${String(params.length)}::${cast}`;
+    };
+    const hideBound = scope.hideBefore !== null ? bind(scope.hideBefore, 'timestamptz') : null;
+    const eraseBound = scope.eraseBefore !== null ? bind(scope.eraseBefore, 'timestamptz') : null;
+    const hide =
+      hideBound !== null
+        ? `(rec."hiddenAt" IS NULL AND ${BUYER_DATA_AGE_SQL} < ${hideBound})`
+        : 'false';
+    const erase =
+      eraseBound !== null
+        ? `(rec."personalDataErasedAt" IS NULL AND ${BUYER_DATA_AGE_SQL} < ${eraseBound})`
+        : 'false';
+    const eraseHides =
+      scope.eraseHides && eraseBound !== null
+        ? `(rec."hiddenAt" IS NULL AND ${BUYER_DATA_AGE_SQL} < ${eraseBound})`
+        : 'false';
+    const any = `(${hide} OR ${erase} OR ${eraseHides})`;
+    const where =
+      scope.connectionId !== undefined
+        ? `rec."sourceConnectionId" = ${bind(scope.connectionId, 'uuid')} AND ${any}`
+        : any;
+    return { hide, erase, eraseHides, any, where, params };
+  }
+
+  async countBuyerDataRetentionCandidates(
+    scope: BuyerDataRetentionScope
+  ): Promise<BuyerDataRetentionCounts> {
+    const e = this.buildBuyerDataEligibility(scope);
+    const rows = (await this.repository.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE (${e.hide} OR ${e.eraseHides}) AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS to_hide,
+         COUNT(*) FILTER (WHERE ${e.erase} AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS to_erase,
+         COUNT(*) FILTER (WHERE ${e.erase} AND rec."hiddenAt" IS NOT NULL AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS already_hidden_due_for_erase,
+         COUNT(*) FILTER (WHERE ${e.any} AND NOT ${BUYER_DATA_PROTECTED_SQL}) AS total,
+         COUNT(*) FILTER (WHERE ${BUYER_DATA_PROTECTED_SQL}) AS skipped,
+         COUNT(*) FILTER (WHERE ${BUYER_DATA_OPEN_RETURN_SQL}) AS skipped_open_return,
+         COUNT(*) FILTER (WHERE NOT ${BUYER_DATA_OPEN_RETURN_SQL} AND ${BUYER_DATA_HOLD_SQL}) AS skipped_hold,
+         COUNT(*) FILTER (WHERE NOT ${BUYER_DATA_OPEN_RETURN_SQL} AND NOT ${BUYER_DATA_HOLD_SQL}
+                          AND ${BUYER_DATA_INVOICE_PENDING_SQL}) AS skipped_invoice_pending
+       FROM "order_records" rec
+       WHERE ${e.where}`,
+      e.params
+    )) as {
+      to_hide: string;
+      to_erase: string;
+      already_hidden_due_for_erase: string;
+      total: string;
+      skipped: string;
+      skipped_open_return: string;
+      skipped_hold: string;
+      skipped_invoice_pending: string;
+    }[];
+    const row = rows[0];
+    return {
+      toHide: Number(row?.to_hide ?? 0),
+      toErase: Number(row?.to_erase ?? 0),
+      alreadyHiddenDueForErase: Number(row?.already_hidden_due_for_erase ?? 0),
+      total: Number(row?.total ?? 0),
+      skippedProtected: Number(row?.skipped ?? 0),
+      skippedByReason: {
+        openReturn: Number(row?.skipped_open_return ?? 0),
+        hold: Number(row?.skipped_hold ?? 0),
+        invoicePending: Number(row?.skipped_invoice_pending ?? 0),
+      },
+    };
+  }
+
+  /**
+   * Age histogram of the order book in 30-day buckets (#4289), sparse: the
+   * service densifies it. Ages are computed against the caller's `now` so a
+   * test is deterministic. One grouped scan; if it ever hurts on a very large
+   * book, an index on (sourceConnectionId, COALESCE("placedAt","createdAt"))
+   * would help - none is added here.
+   */
+  async getBuyerDataAgeHistogram(
+    now: Date,
+    connectionId?: string
+  ): Promise<BuyerDataAgeHistogramRows> {
+    const params: unknown[] = [now];
+    let scopeSql = '';
+    if (connectionId !== undefined) {
+      params.push(connectionId);
+      scopeSql = `WHERE rec."sourceConnectionId" = $2::uuid`;
+    }
+    const rows = (await this.repository.query(
+      `SELECT
+         LEAST(${String(BUYER_DATA_HISTOGRAM_CAP_MONTHS)},
+               GREATEST(0, FLOOR(EXTRACT(EPOCH FROM ($1::timestamptz - ${BUYER_DATA_AGE_SQL})) / 86400 / 30)))::int AS age_months,
+         COUNT(*) FILTER (WHERE rec."hiddenAt" IS NULL AND rec."personalDataErasedAt" IS NULL) AS visible,
+         COUNT(*) FILTER (WHERE rec."hiddenAt" IS NOT NULL AND rec."personalDataErasedAt" IS NULL) AS hidden,
+         COUNT(*) FILTER (WHERE rec."personalDataErasedAt" IS NOT NULL) AS erased,
+         COUNT(*) AS total,
+         MIN(${BUYER_DATA_AGE_SQL}) AS oldest
+       FROM "order_records" rec
+       ${scopeSql}
+       GROUP BY 1
+       ORDER BY 1`,
+      params
+    )) as {
+      age_months: number;
+      visible: string;
+      hidden: string;
+      erased: string;
+      total: string;
+      oldest: Date | string;
+    }[];
+    let totalOrders = 0;
+    let oldestPlacedAt: Date | null = null;
+    for (const row of rows) {
+      totalOrders += Number(row.total);
+      const oldest = new Date(row.oldest);
+      if (oldestPlacedAt === null || oldest < oldestPlacedAt) oldestPlacedAt = oldest;
+    }
+    return {
+      rows: rows.map((row) => ({
+        ageMonths: Number(row.age_months),
+        visible: Number(row.visible),
+        hidden: Number(row.hidden),
+        erased: Number(row.erased),
+      })),
+      totalOrders,
+      oldestPlacedAt,
+    };
+  }
+
+  async countVisibleOrdersForBuyerData(connectionId?: string): Promise<number> {
+    const qb = this.repository
+      .createQueryBuilder('rec')
+      .where(OrderRecordRepository.hiddenScopePredicate(false));
+    if (connectionId !== undefined) {
+      qb.andWhere('rec.sourceConnectionId = :connectionId', { connectionId });
+    }
+    return qb.getCount();
+  }
+
+  async findBuyerDataRetentionSamples(
+    scope: BuyerDataRetentionScope,
+    limit: number
+  ): Promise<BuyerDataRetentionSample[]> {
+    const e = this.buildBuyerDataEligibility(scope);
+    e.params.push(limit);
+    const rows = (await this.repository.query(
+      `SELECT rec."internalOrderId" AS internal_order_id,
+              rec."orderSnapshot"->>'orderNumber' AS order_number,
+              ${BUYER_DATA_AGE_SQL} AS placed_at
+       FROM "order_records" rec
+       WHERE ${e.where} AND NOT ${BUYER_DATA_PROTECTED_SQL}
+       ORDER BY ${BUYER_DATA_AGE_SQL} DESC
+       LIMIT $${String(e.params.length)}`,
+      e.params
+    )) as { internal_order_id: string; order_number: string | null; placed_at: Date | string }[];
+    return rows.map((row) => ({
+      orderRef: row.order_number ?? row.internal_order_id,
+      placedAt: new Date(row.placed_at).toISOString(),
+      // Never read from the snapshot: a preview must carry no personal data.
+      maskedBuyer: buildBuyerPlaceholder(row.internal_order_id),
+    }));
+  }
+
+  async hideOrdersForBuyerDataRetention(
+    connectionId: string,
+    before: Date,
+    limit: number,
+    now: Date
+  ): Promise<number> {
+    const result = (await this.repository.query(
+      `UPDATE "order_records"
+       SET "hiddenAt" = $1
+       WHERE "internalOrderId" IN (
+         SELECT rec."internalOrderId" FROM "order_records" rec
+         WHERE rec."sourceConnectionId" = $2::uuid
+           AND rec."hiddenAt" IS NULL
+           AND ${BUYER_DATA_AGE_SQL} < $3::timestamptz
+           AND NOT ${BUYER_DATA_PROTECTED_SQL}
+         ORDER BY rec."internalOrderId"
+         LIMIT $4
+         FOR UPDATE SKIP LOCKED
+       )`,
+      [now, connectionId, before, limit]
+    )) as [unknown, number];
+    return result[1];
+  }
+
+  async findErasableOrdersForBuyerDataRetention(
+    connectionId: string,
+    before: Date,
+    limit: number
+  ): Promise<ErasableOrderRow[]> {
+    const rows = (await this.repository.query(
+      `SELECT rec."internalOrderId" AS internal_order_id,
+              rec."customerId" AS customer_id,
+              rec."orderSnapshot" AS order_snapshot
+       FROM "order_records" rec
+       WHERE rec."sourceConnectionId" = $1::uuid
+         AND rec."personalDataErasedAt" IS NULL
+         AND ${BUYER_DATA_AGE_SQL} < $2::timestamptz
+         AND NOT ${BUYER_DATA_PROTECTED_SQL}
+       ORDER BY rec."internalOrderId"
+       LIMIT $3`,
+      [connectionId, before, limit]
+    )) as { internal_order_id: string; customer_id: string | null; order_snapshot: unknown }[];
+    return rows.map((row) => ({
+      internalOrderId: row.internal_order_id,
+      customerId: row.customer_id,
+      orderSnapshot:
+        typeof row.order_snapshot === 'object' && row.order_snapshot !== null
+          ? (row.order_snapshot as Record<string, unknown>)
+          : {},
+    }));
+  }
+
+  async erasePersonalDataForRetention(
+    erasures: readonly PersonalDataErasure[],
+    now: Date
+  ): Promise<PersonalDataErasureResult> {
+    const customerIds = new Set<string>();
+    let erased = 0;
+    for (const erasure of erasures) {
+      // `orderEdits.address` is an operator-typed buyer address and goes with
+      // the rest; so does the recipient on `buyer_email_deliveries` and
+      // `document_email_deliveries` (nulled in the same transaction, same order id).
+      // The guard on `personalDataErasedAt` makes a replay a no-op; the protected
+      // re-check closes the window between the page read and this write, in which
+      // an operator may have placed a hold.
+      //
+      // One transaction per order: the order row and its delivery-log rows erase
+      // all-or-nothing. Were the order UPDATE to commit and a recipient UPDATE then
+      // fail, the next pass would skip the order (`personalDataErasedAt` is set) and
+      // the address would stay in the delivery log for good.
+      const returned = await this.dataSource.transaction(
+        async (manager: EntityManager): Promise<{ customer_id: string | null }[]> => {
+          const rows: unknown = await manager.query(
+            `UPDATE "order_records" rec
+             SET "orderSnapshot" = $2::jsonb,
+                 "orderEdits" = CASE WHEN rec."orderEdits" IS NULL THEN NULL
+                                     ELSE rec."orderEdits" - 'address' END,
+                 "buyerNote" = NULL,
+                 "hasBuyerNote" = false,
+                 "buyerTaxId" = NULL,
+                 "searchText" = $3,
+                 "personalDataErasedAt" = $4,
+                 "hiddenAt" = CASE WHEN $5::boolean THEN COALESCE(rec."hiddenAt", $4) ELSE rec."hiddenAt" END
+             WHERE rec."internalOrderId" = $1
+               AND rec."personalDataErasedAt" IS NULL
+               AND NOT ${BUYER_DATA_PROTECTED_SQL}
+             RETURNING rec."customerId" AS customer_id`,
+            [
+              erasure.internalOrderId,
+              JSON.stringify(erasure.orderSnapshot),
+              erasure.searchText,
+              now,
+              erasure.hide,
+            ]
+          );
+          // TypeORM returns `[rows, count]` for UPDATE ... RETURNING on some
+          // driver versions and the bare row array on others.
+          const tuple = rows as [{ customer_id: string | null }[], number] | undefined;
+          const updated = (Array.isArray(tuple?.[0]) ? tuple?.[0] : rows) as {
+            customer_id: string | null;
+          }[];
+          if (updated.length > 0) {
+            // The buyer's address is also kept in clear text on the delivery logs
+            // (nullable columns), keyed by the same order id. Only for rows this
+            // statement actually erased, so a protected order keeps its history.
+            await manager.query(
+              `UPDATE "buyer_email_deliveries" SET "recipient" = NULL
+               WHERE "internalOrderId" = $1 AND "recipient" IS NOT NULL`,
+              [erasure.internalOrderId]
+            );
+            await manager.query(
+              `UPDATE "document_email_deliveries" SET "recipient" = NULL
+               WHERE "internalOrderId" = $1 AND "recipient" IS NOT NULL`,
+              [erasure.internalOrderId]
+            );
+          }
+          return updated;
+        }
+      );
+      erased += returned.length;
+      for (const row of returned) {
+        if (row.customer_id !== null) {
+          customerIds.add(row.customer_id);
+        }
+      }
+    }
+    return { erased, customerIds: [...customerIds] };
+  }
+
+  async findCustomerIdsWithoutPersonalDataOrders(
+    customerIds: readonly string[]
+  ): Promise<string[]> {
+    if (customerIds.length === 0) {
+      return [];
+    }
+    const rows = (await this.repository.query(
+      `SELECT c.id AS customer_id
+       FROM unnest($1::text[]) AS c(id)
+       WHERE NOT EXISTS (
+         SELECT 1 FROM "order_records" rec
+         WHERE rec."customerId" = c.id AND rec."personalDataErasedAt" IS NULL
+       )`,
+      [customerIds]
+    )) as { customer_id: string }[];
+    return rows.map((row) => row.customer_id);
+  }
+
+  /**
+   * Count the OTHER orders a customer placed before `before` (#3538, D7). Feeds
+   * the derived `buyerOrderCount`; excludes the order being ingested so a
+   * re-ingestion yields the same number.
+   */
+  async countEarlierOrdersForCustomer(
+    customerId: string,
+    excludeInternalOrderId: string,
+    before: Date
+  ): Promise<number> {
+    return (
+      this.repository
+        .createQueryBuilder('rec')
+        .where('rec.customerId = :customerId', { customerId })
+        .andWhere('rec.internalOrderId != :excludeInternalOrderId', { excludeInternalOrderId })
+        // N-31: a cancelled order is not an earlier purchase; equal instants
+        // tie-break on the internal id so exactly one of two same-instant orders
+        // counts the other.
+        .andWhere('rec."cancelledAt" IS NULL')
+        .andWhere(
+          `(COALESCE(rec."placedAt", rec."createdAt") < :before
+          OR (COALESCE(rec."placedAt", rec."createdAt") = :before
+              AND rec."internalOrderId" < :excludeInternalOrderId))`,
+          { before, excludeInternalOrderId }
+        )
+        .getCount()
+    );
+  }
+
+  /**
    * Clear this order's packed fact (#2287). The `Not(IsNull())` guard is the
    * no-op idea `updateSalesDocumentBlock` puts in its WHERE: unmarking an
    * already-unpacked order affects no row, so it neither bumps `updatedAt` nor
@@ -2635,6 +3994,146 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       { packedAt: null, packedByUserId: null, updatedAt: new Date() }
     );
     return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Freeze the order's bundle expansion (#3607). THE sole writer of
+   * `lineExpansion`; written once, at ingestion, before reservation. The
+   * `IS NULL` guard is the single-writer-once rule: a re-poll, a retry or a
+   * later definition edit changes nothing, and the stored value is returned.
+   */
+  async freezeLineExpansion(
+    internalOrderId: string,
+    expansion: LineExpansion
+  ): Promise<LineExpansion> {
+    const rows = (await this.repository.query(
+      `UPDATE "order_records" SET "lineExpansion" = $2::jsonb
+        WHERE "internalOrderId" = $1 AND "lineExpansion" IS NULL
+        RETURNING "lineExpansion"`,
+      [internalOrderId, JSON.stringify(expansion)]
+    )) as unknown[];
+    const updated = Array.isArray(rows[0]) ? (rows[0] as Record<string, unknown>[]) : rows;
+    if (updated.length > 0) {
+      return expansion;
+    }
+    const existing = (await this.repository.query(
+      `SELECT "lineExpansion" FROM "order_records" WHERE "internalOrderId" = $1`,
+      [internalOrderId]
+    )) as { lineExpansion: unknown }[];
+    return readLineExpansion(existing[0]?.lineExpansion) ?? expansion;
+  }
+
+  /**
+   * Open orders per frozen version of one bundle (#3624). Reads the frozen
+   * `lineExpansion` only - never the live definition - because the question is
+   * "which composition does this order ship with".
+   */
+  async countOpenOrdersByBundleVersion(
+    bundleVariantId: string
+  ): Promise<{ version: number; count: number }[]> {
+    const rows = (await this.repository.query(
+      `SELECT (def->>'version')::int AS version, COUNT(DISTINCT rec."internalOrderId")::int AS count
+         FROM "order_records" rec,
+              jsonb_array_elements(COALESCE(rec."lineExpansion"->'definitions', '[]'::jsonb)) AS def
+        WHERE rec."lineExpansion" @> jsonb_build_object(
+                'definitions', jsonb_build_array(jsonb_build_object('variantId', $1::text)))
+          AND def->>'variantId' = $1
+          AND rec."cancelledAt" IS NULL
+          AND (rec."fulfillmentState" IS NULL OR rec."fulfillmentState" = 'not-shipped')
+        GROUP BY (def->>'version')::int
+        ORDER BY version`,
+      [bundleVariantId]
+    )) as { version: number; count: number }[];
+    return rows.map((row) => ({ version: Number(row.version), count: Number(row.count) }));
+  }
+
+  /**
+   * Merge one operator edit into the overlay (#3542). THE sole writer of
+   * `orderEdits`; see `order-edits.types.ts`.
+   *
+   * One atomic UPDATE: the sections are merged by the database against the
+   * committed row (the lines section per line, so a second edit of other lines
+   * keeps the first), `rev` is bumped, and for an address edit the derived
+   * `shippingAddressHash` / `searchText` are restamped in the same statement.
+   * Guarded on the expected `rev` and on `recordStatus = 'ready'`, so a stale
+   * writer or a not-yet-resolved order affects no row - `null` is the answer, and
+   * the caller re-reads to tell which.
+   *
+   * `orderSnapshot` is never touched: it stays the channel original.
+   */
+  async applyOrderEdit(input: ApplyOrderEditInput): Promise<OrderRecord | null> {
+    const sections: Record<string, unknown> = {};
+    if (input.address !== undefined) sections.address = input.address;
+    if (input.deliveryMethod !== undefined) sections.deliveryMethod = input.deliveryMethod;
+    // Replaced wholesale by the top-level `||`: a second discount never stacks (#3543).
+    if (input.discount !== undefined) sections.discount = input.discount;
+
+    let searchText: string | null = null;
+    if (input.address !== undefined) {
+      const current = await this.repository.findOne({
+        where: { internalOrderId: input.internalOrderId },
+        select: ['internalOrderId', 'orderSnapshot'],
+      });
+      if (current === null) return null;
+      searchText = deriveOrderSearchText(
+        applyOrderEditsToSnapshot(current.orderSnapshot, {
+          v: 1,
+          rev: 0,
+          address: input.address,
+        }),
+        { storePii: getEnvBoolean('OL_STORE_PII', true) }
+      );
+    }
+
+    const rows = (await this.repository.query(
+      `UPDATE "order_records"
+       SET "orderEdits" = COALESCE("orderEdits", '{"v":1}'::jsonb)
+             || $1::jsonb
+             || jsonb_build_object('rev', COALESCE(("orderEdits"->>'rev')::int, 0) + 1)
+             || CASE WHEN $2::jsonb IS NULL THEN '{}'::jsonb
+                     ELSE jsonb_build_object(
+                       'lines', COALESCE("orderEdits"->'lines', '{}'::jsonb) || $2::jsonb) END
+             || CASE WHEN $9::jsonb IS NULL THEN '{}'::jsonb
+                     ELSE jsonb_build_object(
+                       'addedLines', $9::jsonb || COALESCE("orderEdits"->'addedLines', '{}'::jsonb)) END,
+           "shippingAddressHash" = COALESCE($3::text, "shippingAddressHash"),
+           "searchText" = COALESCE($4::text, "searchText"),
+           "shippingCountry" = CASE WHEN $7::boolean THEN $8::text ELSE "shippingCountry" END,
+           "updatedAt" = now()
+       WHERE "internalOrderId" = $5
+         AND "recordStatus" = 'ready'
+         AND ($6::int IS NULL OR COALESCE(("orderEdits"->>'rev')::int, 0) = $6)
+       RETURNING "internalOrderId"`,
+      [
+        JSON.stringify(sections),
+        input.lines === undefined ? null : JSON.stringify(input.lines),
+        input.address?.hash ?? null,
+        searchText,
+        input.internalOrderId,
+        input.expectedRev,
+        // B-29: the country column is derived from the shipping address like the
+        // hash and the search text, so an address edit restamps it (a null
+        // country is a real answer: the new address names none).
+        input.address !== undefined,
+        input.address === undefined ? null : normaliseCountryColumn(input.address.shipping.country),
+        input.addedLines === undefined ? null : JSON.stringify(input.addedLines),
+      ]
+    )) as unknown;
+
+    // TypeORM's Postgres runner answers an UPDATE as `[rows, rowCount]`, so
+    // `rows.length` is always 2 and says nothing about whether the guarded
+    // statement matched (E-66). The affected count is what decides.
+    const affected =
+      Array.isArray(rows) && typeof rows[1] === 'number'
+        ? rows[1]
+        : Array.isArray(rows)
+          ? rows.length
+          : 0;
+    if (affected === 0) return null;
+    const entity = await this.repository.findOne({
+      where: { internalOrderId: input.internalOrderId },
+    });
+    return entity === null ? null : this.toDomain(entity);
   }
 
   /**
@@ -2797,7 +4296,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     return rows
       .map((row) => row as { currency?: unknown; count?: unknown })
-      .filter((row): row is { currency: string; count: unknown } => typeof row.currency === 'string')
+      .filter(
+        (row): row is { currency: string; count: unknown } => typeof row.currency === 'string'
+      )
       .map((row) => ({
         reportingCurrency: row.currency,
         count: Number(row.count ?? 0),
@@ -2908,8 +4409,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // columns (#2396 - sole writer `updateFulfillmentBlock`; `persistOrder` runs
     // BEFORE the intercept on every ingestion, so a round-trip would null the
     // reason the previous transition wrote and then re-add none),
+    // the two `destinationRoutingBlock*` columns (#2703/#2704 - sole writer
+    // `updateDestinationRoutingBlock`, called by `OrderSyncService` AFTER
+    // `persistOrder` on every ingestion, so a round-trip would null the reason
+    // that run just wrote and then re-add none),
     // `fulfillmentRoutingSkipReason` (#3455 - sole writer
     // `updateFulfillmentRoutingSkipReason`, same reason as `fulfillmentBlock*`),
+    // `orderEdits` (#3542 - sole writer `applyOrderEdit`; the overlay that keeps
+    // an operator's edit alive across this very statement),
     // `omsAttention` (#2352 -
     // sole writer `updateOmsAttention`, whose whole contract is that it edits
     // ONE producer's entry; a round-trip here would drop every producer's entry
@@ -3009,14 +4516,37 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     });
     // Serialized explicitly rather than relying on the driver's object
     // handling, so the jsonb column receives a document in every case.
-    add('orderSnapshot', JSON.stringify(entity.orderSnapshot ?? {}), { cast: '::jsonb' });
+    // #4289: once the buyer's personal data was erased, a re-ingestion must not
+    // restore the source's copy. The incoming snapshot is kept for everything
+    // that is not personal data (items, totals, status), and the three personal
+    // keys are taken from the STORED, already-erased snapshot instead.
+    // `jsonb_strip_nulls` drops a key the stored snapshot never had, so an order
+    // with no billing address does not gain a phantom null one.
+    add('orderSnapshot', JSON.stringify(entity.orderSnapshot ?? {}), {
+      cast: '::jsonb',
+      update: `"orderSnapshot" = CASE WHEN ${BUYER_DATA_GONE_SQL}
+           THEN (EXCLUDED."orderSnapshot" - 'customerEmail' - 'shippingAddress' - 'billingAddress')
+             || jsonb_strip_nulls(jsonb_build_object(
+                  'shippingAddress', "order_records"."orderSnapshot"->'shippingAddress',
+                  'billingAddress', "order_records"."orderSnapshot"->'billingAddress'))
+           ELSE EXCLUDED."orderSnapshot" END`,
+    });
     // #3507 G03-1 — derived from the snapshot written one line up, so it
     // belongs to the SHARED half: both paths rewrite the snapshot, so both
     // must rewrite the text, or `ON CONFLICT` keeps the previous buyer's
     // corpus (and a first INSERT keeps the column default `''`, leaving the
     // order unsearchable). `toOrm` stamping the entity is not enough on its
     // own — this statement enumerates its columns, the `buyerTaxId` trap below.
-    add('searchText', entity.searchText ?? '');
+    // #3542: with an address edit on the row the stored text already carries the
+    // EDITED address's name, and the incoming one is built from the channel's
+    // original - so the stored value is kept. Evaluated by the database against
+    // the committed row, so it cannot race the edit's own write.
+    add('searchText', entity.searchText ?? '', {
+      // #4289: an erased order keeps its erased (name-free) search text.
+      update: `"searchText" = CASE WHEN "order_records"."orderEdits" ? 'address'
+             OR ${BUYER_DATA_GONE_SQL}
+           THEN "order_records"."searchText" ELSE EXCLUDED."searchText" END`,
+    });
     add('recordStatus', entity.recordStatus);
     add('mappingFailureReason', entity.mappingFailureReason);
     add('dispatchByAt', entity.dispatchByAt);
@@ -3038,19 +4568,85 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // scalars do — `persistIncomingSnapshot` has no resolved billing address
       // to read a tax id off, and writing it there would NULL a value a
       // previous ready-path write settled.
-      add('buyerTaxId', entity.buyerTaxId ?? null);
+      add('buyerTaxId', entity.buyerTaxId ?? null, {
+        // #4289: erased personal data stays erased.
+        update: `"buyerTaxId" = CASE WHEN ${BUYER_DATA_GONE_SQL}
+           THEN "order_records"."buyerTaxId" ELSE EXCLUDED."buyerTaxId" END`,
+      });
       // #2395, added here for exactly the reason `buyerTaxId` is: this
       // statement enumerates its own columns, so a column the caller stamps on
       // the entity but never adds here is simply not written. Ready-path only -
       // `persistIncomingSnapshot` has no resolved shipping address to hash, and
       // writing it there would NULL a hash a previous ready-path write settled.
-      add('shippingAddressHash', entity.shippingAddressHash ?? null);
+      // #3542: the hash of an operator-edited address is the writer's, not the
+      // channel's - keep it while the overlay holds an address (same CASE as
+      // `searchText`).
+      add('shippingAddressHash', entity.shippingAddressHash ?? null, {
+        update: `"shippingAddressHash" = CASE WHEN "order_records"."orderEdits" ? 'address'
+           THEN "order_records"."shippingAddressHash" ELSE EXCLUDED."shippingAddressHash" END`,
+      });
       // #3294, added here for the reason `buyerTaxId` and `shippingAddressHash`
       // are: this statement enumerates its own columns, so a column the caller
       // stamps on the entity but never adds here is simply not written.
       // Ready-path only, so an `awaiting_mapping` re-ingestion cannot null a
       // value a previous ready-path write settled.
       add('paymentMethod', entity.paymentMethod ?? null);
+      // #3538, ready-path only for the same reason as `paymentMethod`. The text
+      // is already PII-gated by the caller (null under hash-only mode) while
+      // `hasBuyerNote` is always written. `buyerNoteReadAt` /
+      // `buyerNoteReadByUserId` are deliberately NOT here: sole writer
+      // `markBuyerNoteRead`, so a re-ingestion cannot un-read a note.
+      //
+      // B-5: an UNKNOWN incoming note (column NULL and no note flag - the source
+      // could not read the field) must keep what is stored, otherwise a poll
+      // that failed to read the note wipes a stored note, its flag and its
+      // filter membership. An asserted-none ('') or a text still overwrites.
+      const incomingNoteUnknown = `(EXCLUDED."buyerNote" IS NULL AND EXCLUDED."hasBuyerNote" = false)`;
+      add('buyerNote', entity.buyerNote ?? null, {
+        update: `"buyerNote" = CASE WHEN ${incomingNoteUnknown}
+             OR ${BUYER_DATA_GONE_SQL}
+           THEN "order_records"."buyerNote" ELSE EXCLUDED."buyerNote" END`,
+      });
+      add('hasBuyerNote', entity.hasBuyerNote ?? false, {
+        update: `"hasBuyerNote" = CASE WHEN ${incomingNoteUnknown}
+             OR ${BUYER_DATA_GONE_SQL}
+           THEN "order_records"."hasBuyerNote" ELSE EXCLUDED."hasBuyerNote" END`,
+      });
+      // N-22: a DIFFERENT note text is a note the operator has not read. The
+      // read marker is still not part of the write set (`markBuyerNoteRead` is
+      // its sole setter); only this reset clause touches it, and only when a
+      // real text replaces a different stored one, or when the source positively
+      // reports NO note (N-23: the note is cleared, so a read marker on it would
+      // outlive what it acknowledged). Bench acknowledgements live
+      // on the fulfilment work and are untouched.
+      for (const column of ['buyerNoteReadAt', 'buyerNoteReadByUserId']) {
+        updateAssignments.push(`"${column}" = CASE
+           WHEN EXCLUDED."buyerNote" = ''
+             THEN NULL
+           WHEN EXCLUDED."buyerNote" IS NOT NULL AND EXCLUDED."buyerNote" <> ''
+             AND EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"
+             THEN NULL ELSE "order_records"."${column}" END`);
+      }
+      // N-22: bench acknowledgements are not reset by a changed text, so the
+      // instant of the change is kept for the Activity timeline. Only a text
+      // replacing a different NON-EMPTY stored one counts: a note first
+      // arriving (or an unknown incoming read, B-5) is not a change, and the
+      // value is never written from the entity.
+      add('buyerNoteChangedAt', null, {
+        update: `"buyerNoteChangedAt" = CASE
+           WHEN EXCLUDED."buyerNote" IS NOT NULL
+             AND "order_records"."buyerNote" IS NOT NULL AND "order_records"."buyerNote" <> ''
+             AND EXCLUDED."buyerNote" IS DISTINCT FROM "order_records"."buyerNote"
+             THEN now() ELSE "order_records"."buyerNoteChangedAt" END`,
+      });
+      // B-29: derived from the shipping address, so it follows the overlay's
+      // address the same way `shippingAddressHash` does.
+      add('shippingCountry', entity.shippingCountry ?? null, {
+        update: `"shippingCountry" = CASE WHEN "order_records"."orderEdits" ? 'address'
+           THEN "order_records"."shippingCountry" ELSE EXCLUDED."shippingCountry" END`,
+      });
+      add('billingCountry', entity.billingCountry ?? null);
+      add('buyerOrderCount', entity.buyerOrderCount ?? null);
     }
 
     const sql = `INSERT INTO "order_records" (
@@ -3085,11 +4681,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * ORM entity is covered on the day it is added.
    *
    * Two standing assumptions, both asserted by the repository's unit spec: the
- * statement quotes PROPERTY names, so this match is sound only while no column
- * renames its database name; and the write set is the statement's own, so the
- * two can never disagree about which columns were written.
- *
- * The empty default is `null` for every column except the two `jsonb`
+   * statement quotes PROPERTY names, so this match is sound only while no column
+   * renames its database name; and the write set is the statement's own, so the
+   * two can never disagree about which columns were written.
+   *
+   * The empty default is `null` for every column except the two `jsonb`
    * array columns whose DB default is `'[]'` (mapped in
    * {@link EMPTY_COLUMN_DEFAULTS}); a future NOT NULL column with a scalar
    * DB default would surface loudly at the domain mapping rather than
@@ -3103,6 +4699,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
 
     for (const property of orderRecordColumnProperties()) {
       if (writeSet.has(property)) {
+        continue;
+      }
+      // #3542: `orderEdits` is the one non-written column that is NOT reset. It
+      // is read back from the same statement's RETURNING, so it is atomic with
+      // the upsert - which is what lets `persistOrder` hand ingestion the overlay
+      // that applied to THIS write rather than one read a moment earlier.
+      if (property === 'orderEdits' || property === 'lineExpansion') {
         continue;
       }
       entity[property] = EMPTY_COLUMN_DEFAULTS[property]?.() ?? null;
@@ -3158,6 +4761,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // `awaiting_mapping` re-ingestion, which would write `null` over a value a
     // previous ready-path ingestion had settled.
     entity.paymentMethod = orderRecord.paymentMethod;
+    // #3538 - the buyer-note columns and the derived country / order-count
+    // scalars, stamped here and not in the shared `toOrm` for the same reason.
+    entity.buyerNote = orderRecord.buyerNote;
+    entity.hasBuyerNote = orderRecord.hasBuyerNote;
+    entity.shippingCountry = orderRecord.shippingCountry;
+    entity.billingCountry = orderRecord.billingCountry;
+    entity.buyerOrderCount = orderRecord.buyerOrderCount;
     const { sql, params, writeSet } = this.buildFrozenAttributionUpsert(entity, true);
     const savedRecord = await this.dataSource.transaction(async (manager: EntityManager) => {
       // Same statement as `upsert`, one parameter apart (#2282): a full-object
@@ -3168,11 +4778,28 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
         throw new OrderRecordNotFoundException(orderRecord.internalOrderId);
       }
       const saved = this.fromRawRow(rows[0] as Record<string, unknown>, writeSet);
+      // #3588 (D27): the cost snapshot must survive this delete-then-reinsert.
+      // Read the prior rows AFTER the upsert above (its row lock serialises
+      // concurrent re-ingestion of this order) and BEFORE the delete.
+      const priorRows = await manager.find(OrderLineItemOrmEntity, {
+        where: { orderRecordId: orderRecord.internalOrderId },
+      });
+      const carried = carryForwardLineCosts(
+        priorRows.map((row) => ({
+          lineNumber: row.lineNumber,
+          productId: row.productId,
+          variantId: row.variantId,
+          costState: row.costState,
+          unitCostNet: row.unitCostNet,
+          unitCostCurrency: row.unitCostCurrency,
+        })),
+        lineItems
+      );
       await manager.delete(OrderLineItemOrmEntity, { orderRecordId: orderRecord.internalOrderId });
-      if (lineItems.length > 0) {
+      if (carried.length > 0) {
         await manager.save(
           OrderLineItemOrmEntity,
-          lineItems.map((item) => this.lineItemToOrm(orderRecord.internalOrderId, item))
+          carried.map((item) => this.lineItemToOrm(orderRecord.internalOrderId, item))
         );
       }
       return saved;
@@ -3203,6 +4830,15 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       externalOrderId: status.externalOrderId,
       externalOrderNumber: status.externalOrderNumber,
       error: status.error,
+      deliveryFingerprint: status.deliveryFingerprint,
+      deliveryUpdate: status.deliveryUpdate
+        ? {
+            outcome: status.deliveryUpdate.outcome,
+            reason: status.deliveryUpdate.reason,
+            detail: status.deliveryUpdate.detail,
+            at: status.deliveryUpdate.at.toISOString(),
+          }
+        : undefined,
     };
 
     const newAttemptRow: SyncAttemptJson = {
@@ -3283,6 +4919,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       externalOrderId: s.externalOrderId,
       externalOrderNumber: s.externalOrderNumber,
       error: s.error,
+      deliveryFingerprint: s.deliveryFingerprint,
+      deliveryUpdate: toDeliveryUpdateReport(s.deliveryUpdate),
     }));
 
     const syncAttempts: SyncAttempt[] = (entity.syncAttempts ?? []).map((a) => ({
@@ -3294,12 +4932,20 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       externalOrderNumber: a.externalOrderNumber,
     }));
 
+    // #3542 - the overlay is merged HERE, once, so every reader of
+    // `record.orderSnapshot` and of its getters sees the effective order and the
+    // few that need the channel's own figures read `record.channelSnapshot`. Only
+    // a `ready` record can carry edits: an `awaiting_mapping` snapshot is a raw
+    // IncomingOrder whose shape the merge does not describe.
+    const orderEdits = entity.recordStatus === 'ready' ? readOrderEdits(entity.orderEdits) : null;
+    const effectiveSnapshot = applyOrderEditsToSnapshot(entity.orderSnapshot, orderEdits);
+
     return new OrderRecord(
       entity.internalOrderId,
       entity.customerId,
       entity.sourceConnectionId,
       entity.sourceEventId,
-      entity.orderSnapshot,
+      effectiveSnapshot,
       syncStatus,
       (entity.recordStatus as OrderRecordStatus) ?? 'ready',
       entity.createdAt,
@@ -3379,7 +5025,32 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // #3294 - coerced, never cast: a value this build does not recognise
       // (written by a newer release, then rolled back) reads as "not reported"
       // rather than reaching a consumer as an unmapped literal.
-      isPaymentMethod(entity.paymentMethod) ? entity.paymentMethod : null
+      isPaymentMethod(entity.paymentMethod) ? entity.paymentMethod : null,
+      // #2703 / #2704 - coerced, never cast: the column is plain `text` with no
+      // CHECK, so a reason written by a newer release and then rolled back must
+      // read as "nothing recognised" rather than widening the union at runtime.
+      isDestinationRoutingBlockReason(entity.destinationRoutingBlockReason)
+        ? entity.destinationRoutingBlockReason
+        : null,
+      entity.destinationRoutingBlockDetail ?? null,
+      entity.buyerNote ?? null,
+      entity.hasBuyerNote ?? false,
+      entity.buyerNoteReadAt ?? null,
+      entity.buyerNoteReadByUserId ?? null,
+      entity.shippingCountry ?? null,
+      entity.billingCountry ?? null,
+      entity.buyerOrderCount ?? null,
+      entity.buyerNoteChangedAt ?? null,
+      orderEdits === null ? null : entity.orderSnapshot,
+      orderEdits,
+      entity.recordStatus === 'ready' ? readLineExpansion(entity.lineExpansion) : null,
+      // #3963 - coerced at the mapping boundary: an entry this build does not
+      // recognise is absent, never present-and-unrenderable.
+      readPaymentWriteback(entity.paymentWriteback),
+      readSalesDocumentBlockParams(entity.salesDocumentBlockParams),
+      entity.hiddenAt ?? null,
+      entity.personalDataErasedAt ?? null,
+      entity.buyerDataRedactedAt ?? null
     );
   }
 
@@ -3426,6 +5097,11 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   other three for the identical reason, even though it can be non-null
    *   while the block reason is null (a rule decided the kind; nothing is
    *   currently blocking issuance).
+   * - The two `destinationRoutingBlock*` columns (#2703/#2704) - sole writer
+   *   `updateDestinationRoutingBlock`. Same hazard as the `salesDocument*` and
+   *   `fulfillmentBlock*` pairs above: `OrderSyncService` writes the reason
+   *   AFTER `persistOrder` on every ingestion, so round-tripping would null
+   *   what that same run just decided.
    * - `omsAttention` (#2352) - sole writer `updateOmsAttention`. It carries the
    *   sharpest version of the same hazard: the column is an ARRAY shared by
    *   three unrelated producers, and its writer's entire contract is that it
@@ -3453,12 +5129,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   null a peer's reason on every re-poll and leave the order reading `ready`
    *   while a hold is open. **It is excluded from `upsert()`'s raw column tuple
    *   too** - the `toOrm` exclusion alone is only half the job there.
+   * - `buyerNoteChangedAt` (N-22) - written only by the upsert's CASE clause.
+   * - `buyerNoteReadAt` / `buyerNoteReadByUserId` (#3538) - sole writer
+   *   {@link markBuyerNoteRead} (guarded fill-once). Ingestion carries no read
+   *   knowledge, so round-tripping them would un-read the note on every re-poll.
+   *   The other buyer-note columns (`buyerNote`, `hasBuyerNote`, the two
+   *   countries, `buyerOrderCount`) are ready-path-only like `paymentMethod`.
    * - `lastAmendedAt` / `lastAmendmentChanges` (#2283) - sole writer
    *   {@link recordAmendment}. The sharpest case of the shared reason: the write
    *   is triggered BY an ingestion, from a diff taken against the snapshot this
    *   very upsert is about to overwrite, so mapping them here would have the
    *   detecting re-poll erase its own finding. No source payload carries them
    *   either - they are OpenLinker's observation, not the source's report.
+   * - `orderEdits` (#3542) - sole writer `applyOrderEdit`. The operator's edit
+   *   lives in this column precisely because ingestion rewrites `orderSnapshot`
+   *   wholesale; mapping it here would let a re-poll write the ingestion path's
+   *   in-memory `null` over it. For the same reason `orderSnapshot` below is
+   *   mapped from `channelSnapshot`, never from the effective view.
    * - The five analytics scalars (#1985/#2832) - `placedAt` / `currency` /
    *   `taxTreatment` / `totalAmount` / `totalTaxTreatment` - are mapped by {@link upsertWithLineItems}
    *   directly, NOT here, because this shared conversion also backs
@@ -3487,7 +5174,10 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.customerId = orderRecord.customerId;
     entity.sourceConnectionId = orderRecord.sourceConnectionId;
     entity.sourceEventId = orderRecord.sourceEventId;
-    entity.orderSnapshot = orderRecord.orderSnapshot;
+    // The CHANNEL snapshot, never the effective one (#3542): writing the merged
+    // view back would persist an operator edit into the channel original, where
+    // the next re-ingestion would treat it as the source's own words.
+    entity.orderSnapshot = orderRecord.channelSnapshot;
     entity.recordStatus = orderRecord.recordStatus;
     entity.mappingFailureReason = orderRecord.mappingFailureReason;
     entity.dispatchByAt = orderRecord.dispatchByAt;
@@ -3503,7 +5193,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // unrelated to this flag and would fail every order write on an install
     // that never configured a salt (the `routing-ship-to.types.ts` /
     // `OrderIngestionService` precedent).
-    entity.searchText = deriveOrderSearchText(orderRecord.orderSnapshot, {
+    entity.searchText = deriveOrderSearchText(orderRecord.channelSnapshot, {
       storePii: getEnvBoolean('OL_STORE_PII', true),
     });
     // The five analytics scalars (#1985/#2832) are deliberately NOT mapped here -
@@ -3526,10 +5216,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * Convert a derived {@link OrderLineItemDraft} to its ORM entity for
    * insertion. `id`/`createdAt` are left for TypeORM to generate.
    */
-  private lineItemToOrm(
-    orderRecordId: string,
-    item: OrderLineItemDraft
-  ): OrderLineItemOrmEntity {
+  private lineItemToOrm(orderRecordId: string, item: OrderLineItemDraft): OrderLineItemOrmEntity {
     const entity = new OrderLineItemOrmEntity();
     entity.orderRecordId = orderRecordId;
     entity.lineNumber = item.lineNumber;
@@ -3545,6 +5232,33 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     entity.taxRate = item.taxRate;
     entity.taxSource = item.taxSource;
     entity.taxRateReadAt = item.taxRateReadAt;
+    // #3588 - the snapshot, already reconciled with any prior row.
+    entity.costState = item.cost.costState;
+    entity.unitCostNet = item.cost.unitCostNet;
+    entity.unitCostCurrency = item.cost.unitCostCurrency;
     return entity;
   }
+}
+
+/**
+ * Coerce a persisted delivery-relay report (#4195). An unrecognised outcome
+ * reads as absent rather than being surfaced as something this build cannot
+ * describe, and a malformed instant is dropped with it.
+ */
+function toDeliveryUpdateReport(
+  json: OrderSyncStatusJson['deliveryUpdate']
+): OrderDeliveryUpdateReport | undefined {
+  if (!json || !isOrderDeliveryUpdateOutcome(json.outcome)) {
+    return undefined;
+  }
+  const at = new Date(json.at);
+  if (Number.isNaN(at.getTime())) {
+    return undefined;
+  }
+  return {
+    outcome: json.outcome,
+    ...(isOrderDeliveryRefusalReason(json.reason) ? { reason: json.reason } : {}),
+    ...(json.detail ? { detail: json.detail } : {}),
+    at,
+  };
 }

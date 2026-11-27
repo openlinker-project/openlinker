@@ -48,6 +48,9 @@ import { OMS_PLATFORM_TYPE } from '../oms.constants';
 import { createOlFulfillmentRouter } from './ol-fulfillment-router';
 import type { RoutingRuleSourcePort } from './routing-rule-source.port';
 
+/** The capability `fulfillment.work.dispatch` resolves the holder through. */
+const FULFILLMENT_EXECUTOR_CAPABILITY = 'FulfillmentExecutor';
+
 export interface OmsFulfillmentRouterResolverDeps {
   readonly connections: ConnectionPort;
   readonly rules: RoutingRuleSourcePort;
@@ -66,9 +69,12 @@ export function createOmsFulfillmentRouterResolver(
   return {
     async resolve(connectionId: string): Promise<FulfillmentRouterPort | null> {
       let platformType: string;
+      let enabledCapabilities: readonly string[];
 
       try {
-        platformType = (await deps.connections.get(connectionId)).platformType;
+        const connection = await deps.connections.get(connectionId);
+        platformType = connection.platformType;
+        enabledCapabilities = connection.enabledCapabilities;
       } catch (error) {
         // Degrade to today's path rather than failing ingestion — but loudly.
         // A connection that claims A2 and cannot be read is a real fault, and
@@ -91,8 +97,21 @@ export function createOmsFulfillmentRouterResolver(
         return null;
       }
 
+      // #3476 — the router still RESOLVES without the executor, so the order is
+      // held with a named reason and re-routed by the reroute sweep once the
+      // operator enables it. Returning `null` instead would mirror the order to
+      // every product master, which is the double shipment #3485 removed.
+      const holderCanExecute = enabledCapabilities.includes(FULFILLMENT_EXECUTOR_CAPABILITY);
+      if (!holderCanExecute) {
+        logger.warn(
+          `OMS connection ${connectionId} does not have ${FULFILLMENT_EXECUTOR_CAPABILITY} enabled; ` +
+            `orders it routes are held as unfulfillable until it is enabled on the connection.`
+        );
+      }
+
       return createOlFulfillmentRouter({
         connectionId,
+        holderCanExecute,
         rules: deps.rules,
         locations: deps.locations,
         inventory: deps.inventory,

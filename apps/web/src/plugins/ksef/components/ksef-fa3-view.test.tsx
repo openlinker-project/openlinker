@@ -197,6 +197,55 @@ describe('KsefFa3View', () => {
       expect(screen.getByText('ul. Kupiecka 7')).toBeInTheDocument();
     });
 
+    it('should render the KOD I QR from the server-built URL with the KSeF number caption (#1579, DEF-03)', () => {
+      renderWithProviders(
+        <KsefFa3View
+          xmlText={buildXml({ issueDate: '2026-07-01' })}
+          ksefNumber="1234567890-20260701-ABCDEF-000001"
+          verificationUrl="https://qr-test.ksef.mf.gov.pl/invoice/1234567890/01-07-2026/abc"
+        />,
+      );
+
+      const qr = screen.getByRole('img', { name: /verification QR code/i });
+      expect(qr.tagName.toLowerCase()).toBe('svg');
+      const captionEl = qr.closest('.ksef-fa3-view__verification');
+      expect(captionEl?.textContent).toContain('1234567890-20260701-ABCDEF-000001');
+    });
+
+    it('should render no QR without a server URL, never a guessed one (DEF-02 / DEF-15)', () => {
+      renderWithProviders(<KsefFa3View xmlText={buildXml()} />);
+      expect(screen.queryByRole('img', { name: /verification QR code/i })).not.toBeInTheDocument();
+    });
+
+    it('should render the exchange rate, VAT in PLN, annotations and GTU (DEF-29)', () => {
+      const xml = buildXml()
+        .replace('</P_12>', '</P_12><GTU>GTU_06</GTU><KursWaluty>4.3210</KursWaluty>')
+        .replace('</P_14_1>', '</P_14_1><P_14_1W>99.38</P_14_1W>')
+        .replace(
+          '<RodzajFaktury>',
+          '<Adnotacje><P_16>2</P_16><P_18A>1</P_18A><Zwolnienie><P_19>1</P_19><P_19A>art. 43 ust. 1 pkt 29</P_19A></Zwolnienie></Adnotacje><RodzajFaktury>',
+        );
+
+      renderWithProviders(<KsefFa3View xmlText={xml} />);
+
+      expect(screen.getByText('4.3210')).toBeInTheDocument();
+      expect(screen.getByText('99.38')).toBeInTheDocument();
+      expect(screen.getByText('GTU_06')).toBeInTheDocument();
+      expect(screen.getByText(/Split payment/)).toBeInTheDocument();
+      expect(screen.getByText(/art\. 43 ust\. 1 pkt 29/)).toBeInTheDocument();
+    });
+
+    it('should render a margin-scheme total and gross lines without a VAT column (DEF-31)', () => {
+      const xml = buildXml()
+        .replace(/<P_12>[^<]*<\/P_12>/g, '')
+        .replace('<P_15>', '<P_13_11>246.90</P_13_11><P_15>');
+
+      renderWithProviders(<KsefFa3View xmlText={xml} />);
+
+      expect(screen.getByText('Sale under the margin scheme')).toBeInTheDocument();
+      expect(screen.queryByText('VAT rate')).not.toBeInTheDocument();
+    });
+
     it('should render sale date, currency, and the "Standard invoice" subtitle', () => {
       renderWithProviders(<KsefFa3View xmlText={buildXml({ saleDate: '2026-06-28' })} />);
 

@@ -10,6 +10,8 @@
  *
  * @see {@link PrestashopSetupForm} for the form this summary is paired with.
  */
+import { useFormat, useMessages } from '../../../shared/i18n';
+import { describeOrderSyncStart, readsOrders } from '../lib/order-sync-start';
 import type { ReactElement } from 'react';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
@@ -28,6 +30,9 @@ export function PrestashopSetupSummary({
   stepIndex,
   values,
 }: PrestashopSetupSummaryProps): ReactElement {
+  const copy = useMessages('connections').prestashopSetupSummary;
+  const orderCopy = useMessages('connections').orderSyncStart;
+  const format = useFormat();
   const webserviceEndpoint =
     values.baseUrl && values.baseUrl.length > 0 ? `${trimTrailingSlash(values.baseUrl)}/api` : null;
   const selectedCapabilities = values.enabledCapabilities ?? [];
@@ -35,33 +40,39 @@ export function PrestashopSetupSummary({
   return (
     <>
       <section className="wizard-summary__section">
-        <h3 className="wizard-summary__section-title">Connection</h3>
+        <h3 className="wizard-summary__section-title">{copy.connection}</h3>
         <dl className="wizard-summary__rows">
-          <WizardSummaryRow label="Name" value={values.name?.trim() ? values.name : null} />
-          <WizardSummaryRow label="Webservice endpoint" value={webserviceEndpoint} mono />
+          <WizardSummaryRow label={copy.name} value={values.name?.trim() ? values.name : null} />
+          <WizardSummaryRow label={copy.webserviceEndpoint} value={webserviceEndpoint} mono />
           <WizardSummaryRow
-            label="Storefront URL"
+            label={copy.storefrontUrl}
             value={values.storefrontBaseUrl ? values.storefrontBaseUrl : null}
             mono
           />
-          <WizardSummaryRow label="Shop ID" value={values.shopId ? values.shopId : null} mono />
+          <WizardSummaryRow label={copy.shopId} value={values.shopId ? values.shopId : null} mono />
           <WizardSummaryRow
-            label="Default currency"
+            label={copy.defaultCurrency}
             value={values.currency ? values.currency : null}
             mono
           />
+          {readsOrders(values.enabledCapabilities) ? (
+            <WizardSummaryRow
+              label={orderCopy.review.label}
+              value={describeOrderSyncStart(values.orderSyncStart, orderCopy.review, format.date)}
+            />
+          ) : null}
         </dl>
       </section>
 
       {stepIndex === 1 ? (
         <p className="wizard-summary__note">
-          Live test available after the connection is saved — see the connection detail page.
+          {copy.liveTestNote}
         </p>
       ) : null}
 
       {stepIndex >= 2 ? (
         <section className="wizard-summary__section">
-          <h3 className="wizard-summary__section-title">Capabilities</h3>
+          <h3 className="wizard-summary__section-title">{copy.capabilities}</h3>
           {selectedCapabilities.length > 0 ? (
             <ul className="wizard-summary__capabilities">
               {selectedCapabilities.map((capability) => (
@@ -71,7 +82,7 @@ export function PrestashopSetupSummary({
               ))}
             </ul>
           ) : (
-            <EmptyValue label="No capabilities selected" />
+            <EmptyValue label={copy.noCapabilities} />
           )}
         </section>
       ) : null}

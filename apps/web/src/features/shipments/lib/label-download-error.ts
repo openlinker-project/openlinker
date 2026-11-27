@@ -36,6 +36,9 @@
  *   2. status 404 (`ShipmentNotFoundException`) -> permanent. NestJS's
  *      default `NotFoundException(message)` body carries no exception-name
  *      field, so status alone is the only, and here unambiguous, signal.
+ *   2b. status 409, code `SHIPMENT_LABEL_NOT_READY` (`LabelNotReadyException`) -> transient.
+ *      The carrier has the shipment but is still preparing the document; the
+ *      download hook has already waited, so this is only reached on timeout.
  *   3. status 422, `error.message` contains 'generate the label first'
  *      (`LabelNotAvailableException`) -> permanent, "not yet".
  *   4. status 422, otherwise (`LabelDocumentNotSupportedException`) ->
@@ -68,9 +71,13 @@
  * on that branch notes it logs+returns the raw `error.message` unsanitised -
  * an unmodeled shape must never be echoed to the operator.
  *
+ * Every title and description reads the `shipments.labelDownloadError` copy
+ * at call time, so it follows the active language (ADR-081).
+ *
  * @module apps/web/src/features/shipments/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { AlertTone } from '../../../shared/ui/alert';
 import type { RetryabilityClass } from './shipment-retryability';
 
@@ -78,6 +85,10 @@ export interface LabelDownloadError {
   title: string;
   description: string;
   retryable: RetryabilityClass;
+  /** True while the carrier is still preparing a label that WAS bought, so a
+   *  caller that normally words every failure as "couldn't fetch" can say the
+   *  accurate thing instead (the label is fine, it just is not ready). */
+  pending: boolean;
   /** Derived from `retryable` alone (see `TONE_BY_RETRYABLE`) - one place
    *  decides how urgent a class reads, so a call site never picks its own
    *  tone per branch and drifts from the other two call sites. */
@@ -103,51 +114,68 @@ const TONE_BY_RETRYABLE: Record<RetryabilityClass, AlertTone> = {
   unknown: 'error',
 };
 
-type UntonedLabelDownloadError = Omit<LabelDownloadError, 'tone'>;
-
-function withTone(result: UntonedLabelDownloadError): LabelDownloadError {
-  return { ...result, tone: TONE_BY_RETRYABLE[result.retryable] };
-}
-
-const UNKNOWN_FALLBACK: UntonedLabelDownloadError = {
-  title: 'Something went wrong',
-  description: 'Try again in a moment. If it keeps happening, contact support with the order id.',
-  retryable: 'unknown',
+type UntonedLabelDownloadError = Omit<LabelDownloadError, 'tone' | 'pending'> & {
+  pending?: boolean;
 };
 
+function withTone(result: UntonedLabelDownloadError): LabelDownloadError {
+  return { ...result, pending: result.pending ?? false, tone: TONE_BY_RETRYABLE[result.retryable] };
+}
+
+function unknownFallback(): UntonedLabelDownloadError {
+  const copy = getMessages('shipments').labelDownloadError.unknown;
+  return { title: copy.title, description: copy.description, retryable: 'unknown' };
+}
+
 export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
+  const copy = getMessages('shipments').labelDownloadError;
   if (!(error instanceof ApiError)) {
-    return withTone(UNKNOWN_FALLBACK);
+    return withTone(unknownFallback());
   }
 
   if (error.isNetworkError()) {
     return withTone({
-      title: 'Couldn’t reach OpenLinker',
-      description: 'Check your connection and try again.',
+      title: copy.network.title,
+      description: copy.network.description,
       retryable: 'transient',
     });
   }
 
   if (error.status === 404) {
     return withTone({
-      title: 'No shipment matches this id',
-      description:
-        'It may have been removed, or the link is stale. Refresh the order to see its current shipment.',
+      title: copy.notFound.title,
+      description: copy.notFound.description,
       retryable: 'permanent',
     });
   }
 
+  if (error.status === 409 && error.code === 'SHIPMENT_LABEL_NOT_READY') {
+    // Pending, not failed: the label was bought and the carrier is still
+    // rendering it. `useLabelDownload` already waited; this is what is left
+    // when the wait ran out.
+    return withTone({
+      title: copy.notReady.title,
+      description: copy.notReady.description,
+      retryable: 'transient',
+      pending: true,
+    });
+  }
+
   if (error.status === 422) {
-    if (error.message.includes('generate the label first')) {
+    if (
+      error.code === 'SHIPMENT_LABEL_NOT_GENERATED' ||
+      // eslint-disable-next-line no-restricted-syntax -- fallback match for a backend that predates the SHIPMENT_LABEL_NOT_GENERATED code; not rendered
+      error.message.includes('generate the label first')
+    ) {
       return withTone({
-        title: 'No label to download yet',
-        description: 'A label hasn’t been generated for this shipment. Generate one first.',
+        title: copy.noLabelYet.title,
+        description: copy.noLabelYet.description,
         retryable: 'permanent',
       });
     }
     return withTone({
-      title: 'This carrier doesn’t provide a downloadable label',
-      description: 'The label lives with the carrier directly - retrying here will never produce a file.',
+      title: copy.notSupported.title,
+      description: copy.notSupported.description,
       retryable: 'permanent',
     });
   }
@@ -156,20 +184,22 @@ export function resolveLabelDownloadError(error: unknown): LabelDownloadError {
     if (hasProviderCode(error.details)) {
       const body = error.details;
       const code = body.providerCode;
+      // eslint-disable-next-line no-restricted-syntax -- the carrier's own words, shown behind a translated title like a provider refusal
       const message = body.message ?? error.message;
       return withTone({
-        title: 'The carrier rejected the request',
-        description: code ? `${message} (ref: ${code})` : message,
+        title: copy.providerRejected.title,
+        description: code
+          ? interpolate(copy.providerRejected.messageWithRef, { message, code })
+          : message,
         retryable: 'unknown',
       });
     }
     return withTone({
-      title: 'Our stored carrier credentials were rejected',
-      description:
-        'This is a connection problem, not something a retry fixes. Ask an admin to reconnect this carrier.',
+      title: copy.credentialsRejected.title,
+      description: copy.credentialsRejected.description,
       retryable: 'auth',
     });
   }
 
-  return withTone(UNKNOWN_FALLBACK);
+  return withTone(unknownFallback());
 }

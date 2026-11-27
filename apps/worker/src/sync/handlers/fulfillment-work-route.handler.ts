@@ -67,7 +67,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
-  buildRoutingShipTo,
   deriveFulfillmentDispatchEnqueueIntents,
   deriveRoutingHoldOutcome,
   deriveSaleDecrementEnqueueIntents,
@@ -76,12 +75,11 @@ import {
   type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
   type RoutingCommitOutcome,
-  type RoutingInputLine,
-  type RoutingShipTo,
 } from '@openlinker/core/fulfillment';
 import {
   isFulfillmentRouterUnroutable,
   selectPrimaryFulfillmentRouter,
+  toRouterSelectionClaimants,
   type AuthorityAttentionOutcome,
   type AuthorityClaimantInput,
 } from '@openlinker/core/fulfillment-authority';
@@ -89,7 +87,10 @@ import { CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/ide
 import {
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
+  isRoutingAwaitingPayment,
   orderFromReadySnapshot,
+  projectOrderForRouting,
+  type OrderRoutingProjection,
   type IOrderRecordService,
 } from '@openlinker/core/orders';
 import type {
@@ -194,6 +195,12 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
         // shape), so the predicate has one definition rather than a second copy
         // here. It is a getter, not a method.
         return record?.isCancelled === true;
+      },
+      // #4033 — an unpaid order is not routed, also when the reroute sweep or
+      // an operator retry re-drives it. Same inside-the-lock read.
+      isAwaitingPayment: async () => {
+        const record = await this.orderRecords.getOrderRecord(payload.orderId);
+        return isRoutingAwaitingPayment(record?.paymentStatus);
       },
     });
 
@@ -378,13 +385,7 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
    */
   private async loadClaimants(): Promise<AuthorityClaimantInput[]> {
     const connections = await this.connections.list();
-    return connections.map((connection) => ({
-      connectionId: connection.id,
-      isActive: connection.status === 'active',
-      supportedCapabilities: [],
-      enabledCapabilities: connection.enabledCapabilities,
-      config: connection.config,
-    }));
+    return toRouterSelectionClaimants(connections);
   }
 
   /**
@@ -424,11 +425,7 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
   private async projectOrder(
     job: SyncJob,
     orderId: string
-  ): Promise<{
-    lines: RoutingInputLine[];
-    shipTo: RoutingShipTo;
-    requestedDeliveryMethod: string | null;
-  } | null> {
+  ): Promise<OrderRoutingProjection | null> {
     const record = await this.orderRecords.getOrderRecord(orderId);
     if (record === null) {
       throw this.retryable(job, `order record not found: orderId=${orderId}`);
@@ -448,47 +445,24 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
       throw error;
     }
 
-    const shippingAddress = order.shippingAddress;
-    if (shippingAddress === undefined) {
-      // No retry can supply an address; only a re-ingestion of the order can.
-      return null;
-    }
-
-    const lines: RoutingInputLine[] = order.items.map((item) => ({
-      orderLineId: item.id,
-      // A work line needs a variant. `variantId` is optional on `OrderItem`, so
-      // fall back to the product id rather than emitting a blank — a work object
-      // pointing at no variant is unpickable stock nothing would report.
-      productVariantId: item.variantId ?? item.productId,
-      quantity: item.quantity,
-    }));
-
-    return {
-      lines,
-      // The OPAQUE key `RoutingInput.requestedDeliveryMethod` documents — the
-      // source's own method id, never a neutral vocabulary. ADR-054 keeps
-      // order-layer sourcing separate from the shipping layer's dispatch
-      // resolution, which stays authoritative for label mechanics.
-      requestedDeliveryMethod: order.shipping?.methodId ?? null,
-      shipTo: buildRoutingShipTo(
-        {
-          countryIso2: shippingAddress.country,
-          postalCode: shippingAddress.postalCode,
-          city: shippingAddress.city,
-          // #2395's own column, stamped at ingestion from the UN-redacted
-          // address. Hashing the snapshot here instead would yield one hash per
-          // country for the whole install — see `order-record.service.ts`.
-          addressHash: record.shippingAddressHash,
-        },
-        {
-          // `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
-          // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
-          // routing on every ordinary deployment that never enabled hash-only
-          // mode. `routing-ship-to.types.ts` states this requirement.
-          storePii: getEnvBoolean('OL_STORE_PII', true),
-        }
-      ),
-    };
+    // The reduction is the shared pure rule (#2954); only the PII flag is read
+    // here. `null` = no shipping address, which no retry can supply - only a
+    // re-ingestion of the order can.
+    //
+    // #2395's own column, stamped at ingestion from the UN-redacted address.
+    // Hashing the snapshot here instead would yield one hash per country for the
+    // whole install - see `order-record.service.ts`.
+    //
+    // `getEnvBoolean`, NOT `getPiiConfig()`: the latter throws when
+    // `OL_PII_HASH_SALT` is unset regardless of the flag, which would break
+    // routing on every ordinary deployment that never enabled hash-only mode
+    // (`routing-ship-to.types.ts` states this requirement).
+    return projectOrderForRouting(
+      order,
+      record.shippingAddressHash,
+      getEnvBoolean('OL_STORE_PII', true),
+      record.physicalItems
+    );
   }
 
   private retryable(job: SyncJob, message: string, cause?: Error): SyncJobExecutionError {

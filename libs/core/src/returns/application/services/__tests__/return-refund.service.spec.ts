@@ -9,7 +9,12 @@
  * @module libs/core/src/returns/application/services/__tests__
  */
 import type { IIntegrationsService } from '@openlinker/core/integrations';
-import type { RefundExecutionResult, RefundExecutor } from '@openlinker/core/orders';
+import {
+  RefundCeilingExceededException,
+  type RefundCeilingContext,
+  type RefundExecutionResult,
+  type RefundExecutor,
+} from '@openlinker/core/orders';
 import type { SyncLockPort } from '@openlinker/core/sync';
 
 import { ReturnLine } from '../../../domain/entities/return-line.entity';
@@ -189,6 +194,74 @@ describe('ReturnRefundService', () => {
       });
     });
 
+  });
+
+  describe('triggerRefund - order refund ceiling (#3289)', () => {
+    const FULL_ORDER: RefundCeilingContext = {
+      order: { totalAmount: 100, currency: 'PLN', taxTreatment: null, totalTaxTreatment: null },
+      alreadyRefunded: { count: 1, totalAmount: '95.00', currency: 'PLN' },
+    };
+
+    it('should refuse before the lock, the executor and the claim when the order would be over-refunded', async () => {
+      const executeRefund = withExecutor(() => Promise.resolve({ outcome: 'refunded' } as never));
+
+      await expect(
+        service.triggerRefund(RETURN_ID, { ...INPUT, refundCeilingContext: FULL_ORDER })
+      ).rejects.toBeInstanceOf(RefundCeilingExceededException);
+
+      expect(lock.acquire).not.toHaveBeenCalled();
+      expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
+      expect(repository.claimRefundAttempt).not.toHaveBeenCalled();
+      expect(executeRefund).not.toHaveBeenCalled();
+    });
+
+    it('should proceed and warn refund_ceiling_exceeded_acknowledged when the excess is acknowledged', async () => {
+      const warn = jest.spyOn(
+        (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+        'warn'
+      );
+
+      const result = await service.triggerRefund(RETURN_ID, {
+        ...INPUT,
+        refundCeilingContext: FULL_ORDER,
+        acknowledgeAboveCeiling: true,
+      });
+
+      expect(repository.claimRefundAttempt).toHaveBeenCalled();
+      expect(result.refundCeiling.status).toBe('exceeded');
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('refund_ceiling_exceeded_acknowledged')
+      );
+    });
+
+    it('should proceed with an explicit unknown verdict when no context is supplied', async () => {
+      const warn = jest.spyOn(
+        (service as unknown as { logger: { warn: (m: string) => void } }).logger,
+        'warn'
+      );
+
+      const result = await service.triggerRefund(RETURN_ID, INPUT);
+
+      expect(result.refundCeiling).toEqual({ status: 'unknown', reason: 'order-unresolved' });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('refund_ceiling_unknown'));
+    });
+
+    it('should refuse an amount with more decimals than the currency allows before anything is claimed (R-18)', async () => {
+      await expect(
+        service.triggerRefund(RETURN_ID, { ...INPUT, amount: '5.123', currency: 'PLN' })
+      ).rejects.toMatchObject({ code: 'refund_amount_precision' });
+
+      expect(repository.claimRefundAttempt).not.toHaveBeenCalled();
+    });
+
+    it('should report a within verdict when the refund fits', async () => {
+      const result = await service.triggerRefund(RETURN_ID, {
+        ...INPUT,
+        amount: '5.00',
+        refundCeilingContext: FULL_ORDER,
+      });
+      expect(result.refundCeiling.status).toBe('within');
+    });
   });
 
   describe('triggerRefund — refusals', () => {

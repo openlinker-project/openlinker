@@ -5,7 +5,9 @@
  * order: delivery method, payment method and status. They are fallbacks - a
  * mapping (Mappings page) wins for delivery and status - but payment has no
  * mapping, so `paymentId` is the only source and a shop receiving orders cannot
- * work without it.
+ * work without it. Below them, the three optional ids the lifecycle writeback
+ * uses (parcel delivery method, cancelled and in-progress status); each has a
+ * fallback the adapter picks itself, so leaving them unset is fine.
  *
  * Each list is read live from the shop (`destination/carriers`,
  * `destination/payment-methods`, `destination/order-statuses`), so the operator
@@ -26,6 +28,8 @@ import { Select } from '../../../shared/ui/select';
 import { useMappingOptions } from '../../../features/mappings';
 import type { MappingOption } from '../../../features/mappings';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
+import { interpolate } from '../../../shared/i18n';
+import { useShoperMessages } from '../messages';
 import { SHOPER_DEFAULT_FIELDS } from '../shoper-connection-config';
 
 type MappingBundle = ReturnType<typeof useMappingOptions>['options'];
@@ -39,6 +43,9 @@ const BUNDLE_KEY_BY_FIELD = {
   shoperShippingId: 'prestashopCarriers',
   shoperPaymentId: 'prestashopPaymentModules',
   shoperStatusId: 'prestashopOrderStatuses',
+  shoperParcelShippingId: 'prestashopCarriers',
+  shoperCancelledStatusId: 'prestashopOrderStatuses',
+  shoperInProgressStatusId: 'prestashopOrderStatuses',
 } as const satisfies Record<
   (typeof SHOPER_DEFAULT_FIELDS)[number]['field'],
   keyof MappingBundle
@@ -46,30 +53,13 @@ const BUNDLE_KEY_BY_FIELD = {
 
 const ENABLED_KEYS: ReadonlySet<keyof MappingBundle> = new Set(Object.values(BUNDLE_KEY_BY_FIELD));
 
-const FIELD_COPY = {
-  shoperShippingId: {
-    label: 'Default delivery method',
-    description:
-      'Used when an order\'s delivery method has no mapping. Shoper requires one to create the order.',
-  },
-  shoperPaymentId: {
-    label: 'Default payment method',
-    description:
-      'Shoper requires a payment method and OpenLinker has no payment mapping, so this is the one used for every order.',
-  },
-  shoperStatusId: {
-    label: 'Default order status',
-    description:
-      "Used when the order's status has no mapping. Pick the status new orders should start in.",
-  },
-} as const;
-
 export function ShoperOrderDefaultsSection({
   connection,
   form,
   configIsParseable,
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
+  const sectionCopy = useShoperMessages().shoperOrderDefaultsSection;
   const receivesOrders = connection.enabledCapabilities.includes('OrderProcessorManager');
   const { options, isLoading, errors } = useMappingOptions(
     receivesOrders ? connection.id : '',
@@ -78,9 +68,8 @@ export function ShoperOrderDefaultsSection({
 
   if (!receivesOrders) {
     return (
-      <Alert tone="info" title="Order defaults">
-        Delivery, payment and status defaults are needed only when this shop receives orders.
-        Enable the Order processor capability to set them.
+      <Alert tone="info" title={sectionCopy.notReceivingOrders.title}>
+        {sectionCopy.notReceivingOrders.body}
       </Alert>
     );
   }
@@ -94,7 +83,7 @@ export function ShoperOrderDefaultsSection({
         const value = form.watch(field) ?? '';
         const errorMessage = form.formState.errors[field]?.message;
         const stored = value !== '' && !list.some((option) => option.value === value);
-        const copy = FIELD_COPY[field];
+        const copy = sectionCopy.fields[field];
 
         return (
           <FormField
@@ -106,11 +95,11 @@ export function ShoperOrderDefaultsSection({
           >
             {isLoading ? (
               <Select disabled>
-                <option>Loading from Shoper…</option>
+                <option>{sectionCopy.loading}</option>
               </Select>
             ) : loadError ? (
               <Select disabled>
-                <option>Could not load the list from Shoper</option>
+                <option>{sectionCopy.loadFailed}</option>
               </Select>
             ) : (
               <Select
@@ -119,8 +108,10 @@ export function ShoperOrderDefaultsSection({
                 disabled={!configIsParseable}
                 invalid={Boolean(errorMessage)}
               >
-                <option value="">Not set</option>
-                {stored ? <option value={value}>{`Saved id ${value} (not in the shop's list)`}</option> : null}
+                <option value="">{sectionCopy.notSet}</option>
+                {stored ? (
+                  <option value={value}>{interpolate(sectionCopy.storedId, { id: value })}</option>
+                ) : null}
                 {list.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}

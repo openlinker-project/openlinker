@@ -28,6 +28,8 @@
  *
  * @module apps/web/src/features/shipments/lib
  */
+import { getMessages } from '../../../shared/i18n';
+import { labelGetters } from './label-getters';
 
 export const RETRYABILITY_CLASS_VALUES = ['transient', 'permanent', 'auth', 'unknown'] as const;
 export type RetryabilityClass = (typeof RETRYABILITY_CLASS_VALUES)[number];
@@ -35,12 +37,10 @@ export type RetryabilityClass = (typeof RETRYABILITY_CLASS_VALUES)[number];
 /** Operator-readable label per retryability class. `Record<RetryabilityClass,
  * string>` (not `Partial<>`) so a new class fails type-check until labelled —
  * same discipline as `SHIPPING_METHOD_LABEL`. */
-export const RETRYABILITY_LABEL: Record<RetryabilityClass, string> = {
-  transient: 'Transient - safe to just retry',
-  permanent: 'Needs a fix before retrying',
-  auth: 'Connection authentication problem',
-  unknown: 'Cause not classified',
-};
+export const RETRYABILITY_LABEL: Record<RetryabilityClass, string> = labelGetters(
+  RETRYABILITY_CLASS_VALUES,
+  () => getMessages('shipments').shipmentRetryability.labels,
+);
 
 const HTTP_CODE_PATTERN = /^api\.http-(\d{3})$/;
 

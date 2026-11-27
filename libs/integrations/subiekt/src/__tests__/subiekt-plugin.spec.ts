@@ -211,3 +211,13 @@ describe('createSubiektPlugin', () => {
     });
   });
 });
+
+describe('subiekt order sync start declarations (#4265)', () => {
+  // Declared statically so the UI reads them without constructing an adapter:
+  // the bridge feed has a head and a date watermark, but no window read.
+  // check-order-source-start-declarations.mjs ties them to the adapter's methods.
+  it('should declare the start modes and window import exactly as the adapter supports them', () => {
+    expect(subiektAdapterManifest.orderSyncStartModes).toEqual(['now', 'from', 'all']);
+    expect(subiektAdapterManifest.orderWindowImport).toBeUndefined();
+  });
+});

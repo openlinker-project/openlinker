@@ -11,6 +11,10 @@
  * @see {@link ConnectionPort} for the core port
  */
 import {
+  validateDeliveryOnDocumentsShape,
+  validateGiftOnDocumentsShape,
+} from '@openlinker/core/sales-documents';
+import {
   PAYMENT_METHOD,
   findPaymentMethodMapKeyCollisions,
   isPaymentMethod,
@@ -18,16 +22,38 @@ import {
 } from '@openlinker/core/orders';
 import {
   BadRequestException,
-  ConflictException,
+  HttpStatus,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
+import type { ApiErrorParams, KnownApiErrorCode } from '@openlinker/shared/errors';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
-import type { ConnectionCreateInput } from '../interfaces/connection.service.types';
+import { resolveReceiptLineNameLimit } from './resolve-receipt-line-name-limit';
+import {
+  GENERIC_FIELD_CODE,
+  toConfigShapeErrorBody,
+  VALIDATION_FAILED,
+} from './connection-shape-error-body';
+import type { ConnectionConfigRule } from './connection-errors.types';
+import {
+  allowedValues,
+  capabilitiesUnsupported,
+  connectionConfigInvalid,
+  connectionNotFound,
+  credentialsInputAmbiguous,
+  providerRejected,
+  stockLocationOverrideInvalid,
+} from './connection-errors';
+import { codedHttpError } from '../../../common/errors/coded-http.exception';
+import { hasMasterAndPublisher, masterPublisherConflictError, publisherRole } from './connection-capability-rules';
+import type {
+  ConnectionCreateInput,
+  ConnectionUpdateInput,
+  OrderImportRequest,
+  OrderSyncRestartResult,
+} from '../interfaces/connection.service.types';
 import type {
   Connection,
-  ConnectionUpdate,
   ConnectionFilters,
   ConnectionReferrer,
 } from '@openlinker/core/identifier-mapping';
@@ -37,7 +63,19 @@ import {
   ConnectionNotFoundException,
   FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY,
   isPresentButInvalidFulfilmentOwnedByDestination,
+  CATALOGUE_MODE_CONFIG_KEY,
+  CatalogueModeValues,
+  isPresentButInvalidCatalogueMode,
+  describeInvalidPaymentWritebackConfig,
+  PaymentWritebackModeValues,
   ConnectionInUseException,
+  BUYER_EMAILS_CONFIG_KEY,
+  buyerEmailChannelKindOf,
+  MarketplaceBuyerEmailTemplateValues,
+  isBuyerEmailTemplate,
+  isSingleEmailAddress,
+  readBuyerEmailsConfig,
+  findBuyerDataRetentionConfigIssue,
 } from '@openlinker/core/identifier-mapping';
 import type {
   AdapterMetadata,
@@ -61,15 +99,36 @@ import {
   CONNECTION_CREDENTIALS_SHAPE_VALIDATOR_REGISTRY_TOKEN,
   ConnectionCredentialsRewriterRegistryService,
   CONNECTION_CREDENTIALS_REWRITER_REGISTRY_TOKEN,
+  ConnectionArchiveHookRegistryService,
+  CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN,
   InvalidConnectionConfigException,
   InvalidCredentialsShapeException,
   ConnectionCredentialsRewriteException,
   resolveRequiresCredentials,
   resolveArchivable,
 } from '@openlinker/core/integrations';
-import type { SyncJobRequest } from '@openlinker/core/sync';
-import { JobEnqueuePort, JOB_ENQUEUE_TOKEN } from '@openlinker/core/sync';
+import {
+  SYNC_LOCK_TOKEN,
+  type OrderSyncStart,
+  type SyncJobRequest,
+  type SyncLockPort,
+  buildOrdersImportRequest,
+  generateOrdersImportNonce,
+} from '@openlinker/core/sync';
+import {
+  JobEnqueuePort,
+  JOB_ENQUEUE_TOKEN,
+  ISyncCursorsService,
+  SYNC_CURSORS_SERVICE_TOKEN,
+  ORDER_SYNC_START_CURSOR_KEY,
+  OrderSyncStartModeValues,
+  describeInvalidOrderSyncStartDate,
+  resolveOrderSyncStartModes,
+  serializeOrderSyncStart,
+} from '@openlinker/core/sync';
 import { parseAuthorityConfig } from '@openlinker/core/fulfillment-authority';
+import { describeInvalidTriggerModels } from '@openlinker/core/invoicing';
+import { describeInvalidBatchSchedules } from '@openlinker/core/sales-documents';
 import { ILocationService, LOCATION_SERVICE_TOKEN } from '@openlinker/core/inventory';
 import { IDestinationTaxonomyService } from '@openlinker/core/listings';
 import { DESTINATION_TAXONOMY_SERVICE_TOKEN } from '@openlinker/core/listings';
@@ -91,7 +150,8 @@ import { HttpTransportFactoryPort } from '@openlinker/shared/http';
  * `apps/web/src/features/connections/lib/stock-location-override-error.ts` —
  * the `ORDER_ALREADY_ON_HOLD` / `HOLD_ALREADY_RELEASED` precedent (#2341).
  */
-export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE = 'STOCK_LOCATION_OVERRIDE_INVALID';
+export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE: KnownApiErrorCode =
+  'STOCK_LOCATION_OVERRIDE_INVALID';
 
 /**
  * Machine-readable code for the #2407 refusal to enable routing with no active
@@ -100,11 +160,15 @@ export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE = 'STOCK_LOCATION_OVERRI
  * this 400 to an inline remedy and must not match on the message. Mirrored in
  * `apps/web/src/features/oms-onboarding/lib/routing-requires-location-error.ts`.
  */
-export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE = 'ROUTING_REQUIRES_ACTIVE_LOCATION';
+export const ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE: KnownApiErrorCode =
+  'ROUTING_REQUIRES_ACTIVE_LOCATION';
 
 @Injectable()
 export class ConnectionService implements IConnectionService {
+  /** Long enough for a restart's three writes, short enough that a crash frees the poll quickly. */
+  private static readonly RESTART_LOCK_TTL_MS = 30_000;
   private readonly logger = new Logger(ConnectionService.name);
+  private readonly legacyMasterPublisherWarned = new Set<string>();
 
   constructor(
     @Inject(CONNECTION_PORT_TOKEN)
@@ -132,8 +196,72 @@ export class ConnectionService implements IConnectionService {
     @Inject(DESTINATION_TAXONOMY_SERVICE_TOKEN)
     private readonly destinationTaxonomy: IDestinationTaxonomyService,
     @Inject(LOCATION_SERVICE_TOKEN)
-    private readonly locations: ILocationService
+    private readonly locations: ILocationService,
+    @Inject(CONNECTION_ARCHIVE_HOOK_REGISTRY_TOKEN)
+    private readonly connectionArchiveHookRegistry: ConnectionArchiveHookRegistryService,
+    // #4228: where the one-shot order-sync start choice is stored.
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly syncCursors: ISyncCursorsService,
+    // #4228: the order poll's own lock, taken by a restart so it cannot race a
+    // poll that is reading the cursor it is about to delete.
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly lock: SyncLockPort
   ) {}
+
+  /**
+   * Refuse an order-sync start choice the connection cannot honour (#4228).
+   * Always a 400: a choice silently dropped would import the wrong history for
+   * a shop that may already hold thousands of orders. The supported modes come
+   * from the adapter's STATIC declaration, because an OAuth connection has no
+   * credentials, and so no adapter instance, until the callback.
+   */
+  private assertOrderSyncStart(
+    start: OrderSyncStart,
+    declaredModes: AdapterMetadata['orderSyncStartModes'],
+    enabledCapabilities: readonly string[],
+    windowImport: boolean
+  ): void {
+    const field = 'orderSyncStart';
+    if (!OrderSyncStartModeValues.includes(start.mode)) {
+      throw connectionConfigInvalid(
+        `${field}.mode`,
+        'one-of',
+        `${field}.mode must be one of ${OrderSyncStartModeValues.join(', ')}`,
+        { allowed: allowedValues(OrderSyncStartModeValues) }
+      );
+    }
+    if (!enabledCapabilities.includes('OrderSource')) {
+      throw connectionConfigInvalid(
+        field,
+        'required-with',
+        `${field} needs the OrderSource capability: this connection does not import orders`,
+        { with: 'OrderSource' }
+      );
+    }
+    const modes = resolveOrderSyncStartModes(declaredModes);
+    if (!modes.includes(start.mode)) {
+      throw connectionConfigInvalid(
+        `${field}.mode`,
+        'one-of',
+        `${field}.mode "${start.mode}" is not supported by this adapter. Supported: ${modes.join(', ')}`,
+        { allowed: allowedValues(modes) }
+      );
+    }
+    if (start.mode !== 'now' && start.order === 'newest-first' && !windowImport) {
+      throw connectionConfigInvalid(
+        `${field}.order`,
+        'one-of',
+        `${field}.order "newest-first" is not supported by this adapter. Supported: oldest-first`,
+        { allowed: allowedValues(['oldest-first']) }
+      );
+    }
+    if (start.mode === 'from') {
+      const problem = describeInvalidOrderSyncStartDate(start.from, new Date());
+      if (problem !== null) {
+        throw connectionConfigInvalid(`${field}.from`, 'range', problem);
+      }
+    }
+  }
 
   /**
    * Refuse to switch fulfilment routing ON while no active inventory location
@@ -185,14 +313,92 @@ export class ConnectionService implements IConnectionService {
     }
 
     if ((await this.locations.countActiveLocations()) === 0) {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
-        message:
-          'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE,
+        'Fulfilment routing cannot be enabled until at least one active inventory location exists. ' +
           "Create one first — the connection's routing readiness panel offers a default, " +
           'or POST /inventory/locations.',
-      });
+        undefined,
+        // Kept for clients that branch on `error` (#2407).
+        { error: ROUTING_REQUIRES_ACTIVE_LOCATION_ERROR_CODE }
+      );
+    }
+  }
+
+  /**
+   * #3554 - validate `config.buyerEmails`. Shape and sender addresses are checked
+   * on every write; the channel rule (a marketplace may not enable
+   * `order-confirmed`) only on the TRANSITION against the persisted config, so
+   * an unrelated patch is not refused for a state this guard once let through.
+   * The channel comes from `buyerEmailChannelKindOf`, the same rule the send
+   * gate applies, so the two cannot disagree about a connection.
+   */
+  private validateBuyerEmailsConfig(
+    config: Record<string, unknown>,
+    capabilities: readonly string[],
+    persistedConfig: Record<string, unknown> | undefined
+  ): void {
+    const raw = config[BUYER_EMAILS_CONFIG_KEY];
+    if (raw === undefined || raw === null) {
+      return;
+    }
+    const root = `config.${BUYER_EMAILS_CONFIG_KEY}`;
+    const fail = (
+      field: string,
+      rule: ConnectionConfigRule,
+      message: string,
+      bounds?: ApiErrorParams
+    ): never => {
+      throw connectionConfigInvalid(field, rule, `${root}: ${message}`, bounds);
+    };
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      return fail(root, 'object', 'must be an object');
+    }
+    const body = raw as Record<string, unknown>;
+    if (typeof body.enabled !== 'boolean') {
+      return fail(`${root}.enabled`, 'boolean', 'enabled must be true or false');
+    }
+    const templates = body.templates ?? {};
+    if (typeof templates !== 'object' || templates === null || Array.isArray(templates)) {
+      return fail(`${root}.templates`, 'object', 'templates must be an object');
+    }
+    const previous = readBuyerEmailsConfig(persistedConfig);
+    const isMarketplace = buyerEmailChannelKindOf(capabilities) === 'marketplace';
+    for (const [key, value] of Object.entries(templates)) {
+      if (!isBuyerEmailTemplate(key)) {
+        return fail(`${root}.templates.${key}`, 'known-template', `unknown template "${key}"`, {
+          template: key,
+        });
+      }
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return fail(`${root}.templates.${key}`, 'object', `template "${key}" must be an object`);
+      }
+      const template = value as Record<string, unknown>;
+      for (const field of ['fromAddress', 'replyTo'] as const) {
+        const address = template[field];
+        if (address !== undefined && address !== null && !isSingleEmailAddress(address)) {
+          return fail(
+            `${root}.templates.${key}.${field}`,
+            'email',
+            `${field} of "${key}" must be a single email address`
+          );
+        }
+      }
+      const newlyEnabled = template.enabled === true && previous.templates[key]?.enabled !== true;
+      if (
+        newlyEnabled &&
+        isMarketplace &&
+        !(MarketplaceBuyerEmailTemplateValues as readonly string[]).includes(key)
+      ) {
+        return fail(
+          `${root}.templates.${key}.enabled`,
+          'shop-only-template',
+          `"${key}" is sent by a shop; a marketplace connection can enable only ` +
+            `${MarketplaceBuyerEmailTemplateValues.join(', ')}. Enable it on the shop connection instead.`,
+          { template: key, allowed: allowedValues(MarketplaceBuyerEmailTemplateValues) }
+        );
+      }
     }
   }
 
@@ -213,12 +419,135 @@ export class ConnectionService implements IConnectionService {
       enabledCapabilities.includes('InventoryMaster') &&
       enabledCapabilities.includes('OfferManager')
     ) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CONNECTION_CAPABILITIES_CONFLICT',
         'InventoryMaster and OfferManager cannot both be enabled on the same connection: ' +
           'the inventory master is the stock source of truth and must not be a stock ' +
-          'write-back target. Disable InventoryMaster before enabling OfferManager (or vice versa).'
+          'write-back target. Disable InventoryMaster before enabling OfferManager (or vice versa).',
+        { capabilities: 'InventoryMaster, OfferManager' }
       );
     }
+  }
+
+  /**
+   * A connection saved before the #3985 rule can still hold both capabilities;
+   * updates deliberately allow it, so make it findable in the logs (once per
+   * process per connection, to keep a hot read path quiet).
+   */
+  private warnOnLegacyMasterPublisher(connection: Connection): void {
+    const caps = connection.enabledCapabilities ?? [];
+    if (!caps.includes('ProductMaster') || !caps.includes('ProductPublisher')) return;
+    if (this.legacyMasterPublisherWarned.has(connection.id)) return;
+    this.legacyMasterPublisherWarned.add(connection.id);
+    this.logger.warn(
+      `Connection ${connection.id} (${connection.name}) holds ProductMaster and ProductPublisher, ` +
+        'which is no longer allowed; drop one'
+    );
+  }
+
+  /**
+   * Master/publisher exclusion (#3985): one connection must not be both a
+   * `ProductMaster` and a destination OpenLinker publishes products to.
+   * Whatever OpenLinker publishes there is read back by the same connection's
+   * master sync as a brand-new master product, minting a duplicate that then
+   * competes for order-line resolution. The rule is stated in capability
+   * terms, never by platform.
+   *
+   * Two roles publish: `ProductPublisher` (a shop), and an `OfferManager` whose
+   * adapter advertises `OfferCreator`, i.e. one that creates new listings on a
+   * marketplace that can also be read as a catalogue (Amazon, #4182). An
+   * `OfferManager` without `OfferCreator` only writes stock and price to
+   * listings that already exist (WooCommerce write-back), creates nothing, and
+   * is not caught.
+   *
+   * Fires only on the TRANSITION into the combination: a connection that
+   * already holds both (created before this rule) keeps saving unrelated
+   * patches, and is cured by dropping either capability. `previouslyEnabled`
+   * is the persisted set on update and `null` on create.
+   */
+  private assertNotMasterAndPublisher(
+    enabledCapabilities: string[],
+    previouslyEnabled: string[] | null,
+    supportedCapabilities: readonly string[]
+  ): void {
+    if (!hasMasterAndPublisher(enabledCapabilities, supportedCapabilities)) return;
+    if (previouslyEnabled !== null && hasMasterAndPublisher(previouslyEnabled, supportedCapabilities)) return;
+    const publisher = publisherRole(enabledCapabilities, supportedCapabilities);
+    throw masterPublisherConflictError(publisher ?? 'ProductPublisher');
+  }
+
+  /**
+   * Advisory shared-rate-limit-bucket detection (#1594). Some invoicing
+   * providers (e.g. KSeF) bucket their per-hour request ceilings by the seller's
+   * tax id: two OL connections configured against the SAME seller tax id on the
+   * same adapter, egressing from the same deployment IP, therefore share ONE
+   * provider-side rate-limit budget. A bulk run on one can then throttle the
+   * other in ways that look like an unrelated flake.
+   *
+   * This surfaces a NON-BLOCKING warning at connection create/edit time when a
+   * new/updated connection's `config.seller.nip` matches another ACTIVE
+   * connection on the same adapter. Platform-neutral: it reads the generic
+   * `config.seller.nip` shape (no KSeF vocabulary) and only fires for adapters
+   * that carry a seller tax id. Never throws — advisory only; a lookup failure
+   * yields no warning rather than failing the operation.
+   */
+  async findSharedRateLimitBucketWarnings(connection: Connection): Promise<string[]> {
+    const nip = this.extractSellerTaxId(connection.config);
+    if (!nip || !connection.adapterKey) {
+      return [];
+    }
+    let candidates: Connection[];
+    try {
+      candidates = await this.connectionPort.list({ status: 'active' });
+    } catch (error) {
+      this.logger.warn(
+        `Shared-rate-limit-bucket check skipped for connection ${connection.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return [];
+    }
+    const colliding = candidates.filter(
+      (c) =>
+        c.id !== connection.id &&
+        c.adapterKey === connection.adapterKey &&
+        this.extractSellerTaxId(c.config) === nip
+    );
+    if (colliding.length === 0) {
+      return [];
+    }
+    const names = colliding.map((c) => c.name).join(', ');
+    this.logger.warn(
+      `Connection ${connection.id} shares seller tax id ${nip} on adapter ` +
+        `${connection.adapterKey} with active connection(s): ${names} — shared provider rate-limit bucket.`
+    );
+    return [
+      `Another active connection (${names}) uses the same adapter and seller tax id (${nip}). ` +
+        `They share the provider's per-seller rate-limit bucket, so heavy activity on one ` +
+        `(e.g. a bulk invoice run) can throttle the other. This is a warning, not a block.`,
+    ];
+  }
+
+  /**
+   * Extract a normalized seller tax id from a connection config, or `null` when
+   * the config carries none. Reads only the generic `seller.nip` shape so no
+   * provider vocabulary leaks into this platform-agnostic service.
+   */
+  private extractSellerTaxId(config: unknown): string | null {
+    if (!config || typeof config !== 'object') {
+      return null;
+    }
+    const seller = (config as Record<string, unknown>).seller;
+    if (!seller || typeof seller !== 'object') {
+      return null;
+    }
+    const nip = (seller as Record<string, unknown>).nip;
+    // Separators stripped (DEF-12): `526-000-12-46` and `5260001246` are the
+    // same seller, and the collision check must say so. Generic - any tax id
+    // printed with spaces or dashes compares the same way.
+    const normalized = typeof nip === 'string' ? nip.replace(/[\s-]/g, '') : '';
+    return normalized.length > 0 ? normalized : null;
   }
 
   /**
@@ -230,18 +559,16 @@ export class ConnectionService implements IConnectionService {
    */
   private async validateConfigShape(
     adapterKey: string,
-    config: Record<string, unknown>
+    config: Record<string, unknown>,
+    previous?: Record<string, unknown>
   ): Promise<void> {
     const validator = this.connectionConfigShapeValidatorRegistry.get(adapterKey);
     if (!validator) return;
     try {
-      await validator.validate(config);
+      await validator.validate(config, previous !== undefined ? { previous } : undefined);
     } catch (error) {
       if (error instanceof InvalidConnectionConfigException) {
-        throw new BadRequestException({
-          message: error.message,
-          errors: error.errors,
-        });
+        throw new BadRequestException(toConfigShapeErrorBody(error));
       }
       throw error;
     }
@@ -258,7 +585,11 @@ export class ConnectionService implements IConnectionService {
     const rateLimit = config.rateLimit;
     if (rateLimit === undefined || rateLimit === null) return;
     if (typeof rateLimit !== 'object' || Array.isArray(rateLimit)) {
-      throw new BadRequestException('config.rateLimit must be an object');
+      throw connectionConfigInvalid(
+        'config.rateLimit',
+        'object',
+        'config.rateLimit must be an object'
+      );
     }
 
     const { requestsPerMinute, maxConcurrent } = rateLimit as Record<string, unknown>;
@@ -266,16 +597,22 @@ export class ConnectionService implements IConnectionService {
       requestsPerMinute !== undefined &&
       (typeof requestsPerMinute !== 'number' || requestsPerMinute < 1 || requestsPerMinute > 6000)
     ) {
-      throw new BadRequestException(
-        'config.rateLimit.requestsPerMinute must be a number between 1 and 6000'
+      throw connectionConfigInvalid(
+        'config.rateLimit.requestsPerMinute',
+        'range',
+        'config.rateLimit.requestsPerMinute must be a number between 1 and 6000',
+        { min: 1, max: 6000 }
       );
     }
     if (
       maxConcurrent !== undefined &&
       (typeof maxConcurrent !== 'number' || maxConcurrent < 1 || maxConcurrent > 64)
     ) {
-      throw new BadRequestException(
-        'config.rateLimit.maxConcurrent must be a number between 1 and 64'
+      throw connectionConfigInvalid(
+        'config.rateLimit.maxConcurrent',
+        'range',
+        'config.rateLimit.maxConcurrent must be a number between 1 and 64',
+        { min: 1, max: 64 }
       );
     }
   }
@@ -292,10 +629,56 @@ export class ConnectionService implements IConnectionService {
    */
   private validateFulfilmentOwnedByDestinationConfig(config: Record<string, unknown>): void {
     if (isPresentButInvalidFulfilmentOwnedByDestination(config)) {
-      throw new BadRequestException(
+      throw connectionConfigInvalid(
+        `config.${FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY}`,
+        'boolean',
         `config.${FULFILMENT_OWNED_BY_DESTINATION_CONFIG_KEY} must be true or false`
       );
     }
+  }
+
+  /**
+   * Refuse a malformed `config.paymentWriteback` (#3963) instead of storing a
+   * setting the coercer would silently read as the default - an operator who
+   * chose "leave it" must not get "mark paid". `null` (a cleared knob) and an
+   * absent key are accepted and read as the default.
+   */
+  private validatePaymentWritebackConfig(config: Record<string, unknown>): void {
+    const problem = describeInvalidPaymentWritebackConfig(config);
+    if (problem === null) return;
+    // The core check names the offending path first; the code and its params
+    // are derived from that path so the frontend can render it (#3864).
+    const field = `config.${problem.split(' ')[0]}`;
+    if (field.endsWith('.mode')) {
+      throw connectionConfigInvalid(field, 'one-of', `config.${problem}`, {
+        allowed: allowedValues(PaymentWritebackModeValues),
+      });
+    }
+    throw connectionConfigInvalid(
+      field,
+      field.endsWith('.paidStateId') ? 'string' : 'object',
+      `config.${problem}`
+    );
+  }
+
+  /**
+   * Refuse an unrecognised `config.catalogueMode` (#4280).
+   *
+   * Neutral like `validateRateLimitConfig`: the key is read by core's order
+   * ingestion for every marketplace, so no per-plugin shape validator needs to
+   * know it. A mistyped value (`"None"`, `true`) reads back as the default
+   * `'linked'`, i.e. it would silently fail to turn the mode on, so it is refused
+   * rather than coerced. Absent and `null` (what the form writes for a cleared
+   * value, #2016) are accepted.
+   */
+  private validateCatalogueModeConfig(config: Record<string, unknown>): void {
+    if (!isPresentButInvalidCatalogueMode(config)) return;
+    throw connectionConfigInvalid(
+      `config.${CATALOGUE_MODE_CONFIG_KEY}`,
+      'one-of',
+      `config.${CATALOGUE_MODE_CONFIG_KEY} must be one of: ${CatalogueModeValues.join(', ')}`,
+      { allowed: allowedValues(CatalogueModeValues) }
+    );
   }
 
   /**
@@ -340,7 +723,12 @@ export class ConnectionService implements IConnectionService {
       const value = config[key];
       if (value === undefined || value === null) continue;
       if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-        throw new BadRequestException(`config.${key} must be a number of 0 or more`);
+        throw connectionConfigInvalid(
+          `config.${key}`,
+          'min',
+          `config.${key} must be a number of 0 or more`,
+          { min: 0 }
+        );
       }
     }
 
@@ -362,34 +750,114 @@ export class ConnectionService implements IConnectionService {
    */
   private validatePaymentMethodMapConfig(map: unknown): void {
     if (map === undefined || map === null) return;
+    const field = 'config.paymentMethodMap';
     if (typeof map !== 'object' || Array.isArray(map)) {
-      throw new BadRequestException('config.paymentMethodMap must be an object');
+      throw connectionConfigInvalid(field, 'object', `${field} must be an object`);
     }
-    const entries = Object.entries(map as Record<string, unknown>);
-    for (const [key, value] of entries) {
+    const mappable = Object.values(PAYMENT_METHOD).filter(
+      (method) => method !== PAYMENT_METHOD.Unknown
+    );
+    for (const [key, value] of Object.entries(map as Record<string, unknown>)) {
       if (normalizeSourcePaymentMethodKey(key) === '') {
-        throw new BadRequestException('config.paymentMethodMap keys must not be blank');
+        throw connectionConfigInvalid(field, 'string', `${field} keys must not be blank`);
       }
       if (!isPaymentMethod(value) || value === PAYMENT_METHOD.Unknown) {
-        throw new BadRequestException(
-          `config.paymentMethodMap["${key}"] must be one of online, bank_transfer, cash_on_delivery`
+        throw connectionConfigInvalid(
+          `${field}.${key}`,
+          'one-of',
+          `${field}["${key}"] must be one of ${mappable.join(', ')}`,
+          { allowed: allowedValues(mappable) }
         );
       }
     }
     const collisions = findPaymentMethodMapKeyCollisions(map as Record<string, unknown>);
     if (collisions.length > 0) {
-      throw new BadRequestException(
-        `config.paymentMethodMap has keys that differ only by case or spacing: ${collisions
+      throw connectionConfigInvalid(
+        field,
+        'unique',
+        `${field} has keys that differ only by case or spacing: ${collisions
           .map((group) => group.map((k) => `"${k}"`).join(' / '))
           .join('; ')}`
       );
     }
   }
 
+  /**
+   * Core-owned shape check for `config.buyerDataRetention` (#4289): the
+   * per-connection override of the global buyer data retention defaults. The
+   * rules live in `findBuyerDataRetentionConfigIssue` beside the reader, so the
+   * write path and the sweep agree on what a usable value is. Absent or `null`
+   * stays absent - it means "inherit the global defaults".
+   */
+  private validateBuyerDataRetentionConfig(config: Record<string, unknown>): void {
+    const issue = findBuyerDataRetentionConfigIssue(config);
+    if (issue === null) return;
+    throw connectionConfigInvalid(issue.field, issue.rule, issue.message, issue.bounds);
+  }
+
+  /**
+   * Core-owned shape check for `config.deliveryOnDocuments` (#3905, ADR-082).
+   * The rules live in the pure `validateDeliveryOnDocumentsShape` so the browser
+   * mirror and this write path cannot disagree. The READ side is deliberately
+   * forgiving (a stored value must never break an issuance); strictness belongs
+   * here, where there is an operator to tell. Absent or `null` stays absent.
+   *
+   * Name length is measured against the budget the active fiscalization
+   * adapters declare (#3914): core holds no regime number, so the API asks.
+   * The lookup runs only when the key is present, so an unrelated save pays
+   * nothing for it.
+   */
+  private async validateDeliveryOnDocumentsConfig(config: Record<string, unknown>): Promise<void> {
+    const value = config.deliveryOnDocuments;
+    if (value === undefined || value === null) return;
+    const limit = await resolveReceiptLineNameLimit(this.integrationsService, this.logger);
+    const errors = validateDeliveryOnDocumentsShape(value, limit.maxLength);
+    if (errors.length > 0) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        VALIDATION_FAILED,
+        `Invalid config.deliveryOnDocuments: ${errors
+          .map((issue) => `${issue.path} ${issue.message}`)
+          .join('; ')}`,
+        undefined,
+        {
+          errors,
+          fields: errors.map((issue) => ({
+            path: `config.${issue.path}`,
+            code: GENERIC_FIELD_CODE,
+          })),
+        }
+      );
+    }
+  }
+
+  /**
+   * Core-owned shape check for `config.giftOnDocuments` (#3930). Plugin config
+   * validators ignore keys they do not know, so without this a typo'd form would
+   * persist and silently read back as the default. Absent or `null` stays absent.
+   */
+  private validateGiftOnDocumentsConfig(config: Record<string, unknown>): void {
+    const value = config.giftOnDocuments;
+    if (value === undefined || value === null) return;
+    const errors = validateGiftOnDocumentsShape(value);
+    if (errors.length > 0) {
+      throw new BadRequestException({
+        message: `Invalid config.giftOnDocuments: ${errors
+          .map((issue) => `${issue.path} ${issue.message}`)
+          .join('; ')}`,
+        errors,
+      });
+    }
+  }
+
   private validatePricingRuleConfig(pricingRule: unknown): void {
     if (pricingRule === undefined || pricingRule === null) return;
     if (typeof pricingRule !== 'object' || Array.isArray(pricingRule)) {
-      throw new BadRequestException('config.pricingRule must be an object');
+      throw connectionConfigInvalid(
+        'config.pricingRule',
+        'object',
+        'config.pricingRule must be an object'
+      );
     }
 
     const candidate = pricingRule as Record<string, unknown>;
@@ -414,7 +882,11 @@ export class ConnectionService implements IConnectionService {
       const sourceOverrides = candidate['sourceOverrides'];
       if (sourceOverrides !== undefined && sourceOverrides !== null) {
         if (typeof sourceOverrides !== 'object' || Array.isArray(sourceOverrides)) {
-          throw new BadRequestException('config.pricingRule.sourceOverrides must be an object');
+          throw connectionConfigInvalid(
+            'config.pricingRule.sourceOverrides',
+            'object',
+            'config.pricingRule.sourceOverrides must be an object'
+          );
         }
         for (const [sourceConnectionId, rule] of Object.entries(
           sourceOverrides as Record<string, unknown>
@@ -434,13 +906,18 @@ export class ConnectionService implements IConnectionService {
 
   private validateOnePricingRule(rule: unknown, path: string): void {
     if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) {
-      throw new BadRequestException(`${path} must be an object`);
+      throw connectionConfigInvalid(path, 'object', `${path} must be an object`);
     }
 
     const { type, percent, rounding } = rule as Record<string, unknown>;
     const types = ['passthrough', 'markup', 'margin'];
     if (type !== undefined && (typeof type !== 'string' || !types.includes(type))) {
-      throw new BadRequestException(`${path}.type must be one of ${types.join(', ')}`);
+      throw connectionConfigInvalid(
+        `${path}.type`,
+        'one-of',
+        `${path}.type must be one of ${types.join(', ')}`,
+        { allowed: allowedValues(types) }
+      );
     }
     // A rule carrying `percent`/`rounding` but no `type` is accepted here and
     // then silently dropped by `coercePricingRule` on read (it requires a
@@ -451,25 +928,38 @@ export class ConnectionService implements IConnectionService {
     // review, SUGGESTION 1); an entirely empty `{}` is left alone — it
     // configures nothing either way and isn't the shape this guards against.
     if (type === undefined && (percent !== undefined || rounding !== undefined)) {
-      throw new BadRequestException(
-        `${path}.type is required (one of ${types.join(', ')}) when percent or rounding is set`
+      throw connectionConfigInvalid(
+        `${path}.type`,
+        'required-with',
+        `${path}.type is required (one of ${types.join(', ')}) when percent or rounding is set`,
+        { allowed: allowedValues(types), with: 'percent, rounding' }
       );
     }
     const roundings = ['none', 'nearestWhole', 'endingIn99'];
-    if (
-      rounding !== undefined &&
-      (typeof rounding !== 'string' || !roundings.includes(rounding))
-    ) {
-      throw new BadRequestException(`${path}.rounding must be one of ${roundings.join(', ')}`);
+    if (rounding !== undefined && (typeof rounding !== 'string' || !roundings.includes(rounding))) {
+      throw connectionConfigInvalid(
+        `${path}.rounding`,
+        'one-of',
+        `${path}.rounding must be one of ${roundings.join(', ')}`,
+        { allowed: allowedValues(roundings) }
+      );
     }
     if (percent !== undefined && percent !== null) {
       if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0) {
-        throw new BadRequestException(`${path}.percent must be a number of 0 or more`);
+        throw connectionConfigInvalid(
+          `${path}.percent`,
+          'min',
+          `${path}.percent must be a number of 0 or more`,
+          { min: 0 }
+        );
       }
       if (type === 'margin' && percent >= 100) {
-        throw new BadRequestException(
+        throw connectionConfigInvalid(
+          `${path}.percent`,
+          'below-100',
           `${path}.percent must be below 100 for a margin rule. To add more than the catalogue ` +
-            'price, use a markup instead.'
+            'price, use a markup instead.',
+          { max: 100 }
         );
       }
     }
@@ -478,7 +968,9 @@ export class ConnectionService implements IConnectionService {
   private validatePriceSyncModeConfig(priceSyncMode: unknown): void {
     if (priceSyncMode === undefined || priceSyncMode === null) return;
     if (typeof priceSyncMode !== 'object' || Array.isArray(priceSyncMode)) {
-      throw new BadRequestException(
+      throw connectionConfigInvalid(
+        'config.priceSyncMode',
+        'object',
         'config.priceSyncMode must be an object of the shape { default, sourceOverrides }'
       );
     }
@@ -490,24 +982,54 @@ export class ConnectionService implements IConnectionService {
       candidate['default'] !== undefined &&
       (typeof candidate['default'] !== 'string' || !modes.includes(candidate['default']))
     ) {
-      throw new BadRequestException(
-        `config.priceSyncMode.default must be one of ${modes.join(', ')}`
+      throw connectionConfigInvalid(
+        'config.priceSyncMode.default',
+        'one-of',
+        `config.priceSyncMode.default must be one of ${modes.join(', ')}`,
+        { allowed: allowedValues(modes) }
       );
     }
 
     const sourceOverrides = candidate['sourceOverrides'];
     if (sourceOverrides === undefined || sourceOverrides === null) return;
     if (typeof sourceOverrides !== 'object' || Array.isArray(sourceOverrides)) {
-      throw new BadRequestException('config.priceSyncMode.sourceOverrides must be an object');
+      throw connectionConfigInvalid(
+        'config.priceSyncMode.sourceOverrides',
+        'object',
+        'config.priceSyncMode.sourceOverrides must be an object'
+      );
     }
     for (const [sourceConnectionId, mode] of Object.entries(
       sourceOverrides as Record<string, unknown>
     )) {
       if (typeof mode !== 'string' || !modes.includes(mode)) {
-        throw new BadRequestException(
-          `config.priceSyncMode.sourceOverrides.${sourceConnectionId} must be one of ${modes.join(', ')}`
+        throw connectionConfigInvalid(
+          `config.priceSyncMode.sourceOverrides.${sourceConnectionId}`,
+          'one-of',
+          `config.priceSyncMode.sourceOverrides.${sourceConnectionId} must be one of ${modes.join(', ')}`,
+          { allowed: allowedValues(modes) }
         );
       }
+    }
+  }
+
+  /**
+   * Core-owned check for the batch-issuing keys (#3582/#3583):
+   * `config.salesDocument.triggerModels[kind]` and
+   * `config.salesDocument.batchSchedules[kind]`. Both readers degrade a bad
+   * value silently (an unrecognised trigger model falls through to the legacy
+   * key; a bad time, interval or zone becomes its default), so a typo would
+   * change WHEN fiscal documents go out with no operator feedback. The form
+   * refuses those values, but the raw JSON editor, curl and MCP bypass it -
+   * the same reported-≠-enforced gap as `validateStockAndPricingConfig`. The
+   * rules live beside their readers in core, so the two cannot disagree.
+   *
+   * Never defaults a value in; absent keys stay absent.
+   */
+  private validateSalesDocumentBatchConfig(config: Record<string, unknown>): void {
+    const problem = describeInvalidTriggerModels(config) ?? describeInvalidBatchSchedules(config);
+    if (problem !== null) {
+      throw new BadRequestException(problem);
     }
   }
 
@@ -527,18 +1049,28 @@ export class ConnectionService implements IConnectionService {
     const autoDispatch = config.autoDispatch;
     if (autoDispatch === undefined || autoDispatch === null) return;
     if (typeof autoDispatch !== 'object' || Array.isArray(autoDispatch)) {
-      throw new BadRequestException('config.autoDispatch must be an object');
+      throw connectionConfigInvalid(
+        'config.autoDispatch',
+        'object',
+        'config.autoDispatch must be an object'
+      );
     }
 
-    const { enabled, parcelTemplate, defaultWeightGrams } = autoDispatch as Record<
-      string,
-      unknown
-    >;
+    const { enabled, parcelTemplate, defaultWeightGrams, lengthMm, widthMm, heightMm } =
+      autoDispatch as Record<string, unknown>;
     if (enabled !== undefined && typeof enabled !== 'boolean') {
-      throw new BadRequestException('config.autoDispatch.enabled must be a boolean');
+      throw connectionConfigInvalid(
+        'config.autoDispatch.enabled',
+        'boolean',
+        'config.autoDispatch.enabled must be a boolean'
+      );
     }
     if (parcelTemplate !== undefined && typeof parcelTemplate !== 'string') {
-      throw new BadRequestException('config.autoDispatch.parcelTemplate must be a string');
+      throw connectionConfigInvalid(
+        'config.autoDispatch.parcelTemplate',
+        'string',
+        'config.autoDispatch.parcelTemplate must be a string'
+      );
     }
     if (
       defaultWeightGrams !== undefined &&
@@ -546,8 +1078,32 @@ export class ConnectionService implements IConnectionService {
         !Number.isFinite(defaultWeightGrams) ||
         defaultWeightGrams <= 0)
     ) {
-      throw new BadRequestException(
+      throw connectionConfigInvalid(
+        'config.autoDispatch.defaultWeightGrams',
+        'greater-than-zero',
         'config.autoDispatch.defaultWeightGrams must be a number greater than 0'
+      );
+    }
+    const dimensions = { lengthMm, widthMm, heightMm };
+    for (const [field, value] of Object.entries(dimensions)) {
+      if (
+        value !== undefined &&
+        (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+      ) {
+        throw connectionConfigInvalid(
+          `config.autoDispatch.${field}`,
+          'greater-than-zero',
+          `config.autoDispatch.${field} must be a number greater than 0`
+        );
+      }
+    }
+    const setCount = Object.values(dimensions).filter((value) => value !== undefined).length;
+    if (setCount !== 0 && setCount !== 3) {
+      throw connectionConfigInvalid(
+        'config.autoDispatch',
+        'set-together',
+        'config.autoDispatch.lengthMm, widthMm and heightMm must be set together',
+        { with: 'lengthMm, widthMm, heightMm' }
       );
     }
   }
@@ -604,11 +1160,10 @@ export class ConnectionService implements IConnectionService {
     const value = config.stockLocationOverride;
     if (value === undefined || value === null) return;
     if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
-        message: 'config.stockLocationOverride must be a non-empty string',
-      });
+      throw stockLocationOverrideInvalid(
+        'config.stockLocationOverride must be a non-empty string',
+        { reason: 'empty' }
+      );
     }
 
     // Shape-only read of the persisted value: `Connection.config` is JSONB, so
@@ -628,21 +1183,18 @@ export class ConnectionService implements IConnectionService {
 
     const location = await this.locations.getLocation(locationId);
     if (!location) {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
-        message: `config.stockLocationOverride names an unknown location: ${locationId}`,
-      });
+      throw stockLocationOverrideInvalid(
+        `config.stockLocationOverride names an unknown location: ${locationId}`,
+        { reason: 'unknown-location', locationId }
+      );
     }
     if (location.status !== 'active') {
-      throw new BadRequestException({
-        statusCode: 400,
-        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
-        message:
-          `config.stockLocationOverride names a retired location: ${locationId} (status: ${location.status}). ` +
+      throw stockLocationOverrideInvalid(
+        `config.stockLocationOverride names a retired location: ${locationId} (status: ${location.status}). ` +
           'Stock written to an inactive location is filtered out by fulfilment routing, so the ' +
           'override would decide nothing. Name an active location, or reactivate this one.',
-      });
+        { reason: 'inactive-location', locationId }
+      );
     }
   }
 
@@ -688,9 +1240,17 @@ export class ConnectionService implements IConnectionService {
         const value = (config[key] as string).trim();
         const siblingValue = siblingConfig[key];
         if (typeof siblingValue === 'string' && siblingValue.trim() === value) {
-          throw new BadRequestException(
+          throw codedHttpError(
+            HttpStatus.BAD_REQUEST,
+            'CONNECTION_CONFIG_NOT_UNIQUE',
             `config.${key} must be unique across active ${metadata.platformType} connections — ` +
-              `"${value}" is already used by connection "${sibling.name}" (${sibling.id}).`
+              `"${value}" is already used by connection "${sibling.name}" (${sibling.id}).`,
+            {
+              field: `config.${key}`,
+              value,
+              otherConnectionId: sibling.id,
+              otherConnectionName: sibling.name,
+            }
           );
         }
       }
@@ -707,7 +1267,14 @@ export class ConnectionService implements IConnectionService {
       await validator.validate(credentials);
     } catch (error) {
       if (error instanceof InvalidCredentialsShapeException) {
-        throw new BadRequestException(error.message);
+        // One sentence and no path, so no `fields`; the body keeps the shape
+        // a string-bodied BadRequestException had, plus the code (#3861).
+        throw new BadRequestException({
+          statusCode: HttpStatus.BAD_REQUEST,
+          message: error.message,
+          error: 'Bad Request',
+          code: VALIDATION_FAILED,
+        });
       }
       throw error;
     }
@@ -733,7 +1300,7 @@ export class ConnectionService implements IConnectionService {
       return await rewriter.rewrite(credentials);
     } catch (error) {
       if (error instanceof ConnectionCredentialsRewriteException) {
-        throw new BadRequestException(error.message);
+        throw providerRejected(adapterKey, error.message);
       }
       throw error;
     }
@@ -754,14 +1321,186 @@ export class ConnectionService implements IConnectionService {
     });
     const provisioner = this.webhookProvisioningRegistry.get(metadata.adapterKey);
     if (!provisioner) {
-      throw new BadRequestException(
-        `Webhook auto-provisioning is not supported for adapter ${metadata.adapterKey}`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'WEBHOOK_PROVISIONING_UNSUPPORTED',
+        `Webhook auto-provisioning is not supported for adapter ${metadata.adapterKey}`,
+        { adapterKey: metadata.adapterKey }
       );
     }
     this.logger.log(
       `Installing webhooks on connection ${connectionId} (adapter: ${metadata.adapterKey})`
     );
     return provisioner.install(connectionId, actorUserId);
+  }
+
+  /**
+   * Restart a connection's order sync from a new start (#4228): store the new
+   * intent, drop the order cursor and its seed marker, and let the next poll seed
+   * from it. Orders already imported stay; the restart only decides what the next
+   * poll reads. `from`/`all` can re-read orders already stored, which is
+   * idempotent, and `now` leaves a gap between the old cursor and now.
+   *
+   * Runs under the order poll's lock, and writes the intent BEFORE it deletes the
+   * cursors: if the write fails nothing was reset, and a poll can never see a
+   * cursor-less connection with no intent (which reads as a legacy connection
+   * and imports the whole history).
+   *
+   * @throws ORDER_SYNC_BUSY (409) while a poll holds the lock.
+   */
+  async restartOrderSync(
+    connectionId: string,
+    start: OrderSyncStart
+  ): Promise<OrderSyncRestartResult> {
+    const connection = await this.get(connectionId);
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    this.assertOrderSyncStart(
+      start,
+      metadata.orderSyncStartModes,
+      connection.enabledCapabilities,
+      metadata.orderWindowImport === true
+    );
+    const lockKey = `marketplace:orders:poll:${connectionId}`;
+    const token = await this.lock.acquire(lockKey, ConnectionService.RESTART_LOCK_TTL_MS);
+    if (!token) {
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'ORDER_SYNC_BUSY',
+        'The order poll of this connection is running; retry in a moment',
+        { connectionId }
+      );
+    }
+    try {
+      // "New orders only" on a feed that already has a position is what the feed is doing:
+      // it reads on from its last check. Resetting it to the shop's head would skip every
+      // order placed since that check, so there is nothing to reset.
+      if (start.mode === 'now' && (await this.syncCursors.hasOrderFeedCursor(connectionId))) {
+        this.logger.log(
+          `Order sync for connection ${connectionId} already imports new orders from its last check; nothing to reset`
+        );
+        return { applied: false, reason: 'already-following-feed' };
+      }
+      await this.storeOrderSyncStart(connection, start);
+      const removed = await this.syncCursors.deleteOrderFeedCursors(connectionId);
+      this.logger.log(
+        `Restarted order sync for connection ${connectionId} (mode: ${start.mode}); removed cursors: ${removed.join(', ') || 'none'}`
+      );
+      return { applied: true };
+    } finally {
+      await this.lock.release(lockKey, token);
+    }
+  }
+
+  /**
+   * Import orders for a chosen range on demand (#4228): enqueues the first page
+   * of a `marketplace.orders.import` chain, which the worker then walks. The run
+   * id is minted here with a per-request nonce, so asking for the same range
+   * twice is two runs and never a silently swallowed one.
+   *
+   * @throws 400 ORDER_SOURCE_NOT_ENABLED / ORDER_IMPORT_UNSUPPORTED /
+   * ORDER_IMPORT_RANGE_INVALID, 409 CONNECTION_DISABLED when the connection is not active.
+   */
+  async startOrderImport(
+    connectionId: string,
+    request: OrderImportRequest
+  ): Promise<{ runId: string }> {
+    const connection = await this.get(connectionId);
+    if (connection.status !== 'active') {
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_DISABLED',
+        'The connection must be active to import orders',
+        { connectionId }
+      );
+    }
+    if (!connection.enabledCapabilities.includes('OrderSource')) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_SOURCE_NOT_ENABLED',
+        'This connection does not import orders',
+        { connectionId }
+      );
+    }
+    const metadata = await this.integrationsService.resolveAdapterMetadata({
+      platformType: connection.platformType,
+      adapterKey: connection.adapterKey,
+    });
+    if (metadata.orderWindowImport !== true) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_IMPORT_UNSUPPORTED',
+        `Adapter ${metadata.adapterKey} cannot import orders by date or in a chosen order`,
+        { adapterKey: metadata.adapterKey }
+      );
+    }
+    const from = request.from?.trim() || undefined;
+    const to = request.to?.trim() || undefined;
+    const fromMs = from === undefined ? null : Date.parse(from);
+    const toMs = to === undefined ? null : Date.parse(to);
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_IMPORT_RANGE_INVALID',
+        'from and to must be ISO dates',
+        { reason: 'unparseable' }
+      );
+    }
+    if (fromMs !== null && toMs !== null && toMs < fromMs) {
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'ORDER_IMPORT_RANGE_INVALID',
+        'to must not be before from',
+        { reason: 'to-before-from' }
+      );
+    }
+    // The same bounds as the start date at create: an unbounded range would let
+    // one request walk a source's whole history from a typo.
+    for (const [field, value] of [
+      ['from', from],
+      ['to', to],
+    ] as const) {
+      if (value === undefined) continue;
+      const problem = describeInvalidOrderSyncStartDate(value, new Date());
+      if (problem !== null) {
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'ORDER_IMPORT_RANGE_INVALID',
+          `${field}: ${problem}`,
+          { reason: problem.includes('future') ? 'in-future' : 'too-old', field }
+        );
+      }
+    }
+    const runId = `manual:${connectionId}:${generateOrdersImportNonce()}`;
+    const first = buildOrdersImportRequest(connectionId, {
+      schemaVersion: 1,
+      runId,
+      ...(from !== undefined ? { from } : {}),
+      ...(to !== undefined ? { to } : {}),
+      direction: request.direction,
+      cursor: null,
+      page: 1,
+    });
+    const { isExisting } = await this.jobEnqueue.enqueueJob({
+      jobType: first.type,
+      connectionId,
+      payload: first.payload,
+      idempotencyKey: first.options.dedupeKey,
+    });
+    if (isExisting) {
+      throw codedHttpError(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'ORDER_IMPORT_NOT_QUEUED',
+        'The order import was not queued; retry',
+        { connectionId }
+      );
+    }
+    this.logger.log(
+      `Started order import ${runId} for connection ${connectionId} (direction: ${request.direction}, from: ${from ?? '-'}, to: ${to ?? '-'})`
+    );
+    return { runId };
   }
 
   async testConnection(connectionId: string): Promise<ConnectionTestResult> {
@@ -775,8 +1514,11 @@ export class ConnectionService implements IConnectionService {
     });
     const tester = this.connectionTesterRegistry.get(metadata.adapterKey);
     if (!tester) {
-      throw new BadRequestException(
-        `Connection testing is not supported for adapter ${metadata.adapterKey}`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CONNECTION_TEST_UNSUPPORTED',
+        `Connection testing is not supported for adapter ${metadata.adapterKey}`,
+        { adapterKey: metadata.adapterKey }
       );
     }
     this.logger.log(`Testing connection ${connectionId} (adapter: ${metadata.adapterKey})`);
@@ -788,8 +1530,46 @@ export class ConnectionService implements IConnectionService {
     return result;
   }
 
+  /**
+   * Persist the operator's start choice as a one-shot intent cursor, consumed by
+   * the connection's first order poll (#4228). Deliberately not best-effort: the
+   * connection exists and would start "from now", which is not what was asked, so
+   * the operator is told instead of being left to find out from the order list.
+   */
+  private async storeOrderSyncStart(connection: Connection, start: OrderSyncStart): Promise<void> {
+    try {
+      await this.syncCursors.advanceCursor(
+        connection.id,
+        ORDER_SYNC_START_CURSOR_KEY,
+        serializeOrderSyncStart(start)
+      );
+    } catch (error) {
+      this.logger.error(
+        `Could not store the order sync start for connection ${connection.id}: ${(error as Error).message}`
+      );
+      throw codedHttpError(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        'ORDER_SYNC_START_NOT_SAVED',
+        `The order sync start of connection ${connection.id} could not be saved, so its order sync start was not changed`,
+        { connectionId: connection.id }
+      );
+    }
+  }
+
+  private async storeOrderSyncStartForNewOrderSource(
+    connection: Connection,
+    start: OrderSyncStart | undefined
+  ): Promise<void> {
+    const hasIntent =
+      (await this.syncCursors.getCursor(connection.id, ORDER_SYNC_START_CURSOR_KEY)) !== null;
+    if (hasIntent || (await this.syncCursors.hasOrderFeedCursor(connection.id))) {
+      return;
+    }
+    await this.storeOrderSyncStart(connection, start ?? { mode: 'now' });
+  }
+
   async create(payload: ConnectionCreateInput): Promise<Connection> {
-    const { credentials, credentialsRef, ...rest } = payload;
+    const { credentials, credentialsRef, orderSyncStart, ...rest } = payload;
 
     // Supplying BOTH is contradictory input at every setting, including for a
     // credential-less adapter (#2405): the `if (credentials)` branch below
@@ -799,16 +1579,16 @@ export class ConnectionService implements IConnectionService {
     // db-backed branch. So this stays unconditional and stays here, above the
     // adapter lookup — it needs no manifest to be wrong.
     if (credentials && credentialsRef) {
-      throw new BadRequestException(
-        'Exactly one of `credentials` or `credentialsRef` must be provided'
-      );
+      throw credentialsInputAmbiguous();
     }
     // Likewise unconditional: a raw key written into the column reads as
     // "not db-backed" to `connection-response.dto.ts` and `updateCredentials`,
     // yet is TRUTHY to every plugin factory's `if (connection.credentialsRef)`
     // guard, which would then resolve it from the environment.
     if (credentialsRef && !credentialsRef.startsWith('db:')) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CREDENTIALS_REF_INVALID',
         'credentialsRef must start with "db:" — raw keys are no longer accepted'
       );
     }
@@ -831,9 +1611,7 @@ export class ConnectionService implements IConnectionService {
       // check by name would be unavailable to any third-party OMS adapter,
       // which is precisely the design ADR-055 rejects.
       if (resolveRequiresCredentials(metadata) && !credentials && !credentialsRef) {
-        throw new BadRequestException(
-          'Exactly one of `credentials` or `credentialsRef` must be provided'
-        );
+        throw credentialsInputAmbiguous();
       }
 
       // Stock write-back defaults OFF for inventory-master-capable shops
@@ -863,17 +1641,32 @@ export class ConnectionService implements IConnectionService {
           : metadata.supportedCapabilities.includes('InventoryMaster')
             ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
             : [...metadata.supportedCapabilities];
-      const enabledCapabilities = rest.enabledCapabilities ?? defaultCapabilities;
+      // #3985: the publisher role is opt-in on a shop that is also a master,
+      // so the omitted-capabilities default never trips the exclusion.
+      const nonConflictingDefault =
+        defaultCapabilities.includes('ProductMaster') &&
+        defaultCapabilities.includes('ProductPublisher')
+          ? defaultCapabilities.filter((c) => c !== 'ProductPublisher')
+          : defaultCapabilities;
+      const enabledCapabilities = rest.enabledCapabilities ?? nonConflictingDefault;
 
       const invalid = enabledCapabilities.filter(
         (c) => !metadata.supportedCapabilities.includes(c)
       );
       if (invalid.length > 0) {
-        throw new BadRequestException(
-          `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`
-        );
+        throw capabilitiesUnsupported(metadata.adapterKey, invalid);
       }
       this.assertNoWriteBackAuthorityConflict(enabledCapabilities);
+      this.assertNotMasterAndPublisher(enabledCapabilities, null, metadata.supportedCapabilities);
+      // #4228 - before credentials are persisted, like the config checks below.
+      if (orderSyncStart !== undefined) {
+        this.assertOrderSyncStart(
+          orderSyncStart,
+          metadata.orderSyncStartModes,
+          enabledCapabilities,
+          metadata.orderWindowImport === true
+        );
+      }
 
       // #509 / #587 — validate the platform-specific config shape on create
       // (was platformType-keyed static record; now adapterKey-keyed registry
@@ -884,8 +1677,15 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        this.validateBuyerDataRetentionConfig(rest.config);
         this.validateFulfilmentOwnedByDestinationConfig(rest.config);
+        this.validatePaymentWritebackConfig(rest.config);
+        this.validateCatalogueModeConfig(rest.config);
         this.validateAutoDispatchConfig(rest.config);
+        await this.validateDeliveryOnDocumentsConfig(rest.config);
+        this.validateGiftOnDocumentsConfig(rest.config);
+        this.validateBuyerEmailsConfig(rest.config, enabledCapabilities, undefined);
+        this.validateSalesDocumentBatchConfig(rest.config);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
@@ -949,6 +1749,13 @@ export class ConnectionService implements IConnectionService {
       }
 
       this.logger.log(`Connection created successfully: ${connection.id} (${connection.name})`);
+      // The intent row is also what tells the first poll this connection was
+      // created AFTER the feature: an absent row means a legacy connection that
+      // keeps reading its history. So every order-importing connection gets one,
+      // defaulting to "now".
+      if (orderSyncStart !== undefined || connection.enabledCapabilities.includes('OrderSource')) {
+        await this.storeOrderSyncStart(connection, orderSyncStart ?? { mode: 'now' });
+      }
       await this.enqueueInitialCatalogSync(connection);
       await this.enqueueInitialTaxonomySync(connection);
       return connection;
@@ -959,19 +1766,35 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
-   * Best-effort initial product catalog bootstrap for newly created connections.
+   * Best-effort initial product catalog bootstrap.
    *
-   * Enqueues a single master.product.syncAll job when the connection's adapter
-   * supports the ProductMaster capability. The idempotency key is stable per
-   * connection ID so retries / re-creates with the same ID naturally dedupe — the
+   * Enqueues a single master.product.syncAll job when the connection has the
+   * ProductMaster capability ENABLED - not merely supported by its adapter. An
+   * adapter like Shoper supports both ProductMaster and ProductPublisher, and a
+   * connection created as a publish destination only must not have the shop's
+   * catalogue pulled into OpenLinker as master data. This is the same gate the
+   * recurring scheduler applies (`requiredCapability` against
+   * `enabledCapabilities`), so the bootstrap and the cron agree on which
+   * connections are masters. The adapter-supported check stays as a guard for a
+   * stored capability an upgraded adapter no longer declares.
+   *
+   * Like `enqueueInitialTaxonomySync`, NOT gated on status: a disabled
+   * connection's adapter does not resolve, so it skips on its own.
+   *
+   * The idempotency key is stable per connection ID, so this is run-once: a
+   * second call (a retry, a re-enable, ProductMaster switched off and on again)
+   * collapses into the original job. That is the intended reading - the
    * recurring scheduler (OL_PRODUCT_SYNC_CRON) and the manual "Sync now" button
-   * own ongoing re-sync.
+   * own ongoing re-sync, and this only makes the FIRST sync start now rather
+   * than at the next cron tick.
    *
-   * Failures here MUST NOT fail connection creation: a user has successfully
-   * created the connection even if the bootstrap enqueue fails; the scheduler
-   * will pick it up at the next cron tick.
+   * Failures here MUST NOT fail the connection write: the connection exists even
+   * if the bootstrap enqueue fails; the scheduler picks it up at the next tick.
    */
   private async enqueueInitialCatalogSync(connection: Connection): Promise<void> {
+    if (!connection.enabledCapabilities.includes('ProductMaster')) {
+      return;
+    }
     try {
       const { metadata } = await this.integrationsService.getAdapter(connection.id);
       if (!metadata.supportedCapabilities.includes('ProductMaster')) {
@@ -1084,18 +1907,20 @@ export class ConnectionService implements IConnectionService {
       this.logger.debug(
         `Connection retrieved: ${connection.id} (${connection.name}, status: ${connection.status})`
       );
+      this.warnOnLegacyMasterPublisher(connection);
       return connection;
     } catch (error) {
       if (error instanceof ConnectionNotFoundException) {
         this.logger.warn(`Connection not found: ${connectionId}`);
-        throw new NotFoundException(error.message);
+        throw connectionNotFound(connectionId, error.message);
       }
       this.logger.error(`Failed to get connection: ${connectionId}`, error);
       throw error;
     }
   }
 
-  async update(connectionId: string, patch: ConnectionUpdate): Promise<Connection> {
+  async update(connectionId: string, input: ConnectionUpdateInput): Promise<Connection> {
+    const { orderSyncStart, ...patch } = input;
     try {
       this.logger.log(
         `Updating connection: ${connectionId}${patch.status ? ` (status: ${patch.status})` : ''}`
@@ -1109,19 +1934,27 @@ export class ConnectionService implements IConnectionService {
       // restore(), so it cannot be re-enabled around the step that makes an
       // operator re-enter its credentials.
       if (patch.status === 'archived') {
-        throw new BadRequestException(
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'CONNECTION_ARCHIVE_NOT_BY_STATUS',
           'A connection is archived with PATCH /connections/:id/archive, not by setting its status'
         );
       }
       if (existing.status === 'archived' && patch.status !== undefined) {
-        throw new ConflictException(
-          `Connection ${connectionId} is archived; restore it with PATCH /connections/:id/restore first`
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'CONNECTION_ARCHIVED',
+          `Connection ${connectionId} is archived; restore it with PATCH /connections/:id/restore first`,
+          { connectionId }
         );
       }
 
       if (patch.adapterKey !== undefined && patch.adapterKey !== existing.adapterKey) {
-        throw new BadRequestException(
-          `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'CONNECTION_ADAPTER_KEY_IMMUTABLE',
+          `adapterKey is immutable after connection creation (current: ${existing.adapterKey ?? 'derived from platformType'})`,
+          { current: existing.adapterKey ?? '' }
         );
       }
 
@@ -1133,7 +1966,9 @@ export class ConnectionService implements IConnectionService {
       // consume the result, so a name-only patch (`patch = { name }`) stays
       // free of an extra call.
       const needsAdapterMetadata =
-        patch.enabledCapabilities !== undefined || patch.config !== undefined;
+        patch.enabledCapabilities !== undefined ||
+        patch.config !== undefined ||
+        orderSyncStart !== undefined;
       const metadata = needsAdapterMetadata
         ? await this.integrationsService.resolveAdapterMetadata({
             platformType: existing.platformType,
@@ -1146,11 +1981,23 @@ export class ConnectionService implements IConnectionService {
           (c) => !metadata.supportedCapabilities.includes(c)
         );
         if (invalid.length > 0) {
-          throw new BadRequestException(
-            `Capabilities not supported by adapter ${metadata.adapterKey}: ${invalid.join(', ')}`
-          );
+          throw capabilitiesUnsupported(metadata.adapterKey, invalid);
         }
         this.assertNoWriteBackAuthorityConflict(patch.enabledCapabilities);
+        this.assertNotMasterAndPublisher(
+          patch.enabledCapabilities,
+          existing.enabledCapabilities,
+          metadata.supportedCapabilities
+        );
+      }
+
+      if (orderSyncStart !== undefined && metadata) {
+        this.assertOrderSyncStart(
+          orderSyncStart,
+          metadata.orderSyncStartModes,
+          patch.enabledCapabilities ?? existing.enabledCapabilities,
+          metadata.orderWindowImport === true
+        );
       }
 
       // #437 / #587 — close the DTO bypass on `Connection.config`. The
@@ -1164,10 +2011,21 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        this.validateBuyerDataRetentionConfig(patch.config);
         this.validateFulfilmentOwnedByDestinationConfig(patch.config);
+        this.validatePaymentWritebackConfig(patch.config);
+        this.validateCatalogueModeConfig(patch.config);
         this.validateAutoDispatchConfig(patch.config);
+        await this.validateDeliveryOnDocumentsConfig(patch.config);
+        this.validateGiftOnDocumentsConfig(patch.config);
+        this.validateBuyerEmailsConfig(
+          patch.config,
+          patch.enabledCapabilities ?? existing.enabledCapabilities,
+          existing.config
+        );
+        this.validateSalesDocumentBatchConfig(patch.config);
         await this.validateStockLocationOverride(patch.config, existing.config);
-        await this.validateConfigShape(metadata.adapterKey, patch.config);
+        await this.validateConfigShape(metadata.adapterKey, patch.config, existing.config);
         // #2407 — inside this branch, which is correct ONLY because
         // `ConnectionRepository.update` REPLACES `config` wholesale rather than
         // merging it (connection.repository.ts:109-111): a patch omitting
@@ -1187,15 +2045,39 @@ export class ConnectionService implements IConnectionService {
       // (its adapter cannot resolve), so enabling it is the moment its taxonomy
       // first becomes fetchable. Tested against the PERSISTED status, not
       // `patch.status`: a patch omitting status must not read as a transition.
-      if (existing.status !== 'active' && connection.status === 'active') {
+      const becameActive = existing.status !== 'active' && connection.status === 'active';
+      if (becameActive) {
         await this.enqueueInitialTaxonomySync(connection);
+      }
+
+      // The catalogue bootstrap follows the same transition rule, plus the one
+      // it has that taxonomy does not: ProductMaster switched on for a
+      // connection created without it (create skipped the bootstrap then).
+      // Compared against the PERSISTED capabilities, so a patch that does not
+      // touch them is never a transition.
+      const productMasterEnabled =
+        !existing.enabledCapabilities.includes('ProductMaster') &&
+        connection.enabledCapabilities.includes('ProductMaster');
+      if (becameActive || productMasterEnabled) {
+        await this.enqueueInitialCatalogSync(connection);
+      }
+
+      // #4228 - OrderSource switched on for a connection created without it:
+      // create wrote no intent then, and with none the first poll reads the whole
+      // history (the legacy reading). Compared against the PERSISTED capabilities,
+      // and never over an existing feed position, marker or intent.
+      const orderSourceEnabled =
+        !existing.enabledCapabilities.includes('OrderSource') &&
+        connection.enabledCapabilities.includes('OrderSource');
+      if (orderSourceEnabled) {
+        await this.storeOrderSyncStartForNewOrderSource(connection, orderSyncStart);
       }
 
       return connection;
     } catch (error) {
       if (error instanceof ConnectionNotFoundException) {
         this.logger.warn(`Connection not found for update: ${connectionId}`);
-        throw new NotFoundException(error.message);
+        throw connectionNotFound(connectionId, error.message);
       }
       this.logger.error(`Failed to update connection: ${connectionId}`, error);
       throw error;
@@ -1210,8 +2092,11 @@ export class ConnectionService implements IConnectionService {
     // #3657 — archiving deleted the credential on purpose; storing a new one
     // on a row that is still archived would re-arm a connection nobody can see.
     if (connection.status === 'archived') {
-      throw new ConflictException(
-        `Connection ${connectionId} is archived; restore it before entering credentials`
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_ARCHIVED',
+        `Connection ${connectionId} is archived; restore it before entering credentials`,
+        { connectionId }
       );
     }
     if (connection.credentialsRef === '') {
@@ -1219,9 +2104,12 @@ export class ConnectionService implements IConnectionService {
       return;
     }
     if (!connection.credentialsRef.startsWith('db:')) {
-      throw new BadRequestException(
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CREDENTIALS_ROTATION_UNSUPPORTED',
         `Connection ${connectionId} does not have a db-backed credentials reference ` +
-          `(current: ${connection.credentialsRef}); in-place credential rotation is not supported`
+          `(current: ${connection.credentialsRef}); in-place credential rotation is not supported`,
+        { connectionId }
       );
     }
     const metadata = await this.integrationsService.resolveAdapterMetadata({
@@ -1258,8 +2146,11 @@ export class ConnectionService implements IConnectionService {
       adapterKey: connection.adapterKey,
     });
     if (!resolveRequiresCredentials(metadata)) {
-      throw new BadRequestException(
-        `Connection ${connection.id} uses an adapter that takes no credentials`
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'CREDENTIALS_NOT_ACCEPTED',
+        `Connection ${connection.id} uses an adapter that takes no credentials`,
+        { connectionId: connection.id }
       );
     }
     const resolvedCredentials = await this.rewriteCredentials(metadata.adapterKey, credentials);
@@ -1287,8 +2178,11 @@ export class ConnectionService implements IConnectionService {
       return existing;
     }
     if (existing.status !== 'disabled') {
-      throw new ConflictException(
-        `Connection ${connectionId} is ${existing.status}; disable it before archiving`
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_NOT_DISABLED',
+        `Connection ${connectionId} is ${existing.status}; disable it before archiving`,
+        { status: existing.status }
       );
     }
     // Declared by the adapter, never inferred from platformType (ADR-055):
@@ -1299,8 +2193,11 @@ export class ConnectionService implements IConnectionService {
       adapterKey: existing.adapterKey,
     });
     if (!resolveArchivable(metadata)) {
-      throw new ConflictException(
-        `Connection ${connectionId} cannot be archived (${metadata.adapterKey}); keep it disabled instead`
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_NOT_ARCHIVABLE',
+        `Connection ${connectionId} cannot be archived (${metadata.adapterKey}); keep it disabled instead`,
+        { adapterKey: metadata.adapterKey }
       );
     }
     // The pairing is a JSONB value with no FK, so only this service can refuse
@@ -1329,8 +2226,28 @@ export class ConnectionService implements IConnectionService {
       credentialsRef: '',
     });
     this.httpTransportFactory.evict(connectionId);
+    await this.runArchiveHook(metadata.adapterKey, connection);
     this.logger.log(`Connection archived: ${connection.id} (${connection.name})`);
     return connection;
+  }
+
+  /**
+   * Plugin-held state derived from the deleted credential (a minted token in
+   * the shared cache, #3974) is the plugin's to drop. Best effort: the archive
+   * has already happened, so a failing hook is logged, never surfaced.
+   */
+  private async runArchiveHook(adapterKey: string, connection: Connection): Promise<void> {
+    const hook = this.connectionArchiveHookRegistry.get(adapterKey);
+    if (!hook) return;
+    try {
+      await hook.onArchived(connection);
+    } catch (error) {
+      this.logger.warn(
+        `Archive cleanup for connection ${connection.id} (${adapterKey}) failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 
   /**
@@ -1352,8 +2269,11 @@ export class ConnectionService implements IConnectionService {
   async restore(connectionId: string): Promise<Connection> {
     const existing = await this.get(connectionId);
     if (existing.status !== 'archived') {
-      throw new ConflictException(
-        `Connection ${connectionId} is ${existing.status}; only an archived connection can be restored`
+      throw codedHttpError(
+        HttpStatus.CONFLICT,
+        'CONNECTION_NOT_ARCHIVED',
+        `Connection ${connectionId} is ${existing.status}; only an archived connection can be restored`,
+        { status: existing.status }
       );
     }
     const connection = await this.connectionPort.update(connectionId, { status: 'disabled' });
@@ -1375,7 +2295,7 @@ export class ConnectionService implements IConnectionService {
     } catch (error) {
       if (error instanceof ConnectionNotFoundException) {
         this.logger.warn(`Connection not found for disable: ${connectionId}`);
-        throw new NotFoundException(error.message);
+        throw connectionNotFound(connectionId, error.message);
       }
       this.logger.error(`Failed to disable connection: ${connectionId}`, error);
       throw error;

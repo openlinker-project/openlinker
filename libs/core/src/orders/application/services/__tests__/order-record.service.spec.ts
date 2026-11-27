@@ -15,6 +15,8 @@ import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-li
 import type { OrderSyncStatus } from '../../../domain/entities/order-record.entity';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { Order } from '../../../domain/types/order.types';
+import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
+import { NoBuyerNoteException } from '../../../domain/exceptions/no-buyer-note.exception';
 import type { IncomingOrder } from '../../../domain/types/incoming-order.types';
 import type { IOrderFxStampService } from '../../interfaces/order-fx-stamp.service.interface';
 import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
@@ -51,10 +53,12 @@ describe('OrderRecordService', () => {
   beforeEach(async () => {
     process.env.OL_PII_HASH_SALT = 'test-salt-for-hashing';
     repository = {
+      isBuyerDataRedacted: jest.fn().mockResolvedValue(false),
       findById: jest.fn(),
       findByIds: jest.fn(),
       findEarliestOrderDateByConnection: jest.fn(),
       countOrdersByRoutingCountrySince: jest.fn(),
+      getDeliveryCountryFacts: jest.fn(),
       listObservedSourcePaymentMethods: jest.fn(),
       upsert: jest.fn(),
       upsertWithLineItems: jest.fn(),
@@ -73,6 +77,8 @@ describe('OrderRecordService', () => {
       findCurrencyMismatchOrderRefsAfter: jest.fn(),
       clearFxStampForRestatement: jest.fn(),
       countRemainingCurrencyMismatch: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
+      countEarlierOrdersForCustomer: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<OrderRecordRepositoryPort>;
 
     // Defaults to `deferred`, which is the outcome that owes NO refresh - so
@@ -278,6 +284,47 @@ describe('OrderRecordService', () => {
       expect(callArg.recordStatus).toBe('ready');
     });
 
+    it('should keep a re-imported order redacted once its buyer data was removed (#4178)', async () => {
+      const order = createMockOrder();
+      repository.isBuyerDataRedacted.mockResolvedValueOnce(true);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      expect(repository.isBuyerDataRedacted).toHaveBeenCalledWith(order.id);
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.orderSnapshot.shippingAddress).toEqual(
+        expect.objectContaining({ address1: '[REDACTED]', city: '[REDACTED]' }),
+      );
+      expect(callArg.orderSnapshot).not.toHaveProperty('customerEmail');
+    });
+
+    it('should keep cost out of the order snapshot and forward the candidates to the line derivation (#3588)', async () => {
+      const order = createMockOrder();
+      order.items[0].variantId = 'ol_variant_1';
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(
+        order,
+        'source-connection-123',
+        'event-456',
+        null,
+        new Map([['ol_variant_1', { unitCostNet: '4.5000', currency: 'PLN' }]])
+      );
+
+      const [callArg, lineItems] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      for (const item of snapshotItems) {
+        expect(Object.keys(item).filter((k) => /cost/i.test(k))).toEqual([]);
+      }
+      expect(lineItems[0].cost).toEqual({
+        costState: 'recorded',
+        unitCostNet: '4.5000',
+        unitCostCurrency: 'PLN',
+      });
+    });
+
     it('should serialise OrderItem.name and imageUrl into the snapshot when present', async () => {
       const order = createMockOrder();
       order.items[0].name = 'Widget';
@@ -361,6 +408,35 @@ describe('OrderRecordService', () => {
       expect('unitPriceGross' in snapshotItems[0]).toBe(false);
     });
 
+    it('serialises gift and packQuantity into the snapshot, and keeps them absent otherwise (#3929)', async () => {
+      const order = createMockOrder();
+      order.items[0].gift = { source: 'channel', ruleRef: 'promo-1' };
+      order.items[0].packQuantity = 3;
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const snapshotItems = (
+        repository.upsertWithLineItems.mock.calls[0][0].orderSnapshot as {
+          items: Array<Record<string, unknown>>;
+        }
+      ).items;
+      expect(snapshotItems[0]).toMatchObject({
+        gift: { source: 'channel', ruleRef: 'promo-1' },
+        packQuantity: 3,
+      });
+
+      const plain = createMockOrder();
+      await service.persistOrder(plain, 'source-connection-123', 'event-457');
+      const plainItems = (
+        repository.upsertWithLineItems.mock.calls[1][0].orderSnapshot as {
+          items: Array<Record<string, unknown>>;
+        }
+      ).items;
+      expect('gift' in plainItems[0]).toBe(false);
+      expect('packQuantity' in plainItems[0]).toBe(false);
+    });
+
     it('keeps every tax key absent when the order line carries no rate (#2254)', async () => {
       const order = createMockOrder();
       expect(order.items[0].taxRate).toBeUndefined();
@@ -406,6 +482,22 @@ describe('OrderRecordService', () => {
 
       const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.orderSnapshot['deliverySmart']).toBe(true);
+    });
+
+    it('should serialise Order.fulfilledBySource into the snapshot only when asserted (#3636)', async () => {
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      const asserted = createMockOrder();
+      asserted.fulfilledBySource = true;
+      await service.persistOrder(asserted, 'source-connection-123', 'event-456');
+      expect(repository.upsertWithLineItems.mock.calls[0][0].orderSnapshot['fulfilledBySource']).toBe(
+        true
+      );
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-456');
+      expect(repository.upsertWithLineItems.mock.calls[1][0].orderSnapshot).not.toHaveProperty(
+        'fulfilledBySource'
+      );
     });
 
     it('should omit deliverySmart from the snapshot when the Order does not carry it (#738)', async () => {
@@ -598,6 +690,114 @@ describe('OrderRecordService', () => {
       expect(callArg.buyerTaxId).toBeNull();
     });
 
+    it('should encode the three buyer note states and write hasBuyerNote (#3538)', async () => {
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      const withText = { ...createMockOrder(), buyerNote: '  No receipt in the box  ' };
+      await service.persistOrder(withText, 'source-connection-123', 'event-1');
+      const none = { ...createMockOrder(), buyerNote: null };
+      await service.persistOrder(none, 'source-connection-123', 'event-2');
+      const unknown = createMockOrder();
+      await service.persistOrder(unknown, 'source-connection-123', 'event-3');
+
+      const [textRecord, noneRecord, unknownRecord] = repository.upsertWithLineItems.mock.calls.map(
+        ([record]) => record
+      );
+      expect(textRecord.buyerNote).toBe('No receipt in the box');
+      expect(textRecord.hasBuyerNote).toBe(true);
+      expect(noneRecord.buyerNote).toBe('');
+      expect(noneRecord.hasBuyerNote).toBe(false);
+      expect(unknownRecord.buyerNote).toBeNull();
+      expect(unknownRecord.hasBuyerNote).toBe(false);
+      expect(unknownRecord.buyerNoteState).toBeUndefined();
+    });
+
+    it('should never put the buyer note text into the snapshot (#3538)', async () => {
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(
+        { ...createMockOrder(), buyerNote: 'call 123 456 789' },
+        'source-connection-123',
+        'event-1'
+      );
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(JSON.stringify(record.orderSnapshot)).not.toContain('123 456 789');
+    });
+
+    it('should denormalize the upper-cased shipping and billing country (#3538)', async () => {
+      const order = createMockOrder();
+      order.shippingAddress = { ...order.shippingAddress!, country: ' pl ' };
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-1');
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.shippingCountry).toBe('PL');
+      expect(record.billingCountry).toBe('US');
+    });
+
+    it('should leave a country unknown when its address is absent (#3538)', async () => {
+      const order = createMockOrder();
+      delete order.billingAddress;
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-1');
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.billingCountry).toBeNull();
+    });
+
+    it('should count the earlier orders of the resolved customer (#3538)', async () => {
+      repository.countEarlierOrdersForCustomer.mockResolvedValue(3);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-1');
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.buyerOrderCount).toBe(3);
+      expect(repository.countEarlierOrdersForCustomer).toHaveBeenCalledWith(
+        'customer-456',
+        'order-123',
+        expect.any(Date)
+      );
+    });
+
+    it('should count against the stored first-seen instant when the source has no placedAt (B-7)', async () => {
+      const firstSeen = new Date('2026-01-01T00:00:00.000Z');
+      repository.findById.mockResolvedValue({ createdAt: firstSeen } as OrderRecord);
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-1');
+
+      expect(repository.countEarlierOrdersForCustomer).toHaveBeenCalledWith(
+        'customer-456',
+        'order-123',
+        firstSeen
+      );
+    });
+
+    it('should leave the order count unknown for an order with no customer (#3538)', async () => {
+      const order = { ...createMockOrder(), customerId: undefined };
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-1');
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.buyerOrderCount).toBeNull();
+      expect(repository.countEarlierOrdersForCustomer).not.toHaveBeenCalled();
+    });
+
+    it('should keep the order when the earlier-order count fails (#3538)', async () => {
+      repository.countEarlierOrdersForCustomer.mockRejectedValue(new Error('db down'));
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(createMockOrder(), 'source-connection-123', 'event-1');
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.buyerOrderCount).toBeNull();
+    });
+
     it('should stamp the shipping-address hash from the un-redacted address (#2395)', async () => {
       const order = createMockOrder();
       repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
@@ -766,6 +966,8 @@ describe('OrderRecordService', () => {
             taxRate: null,
             taxSource: null,
             taxRateReadAt: null,
+            // #3588 (D27) - no candidate was supplied, so the line is `not-recorded`, never zero.
+            cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
           },
         ]);
       });
@@ -796,6 +998,21 @@ describe('OrderRecordService', () => {
       const [callArg] = repository.upsertWithLineItems.mock.calls[0];
       expect(callArg.buyerTaxId).toBeNull();
       expect(callArg.orderSnapshot.billingAddress).not.toHaveProperty('taxId');
+    });
+
+    it('should not store the buyer note text but still write hasBuyerNote and the countries (#3538)', async () => {
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(
+        { ...createMockOrder(), buyerNote: 'call me on 123 456 789' },
+        'source-connection-123',
+        'event-456'
+      );
+
+      const [record] = repository.upsertWithLineItems.mock.calls[0];
+      expect(record.buyerNote).toBeNull();
+      expect(record.hasBuyerNote).toBe(true);
+      expect(record.shippingCountry).toBe('US');
     });
 
     it('should still stamp the shipping-address hash when PII storage is disabled (#2395)', async () => {
@@ -968,6 +1185,7 @@ describe('OrderRecordService', () => {
       order.status = 'cancelled';
       const refetched = { cancelledAt: new Date() } as unknown as OrderRecord;
       repository.upsertWithLineItems.mockResolvedValue({ cancelledAt: null } as unknown as OrderRecord);
+      repository.markCancelled.mockResolvedValue(true);
       repository.findById.mockResolvedValue(refetched);
 
       const result = await service.persistOrder(order, 'source-connection-123', 'event-456');
@@ -975,9 +1193,24 @@ describe('OrderRecordService', () => {
       expect(result).toBe(refetched);
     });
 
+    it('re-reads the record when markCancelled reports no transition (already stamped), because upsert never carries cancelledAt', async () => {
+      const order = createMockOrder();
+      order.status = 'cancelled';
+      const saved = { cancelledAt: null } as unknown as OrderRecord;
+      const stamped = { cancelledAt: new Date('2026-08-01T00:00:00Z') } as unknown as OrderRecord;
+      repository.upsertWithLineItems.mockResolvedValue(saved);
+      repository.markCancelled.mockResolvedValue(false);
+      repository.findById.mockResolvedValue(stamped);
+
+      const result = await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      expect(result).toBe(stamped);
+    });
+
     it('does not call markCancelled or re-fetch for a non-cancelled order', async () => {
       const order = createMockOrder();
       order.status = 'pending';
+      order.placedAt = new Date('2026-01-01');
       const saved = {} as OrderRecord;
       repository.upsertWithLineItems.mockResolvedValue(saved);
 
@@ -1180,6 +1413,26 @@ describe('OrderRecordService', () => {
 
       const callArg = repository.upsert.mock.calls[0][0];
       expect(callArg.orderSnapshot['deliverySmart']).toBe(false);
+    });
+
+    it('should serialise IncomingOrder.fulfilledBySource into the awaiting-mapping snapshot only when asserted (#3636)', async () => {
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+
+      const asserted = createMockIncomingOrder();
+      asserted.fulfilledBySource = true;
+      await service.persistIncomingSnapshot(asserted, 'ol_order_abc', null, 'conn-123', null);
+      expect(repository.upsert.mock.calls[0][0].orderSnapshot['fulfilledBySource']).toBe(true);
+
+      await service.persistIncomingSnapshot(
+        createMockIncomingOrder(),
+        'ol_order_abc',
+        null,
+        'conn-123',
+        null
+      );
+      expect(repository.upsert.mock.calls[1][0].orderSnapshot).not.toHaveProperty(
+        'fulfilledBySource'
+      );
     });
 
     it('should omit deliverySmart from the snapshot when IncomingOrder does not carry it (#738)', async () => {
@@ -1551,6 +1804,21 @@ describe('OrderRecordService', () => {
 
       expect(result).toBe(records);
       expect(repository.findByIds).toHaveBeenCalledWith(['order-123', 'order-456']);
+    });
+  });
+
+  describe('getDeliveryCountryFacts (#3907)', () => {
+    it('should delegate to the repository with the connection and window when called', async () => {
+      const facts = [
+        { country: 'PL', orders: 2, ratesSeen: ['23'], currency: 'PLN', example: null },
+      ];
+      repository.getDeliveryCountryFacts.mockResolvedValue(facts);
+      const since = new Date('2026-07-31T10:00:00.000Z');
+
+      const result = await service.getDeliveryCountryFacts('conn-1', since);
+
+      expect(result).toBe(facts);
+      expect(repository.getDeliveryCountryFacts).toHaveBeenCalledWith('conn-1', since);
     });
   });
 
@@ -2086,6 +2354,48 @@ describe('OrderRecordService', () => {
         pagination
       );
       expect(result).toEqual({ items: [], total: 0 });
+    });
+  });
+
+  describe('markBuyerNoteRead (#3538)', () => {
+    it('should stamp the actor and return the re-read record', async () => {
+      const record = { internalOrderId: 'order-1', hasBuyerNote: true } as OrderRecord;
+      repository.markBuyerNoteRead.mockResolvedValue(true);
+      repository.findById.mockResolvedValue(record);
+
+      const result = await service.markBuyerNoteRead('order-1', 'user-1');
+
+      expect(repository.markBuyerNoteRead).toHaveBeenCalledWith('order-1', expect.any(Date), 'user-1');
+      expect(result).toBe(record);
+    });
+
+    it('should be idempotent: a replay returns the existing record without error', async () => {
+      const record = { internalOrderId: 'order-1', hasBuyerNote: true } as OrderRecord;
+      repository.markBuyerNoteRead.mockResolvedValue(false);
+      repository.findById.mockResolvedValue(record);
+
+      await expect(service.markBuyerNoteRead('order-1', 'user-2')).resolves.toBe(record);
+    });
+
+    it('should throw when the order does not exist', async () => {
+      repository.markBuyerNoteRead.mockResolvedValue(false);
+      repository.findById.mockResolvedValue(null);
+
+      await expect(service.markBuyerNoteRead('missing', 'user-1')).rejects.toThrow(
+        OrderRecordNotFoundException
+      );
+    });
+
+    it('should refuse when the order carries no buyer note and write nothing (B-8)', async () => {
+      repository.findById.mockResolvedValue({
+        internalOrderId: 'order-1',
+        hasBuyerNote: false,
+      } as OrderRecord);
+
+      await expect(service.markBuyerNoteRead('order-1', 'user-1')).rejects.toThrow(
+        NoBuyerNoteException
+      );
+      expect(repository.markBuyerNoteRead).not.toHaveBeenCalled();
     });
   });
 });

@@ -20,7 +20,7 @@
  * @module plugins/ksef/components
  */
 import { type ReactElement, useRef, useState } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate, renderRich, useFormat } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceCorrectionFlowProps } from '../../../shared/plugins/plugin.types';
@@ -30,7 +30,12 @@ import {
   useInvoiceContentQuery,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
+  CorrectionReasonField,
+  useCorrectionReason,
+  useWarningAcknowledgement,
 } from '../../../features/invoicing';
+import { useKsefMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface LineRow {
   originalLineNumber: string;
@@ -74,9 +79,13 @@ export function KsefInvoiceCorrectionFlow({
   onCorrectionIssued,
   suggestedLines,
 }: InvoiceCorrectionFlowProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useKsefMessages().ksefInvoiceCorrectionFlow;
+  const format = useFormat();
+  const strong = { strong: (text: string) => <strong>{text}</strong> };
+  const strongMono = { strong: (text: string) => <strong className="mono-text">{text}</strong> };
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  const acknowledgement = useWarningAcknowledgement(mutation.isPending);
   // Same read `CorrectionLineGrid` uses internally — resolved here too so this
   // component can decide WHICH table to render (react-query dedupes the
   // fetch by query key, so this costs no extra request).
@@ -87,7 +96,7 @@ export function KsefInvoiceCorrectionFlow({
     `ksef-corr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
   );
 
-  const [reason, setReason] = useState('');
+  const reasonState = useCorrectionReason();
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
   const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
@@ -112,10 +121,7 @@ export function KsefInvoiceCorrectionFlow({
       // there is nothing to parse, only a "did anything change" check.
       if (gridLines.length === 0) {
         setLinesError(
-          t(
-            'ksef.correction.gridLinesRequired',
-            'Change at least one line’s quantity or price before issuing a correction.',
-          ),
+          copy.gridLinesRequired,
         );
         return;
       }
@@ -124,56 +130,60 @@ export function KsefInvoiceCorrectionFlow({
       const parsed = parseLineRows(lines);
       if (parsed === null) {
         setLinesError(
-          t(
-            'ksef.correction.lineDeltaRequired',
-            'Each line must specify a new quantity and/or a new price.',
-          ),
+          copy.lineDeltaRequired,
         );
         return;
       }
       if (parsed.length === 0) {
         setLinesError(
-          t(
-            'ksef.correction.linesRequired',
-            'At least one line with a line number is required.',
-          ),
+          copy.linesRequired,
         );
         return;
       }
       parsedLines = parsed;
     }
     setLinesError(null);
-    mutation.mutate(
-      {
-        invoiceId: invoice.id,
-        input: {
-          reason: reason.trim() !== '' ? reason.trim() : undefined,
-          lines: parsedLines,
-          idempotencyKey: idempotencyKeyRef.current,
+    // DEF-32: a missing reason warns once, then the operator decides.
+    if (!reasonState.confirmBeforeSubmit()) {
+      return;
+    }
+    const send = (acknowledgeWarnings: string[]): void => {
+      mutation.mutate(
+        {
+          invoiceId: invoice.id,
+          input: {
+            ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+            reason: reasonState.submittedReason,
+            lines: parsedLines,
+            idempotencyKey: idempotencyKeyRef.current,
+          },
         },
-      },
-      {
-        onSuccess: (correctionInvoice) => {
-          showToast({
-            tone: 'success',
-            title: t('ksef.correction.issued', 'KOR issued'),
-            description: t(
-              'ksef.correction.issuedBody',
-              'The correcting document was submitted to KSeF.',
-            ),
-          });
-          onCorrectionIssued(correctionInvoice.id);
-          onClose();
+        {
+          onSuccess: (correctionInvoice) => {
+            showToast({
+              tone: 'success',
+              title: copy.issued,
+              description: copy.issuedBody,
+            });
+            onCorrectionIssued(correctionInvoice.id);
+            onClose();
+          },
+          onError: (error) => {
+            // DEF-23/30/31: a refusal the operator may overrule asks instead of failing.
+            if (acknowledgement.offer(error, send)) {
+              return;
+            }
+            showToast({
+              tone: 'error',
+              title: copy.failed,
+              description: describeApiError(error, 'ksef'),
+            });
+          },
         },
-        onError: (error) => {
-          showToast({
-            tone: 'error',
-            title: t('ksef.correction.failed', 'KOR failed'),
-            description: error.message,
-          });
-        },
-      },
-    );
+      );
+    };
+    acknowledgement.reset();
+    send([]);
   }
 
   const isSubmitting = mutation.isPending;
@@ -182,54 +192,40 @@ export function KsefInvoiceCorrectionFlow({
     <div className="ksef-correction">
       {/* Header */}
       <div className="ksef-correction__head">
-        <h3>{t('ksef.correction.title', 'Issue KOR correction')}</h3>
+        <h3>{copy.title}</h3>
         <span className="section-card__provider">
-          {t('ksef.correction.providerTag', 'KSeF · slot')}
+          {copy.providerTag}
         </span>
       </div>
 
       {/* Original invoice reference */}
       <div className="ksef-correction__orig">
         <span>
-          {t('ksef.correction.correcting', 'Correcting')}{' '}
-          <strong>{invoice.providerInvoiceNumber ?? invoice.id}</strong>
+          {renderRich(copy.correcting, strong, {
+            reference: invoice.providerInvoiceNumber ?? invoice.id,
+          })}
         </span>
         {invoice.clearanceReference ? (
           <span>
-            {t('ksef.correction.ksefRef', 'KSeF')}{' '}
-            <strong className="mono-text">
-              {invoice.clearanceReference.slice(0, 14)}…
-            </strong>
+            {renderRich(copy.ksefRef, strongMono, {
+              reference: `${invoice.clearanceReference.slice(0, 14)}…`,
+            })}
           </span>
         ) : null}
         {invoice.issuedAt ? (
           <span>
-            {t('ksef.correction.issuedOn', 'Issued')}{' '}
-            <strong className="mono-text">
-              {invoice.issuedAt.slice(0, 10)}
-            </strong>
+            {renderRich(copy.issuedOn, strongMono, { date: format.date(invoice.issuedAt) })}
           </span>
         ) : null}
       </div>
 
       {/* Reason */}
-      <div className="field ksef-correction__reason">
-        <label htmlFor="ksef-reason">
-          {t('ksef.correction.reasonLabel', 'Reason for correction')}
-        </label>
-        <textarea
-          id="ksef-reason"
-          className="textarea"
-          placeholder={t(
-            'ksef.correction.reasonPlaceholder',
-            'e.g. Partial return of the order',
-          )}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          disabled={isSubmitting}
-          rows={3}
-        />
-      </div>
+      <CorrectionReasonField
+        state={reasonState}
+        name="ksef"
+        disabled={isSubmitting}
+        className="ksef-correction__reason"
+      />
 
       {/* Line items */}
       {linesError ? (
@@ -239,7 +235,7 @@ export function KsefInvoiceCorrectionFlow({
       ) : null}
 
       {contentQuery.isLoading ? (
-        <p className="text-muted">{t('ksef.correction.loadingLines', 'Loading invoice lines…')}</p>
+        <p className="text-muted">{copy.loadingLines}</p>
       ) : linesAreAuthoritative ? (
         <CorrectionLineGrid
           invoiceId={invoice.id}
@@ -253,14 +249,14 @@ export function KsefInvoiceCorrectionFlow({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>{t('ksef.correction.col.lp', 'Lp')}</th>
+                  <th>{copy.col.lp}</th>
                   <th className="ksef-correction__col-qty">
-                    {t('ksef.correction.col.newQty', 'New qty')}
+                    {copy.col.newQty}
                   </th>
                   <th className="ksef-correction__col-price">
-                    {t('ksef.correction.col.newPrice', 'New gross')}
+                    {copy.col.newPrice}
                   </th>
-                  <th aria-label={t('ksef.correction.col.remove', 'Remove')} />
+                  <th aria-label={copy.col.remove} />
                 </tr>
               </thead>
               <tbody>
@@ -271,7 +267,7 @@ export function KsefInvoiceCorrectionFlow({
                         invoiceId={invoice.id}
                         value={row.originalLineNumber}
                         onChange={(next) => updateLine(i, 'originalLineNumber', next)}
-                        ariaLabel={`${t('ksef.correction.lineNum', 'Line number')} ${i + 1}`}
+                        ariaLabel={interpolate(copy.lineNum, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -281,10 +277,10 @@ export function KsefInvoiceCorrectionFlow({
                         className="input input--w-qty"
                         value={row.newQuantity}
                         onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
-                        placeholder="—"
+                        placeholder={copy.emptyCell}
                         min={0}
                         step="any"
-                        aria-label={`${t('ksef.correction.newQty', 'New qty, line')} ${i + 1}`}
+                        aria-label={interpolate(copy.newQty, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -294,10 +290,10 @@ export function KsefInvoiceCorrectionFlow({
                         className="input input--w-price"
                         value={row.newUnitPriceGross}
                         onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
-                        placeholder="—"
+                        placeholder={copy.emptyCell}
                         min={0}
                         step="any"
-                        aria-label={`${t('ksef.correction.newPrice', 'New gross, line')} ${i + 1}`}
+                        aria-label={interpolate(copy.newPrice, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -306,7 +302,7 @@ export function KsefInvoiceCorrectionFlow({
                         tone="secondary"
                         onClick={() => removeLine(i)}
                         disabled={lines.length === 1 || isSubmitting}
-                        aria-label={`${t('ksef.correction.removeLine', 'Remove line')} ${i + 1}`}
+                        aria-label={interpolate(copy.removeLine, { n: i + 1 })}
                       >
                         ✕
                       </Button>
@@ -318,14 +314,11 @@ export function KsefInvoiceCorrectionFlow({
           </div>
 
           <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
-            {t('ksef.correction.addLine', '+ Add line')}
+            {copy.addLine}
           </Button>
 
           <p className="ksef-correction__note">
-            {t(
-              'ksef.correction.note',
-              'A KOR document corrects quantity and/or price per line. KSeF assigns a clearance number; OpenLinker reconciles the status automatically.',
-            )}
+            {copy.note}
           </p>
         </>
       )}
@@ -334,14 +327,15 @@ export function KsefInvoiceCorrectionFlow({
       <div className="wizard__actions">
         <span className="wizard__spacer" />
         <Button tone="secondary" onClick={onClose} disabled={isSubmitting}>
-          {t('ksef.correction.cancel', 'Cancel')}
+          {copy.cancel}
         </Button>
         <Button tone="primary" onClick={handleSubmit} disabled={isSubmitting}>
           {isSubmitting
-            ? t('ksef.correction.submitting', 'Issuing…')
-            : t('ksef.correction.submit', 'Issue KOR')}
+            ? copy.submitting
+            : copy.submit}
         </Button>
       </div>
+      {acknowledgement.dialog}
     </div>
   );
 }

@@ -29,6 +29,7 @@ function makeOrderRecord(overrides: {
   sourceConnectionId?: string;
   methodId?: string | null;
   syncedTo?: Array<{ destinationConnectionId: string; externalOrderId?: string }>;
+  cancelledAt?: Date | null;
 } = {}): OrderRecord {
   const shipping = overrides.methodId === null
     ? {}
@@ -40,6 +41,10 @@ function makeOrderRecord(overrides: {
       { destinationConnectionId: PS, status: 'synced', externalOrderId: 'ps-100' },
     ],
     orderSnapshot: shipping as Record<string, unknown>,
+    // A plain object stands in for the entity, so the ADR-011 getter the
+    // service reads is mirrored here from the same field it derives from.
+    cancelledAt: overrides.cancelledAt ?? null,
+    isCancelled: (overrides.cancelledAt ?? null) !== null,
   } as unknown as OrderRecord;
 }
 
@@ -87,15 +92,20 @@ describe('FulfillmentStatusSyncService', () => {
     resolveLinkForOrder: jest.Mock;
     listBlockingRejectionConnectionIds: jest.Mock;
     findWorkById: jest.Mock;
+    summarizeWorkForOrders: jest.Mock;
+    listBuyerNoteAcknowledgements: jest.Mock;
   };
+  let projection: { recompute: jest.Mock; announceShippedWithoutTracking: jest.Mock };
   let service: FulfillmentStatusSyncService;
 
   beforeEach(() => {
     shipments = {
       create: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
+      listConnectionIds: jest.fn(),
       findById: jest.fn(),
-      findByOrderId: jest.fn(),
+      findByOrderId: jest.fn().mockResolvedValue([]),
       findActiveByOrderId: jest.fn(),
       findByProviderShipmentId: jest.fn(),
       findBranchOneByOrderAndConnection: jest.fn().mockResolvedValue(null),
@@ -127,10 +137,14 @@ describe('FulfillmentStatusSyncService', () => {
       recordEarlyCancellationSignal: jest.fn(),
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
+      markDestinationRoutingBlock: jest.fn(),
       markFulfillmentRoutingSkip: jest.fn(),
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
+      listOrderIdsHeldForVariant: jest.fn(),
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
+      applyOrderEdit: jest.fn(),
       recordAmendment: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
       getSalesAndChannelAnalytics: jest.fn(),
@@ -140,9 +154,16 @@ describe('FulfillmentStatusSyncService', () => {
       markOmsAttention: jest.fn(),
       getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
+      getDeliveryCountryFacts: jest.fn(),
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      notifyOrderReceived: jest.fn(),
+      notifyDocumentIssued: jest.fn(),
+      notifyShippedIfPending: jest.fn(),
+      freezeLineExpansion: jest.fn(),
+      countOpenOrdersByBundleVersion: jest.fn(),
+      countOrdersForSkusSince: jest.fn(),
       listObservedSourcePaymentMethods: jest.fn(),
     };
 
@@ -173,13 +194,16 @@ describe('FulfillmentStatusSyncService', () => {
       resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
       findWorkById: jest.fn().mockResolvedValue(null),
+      summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()),
+      listBuyerNoteAcknowledgements: jest.fn().mockResolvedValue([]),
     };
+    projection = { recompute: jest.fn(), announceShippedWithoutTracking: jest.fn() };
     service = new FulfillmentStatusSyncService(
       shipments,
       orderRecords,
       routing,
       integrations,
-      { recompute: jest.fn() },
+      projection,
       relay,
       fulfillmentWorks,
     );
@@ -506,6 +530,70 @@ describe('FulfillmentStatusSyncService', () => {
     });
   });
 
+  describe('echo guard - a parcel the SOURCE reported (ADR-012 amendment)', () => {
+    const dispatched = {
+      status: FULFILLMENT_STATUS.Dispatched,
+      trackingNumber: 'SRC-TRK-1',
+      deliveredAt: null,
+    };
+
+    it('should not relay back to the source a parcel the source itself reported', async () => {
+      // The source-side read-back recorded SRC-TRK-1 on a source-observed row
+      // and relayed it here; the destination now reports it as shipped.
+      shipments.findByOrderId.mockResolvedValue([
+        makeBranchOneShipment({ id: 'ol_shipment_src', connectionId: ALLEGRO, trackingNumber: 'SRC-TRK-1' }),
+      ]);
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatched);
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      // The destination's own row is still projected - only the echo is withheld.
+      expect(result.created).toBe(1);
+      expect(shipments.findByOrderId).toHaveBeenCalledWith('ol_order_1', 'outbound');
+      expect(relay.relay).not.toHaveBeenCalled();
+    });
+
+    it('should still relay a DIFFERENT parcel than the one the source reported', async () => {
+      shipments.findByOrderId.mockResolvedValue([
+        makeBranchOneShipment({ id: 'ol_shipment_src', connectionId: ALLEGRO, trackingNumber: 'OTHER-TRK' }),
+      ]);
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatched);
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not read a source-connection row WITH a provider id as source-observed', async () => {
+      // A source_brokered label (Allegro Delivery) sits on the source connection
+      // too, but it is OL's own label, never the source's report.
+      const brokeredLabel: Shipment = {
+        ...makeBranchOneShipment({ connectionId: ALLEGRO, trackingNumber: 'SRC-TRK-1' }),
+        providerShipmentId: 'alg-1',
+      } as Shipment;
+      shipments.findByOrderId.mockResolvedValue([brokeredLabel]);
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatched);
+
+      await service.sync(PS, { limit: 100 });
+
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+    });
+
+    it('should relay as before when the lookup fails (fails open to the pre-guard behaviour)', async () => {
+      shipments.findByOrderId.mockRejectedValue(new Error('db down'));
+      orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(dispatched);
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(result.failed).toBe(0);
+      expect(relay.relay).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('#1170 — cancel relay to source', () => {
     it('relays cancelled to the source when a branch-1 row is born cancelled', async () => {
       orderRecords.findMany.mockResolvedValue({ items: [makeOrderRecord()], total: 1 });
@@ -579,6 +667,97 @@ describe('FulfillmentStatusSyncService', () => {
       const result = await service.sync(PS, { limit: 100 });
 
       expect(result).toMatchObject({ created: 1, failed: 0 });
+    });
+  });
+
+  describe('own-cancel echo suppression (ADR-017 / ADR-027)', () => {
+    const cancelledSnapshot = {
+      status: FULFILLMENT_STATUS.Cancelled,
+      trackingNumber: null,
+      deliveredAt: null,
+    };
+    const olCancelled = (): OrderRecord =>
+      makeOrderRecord({ cancelledAt: new Date('2026-05-27T09:30:00.000Z') });
+
+    it('creates no branch-1 row and relays nothing when the destination echoes an OL-recorded cancel', async () => {
+      orderRecords.findMany.mockResolvedValue({ items: [olCancelled()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(cancelledSnapshot);
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(shipments.create).not.toHaveBeenCalled();
+      expect(projection.recompute).not.toHaveBeenCalled();
+      expect(relay.relay).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ created: 0, updated: 0, skipped: 1, failed: 0 });
+    });
+
+    it('does not move an existing dispatched row into cancelled on an echoed cancel', async () => {
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({
+          status: 'dispatched',
+          dispatchedAt: new Date('2026-05-27T10:00:00.000Z'),
+        }),
+      );
+      orderRecords.findMany.mockResolvedValue({ items: [olCancelled()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue(cancelledSnapshot);
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).not.toHaveBeenCalled();
+      expect(projection.recompute).not.toHaveBeenCalled();
+      expect(relay.relay).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ updated: 0, skipped: 1, failed: 0 });
+    });
+
+    it('still applies a late tracking number alongside an echoed cancel, without the cancel', async () => {
+      shipments.findBranchOneByOrderAndConnection.mockResolvedValue(
+        makeBranchOneShipment({
+          status: 'dispatched',
+          dispatchedAt: new Date('2026-05-27T10:00:00.000Z'),
+          trackingNumber: null,
+        }),
+      );
+      orderRecords.findMany.mockResolvedValue({ items: [olCancelled()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({ ...cancelledSnapshot, trackingNumber: 'PS-TRK-9' });
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(shipments.update).toHaveBeenCalledWith('ol_shipment_1', { trackingNumber: 'PS-TRK-9' });
+      expect(projection.recompute).not.toHaveBeenCalled();
+      expect(relay.relay).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ updated: 1, skipped: 0 });
+    });
+
+    it('keeps a shop-initiated cancel (order NOT cancelled in OL) relaying as before (#1170)', async () => {
+      orderRecords.findMany.mockResolvedValue({
+        items: [makeOrderRecord({ cancelledAt: null })],
+        total: 1,
+      });
+      getFulfillmentStatus.mockResolvedValue(cancelledSnapshot);
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(shipments.create).toHaveBeenCalledTimes(1);
+      expect(relay.relay).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_1',
+        originConnectionId: PS,
+        event: { type: 'cancelled' },
+      });
+      expect(result).toMatchObject({ created: 1, skipped: 0 });
+    });
+
+    it('still projects a dispatch on an OL-cancelled order - only a cancel is an echo', async () => {
+      orderRecords.findMany.mockResolvedValue({ items: [olCancelled()], total: 1 });
+      getFulfillmentStatus.mockResolvedValue({
+        status: FULFILLMENT_STATUS.Dispatched,
+        trackingNumber: 'PS-TRK-1',
+        deliveredAt: null,
+      });
+
+      const result = await service.sync(PS, { limit: 100 });
+
+      expect(shipments.create).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({ created: 1, skipped: 0 });
     });
   });
 

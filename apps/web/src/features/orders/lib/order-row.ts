@@ -16,6 +16,14 @@
  */
 import type { ParsedOrderInvoice, PaymentStatus } from '../api/order-snapshot.schema';
 import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
+import {
+  formatPlural,
+  getLocale,
+  getMessages,
+  interpolate,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import type {
   SalesDocumentGateBlockReasonValue,
   SalesDocumentUnresolvedReasonValue,
@@ -25,13 +33,16 @@ import type {
 // shows cannot describe the same order differently.
 import { resolveSalesDocumentReasonCopy } from '../../sales-documents';
 
-/** Label + tone per payment status. Colour never carries meaning alone — the
- *  label always ships alongside (StatusBadge enforces the dot + text). */
-export const PAYMENT_BADGE_META: Record<PaymentStatus, { label: string; tone: StatusBadgeTone }> = {
-  paid: { label: 'Paid', tone: 'success' },
-  cod: { label: 'COD', tone: 'review' },
-  awaiting: { label: 'Awaiting', tone: 'warning' },
-  refunded: { label: 'Refunded', tone: 'neutral' },
+type OrdersCopy = ResolvedCopy<Messages['orders']>;
+
+/** Tone per payment status; the label is `orders.orderRow.payment[status]`.
+ *  Colour never carries meaning alone - the label always ships alongside
+ *  (StatusBadge enforces the dot + text). */
+export const PAYMENT_BADGE_TONE: Record<PaymentStatus, StatusBadgeTone> = {
+  paid: 'success',
+  cod: 'review',
+  awaiting: 'warning',
+  refunded: 'neutral',
 };
 
 /**
@@ -40,9 +51,10 @@ export const PAYMENT_BADGE_META: Record<PaymentStatus, { label: string; tone: St
  */
 export function paymentBadge(
   status: PaymentStatus | undefined,
+  copy: OrdersCopy = getMessages('orders'),
 ): { label: string; tone: StatusBadgeTone } | null {
   if (!status) return null;
-  return PAYMENT_BADGE_META[status];
+  return { label: copy.orderRow.payment[status], tone: PAYMENT_BADGE_TONE[status] };
 }
 
 /**
@@ -62,37 +74,46 @@ const CORRECTION_DOCUMENT_TYPES: ReadonlySet<string> = new Set(['corrected', 'cr
  * caller, not here. Colour is never the only signal; the label always ships
  * alongside.
  */
-export function invoiceBadge(invoice: ParsedOrderInvoice): {
+export function invoiceBadge(
+  invoice: ParsedOrderInvoice,
+  copy: OrdersCopy = getMessages('orders'),
+): {
   label: string;
   tone: StatusBadgeTone;
 } {
-  const base = invoiceBadgeBase(invoice);
+  const base = invoiceBadgeBase(invoice, copy);
   const isCorrection = invoice.documentType
     ? CORRECTION_DOCUMENT_TYPES.has(invoice.documentType)
     : false;
-  return isCorrection ? { ...base, label: `Correction · ${base.label}` } : base;
+  return isCorrection
+    ? { ...base, label: interpolate(copy.orderRow.invoice.correction, { label: base.label }) }
+    : base;
 }
 
-function invoiceBadgeBase(invoice: ParsedOrderInvoice): {
+function invoiceBadgeBase(
+  invoice: ParsedOrderInvoice,
+  copy: OrdersCopy,
+): {
   label: string;
   tone: StatusBadgeTone;
 } {
-  if (invoice.status === 'failed') return { label: 'Failed', tone: 'error' };
+  const words = copy.orderRow.invoice;
+  if (invoice.status === 'failed') return { label: words.failed, tone: 'error' };
   if (invoice.status === 'pending' || invoice.status === 'issuing') {
-    return { label: 'Issuing', tone: 'warning' };
+    return { label: words.issuing, tone: 'warning' };
   }
   // status === 'issued' — refine by clearance lifecycle.
   switch (invoice.regulatoryStatus) {
     case 'accepted':
     case 'cleared':
-      return { label: 'Cleared', tone: 'success' };
+      return { label: words.cleared, tone: 'success' };
     case 'submitted':
-      return { label: 'Submitted', tone: 'info' };
+      return { label: words.submitted, tone: 'info' };
     case 'rejected':
-      return { label: 'Rejected', tone: 'error' };
+      return { label: words.rejected, tone: 'error' };
     case 'not-applicable':
     default:
-      return { label: 'Issued', tone: 'success' };
+      return { label: words.issued, tone: 'success' };
   }
 }
 
@@ -201,11 +222,10 @@ export function invoicingBlockedBadge(
  * It takes no invoice argument at all, which is the point: an issued invoice is
  * the ordinary case here, not a reason to suppress.
  */
-export function taxRateConflictBadge(): { label: string; hint: string } {
-  return {
-    label: 'Rate conflict',
-    hint: "The invoice used the shop's rate; the channel reported a different one.",
-  };
+export function taxRateConflictBadge(
+  copy: OrdersCopy = getMessages('orders'),
+): { label: string; hint: string } {
+  return { label: copy.orderRow.taxRateConflict.label, hint: copy.orderRow.taxRateConflict.hint };
 }
 
 /**
@@ -254,12 +274,10 @@ export function unlinkedCatalogueLineCount(invoice?: ParsedOrderInvoice | null):
  */
 export function warehouseReleaseBadge(
   invoice?: ParsedOrderInvoice | null,
+  copy: OrdersCopy = getMessages('orders'),
 ): { label: string; hint: string } | null {
   if (invoice?.warehouseReleaseOutcome !== 'not-released') return null;
-  return {
-    label: 'not released from warehouse',
-    hint: 'The document was issued, but the accounting system made no warehouse release for it, so the goods are still on the books as in stock. Check the document in the accounting system and release it there.',
-  };
+  return { label: copy.orderRow.warehouseRelease.label, hint: copy.orderRow.warehouseRelease.hint };
 }
 
 /**
@@ -286,11 +304,12 @@ export function warehouseReleaseBadge(
  */
 export function unlinkedCatalogueLinesBadge(
   invoice?: ParsedOrderInvoice | null,
+  copy: OrdersCopy = getMessages('orders'),
 ): { label: string; hint: string } | null {
   const count = unlinkedCatalogueLineCount(invoice);
   if (count === 0) return null;
   return {
-    label: count === 1 ? '1 line not in catalogue' : `${String(count)} lines not in catalogue`,
-    hint: 'The document was issued, but these lines did not match a product in the accounting system, so they did not reach the warehouse and stock was not reduced. Map the product, then correct the stock by hand.',
+    label: formatPlural(count, copy.orderRow.unlinkedLines.label, getLocale()),
+    hint: copy.orderRow.unlinkedLines.hint,
   };
 }

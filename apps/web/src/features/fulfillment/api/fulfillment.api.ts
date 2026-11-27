@@ -24,6 +24,7 @@ import {
   parseFulfillmentTask,
   parseFulfillmentTaskPage,
   parseFulfillmentTaskShipments,
+  parseRoutingDecisionStatus,
 } from './fulfillment.schema';
 import type {
   ApplyFulfillmentTaskActionRequest,
@@ -31,6 +32,7 @@ import type {
   FulfillmentTaskFilters,
   FulfillmentTaskPage,
   FulfillmentTaskShipment,
+  RoutingDecisionStatus,
   UpdateFulfillmentWorkAssignmentRequest,
 } from './fulfillment.types';
 
@@ -72,6 +74,12 @@ export interface FulfillmentApi {
     workId: string,
     body: UpdateFulfillmentWorkAssignmentRequest
   ) => Promise<FulfillmentTask>;
+  /**
+   * An order's latest routing decision (#2731). Read only: nothing here acts on
+   * the decision (D4). Rejects with a 404 `ApiError` for an order with no
+   * decision; the query hook turns that into `null`.
+   */
+  getRoutingDecision: (orderId: string) => Promise<RoutingDecisionStatus>;
 }
 
 interface ApiRequest {
@@ -128,6 +136,12 @@ export function createFulfillmentApi(request: ApiRequest): FulfillmentApi {
         { method: 'PATCH', body: JSON.stringify(body) }
       );
       return parseFulfillmentTask(payload);
+    },
+    async getRoutingDecision(orderId): Promise<RoutingDecisionStatus> {
+      const payload = await request<unknown>(
+        `/orders/${encodeURIComponent(orderId)}/routing-decision`
+      );
+      return parseRoutingDecisionStatus(payload);
     },
   };
 }

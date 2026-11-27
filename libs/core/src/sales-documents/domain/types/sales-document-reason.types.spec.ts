@@ -12,9 +12,11 @@
 import {
   SalesDocumentAttentionReasonValues,
   SalesDocumentGateBlockReasonValues,
+  SalesDocumentUncountedUnresolvedReasonValues,
   SalesDocumentUnresolvedReasonValues,
   isSalesDocumentGateBlockReason,
   isSalesDocumentUnresolvedReason,
+  readSalesDocumentBlockParams,
 } from './sales-document-reason.types';
 
 describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
@@ -28,6 +30,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'no-configuration-for-country',
       'threshold-currency-mismatch',
       'no-connection-declares-document-kind',
+      'routed-connection-unavailable',
     ]);
   });
 
@@ -38,6 +41,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'missing-tax-rate',
       'tax-rate-conflict',
       'line-total-mismatch',
+      'bundle-split-unknown',
       'trigger-model-manual',
       'trigger-model-batched',
     ]);
@@ -65,9 +69,23 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'missing-tax-rate',
       'tax-rate-conflict',
       'line-total-mismatch',
-      'trigger-model-batched',
+      'bundle-split-unknown',
     ]);
     expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-manual');
+    // #3583: an order waiting for its scheduled batch is a workflow, not a fault.
+    expect(SalesDocumentAttentionReasonValues).not.toContain('trigger-model-batched');
+  });
+
+  it('should leave out of the install-level count only what an unconfigured install looks like', () => {
+    // A rule pointing at a connection that cannot issue is a misconfiguration
+    // with a direct remedy, and an install that never configured routing has
+    // no rule to point anywhere - so it counts, unlike the unconfigured state.
+    expect(SalesDocumentUncountedUnresolvedReasonValues).toEqual([
+      'no-connection-declares-document-kind',
+    ]);
+    expect(SalesDocumentUncountedUnresolvedReasonValues).not.toContain(
+      'routed-connection-unavailable',
+    );
   });
 
   it('should narrow only the declared unresolved reasons', () => {
@@ -91,5 +109,42 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
     expect(isSalesDocumentGateBlockReason(null)).toBe(false);
     expect(isSalesDocumentGateBlockReason(undefined)).toBe(false);
     expect(isSalesDocumentGateBlockReason(42)).toBe(false);
+  });
+});
+
+describe('readSalesDocumentBlockParams', () => {
+  it('should keep known fields with the right type', () => {
+    expect(
+      readSalesDocumentBlockParams({
+        connectionId: 'conn-1',
+        connectionState: 'missing-capability',
+        missingCapabilities: ['Fiscalization'],
+        lineCount: 2,
+      }),
+    ).toEqual({
+      connectionId: 'conn-1',
+      connectionState: 'missing-capability',
+      missingCapabilities: ['Fiscalization'],
+      lineCount: 2,
+    });
+  });
+
+  it('should drop unknown fields, unknown codes and wrongly typed values', () => {
+    expect(
+      readSalesDocumentBlockParams({
+        connectionState: 'on-fire',
+        poolKind: 'invoice',
+        eligibleCount: '2',
+        primaryCount: -1,
+        extra: 'x',
+      }),
+    ).toEqual({ poolKind: 'invoice' });
+  });
+
+  it('should return null when nothing usable is left', () => {
+    expect(readSalesDocumentBlockParams({ extra: 'x' })).toBeNull();
+    expect(readSalesDocumentBlockParams(null)).toBeNull();
+    expect(readSalesDocumentBlockParams([1, 2])).toBeNull();
+    expect(readSalesDocumentBlockParams('text')).toBeNull();
   });
 });

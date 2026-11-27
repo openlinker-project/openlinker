@@ -269,4 +269,85 @@ describe('OrderRecord fulfilment block (integration, #2396)', () => {
       expect(second.map((held) => held.orderId)).toEqual(['ol_order_c']);
     });
   });
+
+  describe('listOrderIdsHeldForVariant (#3558)', () => {
+    async function seed(id: string, variantId: string, reason: 'routing-refused' | 'routing-failed' | 'routing-no-shipping-address' | null): Promise<void> {
+      const source = await createTestConnection(harness.getDataSource(), {
+        platformType: 'allegro',
+        name: `Allegro source ${id}`,
+        adapterKey: 'allegro.test.unused',
+      });
+      const base = makeOrder({ id, orderNumber: id });
+      await orderRecordService.persistOrder(
+        { ...base, items: base.items.map((item) => ({ ...item, variantId })) },
+        source.id,
+        `evt-${id}`
+      );
+      if (reason !== null) {
+        await orderRecordService.markFulfillmentBlock(id, { reason, detail: null });
+      }
+    }
+
+    it('returns only held orders that contain the variant, ascending by order id', async () => {
+      await seed('ol_order_b', 'ol_variant_wanted', 'routing-refused');
+      await seed('ol_order_a', 'ol_variant_wanted', 'routing-failed');
+      await seed('ol_order_other_variant', 'ol_variant_other', 'routing-refused');
+      await seed('ol_order_not_held', 'ol_variant_wanted', null);
+      await seed('ol_order_no_address', 'ol_variant_wanted', 'routing-no-shipping-address');
+
+      const ids = await orderRecordService.listOrderIdsHeldForVariant(
+        ['routing-refused', 'routing-failed'],
+        'ol_variant_wanted',
+        10
+      );
+
+      expect(ids).toEqual(['ol_order_a', 'ol_order_b']);
+    });
+
+    it('lists an order once even when it carries the variant on two lines', async () => {
+      const source = await createTestConnection(harness.getDataSource(), {
+        platformType: 'allegro',
+        name: 'Allegro source two lines',
+        adapterKey: 'allegro.test.unused',
+      });
+      const base = makeOrder({ id: 'ol_order_two_lines', orderNumber: 'two-lines' });
+      const [first] = base.items;
+      await orderRecordService.persistOrder(
+        {
+          ...base,
+          items: [
+            { ...first, id: 'l1', variantId: 'ol_variant_wanted' },
+            { ...first, id: 'l2', variantId: 'ol_variant_wanted' },
+          ],
+        },
+        source.id,
+        'evt-two-lines'
+      );
+      await orderRecordService.markFulfillmentBlock('ol_order_two_lines', {
+        reason: 'routing-refused',
+        detail: null,
+      });
+
+      const ids = await orderRecordService.listOrderIdsHeldForVariant(
+        ['routing-refused'],
+        'ol_variant_wanted',
+        10
+      );
+
+      expect(ids).toEqual(['ol_order_two_lines']);
+    });
+
+    it('respects the limit', async () => {
+      await seed('ol_order_a', 'ol_variant_wanted', 'routing-refused');
+      await seed('ol_order_b', 'ol_variant_wanted', 'routing-refused');
+
+      const ids = await orderRecordService.listOrderIdsHeldForVariant(
+        ['routing-refused'],
+        'ol_variant_wanted',
+        1
+      );
+
+      expect(ids).toEqual(['ol_order_a']);
+    });
+  });
 });

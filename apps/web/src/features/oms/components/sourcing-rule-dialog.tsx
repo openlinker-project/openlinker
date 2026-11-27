@@ -45,6 +45,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -70,7 +71,7 @@ import {
   sourcingRuleKindHint,
   sourcingRuleNameHint,
   sourcingRuleNameLabel,
-} from '../lib/sourcing-rule.copy';
+} from '../lib/sourcing-rule-labels';
 import {
   AFTER_ACTION_PERMISSIVENESS,
   SOURCING_AFTER_ACTION_VALUES,
@@ -81,7 +82,7 @@ import {
 } from '../lib/sourcing-rule-vocabulary';
 import {
   PRIORITY_SORT_NAME,
-  sourcingRuleFormSchema,
+  createSourcingRuleFormSchema,
   toDateInputValue,
   toEffectiveInstant,
   type SourcingRuleFormSubmission,
@@ -128,12 +129,6 @@ const NAMES_BY_KIND: Readonly<Record<SourcingRuleKind, readonly string[]>> = {
   sort: SOURCING_SORT_NAME_VALUES,
 };
 
-/**
- * One string, two consumers: the field's visible label and the picker group's
- * own accessible name. A group named differently from the label above it reads
- * as two separate controls, so the two may not drift.
- */
-const PRIORITY_FIELD_LABEL = 'Location order (highest priority first)';
 
 /** `(kind, name)` pairs a live sibling already holds, mapped to its row number. */
 function claimedNameRows(
@@ -203,6 +198,8 @@ export function SourcingRuleDialog({
   onSaved,
   now = new Date(),
 }: SourcingRuleDialogProps): ReactElement {
+  const copy = useMessages('oms-core').sourcingRuleDialog;
+  const schema = useMemo(() => createSourcingRuleFormSchema(copy.validation), [copy]);
   const isEdit = rule !== undefined;
   const createMutation = useCreateSourcingRuleMutation();
   const updateMutation = useUpdateSourcingRuleMutation();
@@ -212,7 +209,7 @@ export function SourcingRuleDialog({
 
   const form = useForm<SourcingRuleFormValues, undefined, SourcingRuleFormSubmission>({
     defaultValues: defaultValues(rule, rules, now),
-    resolver: zodResolver(sourcingRuleFormSchema),
+    resolver: zodResolver(schema),
   });
 
   // Re-seed when the dialog is re-opened for a different rule: the component is
@@ -327,30 +324,32 @@ export function SourcingRuleDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="dialog__content--wide" aria-describedby="sourcing-rule-dialog-subtitle">
-          <DialogTitle>{isEdit ? 'Edit sourcing rule' : 'Add sourcing rule'}</DialogTitle>
+          <DialogTitle>{isEdit ? copy.editTitle : copy.addTitle}</DialogTitle>
           <DialogDescription id="sourcing-rule-dialog-subtitle">
             {isEdit
-              ? `Rule ${rule.position} — everything above it is checked first.`
-              : `This will be rule ${rules.filter((candidate) => isLiveSourcingRule(candidate, now)).length + 1} — everything above it is checked first.`}
+              ? interpolate(copy.editSubtitle, { position: rule.position })
+              : interpolate(copy.addSubtitle, {
+                  position: rules.filter((candidate) => isLiveSourcingRule(candidate, now)).length + 1,
+                })}
           </DialogDescription>
 
           <form onSubmit={(event) => void onSubmit(event)} noValidate>
             {submitError ? (
               <Alert tone="error">
-                {describeSourcingRuleError(submitError, 'The rule could not be saved.')}
+                {describeSourcingRuleError(submitError, copy.saveFailed)}
               </Alert>
             ) : null}
 
             <section className="dialog-section">
-              <p className="dialog-section__head">What triggers this rule</p>
+              <p className="dialog-section__head">{copy.triggerSection}</p>
 
               <FormField
-                label="Type"
+                label={copy.typeLabel}
                 name="kind"
                 error={form.formState.errors.kind?.message}
                 description={
                   isEdit
-                    ? 'Cannot be changed. A rule’s type is part of what identifies it, so switching between Filter and Sort is not an edit — it is a different rule. Delete this one and add a new rule instead.'
+                    ? copy.typeLocked
                     : (sourcingRuleKindHint(kind) ?? undefined)
                 }
               >
@@ -370,14 +369,14 @@ export function SourcingRuleDialog({
                 >
                   {SOURCING_RULE_KIND_VALUES.map((value) => (
                     <option key={value} value={value}>
-                      {value === 'filter' ? 'Filter — rule locations out' : 'Sort — rank what is left'}
+                      {copy.kindOptions[value]}
                     </option>
                   ))}
                 </Select>
               </FormField>
 
               <FormField
-                label="Rule"
+                label={copy.ruleLabel}
                 name="name"
                 error={form.formState.errors.name?.message}
                 description={sourcingRuleNameHint(name) ?? undefined}
@@ -387,8 +386,12 @@ export function SourcingRuleDialog({
                     const claimedAt = claimedNames.get(`${kind}:${value}`);
                     return (
                       <option key={value} value={value} disabled={claimedAt !== undefined}>
-                        {sourcingRuleNameLabel(value)}
-                        {claimedAt === undefined ? '' : ` — already active as rule ${claimedAt}`}
+                        {claimedAt === undefined
+                          ? sourcingRuleNameLabel(value)
+                          : interpolate(copy.claimedOption, {
+                              label: sourcingRuleNameLabel(value),
+                              row: claimedAt,
+                            })}
                       </option>
                     );
                   })}
@@ -396,49 +399,42 @@ export function SourcingRuleDialog({
               </FormField>
 
               {name === 'country-served' ? (
-                <Alert tone="warning">
-                  If you run one warehouse that ships to several countries, this rule rules it out
-                  for every order NOT placed in that warehouse&rsquo;s own country — including orders
-                  you would normally be happy to ship. It is built for &ldquo;one warehouse per
-                  country&rdquo;, not &ldquo;one warehouse serving many&rdquo;.
-                </Alert>
+                <Alert tone="warning">{copy.countryServedWarning}</Alert>
               ) : null}
             </section>
 
             <section className="dialog-section">
-              <p className="dialog-section__head">Configure it</p>
+              <p className="dialog-section__head">{copy.configureSection}</p>
               {name === PRIORITY_SORT_NAME ? (
                 <Controller
                   control={form.control}
                   name="priorityLocationIds"
                   render={({ field }) => (
                     <FormField
-                      label={PRIORITY_FIELD_LABEL}
+                      label={copy.priorityLabel}
                       name="priorityLocationIds"
                       error={form.formState.errors.priorityLocationIds?.message}
-                      description="Any location you do not add here is used last, after everything on this list."
+                      description={copy.priorityDescription}
                     >
                       <PriorityLocationPicker
                         locations={locations}
                         selectedIds={field.value}
                         onChange={field.onChange}
-                        aria-label={PRIORITY_FIELD_LABEL}
+                        aria-label={copy.priorityLabel}
                       />
                     </FormField>
                   )}
                 />
               ) : (
-                <p className="form-field__description">
-                  This rule needs no extra setup.
-                </p>
+                <p className="form-field__description">{copy.noSetup}</p>
               )}
             </section>
 
             <section className="dialog-section">
-              <p className="dialog-section__head">What happens next</p>
+              <p className="dialog-section__head">{copy.nextSection}</p>
 
               <FormField
-                label="Splitting"
+                label={copy.splittingLabel}
                 name="afterAction"
                 error={form.formState.errors.afterAction?.message}
                 description={sourcingAfterActionHint(afterAction) ?? undefined}
@@ -453,26 +449,25 @@ export function SourcingRuleDialog({
               </FormField>
 
               <Alert tone={loosens ? 'warning' : 'info'}>
-                {loosens
-                  ? `Based on what you have set here, this would allow MORE splitting overall: ${sourcingAfterActionLabel(ceilingAfter)} instead of today's ${sourcingAfterActionLabel(ceilingBefore)} — no other active rule limits it that tightly.`
-                  : stricter
-                    ? `Based on what you have set here, this makes splitting stricter overall: ${sourcingAfterActionLabel(ceilingAfter)} (currently ${sourcingAfterActionLabel(ceilingBefore)}).`
-                    : `Based on what you have set here, splitting stays the same overall: ${sourcingAfterActionLabel(ceilingAfter)}.`}
+                {interpolate(loosens ? copy.loosens : stricter ? copy.stricter : copy.unchanged, {
+                  after: sourcingAfterActionLabel(ceilingAfter),
+                  before: sourcingAfterActionLabel(ceilingBefore),
+                })}
               </Alert>
 
               <div className="form-field-row">
                 <FormField
-                  label="Starts on (optional)"
+                  label={copy.startsOn}
                   name="effectiveFrom"
                   error={form.formState.errors.effectiveFrom?.message}
                 >
                   <Input type="date" {...form.register('effectiveFrom')} />
                 </FormField>
                 <FormField
-                  label="Ends on (optional)"
+                  label={copy.endsOn}
                   name="effectiveTo"
                   error={form.formState.errors.effectiveTo?.message}
-                  description="Setting this to a past date retires the rule while keeping it for history."
+                  description={copy.endsOnDescription}
                 >
                   <Input type="date" {...form.register('effectiveTo')} />
                 </FormField>
@@ -481,10 +476,10 @@ export function SourcingRuleDialog({
 
             <DialogFooter>
               <Button tone="secondary" type="button" onClick={() => onOpenChange(false)}>
-                Cancel
+                {copy.cancel}
               </Button>
               <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? 'Saving…' : 'Save rule'}
+                {mutation.isPending ? copy.saving : copy.save}
               </Button>
             </DialogFooter>
           </form>
@@ -496,9 +491,12 @@ export function SourcingRuleDialog({
         onOpenChange={(next) => {
           if (!next) setPendingLoosen(null);
         }}
-        title="Allow more splitting than today?"
-        description={`No other active rule currently limits splitting to ${sourcingAfterActionLabel(ceilingBefore)}. Once you save, orders may be split more than they are today (up to ${sourcingAfterActionLabel(ceilingAfter)}).`}
-        confirmLabel="Save anyway"
+        title={copy.loosenTitle}
+        description={interpolate(copy.loosenDescription, {
+          before: sourcingAfterActionLabel(ceilingBefore),
+          after: sourcingAfterActionLabel(ceilingAfter),
+        })}
+        confirmLabel={copy.loosenConfirm}
         isConfirming={mutation.isPending}
         className="dialog__content--elevated"
         overlayClassName="dialog__overlay--elevated"
@@ -544,6 +542,7 @@ function PriorityLocationPicker({
   onChange,
   ...controlProps
 }: PriorityLocationPickerProps): ReactElement {
+  const copy = useMessages('oms-core').sourcingRuleDialog.picker;
   const available = locations.filter((location) => !selectedIds.includes(location.id));
 
   function move(index: number, delta: number): void {
@@ -569,8 +568,8 @@ function PriorityLocationPicker({
           const location = locations.find((candidate) => candidate.id === id);
           const label =
             location === undefined
-              ? 'No location exists for this entry — it ranks nothing'
-              : `${location.code} · ${location.name}`;
+              ? copy.staleEntry
+              : interpolate(copy.locationLabel, { code: location.code, name: location.name });
 
           return (
             <li
@@ -585,36 +584,36 @@ function PriorityLocationPicker({
               <span className="priority-picker__pos">{index + 1}</span>
               <span className="priority-picker__label">{label}</span>
               {location !== undefined && !location.isActive ? (
-                <span className="priority-picker__note">Inactive</span>
+                <span className="priority-picker__note">{copy.inactive}</span>
               ) : null}
               <button
                 type="button"
                 className="button button--ghost button--icon button--sm"
-                title={`Move ${label} up`}
-                aria-label={`Move ${label} up`}
+                title={interpolate(copy.moveUp, { label })}
+                aria-label={interpolate(copy.moveUp, { label })}
                 disabled={index === 0}
                 onClick={() => move(index, -1)}
               >
-                <span aria-hidden="true">▲</span>
+                <span aria-hidden="true">{'▲'}</span>
               </button>
               <button
                 type="button"
                 className="button button--ghost button--icon button--sm"
-                title={`Move ${label} down`}
-                aria-label={`Move ${label} down`}
+                title={interpolate(copy.moveDown, { label })}
+                aria-label={interpolate(copy.moveDown, { label })}
                 disabled={index === selectedIds.length - 1}
                 onClick={() => move(index, 1)}
               >
-                <span aria-hidden="true">▼</span>
+                <span aria-hidden="true">{'▼'}</span>
               </button>
               <button
                 type="button"
                 className="button button--ghost button--icon button--sm"
-                title={`Remove ${label}`}
-                aria-label={`Remove ${label}`}
+                title={interpolate(copy.remove, { label })}
+                aria-label={interpolate(copy.remove, { label })}
                 onClick={() => onChange(selectedIds.filter((candidate) => candidate !== id))}
               >
-                <span aria-hidden="true">×</span>
+                <span aria-hidden="true">{'×'}</span>
               </button>
             </li>
           );
@@ -623,19 +622,21 @@ function PriorityLocationPicker({
 
       <Select
         value=""
-        aria-label="Add a location to the priority list"
+        aria-label={copy.addLabel}
         onChange={(event) => {
           if (event.target.value === '') return;
           onChange([...selectedIds, event.target.value]);
         }}
       >
         <option value="">
-          {available.length === 0 ? 'No more locations to add' : 'Add a location…'}
+          {available.length === 0 ? copy.noMore : copy.add}
         </option>
         {available.map((location) => (
           <option key={location.id} value={location.id}>
-            {location.code} · {location.name}
-            {location.isActive ? '' : ' (inactive)'}
+            {interpolate(location.isActive ? copy.locationLabel : copy.inactiveOption, {
+              code: location.code,
+              name: location.name,
+            })}
           </option>
         ))}
       </Select>

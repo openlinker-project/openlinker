@@ -94,6 +94,40 @@ describe('ErliOrderSourceAdapter', () => {
     adapter = new ErliOrderSourceAdapter(CONNECTION_ID, client);
   });
 
+  describe('headCursor (#4228)', () => {
+    it('should return the highest message id and never mark anything read', async () => {
+      client.get.mockResolvedValue(
+        ok([
+          inboxWire({ id: '00000100', orderId: 'order-a', type: 'orderCreated' }),
+          inboxWire({ id: '00000105', orderId: 'order-b', type: 'orderStatusChanged' }),
+          inboxWire({ id: '00000102', orderId: 'order-c', type: 'orderCreated' }),
+        ]),
+      );
+
+      await expect(adapter.headCursor()).resolves.toBe('00000105');
+      expect(client.get).toHaveBeenCalledWith('/inbox');
+      expect(client.post).not.toHaveBeenCalled();
+    });
+
+    it('should return null for an empty inbox', async () => {
+      client.get.mockResolvedValue(ok([]));
+
+      await expect(adapter.headCursor()).resolves.toBeNull();
+    });
+
+    it('should throw when the inbox body is not an array', async () => {
+      client.get.mockResolvedValue(ok({ nope: true }));
+
+      await expect(adapter.headCursor()).rejects.toThrow('not an array');
+    });
+
+    it('should propagate a read failure', async () => {
+      client.get.mockRejectedValue(new Error('boom'));
+
+      await expect(adapter.headCursor()).rejects.toThrow('boom');
+    });
+  });
+
   describe('listOrderFeed', () => {
     it('should map unread order events (from the top-level array) to OrderFeedItems', async () => {
       client.get.mockResolvedValue(
@@ -731,6 +765,8 @@ describe('ErliOrderSourceAdapter', () => {
         const result = await wiredAdapter.write({ type: 'cancelled', externalOrderId: ORDER_ID });
 
         expect(result.outcome).toBe('applied');
+        expect(result.scope).toBe('stock-only');
+        expect(client.patch).not.toHaveBeenCalled();
         expect(inventoryQuery.getAvailabilityByVariantIds).toHaveBeenCalledWith([OFFER_ID]);
         expect(offerManager.restoreStockOnCancellation).toHaveBeenCalledWith([
           { externalOfferId: OFFER_ID, quantity: 5 },

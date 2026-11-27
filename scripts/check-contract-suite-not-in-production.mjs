@@ -58,8 +58,12 @@ const repoRoot = join(__dirname, '..');
 
 const DOCS_REF = 'docs/plans/implementation-plan-port-contract-test-kit.md';
 const PKG_FILE = join('libs', 'core', 'package.json');
-const BARREL_FILE = join('libs', 'core', 'src', 'fulfillment', 'index.ts');
-const SUBPATH = './fulfillment/testing';
+// Each entry is a barrel whose `testing` sub-barrel carries Jest globals. #4265
+// added orders (the order-source start contract suite) beside fulfillment.
+const GUARDED = [
+  { name: 'fulfillment', barrel: join('libs', 'core', 'src', 'fulfillment', 'index.ts') },
+  { name: 'orders', barrel: join('libs', 'core', 'src', 'orders', 'index.ts') },
+];
 const SCAN_ROOTS = [join('libs'), join('apps')];
 
 /** Strip line and block comments so prose naming a path is never a match. */
@@ -68,14 +72,14 @@ export function stripComments(source) {
 }
 
 /** Fact 1 — the subpath is exported. */
-export function findsExportedSubpath(pkgJsonText) {
+export function findsExportedSubpath(pkgJsonText, subpath) {
   let parsed;
   try {
     parsed = JSON.parse(pkgJsonText);
   } catch {
     return false;
   }
-  return Boolean(parsed?.exports?.[SUBPATH]);
+  return Boolean(parsed?.exports?.[subpath]);
 }
 
 /** Fact 2 — the production barrel does not re-export the testing directory. */
@@ -88,9 +92,9 @@ export function barrelReexportsTesting(barrelText) {
  * Fact 3 — real import forms only, on stripped source.
  * Matches `from '…fulfillment/testing…'`, `require('…')` and `import('…')`.
  */
-export function importsTestingSubpath(source) {
+export function importsTestingSubpath(source, name = 'fulfillment') {
   const code = stripComments(source);
-  const specifier = /['"]([^'"]*fulfillment\/testing[^'"]*)['"]/;
+  const specifier = new RegExp(`['"]([^'"]*${name}/testing[^'"]*)['"]`);
   for (const line of code.split('\n')) {
     if (!/\b(from|require|import)\b/.test(line)) continue;
     if (specifier.test(line)) return true;
@@ -135,10 +139,10 @@ async function walk(dir, out) {
 async function selfCheck() {
   const failures = [];
 
-  if (findsExportedSubpath('{"exports":{"./other":{}}}')) {
+  if (findsExportedSubpath('{"exports":{"./other":{}}}', './fulfillment/testing')) {
     failures.push('findsExportedSubpath returned true for a package.json without the subpath');
   }
-  if (!findsExportedSubpath(`{"exports":{"${SUBPATH}":{}}}`)) {
+  if (!findsExportedSubpath('{"exports":{"./orders/testing":{}}}', './orders/testing')) {
     failures.push('findsExportedSubpath returned false for a package.json WITH the subpath');
   }
   if (!barrelReexportsTesting("export * from './testing';")) {
@@ -149,6 +153,12 @@ async function selfCheck() {
   }
   if (barrelReexportsTesting("export * from './domain/types/routing.types';")) {
     failures.push('barrelReexportsTesting matched an unrelated export');
+  }
+  if (!importsTestingSubpath("import { x } from '@openlinker/core/orders/testing';", 'orders')) {
+    failures.push('importsTestingSubpath missed a real orders import');
+  }
+  if (importsTestingSubpath("import { x } from '@openlinker/core/orders';", 'orders')) {
+    failures.push('importsTestingSubpath matched the orders production barrel');
   }
   if (!importsTestingSubpath("import { x } from '@openlinker/core/fulfillment/testing';")) {
     failures.push('importsTestingSubpath missed a real import');
@@ -165,7 +175,7 @@ async function selfCheck() {
     for (const f of failures) console.error(`  - ${f}`);
     process.exit(1);
   }
-  console.log('check-contract-suite-not-in-production self-check OK (8 assertions)');
+  console.log('check-contract-suite-not-in-production self-check OK (10 assertions)');
 }
 
 async function main() {
@@ -182,21 +192,24 @@ async function main() {
   } catch {
     problems.push(`${PKG_FILE} could not be read — did the file move?`);
   }
-  if (pkgText !== null && !findsExportedSubpath(pkgText)) {
-    problems.push(`${PKG_FILE} does not export "${SUBPATH}" — the suite is unreachable even from a spec`);
-  }
 
-  let barrelText = null;
-  try {
-    barrelText = await readFile(join(repoRoot, BARREL_FILE), 'utf8');
-  } catch {
-    problems.push(`${BARREL_FILE} could not be read — did the file move?`);
-  }
-  if (barrelText !== null && barrelReexportsTesting(barrelText)) {
-    problems.push(
-      `${BARREL_FILE} re-exports ./testing — that puts Jest globals (describe/it/expect) on the ` +
-        'production barrel every host app and plugin imports',
-    );
+  for (const { name, barrel } of GUARDED) {
+    const subpath = `./${name}/testing`;
+    if (pkgText !== null && !findsExportedSubpath(pkgText, subpath)) {
+      problems.push(`${PKG_FILE} does not export "${subpath}" - the suite is unreachable even from a spec`);
+    }
+    let barrelText = null;
+    try {
+      barrelText = await readFile(join(repoRoot, barrel), 'utf8');
+    } catch {
+      problems.push(`${barrel} could not be read - did the file move?`);
+    }
+    if (barrelText !== null && barrelReexportsTesting(barrelText)) {
+      problems.push(
+        `${barrel} re-exports ./testing - that puts Jest globals (describe/it/expect) on the ` +
+          'production barrel every host app and plugin imports',
+      );
+    }
   }
 
   const files = [];
@@ -215,8 +228,10 @@ async function main() {
     } catch {
       continue;
     }
-    if (importsTestingSubpath(source)) {
-      problems.push(`${relPath} imports the testing sub-barrel from production source`);
+    for (const { name } of GUARDED) {
+      if (importsTestingSubpath(source, name)) {
+        problems.push(`${relPath} imports the ${name} testing sub-barrel from production source`);
+      }
     }
   }
 
@@ -231,7 +246,7 @@ async function main() {
   }
 
   console.log(
-    `check-contract-suite-not-in-production OK (subpath exported, barrel clean, ${scanned} production files scanned)`,
+    `check-contract-suite-not-in-production OK (subpaths exported, barrels clean, ${scanned} production files scanned)`,
   );
 }
 

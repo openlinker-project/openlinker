@@ -11,6 +11,7 @@
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useState, type ReactElement } from 'react';
 import type * as ReactRouterDom from 'react-router-dom';
 import type { ApiClient } from '../../../app/api/api-client';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
@@ -143,7 +144,7 @@ describe('OfferProductPickerModal', () => {
       apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]),
     });
     expect(await screen.findByText('Product p1')).toBeInTheDocument();
-    expect(screen.getByText('1–20 of 22')).toBeInTheDocument();
+    expect(screen.getByText('1-20 of 22')).toBeInTheDocument();
   });
 
   it('selects a whole product (tri-state all) and Continue omits variantIds', async () => {
@@ -354,6 +355,36 @@ describe('OfferProductPickerModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /keep editing/i }));
     expect(screen.queryByText('Discard changes?')).not.toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('returns focus to the control that opened it when it closes', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      function Host(): ReactElement {
+        const [open, setOpen] = useState(false);
+        return (
+          <>
+            <button type="button" onClick={() => setOpen(true)}>
+              opener
+            </button>
+            <OfferProductPickerModal isOpen={open} onClose={() => setOpen(false)} />
+          </>
+        );
+      }
+      renderWithProviders(<Host />, { apiClient: mocks([conn('conn_a', 'Allegro', 'allegro')]) });
+      const opener = screen.getByRole('button', { name: 'opener' });
+      opener.focus();
+      fireEvent.click(opener);
+      await screen.findByRole('dialog');
+      fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(opener).toHaveFocus();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows a non-success EAN chip for a whole product whose loaded variants lack a barcode', async () => {

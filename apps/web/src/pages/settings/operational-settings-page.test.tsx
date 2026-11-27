@@ -14,6 +14,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../shared/api/api-error';
+import { getMessages, interpolate } from '../../shared/i18n';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -48,6 +49,7 @@ function view(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     deletionAuditBudget: numeric(100, 2000, 20_000, 'A 41.7-day cycle is what this is for.'),
     syncJobRetentionDays: numeric(30, 365, 365, 'Bounded 30-365 days (D16).'),
     syncJobDeadRetentionDays: numeric(90, 365, 365, 'Bounded 30-365 days (D16).'),
+    stockStaleSyncThresholdHours: numeric(6, 48, 168, 'Beyond two days the flag stops catching a dead sync.'),
     deletionAuditCadence: { value: '0 * * * *', source: 'default' },
     deletionAuditAlwaysEnabled: true,
     cadenceAppliesAt: 'next-scheduler-start',
@@ -96,6 +98,13 @@ function view(overrides: Record<string, unknown> = {}): Record<string, unknown> 
         absoluteMax: 365,
         default: 90,
         envVar: 'OL_SYNC_JOB_DEAD_RETENTION_DAYS',
+      },
+      stockStaleSyncThresholdHours: {
+        min: 1,
+        recommendedMax: 48,
+        absoluteMax: 168,
+        default: 6,
+        envVar: 'OL_STOCK_STALE_SYNC_THRESHOLD_HOURS',
       },
     },
     ...overrides,
@@ -209,7 +218,8 @@ describe('OperationalSettingsPage', () => {
   it('should put a rejected value beside its own control, not in one banner', async () => {
     const update = vi.fn().mockRejectedValue(
       new ApiError('Bad Request', 400, {
-        message: ['catalogueSweepBudget must not be greater than 2000'],
+        code: 'VALIDATION_FAILED',
+        fields: [{ path: 'catalogueSweepBudget', code: 'max', params: { max: 2000 } }],
       }),
     );
     const user = userEvent.setup();
@@ -224,7 +234,7 @@ describe('OperationalSettingsPage', () => {
     await user.click(within(confirm).getByRole('button', { name: 'Save changes' }));
 
     expect(
-      await screen.findByText('catalogueSweepBudget must not be greater than 2000'),
+      await screen.findByText(interpolate(getMessages('errors').fields.max, { max: 2000 })),
     ).toBeInTheDocument();
   });
 
@@ -285,7 +295,12 @@ describe('OperationalSettingsPage', () => {
     await user.clear(numberBox);
     await user.type(numberBox, '5000');
 
-    expect(await screen.findByText(CATALOGUE_REASON)).toBeInTheDocument();
+    // The page reads its own copy for the reason (#3866), never the API's
+    // English sentence.
+    expect(
+      await screen.findByText(/^At 2000 products, one run takes about 3 minutes/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(CATALOGUE_REASON)).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
     });
@@ -400,6 +415,75 @@ describe('OperationalSettingsPage', () => {
     ).toBeInTheDocument();
   });
 
+  describe('stock history retention (#3565)', () => {
+    const history = (value: number, source: string): Record<string, unknown> =>
+      view({
+        inventoryMovementRetentionDays: {
+          ...numeric(value, 730, 1825, 'Beyond about two years the table is mostly storage cost.'),
+          source,
+        },
+      });
+    const NAME = 'Days stock movement history is kept';
+
+    it('should render the resolved value with the rung it came from', async () => {
+      renderPage({ get: vi.fn().mockResolvedValue(history(400, 'env')) });
+
+      expect(await screen.findByRole('spinbutton', { name: NAME })).toHaveValue(400);
+      expect(screen.getByText("400 (from this server's environment)")).toBeInTheDocument();
+    });
+
+    it('should save only inventoryMovementRetentionDays', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update, get: vi.fn().mockResolvedValue(history(365, 'default')) });
+
+      const box = await screen.findByRole('spinbutton', { name: NAME });
+      await user.clear(box);
+      await user.type(box, '500');
+      await user.click(screen.getByRole('button', { name: 'Save history retention' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({ inventoryMovementRetentionDays: 500 });
+      });
+    });
+
+    it('should require the acknowledgement above 730 days and then send the flag', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update, get: vi.fn().mockResolvedValue(history(365, 'default')) });
+
+      const box = await screen.findByRole('spinbutton', { name: NAME });
+      await user.clear(box);
+      await user.type(box, '1000');
+
+      const save = screen.getByRole('button', { name: 'Save history retention' });
+      expect(save).toBeDisabled();
+
+      await user.click(screen.getByRole('checkbox', { name: /I understand/ }));
+      expect(save).toBeEnabled();
+      await user.click(save);
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({
+          inventoryMovementRetentionDays: 1000,
+          acknowledgeAboveRecommended: true,
+        });
+      });
+    });
+
+    it('should send null when the stored value is cleared back to the default', async () => {
+      const update = vi.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderPage({ update, get: vi.fn().mockResolvedValue(history(200, 'setting')) });
+
+      await user.click(await screen.findByRole('button', { name: 'Use the default' }));
+
+      await waitFor(() => {
+        expect(update).toHaveBeenCalledWith({ inventoryMovementRetentionDays: null });
+      });
+    });
+  });
+
   describe('job retention (#2946, D16)', () => {
     it('should render both retention values with their provenance', async () => {
       renderPage({
@@ -449,7 +533,8 @@ describe('OperationalSettingsPage', () => {
     it('should put a rejected retention value beside its own control', async () => {
       const update = vi.fn().mockRejectedValue(
         new ApiError('Bad Request', 400, {
-          message: ['syncJobRetentionDays must not be greater than 200'],
+          code: 'VALIDATION_FAILED',
+        fields: [{ path: 'syncJobRetentionDays', code: 'max', params: { max: 200 } }],
         }),
       );
       const user = userEvent.setup();
@@ -463,7 +548,7 @@ describe('OperationalSettingsPage', () => {
       await user.click(screen.getByRole('button', { name: 'Save retention' }));
 
       expect(
-        await screen.findByText('syncJobRetentionDays must not be greater than 200'),
+        await screen.findByText(interpolate(getMessages('errors').fields.max, { max: 200 })),
       ).toBeInTheDocument();
     });
 

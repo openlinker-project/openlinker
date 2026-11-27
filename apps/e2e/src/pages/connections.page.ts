@@ -45,8 +45,18 @@ export class ConnectionDetailPage {
    * "Trigger sync…" action lives under the Actions tab, so default there so the
    * button is mounted and visible.
    */
-  async goto(connectionId: string, tab: 'overview' | 'health' | 'actions' | 'config' = 'actions'): Promise<void> {
+  async goto(connectionId: string, tab: 'overview' | 'orders' | 'health' | 'actions' | 'config' = 'actions'): Promise<void> {
     await this.page.goto(`/connections/${connectionId}?tab=${tab}`);
+  }
+
+  /**
+   * The "Order import" panel (on the orders tab, with its change-start control) (#4228): its heading and the
+   * "New" row that says the feed is syncing. Selectors are role/text based, so
+   * they follow the operator-visible copy rather than any class name.
+   */
+  async expectOrderSyncPanel(): Promise<void> {
+    await expect(this.page.getByRole('heading', { name: 'Order import', exact: true })).toBeVisible();
+    await expect(this.page.getByText('Order import', { exact: true })).toBeVisible();
   }
 
   // No trigger-sync accessors: every suite enqueues jobs through the API

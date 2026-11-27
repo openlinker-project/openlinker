@@ -18,7 +18,9 @@
  */
 import { z } from 'zod';
 
+import { formatPlural, getLocale, getMessages } from '../../../../shared/i18n';
 import type { Connection } from '../../../connections';
+import type { ErliOfferFieldsValidationCopy } from '../listing-form.types';
 
 /** Erli dispatch (handling) time units — mirrors the BE `ErliDispatchTimeUnit`. */
 export const ErliDispatchUnitValues = ['hour', 'day', 'month'] as const;
@@ -33,16 +35,25 @@ export interface ErliDispatchTimeParam {
 /**
  * Form slice both Erli surfaces collect. `period` is a string in form state
  * (the dial writes the chosen number as a string) and coerced on submit.
+ * A factory rather than a module-level schema, so the messages follow the
+ * active language.
  */
-export const erliOfferFieldsSchema = z.object({
-  dispatchPeriod: z
-    .number({ message: 'Dispatch period is required' })
-    .int('Dispatch period must be a whole number')
-    .min(0, 'Dispatch period must be 0 or greater'),
-  dispatchUnit: z.enum(ErliDispatchUnitValues),
-});
+export function createErliOfferFieldsSchema(
+  copy: ErliOfferFieldsValidationCopy,
+): z.ZodObject<{
+  dispatchPeriod: z.ZodNumber;
+  dispatchUnit: z.ZodEnum<{ [K in ErliDispatchUnit]: K }>;
+}> {
+  return z.object({
+    dispatchPeriod: z
+      .number({ message: copy.periodRequired })
+      .int(copy.periodWholeNumber)
+      .min(0, copy.periodMin),
+    dispatchUnit: z.enum(ErliDispatchUnitValues),
+  });
+}
 
-export type ErliOfferFieldsValues = z.infer<typeof erliOfferFieldsSchema>;
+export type ErliOfferFieldsValues = z.infer<ReturnType<typeof createErliOfferFieldsSchema>>;
 
 /**
  * Unit-dependent upper bounds Erli enforces (hour ≤ 24, month ≤ 12, day
@@ -132,19 +143,8 @@ export function erliBulkConfigIsComplete(values: {
   return isValidDispatch(values.platformParams.dispatchTime ?? ERLI_DEFAULT_DISPATCH);
 }
 
-/** Human-readable summary used in review/aside copy ("2 working days"). */
+/** Human-readable summary used in review/aside copy ("2 working days"), in the active language. */
 export function formatDispatch(value: ErliDispatchTimeParam): string {
-  const unitLabel =
-    value.unit === 'hour'
-      ? value.period === 1
-        ? 'hour'
-        : 'hours'
-      : value.unit === 'month'
-        ? value.period === 1
-          ? 'month'
-          : 'months'
-        : value.period === 1
-          ? 'working day'
-          : 'working days';
-  return `${value.period} ${unitLabel}`;
+  const forms = getMessages('listings').erliOfferFields.dispatch;
+  return formatPlural(value.period, forms[value.unit], getLocale());
 }

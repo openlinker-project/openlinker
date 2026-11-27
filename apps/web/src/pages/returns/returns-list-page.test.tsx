@@ -10,13 +10,12 @@ import { createNoopSessionAdapter } from '../../shared/auth/noop-session-adapter
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
 import { mockMobileViewport } from '../../test/viewport';
 import { ReturnsListPage } from './returns-list-page';
-import {
-  ORPHAN_RETURNS_WORKLIST_COPY,
-  RECORD_RETURN_DIALOG_COPY,
-  type ReturnListItem,
-  type ReturnListResult,
-} from '../../features/returns';
+import { getMessages } from '../../shared/i18n';
+import type { ReturnListItem, ReturnListResult } from '../../features/returns';
 import type { Connection } from '../../features/connections/api/connections.types';
+
+const ORPHAN_RETURNS_WORKLIST_COPY = getMessages('returns').orphanWorklist;
+const RECORD_RETURN_DIALOG_COPY = getMessages('returns').recordReturnDialog;
 
 function makeConnection(overrides: Partial<Connection> = {}): Connection {
   return {
@@ -188,7 +187,7 @@ describe('ReturnsListPage', () => {
         }),
       });
 
-      expect(await screen.findByText('Showing 1–3 of 3')).toBeInTheDocument();
+      expect(await screen.findByText('Showing 1-3 of 3')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
     });
 
@@ -213,7 +212,7 @@ describe('ReturnsListPage', () => {
         }),
       });
 
-      expect(await screen.findByText('Showing 1–20 of 47')).toBeInTheDocument();
+      expect(await screen.findByText('Showing 1-20 of 47')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
     });
@@ -230,7 +229,7 @@ describe('ReturnsListPage', () => {
         }),
       });
 
-      expect(await screen.findByText('Showing 1–5 of 47')).toBeInTheDocument();
+      expect(await screen.findByText('Showing 1-5 of 47')).toBeInTheDocument();
     });
   });
 
@@ -259,9 +258,9 @@ describe('ReturnsListPage', () => {
     });
 
     it('should report paging past the end rather than claiming there are no returns', async () => {
-      // `offset` is paging, not a filter. Without this branch `?offset=999` on a
+      // `offset` is paging, not a filter (a filter rides along only so the saved-views default does not rewrite the address). Without this branch `?offset=999` on a
       // deployment with 47 returns tells the operator they have none.
-      setup({ route: '/returns?offset=999', list: listResult({ items: [], total: 47 }) });
+      setup({ route: '/returns?offset=999&bucket=attributed', list: listResult({ items: [], total: 47 }) });
 
       expect(await screen.findByText('Nothing on this page')).toBeInTheDocument();
       expect(screen.queryByText('No returns recorded yet')).not.toBeInTheDocument();
@@ -271,7 +270,7 @@ describe('ReturnsListPage', () => {
     it('should return to the first page from the past-the-end state', async () => {
       const user = userEvent.setup();
       const { listFn } = setup({
-        route: '/returns?offset=999',
+        route: '/returns?offset=999&bucket=attributed',
         list: listResult({ items: [], total: 47 }),
       });
 
@@ -470,7 +469,7 @@ describe('ReturnsListPage', () => {
 
     it('should prefer the unreadable state over the past-the-end state', async () => {
       setup({
-        route: '/returns?offset=999',
+        route: '/returns?offset=999&bucket=attributed',
         list: listResult({ items: [], total: 47, droppedCount: 20 }),
       });
 
@@ -587,6 +586,85 @@ describe('ReturnsListPage', () => {
       const action = await screen.findByRole('button', { name: RECORD_RETURN_DIALOG_COPY.triggerLabel });
       expect(action).toBeDisabled();
       expect(action.closest('.read-only-lock')).not.toBeNull();
+    });
+  });
+
+  describe('saved views', () => {
+    const withSegments = (): ReturnListResult => ({
+      ...listResult({ items: [makeReturn()] }),
+      segmentCounts: {
+        total: 47,
+        bySegment: {
+          needs_receiving: 5,
+          needs_disposition: 2,
+          restock_blocked: 1,
+          money_pending: 0,
+          orphans: 3,
+          all_open: 20,
+        },
+      },
+    });
+
+    it('should open on the All returns view with the server counters on the tabs', async () => {
+      const { listFn } = setup({ list: withSegments() });
+
+      const all = await screen.findByRole('button', { name: 'All returns, 47' });
+      expect(all).toHaveAttribute('aria-current', 'true');
+      expect(screen.getByRole('button', { name: 'Needs receiving, 5' })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(listFn).toHaveBeenCalledWith(
+          expect.objectContaining({ segment: undefined }),
+          { limit: 20, offset: 0 },
+        );
+      });
+    });
+
+    it('should send the segment of a built-in view to the API when it is selected', async () => {
+      const user = userEvent.setup();
+      const { listFn } = setup({ list: withSegments() });
+
+      await user.click(await screen.findByRole('button', { name: 'Needs receiving, 5' }));
+
+      await waitFor(() => {
+        expect(listFn).toHaveBeenLastCalledWith(
+          expect.objectContaining({ segment: 'needs_receiving' }),
+          { limit: 20, offset: 0 },
+        );
+      });
+      expect(screen.getByRole('button', { name: 'Needs receiving, 5' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+    });
+
+    it('should hide a column the view does not show', async () => {
+      const user = userEvent.setup();
+      setup({ list: withSegments() });
+
+      expect(await screen.findByRole('columnheader', { name: 'Source status' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /Columns & sort/ }));
+      await user.click(await screen.findByRole('checkbox', { name: /Source status/ }));
+      await user.click(screen.getAllByRole('button', { name: 'Done' })[0]);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('columnheader', { name: 'Source status' })).not.toBeInTheDocument();
+      });
+      expect(await screen.findByRole('columnheader', { name: 'Stage' })).toBeInTheDocument();
+    });
+
+    it('should keep a deep link to a segment instead of applying the default view', async () => {
+      const { listFn } = setup({ route: '/returns?segment=orphans', list: withSegments() });
+
+      await waitFor(() => {
+        expect(listFn).toHaveBeenCalledWith(
+          expect.objectContaining({ segment: 'orphans' }),
+          { limit: 20, offset: 0 },
+        );
+      });
+      expect(await screen.findByRole('button', { name: 'Orphans, 3' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
     });
   });
 

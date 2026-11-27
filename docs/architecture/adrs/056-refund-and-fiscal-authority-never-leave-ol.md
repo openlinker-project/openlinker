@@ -67,3 +67,21 @@ weaker, re-opens this ADR.
 - Related issues: #2047, #2156/#2173 (the gate's new dependencies; the `orders` edge still absent)
 - Related ADRs: [ADR-041](./041-sales-document-routing-policy.md), [ADR-042](./042-fiscalization-capability.md), [ADR-052](./052-independently-assignable-fulfillment-authorities.md)
 - Design doc: [DESIGN-oms-authority-model](../../plans/analysis/DESIGN-oms-authority-model.md) §8
+
+## Amendment (#4100, 2026-11-17): a channel-side refund is mirrored onto the destination copy
+
+The capability header said a destination shop "never took the money" and that refunding through
+it would be the wrong ledger. That remains true for the thing the ADR governs: OL never moves
+money it owns, and A6 stays unassignable. What #4100 adds is a different act. When a refund has
+ALREADY been paid on the source channel and OL has observed it, `OrderRefundRelayService` asks
+each destination that holds a copy of the order to record the same refund (amount only, lines
+not mapped), so the destination's books agree with the channel's. Nothing the relay does moves
+money OL is the authority for, and the observed record stays the single record of the movement.
+
+Consequences for the contract: `RefundExecutor` now has a first implementer family, destination
+order processors, and is resolved through the destination's real capability
+(`'OrderProcessorManager'`) then narrowed with `isRefundExecutor` - not through `'OrderSource'`,
+which is opt-in on some platforms and would make an order-destination-only connection resolve
+nothing. The attempted-predicate ordering (R1) still applies to the returns-driven refund path;
+the relay is protected by the per-order refund lock and a key derived from the observed refund.
+The behaviour is behind `OL_REFUND_OBSERVATION_ENABLED` (default off).

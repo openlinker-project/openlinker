@@ -32,6 +32,9 @@ function renderPanel(overrides: Partial<ConnectionSyncStatus> = {}): void {
     averageAttemptDurationMs: null,
     attemptDurationSampleSize: 0,
     lastCursorAdvanceAt: null,
+    orderSyncStartedAt: null,
+    orderImport: null,
+    orderStart: null,
     observationWindowMs: HOUR,
     alertHorizonMs: DAY,
     historyWindowMs: 7 * DAY,
@@ -158,7 +161,7 @@ describe('ConnectionSyncStatusPanel', () => {
     renderPanel({ status: 'growing', queuedCount: 20, runningCount: 2, drainRatePerHour: 0 });
 
     expect(
-      await screen.findByText(/the background worker stopped part-way through/)
+      await screen.findByText(/the background processing stopped part-way through/)
     ).toBeInTheDocument();
   });
 

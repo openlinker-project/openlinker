@@ -15,6 +15,7 @@ import {
   findToastTitle,
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages, interpolate } from '../../../shared/i18n';
 import { GenerateLabelForm } from './generate-label-form';
 import type { OrderRecord } from '../api/orders.types';
 
@@ -74,7 +75,7 @@ describe('GenerateLabelForm — pre-flight gate (tech-review BLOCKING fix)', () 
     );
 
     expect(
-      await screen.findByText(/Missing recipient data — cannot generate label:/i),
+      await screen.findByText(/Missing recipient data - cannot generate label:/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/Buyer email is missing/i)).toBeInTheDocument();
 
@@ -543,8 +544,8 @@ describe('GenerateLabelForm — happy path', () => {
 
     // The success toast ("Label generated") still fires - the label WAS
     // bought - and the download failure is a SECOND, separate toast.
-    expect(await screen.findByText('Label generated')).toBeInTheDocument();
-    expect(await screen.findByText("Couldn't fetch the label file")).toBeInTheDocument();
+    expect(await findToastTitle('Label generated')).toBeInTheDocument();
+    expect(await findToastTitle("Couldn't fetch the label file")).toBeInTheDocument();
     expect(screen.queryByText(/Could not download the label\. Try again\./i)).not.toBeInTheDocument();
   });
 
@@ -705,6 +706,50 @@ describe('GenerateLabelForm — AC-3 pickup-point retry hint (#839)', () => {
     expect(
       screen.getByRole('button', { name: /Retry pickup-point lookup/i }),
     ).toBeInTheDocument();
+  });
+
+  it('should say the operator removed the pickup point instead of waiting for Allegro (E-59)', async () => {
+    const order = makeOrderWithoutPickupPoint({
+      sourceConnectionId: 'conn-allegro-1',
+      createdAt: new Date().toISOString(),
+      edits: {
+        editedAt: '2026-10-27T01:04:12.062Z',
+        deliveryMethod: {
+          original: { id: 'allegro-one-box', name: 'Allegro One Box' },
+          current: { id: 'allegro-one-box', name: 'Allegro One Box' },
+        },
+      } as OrderRecord['edits'],
+    });
+
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn-allegro-1',
+            platformType: 'allegro',
+            name: 'Allegro Main',
+            status: 'active',
+            config: {},
+            credentialsBacked: true,
+            enabledCapabilities: [],
+            supportedCapabilities: ['OrderSource'],
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ]),
+      },
+    });
+
+    renderWithProviders(
+      <GenerateLabelForm order={order} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      { apiClient },
+    );
+
+    expect(await screen.findByText(/Pickup point removed in OpenLinker/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Pickup point not yet available/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Retry pickup-point lookup/i }),
+    ).not.toBeInTheDocument();
   });
 
   // PrestaShop omits the `pickupPointResolvesAsync` trait, so `usePlatform`
@@ -936,27 +981,33 @@ describe('GenerateLabelForm — #1569 COD currency per routed carrier', () => {
     };
   }
 
+  // The carrier is read from the order's own `deliveryResolution` (#3958); the
+  // API only needs to resolve the processor connection's platform. The routing
+  // rules endpoint is admin-only, so the form must never depend on it.
   function routedApi(
     processorPlatform: string,
     overrides: Parameters<typeof createMockApiClient>[0] = {},
   ) {
     return createMockApiClient({
-      mappings: {
-        getRoutingRules: vi.fn().mockResolvedValue([
-          {
-            id: 'rule-1',
-            sourceConnectionId: 'b3f1c2d4-0000-4000-8000-000000000099',
-            sourceDeliveryMethodId: 'allegro-courier',
-            processorKind: 'ol_managed_carrier',
-            processorConnectionId: `conn-${processorPlatform}`,
-          },
-        ]),
-      },
+      mappings: { getRoutingRules: vi.fn().mockRejectedValue(new Error('admin only')) },
       connections: {
         list: vi.fn().mockResolvedValue([carrierConnection(`conn-${processorPlatform}`, processorPlatform)]),
       },
       ...overrides,
     });
+  }
+
+  function routedOrder(processorPlatform: string, currency?: string): OrderRecord {
+    return {
+      ...codOrder(currency),
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: `conn-${processorPlatform}`,
+        processorAvailable: true,
+        parcelProfile: null,
+      },
+    };
   }
 
   function fillParcel(): void {
@@ -984,7 +1035,7 @@ describe('GenerateLabelForm — #1569 COD currency per routed carrier', () => {
     const apiClient = routedApi('inpost', { shipments: { generateLabel } });
 
     renderWithProviders(
-      <GenerateLabelForm order={codOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      <GenerateLabelForm order={routedOrder('inpost')} onSuccess={vi.fn()} onCancel={vi.fn()} />,
       { apiClient },
     );
 
@@ -1011,7 +1062,7 @@ describe('GenerateLabelForm — #1569 COD currency per routed carrier', () => {
     const apiClient = routedApi('dpd', { shipments: { generateLabel } });
 
     renderWithProviders(
-      <GenerateLabelForm order={codOrder('EUR')} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      <GenerateLabelForm order={routedOrder('dpd', 'EUR')} onSuccess={vi.fn()} onCancel={vi.fn()} />,
       { apiClient },
     );
 
@@ -1036,7 +1087,7 @@ describe('GenerateLabelForm — #1569 COD currency per routed carrier', () => {
     const apiClient = routedApi('inpost', { shipments: { generateLabel } });
 
     renderWithProviders(
-      <GenerateLabelForm order={codOrder('CZK')} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      <GenerateLabelForm order={routedOrder('inpost', 'CZK')} onSuccess={vi.fn()} onCancel={vi.fn()} />,
       { apiClient },
     );
 
@@ -1056,7 +1107,7 @@ describe('GenerateLabelForm — #1569 COD currency per routed carrier', () => {
   });
 
   it('should keep the full currency union when no routing rule matches (carrier unknown)', async () => {
-    // Default mock returns [] routing rules → carrier unpredictable → union.
+    // No deliveryResolution on the order → carrier unpredictable → union.
     const apiClient = createMockApiClient({
       shipments: { generateLabel: vi.fn().mockResolvedValue({ kind: 'dispatched', shipment: null }) },
     });
@@ -1092,6 +1143,8 @@ describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
       shipments: {
         generateLabel: vi.fn().mockRejectedValue(
           new ApiError('There are some validation errors. Check details object for more info.', 502, {
+            code: 'SHIPPING_PROVIDER_REJECTED',
+            params: { provider: 'InPost' },
             providerCode: 'validation_failed',
             details: {
               fieldErrors: {
@@ -1110,10 +1163,14 @@ describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
     );
     fillParcelAndSubmit();
 
-    // Generic message still renders (never replaced, only augmented).
+    // The coded sentence renders, and the carrier's own words stay visible
+    // beside it (never replaced, only augmented).
     expect(
-      await screen.findByText(/There are some validation errors\. Check details object/i),
+      await screen.findByText(
+        interpolate(getMessages('errors').codes.SHIPPING_PROVIDER_REJECTED, { provider: 'InPost' }),
+      ),
     ).toBeInTheDocument();
+    expect(screen.getByText(/There are some validation errors\. Check details object/i)).toBeInTheDocument();
 
     // Each rejected field renders as its own row.
     expect(
@@ -1142,7 +1199,9 @@ describe('GenerateLabelForm — #1806 carrier field-error breakdown', () => {
     );
     fillParcelAndSubmit();
 
-    expect(await screen.findByText('Carrier is unreachable')).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
+    // An uncoded failure carries no carrier words to show.
+    expect(screen.queryByText(/Carrier is unreachable/)).toBeNull();
     // No structured list renders — no empty/broken Alert artefact.
     expect(document.querySelector('.structured-error-list')).toBeNull();
   });
@@ -1167,6 +1226,8 @@ describe('GenerateLabelForm — #1800 carrier support reference', () => {
           // controller wraps it as `{ message, providerCode, details }`, so on
           // the FE it lands at ApiError.details.details.traceId.
           new ApiError('DPD could not process the shipment.', 502, {
+            code: 'SHIPPING_PROVIDER_REJECTED',
+            params: { provider: 'DPD' },
             providerCode: 'NOT_PROCESSED',
             details: { errorCode: null, info: 'rejected', traceId: 'trace-xyz-789' },
           }),
@@ -1180,7 +1241,12 @@ describe('GenerateLabelForm — #1800 carrier support reference', () => {
     );
     fillParcelAndSubmit();
 
-    expect(await screen.findByText(/DPD could not process the shipment/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        interpolate(getMessages('errors').codes.SHIPPING_PROVIDER_REJECTED, { provider: 'DPD' }),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/DPD could not process the shipment/i)).toBeInTheDocument();
     expect(screen.getByText(/Reference for carrier support/i)).toBeInTheDocument();
     // The trace id is rendered via the shared CopyableId primitive (aria-label
     // `Copy <id>`), which also displays the id verbatim.
@@ -1201,30 +1267,38 @@ describe('GenerateLabelForm — #1800 carrier support reference', () => {
     );
     fillParcelAndSubmit();
 
-    expect(await screen.findByText('Carrier is unreachable')).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
     expect(screen.queryByText(/Reference for carrier support/i)).toBeNull();
   });
 });
 
-describe('GenerateLabelForm - routed parcel profile (#3652)', () => {
-  const RULE = {
-    id: 'r1',
-    sourceConnectionId: 'b3f1c2d4-0000-4000-8000-000000000099',
-    sourceDeliveryMethodId: 'allegro-courier',
-    processorKind: 'ol_managed_carrier' as const,
-    processorConnectionId: 'p1',
+describe('GenerateLabelForm - routed parcel profile (#3652, #3958)', () => {
+  const PROFILE = {
+    parcelTemplate: null,
     lengthMm: 300,
     widthMm: 200,
     heightMm: 100,
     defaultWeightGrams: 500,
   };
 
-  it('should prefill dimensions and weight from the matched rule and keep them editable', async () => {
-    const apiClient = createMockApiClient({
-      mappings: { getRoutingRules: vi.fn().mockResolvedValue([RULE]) },
+  function orderWithProfile(parcelProfile: typeof PROFILE | null): OrderRecord {
+    return makeOrder({
+      deliveryResolution: {
+        source: 'rule',
+        processorKind: 'ol_managed_carrier',
+        processorConnectionId: 'p1',
+        processorAvailable: true,
+        parcelProfile,
+      },
     });
+  }
+
+  it('should prefill dimensions and weight from the order delivery resolution and keep them editable', async () => {
+    // The routing-rules endpoint is admin-only; the prefill must not depend on it.
+    const getRoutingRules = vi.fn().mockRejectedValue(new Error('admin only'));
+    const apiClient = createMockApiClient({ mappings: { getRoutingRules } });
     renderWithProviders(
-      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
+      <GenerateLabelForm order={orderWithProfile(PROFILE)} onSuccess={vi.fn()} onCancel={vi.fn()} />,
       { apiClient },
     );
 
@@ -1235,20 +1309,15 @@ describe('GenerateLabelForm - routed parcel profile (#3652)', () => {
     expect(screen.getByLabelText('Width in millimetres')).toHaveValue(200);
     expect(screen.getByLabelText('Height in millimetres')).toHaveValue(100);
     expect(screen.getByLabelText(/Weight \(g\)/)).toHaveValue(500);
+    expect(getRoutingRules).not.toHaveBeenCalled();
 
     fireEvent.change(length, { target: { value: '350' } });
     expect(length).toHaveValue(350);
   });
 
-  it('should leave the fields empty when the rule carries no profile', async () => {
-    const apiClient = createMockApiClient({
-      mappings: {
-        getRoutingRules: vi.fn().mockResolvedValue([{ ...RULE, lengthMm: null, widthMm: null, heightMm: null, defaultWeightGrams: null }]),
-      },
-    });
+  it('should leave the fields empty when the resolution carries no profile', async () => {
     renderWithProviders(
-      <GenerateLabelForm order={makeOrder()} onSuccess={vi.fn()} onCancel={vi.fn()} />,
-      { apiClient },
+      <GenerateLabelForm order={orderWithProfile(null)} onSuccess={vi.fn()} onCancel={vi.fn()} />,
     );
     const length = await screen.findByLabelText('Length in millimetres');
     expect(length).toHaveValue(null);

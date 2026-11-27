@@ -1,0 +1,139 @@
+{
+  "approve": "Approve",
+  "changeRole": "Change role",
+  "columns": {
+    "actions": "Actions",
+    "approve": "Assign role & approve",
+    "email": "Email",
+    "memberSince": "Member since",
+    "packStation": "Pack station",
+    "requested": "Requested",
+    "role": "Role",
+    "status": "Status",
+    "username": "Username"
+  },
+  "deleteDialog": {
+    "confirm": "Delete",
+    "description": "This will permanently delete the user account. This action cannot be undone.",
+    "title": "Delete user"
+  },
+  "empty": {
+    "allMessage": "No users have registered yet.",
+    "allTitle": "No users found",
+    "pendingMessage": "New registration requests will appear here for you to approve or reject.",
+    "pendingTitle": "No pending registrations"
+  },
+  "errors": {
+    "deniedMessage": "Your role cannot see or change accounts. Ask an administrator if you need access.",
+    "deniedTitle": "User management is for administrators",
+    "loadFailed": "Unable to load users",
+    "retry": "Retry"
+  },
+  "packStation": {
+    "cancel": "Cancel",
+    "change": "Change",
+    "cleared": "Cleared for {username}.",
+    "description": "Shown to this packer at the bench, e.g. \"Zebra ZD420 / Bench 3\". Operator configuration only - it carries no login weight and identifies nobody.",
+    "hint": "Leave blank to clear it.",
+    "label": "Label",
+    "maxLength": "Must be {max} characters or fewer",
+    "notSet": "Not set",
+    "placeholder": "Zebra ZD420 / Bench 3",
+    "saveFailed": "Could not save the label",
+    "saved": "Saved for {username}.",
+    "set": "Set",
+    "submit": "Save label",
+    "submitting": "Saving…",
+    "title": "Pack station label",
+    "titleFor": "Pack station label for {username}",
+    "updated": "Pack station label updated"
+  },
+  "page": {
+    "description": "Manage user accounts and pending registrations.",
+    "eyebrow": "Administration",
+    "title": "Users"
+  },
+  "pagination": {
+    "next": "Next",
+    "pageOf": "Page {page} of {count}",
+    "previous": "Previous"
+  },
+  "register": {
+    "alreadyHaveAccount": "Already have an account? <link>Sign in</link>",
+    "backToLogin": "Back to login",
+    "backToSignIn": "Back to sign in",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Repeat your password",
+    "demoBar": "Check your email to confirm and activate your account",
+    "demoBarTitle": "OpenLinker Demo",
+    "demoCallout": "<strong>Demo mode active</strong> - no approval needed. Your account is set to read-only. We'll email you a confirmation link; click it to activate your account before signing in.",
+    "demoSubmitted": "Check your email to confirm your account. Click the link we sent you to activate it, then sign in.",
+    "email": "Email",
+    "emailPlaceholder": "your@email.com",
+    "failed": "Registration failed",
+    "password": "Password",
+    "passwordPlaceholder": "At least 8 characters",
+    "recordingNotice": "Demo sessions are recorded. By creating an account you accept this. Passwords are never recorded.",
+    "submit": "Request access",
+    "submitDemo": "Start exploring",
+    "submitted": "Registration submitted. An admin will review your request.",
+    "submitting": "Submitting…",
+    "username": "Username",
+    "usernamePlaceholder": "Choose a username",
+    "whatWeRecord": "What we record"
+  },
+  "reject": "Reject",
+  "roleForApproval": "Role for approval",
+  "roles": {
+    "admin": "Admin",
+    "operator": "Operator",
+    "packer": "Packer",
+    "viewer": "Viewer"
+  },
+  "rowActions": {
+    "deactivate": "Deactivate",
+    "delete": "Delete",
+    "reactivate": "Reactivate",
+    "reviewInPending": "Review in Pending tab"
+  },
+  "statuses": {
+    "active": "Active",
+    "deactivated": "Deactivated",
+    "pending": "Pending"
+  },
+  "tabs": {
+    "all": "All users",
+    "allCaption": "All users",
+    "pending": "Pending",
+    "pendingCaption": "Pending registrations"
+  },
+  "toasts": {
+    "approveFailed": "Approval failed",
+    "approveFailedDescription": "Try again or check permissions.",
+    "approved": "User approved",
+    "approvedDescription": "The user can now log in.",
+    "deactivateFailed": "Deactivation failed",
+    "deactivated": "User deactivated",
+    "deactivatedDescription": "The user can no longer log in.",
+    "deleteFailed": "Deletion failed",
+    "deleted": "User deleted",
+    "deletedDescription": "The user has been removed.",
+    "reactivateFailed": "Reactivation failed",
+    "reactivated": "User reactivated",
+    "reactivatedDescription": "The user can log in again.",
+    "rejectFailed": "Rejection failed",
+    "rejected": "Registration rejected",
+    "rejectedDescription": "The registration has been removed.",
+    "roleUpdateFailed": "Role update failed",
+    "roleUpdated": "Role updated",
+    "roleUpdatedDescription": "Role changed to {role}.",
+    "tryAgain": "Try again."
+  },
+  "validation": {
+    "confirmPassword": "Please confirm your password",
+    "email": "Enter a valid email address",
+    "passwordMin": "Password must be at least {min} characters",
+    "passwordsDiffer": "Passwords do not match",
+    "username": "Username is required"
+  }
+}

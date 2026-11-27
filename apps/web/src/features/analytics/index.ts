@@ -68,3 +68,29 @@ export type {
   TopProductsResult,
   TopProductsSortBy,
 } from './api/top-products.types';
+
+export { MarginPanel, ANALYTICS_MARGIN_ANCHOR_ID } from './components/margin-panel';
+export { ExportCsvButton } from './components/export-csv-button';
+export { useMarginPanelVisible } from './hooks/use-margin-panel-visible';
+export { useTrackMargin } from './hooks/use-track-margin';
+export {
+  MarginCoverageBanner,
+  MARGIN_COVERAGE_BANNER_THRESHOLD,
+} from './components/margin-coverage-banner';
+export { useMarginAnalyticsQuery, useMarginProductsQuery } from './hooks/use-margin-analytics-query';
+export type {
+  MarginAnalytics,
+  MarginFigures,
+  MarginFilters,
+  MarginProductRow,
+  MarginProductsResult,
+} from './api/margin-analytics.types';
+
+// #3943: the gift report reuses the range-param builder and the CSV download.
+export { buildMarginRangeParams } from './api/margin-analytics.api';
+export { useAnalyticsCsvExport } from './hooks/use-analytics-csv-export';
+
+// #4029 - the login page's background preview renders the real KPI card.
+export { AnalyticsKpiCard } from './components/analytics-kpi-card';
+export type { AnalyticsKpiDelta, AnalyticsKpiTrend } from './components/analytics-kpi-card';
+export { useTopProductVariantSalesQuery } from './hooks/use-top-product-variant-sales-query';

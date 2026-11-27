@@ -3,7 +3,8 @@
  *
  * @module libs/core/src/fiscalization/application/mappers
  */
-import type { Order } from '@openlinker/core/orders';
+import { addedLineToOrderItem, type Order } from '@openlinker/core/orders';
+import type { ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 
 import { toRegisterTransactionCommand } from './order-to-register-transaction-command.mapper';
 import { InvalidFiscalLineError } from './errors/invalid-fiscal-line.error';
@@ -110,13 +111,15 @@ describe('toRegisterTransactionCommand', () => {
       idempotencyKey: 'k',
     });
 
-    const shipping = cmd.lines.filter((line) => line.name === 'Shipping');
+    const shipping = cmd.lines.filter((line) => line.name.startsWith('Shipping'));
     expect(shipping.map((line) => ({ taxRate: line.taxRate, amount: line.unitPriceGross }))).toEqual(
       [
         { taxRate: '23', amount: 12.3 },
         { taxRate: '5', amount: 10.5 },
       ]
     );
+    // The name carries the rate, so one name is never sent at two rates (#3905).
+    expect(shipping.map((line) => line.name)).toEqual(['Shipping 23%', 'Shipping 5%']);
     // The composed lines still reconcile against the order's own total, which
     // is the guard this mapper already enforces - so a re-weighting that moved
     // money rather than re-labelling it would have thrown instead.
@@ -262,6 +265,33 @@ describe('toRegisterTransactionCommand', () => {
   });
 
   describe('the lines must add up to the total', () => {
+    it('should split a multi-unit line so the receipt equals the discounted total when 3 units cannot carry it evenly (E-45 receipt)', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order({
+          items: [
+            { id: 'i1', productId: 'ol_product_1', quantity: 3, price: 56.94, name: 'Widget', sku: 'W-1' },
+          ],
+          totals: {
+            subtotal: 170.81,
+            tax: 0,
+            shipping: 0,
+            total: 170.81,
+            discountTotal: 9.19,
+            currency: 'PLN',
+          },
+        }),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+      });
+
+      const sum = cmd.lines.reduce((s, l) => s + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+      expect(sum).toBe(17081);
+      expect(cmd.lines.map((l) => [l.quantity, l.unitPriceGross])).toEqual([
+        [2, 56.94],
+        [1, 56.93],
+      ]);
+    });
+
     it('should refuse a sale whose lines do not sum to the reported gross total', () => {
       // `OrderTotals` has no discount field, so a source that folds a coupon into
       // `total` reports lines that sum higher. A fiscal document may not transmit
@@ -511,5 +541,300 @@ describe('toRegisterTransactionCommand', () => {
       });
       expect(cmd.buyerTaxId).toBe('not-a-real-looking-value-at-all');
     });
+  });
+  describe('delivery line (#3905, ADR-082)', () => {
+    const basket = (shipping: number, total: number): Partial<Order> => ({
+      items: [
+        { id: 'a', productId: 'p1', quantity: 1, price: 100, taxRate: '23', name: 'A' },
+        { id: 'b', productId: 'p2', quantity: 1, price: 50, taxRate: '5', name: 'B' },
+      ],
+      totals: { subtotal: 150, tax: 0, shipping, total, currency: 'PLN' },
+    });
+    const delivery = (over: Partial<ResolvedDeliveryLine> = {}): ResolvedDeliveryLine => ({
+      name: 'Koszt dostawy',
+      invoiceName: 'Dostawa',
+      rate: 'goods',
+      freeDelivery: 'omit',
+      rateFormat: 'plain',
+      ...over,
+    });
+
+    it('should name a single-rate delivery line with its rate when nothing is configured', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order({
+          items: [{ id: 'a', productId: 'p1', quantity: 1, price: 10, taxRate: '23' }],
+          totals: { subtotal: 10, tax: 0, shipping: 5, total: 15, currency: 'PLN' },
+        }),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+      });
+      expect(cmd.lines[1]?.name).toBe('Shipping 23%');
+    });
+
+    it('should use the source delivery rate when items carry none (#3910)', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order({
+          items: [{ id: 'a', productId: 'p1', quantity: 1, price: 10, name: 'A' }],
+          totals: {
+            subtotal: 10,
+            tax: 0,
+            shipping: 5,
+            total: 15,
+            currency: 'PLN',
+            shippingTaxRate: '23',
+          },
+        }),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+      });
+      expect(cmd.lines[1]).toMatchObject({ name: 'Shipping 23%', taxRate: '23', unitPriceGross: 5 });
+    });
+
+    it('should split a 23% + 5% basket into two suffixed lines with unchanged amounts', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(basket(15, 165)),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ rateFormat: 'brackets' }),
+      });
+      const lines = cmd.lines.slice(2);
+      expect(lines.map((l) => l.name)).toEqual(['Koszt dostawy (23%)', 'Koszt dostawy (5%)']);
+      expect(lines.reduce((sum, l) => sum + l.unitPriceGross, 0)).toBeCloseTo(15, 2);
+    });
+
+    it('should emit one line at the fixed rate with no split', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(basket(15, 165)),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ rate: 'fixed', fixedRate: '23', rateFormat: 'labelled', rateLabel: 'VAT' }),
+      });
+      expect(cmd.lines.slice(2)).toEqual([
+        {
+          name: 'Koszt dostawy VAT 23%',
+          quantity: 1,
+          unitPriceGross: 15,
+          taxRate: '23',
+          sku: null,
+        },
+      ]);
+    });
+
+    it('should fold the delivery into product lines in spread mode and still reconcile', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(basket(15, 165)),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ rate: 'spread' }),
+      });
+      expect(cmd.lines).toHaveLength(2);
+      const sum = cmd.lines.reduce((s, l) => s + l.quantity * l.unitPriceGross, 0);
+      expect(sum).toBeCloseTo(165, 2);
+    });
+
+    it('should raise copies of the product lines in spread mode, never the order it was given', () => {
+      const given = order(basket(15, 165));
+      for (const item of given.items) Object.freeze(item);
+      Object.freeze(given.items);
+      const cmd = toRegisterTransactionCommand({
+        order: given,
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ rate: 'spread' }),
+      });
+      // 15 split by gross 100 : 50 -> 10 and 5, each on a quantity-1 line.
+      expect(cmd.lines.map((l) => l.unitPriceGross)).toEqual([110, 55]);
+      expect(given.items.map((item) => item.price)).toEqual([100, 50]);
+    });
+
+    it('should fall back to a delivery line when the spread cannot be exact', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order({
+          items: [{ id: 'a', productId: 'p1', quantity: 3, price: 10, taxRate: '23', name: 'A' }],
+          totals: { subtotal: 30, tax: 0, shipping: 0.1, total: 30.1, currency: 'PLN' },
+        }),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ rate: 'spread' }),
+      });
+      expect(cmd.lines).toHaveLength(2);
+      expect(cmd.lines[1]?.name).toBe('Koszt dostawy 23%');
+      // The product line keeps its own price: nothing was folded into it.
+      expect(cmd.lines[0]?.unitPriceGross).toBe(10);
+    });
+
+    it('should never emit a zero delivery line on a receipt, even with free delivery shown', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(basket(0, 150)),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        deliveryLine: delivery({ freeDelivery: 'show' }),
+      });
+      expect(cmd.lines).toHaveLength(2);
+    });
+  });
+});
+
+describe('toRegisterTransactionCommand - gift lines (#3930)', () => {
+  const giftOrder = (): Order =>
+    order({
+      items: [
+        { id: 'i1', productId: 'p1', quantity: 2, price: 24.6, name: 'Widget', taxRate: '23' },
+        { id: 'i2', productId: 'p2', quantity: 1, price: 0, name: 'Spoon', taxRate: '23', gift: { source: 'channel' } },
+      ],
+    } as Partial<Order>);
+  const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
+    lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
+
+  it('should omit a gift by default and equal what was paid', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftConnectionForm: 'omit',
+    });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Widget']);
+    expect(total(cmd.lines)).toBe(4920);
+  });
+
+  it('should take 0.01 from a same-rate paid line when the provider refuses zero', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftConnectionForm: 'show-zero',
+      acceptsZeroValueLine: false,
+    });
+    expect(cmd.lines).toHaveLength(3);
+    expect(cmd.lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+    expect(total(cmd.lines)).toBe(4920);
+  });
+
+  it('should still floor the gift at 0.01 when the provider declares it accepts zero (a receipt always refuses zero)', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: giftOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftConnectionForm: 'show-zero',
+      acceptsZeroValueLine: true,
+    });
+    expect(cmd.lines.at(-1)?.unitPriceGross).toBeCloseTo(0.01);
+    expect(total(cmd.lines)).toBe(4920);
+  });
+});
+
+describe('toRegisterTransactionCommand - bundle components (#3934)', () => {
+  const bundleOrder = (): Order =>
+    order({
+      items: [{ id: 'set', productId: 'ps', quantity: 1, price: 49.2, name: 'Set', taxRate: '23' }],
+    } as Partial<Order>);
+  const mixedDocument = {
+    byLineId: {
+      set: [
+        { lineId: 'set~c:a', variantId: 'a', productId: 'pa', name: 'Soap', sku: 'S-1', quantity: 1, unitPriceGross: 30, taxRate: '23' },
+        { lineId: 'set~c:b', variantId: 'b', productId: 'pb', name: 'Towel', quantity: 1, unitPriceGross: 20, taxRate: '8' },
+        { lineId: 'set~c:g', variantId: 'g', productId: 'pg', name: 'Candle', quantity: 1, giftSlot: true, unitPriceGross: 9, taxRate: '8' },
+      ],
+    },
+  };
+  const total = (lines: { quantity: number; unitPriceGross: number }[]): number =>
+    lines.reduce((sum, line) => sum + Math.round(line.quantity * line.unitPriceGross * 100), 0);
+  const perRate = (lines: { quantity: number; unitPriceGross: number; taxRate: string }[]) => {
+    const out: Record<string, number> = {};
+    for (const l of lines) {
+      out[l.taxRate] = (out[l.taxRate] ?? 0) + Math.round(l.quantity * l.unitPriceGross * 100);
+    }
+    return out;
+  };
+
+  it('should register a mixed-rate set as its components, each at its own rate, total equal to what was paid', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      bundleDocument: mixedDocument,
+      giftConnectionForm: 'omit',
+    });
+    expect(cmd.lines.map((l) => [l.name, l.taxRate])).toEqual([
+      ['Soap', '23'],
+      ['Towel', '8'],
+    ]);
+    expect(cmd.lines[0].sku).toBe('S-1');
+    expect(total(cmd.lines)).toBe(4920);
+    // 30:20 of 49.20 split proportionally, per-rate sums add back to the payment.
+    expect(perRate(cmd.lines)).toEqual({ '23': 2952, '8': 1968 });
+  });
+
+  it('should never repeat one name at two rates, even when a component has no name', () => {
+    const unnamed = {
+      byLineId: {
+        set: mixedDocument.byLineId.set.map((c) => ({ ...c, name: null, sku: null })),
+      },
+    };
+    const cmd = toRegisterTransactionCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      bundleDocument: unnamed,
+    });
+    const ratesByName = new Map<string, Set<string>>();
+    for (const l of cmd.lines) {
+      ratesByName.set(l.name, (ratesByName.get(l.name) ?? new Set()).add(l.taxRate));
+    }
+    expect([...ratesByName.values()].every((rates) => rates.size === 1)).toBe(true);
+    expect(cmd.lines.map((l) => l.name)).not.toContain('Set');
+  });
+
+  it('should keep one line when every component has the set rate', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: bundleOrder(),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      bundleDocument: {
+        byLineId: { set: mixedDocument.byLineId.set.map((c) => ({ ...c, taxRate: '23' })) },
+      },
+    });
+    expect(cmd.lines.map((l) => l.name)).toEqual(['Set']);
+  });
+
+  it('should refuse a set it cannot split without guessing', () => {
+    expect(() =>
+      toRegisterTransactionCommand({
+        order: bundleOrder(),
+        connectionId: 'c',
+        idempotencyKey: 'k',
+        bundleDocument: {
+          byLineId: { set: mixedDocument.byLineId.set.map((c) => ({ ...c, taxRate: null })) },
+        },
+      }),
+    ).toThrow('no known tax rate');
+  });
+});
+
+describe('toRegisterTransactionCommand - net-priced order with an OpenLinker rule gift', () => {
+  it('should compose without refusal and sum to what was paid', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order({
+        items: [
+          { id: 'i1', productId: 'p1', quantity: 1, price: 100, unitPriceGross: 123, name: 'Widget', taxRate: '23' },
+          addedLineToOrderItem('ol-gift:rule-1:1', {
+            changeId: 'rule-1',
+            editedAt: '2026-11-02T10:00:00.000Z',
+            editedBy: null,
+            productId: 'p2',
+            quantity: 1,
+            name: 'Spoon',
+            taxRate: '23',
+            gift: { source: 'ol-rule', ruleRef: 'rule-1' },
+          }),
+        ],
+        totals: { subtotal: 100, tax: 23, shipping: 0, total: 123, currency: 'PLN', taxTreatment: 'exclusive' },
+      } as Partial<Order>),
+      connectionId: 'c',
+      idempotencyKey: 'k',
+      giftConnectionForm: 'omit',
+    });
+    const sum = cmd.lines.reduce((acc, l) => acc + Math.round(l.quantity * l.unitPriceGross * 100), 0);
+    expect(sum).toBe(12300);
   });
 });

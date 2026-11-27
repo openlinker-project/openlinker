@@ -49,11 +49,11 @@ import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 
 const fulfillmentScreenCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Fulfilment' },
+  crumb: { group: 'operations', page: 'fulfilment' },
 };
 
 const fulfillmentWorkDetailCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Fulfilment task' },
+  crumb: { group: 'operations', page: 'fulfilmentTask' },
 };
 
 export const fulfillmentRoute: RouteObject = {

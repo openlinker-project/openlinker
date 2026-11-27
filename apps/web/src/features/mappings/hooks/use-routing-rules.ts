@@ -55,6 +55,10 @@ export function useReplaceRoutingRules(
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
   return useMutation({
+    // Observed by the release center to complete the shipping-routing step; the
+    // connection rides in meta because the payload does not carry it.
+    mutationKey: ['mappings', 'fulfillment-routing', 'update'],
+    meta: { connectionId },
     mutationFn: (payload: UpsertRoutingRulesPayload) =>
       apiClient.mappings.replaceRoutingRules(connectionId, payload),
     onSuccess: () => {

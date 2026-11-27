@@ -7,8 +7,16 @@
  */
 export type {
   FetchLike,
+  ForConnectionOptions,
   HttpTransportFactoryPort,
   RateLimitedConnection,
 } from './http-transport-factory.port';
 export { HttpTransportFactory } from './http-transport-factory';
 export type { HttpTransportFactoryDeps } from './http-transport-factory';
+export {
+  REQUEST_NOT_SENT_ERROR_CODES,
+  clearRequestNotSent,
+  isProvablyUnsentTransportError,
+  isRequestNotSentError,
+  markRequestNotSent,
+} from './request-not-sent';

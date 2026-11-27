@@ -328,6 +328,28 @@ describe('PrestashopProductPublisherAdapter', () => {
       );
     });
 
+    it('should send the whole stock row, since PrestaShop refuses a partial PUT', async () => {
+      client.createResource.mockResolvedValue({ id: '42', active: '1' });
+      const row = {
+        id: '7',
+        id_product: '42',
+        id_product_attribute: '0',
+        id_shop: '1',
+        id_shop_group: '0',
+        depends_on_stock: '0',
+        out_of_stock: '2',
+        quantity: '0',
+      };
+      client.listResources.mockImplementation((resource) =>
+        resource === 'products' ? Promise.resolve([]) : Promise.resolve([row]),
+      );
+      client.updateResource.mockResolvedValue({ id: '7' });
+
+      await adapter.publishProduct(baseCommand({ stock: 6 }));
+
+      expect(client.updateResource).toHaveBeenCalledWith('stock_availables', '7', { ...row, quantity: '6' });
+    });
+
     it('should not write a stock row belonging to another product (#2608 review)', async () => {
       // The #2616 shape: the filter did not reach the shop, so the answer is
       // the first row of an unfiltered page. The PATCH sets id_product, so

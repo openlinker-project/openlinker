@@ -20,8 +20,16 @@
  *     payment term (date or descriptive TerminOpis), bank account, skonto
  *   - KOR: correction reason + corrected-invoice number; `StanPrzed=1`
  *     "before" rows stay in a separate collapsed section (#1364 follow-up)
+ *   - KOD I verification QR code (#1579): the legally-required verification
+ *     code (kod weryfikacyjny) for invoices handed to buyers outside KSeF,
+ *     with the KSeF number as caption. The URL comes from the server, which
+ *     builds it from the exact submitted document (DEF-02 / DEF-03 / DEF-15).
+ *   - The content the legal-completeness work added (DEF-29): the per-line
+ *     exchange rate and the VAT in PLN of a foreign-currency invoice, the
+ *     annotations that apply, GTU / procedure markers, the margin-scheme
+ *     total, and additional parties.
  *
- * Skipped by design: Adnotacje (P_16-P_23), WZ, amount-in-words, footer.
+ * Skipped by design: WZ, amount-in-words, footer.
  *
  * Returns `null` if the XML cannot be parsed or required fields are missing,
  * and calls `onParseError` (if given) so the parent (`ksef-invoice-detail-section`)
@@ -35,10 +43,20 @@
  */
 import { useEffect, useMemo } from 'react';
 import type { ReactElement } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate, renderRich } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
 import { KSEF_FORMA_PLATNOSCI_VALUES } from './ksef-setup.schema';
 import type { KsefFormaPlatnosci } from './ksef-setup.schema';
-import type { FaData, FaLine, FaParty, FaPayment, FaVatBand } from './ksef-fa3-view.types';
+import type {
+  FaAdditionalParty,
+  FaAnnotation,
+  FaData,
+  FaLine,
+  FaParty,
+  FaPayment,
+  FaVatBand,
+} from './ksef-fa3-view.types';
+import { QrCode } from '../../../shared/ui';
 
 interface KsefFa3ViewProps {
   xmlText: string;
@@ -48,6 +66,11 @@ interface KsefFa3ViewProps {
    * authority AFTER the document is built - so the parent passes it in.
    */
   ksefNumber?: string | null;
+  /**
+   * The KOD I verification URL, as the server built it from the submitted
+   * document. Absent or null renders no QR code - never a guessed one.
+   */
+  verificationUrl?: string | null;
   /**
    * Notifies the parent when `xmlText` cannot be parsed (or is missing
    * required fields), so it can fall through to its placeholder/error copy
@@ -63,6 +86,8 @@ interface KsefFa3ViewProps {
  * `VAT_BANDS` map in the backend builder (`fa3-xml.builder.ts`). Net-only
  * bands carry no `tax` element.
  */
+const mono = { mono: (text: string): ReactElement => <span className="mono-text">{text}</span> };
+
 const VAT_BAND_ELEMENTS: ReadonlyArray<{ net: string; tax: string | null; label: string }> = [
   { net: 'P_13_1', tax: 'P_14_1', label: '23%' },
   { net: 'P_13_2', tax: 'P_14_2', label: '8%' },
@@ -84,24 +109,6 @@ const ZERO_RATE_LINE_LABELS: Readonly<Record<string, string>> = {
   '0 KR': '0%',
   '0 WDT': '0% WDT',
   '0 EX': '0% EX',
-};
-
-/**
- * `FormaPlatnosci` code (`TFormaPlatnosci`, 1-7) to i18n key + English
- * fallback. Keyed by `KsefFormaPlatnosci` from the setup schema (#1311) so
- * the compiler enforces exhaustiveness against the guarded vocabulary -
- * adding an 8th code to `KSEF_FORMA_PLATNOSCI_VALUES` fails compilation here.
- */
-const PAYMENT_FORM_LABELS: Readonly<
-  Record<KsefFormaPlatnosci, { key: string; fallback: string }>
-> = {
-  '1': { key: 'invoice.ksef.fa3PaymentFormCash', fallback: 'Cash' },
-  '2': { key: 'invoice.ksef.fa3PaymentFormCard', fallback: 'Card' },
-  '3': { key: 'invoice.ksef.fa3PaymentFormVoucher', fallback: 'Voucher' },
-  '4': { key: 'invoice.ksef.fa3PaymentFormCheque', fallback: 'Cheque' },
-  '5': { key: 'invoice.ksef.fa3PaymentFormCredit', fallback: 'Credit' },
-  '6': { key: 'invoice.ksef.fa3PaymentFormTransfer', fallback: 'Transfer' },
-  '7': { key: 'invoice.ksef.fa3PaymentFormMobile', fallback: 'Mobile' },
 };
 
 function isKsefFormaPlatnosci(code: string): code is KsefFormaPlatnosci {
@@ -215,6 +222,11 @@ function parseFa3Xml(xmlText: string): FaData | null {
     netUnitPrice: getText(el, 'P_9A'),
     netTotal: getText(el, 'P_11'),
     vatRate: getText(el, 'P_12'),
+    grossUnitPrice: getText(el, 'P_9B'),
+    grossTotal: getText(el, 'P_11A'),
+    gtu: getText(el, 'GTU'),
+    procedure: getText(el, 'Procedura'),
+    exchangeRate: getText(el, 'KursWaluty'),
     isBeforeCorrection: getText(el, 'StanPrzed') === '1',
   }));
 
@@ -226,6 +238,7 @@ function parseFa3Xml(xmlText: string): FaData | null {
       label: band.label,
       net,
       tax: band.tax !== null ? getText(fa, band.tax) : null,
+      taxPln: band.tax !== null ? getText(fa, `${band.tax}W`) : null,
     });
   }
 
@@ -255,6 +268,42 @@ function parseFa3Xml(xmlText: string): FaData | null {
       ? getText(korygowanaEl, 'NrKSeFFaKorygowanej')
       : null,
     payment: parsePayment(fa),
+    annotations: parseAnnotations(fa),
+    marginTotal: getText(fa, 'P_13_11'),
+    additionalParties: collectByLocalName(faktura, 'Podmiot3').map(parseAdditionalParty),
+  };
+}
+
+/** The `Adnotacje` statements that apply (value `1`), in schema order. */
+function parseAnnotations(fa: Element): FaAnnotation[] {
+  const adnotacje = firstByLocalName(fa, 'Adnotacje');
+  if (!adnotacje) return [];
+  const applies = (localName: string): boolean => getText(adnotacje, localName) === '1';
+  const out: FaAnnotation[] = [];
+  if (applies('P_16')) out.push({ key: 'cash-accounting', detail: null });
+  if (applies('P_17')) out.push({ key: 'self-billing', detail: null });
+  if (applies('P_18')) out.push({ key: 'reverse-charge', detail: null });
+  if (applies('P_18A')) out.push({ key: 'split-payment', detail: null });
+  if (applies('P_19')) {
+    out.push({
+      key: 'exemption',
+      detail: getText(adnotacje, 'P_19A') ?? getText(adnotacje, 'P_19B') ?? getText(adnotacje, 'P_19C'),
+    });
+  }
+  if (applies('P_23')) out.push({ key: 'triangulation', detail: null });
+  if (applies('P_PMarzy')) {
+    const kind = ['P_PMarzy_2', 'P_PMarzy_3_1', 'P_PMarzy_3_2', 'P_PMarzy_3_3'].find(applies) ?? null;
+    out.push({ key: 'margin', detail: kind });
+  }
+  return out;
+}
+
+function parseAdditionalParty(podmiot: Element): FaAdditionalParty {
+  const dane = firstByLocalName(podmiot, 'DaneIdentyfikacyjne');
+  return {
+    name: dane ? getText(dane, 'Nazwa') : null,
+    nip: dane ? getText(dane, 'NIP') : null,
+    role: getText(podmiot, 'Rola'),
   };
 }
 
@@ -286,8 +335,8 @@ function bandGross(band: FaVatBand): string | null {
  * `0 KR`/`0 WDT`/`0 EX` codes normalize to the VAT-summary band labels;
  * other non-numeric bands (zw, np, oo) render verbatim.
  */
-function formatVatRate(vatRate: string | null): string {
-  if (vatRate === null) return '-';
+function formatVatRate(vatRate: string | null, empty: string): string {
+  if (vatRate === null) return empty;
   const zeroLabel = ZERO_RATE_LINE_LABELS[vatRate];
   if (zeroLabel !== undefined) return zeroLabel;
   return /^\d+([.,]\d+)?$/.test(vatRate) ? `${vatRate}%` : vatRate;
@@ -298,39 +347,49 @@ interface LinesTableProps {
 }
 
 function LinesTable({ lines }: LinesTableProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useKsefMessages().ksefFa3View;
   // Documents issued before the backend emitted P_8A/P_9A must not render
   // dash-only columns - show each column only when a line in THIS table
   // carries the value (a KOR's before rows may carry them while the after
   // rows do not, and vice versa).
   const showUnit = lines.some((line) => line.unit !== null);
   const showNetUnitPrice = lines.some((line) => line.netUnitPrice !== null);
+  // DEF-29: markers and margin gross values only when a line carries them.
+  const showGtu = lines.some((line) => line.gtu !== null);
+  const showProcedure = lines.some((line) => line.procedure !== null);
+  const showVat = lines.some((line) => line.vatRate !== null);
   return (
     <div className="ksef-fa3-view__table-wrap">
       <table className="ksef-fa3-view__table">
         <thead>
           <tr>
-            <th scope="col">{t('invoice.ksef.fa3LineNo', '#')}</th>
+            <th scope="col">{copy.lineNo}</th>
             <th scope="col" className="ksef-fa3-view__col-desc">
-              {t('invoice.ksef.fa3LineDesc', 'Description')}
+              {copy.lineDesc}
             </th>
             {showNetUnitPrice ? (
               <th scope="col" className="ksef-fa3-view__col-num">
-                {t('invoice.ksef.fa3LineNetPrice', 'Net unit price')}
+                {copy.lineNetPrice}
               </th>
             ) : null}
             <th scope="col" className="ksef-fa3-view__col-num">
-              {t('invoice.ksef.fa3LineQty', 'Qty')}
+              {copy.lineQty}
             </th>
-            {showUnit ? <th scope="col">{t('invoice.ksef.fa3LineUnit', 'Unit')}</th> : null}
+            {showUnit ? <th scope="col">{copy.lineUnit}</th> : null}
+            {showVat ? (
+              <th scope="col" className="ksef-fa3-view__col-num">
+                {copy.lineVat}
+              </th>
+            ) : null}
+            {showGtu ? <th scope="col">{copy.lineGtu}</th> : null}
+            {showProcedure ? (
+              <th scope="col">{copy.lineProcedure}</th>
+            ) : null}
             <th scope="col" className="ksef-fa3-view__col-num">
-              {t('invoice.ksef.fa3LineVat', 'VAT rate')}
+              {copy.lineNetTotal}
             </th>
             <th scope="col" className="ksef-fa3-view__col-num">
-              {t('invoice.ksef.fa3LineNetTotal', 'Net total')}
-            </th>
-            <th scope="col" className="ksef-fa3-view__col-num">
-              {t('invoice.ksef.fa3LineGrossTotal', 'Gross total')}
+              {copy.lineGrossTotal}
             </th>
           </tr>
         </thead>
@@ -340,16 +399,20 @@ function LinesTable({ lines }: LinesTableProps): ReactElement {
           {lines.map((line, idx) => (
             <tr key={line.lineNo ?? `idx-${idx}`}>
               <td>{line.lineNo ?? String(idx + 1)}</td>
-              <td className="ksef-fa3-view__col-desc">{line.description ?? '-'}</td>
+              <td className="ksef-fa3-view__col-desc">{line.description ?? copy.emptyCell}</td>
               {showNetUnitPrice ? (
-                <td className="ksef-fa3-view__col-num tabular">{line.netUnitPrice ?? '-'}</td>
+                <td className="ksef-fa3-view__col-num tabular">{line.netUnitPrice ?? copy.emptyCell}</td>
               ) : null}
-              <td className="ksef-fa3-view__col-num tabular">{line.quantity ?? '-'}</td>
-              {showUnit ? <td>{line.unit ?? '-'}</td> : null}
-              <td className="ksef-fa3-view__col-num tabular">{formatVatRate(line.vatRate)}</td>
-              <td className="ksef-fa3-view__col-num tabular">{line.netTotal ?? '-'}</td>
+              <td className="ksef-fa3-view__col-num tabular">{line.quantity ?? copy.emptyCell}</td>
+              {showUnit ? <td>{line.unit ?? copy.emptyCell}</td> : null}
+              {showVat ? (
+                <td className="ksef-fa3-view__col-num tabular">{formatVatRate(line.vatRate, copy.emptyCell)}</td>
+              ) : null}
+              {showGtu ? <td>{line.gtu ?? copy.emptyCell}</td> : null}
+              {showProcedure ? <td>{line.procedure ?? copy.emptyCell}</td> : null}
+              <td className="ksef-fa3-view__col-num tabular">{line.netTotal ?? copy.emptyCell}</td>
               <td className="ksef-fa3-view__col-num tabular">
-                {deriveGross(line.netTotal, line.vatRate) ?? '-'}
+                {line.grossTotal ?? deriveGross(line.netTotal, line.vatRate) ?? copy.emptyCell}
               </td>
             </tr>
           ))}
@@ -365,14 +428,14 @@ interface PartyBlockProps {
 }
 
 function PartyBlock({ label, party }: PartyBlockProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useKsefMessages().ksefFa3View;
   return (
     <div className="ksef-fa3-view__party">
       <div className="ksef-fa3-view__party-label">{label}</div>
-      <div className="ksef-fa3-view__party-name">{party.name ?? '-'}</div>
+      <div className="ksef-fa3-view__party-name">{party.name ?? copy.emptyCell}</div>
       {party.nip !== null ? (
         <div className="ksef-fa3-view__party-line">
-          {t('invoice.ksef.fa3Nip', 'NIP')}: <span className="mono-text">{party.nip}</span>
+          {renderRich(copy.nipLine, mono, { nip: party.nip })}
         </div>
       ) : null}
       {party.addressLines.map((line, idx) => (
@@ -391,21 +454,23 @@ function PartyBlock({ label, party }: PartyBlockProps): ReactElement {
 export function KsefFa3View({
   xmlText,
   ksefNumber,
+  verificationUrl = null,
   onParseError,
 }: KsefFa3ViewProps): ReactElement | null {
-  const { t } = useTranslation();
+  const copy = useKsefMessages().ksefFa3View;
   // The parse is a full DOMParser pass + ~35 subtree scans; the parent
   // re-renders on unrelated state (toasts, query refetches), so memoize.
   const data = useMemo(() => parseFa3Xml(xmlText), [xmlText]);
   useEffect(() => {
     if (!data) onParseError?.();
   }, [data, onParseError]);
+
   if (!data) return null;
 
   const isCorrection = data.invoiceType === 'KOR';
   const subtitle = isCorrection
-    ? t('invoice.ksef.fa3TypeCorrection', 'Correction invoice')
-    : t('invoice.ksef.fa3TypeStandard', 'Standard invoice');
+    ? copy.typeCorrection
+    : copy.typeStandard;
 
   // Prefer the record-sourced KSeF number (prop); the XML-parsed value only
   // exists for foreign documents carrying a non-schema extension element.
@@ -417,12 +482,15 @@ export function KsefFa3View({
   // too - otherwise line counts and totals double up (#1364 follow-up). The
   // "before" rows are still shown, but in a separate, clearly labeled set.
   const currentLines = data.lines.filter((line) => !line.isBeforeCorrection);
+  // One invoice-level rate is stamped on every line, so the first one speaks for all.
+  const exchangeRate = data.lines.find((line) => line.exchangeRate !== null)?.exchangeRate ?? null;
+  const showTaxPln = data.vatBands.some((band) => band.taxPln !== null);
   const beforeCorrectionLines = data.lines.filter((line) => line.isBeforeCorrection);
 
   const paymentFormCode = data.payment?.formCode ?? null;
   const paymentFormLabel =
     paymentFormCode !== null && isKsefFormaPlatnosci(paymentFormCode)
-      ? PAYMENT_FORM_LABELS[paymentFormCode]
+      ? copy.paymentForms[paymentFormCode]
       : null;
 
   return (
@@ -436,7 +504,7 @@ export function KsefFa3View({
         {displayKsefNumber !== null && displayKsefNumber !== undefined ? (
           <div className="ksef-fa3-view__ksef-number">
             <div className="ksef-fa3-view__field-label">
-              {t('invoice.ksef.fa3KsefNumber', 'KSeF number')}
+              {copy.ksefNumber}
             </div>
             <div className="mono-text text-sm">{displayKsefNumber}</div>
           </div>
@@ -445,8 +513,8 @@ export function KsefFa3View({
 
       {/* Seller / Buyer */}
       <section className="ksef-fa3-view__parties">
-        <PartyBlock label={t('invoice.ksef.fa3Seller', 'Seller')} party={data.seller} />
-        <PartyBlock label={t('invoice.ksef.fa3Buyer', 'Buyer')} party={data.buyer} />
+        <PartyBlock label={copy.seller} party={data.seller} />
+        <PartyBlock label={copy.buyer} party={data.buyer} />
       </section>
 
       {/* Details row */}
@@ -454,7 +522,7 @@ export function KsefFa3View({
         {data.issueDate !== null ? (
           <div>
             <div className="ksef-fa3-view__field-label">
-              {t('invoice.ksef.fa3IssueDate', 'Issue date')}
+              {copy.issueDate}
             </div>
             <div className="tabular">{data.issueDate}</div>
           </div>
@@ -462,7 +530,7 @@ export function KsefFa3View({
         {data.saleDate !== null ? (
           <div>
             <div className="ksef-fa3-view__field-label">
-              {t('invoice.ksef.fa3SaleDate', 'Sale date')}
+              {copy.saleDate}
             </div>
             <div className="tabular">{data.saleDate}</div>
           </div>
@@ -470,12 +538,42 @@ export function KsefFa3View({
         {data.currency !== null ? (
           <div>
             <div className="ksef-fa3-view__field-label">
-              {t('invoice.ksef.fa3Currency', 'Currency')}
+              {copy.currency}
             </div>
             <div>{data.currency}</div>
           </div>
         ) : null}
+        {exchangeRate !== null ? (
+          <div>
+            <div className="ksef-fa3-view__field-label">
+              {copy.exchangeRate}
+            </div>
+            <div className="tabular">{exchangeRate}</div>
+          </div>
+        ) : null}
       </section>
+
+      {/* DEF-30: parties besides seller and buyer. */}
+      {data.additionalParties.length > 0 ? (
+        <section className="ksef-fa3-view__annotations">
+          <div className="ksef-fa3-view__section-title">
+            {copy.additionalParties}
+          </div>
+          <ul>
+            {data.additionalParties.map((party, idx) => (
+              <li key={idx}>
+                {[
+                  party.name ?? copy.emptyCell,
+                  party.nip !== null ? interpolate(copy.partyNip, { nip: party.nip }) : null,
+                  party.role !== null ? interpolate(copy.partyRole, { role: party.role }) : null,
+                ]
+                  .filter((part) => part !== null)
+                  .join(' ')}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {/* KOR correction metadata */}
       {data.correctionReason !== null || data.correctedInvoiceNumber !== null ? (
@@ -483,7 +581,7 @@ export function KsefFa3View({
           {data.correctedInvoiceNumber !== null ? (
             <div>
               <span className="ksef-fa3-view__field-label">
-                {t('invoice.ksef.fa3CorrectedInvoice', 'Corrects invoice')}
+                {copy.correctedInvoice}
               </span>{' '}
               <span className="mono-text">{data.correctedInvoiceNumber}</span>
             </div>
@@ -491,7 +589,7 @@ export function KsefFa3View({
           {data.correctedInvoiceKsefNumber !== null ? (
             <div>
               <span className="ksef-fa3-view__field-label">
-                {t('invoice.ksef.fa3CorrectedKsefNumber', 'KSeF number of corrected invoice')}
+                {copy.correctedKsefNumber}
               </span>{' '}
               <span className="mono-text">{data.correctedInvoiceKsefNumber}</span>
             </div>
@@ -499,7 +597,7 @@ export function KsefFa3View({
           {data.correctionReason !== null ? (
             <div>
               <span className="ksef-fa3-view__field-label">
-                {t('invoice.ksef.fa3CorrectionReason', 'Correction reason')}
+                {copy.correctionReason}
               </span>{' '}
               {data.correctionReason}
             </div>
@@ -511,7 +609,7 @@ export function KsefFa3View({
       {currentLines.length > 0 ? (
         <section className="ksef-fa3-view__lines">
           <div className="ksef-fa3-view__section-title">
-            {t('invoice.ksef.fa3Lines', 'Invoice lines')}
+            {copy.lines}
           </div>
           <LinesTable lines={currentLines} />
         </section>
@@ -522,7 +620,7 @@ export function KsefFa3View({
       {beforeCorrectionLines.length > 0 ? (
         <details className="ksef-fa3-view__before-correction">
           <summary className="ksef-fa3-view__section-title">
-            {t('invoice.ksef.fa3LinesBefore', 'Lines before correction')}
+            {copy.linesBefore}
           </summary>
           <LinesTable lines={beforeCorrectionLines} />
         </details>
@@ -532,21 +630,26 @@ export function KsefFa3View({
       {data.vatBands.length > 0 ? (
         <section className="ksef-fa3-view__vat">
           <div className="ksef-fa3-view__section-title">
-            {t('invoice.ksef.fa3VatSummary', 'VAT summary')}
+            {copy.vatSummary}
           </div>
           <div className="ksef-fa3-view__table-wrap">
             <table className="ksef-fa3-view__table">
               <thead>
                 <tr>
-                  <th scope="col">{t('invoice.ksef.fa3VatRate', 'Rate')}</th>
+                  <th scope="col">{copy.vatRate}</th>
                   <th scope="col" className="ksef-fa3-view__col-num">
-                    {t('invoice.ksef.fa3VatNet', 'Net')}
+                    {copy.vatNet}
                   </th>
                   <th scope="col" className="ksef-fa3-view__col-num">
-                    {t('invoice.ksef.fa3VatTax', 'Tax')}
+                    {copy.vatTax}
                   </th>
+                  {showTaxPln ? (
+                    <th scope="col" className="ksef-fa3-view__col-num">
+                      {copy.vatTaxPln}
+                    </th>
+                  ) : null}
                   <th scope="col" className="ksef-fa3-view__col-num">
-                    {t('invoice.ksef.fa3VatGross', 'Gross')}
+                    {copy.vatGross}
                   </th>
                 </tr>
               </thead>
@@ -555,8 +658,11 @@ export function KsefFa3View({
                   <tr key={band.label}>
                     <td>{band.label}</td>
                     <td className="ksef-fa3-view__col-num tabular">{band.net}</td>
-                    <td className="ksef-fa3-view__col-num tabular">{band.tax ?? '-'}</td>
-                    <td className="ksef-fa3-view__col-num tabular">{bandGross(band) ?? '-'}</td>
+                    <td className="ksef-fa3-view__col-num tabular">{band.tax ?? copy.emptyCell}</td>
+                    {showTaxPln ? (
+                      <td className="ksef-fa3-view__col-num tabular">{band.taxPln ?? copy.emptyCell}</td>
+                    ) : null}
+                    <td className="ksef-fa3-view__col-num tabular">{bandGross(band) ?? copy.emptyCell}</td>
                   </tr>
                 ))}
               </tbody>
@@ -565,15 +671,50 @@ export function KsefFa3View({
         </section>
       ) : null}
 
+      {/* DEF-31: a margin-scheme invoice totals its sale here instead of VAT bands. */}
+      {data.marginTotal !== null ? (
+        <div className="ksef-fa3-view__total">
+          <span className="ksef-fa3-view__field-label">
+            {copy.marginTotal}
+          </span>
+          <span className="tabular">{data.marginTotal}</span>
+        </div>
+      ) : null}
+
+      {/* DEF-29: the annotations that apply; none applying shows nothing. */}
+      {data.annotations.length > 0 ? (
+        <section className="ksef-fa3-view__annotations">
+          <div className="ksef-fa3-view__section-title">
+            {copy.annotationsTitle}
+          </div>
+          <ul>
+            {data.annotations.map((annotation) => (
+              <li key={annotation.key}>
+                {annotation.detail !== null && annotation.key === 'exemption'
+                  ? interpolate(copy.annotationWithDetail, {
+                      label: copy.annotations[annotation.key],
+                      detail: annotation.detail,
+                    })
+                  : copy.annotations[annotation.key]}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {/* Total due */}
       {data.grandTotal !== null ? (
         <div className="ksef-fa3-view__total">
           <span className="ksef-fa3-view__field-label">
-            {t('invoice.ksef.fa3GrandTotal', 'Total due')}
+            {copy.grandTotal}
           </span>
           <span className="ksef-fa3-view__total-value tabular">
-            {data.grandTotal}
-            {data.currency !== null ? ` ${data.currency}` : ''}
+            {data.currency !== null
+              ? interpolate(copy.totalWithCurrency, {
+                  amount: data.grandTotal,
+                  currency: data.currency,
+                })
+              : data.grandTotal}
           </span>
         </div>
       ) : null}
@@ -582,15 +723,15 @@ export function KsefFa3View({
       {data.payment !== null ? (
         <section className="ksef-fa3-view__payment">
           <div className="ksef-fa3-view__section-title">
-            {t('invoice.ksef.fa3Payment', 'Payment')}
+            {copy.payment}
           </div>
           {paymentFormCode !== null ? (
             <div className="ksef-fa3-view__payment-row">
               <span className="ksef-fa3-view__field-label">
-                {t('invoice.ksef.fa3PaymentForm', 'Payment form')}
+                {copy.paymentForm}
               </span>{' '}
               {paymentFormLabel !== null
-                ? t(paymentFormLabel.key, paymentFormLabel.fallback)
+                ? paymentFormLabel
                 : // Unmapped code (future TFormaPlatnosci extension): show the
                   // raw code rather than dropping the row.
                   paymentFormCode}
@@ -599,7 +740,7 @@ export function KsefFa3View({
           {data.payment.termDate !== null || data.payment.termDescription !== null ? (
             <div className="ksef-fa3-view__payment-row">
               <span className="ksef-fa3-view__field-label">
-                {t('invoice.ksef.fa3PaymentTerm', 'Payment term')}
+                {copy.paymentTerm}
               </span>{' '}
               <span className="tabular">
                 {data.payment.termDate ?? data.payment.termDescription}
@@ -609,7 +750,7 @@ export function KsefFa3View({
           {data.payment.bankAccount !== null ? (
             <div className="ksef-fa3-view__payment-row">
               <span className="ksef-fa3-view__field-label">
-                {t('invoice.ksef.fa3PaymentAccount', 'Bank account')}
+                {copy.paymentAccount}
               </span>{' '}
               <span className="mono-text">{data.payment.bankAccount}</span>
             </div>
@@ -617,13 +758,43 @@ export function KsefFa3View({
           {data.payment.skontoConditions !== null || data.payment.skontoAmount !== null ? (
             <div className="ksef-fa3-view__payment-row">
               <span className="ksef-fa3-view__field-label">
-                {t('invoice.ksef.fa3PaymentSkonto', 'Early-payment discount (skonto)')}
+                {copy.paymentSkonto}
               </span>{' '}
-              {[data.payment.skontoAmount, data.payment.skontoConditions]
-                .filter((part) => part !== null)
-                .join(' - ')}
+              {data.payment.skontoAmount !== null && data.payment.skontoConditions !== null
+                ? interpolate(copy.skontoValue, {
+                    amount: data.payment.skontoAmount,
+                    conditions: data.payment.skontoConditions,
+                  })
+                : (data.payment.skontoAmount ?? data.payment.skontoConditions)}
             </div>
           ) : null}
+        </section>
+      ) : null}
+
+      {/* KOD I verification code (kod weryfikacyjny) - legally required on any
+          copy of a KSeF-cleared invoice handed to the buyer outside KSeF. The
+          KSeF number is shown as the caption below the QR. */}
+      {verificationUrl !== null ? (
+        <section className="ksef-fa3-view__verification">
+          {/* 148 is mirrored by `.ksef-verification-pending__frame` (the
+              not-cleared placeholder, #3547) - change both together. */}
+          <QrCode
+            value={verificationUrl}
+            size={148}
+            ariaLabel={copy.verificationQrAlt}
+            className="ksef-fa3-view__verification-qr"
+          />
+          <div className="ksef-fa3-view__verification-meta">
+            <div className="ksef-fa3-view__field-label">
+              {copy.verificationLabel}
+            </div>
+            {displayKsefNumber !== null && displayKsefNumber !== undefined ? (
+              <div className="mono-text text-sm">{displayKsefNumber}</div>
+            ) : null}
+            <div className="ksef-fa3-view__verification-hint">
+              {copy.verificationHint}
+            </div>
+          </div>
         </section>
       ) : null}
     </div>

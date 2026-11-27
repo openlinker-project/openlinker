@@ -15,6 +15,10 @@
  */
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  BUYER_DATA_ERASE_MODES,
+  BUYER_DATA_PERIOD_MAX_DAYS,
+  BUYER_DATA_PERIOD_MIN_DAYS,
+  type BuyerDataEraseMode,
   OPERATIONAL_SETTING_BOUNDS,
   OPERATIONAL_SETTING_KEYS,
   OPERATIONAL_SETTING_SOURCES,
@@ -61,9 +65,68 @@ export class ResolvedNumberSettingDto {
   workerMayDiffer!: boolean;
 }
 
+/** A row-or-default value (#4289): no env rung, so it is the same in every process. */
+export class ResolvedBuyerDataBooleanDto {
+  @ApiProperty()
+  value!: boolean;
+
+  @ApiProperty({ enum: OPERATIONAL_SETTING_SOURCES })
+  source!: OperationalSettingSource;
+
+  @ApiProperty()
+  workerMayDiffer!: boolean;
+}
+
+export class ResolvedBuyerDataPeriodDto {
+  @ApiProperty({ description: 'Whole days. `0` means never.' })
+  value!: number;
+
+  @ApiProperty({ enum: OPERATIONAL_SETTING_SOURCES })
+  source!: OperationalSettingSource;
+
+  @ApiProperty()
+  workerMayDiffer!: boolean;
+}
+
+export class ResolvedBuyerDataModeDto {
+  @ApiProperty({ enum: BUYER_DATA_ERASE_MODES })
+  value!: BuyerDataEraseMode;
+
+  @ApiProperty({ enum: OPERATIONAL_SETTING_SOURCES })
+  source!: OperationalSettingSource;
+
+  @ApiProperty()
+  workerMayDiffer!: boolean;
+}
+
+export class BuyerDataBoundsDto {
+  @ApiProperty({ description: 'Smallest non-zero period, in days.' })
+  minDays!: number;
+
+  @ApiProperty({ description: 'Largest period, in days.' })
+  maxDays!: number;
+
+  @ApiProperty({ enum: BUYER_DATA_ERASE_MODES, isArray: true })
+  modes!: BuyerDataEraseMode[];
+}
+
 export class ResolvedCadenceSettingDto {
   @ApiProperty({ description: 'The effective cron expression.' })
   value!: string;
+
+  @ApiProperty({ enum: OPERATIONAL_SETTING_SOURCES })
+  source!: OperationalSettingSource;
+
+  @ApiProperty({
+    description:
+      'True when the value is not stored, so the worker resolves it from its own environment.',
+  })
+  workerMayDiffer!: boolean;
+}
+
+export class ResolvedBooleanSettingDto {
+  @ApiProperty({ description: 'The effective value.' })
+  value!: boolean;
 
   @ApiProperty({ enum: OPERATIONAL_SETTING_SOURCES })
   source!: OperationalSettingSource;
@@ -91,10 +154,14 @@ export class OperationalSettingBoundDto {
   @ApiProperty()
   absoluteReason!: string;
 
-  @ApiProperty({ description: 'The built-in value used when neither a row nor an env var sets one.' })
+  @ApiProperty({
+    description: 'The built-in value used when neither a row nor an env var sets one.',
+  })
   default!: number;
 
-  @ApiProperty({ description: 'The environment variable consulted between the row and the default.' })
+  @ApiProperty({
+    description: 'The environment variable consulted between the row and the default.',
+  })
   envVar!: string;
 }
 
@@ -125,8 +192,55 @@ export class OperationalSettingsResponseDto {
   })
   syncJobDeadRetentionDays!: ResolvedNumberSettingDto;
 
+  @ApiProperty({
+    type: ResolvedNumberSettingDto,
+    description:
+      'Days a stock movement (inventory history row) is kept before the retention prune deletes it (#3565). Bounded 30-1825 days; above 730 needs `acknowledgeAboveRecommended`.',
+  })
+  inventoryMovementRetentionDays!: ResolvedNumberSettingDto;
+
+  @ApiProperty({
+    type: ResolvedNumberSettingDto,
+    description:
+      'Hours a stock observation may age before the stock view flags it stale (#3621). Bounded 1-168 hours; above 48 needs acknowledgement.',
+  })
+  stockStaleSyncThresholdHours!: ResolvedNumberSettingDto;
+
   @ApiProperty({ type: ResolvedCadenceSettingDto })
   deletionAuditCadence!: ResolvedCadenceSettingDto;
+
+  @ApiProperty({ type: ResolvedBooleanSettingDto })
+  releaseCenterEnabled!: ResolvedBooleanSettingDto;
+
+  @ApiProperty({
+    type: ResolvedBuyerDataBooleanDto,
+    description:
+      'Master switch for hiding old orders and erasing buyer personal data (#4289). Off by default; nothing is hidden or erased until an admin turns it on. A connection may override it.',
+  })
+  buyerDataRetentionEnabled!: ResolvedBuyerDataBooleanDto;
+
+  @ApiProperty({
+    type: ResolvedBuyerDataPeriodDto,
+    description: 'Days after the order date an order is hidden from lists. 0 = never.',
+  })
+  buyerDataHideAfterDays!: ResolvedBuyerDataPeriodDto;
+
+  @ApiProperty({
+    type: ResolvedBuyerDataPeriodDto,
+    description:
+      'Days after the order date the buyer personal data is erased. 0 = never. Never shorter than the hide period when both are set.',
+  })
+  buyerDataEraseAfterDays!: ResolvedBuyerDataPeriodDto;
+
+  @ApiProperty({
+    type: ResolvedBuyerDataModeDto,
+    description:
+      '`personal-data` replaces the buyer identity with a placeholder code and keeps the order visible; `whole-order` also hides the order when its data is erased. No order row is ever deleted.',
+  })
+  buyerDataEraseMode!: ResolvedBuyerDataModeDto;
+
+  @ApiProperty({ type: BuyerDataBoundsDto })
+  buyerDataBounds!: BuyerDataBoundsDto;
 
   @ApiProperty({
     type: ResolvedCadenceSettingDto,
@@ -186,7 +300,19 @@ export class OperationalSettingsResponseDto {
     dto.deletionAuditBudget = { ...view.deletionAuditBudget };
     dto.syncJobRetentionDays = { ...view.syncJobRetentionDays };
     dto.syncJobDeadRetentionDays = { ...view.syncJobDeadRetentionDays };
+    dto.inventoryMovementRetentionDays = { ...view.inventoryMovementRetentionDays };
+    dto.stockStaleSyncThresholdHours = { ...view.stockStaleSyncThresholdHours };
     dto.deletionAuditCadence = { ...view.deletionAuditCadence };
+    dto.buyerDataRetentionEnabled = { ...view.buyerDataRetentionEnabled };
+    dto.buyerDataHideAfterDays = { ...view.buyerDataHideAfterDays };
+    dto.buyerDataEraseAfterDays = { ...view.buyerDataEraseAfterDays };
+    dto.buyerDataEraseMode = { ...view.buyerDataEraseMode };
+    dto.buyerDataBounds = {
+      minDays: BUYER_DATA_PERIOD_MIN_DAYS,
+      maxDays: BUYER_DATA_PERIOD_MAX_DAYS,
+      modes: [...BUYER_DATA_ERASE_MODES],
+    };
+    dto.releaseCenterEnabled = { ...view.releaseCenterEnabled };
     dto.catalogueSweepCadence = { ...view.catalogueSweepCadence };
     dto.inventorySweepCadence = { ...view.inventorySweepCadence };
     dto.deletionAuditAlwaysEnabled = view.deletionAuditAlwaysEnabled;

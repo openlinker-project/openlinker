@@ -8,7 +8,15 @@
  * @module apps/web/src/features/mailer-settings/components
  */
 import { describe, expect, it } from 'vitest';
-import { MAX_FROM_ADDRESS_LENGTH, mailerSettingsFormSchema } from './mailer-settings-form.schema';
+import { getMessages } from '../../../shared/i18n';
+import {
+  MAX_FROM_ADDRESS_LENGTH,
+  createMailerSettingsFormSchema,
+} from './mailer-settings-form.schema';
+
+const mailerSettingsFormSchema = createMailerSettingsFormSchema(
+  getMessages('mailer-settings').mailerSettingsFormSchema,
+);
 
 const validSmtpBase = {
   transport: 'smtp' as const,

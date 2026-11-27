@@ -41,6 +41,9 @@ export {
 } from './lib/processor';
 export type { ProcessorFilter, ProcessorKind } from './lib/processor';
 export { ProcessorBadge } from './components/processor-badge';
+// Exported so a page that composes several features can invalidate shipments after
+// a cross-feature act (the order cancel voids labels, #3541).
+export { shipmentsQueryKeys } from './api/shipments.query-keys';
 export { useShipmentsQuery } from './hooks/use-shipments-query';
 export { useOrderShipmentsQuery } from './hooks/use-order-shipments-query';
 export { useGenerateLabelMutation } from './hooks/use-generate-label-mutation';
@@ -69,8 +72,15 @@ export {
   isPreWaybill,
   canRegenerateLabel,
 } from './lib/shipment-action-eligibility';
-export { cancelShipmentCopy } from './lib/cancel-shipment-copy';
-export type { CancelShipmentCopy } from './lib/cancel-shipment-copy';
+export { cancelShipmentCopy } from './lib/cancel-shipment-dialog';
+export type { CancelShipmentCopy } from './lib/cancel-shipment-dialog';
+export {
+  classifyCancelShipmentError,
+  canRetryCancelShipment,
+  CancelShipmentErrorKindValues,
+} from './lib/cancel-shipment-error';
+export type { CancelShipmentErrorKind } from './lib/cancel-shipment-error';
+export { CancelShipmentErrorAlert } from './components/cancel-shipment-error-alert';
 export { deriveSeverityLabel } from './lib/shipment-severity';
 export type { ShipmentSeverity } from './lib/shipment-severity';
 export { ShipmentSeverityLabel } from './components/shipment-severity-label';

@@ -32,11 +32,18 @@ export interface WooCommerceOrder {
    * (see `deriveWooCommercePaymentMethod`). Absent on a payload that omits it.
    */
   payment_method?: string;
+  /**
+   * The buyer's checkout note to the seller (#3538). WooCommerce core always
+   * returns the field, as `''` when the buyer wrote nothing; absent only on a
+   * payload that omits it, which reads as unknown.
+   */
+  customer_note?: string;
   customer_id: number; // 0 = guest
   billing: WooCommerceBillingAddress;
   shipping: WooCommerceShippingAddress;
   line_items: WooCommerceLineItem[];
   shipping_lines: WooCommerceShippingLine[];
+  tax_lines?: WooCommerceTaxLine[];
   total: string; // decimal string
   total_tax: string; // decimal string
   shipping_total: string; // decimal string, tax EXCLUDED
@@ -122,6 +129,16 @@ export interface WooCommerceShippingLine {
   method_id: string;
   method_title: string;
   total: string;
+  /** Tax on this shipping line; `id` is the `tax_lines[].rate_id` it was charged under. */
+  taxes?: { id: number; total: string }[];
+}
+
+/** One tax rate applied to the order, with the part of it charged on shipping. */
+export interface WooCommerceTaxLine {
+  id?: number;
+  rate_id: number;
+  rate_percent?: number;
+  shipping_tax_total?: string; // decimal string
 }
 
 export interface WooCommerceFeeLine {

@@ -25,14 +25,18 @@ import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { MappingPanel, type MappingRow } from '../../features/mappings/components/MappingPanel';
-import { RoutingRulesPanel } from '../../features/mappings/components/routing-rules-panel';
+import { FulfillmentRoutingSection } from '../../features/mappings/components/fulfillment-routing-section';
 import { AttributeRulesPanel } from '../../features/mappings/components/attribute-rules-panel';
+import { DeliveryOnDocumentsPanel } from '../../features/delivery-on-documents';
+import { GiftsOnDocumentsPanel } from '../../features/gift-documents';
 import { publishDestinationKind } from '../../features/listings';
 import {
   MappingPairingBar,
   MAPPING_SOURCE_PICKER_ID,
 } from '../../features/mappings/components/mapping-pairing-bar';
 import { useConnectionQuery } from '../../features/connections';
+import { CarrierMappingsNotice } from '../../features/connections/components/carrier-ships-for-card';
+import { CARRIER_CAPABILITY } from '../../features/connections/components/connection-shipping-routes';
 import { useMappingPairing } from '../../features/mappings/hooks/use-mapping-pairing';
 import { useStatusMappingsQuery, useUpsertStatusMappings } from '../../features/mappings/hooks/use-status-mappings';
 import { useCarrierMappingsQuery, useUpsertCarrierMappings } from '../../features/mappings/hooks/use-carrier-mappings';
@@ -51,8 +55,30 @@ import {
   type MappingOptions,
 } from '../../features/mappings/api/mappings.types';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
+import {
+  interpolate,
+  renderRich,
+  selectPluralForm,
+  useActiveLocale,
+  useFormat,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+  type SupportedLocale,
+} from '../../shared/i18n';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
-type TabId = 'fulfillment' | 'status' | 'carriers' | 'payments' | 'order-states' | 'attribute-rules';
+type PageCopy = ResolvedCopy<Messages['connections']>['connectionMappingsPage'];
+
+type TabId =
+  | 'fulfillment'
+  | 'status'
+  | 'carriers'
+  | 'payments'
+  | 'order-states'
+  | 'attribute-rules'
+  | 'delivery-on-documents'
+  | 'gifts-on-documents';
 
 const ALL_TABS: TabId[] = [
   'fulfillment',
@@ -61,6 +87,8 @@ const ALL_TABS: TabId[] = [
   'payments',
   'order-states',
   'attribute-rules',
+  'delivery-on-documents',
+  'gifts-on-documents',
 ];
 
 function isTabId(value: string): value is TabId {
@@ -73,7 +101,8 @@ function isTabId(value: string): value is TabId {
  * instead of the whole 6-list bundle on page load. Order-states' source axis
  * is the static `OL_ORDER_STATUS_OPTIONS`, so it only needs the destination
  * status list. Attribute rules (#1841) read no option bundle at all — the panel
- * owns its own data — so the tab contributes no keys.
+ * owns its own data — so the tab contributes no keys. The same holds for
+ * Delivery on documents (#3908).
  */
 const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
   fulfillment: ['allegroDeliveryMethods'],
@@ -82,25 +111,10 @@ const OPTION_KEYS_BY_TAB: Record<TabId, (keyof MappingOptions)[]> = {
   payments: ['allegroPaymentProviders', 'prestashopPaymentModules'],
   'order-states': ['prestashopOrderStatuses'],
   'attribute-rules': [],
+  'delivery-on-documents': [],
+  'gifts-on-documents': [],
 };
 
-/**
- * Precise per-tab empty-state copy (#1784 follow-up S15). Fulfillment and
- * attribute rules render their own panel-owned empty states.
- */
-const EMPTY_STATE_MESSAGE_BY_TAB: Record<
-  Exclude<TabId, 'fulfillment' | 'attribute-rules'>,
-  string
-> = {
-  status:
-    'No mappings configured yet. Unmapped statuses fall back to the default status at sync time. Add one below.',
-  carriers:
-    'No mappings configured yet. An unmapped carrier can fail order sync unless a fallback carrier is set. Add one below.',
-  payments:
-    'No mappings configured yet. Unmapped payment methods are recorded as "Check payment" on the order. A mapped one is recorded under the name you choose. Add one below.',
-  'order-states':
-    'No mappings configured yet. Unmapped statuses use the default-install order state. Add one below.',
-};
 
 interface FallbackBannerSpec {
   tone: 'info' | 'warning';
@@ -131,14 +145,23 @@ function deriveCarrierFallbackBanner(args: {
   defaultCarrierId: string | null;
   carriers: MappingOption[];
   sourceLabel: string;
+  copy: PageCopy['carrierFallback'];
+  locale: SupportedLocale;
+  formatNumber: (value: number) => string;
 }): FallbackBannerSpec | null {
-  const { unmappedCount, defaultCarrierId, carriers, sourceLabel } = args;
+  const { unmappedCount, defaultCarrierId, carriers, sourceLabel, copy, locale, formatNumber } =
+    args;
   if (unmappedCount <= 0) return null;
 
-  const count = (
-    <span className="alert__count">{unmappedCount}</span>
-  );
-  const noun = unmappedCount === 1 ? 'method' : 'methods';
+  const render = (
+    forms: PageCopy['carrierFallback']['usingFallback'],
+    params: Record<string, string> = {},
+  ): ReactNode =>
+    renderRich(
+      selectPluralForm(unmappedCount, forms, locale),
+      { count: (text) => <span className="alert__count">{text}</span> },
+      { n: formatNumber(unmappedCount), ...params },
+    );
 
   // Case 1 - explicit fallback configured. Resolve the carrier name from
   // the loaded options. If the saved id no longer exists in the live
@@ -149,11 +172,7 @@ function deriveCarrierFallbackBanner(args: {
     if (fallback) {
       return {
         tone: 'info',
-        message: (
-          <>
-            {count} {noun} unmapped - using fallback: {fallback.label}.
-          </>
-        ),
+        message: render(copy.usingFallback, { fallback: fallback.label }),
       };
     }
   }
@@ -163,23 +182,14 @@ function deriveCarrierFallbackBanner(args: {
   if (hasDynamic) {
     return {
       tone: 'info',
-      message: (
-        <>
-          {count} {noun} unmapped - using OpenLinker Dynamic (exact {sourceLabel} cost) at sync time.
-        </>
-      ),
+      message: render(copy.usingDynamic, { platform: sourceLabel }),
     };
   }
 
   // Case 3 - no fallback at all. Operator-actionable warning.
   return {
     tone: 'warning',
-    message: (
-      <>
-        {count} {noun} unmapped - sync will fail until a mapping or fallback
-        is configured.
-      </>
-    ),
+    message: render(copy.noFallback),
   };
 }
 
@@ -187,6 +197,10 @@ export function ConnectionMappingsPage(): ReactElement {
   const { connectionId = '' } = useParams();
   const navigate = useNavigate();
   const platforms = usePlatforms();
+  const copy = useMessages('connections').connectionMappingsPage;
+  const locale = useActiveLocale();
+  const format = useFormat();
+  const giftCopy = useMessages('gift-documents');
 
   // Fix-it deep link (#1794): the order-detail "Add mapping" rider links here
   // with `?tab=carriers&method=<id>&methodName=<name>` so we open the Delivery
@@ -227,6 +241,8 @@ export function ConnectionMappingsPage(): ReactElement {
     requestedTab !== null &&
     isTabId(requestedTab) &&
     (requestedTab !== 'fulfillment' || supportsOrderSource) &&
+    (requestedTab !== 'delivery-on-documents' || supportsOrderSource) &&
+    (requestedTab !== 'gifts-on-documents' || supportsOrderSource) &&
     (requestedTab !== 'order-states' || supportsOrderProcessor);
   const defaultTab: TabId = requestedTabAvailable ? requestedTab : fallbackTab;
   const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<TabId>>(new Set());
@@ -305,6 +321,8 @@ export function ConnectionMappingsPage(): ReactElement {
       payments: make('payments'),
       'order-states': make('order-states'),
       'attribute-rules': make('attribute-rules'),
+      'delivery-on-documents': make('delivery-on-documents'),
+      'gifts-on-documents': make('gifts-on-documents'),
     } satisfies Record<TabId, (dirty: boolean) => void>;
   }, []);
 
@@ -342,27 +360,27 @@ export function ConnectionMappingsPage(): ReactElement {
 
   // Resolved platform labels for all page copy (#1784). Neutral fallbacks keep
   // the labels sensible while the pair is not `ready`.
-  const sourceLabel = isReady ? resolvePlatformLabel(platforms, pairing.source) : 'the marketplace';
+  const sourceLabel = isReady ? resolvePlatformLabel(platforms, pairing.source) : copy.fallbackSource;
   const destinationLabel = isReady
     ? resolvePlatformLabel(platforms, pairing.destination)
-    : 'the connected shop';
+    : copy.fallbackDestination;
 
-  const backTo = { to: `/connections/${connectionId}`, label: 'Connection' } as const;
+  const backTo = { to: `/connections/${connectionId}`, label: copy.eyebrow } as const;
 
   // ── Pairing-driven states (evaluated after all hooks) ───────────────────
 
   if (pairing.status === 'loading') {
     return (
-      <PageLayout eyebrow="Connection" title="Mapping Configuration" description="Loading mapping configuration…">
-        <LoadingState liveRegion="off" title="Loading mappings" message="Fetching configured mappings for this connection." />
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title} description={copy.loading.description}>
+        <LoadingState liveRegion="off" title={copy.loading.title} message={copy.loading.message} />
       </PageLayout>
     );
   }
 
   if (pairing.status === 'error') {
     return (
-      <PageLayout backTo={backTo} eyebrow="Connection" title="Mapping Configuration" description="Unable to load mapping configuration.">
-        <ErrorState title="Unable to load mappings" message={pairing.error.message} />
+      <PageLayout backTo={backTo} eyebrow={copy.eyebrow} title={copy.title} description={copy.error.description}>
+        <ErrorState title={copy.error.title} message={describeApiError(pairing.error, 'connections')} />
       </PageLayout>
     );
   }
@@ -372,14 +390,14 @@ export function ConnectionMappingsPage(): ReactElement {
     return (
       <PageLayout
         backTo={backTo}
-        eyebrow="Connection"
-        title="Mapping Configuration"
-        description={`${unsupportedLabel} order mapping isn't supported yet.`}
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        description={interpolate(copy.unsupported.description, { platform: unsupportedLabel })}
       >
         <MappingPairingBar pairing={pairing} />
         <EmptyState
-          title={`Mapping isn't available for ${unsupportedLabel} connections yet`}
-          message="Order mapping is available for Allegro to PrestaShop and Erli to PrestaShop today. Support for more platforms is planned."
+          title={interpolate(copy.unsupported.title, { platform: unsupportedLabel })}
+          message={copy.unsupported.message}
         />
       </PageLayout>
     );
@@ -389,20 +407,24 @@ export function ConnectionMappingsPage(): ReactElement {
     return (
       <PageLayout
         backTo={backTo}
-        eyebrow="Connection"
-        title="Mapping Configuration"
-        description={`No supported marketplace is paired with ${pairing.master.name} yet.`}
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        description={interpolate(copy.noSource.description, { name: pairing.master.name })}
       >
         <MappingPairingBar pairing={pairing} />
-        <EmptyState
-          title="No supported marketplace is paired with this shop"
-          message="Order mappings are configured from the marketplace side. Open a supported marketplace connection (Allegro or Erli) and set its catalog to this shop to pair them."
-          action={
-            <Link className="button button--secondary" to="/connections">
-              Go to connections
-            </Link>
-          }
-        />
+        {pairing.master.enabledCapabilities.includes(CARRIER_CAPABILITY) ? (
+          <CarrierMappingsNotice connection={pairing.master} />
+        ) : (
+          <EmptyState
+            title={copy.noSource.title}
+            message={copy.noSource.message}
+            action={
+              <Link className="button button--secondary" to="/connections">
+                {copy.noSource.goToConnections}
+              </Link>
+            }
+          />
+        )}
       </PageLayout>
     );
   }
@@ -411,9 +433,9 @@ export function ConnectionMappingsPage(): ReactElement {
     return (
       <PageLayout
         backTo={backTo}
-        eyebrow="Connection"
-        title="Mapping Configuration"
-        description={`Choose a marketplace to configure ${pairing.master.name} mappings.`}
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        description={interpolate(copy.pickSource.description, { name: pairing.master.name })}
       >
         <MappingPairingBar
           pairing={pairing}
@@ -422,14 +444,17 @@ export function ConnectionMappingsPage(): ReactElement {
           }}
         />
         <EmptyState
-          title="Choose which marketplace to configure"
-          message={`Order mappings belong to a marketplace. Choose which of the ${pairing.candidates.length} paired marketplaces you want to configure against ${pairing.master.name}.`}
+          title={copy.pickSource.title}
+          message={interpolate(copy.pickSource.message, {
+            n: format.number(pairing.candidates.length),
+            name: pairing.master.name,
+          })}
           action={
             <Button
               tone="secondary"
               onClick={() => document.getElementById(MAPPING_SOURCE_PICKER_ID)?.focus()}
             >
-              Choose marketplace
+              {copy.pickSource.choose}
             </Button>
           }
         />
@@ -448,13 +473,19 @@ export function ConnectionMappingsPage(): ReactElement {
   const destinationInactive = pairing.destination.status !== 'active';
 
   const tabs: { id: TabId; label: string }[] = [
-    ...(supportsOrderSource ? [{ id: 'fulfillment' as const, label: 'Fulfillment' }] : []),
-    { id: 'status' as const, label: 'Order Statuses' },
-    { id: 'carriers' as const, label: 'Carriers' },
-    { id: 'payments' as const, label: 'Payments' },
-    ...(supportsOrderProcessor ? [{ id: 'order-states' as const, label: 'Order States' }] : []),
+    ...(supportsOrderSource ? [{ id: 'fulfillment' as const, label: copy.tabs.fulfillment }] : []),
+    { id: 'status' as const, label: copy.tabs.status },
+    { id: 'carriers' as const, label: copy.tabs.carriers },
+    { id: 'payments' as const, label: copy.tabs.payments },
+    ...(supportsOrderProcessor ? [{ id: 'order-states' as const, label: copy.tabs.orderStates }] : []),
     ...(supportsAttributeRules
-      ? [{ id: 'attribute-rules' as const, label: 'Attribute Rules' }]
+      ? [{ id: 'attribute-rules' as const, label: copy.tabs.attributeRules }]
+      : []),
+    ...(supportsOrderSource
+      ? [
+          { id: 'delivery-on-documents' as const, label: copy.tabs.deliveryOnDocuments },
+          { id: 'gifts-on-documents' as const, label: giftCopy.connection.tab },
+        ]
       : []),
   ];
 
@@ -515,6 +546,9 @@ export function ConnectionMappingsPage(): ReactElement {
             : null,
         carriers: options.prestashopCarriers,
         sourceLabel,
+        copy: copy.carrierFallback,
+        locale,
+        formatNumber: format.number,
       })
     : null;
 
@@ -554,19 +588,19 @@ export function ConnectionMappingsPage(): ReactElement {
 
   const inactiveNote =
     sourceInactive && destinationInactive
-      ? `Both the ${sourceLabel} source and ${destinationLabel} destination connections are not active. Mappings save, but orders won't sync until both are re-enabled.`
+      ? interpolate(copy.inactive.both, { source: sourceLabel, destination: destinationLabel })
       : destinationInactive
-        ? `The ${destinationLabel} destination connection is not active. Mappings save, but orders won't sync until it's re-enabled.`
+        ? interpolate(copy.inactive.destination, { destination: destinationLabel })
         : sourceInactive
-          ? `The ${sourceLabel} source connection is not active. Mappings save, but orders won't sync until it's re-enabled.`
+          ? interpolate(copy.inactive.source, { source: sourceLabel })
           : null;
 
   return (
     <PageLayout
       backTo={backTo}
-      eyebrow="Connection"
-      title="Mapping Configuration"
-      description={`Configure ${sourceLabel} → ${destinationLabel} mappings for order statuses, delivery carriers, and payment methods.`}
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      description={interpolate(copy.description, { source: sourceLabel, destination: destinationLabel })}
     >
       <MappingPairingBar pairing={pairing} />
 
@@ -576,23 +610,25 @@ export function ConnectionMappingsPage(): ReactElement {
         </div>
       )}
 
-      <Tabs value={currentTab} onValueChange={handleTabChange} aria-label="Mapping types">
+      <Tabs value={currentTab} onValueChange={handleTabChange} aria-label={copy.tabsLabel}>
         <TabsList>
           {tabs.map((tab) => (
             <TabsTrigger key={tab.id} value={tab.id}>
               {tab.label}
+              {dirtyTabs.has(tab.id) && (
+                <>
+                  <span className="tabs__unsaved-dot" aria-hidden="true" />
+                  <span className="sr-only">{copy.tabUnsaved}</span>
+                </>
+              )}
             </TabsTrigger>
           ))}
         </TabsList>
 
         {supportsOrderSource && (
           <TabsContent value="fulfillment">
-            <RoutingRulesPanel
-              connectionId={sourceConnectionId}
-              sourceLabel={sourceLabel}
-              deliveryMethods={options.allegroDeliveryMethods}
-              deliveryMethodsLoading={optionsLoading}
-              deliveryMethodsError={optionsErrors.allegroDeliveryMethods ?? null}
+            <FulfillmentRoutingSection
+              sourceConnectionId={sourceConnectionId}
               onDirtyChange={dirtyHandlers.fulfillment}
             />
           </TabsContent>
@@ -600,11 +636,11 @@ export function ConnectionMappingsPage(): ReactElement {
 
         <TabsContent value="status">
           <MappingPanel
-            title="Order Status Mappings"
+            title={copy.status.title}
             mappingKind="status"
-            description={`Map ${sourceLabel} order statuses to the corresponding ${destinationLabel} order status IDs.`}
-            sourceLabel={`${sourceLabel} status`}
-            targetLabel={`${destinationLabel} status`}
+            description={interpolate(copy.status.description, { source: sourceLabel, destination: destinationLabel })}
+            sourceLabel={interpolate(copy.status.columnLabel, { platform: sourceLabel })}
+            targetLabel={interpolate(copy.status.columnLabel, { platform: destinationLabel })}
             sourceOptions={options.allegroOrderStatuses}
             targetOptions={options.prestashopOrderStatuses}
             savedRows={statusRows}
@@ -616,7 +652,7 @@ export function ConnectionMappingsPage(): ReactElement {
             dataError={statusQuery.error ?? null}
             onRetryData={() => void statusQuery.refetch()}
             onDirtyChange={dirtyHandlers.status}
-            emptyStateMessage={EMPTY_STATE_MESSAGE_BY_TAB.status}
+            emptyStateMessage={copy.status.empty}
           />
         </TabsContent>
 
@@ -630,11 +666,11 @@ export function ConnectionMappingsPage(): ReactElement {
             </Alert>
           ) : null}
           <MappingPanel
-            title="Carrier Mappings"
+            title={copy.carriers.title}
             mappingKind="carriers"
-            description={`Map ${sourceLabel} delivery method IDs to the corresponding ${destinationLabel} carrier IDs.`}
-            sourceLabel={`${sourceLabel} delivery method`}
-            targetLabel={`${destinationLabel} carrier`}
+            description={interpolate(copy.carriers.description, { source: sourceLabel, destination: destinationLabel })}
+            sourceLabel={interpolate(copy.carriers.sourceColumn, { platform: sourceLabel })}
+            targetLabel={interpolate(copy.carriers.targetColumn, { platform: destinationLabel })}
             sourceOptions={options.allegroDeliveryMethods}
             targetOptions={options.prestashopCarriers}
             savedRows={carrierRows}
@@ -646,8 +682,8 @@ export function ConnectionMappingsPage(): ReactElement {
             dataError={carrierQuery.error ?? null}
             onRetryData={() => void carrierQuery.refetch()}
             onDirtyChange={dirtyHandlers.carriers}
-            emptyStateMessage={EMPTY_STATE_MESSAGE_BY_TAB.carriers}
-            dynamicOptionSuffix={` - exact ${sourceLabel} cost`}
+            emptyStateMessage={copy.carriers.empty}
+            dynamicOptionSuffix={` - ${interpolate(copy.carriers.dynamicSuffix, { platform: sourceLabel })}`}
             focusSourceValue={focusMethodId}
             focusSourceName={focusMethodName}
           />
@@ -655,11 +691,11 @@ export function ConnectionMappingsPage(): ReactElement {
 
         <TabsContent value="payments">
           <MappingPanel
-            title="Payment Mappings"
+            title={copy.payments.title}
             mappingKind="payments"
-            description={`Map ${sourceLabel} payment provider names to the corresponding ${destinationLabel} payment module names.`}
-            sourceLabel={`${sourceLabel} payment provider`}
-            targetLabel={`${destinationLabel} payment module`}
+            description={interpolate(copy.payments.description, { source: sourceLabel, destination: destinationLabel })}
+            sourceLabel={interpolate(copy.payments.sourceColumn, { platform: sourceLabel })}
+            targetLabel={interpolate(copy.payments.targetColumn, { platform: destinationLabel })}
             sourceOptions={options.allegroPaymentProviders}
             targetOptions={options.prestashopPaymentModules}
             savedRows={paymentRows}
@@ -671,18 +707,18 @@ export function ConnectionMappingsPage(): ReactElement {
             dataError={paymentQuery.error ?? null}
             onRetryData={() => void paymentQuery.refetch()}
             onDirtyChange={dirtyHandlers.payments}
-            emptyStateMessage={EMPTY_STATE_MESSAGE_BY_TAB.payments}
+            emptyStateMessage={copy.payments.empty}
           />
         </TabsContent>
 
         {supportsOrderProcessor && (
           <TabsContent value="order-states">
             <MappingPanel
-              title="Order-State Mappings"
+              title={copy.orderStates.title}
               mappingKind="order-state"
-              description={`Override which ${destinationLabel} order state each OpenLinker status transitions to. Customised shops (renamed or added states) map here; unmapped statuses use the default-install state.`}
-              sourceLabel="OpenLinker status"
-              targetLabel={`${destinationLabel} order state`}
+              description={interpolate(copy.orderStates.description, { destination: destinationLabel })}
+              sourceLabel={copy.orderStates.sourceColumn}
+              targetLabel={interpolate(copy.orderStates.targetColumn, { platform: destinationLabel })}
               sourceOptions={OL_ORDER_STATUS_OPTIONS}
               targetOptions={options.prestashopOrderStatuses}
               savedRows={orderStateRows}
@@ -694,7 +730,7 @@ export function ConnectionMappingsPage(): ReactElement {
               dataError={orderStateQuery.error ?? null}
               onRetryData={() => void orderStateQuery.refetch()}
               onDirtyChange={dirtyHandlers['order-states']}
-              emptyStateMessage={EMPTY_STATE_MESSAGE_BY_TAB['order-states']}
+              emptyStateMessage={copy.orderStates.empty}
             />
           </TabsContent>
         )}
@@ -704,6 +740,24 @@ export function ConnectionMappingsPage(): ReactElement {
             <AttributeRulesPanel connectionId={connectionId} />
           </TabsContent>
         )}
+
+        {supportsOrderSource && (
+          <TabsContent value="gifts-on-documents">
+            <GiftsOnDocumentsPanel
+              connectionId={sourceConnectionId}
+              onDirtyChange={dirtyHandlers['gifts-on-documents']}
+            />
+          </TabsContent>
+        )}
+
+        {supportsOrderSource && (
+          <TabsContent value="delivery-on-documents">
+            <DeliveryOnDocumentsPanel
+              connectionId={sourceConnectionId}
+              onDirtyChange={dirtyHandlers['delivery-on-documents']}
+            />
+          </TabsContent>
+        )}
       </Tabs>
 
       <ConfirmDialog
@@ -711,10 +765,10 @@ export function ConnectionMappingsPage(): ReactElement {
         onOpenChange={(open) => {
           if (!open) cancelDiscard();
         }}
-        title="Discard unsaved changes?"
-        description="You have unsaved mapping edits on this tab. Switching tabs will discard them."
-        confirmLabel="Discard changes"
-        cancelLabel="Keep editing"
+        title={copy.discard.title}
+        description={copy.discard.description}
+        confirmLabel={copy.discard.confirm}
+        cancelLabel={copy.discard.cancel}
         tone="danger"
         onConfirm={confirmDiscard}
       />

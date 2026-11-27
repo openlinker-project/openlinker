@@ -31,6 +31,8 @@
  */
 import { z } from 'zod';
 
+import type { Messages, ResolvedCopy } from '../../../shared/i18n';
+
 import {
   SOURCING_FILTER_NAME_VALUES,
   SOURCING_RULE_KIND_VALUES,
@@ -43,52 +45,54 @@ export const PRIORITY_SORT_NAME = 'priority';
 
 const NAME_VALUES = [...SOURCING_FILTER_NAME_VALUES, ...SOURCING_SORT_NAME_VALUES] as const;
 
-export const sourcingRuleFormSchema = z
-  .object({
-    kind: z.enum(SOURCING_RULE_KIND_VALUES, { message: 'Choose whether this rule filters or sorts' }),
-    name: z.enum(NAME_VALUES, { message: 'Choose what this rule does' }),
-    afterAction: z.enum(SOURCING_AFTER_ACTION_VALUES, {
-      message: 'Choose how far an order may be split',
-    }),
-    priorityLocationIds: z.array(z.string().min(1)),
-    /** `''` means "no bound", which is what the API stores as `null`. */
-    effectiveFrom: z.string(),
-    effectiveTo: z.string(),
-  })
-  .superRefine((values, ctx) => {
-    if (values.kind === 'filter' && !(SOURCING_FILTER_NAME_VALUES as readonly string[]).includes(values.name)) {
-      ctx.addIssue({ code: 'custom', path: ['name'], message: 'That rule sorts locations; it cannot be used as a filter' });
-    }
-    if (values.kind === 'sort' && !(SOURCING_SORT_NAME_VALUES as readonly string[]).includes(values.name)) {
-      ctx.addIssue({ code: 'custom', path: ['name'], message: 'That rule filters locations; it cannot be used as a sort' });
-    }
+/** The `oms-core.sourcingRuleDialog.validation` copy the schema reads its messages from. */
+export type SourcingRuleFormValidationCopy = ResolvedCopy<
+  Messages['oms-core']
+>['sourcingRuleDialog']['validation'];
 
-    if (values.name === PRIORITY_SORT_NAME && values.priorityLocationIds.length === 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['priorityLocationIds'],
-        message: 'Add at least one location — a priority list with nothing in it ranks nothing',
-      });
-    }
-    if (values.name !== PRIORITY_SORT_NAME && values.priorityLocationIds.length > 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['priorityLocationIds'],
-        message: 'This rule does not use a location order, so the list must be empty',
-      });
-    }
+/**
+ * The form schema, built from the active language's copy. Call it inside the
+ * component (`useMemo`) - a module-level schema would freeze the first language.
+ */
+// The schema type is inferred from the zod builder; spelling it out would restate every field.
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- inferred zod schema type
+export function createSourcingRuleFormSchema(copy: SourcingRuleFormValidationCopy) {
+  return z
+    .object({
+      kind: z.enum(SOURCING_RULE_KIND_VALUES, { message: copy.kindRequired }),
+      name: z.enum(NAME_VALUES, { message: copy.nameRequired }),
+      afterAction: z.enum(SOURCING_AFTER_ACTION_VALUES, {
+        message: copy.afterActionRequired,
+      }),
+      priorityLocationIds: z.array(z.string().min(1)),
+      /** `''` means "no bound", which is what the API stores as `null`. */
+      effectiveFrom: z.string(),
+      effectiveTo: z.string(),
+    })
+    .superRefine((values, ctx) => {
+      if (values.kind === 'filter' && !(SOURCING_FILTER_NAME_VALUES as readonly string[]).includes(values.name)) {
+        ctx.addIssue({ code: 'custom', path: ['name'], message: copy.sortAsFilter });
+      }
+      if (values.kind === 'sort' && !(SOURCING_SORT_NAME_VALUES as readonly string[]).includes(values.name)) {
+        ctx.addIssue({ code: 'custom', path: ['name'], message: copy.filterAsSort });
+      }
 
-    if (values.effectiveFrom !== '' && values.effectiveTo !== '' && values.effectiveTo <= values.effectiveFrom) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['effectiveTo'],
-        message: 'The end date must be after the start date — otherwise this rule would never run',
-      });
-    }
-  });
+      if (values.name === PRIORITY_SORT_NAME && values.priorityLocationIds.length === 0) {
+        ctx.addIssue({ code: 'custom', path: ['priorityLocationIds'], message: copy.priorityEmpty });
+      }
+      if (values.name !== PRIORITY_SORT_NAME && values.priorityLocationIds.length > 0) {
+        ctx.addIssue({ code: 'custom', path: ['priorityLocationIds'], message: copy.priorityNotUsed });
+      }
 
-export type SourcingRuleFormValues = z.input<typeof sourcingRuleFormSchema>;
-export type SourcingRuleFormSubmission = z.output<typeof sourcingRuleFormSchema>;
+      if (values.effectiveFrom !== '' && values.effectiveTo !== '' && values.effectiveTo <= values.effectiveFrom) {
+        ctx.addIssue({ code: 'custom', path: ['effectiveTo'], message: copy.endBeforeStart });
+      }
+    });
+}
+
+type SourcingRuleFormSchema = ReturnType<typeof createSourcingRuleFormSchema>;
+export type SourcingRuleFormValues = z.input<SourcingRuleFormSchema>;
+export type SourcingRuleFormSubmission = z.output<SourcingRuleFormSchema>;
 
 /**
  * A date input's `YYYY-MM-DD` as an instant the API accepts, or `null` for an

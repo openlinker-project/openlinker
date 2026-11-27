@@ -41,6 +41,11 @@ export interface SynthesizeOrderOptions {
    */
   buyerVatNumber?: string;
   /**
+   * ISO-3166 alpha-2 country of the buyer's address. Defaults to `PL`. A
+   * foreign country is what the KSeF cross-border guard keys on (DEF-18).
+   */
+  buyerCountryIso?: string;
+  /**
    * PrestaShop currency id to denominate the order in. Defaults to the
    * webservice client's own default, which is the shop's first currency.
    *
@@ -213,6 +218,7 @@ export function buildPrestashopWebserviceClient(world: World): PrestashopWebserv
 async function pickDriverProduct(
   api: ApiClient,
   connectionId: string,
+  ps: PrestashopWebserviceClient,
 ): Promise<{ product: Product; variant: ProductVariant } | undefined> {
   // SCOPED to the connection, not a bare first page. `externalIdFor` below
   // filters by connection anyway, so an unscoped page merely decided the
@@ -223,7 +229,14 @@ async function pickDriverProduct(
   const page = await api.products.list({ limit: 50, connectionId });
   for (const summary of page.items) {
     const detail = await api.products.getById(summary.id);
-    if (!externalIdFor(detail, connectionId)) continue;
+    const shopProductId = externalIdFor(detail, connectionId);
+    if (!shopProductId) continue;
+    // A mapping can outlive the shop product it points at (a shop that was reset
+    // or cleaned up keeps its OpenLinker rows). Selling such a product gives a
+    // cart with no rows, which PrestaShop answers with an order-less "Can't save
+    // Order Payment" 500 that reads like a payment fault. Skip what the shop no
+    // longer has.
+    if (!(await shopHasProduct(ps, shopProductId))) continue;
     const variants = detail.variants && detail.variants.length > 0 ? detail.variants : (await api.products.listVariants(summary.id)).items;
     // Variant-level external id is OPTIONAL downstream (`synthesizeOrder`
     // falls back to `productAttributeId: '0'` for a simple product's
@@ -237,6 +250,15 @@ async function pickDriverProduct(
   return undefined;
 }
 
+async function shopHasProduct(ps: PrestashopWebserviceClient, productId: string): Promise<boolean> {
+  try {
+    await ps.getProduct(productId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Synthesize a brand-new PrestaShop order via the webservice REST API (no
  * marketplace purchase) and wait for OL to ingest it. Requires
@@ -244,11 +266,23 @@ async function pickDriverProduct(
  * connection on the stack — throws with a clear message when either is
  * missing so a spec's `test.skip` reads a precise reason.
  */
-export async function synthesizeOrder(
-  ctx: { api: ApiClient; world: World; jobs: SyncJobs; poll: Poller },
+/**
+ * Create the PrestaShop customer, address, cart and order WITHOUT waiting for
+ * OpenLinker to ingest it. `synthesizeOrder` waits on top of this; a caller that
+ * must control WHEN ingestion first runs (the order-sync-start suite seeds
+ * orders before the connection that should or should not import them exists)
+ * calls this directly.
+ */
+export async function createSourceOrder(
+  ctx: { api: ApiClient; world: World },
   options: SynthesizeOrderOptions = {},
-): Promise<SynthesizedOrder> {
-  const { api, world, jobs } = ctx;
+): Promise<{
+  prestashop: Connection;
+  externalOrderId: string;
+  product: Product;
+  variant: ProductVariant;
+}> {
+  const { api, world } = ctx;
   const prestashop = resolvePrestashopStore(world);
   if (!prestashop) {
     throw new Error('synthesizeOrder found no active PrestaShop connection to sell through');
@@ -260,7 +294,7 @@ export async function synthesizeOrder(
     );
   }
 
-  const driver = options.driver ?? (await pickDriverProduct(api, prestashop.id));
+  const driver = options.driver ?? (await pickDriverProduct(api, prestashop.id, ps));
   if (!driver) {
     throw new Error('synthesizeOrder found no catalogue product with a priced, EAN-complete variant');
   }
@@ -292,7 +326,15 @@ export async function synthesizeOrder(
     );
   }
 
-  const countryId = (await ps.getCountryIdByIso('PL')) ?? '1';
+  const buyerCountryIso = (options.buyerCountryIso ?? 'PL').toUpperCase();
+  const countryId = await ps.getCountryIdByIso(buyerCountryIso);
+  if (!countryId && buyerCountryIso !== 'PL') {
+    throw new Error(`synthesizeOrder: the shop has no country ${buyerCountryIso}`);
+  }
+  const buyerAddress =
+    buyerCountryIso === 'PL'
+      ? { address1: 'ul. Testowa 1', city: 'Warszawa', postcode: '00-001' }
+      : { address1: 'Teststrasse 1', city: 'Berlin', postcode: '10115' };
   const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   // PrestaShop's `isName` validator (customer/address first+last name) rejects
   // digits and most punctuation, so the unique `suffix` can't live in the
@@ -308,10 +350,8 @@ export async function synthesizeOrder(
     idCustomer: customer.id,
     alias: `e2e-${suffix}`,
     ...customerName,
-    address1: 'ul. Testowa 1',
-    city: 'Warszawa',
-    postcode: '00-001',
-    idCountry: countryId,
+    ...buyerAddress,
+    idCountry: countryId ?? '1',
     vatNumber: options.buyerVatNumber,
   });
 
@@ -385,6 +425,17 @@ export async function synthesizeOrder(
     ],
   });
 
+  return { prestashop, externalOrderId: created.id, product, variant };
+}
+
+/** Create a PrestaShop order and wait for OpenLinker to ingest it (see `createSourceOrder`). */
+export async function synthesizeOrder(
+  ctx: { api: ApiClient; world: World; jobs: SyncJobs; poll: Poller },
+  options: SynthesizeOrderOptions = {},
+): Promise<SynthesizedOrder> {
+  const { api, jobs } = ctx;
+  const { prestashop, externalOrderId, product, variant } = await createSourceOrder(ctx, options);
+
   // Match the ingested order by the PrestaShop id we just created, not by
   // "an order id absent from a snapshot". The snapshot could only be taken
   // AFTER the create returned, and PrestaShop's webhook often ingests the
@@ -394,15 +445,15 @@ export async function synthesizeOrder(
   const ingestConnection = options.ingestConnection ?? prestashop;
   const order = await waitForOrderByExternalId(api, {
     sourceConnectionId: ingestConnection.id,
-    externalOrderId: created.id,
+    externalOrderId,
     timeoutMs: options.timeoutMs ?? 180_000,
     intervalMs: 3_000,
     // The webhook is the fast path; re-triggering a direct per-order sync is
     // the backstop for a dropped delivery. See `retriggerDirectOrderSync`.
-    retriggerPoll: jobs.retriggerDirectOrderSync(ingestConnection.id, created.id),
+    retriggerPoll: jobs.retriggerDirectOrderSync(ingestConnection.id, externalOrderId),
   });
 
-  return { order, externalOrderId: created.id, product, variant };
+  return { order, externalOrderId, product, variant };
 }
 
 function externalIdFor(product: Product, connectionId: string): string | undefined {

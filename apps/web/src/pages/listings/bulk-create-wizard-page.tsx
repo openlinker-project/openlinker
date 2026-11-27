@@ -27,11 +27,17 @@ import {
   ErrorState,
   LoadingState,
 } from '../../shared/ui';
+import { usePlural, useMessages } from '../../shared/i18n';
 import { BulkWizard } from '../../features/listings/components/bulk/bulk-wizard';
-import { MAX_WIZARD_PRODUCTS } from '../../features/listings/lib/batch-recovery';
+import {
+  MAX_WIZARD_PRODUCTS,
+  buildRecoveryPrefill,
+} from '../../features/listings/lib/batch-recovery';
+import { useBulkBatchQuery } from '../../features/listings/hooks/use-bulk-batch-query';
 import { useConnectionsQuery } from '../../features/connections';
 import { useProductsBatchQuery } from '../../features/products';
 import type { Product } from '../../features/products';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 /**
  * Shared with the batch-recovery helpers (#2234) so the failed-batch "Fix and
@@ -43,6 +49,8 @@ const MAX_PRODUCTS = MAX_WIZARD_PRODUCTS;
 export function BulkCreateWizardPage(): ReactElement {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const copy = useMessages('listings').bulkCreateWizardPage;
+  const plural = usePlural();
 
   const ids = useMemo<string[]>(() => {
     const raw = searchParams.get('productIds') ?? '';
@@ -78,23 +86,38 @@ export function BulkCreateWizardPage(): ReactElement {
 
   const connectionsQuery = useConnectionsQuery();
 
+  // "Fix and resubmit" (#4037): the failed records' saved requests are what
+  // the operator had already typed, so the wizard opens on them. A batch that
+  // cannot be read opens the wizard unfilled rather than blocking the fix.
+  const fromBatchId = searchParams.get('fromBatch') ?? undefined;
+  const batchQuery = useBulkBatchQuery(fromBatchId);
+  const recoveryPrefill = useMemo(
+    () =>
+      batchQuery.data
+        ? buildRecoveryPrefill(batchQuery.data.records, selectedVariantIds)
+        : undefined,
+    [batchQuery.data, selectedVariantIds],
+  );
+
   if (ids.length === 0 || ids.length > MAX_PRODUCTS) {
     return (
       <LoadingState
-        title="Redirecting…"
-        message="Returning you to the Products page."
+        title={copy.redirectingTitle}
+        message={copy.redirectingMessage}
       />
     );
   }
 
-  const isLoading = productQueries.some((q) => q.isLoading);
+  const isLoading =
+    productQueries.some((q) => q.isLoading) ||
+    (fromBatchId !== undefined && batchQuery.isLoading);
   const failed = productQueries.find((q) => q.error);
 
   if (isLoading) {
     return (
       <LoadingState
-        title="Loading products"
-        message={`Fetching details for ${ids.length.toLocaleString()} selected products…`}
+        title={copy.loadingTitle}
+        message={plural(ids.length, copy.loadingMessage)}
       />
     );
   }
@@ -102,8 +125,8 @@ export function BulkCreateWizardPage(): ReactElement {
   if (failed?.error) {
     return (
       <ErrorState
-        title="Could not load selected products"
-        message={failed.error.message}
+        title={copy.errorTitle}
+        message={describeApiError(failed.error, 'listings')}
         action={
           <Button
             onClick={() => {
@@ -112,7 +135,7 @@ export function BulkCreateWizardPage(): ReactElement {
               });
             }}
           >
-            Retry
+            {copy.retry}
           </Button>
         }
       />
@@ -126,8 +149,8 @@ export function BulkCreateWizardPage(): ReactElement {
   if (products.length === 0) {
     return (
       <ErrorState
-        title="No products found"
-        message="None of the selected product IDs resolved. Return to /products and try again."
+        title={copy.emptyTitle}
+        message={copy.emptyMessage}
       />
     );
   }
@@ -137,7 +160,8 @@ export function BulkCreateWizardPage(): ReactElement {
       products={products}
       preSelectedVariantIds={selectedVariantIds}
       preselectedConnectionId={searchParams.get('connectionId') ?? undefined}
-      resumedFromBatchId={searchParams.get('fromBatch') ?? undefined}
+      resumedFromBatchId={fromBatchId}
+      recoveryPrefill={recoveryPrefill}
       resolveConnectionName={(connectionId) =>
         connectionsQuery.data?.find((c) => c.id === connectionId)?.name ??
         connectionId

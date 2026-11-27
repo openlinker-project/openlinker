@@ -9,6 +9,7 @@
  */
 import type { ReactElement } from 'react';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { useMessages } from '../../../shared/i18n';
 import type { OfferCreationStatus } from '../api/listings.types';
 
 const STATUS_TONE: Record<OfferCreationStatus, StatusBadgeTone> = {
@@ -20,15 +21,6 @@ const STATUS_TONE: Record<OfferCreationStatus, StatusBadgeTone> = {
   failed: 'error',
 };
 
-const STATUS_LABEL: Record<OfferCreationStatus, string> = {
-  pending: 'Pending',
-  draft: 'Draft',
-  validating: 'Validating',
-  active: 'Active',
-  reused: 'Already existed',
-  failed: 'Failed',
-};
-
 interface OfferCreationStatusBadgeProps {
   status: OfferCreationStatus;
   compact?: boolean;
@@ -38,9 +30,10 @@ export function OfferCreationStatusBadge({
   status,
   compact = false,
 }: OfferCreationStatusBadgeProps): ReactElement {
+  const labels = useMessages('listings').offerCreationStatusBadge.labels;
   return (
     <StatusBadge tone={STATUS_TONE[status]} compact={compact} withDot>
-      {STATUS_LABEL[status]}
+      {labels[status]}
     </StatusBadge>
   );
 }

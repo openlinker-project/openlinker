@@ -14,6 +14,15 @@ export type FiscalRegistrationStatus = (typeof FiscalRegistrationStatusValues)[n
 
 export type FiscalRegistrationFailureMode = 'rejected' | 'in-doubt';
 
+/** Mirrors core `DocumentRequestOutcomeValues` (#3960). */
+export const FiscalRegistrationRequestOutcomeValues = [
+  'new-attempt',
+  'joined',
+  'redriven',
+  'resumed',
+] as const;
+export type FiscalRegistrationRequestOutcome = (typeof FiscalRegistrationRequestOutcomeValues)[number];
+
 export type FiscalArtefactMedium = 'document' | 'markup' | 'code' | 'link' | 'text';
 
 export type FiscalArtefactDisposition = 'print' | 'display' | 'send' | 'retain';
@@ -32,6 +41,10 @@ export interface FiscalRegistrationRecord {
   orderId: string;
   providerType: string;
   idempotencyKey: string;
+  /** 0-based attempt at this (connection, order) receipt (#3960). */
+  attempt: number;
+  /** The refused attempt this one follows, or `null` (#3960). */
+  previousAttemptId: string | null;
   status: FiscalRegistrationStatus;
   providerReference: string | null;
   documentReference: string | null;
@@ -41,8 +54,26 @@ export interface FiscalRegistrationRecord {
   artefacts: FiscalArtefact[] | null;
   failureMode: FiscalRegistrationFailureMode | null;
   failureReason: string | null;
+  /**
+   * PII-free identifiers of the provider's refusal (#3843). `null` when the
+   * provider declared none, which includes every record written before the
+   * field existed - those render the failure sentence alone, as before.
+   */
+  providerFailureDetails: FiscalProviderFailureDetails | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Mirrors `FiscalProviderFailureDetails` in `@openlinker/core/fiscalization`. */
+export interface FiscalProviderFailureDetails {
+  /** The provider's own error code, digits only. */
+  errorCode: string | null;
+  /** The fiscal device's own code, digits only. Its meaning depends on the device model. */
+  deviceErrorCode: string | null;
+  /** The provider's identifier for the attempt. */
+  documentId: string | null;
+  /** OpenLinker's explanation for a provider answer it recognised exactly. */
+  hint: string | null;
 }
 
 /**
@@ -75,13 +106,22 @@ export interface ReconcileFiscalRegistrationResult {
  *
  * The answer to asking for a registration. It carries no status and no record,
  * because when it is sent a job exists and no provider has been called. Nothing
- * may read an outcome out of it.
+ * may read the registration's outcome out of it; `outcome` describes only what
+ * the request did.
  */
 export interface AcceptedFiscalRegistration {
   orderId: string;
   connectionId: string;
   idempotencyKey: string;
   jobId: string;
+  /**
+   * What the request did (#3960). A request that would do nothing is refused
+   * with 409, so none of these means "nothing happened".
+   */
+  outcome: FiscalRegistrationRequestOutcome;
+  /** 0-based attempt the request works on (#3960). */
+  attempt: number;
+  previousAttemptId: string | null;
   /** The request restarted a job that had given up, rather than joining a live one. */
   redrivenFromDead: boolean;
 }
@@ -139,4 +179,17 @@ export interface FiscalRegistrationProgressView {
   /** Null while the work is queued, which is normal rather than an error. */
   record: FiscalRegistrationRecord | null;
   inFlight: SalesDocumentInFlight | null;
+}
+
+/** `POST /fiscal-registrations/:id/send-email` body (#3550). */
+export interface SendReceiptEmailInput {
+  recipient?: string;
+  locale?: 'pl' | 'en';
+}
+
+/** `POST /fiscal-registrations/:id/send-email` response (#3550). */
+export interface SendReceiptEmailResult {
+  delivered: boolean;
+  recipient: string | null;
+  sentVia?: 'provider' | 'openlinker';
 }

@@ -6,19 +6,20 @@
  *
  * @module apps/web/src/features/automation/lib
  */
-import { AUTOMATION_STEP_STATUS_COPY } from './automation.copy';
+import { getMessages } from '../../../shared/i18n';
 import type { AutomationStepStatus } from '../api/automation.types';
 
 export function describeStepStatus(status: AutomationStepStatus): string {
+  const copy = getMessages('automation').stepStatuses;
   switch (status) {
     case 'done':
-      return AUTOMATION_STEP_STATUS_COPY.done;
+      return copy.done;
     case 'nothing-to-do':
-      return AUTOMATION_STEP_STATUS_COPY['nothing-to-do'];
+      return copy['nothing-to-do'];
     case 'failed':
-      return AUTOMATION_STEP_STATUS_COPY.failed;
+      return copy.failed;
     case 'skipped':
-      return AUTOMATION_STEP_STATUS_COPY.skipped;
+      return copy.skipped;
     default: {
       const exhaustive: never = status;
       throw new Error(`Unhandled automation step status: ${String(exhaustive)}`);

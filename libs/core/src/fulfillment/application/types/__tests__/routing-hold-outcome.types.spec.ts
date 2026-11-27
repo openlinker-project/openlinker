@@ -63,11 +63,20 @@ describe('deriveRoutingHoldOutcome', () => {
 
   // The case #3485 exists for: out of stock at every location. Held, named, and
   // raised as UF-L so it counts in "Needs attention".
+  it('should hold an unpaid order as waiting for payment and leave the lines alone (#4033)', () => {
+    expect(deriveRoutingHoldOutcome({ status: 'skipped', reason: 'awaiting-payment' })).toEqual({
+      held: true,
+      block: { reason: 'routing-awaiting-payment', detail: null },
+      lineAttention: { kind: 'indeterminate' },
+    });
+  });
+
   it('should hold a refused order and raise line-unfulfillable when the plan carried unfulfillable lines', () => {
     const result = deriveRoutingHoldOutcome({
       status: 'refused',
       decisionId: 'dec-9',
       reason: 'plan-carries-unfulfillable',
+      unfulfillableReasons: [],
     });
 
     expect(result.held).toBe(true);
@@ -78,6 +87,27 @@ describe('deriveRoutingHoldOutcome', () => {
     expect(result.lineAttention).toEqual({ kind: 'blocked', reason: 'line-unfulfillable' });
   });
 
+  // #3476 — the operator must be able to tell "out of stock" from "the holder
+  // cannot execute", so the router's own reasons reach both details.
+  it('should name the router reasons on the block and the line attention when the plan carried them', () => {
+    const result = deriveRoutingHoldOutcome({
+      status: 'refused',
+      decisionId: 'dec-9',
+      reason: 'plan-carries-unfulfillable',
+      unfulfillableReasons: ['holder cannot execute', 'out of stock'],
+    });
+
+    expect(result.block).toEqual({
+      reason: 'routing-refused',
+      detail: 'plan-carries-unfulfillable: holder cannot execute; out of stock',
+    });
+    expect(result.lineAttention).toEqual({
+      kind: 'blocked',
+      reason: 'line-unfulfillable',
+      detail: 'holder cannot execute; out of stock',
+    });
+  });
+
   // A re-route mints a new decision id each tick; a detail carrying it would
   // defeat the IS DISTINCT FROM guards and bump updatedAt on every tick.
   it('should report the same block and attention for two refusals under different decisions', () => {
@@ -85,11 +115,13 @@ describe('deriveRoutingHoldOutcome', () => {
       status: 'refused',
       decisionId: 'dec-1',
       reason: 'plan-carries-unfulfillable',
+      unfulfillableReasons: ['out of stock'],
     });
     const second = deriveRoutingHoldOutcome({
       status: 'refused',
       decisionId: 'dec-2',
       reason: 'plan-carries-unfulfillable',
+      unfulfillableReasons: ['out of stock'],
     });
 
     expect(second).toEqual(first);
@@ -98,7 +130,12 @@ describe('deriveRoutingHoldOutcome', () => {
   it.each(['plan-pending', 'plan-not-conserving', 'plan-carries-holds'] as const)(
     'should hold a refused order without raising line-unfulfillable (%s)',
     (reason) => {
-      const result = deriveRoutingHoldOutcome({ status: 'refused', decisionId: 'dec-9', reason });
+      const result = deriveRoutingHoldOutcome({
+        status: 'refused',
+        decisionId: 'dec-9',
+        reason,
+        unfulfillableReasons: [],
+      });
 
       expect(result.held).toBe(true);
       expect(result.block?.reason).toBe('routing-refused');

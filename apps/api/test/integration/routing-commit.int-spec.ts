@@ -233,6 +233,7 @@ describe('Routing commit (#2395)', () => {
         router,
         lock: new InMemoryRoutingLock(),
         isCancelled: async () => false,
+        isAwaitingPayment: async () => false,
       }),
     ).rejects.toBeDefined();
 
@@ -307,6 +308,7 @@ describe('Routing commit (#2395)', () => {
         router,
         lock,
         isCancelled: async () => false,
+        isAwaitingPayment: async () => false,
       });
 
     const outcomes = await Promise.all([attempt(), attempt()]);
@@ -373,6 +375,7 @@ describe('Routing commit (#2395)', () => {
       router,
       lock: new InMemoryRoutingLock(),
       isCancelled: async () => false,
+      isAwaitingPayment: async () => false,
     });
 
     expect(calls).toHaveLength(1);

@@ -17,12 +17,15 @@
  * a live API by an operator, and a response missing a block must produce a
  * usable control rather than a thrown render or a slider with `max={NaN}`.
  * When it fires, `complete` is false and `recommendedReason` is `null` — the
- * page then says nothing about the recommendation rather than inventing a
- * sentence, because copy written here would drift from the API the day the
- * reason changes.
+ * page then says nothing about a recommendation it has no ceiling for.
+ *
+ * The reasons are the frontend's own copy per setting (#3866), in the
+ * operator's language. The API still sends English reasons for developers;
+ * they are not read here.
  *
  * @module apps/web/src/features/settings/lib
  */
+import { getMessages } from '../../../shared/i18n';
 import type {
   OperationalSettingBound,
   OperationalSettingKey,
@@ -34,7 +37,7 @@ export interface ValueLimits {
   readonly min: number;
   /** Advisory ceiling. `null` when the API reported none. */
   readonly recommendedMax: number | null;
-  /** The API's own words for why. `null` when it reported none. */
+  /** Why, in the operator's language. `null` when there is no ceiling or no key to name it. */
   readonly recommendedReason: string | null;
   /** The refusal line, and the slider's range end. */
   readonly absoluteMax: number;
@@ -59,13 +62,19 @@ function positiveInteger(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
 }
 
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+function boundReasons(
+  key: OperationalSettingKey | undefined
+): { recommended: string; absolute: string } | null {
+  if (key === undefined) return null;
+  const reasons: Partial<Record<string, { recommended: string; absolute: string }>> =
+    getMessages('settings').operationalSettingsPage.boundReasons;
+  return reasons[key] ?? null;
 }
 
 export function resolveValueLimits(
   resolved: ResolvedNumberSetting | undefined,
-  bound: OperationalSettingBound | undefined
+  bound: OperationalSettingBound | undefined,
+  key?: OperationalSettingKey
 ): ValueLimits {
   const recommendedMax =
     positiveInteger(resolved?.recommendedMax) ?? positiveInteger(bound?.recommendedMax);
@@ -77,15 +86,14 @@ export function resolveValueLimits(
   // came from an env var set above every ceiling the API reported.
   const currentValue = positiveInteger(resolved?.value) ?? min;
   const effectiveAbsolute = Math.max(absoluteMax ?? FALLBACK_ABSOLUTE_MAX, currentValue);
+  const reasons = boundReasons(key);
 
   return {
     min: Math.min(min, currentValue),
     recommendedMax,
-    recommendedReason:
-      nonEmptyString(resolved?.recommendedReason) ?? nonEmptyString(bound?.recommendedReason),
+    recommendedReason: recommendedMax !== null ? (reasons?.recommended ?? null) : null,
     absoluteMax: effectiveAbsolute,
-    absoluteReason:
-      nonEmptyString(resolved?.absoluteReason) ?? nonEmptyString(bound?.absoluteReason),
+    absoluteReason: absoluteMax !== null ? (reasons?.absolute ?? null) : null,
     complete: recommendedMax !== null && absoluteMax !== null,
   };
 }
@@ -94,7 +102,7 @@ export function limitsFor(
   view: OperationalSettingsView,
   key: OperationalSettingKey
 ): ValueLimits {
-  return resolveValueLimits(view[key], view.bounds?.[key]);
+  return resolveValueLimits(view[key], view.bounds?.[key], key);
 }
 
 /**

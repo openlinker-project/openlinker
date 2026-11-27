@@ -24,7 +24,7 @@ import {
   type ReturnSegment,
   type ReturnSegmentCounts,
 } from '../lib/return-segments';
-import { RETURNS_SEGMENT_COPY } from '../lib/returns-list.copy';
+import { useFormat, useMessages } from '../../../shared/i18n';
 
 interface ReturnSegmentStripProps {
   counts: ReturnSegmentCounts | null;
@@ -38,11 +38,13 @@ export function ReturnSegmentStrip({
   selected,
   onSelect,
 }: ReturnSegmentStripProps): ReactElement {
+  const copy = useMessages('returns').list.segment;
+  const format = useFormat();
   const value = (segment: ReturnSegment): string =>
-    counts ? String(counts.bySegment[segment]) : '—';
+    counts ? format.number(counts.bySegment[segment]) : '—';
 
   return (
-    <div className="returns-segments" role="group" aria-label={RETURNS_SEGMENT_COPY.stripLabel}>
+    <div className="returns-segments" role="group" aria-label={copy.stripLabel}>
       <button
         type="button"
         className={['card-button-reset', 'returns-segment', selected === null ? 'returns-segment--active' : '']
@@ -52,8 +54,8 @@ export function ReturnSegmentStrip({
         onClick={() => onSelect(null)}
       >
         <MetricCard
-          label={RETURNS_SEGMENT_COPY.allReturnsLabel}
-          value={counts ? String(counts.total) : '—'}
+          label={copy.allReturnsLabel}
+          value={counts ? format.number(counts.total) : '—'}
         />
       </button>
 

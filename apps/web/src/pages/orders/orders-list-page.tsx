@@ -38,25 +38,39 @@ import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
-import { MetricCard, type MetricCardTone } from '../../shared/ui/metric-card';
 import { useToast } from '../../shared/ui/toast-provider';
 import { formatShipBy, type ShipByLevel } from '../../shared/format/format-ship-by';
-import { useTranslation, getBcp47Locale } from '../../shared/i18n';
-import type { LocaleCode } from '../../shared/i18n';
+import {
+  interpolate,
+  useActiveLocale,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../shared/i18n';
 import { useOrderRowsQuery } from '../../features/orders/hooks/use-orders-query';
 import { useOrdersTotal } from '../../features/orders/hooks/use-orders-total';
-import { formatPaginatedTotal } from '../../shared/hooks/use-paginated-total';
 import { ListPagination } from '../../shared/ui/list-pagination';
 import { useOrderStatusSummaryQuery } from '../../features/orders/hooks/use-order-status-summary-query';
 import { useOrderSlaSummaryQuery } from '../../features/orders/hooks/use-order-sla-summary-query';
 import { useOrderLifecycleSummaryQuery } from '../../features/orders/hooks/use-order-lifecycle-summary-query';
 import { OmsAttentionBadges } from '../../features/fulfillment-authority';
-import { OrderPhaseBadge } from '../../features/orders/components/order-phase-badge';
+import { OrderPhaseOrWaitingBadge } from '../../features/orders/components/order-phase-or-waiting-badge';
+import { OrderPackingStage } from '../../features/orders/components/order-packing-stage';
+import {
+  derivePackerLabel,
+  deriveWaiting,
+  isHandledInOpenLinker,
+  needsPackerNames,
+  showsPackingStage,
+} from '../../features/orders/lib/handled-in-openlinker';
+import { usePackersQuery } from '../../features/users';
 import { OrderHoldBadge } from '../../features/orders/components/order-hold-badge';
+import { OrderDestinationRoutingBadge } from '../../features/orders/components/order-destination-routing-badge';
+import { OrderEditedBadge } from '../../features/orders/components/order-edited-badge';
 import { useRetryOrderDestinationMutation } from '../../features/orders/hooks/use-retry-order-destination-mutation';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
-import { useWriteAccess } from '../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
+import { useIsAdmin, useWriteAccess } from '../../shared/auth/use-permission';
+import { demoReadOnlyActionMessage } from '../../shared/config/demo-mode';
 import { useDemoMode, useStoresPersonalData } from '../../features/system';
 import { captureDemoEvent } from '../../features/demo';
 import { parseOrderSnapshot } from '../../features/orders/api/order-snapshot.schema';
@@ -70,39 +84,69 @@ import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/un
 import { WarehouseReleaseBadge } from '../../features/orders/components/warehouse-release-badge';
 import { StockAtRiskBadge } from '../../features/orders/components/stock-at-risk-badge';
 import { OrderOpenReturnBadge } from '../../features/orders/components/order-open-return-badge';
+import { OrderRefundStateBadge } from '../../features/orders/components/order-refund-state-badge';
 import { OrderPackedTick } from '../../features/orders/components/order-packed-tick';
+import { OrderHiddenBadge } from '../../features/orders/components/order-hidden-badge';
+import { OrderBuyerNoteHint } from '../../features/orders/components/order-buyer-note-hint';
 import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
 import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
 import { deriveDeliveryOutcome, hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
 import { DeliveryOutcomeChip } from '../../features/orders/components/delivery-chip';
+import { OrderPaymentMarker } from '../../features/orders/components/order-payment-marker';
+import { PaymentWritebackBulkBar } from '../../features/orders/components/payment-writeback-bulk-bar';
 import { resolveDeliveryOwner } from '../../features/orders/lib/delivery-owner';
-import { capSelectionPerSource, sourcesAtCap } from '../../features/orders/lib/dispatch-input';
+import { capSelectionPerSource } from '../../features/orders/lib/dispatch-input';
 import { BulkDispatchDialog } from '../../features/orders/components/bulk-dispatch-dialog';
 import { BulkTagPopover } from '../../features/orders/components/bulk-tag-popover';
+import { BulkCancelDialog } from '../../features/orders/components/bulk-cancel-dialog';
+import { BulkBuyerNoteReadDialog } from '../../features/orders/components/bulk-buyer-note-read-dialog';
+import {
+  BULK_ORDER_ACTION_MAX,
+  bulkSelectionBlockReason,
+  splitBuyerNoteCandidates,
+} from '../../features/orders/lib/bulk-order-actions';
 import { OrderExportDialog } from '../../features/orders/components/order-export-dialog';
 import { useOrderExportBackgroundToast } from '../../features/orders/hooks/use-order-export';
 import { OrderColumnVisibilityControl } from '../../features/orders/components/order-column-visibility-control';
-import { OrderRowDetail } from '../../features/orders/components/order-row-detail';
+import { OrderPeekDetail } from '../../features/orders/components/order-peek-detail';
+import { ProductPeekById } from '../products/product-peek-by-id';
+import { isSafeHttpUrl } from '../../shared/lib/is-safe-http-url';
 import { BULK_DISPATCH_MAX_ITEMS } from '../../features/shipments';
 import type {
   OrderRecord,
-  OrderHealthValue,
-  OrderHealthSummary,
   OrderSortValue,
   OrderTag,
 } from '../../features/orders/api/orders.types';
 import { ORDER_LIST_COLUMN_IDS } from '../../features/orders/api/orders.types';
+import {
+  ColumnsPanel,
+  EditedBar,
+  RepairBanner,
+  ViewDialogs,
+  ViewsBar,
+  useListView,
+} from '../../features/saved-views';
+import {
+  ORDER_VIEW_IDS,
+  createOrdersListRegistry,
+} from '../../features/orders/lib/orders.list-config';
+import { isOrdersSavedViewsEnabled } from '../../features/orders/lib/orders-saved-views.flag';
+import {
+  clearLegacyVisibleColumns,
+  hasLegacyVisibleColumnsKey,
+  readLegacyVisibleColumns,
+} from '../../features/orders/lib/legacy-visible-columns';
 import { useOrderListFilters } from '../../features/orders/hooks/use-order-list-filters';
+import { GiftsGuide } from '../../features/gifts';
 import { OrderListFilterBar } from '../../features/orders/components/order-list-filter-bar';
+import { OrderStatusTabs } from '../../features/orders/components/order-status-tabs';
+import { OrderAttentionSummary } from '../../features/orders/components/order-attention-summary';
+import { OrderPeek, type OrderPeekView } from '../../features/orders/components/order-peek';
+import { CappedBadges, PeekArrow } from '../../shared/ui/capped-badges';
 import {
   describeOrderFilterScope,
   type OrderFilterChipContext,
 } from '../../features/orders/lib/order-filter-descriptors';
-import {
-  ORDER_HEALTH_LABELS,
-  ORDERS_LIST_FILTERS_COPY,
-} from '../../features/orders/lib/orders-list-filters.copy';
-import { ORDERS_LIST_PAGE_COPY as PAGE_COPY } from '../../features/orders/lib/orders-list-page.copy';
 import {
   ConnectionChip,
   readConnectionEnvironment,
@@ -112,28 +156,9 @@ import {
 } from '../../features/connections';
 import { resolvePlatformLabel, resolvePlatformShortLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const PAGE_SIZE = 20;
-
-/**
- * Status segments — partition the order set (#929). The "All" card carries the
- * total; the four health cards map 1:1 to the `health` URL filter and their
- * counts sum to that total. Tone communicates operational alarm at a glance.
- */
-interface HealthSegment {
-  key: OrderHealthValue;
-  label: string;
-  tone: MetricCardTone;
-  countKey: keyof Omit<OrderHealthSummary, 'total'>;
-}
-
-const HEALTH_SEGMENTS: readonly HealthSegment[] = [
-  { key: 'source_deleted', label: ORDER_HEALTH_LABELS.source_deleted, tone: 'error', countKey: 'sourceDeleted' },
-  { key: 'needs_attention', label: ORDER_HEALTH_LABELS.needs_attention, tone: 'error', countKey: 'needsAttention' },
-  { key: 'awaiting_mapping', label: ORDER_HEALTH_LABELS.awaiting_mapping, tone: 'warning', countKey: 'awaitingMapping' },
-  { key: 'awaiting_dispatch', label: ORDER_HEALTH_LABELS.awaiting_dispatch, tone: 'info', countKey: 'awaitingDispatch' },
-  { key: 'synced', label: ORDER_HEALTH_LABELS.synced, tone: 'success', countKey: 'synced' },
-];
 
 /**
  * Whether the row's delivery rider is one OpenLinker could take over (#1776) —
@@ -154,16 +179,6 @@ const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
 };
 
 /**
- * Resolve the per-row total via the i18n seam (#612). Currency varies per row
- * so we instantiate per call; locale comes from the LocaleProvider.
- */
-function formatCurrency(amount: number, currency: string, locale: LocaleCode): string {
-  return new Intl.NumberFormat(getBcp47Locale(locale), { style: 'currency', currency }).format(
-    amount,
-  );
-}
-
-/**
  * Buyer identity for the customer cell (#939). Prefers the shipping-address
  * name; falls back to the buyer email when the source omits a name (so the cell
  * stays useful instead of blanking). `null` only when neither is present.
@@ -176,23 +191,17 @@ function customerName(parsed: ReturnType<typeof parseOrderSnapshot>): string | n
 }
 
 /**
- * Cockpit "data freshness" line — freshest `updatedAt` across visible rows,
- * rendered as a locale-aware HH:MM. Same locale-resolution path as
- * `formatCurrency` so the i18n seam stays single-source-of-truth.
+ * Cockpit "data freshness" instant - the freshest `updatedAt` across visible
+ * rows, or `null` when there is none. The page renders it as a locale-aware
+ * time through `useFormat`.
  */
-function formatFreshness(items: readonly OrderRecord[], locale: LocaleCode): string | null {
-  if (items.length === 0) return null;
+function freshestUpdate(items: readonly OrderRecord[]): string | null {
   let mostRecentMs = 0;
   for (const item of items) {
     const ms = Date.parse(item.updatedAt);
     if (Number.isFinite(ms) && ms > mostRecentMs) mostRecentMs = ms;
   }
-  if (mostRecentMs === 0) return null;
-  const time = new Intl.DateTimeFormat(getBcp47Locale(locale), {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(mostRecentMs));
-  return `Synced ${time}`;
+  return mostRecentMs === 0 ? null : new Date(mostRecentMs).toISOString();
 }
 
 /**
@@ -206,8 +215,69 @@ function hasTaxRateConflict(parsed: ReturnType<typeof parseOrderSnapshot>): bool
   return parsed.items.some((item) => Boolean(item.taxRateChannel));
 }
 
+/**
+ * The Status cell's badges (#4026), shared by the table (capped) and the order
+ * peek (all of them). Every badge sits BESIDE health, never instead of it:
+ * `OrderHealthValues` is a partition whose values sum to the status tabs.
+ */
+function renderStatusBadges(order: OrderRecord): ReactElement {
+  const h = deriveOrderHealth(order);
+  return (
+    <>
+      <StatusBadge tone={h.tone} withDot compact>
+        {h.label}
+      </StatusBadge>
+      {/* #4289 - only visible on the Hidden view; beside health, never inside it. */}
+      <OrderHiddenBadge hiddenAt={order.hiddenAt} personalDataErasedAt={order.personalDataErasedAt} />
+      {/* #2310 — the phase says what stage it is at (ADR-059). */}
+      <OrderPhaseOrWaitingBadge order={order} compact />
+      {/* #2350 — a stock shortfall is an exception, so a Status badge. */}
+      <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
+      {/* #2998 — neutral: a return is routine, not a failure. */}
+      <OrderOpenReturnBadge openReturn={order.openReturn} />
+      {/* #4130 - derived from refund records; the payment status is the channel's claim. */}
+      <OrderRefundStateBadge refundState={order.refundState} compact />
+      {/* #2342 — a hold is an exception (style guide § order-row signals). */}
+      <OrderHoldBadge reason={order.activeHoldReason} compact />
+      {/* #2703 / #2704 - why routing narrowed the destination fan-out. */}
+      <OrderDestinationRoutingBadge reason={order.destinationRoutingBlockReason} compact />
+      {/* #3544 - edited here; the channel keeps the original. */}
+      <OrderEditedBadge
+        edited={order.editedInOpenLinker}
+        needsAttention={order.editsNeedAttention}
+        compact
+      />
+      {/* #2356 — an inert OMS state is an exception too. */}
+      <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
+      {/* #3963 - only on a row whose payment did not reach a shop. */}
+      <OrderPaymentMarker entries={order.paymentWriteback} />
+      {h.reason ? (
+        <span className="orders-status-reason" title={h.reason}>
+          {h.reason}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The flag is a build-time constant, so `savedViews` never changes while a body
+ * is mounted; keying on it makes that explicit rather than assumed, which is
+ * what lets the body call `useListView` on one path only.
+ */
 export function OrdersListPage(): ReactElement {
-  const { locale } = useTranslation();
+  const savedViews = isOrdersSavedViewsEnabled();
+  return <OrdersListPageBody key={savedViews ? 'views' : 'legacy'} savedViews={savedViews} />;
+}
+
+function OrdersListPageBody({ savedViews }: { savedViews: boolean }): ReactElement {
+  const locale = useActiveLocale();
+  const format = useFormat();
+  const plural = usePlural();
+  const orders = useMessages('orders');
+  const copy = orders.listPage;
+  const filterCopy = orders.listFilters;
+  const bulkCopy = orders.bulkActions;
   const { showToast } = useToast();
 
   // Every URL filter read/write lives in the hook (#3507); the page is layout.
@@ -303,17 +373,18 @@ export function OrdersListPage(): ReactElement {
     (ymd: string): string => {
       const [y, m, d] = ymd.split('-').map(Number);
       if (!y || !m || !d) return ymd;
-      return new Intl.DateTimeFormat(getBcp47Locale(locale), {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      }).format(new Date(y, m - 1, d));
+      return format.date(new Date(y, m - 1, d).toISOString());
     },
-    [locale],
+    [format],
   );
   const chipContext: OrderFilterChipContext = useMemo(
-    () => ({ connectionName: (id) => connectionNames.get(id), tagById: lookupTag, formatDay }),
-    [connectionNames, lookupTag, formatDay],
+    () => ({
+      connectionName: (id) => connectionNames.get(id),
+      tagById: lookupTag,
+      formatDay,
+      copy: orders,
+    }),
+    [connectionNames, lookupTag, formatDay, orders],
   );
   // One human line for the whole view — the filtered empty state and the
   // export dialog's "Current view" card name exactly what the chips name.
@@ -352,15 +423,37 @@ export function OrdersListPage(): ReactElement {
   // Resolve a connectionId to a human channel label (never undefined) for the
   // bulk-dispatch per-row source pill.
   const channelLabelForBulk = (connectionId: string): string =>
-    channelLabel(platformByConnection.get(connectionId)) ?? 'Source';
+    channelLabel(platformByConnection.get(connectionId)) ?? copy.sourceFallback;
 
   // ── Bulk dispatch selection (#1109) ───────────────────────────────────────
   // Local Set (not URL state — the URL would balloon on every checkbox toggle).
   // The 25-cap is enforced PER SOURCE connection, since the bulk endpoint takes
   // one source per request and the dialog fans out one call per source group.
   const items = query.data?.items ?? [];
+  // #3482 - the packer's name under "To pack" / "Packing". The roster is fetched
+  // only when a row on this page has an assigned, unpacked work.
+  const packersQuery = usePackersQuery({ enabled: needsPackerNames(items) });
+  // `null` until the roster has LOADED: a name-dependent label renders nothing
+  // while it is loading or after it failed, rather than claiming "Assigned" (which
+  // means "this id does not resolve") on the strength of a read that said nothing.
+  const packerNameById = useMemo(
+    () =>
+      packersQuery.isSuccess
+        ? new Map(packersQuery.data.packers.map((packer) => [packer.id, packer.username]))
+        : null,
+    [packersQuery.isSuccess, packersQuery.data]
+  );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Hidden ids must not stay selected: bulk actions would act on rows the
+  // operator cannot see (B-26). Any change of page, sort or filter clears it.
+  const selectionScopeKey = JSON.stringify([filters, offset, sort, dir]);
+  useEffect(() => {
+    setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+  }, [selectionScopeKey]);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
+  const [bulkReadOpen, setBulkReadOpen] = useState(false);
+  const isAdmin = useIsAdmin();
   const [exportOpen, setExportOpen] = useState(false);
   // D35: admin and operator only — a viewer never sees the Export button.
   const exportAccess = useWriteAccess('orders:export', demoMode);
@@ -446,6 +539,8 @@ export function OrdersListPage(): ReactElement {
           itemCount={parsed.items.length}
           onNavigate={() => captureDemoEvent('demo_order_opened', {})}
           tags={tags}
+          hasGift={parsed.items.some((item) => item.gift != null)}
+          hasBundle={order.hasBundle === true}
         />
       );
     },
@@ -467,41 +562,43 @@ export function OrdersListPage(): ReactElement {
     [connectionsQuery.data],
   );
 
-  // Already-shipped orders can't be dispatched — their checkbox is disabled.
-  const isSelectable = (order: OrderRecord): boolean =>
+  // Selection is decoupled from dispatch (#3619): any row can be selected for
+  // cancel, tag or "mark message read" (cap: the backend's 100 per request).
+  // The dispatch rules - already-shipped rows excluded, 25 per source - now
+  // apply only to the "Dispatch N" button, which sends the eligible subset.
+  const isDispatchable = (order: OrderRecord): boolean =>
     order.fulfillmentState !== 'dispatched' && order.fulfillmentState !== 'delivered';
 
-  const selectableItems = useMemo(() => items.filter(isSelectable), [items]);
   const selectedOrders = useMemo(
     () => items.filter((o) => selectedIds.has(o.internalOrderId)),
     [items, selectedIds],
   );
-  // Source groups that have hit the per-source cap — their unselected rows
-  // disable (but already-selected rows stay toggleable so you can deselect).
-  const atCapSources = useMemo(
-    () => sourcesAtCap(selectedOrders, BULK_DISPATCH_MAX_ITEMS),
+  const dispatchOrders = useMemo(
+    () =>
+      capSelectionPerSource(selectedOrders.filter(isDispatchable), BULK_DISPATCH_MAX_ITEMS),
     [selectedOrders],
   );
-  // The header "select all" caps each source independently, so its target count
-  // is the capped selectable set — header reads `all` only once that's reached.
-  const cappedSelectableCount = useMemo(
-    () => capSelectionPerSource(selectableItems, BULK_DISPATCH_MAX_ITEMS).length,
-    [selectableItems],
-  );
-  const selectedVisibleCount = useMemo(
-    () => selectableItems.reduce((n, o) => n + (selectedIds.has(o.internalOrderId) ? 1 : 0), 0),
-    [selectableItems, selectedIds],
-  );
+  const shippedExcluded = selectedOrders.filter((o) => !isDispatchable(o)).length;
+  const overCapExcluded = selectedOrders.length - shippedExcluded - dispatchOrders.length;
+  const selectionBlockReason = bulkSelectionBlockReason(selectedOrders.length, bulkCopy);
+  const noteSplit = useMemo(() => splitBuyerNoteCandidates(selectedOrders), [selectedOrders]);
+  const selectAllTarget = Math.min(items.length, BULK_ORDER_ACTION_MAX);
+  const selectedVisibleCount = selectedOrders.length;
   const headerCheckboxState: 'all' | 'some' | 'none' =
     selectedVisibleCount === 0
       ? 'none'
-      : selectedVisibleCount >= cappedSelectableCount
+      : selectedVisibleCount >= selectAllTarget
         ? 'all'
         : 'some';
   const distinctSelectedSources = useMemo(
     () => new Set(selectedOrders.map((o) => o.sourceConnectionId)).size,
     [selectedOrders],
   );
+  // Demo read-only viewers see the bulk actions locked, like Retry and Export.
+  const bulkVisible = retryWrite.visible;
+  const bulkLocked = retryWrite.demoReadOnly;
+  // Cancel is admin-only by route role, so outside demo a non-admin gets nothing;
+  // in demo it is shown locked like its siblings (documented write-affordance rule).
 
   function toggleSelectRow(order: OrderRecord): void {
     setSelectedIds((prev) => {
@@ -511,13 +608,7 @@ export function OrdersListPage(): ReactElement {
         next.delete(id);
         return next;
       }
-      // Enforce the per-source cap on add (count from current page's selection).
-      const sourceCount = items.reduce(
-        (n, o) =>
-          o.sourceConnectionId === order.sourceConnectionId && prev.has(o.internalOrderId) ? n + 1 : n,
-        0,
-      );
-      if (sourceCount >= BULK_DISPATCH_MAX_ITEMS) return prev;
+      if (prev.size >= BULK_ORDER_ACTION_MAX) return prev;
       next.add(id);
       return next;
     });
@@ -525,12 +616,10 @@ export function OrdersListPage(): ReactElement {
 
   function toggleSelectHeader(): void {
     setSelectedIds((prev) => {
-      const allSelected =
-        selectableItems.length > 0 && selectableItems.every((o) => prev.has(o.internalOrderId));
+      const target = items.slice(0, BULK_ORDER_ACTION_MAX);
+      const allSelected = target.length > 0 && target.every((o) => prev.has(o.internalOrderId));
       if (allSelected) return new Set();
-      return new Set(
-        capSelectionPerSource(selectableItems, BULK_DISPATCH_MAX_ITEMS).map((o) => o.internalOrderId),
-      );
+      return new Set(target.map((o) => o.internalOrderId));
     });
   }
 
@@ -541,30 +630,24 @@ export function OrdersListPage(): ReactElement {
   /**
    * Per-row selection checkbox (#1109) — shared verbatim by the desktop select
    * column and the mobile card select slot (#1620) so multi-select behaves
-   * identically in both layouts (already-shipped rows disabled; per-source cap
-   * enforced on add).
+   * identically in both layouts (the 100-order cap is enforced on add).
    */
   function renderSelectCheckbox(order: OrderRecord): ReactElement {
-    if (!isSelectable(order)) {
-      return (
-        <CheckboxCell
-          state="none"
-          disabled
-          onToggle={() => {}}
-          ariaLabel={`${order.internalOrderId} is already shipped`}
-          tooltip="Already shipped"
-        />
-      );
-    }
     const checked = selectedIds.has(order.internalOrderId);
-    const disabled = !checked && atCapSources.has(order.sourceConnectionId);
+    const disabled = !checked && selectedIds.size >= BULK_ORDER_ACTION_MAX;
     return (
       <CheckboxCell
         state={checked ? 'all' : 'none'}
         disabled={disabled}
         onToggle={() => { toggleSelectRow(order); }}
-        ariaLabel={checked ? `Unselect ${order.internalOrderId}` : `Select ${order.internalOrderId}`}
-        tooltip={disabled ? `Max ${BULK_DISPATCH_MAX_ITEMS} per source` : undefined}
+        ariaLabel={interpolate(checked ? copy.row.unselect : copy.row.select, {
+          id: order.internalOrderId,
+        })}
+        tooltip={
+          disabled
+            ? interpolate(bulkCopy.selectionCapTooltip, { max: BULK_ORDER_ACTION_MAX })
+            : undefined
+        }
       />
     );
   }
@@ -581,20 +664,280 @@ export function OrdersListPage(): ReactElement {
             .join(' ')}
           onClick={() => { applySort(key); }}
           aria-pressed={active}
-          aria-label={
+          aria-label={interpolate(
             active
-              ? `${label}, sorted ${dir === 'asc' ? 'ascending' : 'descending'}`
-              : `${label}, sort`
-          }
+              ? dir === 'asc'
+                ? copy.sort.sortAscending
+                : copy.sort.sortDescending
+              : copy.sort.unsorted,
+            { label },
+          )}
         >
           {label}
           <span className="orders-sortbtn__ind" aria-hidden="true">
-            {active ? (dir === 'asc' ? '▲' : '▼') : '↕'}
+            {active ? (dir === 'asc' ? '↑' : '↓') : '↕'}
           </span>
         </button>
       );
     },
-    [sort, dir, applySort],
+    [sort, dir, applySort, copy],
+  );
+
+  // ── Cell renderers shared by the table and the order peek (#4026) ──────────
+  // The table wraps the badge part in `CappedBadges`; the peek shows them all.
+
+  /** Snapshot-only carrier (#1617/#1776): method name → method id → pickup name. */
+  const carrierFor = useCallback(
+    (order: OrderRecord): string | null => {
+      const parsed = parsedFor(order);
+      return (
+        parsed.shipping?.methodName ?? parsed.shipping?.methodId ?? parsed.pickupPoint?.name ?? null
+      );
+    },
+    [parsedFor],
+  );
+
+  /**
+   * "Generate label" is offered ONLY when OpenLinker has a live own-carrier
+   * route (#1799): fulfillment EXPLICITLY not-shipped, the order isn't
+   * cancelled (#1713), it is not on the pack bench (D46, #3482 — the bench
+   * prints its own label), and routing resolved to an available OL carrier.
+   */
+  const labelHrefFor = useCallback(
+    (order: OrderRecord): string | undefined => {
+      const parsed = parsedFor(order);
+      const can =
+        order.fulfillmentState === 'not-shipped' &&
+        parsed.status !== 'cancelled' &&
+        !isHandledInOpenLinker(order) &&
+        hasLiveOlCarrierRoute(order.deliveryResolution);
+      return can ? `/orders/${order.internalOrderId}#shipment` : undefined;
+    },
+    [parsedFor],
+  );
+
+  const renderShipmentBadges = useCallback(
+    (order: OrderRecord): ReactElement => {
+      const parsed = parsedFor(order);
+      const f = fulfillmentBadge(order.fulfillmentState, orders);
+      // BE-owned SLA bucket drives the badge (#1108); the live countdown stays
+      // client-side, falling back to the client-derived urgency for older
+      // payloads without slaState.
+      const sla = slaBadge(order.slaState, orders);
+      const due = order.dispatchByAt ?? null;
+      const view = formatShipBy(due);
+      // Estimated ship-by qualifier (#1776): "est." when the deadline is an
+      // OL-side estimate (Erli), absent for marketplace commitments (Allegro).
+      const estMark = order.dispatchByEstimated ? (
+        <span
+          className="text-muted"
+          aria-label={copy.estimated.aria}
+          title={copy.estimated.title}
+        >
+          {copy.estimated.mark}{' '}
+        </span>
+      ) : null;
+      // Mapping-aware delivery chip (#1793): outcome + rider stacked.
+      const deliveryOutcome = deriveDeliveryOutcome({
+        processorKind: order.deliveryResolution?.processorKind,
+        hasMethod: Boolean(order.sourceDeliveryMethodId ?? order.sourceDeliveryMethodName),
+        // Snapshot-only divergence (documented, not silent): the list uses the
+        // rollup `fulfillmentState`; the detail uses booked-shipment presence.
+        isFulfilled:
+          order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
+        processorAvailable: order.deliveryResolution?.processorAvailable,
+        cancelled: parsed.status === 'cancelled',
+      });
+      const canGenerateLabel = labelHrefFor(order) !== undefined;
+      return (
+        <>
+          {/* Packed sits FIRST: the shipment cell reads as time (packed →
+              shipped → due → carrier). */}
+          {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+            <OrderPackedTick packedAt={order.packedAt} layout="stack" emptyFallback={null} />
+          )}
+          {/* #3482 - where an order OpenLinker handles itself has got in packing. */}
+          {showsPackingStage(order) ? (
+            <OrderPackingStage
+              handled={order.handledInOpenLinker}
+              who={derivePackerLabel(order.handledInOpenLinker, packerNameById, orders)}
+            />
+          ) : null}
+          {/* With "Generate label" on offer the passive fulfillment badge
+              steps aside: the CTA resolves the state it would describe. */}
+          {canGenerateLabel ? null : (
+            <StatusBadge tone={f.tone} withDot compact>
+              {f.label}
+            </StatusBadge>
+          )}
+          {sla ? (
+            <span className="orders-shipby-row">
+              <StatusBadge tone={sla.tone} withDot compact>
+                {sla.label}
+              </StatusBadge>
+              {view ? (
+                <span className="text-muted orders-cell-sub mono tabular">
+                  {estMark}
+                  {view.remaining}
+                </span>
+              ) : null}
+            </span>
+          ) : due && view ? (
+            <StatusBadge tone={SHIP_BY_TONE[view.level]} withDot compact>
+              {estMark}
+              {view.remaining}
+            </StatusBadge>
+          ) : null}
+          {/* The owner badge says who ships; a quiet accent edge + caret marks
+              the rows OpenLinker could take over (#1776). */}
+          <DeliveryOutcomeChip
+            outcome={deliveryOutcome}
+            owner={resolveDeliveryOwner(
+              order.deliveryResolution,
+              order.deliveryRider,
+              connectionInfoById,
+            )}
+            switchable={deliveryOutcome === 'shop-fulfilled' && isTakeoverRider(order.deliveryRider)}
+          />
+        </>
+      );
+    },
+    [parsedFor, labelHrefFor, fulfilmentOwnedIds, packerNameById, connectionInfoById],
+  );
+
+  const renderMoneyBadges = useCallback(
+    (order: OrderRecord): ReactElement => {
+      const parsed = parsedFor(order);
+      const pay = paymentBadge(parsed.paymentStatus, orders);
+      return (
+        <>
+          {pay ? (
+            <StatusBadge tone={pay.tone} withDot compact>
+              {pay.label}
+            </StatusBadge>
+          ) : null}
+          {/* The routed sales document (#2552, ADR-065), shared verbatim with
+              the mobile card so the two cannot drift. */}
+          <SalesDocumentCell
+            internalOrderId={order.internalOrderId}
+            view={order.salesDocument}
+            layout="stack"
+            hasIssuingCapability={hasIssuingCapability}
+            connectionNames={connectionNames}
+          />
+          {/* #2254 — its own line: a conflict does not stop the invoice. */}
+          {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
+          <UnlinkedCatalogueLinesBadge invoice={parsed.invoice} />
+          <WarehouseReleaseBadge invoice={parsed.invoice} />
+        </>
+      );
+    },
+    [parsedFor, hasIssuingCapability, connectionNames],
+  );
+
+  // ── Order peek (#4026): replaces the inline expanded row ───────────────────
+  const [peekId, setPeekId] = useState<string | null>(null);
+  // A product opened from an order line, shown on top of the order peek; it
+  // belongs to the order on screen, so stepping or closing the order drops it.
+  const [productPeekId, setProductPeekId] = useState<string | null>(null);
+  useEffect(() => {
+    setProductPeekId(null);
+  }, [peekId]);
+  const openPeek = useCallback((internalOrderId: string): void => {
+    captureDemoEvent('demo_order_opened', {});
+    setPeekId(internalOrderId);
+  }, []);
+  const peekIndex = peekId === null ? -1 : items.findIndex((o) => o.internalOrderId === peekId);
+  // A page, sort or filter change that drops the order closes the peek.
+  useEffect(() => {
+    if (peekId !== null && query.data && peekIndex === -1) setPeekId(null);
+  }, [peekId, peekIndex, query.data]);
+  const navigatePeek = useCallback(
+    (step: -1 | 1): void => {
+      const next = items[peekIndex + step];
+      if (next) setPeekId(next.internalOrderId);
+    },
+    [items, peekIndex],
+  );
+
+  /** The Order cell, shared by the legacy column and the saved-views locked column. */
+  const renderOrderCell = useCallback(
+    (order: OrderRecord): ReactElement => {
+      const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
+      const source = channelLabel(sourcePlatform);
+      const destPlatform = order.syncStatus[0]
+        ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
+        : undefined;
+      const dest = channelLabel(destPlatform);
+      // Multi-destination indicator (#1713): an order fanned out to more than
+      // one destination shows `→ Dest +N` where N is the extra destinations.
+      const extraDests = order.syncStatus.length > 1 ? order.syncStatus.length - 1 : 0;
+      // The inline Retry lives under the order name rather than in its own
+      // trailing column (#1713): a column that only ever renders for failed
+      // rows widened the table past the viewport for every other row.
+      const failed = order.syncStatus.find((s) => s.status === 'failed');
+      const canRetry =
+        failed !== undefined &&
+        order.recordStatus !== 'awaiting_mapping' &&
+        order.recordStatus !== 'source_deleted' &&
+        retryWrite.visible;
+      const isRetrying =
+        retryMutation.isPending &&
+        retryMutation.variables?.internalOrderId === order.internalOrderId;
+      return (
+        <span className="orders-cell-stack">
+          {/* Thumbnail + order ref + item name/`+N`, all owned by the shared
+              cell since #2091. The channel fold and the inline Retry stay
+              siblings BELOW it: both are row affordances rather than part of
+              the order's identity, and #2094 owns relocating the fold. */}
+          {renderOrderIdentity(order)}
+          {/* Channel folds under the order name below the Channel column's
+              hide breakpoint (#1713) — hidden on wide screens where the
+              standalone Channel column is visible. */}
+          {source ? (
+            <span className="orders-order-channel">
+              <ConnectionChip
+                connectionId={order.sourceConnectionId}
+                name={connectionNames.get(order.sourceConnectionId) ?? null}
+                loading={connectionsQuery.isLoading}
+                channel={sourceChipChannel(order.sourceConnectionId, source)}
+              />
+              {dest ? (
+                <span className="text-muted orders-cell-sub">
+                  → {dest}
+                  {extraDests > 0 ? ` +${extraDests}` : ''}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+          {canRetry && failed ? (
+            <ReadOnlyLock active={retryWrite.demoReadOnly} message={demoReadOnlyActionMessage()}>
+              <Button
+                tone="ghost"
+                className="button--sm orders-row-retry"
+                disabled={isRetrying || retryWrite.demoReadOnly}
+                onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
+              >
+                {isRetrying ? copy.retry.retrying : copy.retry.action}
+              </Button>
+            </ReadOnlyLock>
+          ) : null}
+        </span>
+      );
+    },
+    [
+      platforms,
+      platformByConnection,
+      environmentByConnection,
+      connectionNames,
+      connectionsQuery.isLoading,
+      renderOrderIdentity,
+      retryMutation.isPending,
+      retryMutation.variables,
+      retryWrite.visible,
+      retryWrite.demoReadOnly,
+      copy,
+    ],
   );
 
   const columns: DataTableColumn<OrderRecord>[] = useMemo(
@@ -607,104 +950,53 @@ export function OrdersListPage(): ReactElement {
             state={headerCheckboxState}
             onToggle={toggleSelectHeader}
             ariaLabel={
-              headerCheckboxState === 'all' ? 'Unselect all visible orders' : 'Select all visible orders'
+              headerCheckboxState === 'all' ? copy.row.unselectAll : copy.row.selectAll
             }
           />
         ),
         cell: (order) => renderSelectCheckbox(order),
         align: 'left',
+        width: '2.5rem',
       },
       {
         id: 'order',
+        width: '20%',
         // #2538 - OrderIdentityCell stacks a thumbnail, the order number and a meta line.
         lines: 2,
-        header: 'Order',
-        cell: (order) => {
-          const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
-          const source = channelLabel(sourcePlatform);
-          const destPlatform = order.syncStatus[0]
-            ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
-            : undefined;
-          const dest = channelLabel(destPlatform);
-          // Multi-destination indicator (#1713): an order fanned out to more than
-          // one destination shows `→ Dest +N` where N is the extra destinations.
-          const extraDests = order.syncStatus.length > 1 ? order.syncStatus.length - 1 : 0;
-          // The inline Retry lives under the order name rather than in its own
-          // trailing column (#1713): a column that only ever renders for failed
-          // rows widened the table past the viewport for every other row.
-          const failed = order.syncStatus.find((s) => s.status === 'failed');
-          const canRetry =
-            failed !== undefined &&
-            order.recordStatus !== 'awaiting_mapping' &&
-            order.recordStatus !== 'source_deleted' &&
-            retryWrite.visible;
-          const isRetrying =
-            retryMutation.isPending &&
-            retryMutation.variables?.internalOrderId === order.internalOrderId;
-          return (
-            <span className="orders-cell-stack">
-              {/* Thumbnail + order ref + item name/`+N`, all owned by the shared
-                  cell since #2091. The channel fold and the inline Retry stay
-                  siblings BELOW it: both are row affordances rather than part of
-                  the order's identity, and #2094 owns relocating the fold. */}
-              {renderOrderIdentity(order)}
-              {/* Channel folds under the order name below the Channel column's
-                  hide breakpoint (#1713) — hidden on wide screens where the
-                  standalone Channel column is visible. */}
-              {source ? (
-                <span className="orders-order-channel">
-                  <ConnectionChip
-                    connectionId={order.sourceConnectionId}
-                    name={connectionNames.get(order.sourceConnectionId) ?? null}
-                    loading={connectionsQuery.isLoading}
-                    channel={sourceChipChannel(order.sourceConnectionId, source)}
-                  />
-                  {dest ? (
-                    <span className="text-muted orders-cell-sub">
-                      → {dest}
-                      {extraDests > 0 ? ` +${extraDests}` : ''}
-                    </span>
-                  ) : null}
-                </span>
-              ) : null}
-              {canRetry && failed ? (
-                <ReadOnlyLock active={retryWrite.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-                  <Button
-                    tone="ghost"
-                    className="button--sm orders-row-retry"
-                    disabled={isRetrying || retryWrite.demoReadOnly}
-                    onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
-                  >
-                    {isRetrying ? 'Retrying…' : 'Retry'}
-                  </Button>
-                </ReadOnlyLock>
-              ) : null}
-            </span>
-          );
-        },
+        header: copy.columns.order,
+        cell: renderOrderCell,
       },
       {
         id: 'customer',
+        width: '13%',
         // Non-sortable in react-table's model (#1713) — the header renders the
         // same per-label sort control as the merged columns, routed through
         // `applySort`, so every sortable header shares one affordance.
-        header: <span className="orders-sortstack">{sortLabel('Customer', 'customer')}</span>,
+        header: <span className="orders-sortstack">{sortLabel(copy.columns.customer, 'customer')}</span>,
         cell: (order) => {
           const parsed = parsedFor(order);
           const name = customerName(parsed);
-          if (!name) return <span className="text-muted">—</span>;
+          if (!name) {
+            return order.hasBuyerNote === true ? (
+              <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} preview={order.buyerNotePreview} />
+            ) : (
+              <span className="text-muted">—</span>
+            );
+          }
           const city = parsed.shippingAddress?.city;
           return (
             <span className="orders-cell-stack">
               <span>{name}</span>
               {city ? <span className="text-muted orders-cell-sub">{city}</span> : null}
+              <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} preview={order.buyerNotePreview} />
             </span>
           );
         },
       },
       {
         id: 'channel',
-        header: 'Channel',
+        width: '13%',
+        header: copy.columns.channel,
         // Folds under the order name below 1024px (#1713) — the order cell then
         // renders the channel pill inline instead.
         hideBelow: 1024,
@@ -713,7 +1005,11 @@ export function OrdersListPage(): ReactElement {
           const destPlatform = order.syncStatus[0]
             ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
             : undefined;
-          const dest = channelLabel(destPlatform);
+          // An order OpenLinker handles itself has no destination row; say where it
+          // goes rather than leaving the target empty (#3482).
+          const dest = isHandledInOpenLinker(order)
+            ? orders.handledInOpenLinker.channelDestination
+            : channelLabel(destPlatform);
           if (!source) return <span className="text-muted">—</span>;
           return (
             <span className="orders-cell-stack">
@@ -730,178 +1026,43 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'status',
+        width: '15%',
         // Non-sortable in react-table's model (#1713) — header uses the shared
         // per-label sort control (see the customer column).
-        header: <span className="orders-sortstack">{sortLabel('Status', 'status')}</span>,
-        cell: (order) => {
-          const h = deriveOrderHealth(order);
-          return (
-            <span className="orders-cell-stack">
-              <StatusBadge tone={h.tone} withDot compact>
-                {h.label}
-              </StatusBadge>
-              {/* #2310 — BESIDE the health badge, never instead of it: health
-                  says "is something wrong", the phase says "what stage is it
-                  at" (ADR-059). */}
-              <OrderPhaseBadge phase={order.lifecyclePhase} compact />
-              {/* #2350 — an exception, so a badge, and it belongs in the STATUS
-                  group beside failure reasons (style guide § order-row signal
-                  placement). BESIDE health for the same reason the phase is:
-                  `OrderHealthValues` is a partition whose values sum to the KPI
-                  cards, so a shortfall value there would double-count or hide a
-                  sync failure behind a stock one. Shared verbatim with the
-                  mobile card. */}
-              <StockAtRiskBadge shortfalls={order.reservationShortfalls} />
-              {/* #2998 — the same STATUS group, beside health. Neutral tone: a
-                  return is routine, not a failure. */}
-              <OrderOpenReturnBadge openReturn={order.openReturn} />
-              {/* #2342 — the STATUS group: an exception is a badge and belongs
-                  beside the failure reasons (style guide § Order-row signal
-                  placement rule 2), never in Shipment or Money. */}
-              <OrderHoldBadge reason={order.activeHoldReason} compact />
-              {/* #2356 — an inert state is an EXCEPTION, and rule 2 of the style
-                  guide's order-row signal placement puts exceptions in the
-                  Status group beside failure reasons. It is another badge
-                  vocabulary in that group; the ordinal it originally carried was
-                  dropped on the Wave-2 merge, where #2350's badge claimed the
-                  same one. The guide's composition note is the authority. */}
-              <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
-              {h.reason ? (
-                <span className="orders-status-reason" title={h.reason}>
-                  {h.reason}
-                </span>
-              ) : null}
-            </span>
-          );
-        },
+        header: <span className="orders-sortstack">{sortLabel(copy.columns.status, 'status')}</span>,
+        // Over three badges show two + "+N more" (#4026); the peek lists all.
+        cell: (order) => (
+          <CappedBadges onMore={() => { openPeek(order.internalOrderId); }}>
+            {renderStatusBadges(order)}
+          </CappedBadges>
+        ),
       },
       {
         id: 'shipment',
+        width: '17%',
         // Merged dispatch column (#1713): fulfillment status + ship-by SLA (with
         // the live countdown) + carrier, one per-label sort control each in the
         // header. Not `sortable` — the header renders its own sort buttons.
         header: (
           <span className="orders-sortstack orders-sortstack--left">
-            {sortLabel('Shipment', 'fulfillment')}
-            {sortLabel('Ship-by', 'dispatchBy')}
+            {sortLabel(copy.columns.shipment, 'fulfillment')}
+            {sortLabel(copy.columns.shipBy, 'dispatchBy')}
           </span>
         ),
         cell: (order) => {
-          const parsed = parsedFor(order);
-          const f = fulfillmentBadge(order.fulfillmentState);
-          // BE-owned SLA bucket drives the badge (#1108); the live countdown
-          // stays client-side, falling back to the client-derived urgency for
-          // older payloads without slaState.
-          const sla = slaBadge(order.slaState);
-          const due = order.dispatchByAt ?? null;
-          const view = formatShipBy(due);
-          // Estimated ship-by qualifier (#1776): a muted "est." label when the
-          // deadline is an OL-side estimate (Erli), absent for authoritative
-          // marketplace commitments (Allegro). Labelled for screen readers +
-          // hover so the convention isn't sight-only, and rendered as the same
-          // "est." text on every surface (order-detail, row-detail, list).
-          const estMark = order.dispatchByEstimated ? (
-            <span
-              className="text-muted"
-              aria-label="Estimated"
-              title="OpenLinker estimate - not a marketplace-confirmed deadline"
-            >
-              est.{' '}
-            </span>
-          ) : null;
-          // Carrier at row level (#1617): the list can't fetch per-order
-          // shipments, so `shipping.methodName` (the source's stated delivery
-          // method) is the best signal, then the raw method id (#1776), then
-          // the pickup-point name. Snapshot-only is the correct ceiling here.
-          const carrier =
-            parsed.shipping?.methodName ??
-            parsed.shipping?.methodId ??
-            parsed.pickupPoint?.name ??
-            null;
-          // Mapping-aware delivery chip (#1793): outcome + rider stacked. The
-          // rider comes straight off the order response (BE-gated to `default`
-          // resolutions).
-          const deliveryOutcome = deriveDeliveryOutcome({
-            processorKind: order.deliveryResolution?.processorKind,
-            // Use the typed #1792 source-method fields (not the snapshot carrier
-            // proxy) so the list agrees with the detail for methodId-only orders.
-            hasMethod: Boolean(order.sourceDeliveryMethodId ?? order.sourceDeliveryMethodName),
-            // Snapshot-only divergence (documented, not silent): the list uses
-            // the rollup `fulfillmentState` because it can't fetch per-row
-            // shipments, whereas the detail uses booked-shipment presence.
-            isFulfilled:
-              order.fulfillmentState === 'dispatched' || order.fulfillmentState === 'delivered',
-            processorAvailable: order.deliveryResolution?.processorAvailable,
-            cancelled: parsed.status === 'cancelled',
-          });
-          // "Generate label" is offered ONLY when OpenLinker has a live own-carrier
-          // route (#1799): fulfillment EXPLICITLY not-shipped, the order isn't
-          // cancelled (#1713), and routing resolved to an available OL carrier.
-          // Shop-fulfilled / no-method / unmapped / not-connected / disabled-carrier
-          // orders have no OL label to generate — the passive fulfillment badge (and
-          // the delivery rider) show instead, never a dead-end action.
-          const canGenerateLabel =
-            order.fulfillmentState === 'not-shipped' &&
-            parsed.status !== 'cancelled' &&
-            hasLiveOlCarrierRoute(order.deliveryResolution);
+          const generateLabelHref = labelHrefFor(order);
+          const carrier = carrierFor(order);
           return (
             <span className="orders-cell-stack">
-              {/* Packed sits FIRST: the shipment cell reads as time (packed →
-                  shipped → due → carrier), and packing precedes everything else
-                  in it. It is also the one slot that never depends on a sibling —
-                  the fulfillment badge below is conditional. */}
-              {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
-                <OrderPackedTick packedAt={order.packedAt} layout="stack" emptyFallback={null} />
-              )}
-              {/* When the row offers "Generate label" the CTA is deferred to sit
-                  directly under the Awaiting-label delivery chip (the state it
-                  resolves), so the top slot only carries the passive fulfillment
-                  badge for non-actionable rows. */}
-              {canGenerateLabel ? null : (
-                <StatusBadge tone={f.tone} withDot compact>
-                  {f.label}
-                </StatusBadge>
-              )}
-              {sla ? (
-                <span className="orders-shipby-row">
-                  <StatusBadge tone={sla.tone} withDot compact>
-                    {sla.label}
-                  </StatusBadge>
-                  {view ? (
-                    <span className="text-muted orders-cell-sub mono tabular">
-                      {estMark}
-                      {view.remaining}
-                    </span>
-                  ) : null}
-                </span>
-              ) : due && view ? (
-                <StatusBadge tone={SHIP_BY_TONE[view.level]} withDot compact>
-                  {estMark}
-                  {view.remaining}
-                </StatusBadge>
-              ) : null}
-              {/* The list carries no rider chip and no button: the owner badge
-                  says who ships, and a quiet accent edge + caret marks the rows
-                  OpenLinker could take over. The actionable banner + fix-it
-                  button live on the order-detail Delivery panel. */}
-              <DeliveryOutcomeChip
-                outcome={deliveryOutcome}
-                owner={resolveDeliveryOwner(
-                  order.deliveryResolution,
-                  order.deliveryRider,
-                  connectionInfoById,
-                )}
-                switchable={deliveryOutcome === 'shop-fulfilled' && isTakeoverRider(order.deliveryRider)}
-              />
-              {canGenerateLabel ? (
-                <Link
-                  className="orders-row-cta"
-                  to={`/orders/${order.internalOrderId}#shipment`}
-                >
+              <CappedBadges onMore={() => { openPeek(order.internalOrderId); }}>
+                {renderShipmentBadges(order)}
+              </CappedBadges>
+              {generateLabelHref ? (
+                <Link className="orders-row-cta" to={generateLabelHref}>
                   <span className="orders-row-cta__plus" aria-hidden="true">
                     +
                   </span>{' '}
-                  Generate label
+                  {copy.generateLabel}
                 </Link>
               ) : null}
               {carrier ? (
@@ -915,67 +1076,59 @@ export function OrdersListPage(): ReactElement {
       },
       {
         id: 'money',
+        width: '15%',
         // #2538/#2555 - Total, payment badge, the sales-document line, an
-        // optional tax-rate-conflict badge, and the created date - five
-        // stacked facts at the tallest (a conflicting-rate order), so the
-        // skeleton reserves that height rather than the pre-#2552 count of 4.
+        // optional tax-rate-conflict badge, the placed and created dates.
         lines: 5,
         align: 'right',
-        // Merged money column (#1713): total + payment pill + created, each an
-        // independent per-label sort control in the header. Not `sortable` — the
-        // header renders its own sort buttons.
+        // Merged money column (#1713): total + payment pill + placed + created,
+        // each an independent per-label sort control in the header (#4026 adds
+        // Placed). Not `sortable` — the header renders its own sort buttons.
         header: (
           <span className="orders-sortstack orders-sortstack--right">
-            {sortLabel('Total', 'total')}
-            {sortLabel('Payment', 'payment')}
-            {sortLabel('Created', 'createdAt')}
+            {sortLabel(copy.columns.total, 'total')}
+            {sortLabel(copy.columns.payment, 'payment')}
+            {sortLabel(copy.columns.placed, 'placedAt')}
+            {sortLabel(copy.columns.created, 'createdAt')}
           </span>
         ),
         cell: (order) => {
           const parsed = parsedFor(order);
-          const pay = paymentBadge(parsed.paymentStatus);
           return (
             <span className="orders-cell-stack orders-cell-stack--end">
               {parsed.totals ? (
                 <span className="mono tabular orders-money-total">
-                  {formatCurrency(parsed.totals.total, parsed.totals.currency, locale)}
+                  {format.money(parsed.totals.total, parsed.totals.currency)}
                 </span>
               ) : (
                 <span className="text-muted">—</span>
               )}
-              {pay ? (
-                <StatusBadge tone={pay.tone} withDot compact>
-                  {pay.label}
-                </StatusBadge>
+              <CappedBadges align="end" onMore={() => { openPeek(order.internalOrderId); }}>
+                {renderMoneyBadges(order)}
+              </CappedBadges>
+              {parsed.placedAt ? (
+                <span className="text-muted orders-cell-sub mono tabular">
+                  <TimeDisplay iso={parsed.placedAt} format="datetime" />
+                </span>
               ) : null}
-              {/* The routed sales document (#2552, ADR-065) — kind-aware
-                  (invoice or fiscal receipt), reading the batched
-                  `SalesDocumentView` rather than the invoice-only projection
-                  `OrderInvoicingCell` rendered. Shared verbatim with the
-                  mobile card so the two cannot drift. */}
-              <SalesDocumentCell
-                internalOrderId={order.internalOrderId}
-                view={order.salesDocument}
-                layout="stack"
-                hasIssuingCapability={hasIssuingCapability}
-                connectionNames={connectionNames}
-              />
-              {/* #2254 — its own independent line, never folded into the
-                  document cell above: a conflict does not stop the invoice,
-                  so it can be true alongside any document state. */}
-              {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
-              {/* Same independent-line rule as the conflict badge above, and
-                  for a sharper reason: the document was ISSUED, so anything
-                  keyed on "a document exists" would hide it on every order it
-                  is about. */}
-              <UnlinkedCatalogueLinesBadge invoice={parsed.invoice} />
-              <WarehouseReleaseBadge invoice={parsed.invoice} />
               <span className="text-muted orders-cell-sub mono tabular">
                 <TimeDisplay iso={order.createdAt} format="datetime" />
               </span>
             </span>
           );
         },
+      },
+      {
+        id: 'peek',
+        width: '3rem',
+        // #4026 — the arrow says the row opens a panel from the right.
+        header: <span className="sr-only">{orders.peek.details}</span>,
+        cell: (order) => (
+          <PeekArrow
+            label={interpolate(orders.peek.detailsAria, { ref: order.internalOrderId })}
+            onOpen={() => { openPeek(order.internalOrderId); }}
+          />
+        ),
       },
     ],
     // Deps: columns rebuild when locale, the channel lookup, or the retry
@@ -984,6 +1137,10 @@ export function OrdersListPage(): ReactElement {
     // `mutate` handle, so it doesn't need to be a dep.
     [
       locale,
+      // Every header, label and badge word reads the `orders` namespace.
+      orders,
+      copy,
+      format,
       platformByConnection,
       // `sourceChipChannel` reads it, so a connections refetch updates the sandbox mark (#3670).
       environmentByConnection,
@@ -992,13 +1149,15 @@ export function OrdersListPage(): ReactElement {
       // constant), so listing it costs no rebuild — but that invariant lives two
       // files away, and a stale closure here would render stale channel labels.
       platforms,
+      // #3482 - the packer names under the packing stage.
+      packerNameById,
       retryMutation.isPending,
       retryMutation.variables,
       retryWrite.visible,
       retryWrite.demoReadOnly,
+      renderOrderCell,
       // Selection state — the select column re-renders as checkboxes toggle (#1109).
       selectedIds,
-      atCapSources,
       headerCheckboxState,
       // Sort controls in the merged-column headers (#1713) — rebuild so the
       // active-state arrows track the current sort/dir. `sortLabel` is a
@@ -1013,6 +1172,12 @@ export function OrdersListPage(): ReactElement {
       // The shared Order cell renderer (#2091) — a `useCallback` over
       // `parsedFor`, so this rebuilds exactly when the parse cache does.
       renderOrderIdentity,
+      // #4026 — the shared cell renderers and the peek opener.
+      renderShipmentBadges,
+      renderMoneyBadges,
+      labelHrefFor,
+      carrierFor,
+      openPeek,
     ],
   );
 
@@ -1030,18 +1195,288 @@ export function OrdersListPage(): ReactElement {
     const optional = visibleColumnIds
       .map((id) => byId.get(id))
       .filter((c): c is DataTableColumn<OrderRecord> => c !== undefined);
-    return [...structural, ...optional];
+    // The peek arrow always closes the row, whatever the column arrangement.
+    const trailing = byId.get('peek');
+    return [...structural, ...optional, ...(trailing ? [trailing] : [])];
   }, [columns, visibleColumnIds, selectionEnabled]);
+
+  // ── Saved views (#4241) ──────────────────────────────────────────────────────
+  // The registry's cells close over query data (connections, packers, retry
+  // state), so it is rebuilt only when that data changes: `useListView` memoizes
+  // everything it derives on the registry's identity.
+  const savedViewsCopy = orders.savedViews;
+  const registry = useMemo(
+    () =>
+      createOrdersListRegistry({
+        labels: {
+          order: copy.columns.order,
+          orderFields: savedViewsCopy.orderFields,
+          customer: orders.listColumns.customer,
+          customerName: savedViewsCopy.customerName,
+          customerCity: savedViewsCopy.customerCity,
+          customerNote: savedViewsCopy.customerNote,
+          channel: orders.listColumns.channel,
+          channelSource: savedViewsCopy.channelSource,
+          channelDestination: savedViewsCopy.channelDestination,
+          status: orders.listColumns.status,
+          statusFields: savedViewsCopy.statusFields,
+          shipment: orders.listColumns.shipment,
+          shipmentState: savedViewsCopy.shipmentState,
+          shipmentCarrier: savedViewsCopy.shipmentCarrier,
+          shipBy: copy.columns.shipBy,
+          money: orders.listColumns.money,
+          total: copy.columns.total,
+          payment: copy.columns.payment,
+          document: savedViewsCopy.document,
+          placed: copy.columns.placed,
+          created: copy.columns.created,
+        },
+        viewNames: {
+          [ORDER_VIEW_IDS.all]: orders.listFilters.anyStatus,
+          ...orders.listFilters.healthLabels,
+        },
+        sortLabels: orders.listFilters.sortOptions,
+        cells: {
+          order: renderOrderCell,
+          customerName: (order) => {
+            const name = customerName(parsedFor(order));
+            if (name) return <span className="orders-cell-stack"><span>{name}</span></span>;
+            // A buyer with no name but a note leaves the note to speak for the row.
+            return order.hasBuyerNote === true ? null : <span className="text-muted">—</span>;
+          },
+          customerCity: (order) => {
+            const city = parsedFor(order).shippingAddress?.city;
+            return city ? (
+              <span className="orders-cell-stack">
+                <span className="text-muted orders-cell-sub">{city}</span>
+              </span>
+            ) : null;
+          },
+          customerNote: (order) =>
+            order.hasBuyerNote === true ? (
+              <span className="orders-cell-stack">
+                <OrderBuyerNoteHint hasBuyerNote={order.hasBuyerNote} preview={order.buyerNotePreview} />
+              </span>
+            ) : null,
+          channelSource: (order) => {
+            const source = channelLabel(platformByConnection.get(order.sourceConnectionId));
+            if (!source) return <span className="text-muted">—</span>;
+            return (
+              <span className="orders-cell-stack">
+                <ConnectionChip
+                  connectionId={order.sourceConnectionId}
+                  name={connectionNames.get(order.sourceConnectionId) ?? null}
+                  loading={connectionsQuery.isLoading}
+                  channel={sourceChipChannel(order.sourceConnectionId, source)}
+                />
+              </span>
+            );
+          },
+          channelDestination: (order) => {
+            const destPlatform = order.syncStatus[0]
+              ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
+              : undefined;
+            // An order OpenLinker handles itself has no destination row; say where it
+            // goes rather than leaving the target empty (#3482).
+            const dest = isHandledInOpenLinker(order)
+              ? orders.handledInOpenLinker.channelDestination
+              : channelLabel(destPlatform);
+            return dest ? (
+              <span className="orders-cell-stack">
+                <span className="text-muted orders-cell-sub">→ {dest}</span>
+              </span>
+            ) : null;
+          },
+          status: (order) => (
+            <CappedBadges onMore={() => { openPeek(order.internalOrderId); }}>
+              {renderStatusBadges(order)}
+            </CappedBadges>
+          ),
+          shipmentState: (order) => {
+            const generateLabelHref = labelHrefFor(order);
+            return (
+              <span className="orders-cell-stack">
+                <CappedBadges onMore={() => { openPeek(order.internalOrderId); }}>
+                  {renderShipmentBadges(order)}
+                </CappedBadges>
+                {generateLabelHref ? (
+                  <Link className="orders-row-cta" to={generateLabelHref}>
+                    <span className="orders-row-cta__plus" aria-hidden="true">
+                      +
+                    </span>{' '}
+                    {copy.generateLabel}
+                  </Link>
+                ) : null}
+              </span>
+            );
+          },
+          shipmentCarrier: (order) => {
+            const carrier = carrierFor(order);
+            return carrier ? (
+              <span className="orders-cell-stack">
+                <span className="text-muted orders-cell-sub orders-carrier" title={carrier}>
+                  {carrier}
+                </span>
+              </span>
+            ) : null;
+          },
+          moneyTotal: (order) => {
+            const parsed = parsedFor(order);
+            return (
+              <span className="orders-cell-stack orders-cell-stack--end">
+                {parsed.totals ? (
+                  <span className="mono tabular orders-money-total">
+                    {format.money(parsed.totals.total, parsed.totals.currency)}
+                  </span>
+                ) : (
+                  <span className="text-muted">—</span>
+                )}
+              </span>
+            );
+          },
+          moneyPayment: (order) => {
+            const pay = paymentBadge(parsedFor(order).paymentStatus, orders);
+            return pay ? (
+              <span className="orders-cell-stack orders-cell-stack--end">
+                <StatusBadge tone={pay.tone} withDot compact>
+                  {pay.label}
+                </StatusBadge>
+              </span>
+            ) : null;
+          },
+          moneyDocument: (order) => {
+            const parsed = parsedFor(order);
+            return (
+              <span className="orders-cell-stack orders-cell-stack--end">
+                <CappedBadges align="end" onMore={() => { openPeek(order.internalOrderId); }}>
+                  {/* The routed sales document (#2552, ADR-065), shared verbatim with the mobile card. */}
+                  <SalesDocumentCell
+                    internalOrderId={order.internalOrderId}
+                    view={order.salesDocument}
+                    layout="stack"
+                    hasIssuingCapability={hasIssuingCapability}
+                    connectionNames={connectionNames}
+                  />
+                  {/* #2254 - its own line: a conflict does not stop the invoice. */}
+                  {hasTaxRateConflict(parsed) ? <TaxRateConflictBadge /> : null}
+                  <UnlinkedCatalogueLinesBadge invoice={parsed.invoice} />
+                  <WarehouseReleaseBadge invoice={parsed.invoice} />
+                </CappedBadges>
+              </span>
+            );
+          },
+          moneyPlaced: (order) => {
+            const placedAt = parsedFor(order).placedAt;
+            return placedAt ? (
+              <span className="orders-cell-stack orders-cell-stack--end">
+                <span className="text-muted orders-cell-sub mono tabular">
+                  <TimeDisplay iso={placedAt} format="datetime" />
+                </span>
+              </span>
+            ) : null;
+          },
+          moneyCreated: (order) => (
+            <span className="orders-cell-stack orders-cell-stack--end">
+              <span className="text-muted orders-cell-sub mono tabular">
+                <TimeDisplay iso={order.createdAt} format="datetime" />
+              </span>
+            </span>
+          ),
+        },
+      }),
+    // `channelLabel` and `sourceChipChannel` close over these lookups (see the
+    // legacy columns memo above for why the registry array is a safe dep).
+    [
+      orders,
+      copy,
+      savedViewsCopy,
+      format,
+      platforms,
+      platformByConnection,
+      environmentByConnection,
+      connectionNames,
+      connectionsQuery.isLoading,
+      parsedFor,
+      renderOrderCell,
+      renderShipmentBadges,
+      labelHrefFor,
+      carrierFor,
+      openPeek,
+      hasIssuingCapability,
+    ],
+  );
+  const viewCounts = useMemo<Record<string, number | undefined>>(
+    () => ({
+      [ORDER_VIEW_IDS.all]: summary?.total,
+      [ORDER_VIEW_IDS.needsAttention]: summary?.needsAttention,
+      [ORDER_VIEW_IDS.awaitingMapping]: summary?.awaitingMapping,
+      [ORDER_VIEW_IDS.awaitingDispatch]: summary?.awaitingDispatch,
+      [ORDER_VIEW_IDS.sourceDeleted]: summary?.sourceDeleted,
+      [ORDER_VIEW_IDS.synced]: summary?.synced,
+    }),
+    [summary],
+  );
+  // The flag is constant for this body's lifetime (the wrapper keys on it), so
+  // the hook is called on the same path every render.
+  const view = savedViews
+    ? useListView<OrderRecord>({ registry, pageTitle: copy.title, counts: viewCounts })
+    : null;
+
+  // A selection belongs to the rows of one view: switching view swaps the rows underneath it.
+  const activeViewId = view?.activeView.id;
+  useEffect(() => {
+    setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+  }, [activeViewId]);
+
+  // One-time hand-over of the column choice the list used to keep in
+  // localStorage: it seeds the draft (visible as an edit the operator can save
+  // as a view) and the key is removed either way, so there is one source of
+  // truth. A viewer who already has a view of their own keeps it untouched.
+  const legacyColumnsHandled = useRef(false);
+  const viewReady = view?.isReady === true;
+  useEffect(() => {
+    if (!view || !viewReady || legacyColumnsHandled.current) return;
+    legacyColumnsHandled.current = true;
+    if (!hasLegacyVisibleColumnsKey()) return;
+    const remembered = readLegacyVisibleColumns();
+    clearLegacyVisibleColumns();
+    if (!remembered || view.activeView.scope !== 'system' || view.isEdited) return;
+    const known = new Set<string>(ORDER_LIST_COLUMN_IDS);
+    const ids = remembered.filter((id, index) => known.has(id) && remembered.indexOf(id) === index);
+    if (ids.length === 0 || ids.join() === view.current.columns.join()) return;
+    view.columnsPanel.onColumnsChange(ids);
+  }, [view, viewReady]);
+
+  const toViewColumns = view?.toColumns;
+  const viewColumns = useMemo<DataTableColumn<OrderRecord>[]>(() => {
+    if (!toViewColumns) return [];
+    const select = columns.find((c) => c.id === 'select');
+    const peek = columns.find((c) => c.id === 'peek');
+    return [
+      ...(selectionEnabled && select ? [select] : []),
+      ...toViewColumns(),
+      ...(peek ? [peek] : []),
+    ];
+  }, [toViewColumns, columns, selectionEnabled]);
+  const tableColumns = view ? viewColumns : visibleColumns;
 
   function handleRetry(internalOrderId: string, destinationConnectionId: string): void {
     retryMutation.mutate(
       { internalOrderId, destinationConnectionId },
       {
         onSuccess: () => {
-          showToast({ tone: 'success', title: 'Retry queued', description: 'Sync re-enqueued.' });
+          showToast({
+            tone: 'success',
+            title: copy.retry.queuedTitle,
+            description: copy.retry.queuedDescription,
+          });
         },
         onError: (error) => {
-          showToast({ tone: 'error', title: 'Retry failed', description: error.message });
+          showToast({
+            tone: 'error',
+            title: copy.retry.failedTitle,
+            description: describeApiError(error, 'orders'),
+          });
         },
       },
     );
@@ -1050,14 +1485,15 @@ export function OrdersListPage(): ReactElement {
   // Known total needs no page; only the floor ("100+") needs the rows, and only
   // while the total is unknown (#2957 review, S2). `null` = render nothing.
   const resultCount =
-    totalStage.total !== null || query.data
-      ? formatPaginatedTotal(totalStage.total, query.data ? offset + query.data.items.length : null)
-      : null;
+    totalStage.total !== null
+      ? { value: totalStage.total, atLeast: false }
+      : query.data
+        ? { value: offset + query.data.items.length, atLeast: true }
+        : null;
 
-  const freshness = useMemo(
-    () => formatFreshness(query.data?.items ?? [], locale),
-    [query.data?.items, locale],
-  );
+  const freshestIso = useMemo(() => freshestUpdate(query.data?.items ?? []), [query.data?.items]);
+  const freshness =
+    freshestIso === null ? null : interpolate(copy.freshness, { time: format.time(freshestIso) });
 
   function refreshAll(): void {
     void query.refetch();
@@ -1090,17 +1526,116 @@ export function OrdersListPage(): ReactElement {
     // needed; the handler reads fresh state at fire-time via the closure.
   }, []);
 
-  const segmentCount = (segment: HealthSegment): string =>
-    summary ? String(summary[segment.countKey]) : '—';
+  const dispatchDefaultHint = interpolate(bulkCopy.dispatchDefaultHint, {
+    cap: BULK_DISPATCH_MAX_ITEMS,
+  });
+  const dispatchHint = interpolate(bulkCopy.dispatchHint, {
+    dispatchable: format.number(dispatchOrders.length),
+    selected: format.number(selectedOrders.length),
+    reasons: format.list(
+      [
+        shippedExcluded > 0 ? plural(shippedExcluded, bulkCopy.dispatchHintShipped) : null,
+        overCapExcluded > 0
+          ? plural(overCapExcluded, bulkCopy.dispatchHintOverCap, { cap: BULK_DISPATCH_MAX_ITEMS })
+          : null,
+      ].filter((part): part is string => part !== null),
+      'unit',
+    ),
+  });
+
+  const peekOrder = peekIndex >= 0 ? items[peekIndex] : undefined;
+  const peekView: OrderPeekView | null = peekOrder ? buildPeekView(peekOrder) : null;
+
+  function buildPeekView(order: OrderRecord): OrderPeekView {
+    const parsed = parsedFor(order);
+    const sourcePlatform = platformByConnection.get(order.sourceConnectionId);
+    const sourceLabel = channelLabel(sourcePlatform);
+    const sourceShort = sourcePlatform
+      ? resolvePlatformShortLabel(platforms, sourcePlatform)
+      : undefined;
+    const destPlatform = order.syncStatus[0]
+      ? platformByConnection.get(order.syncStatus[0].destinationConnectionId)
+      : undefined;
+    const destination = isHandledInOpenLinker(order)
+      ? orders.handledInOpenLinker.channelDestination
+      : channelLabel(destPlatform);
+    const pay = paymentBadge(parsed.paymentStatus, orders);
+    const carrier = carrierFor(order);
+    return {
+      internalOrderId: order.internalOrderId,
+      reference: parsed.orderNumber ?? order.internalOrderId,
+      source: sourceLabel ? (
+        <ConnectionChip
+          connectionId={order.sourceConnectionId}
+          name={connectionNames.get(order.sourceConnectionId) ?? null}
+          loading={connectionsQuery.isLoading}
+          channel={sourceChipChannel(order.sourceConnectionId, sourceLabel)}
+        />
+      ) : null,
+      destination,
+      placed: parsed.placedAt ? (
+        <TimeDisplay iso={parsed.placedAt} format="datetime" />
+      ) : undefined,
+      total: parsed.totals
+        ? format.money(parsed.totals.total, parsed.totals.currency)
+        : undefined,
+      payment: pay ? (
+        <StatusBadge tone={pay.tone} withDot compact>
+          {pay.label}
+        </StatusBadge>
+      ) : null,
+      status: renderStatusBadges(order),
+      shipment: (
+        <>
+          {renderShipmentBadges(order)}
+          {carrier ? <span className="text-muted orders-cell-sub">{carrier}</span> : null}
+        </>
+      ),
+      money: renderMoneyBadges(order),
+      generateLabelHref: labelHrefFor(order),
+      channelUrl:
+        parsed.sourceExternalUrl && isSafeHttpUrl(parsed.sourceExternalUrl)
+          ? parsed.sourceExternalUrl
+          : undefined,
+      channelName: sourceLabel,
+      detail: (
+        <OrderPeekDetail
+          order={order}
+          thumbLabel={(sourceShort ?? sourceLabel ?? '').slice(0, 1)}
+          onOpenProduct={setProductPeekId}
+          glance={{
+            channel: sourceLabel ? (
+              <ConnectionChip
+                connectionId={order.sourceConnectionId}
+                name={connectionNames.get(order.sourceConnectionId) ?? null}
+                loading={connectionsQuery.isLoading}
+                channel={sourceChipChannel(order.sourceConnectionId, sourceLabel)}
+              />
+            ) : null,
+            document: (
+              <SalesDocumentCell
+                internalOrderId={order.internalOrderId}
+                view={order.salesDocument}
+                layout="row"
+                hasIssuingCapability={hasIssuingCapability}
+                connectionNames={connectionNames}
+              />
+            ),
+          }}
+        />
+      ),
+    };
+  }
 
   return (
     <PageLayout
-      eyebrow={freshness ?? 'Operations'}
-      title="Orders"
+      eyebrow={freshness ?? copy.eyebrow}
+      title={copy.title}
       actions={
         <div className="button-group">
+          <GiftsGuide variant="list" />
           {exportAccess.canWrite || exportAccess.demoReadOnly ? (
-            <ReadOnlyLock active={exportAccess.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={exportAccess.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
                 tone="secondary"
                 className="button--sm"
@@ -1110,52 +1645,48 @@ export function OrdersListPage(): ReactElement {
                   setExportOpen(true);
                 }}
               >
-                {PAGE_COPY.export}
+                {copy.export}
               </Button>
             </ReadOnlyLock>
           ) : null}
-          {/* The control hides itself on a phone — cards ignore columns. */}
-          <OrderColumnVisibilityControl
-            visibleColumnIds={visibleColumnIds}
-            onVisibleColumnIdsChange={setVisibleColumnIds}
-          />
+          {/* The control hides itself on a phone — cards ignore columns. With
+              saved views the Columns panel in the filter row replaces it. */}
+          {view ? null : (
+            <span className="tour-anchor" data-tour="orders-columns">
+              <OrderColumnVisibilityControl
+                visibleColumnIds={visibleColumnIds}
+                onVisibleColumnIdsChange={setVisibleColumnIds}
+              />
+            </span>
+          )}
           <Button tone="ghost" className="button--sm" onClick={refreshAll}>
-            {PAGE_COPY.refresh}
+            {copy.refresh}
             <span className="button__shortcut">R</span>
           </Button>
         </div>
       }
     >
-      {/* Status segments — partition the set; click to filter by `health`. */}
-      <div className="ds-grid orders-segments orders-segments--6">
-        <button
-          type="button"
-          className={['card-button-reset', 'orders-segment', health === undefined ? 'orders-segment--active' : '']
-            .filter(Boolean)
-            .join(' ')}
-          aria-pressed={health === undefined}
-          onClick={() => {
-            filtersApi.setHealth(null);
-          }}
-        >
-          <MetricCard label={PAGE_COPY.allOrders} value={summary ? String(summary.total) : '—'} />
-        </button>
-        {HEALTH_SEGMENTS.map((segment) => (
-          <button
-            key={segment.key}
-            type="button"
-            className={['card-button-reset', 'orders-segment', health === segment.key ? 'orders-segment--active' : '']
-              .filter(Boolean)
-              .join(' ')}
-            aria-pressed={health === segment.key}
-            onClick={() => {
-              filtersApi.setHealth(segment.key);
+      {/* Status bar (#4026): the health partition as tabs, and "Needs a look"
+          as one line beside them. */}
+      {view ? (
+        // The views strip replaces the health tabs: its built-in views ARE the
+        // five health buckets, with the same counts.
+        <div className="list-statusbar list-statusbar--views">
+          <ViewsBar {...view.viewsBar} />
+          <OrderAttentionSummary filtersApi={filtersApi} summary={summary} slaSummary={slaSummary} />
+        </div>
+      ) : (
+        <div className="list-statusbar">
+          <OrderStatusTabs
+            value={health}
+            summary={summary}
+            onChange={(next) => {
+              filtersApi.setHealth(next);
             }}
-          >
-            <MetricCard label={segment.label} tone={segment.tone} value={segmentCount(segment)} />
-          </button>
-        ))}
-      </div>
+          />
+          <OrderAttentionSummary filtersApi={filtersApi} summary={summary} slaSummary={slaSummary} />
+        </div>
+      )}
 
       <OrderListFilterBar
         filtersApi={filtersApi}
@@ -1168,15 +1699,31 @@ export function OrdersListPage(): ReactElement {
         resultCount={resultCount}
         storesPersonalData={storesPersonalData}
         formatDay={formatDay}
+        trailing={view ? <ColumnsPanel {...view.columnsPanel} /> : undefined}
       />
 
-      {query.isLoading ? (
-        <DataTableSkeleton columns={visibleColumns} rowAction label="Loading orders…" />
+      {view?.editedBar ? (
+        <div className="sv-applied">
+          <EditedBar {...view.editedBar} />
+        </div>
+      ) : null}
+      {view?.repairBanner ? <RepairBanner {...view.repairBanner} /> : null}
+
+      {query.isLoading || (view !== null && !view.isReady) ? (
+        <DataTableSkeleton columns={tableColumns} rowAction label={copy.loading} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load orders"
-          message={query.error.message}
-          action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+          title={copy.loadError}
+          message={describeApiError(query.error, 'orders')}
+          action={
+            <Button
+              onClick={() => {
+                void query.refetch();
+              }}
+            >
+              {copy.retry.action}
+            </Button>
+          }
         />
       ) : (query.data?.items.length ?? 0) === 0 ? (
         health === 'needs_attention' ? (
@@ -1184,13 +1731,9 @@ export function OrdersListPage(): ReactElement {
           // itself the operator-visible signal — no separate announcement is needed.
           <EmptyState
             liveRegion="off"
-            title="All clear — nothing needs your attention"
-            message="No failed syncs or unmapped orders right now. New issues surface here the moment they happen."
-            action={
-              <Button onClick={filtersApi.clearAll}>
-                View all orders
-              </Button>
-            }
+            title={copy.empty.allClear.title}
+            message={copy.empty.allClear.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.allClear.action}</Button>}
           />
         ) : filterState.rateConflict ? (
           /*
@@ -1206,13 +1749,9 @@ export function OrdersListPage(): ReactElement {
             segment that already announced itself.
           */
           <EmptyState
-            title="No rate conflicts in this view"
-            message="The other filters are still applied. Clear them to check the whole list."
-            action={
-              <Button onClick={filtersApi.clearAll}>
-                Clear filters
-              </Button>
-            }
+            title={copy.empty.rateConflict.title}
+            message={copy.empty.rateConflict.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.rateConflict.action}</Button>}
           />
         ) : filterState.invoicingBlocked ? (
           /*
@@ -1226,13 +1765,39 @@ export function OrdersListPage(): ReactElement {
           */
           <EmptyState
             liveRegion="off"
-            title="Nothing is blocked"
-            message="No order's sales document is waiting on a routing decision right now."
-            action={
-              <Button onClick={filtersApi.clearAll}>
-                View all orders
-              </Button>
-            }
+            title={copy.empty.invoicingBlocked.title}
+            message={copy.empty.invoicingBlocked.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.invoicingBlocked.action}</Button>}
+          />
+        ) : filterState.waitingInOpenLinker ? (
+          /*
+            #3482 - nothing waiting is a good outcome, not a narrowed search coming
+            up empty. Worded "in this view" because other filters may be on.
+          */
+          <EmptyState
+            title={copy.empty.waiting.title}
+            message={copy.empty.waiting.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.waiting.action}</Button>}
+          />
+        ) : filterState.onPackBench ? (
+          /* #3482 - an empty pack bench is a good outcome too. */
+          <EmptyState
+            title={copy.empty.packBench.title}
+            message={copy.empty.packBench.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.packBench.action}</Button>}
+          />
+        ) : filterState.routingBlocked ? (
+          /*
+            #2703 / #2704 — `routing=blocked` counts only routing decisions that
+            named an unreachable destination, so an empty result is a good
+            outcome, not a narrowed search coming up empty. Ahead of the generic
+            `hasActiveFilters` arm for the same reason as `invoicingBlocked`
+            above, and worded "in this view" because other filters may be on.
+          */
+          <EmptyState
+            title={copy.empty.routingBlocked.title}
+            message={copy.empty.routingBlocked.message}
+            action={<Button onClick={filtersApi.clearAll}>{copy.empty.routingBlocked.action}</Button>}
           />
         ) : debouncedSearch ? (
           /*
@@ -1244,11 +1809,11 @@ export function OrdersListPage(): ReactElement {
             arm's "clear filters" action.
           */
           <EmptyState
-            title={ORDERS_LIST_FILTERS_COPY.noResultsTitle(debouncedSearch)}
+            title={interpolate(filterCopy.noResults.title, { query: debouncedSearch })}
             message={
               storesPersonalData === false
-                ? ORDERS_LIST_FILTERS_COPY.noResultsMessageNoPii
-                : ORDERS_LIST_FILTERS_COPY.noResultsMessage
+                ? filterCopy.noResults.messageNoPii
+                : filterCopy.noResults.message
             }
             action={
               <Button
@@ -1256,7 +1821,7 @@ export function OrdersListPage(): ReactElement {
                   filtersApi.setSearch('');
                 }}
               >
-                {ORDERS_LIST_FILTERS_COPY.clearSearch}
+                {filterCopy.noResults.clearSearch}
               </Button>
             }
           />
@@ -1278,10 +1843,14 @@ export function OrdersListPage(): ReactElement {
             "polite" default for.
           */
           <EmptyState
-            title={ORDERS_LIST_FILTERS_COPY.noFilterResultsTitle}
-            message={ORDERS_LIST_FILTERS_COPY.noFilterResultsMessage(scopeDescription)}
+            title={filterCopy.noFilterResults.title}
+            message={
+              scopeDescription
+                ? interpolate(filterCopy.noFilterResults.message, { summary: scopeDescription })
+                : filterCopy.noFilterResults.messageNoSummary
+            }
             action={
-              <Button onClick={filtersApi.clearAll}>{ORDERS_LIST_FILTERS_COPY.clearFilters}</Button>
+              <Button onClick={filtersApi.clearAll}>{filterCopy.noFilterResults.clearFilters}</Button>
             }
           />
         ) : (
@@ -1289,44 +1858,104 @@ export function OrdersListPage(): ReactElement {
           // to transition from (an operator landing on an empty, never-synced deployment).
           <EmptyState
             liveRegion="off"
-            title="No orders found"
-            message="No order records have been synced yet."
+            title={copy.empty.noOrders.title}
+            message={copy.empty.noOrders.message}
             action={
               <Link className="button button--primary" to="/connections">
-                Manage connections
+                {copy.empty.noOrders.action}
               </Link>
             }
           />
         )
       ) : (
         <>
+          {/* #3963 - the actions that fix every order the filter shows. */}
+          {filterState.paymentNotSent ? (
+            <PaymentWritebackBulkBar
+              internalOrderIds={(query.data?.items ?? []).map((order) => order.internalOrderId)}
+            />
+          ) : null}
+          <div data-tour="orders-table">
           <DataTable
-            caption="Orders"
-            columns={visibleColumns}
+            caption={copy.tableCaption}
+            columns={tableColumns}
             rows={query.data?.items ?? []}
             rowKey={(order) => order.internalOrderId}
             // Top-aligns every cell in the row (#2091, `.orders-table td`). Row
             // height here comes from the money column's four-item stack, so a
             // middle-aligned Order cell sat below the top-aligned expander and
             // beside a centred checkbox — three anchors in one row.
-            className="orders-table"
+            className="orders-table list-table--fixed list-table--peek"
             stickyLeftColumns={selectionEnabled ? 2 : 1}
+            // #4026 — the peek arrow stays pinned right, like the identity
+            // columns on the left; only the middle columns scroll.
+            stickyRightColumns={1}
             footer={
-              selectionEnabled ? (
+              selectionEnabled && selectedOrders.length > 0 ? (
               <BulkActionBar
+                data-testid="orders-bulk-bar"
                 count={selectedOrders.length}
-                itemNoun="order"
+                selectedLabel={copy.bulk.selected}
                 hint={
-                  distinctSelectedSources > 1
-                    ? `${distinctSelectedSources} sources · Dispatch: max ${BULK_DISPATCH_MAX_ITEMS} per source`
-                    : `Dispatch: max ${BULK_DISPATCH_MAX_ITEMS} per source`
+                  <span data-testid="orders-bulk-hint">
+                    {selectionBlockReason ??
+                      (dispatchOrders.length < selectedOrders.length
+                        ? dispatchHint
+                        : distinctSelectedSources > 1
+                          ? plural(distinctSelectedSources, copy.bulk.multiSourceHint, {
+                              hint: dispatchDefaultHint,
+                            })
+                          : dispatchDefaultHint)}
+                  </span>
                 }
                 actions={
                   <>
                     <Button tone="ghost" onClick={clearSelection}>
-                      Clear
+                      {copy.bulk.clear}
                     </Button>
-                    <BulkTagPopover selectedOrders={selectedOrders} />
+                    {bulkVisible ? (
+                      <ReadOnlyLock active={bulkLocked} message={demoReadOnlyActionMessage()}>
+                        <BulkTagPopover
+                          selectedOrders={selectedOrders}
+                          disabledReason={bulkLocked ? demoReadOnlyActionMessage() : selectionBlockReason}
+                        />
+                      </ReadOnlyLock>
+                    ) : null}
+                    {bulkVisible ? (
+                      <ReadOnlyLock active={bulkLocked} message={demoReadOnlyActionMessage()}>
+                        <Button
+                          tone="secondary"
+                          data-testid="orders-bulk-read"
+                          disabled={
+                            bulkLocked || selectionBlockReason !== null || noteSplit.candidates.length === 0
+                          }
+                          title={
+                            selectionBlockReason ??
+                            (noteSplit.candidates.length === 0
+                              ? copy.bulk.noUnreadNote
+                              : undefined)
+                          }
+                          onClick={() => { setBulkReadOpen(true); }}
+                        >
+                          {bulkCopy.read.trigger}
+                        </Button>
+                      </ReadOnlyLock>
+                    ) : null}
+                    {bulkVisible && (isAdmin || bulkLocked) ? (
+                      <ReadOnlyLock active={bulkLocked} message={demoReadOnlyActionMessage()}>
+                        <Button
+                          tone="danger"
+                          data-testid="orders-bulk-cancel"
+                          disabled={bulkLocked || selectionBlockReason !== null}
+                          title={selectionBlockReason ?? undefined}
+                          onClick={() => { setBulkCancelOpen(true); }}
+                        >
+                          {interpolate(bulkCopy.cancel.trigger, {
+                            count: format.number(selectedOrders.length),
+                          })}
+                        </Button>
+                      </ReadOnlyLock>
+                    ) : null}
                     {exportAccess.canWrite ? (
                       <Button
                         tone="secondary"
@@ -1335,31 +1964,33 @@ export function OrdersListPage(): ReactElement {
                           setExportOpen(true);
                         }}
                       >
-                        {PAGE_COPY.exportSelected(selectedOrders.length)}
+                        {interpolate(copy.exportSelected, {
+                          count: format.number(selectedOrders.length),
+                        })}
                       </Button>
                     ) : null}
-                    <Button tone="primary" onClick={() => { setBulkOpen(true); }}>
-                      Dispatch {selectedOrders.length}
+                    <Button
+                      tone="primary"
+                      data-testid="orders-bulk-dispatch"
+                      disabled={dispatchOrders.length === 0}
+                      title={dispatchOrders.length === 0 ? copy.bulk.noneDispatchable : undefined}
+                      onClick={() => { setBulkOpen(true); }}
+                    >
+                      {interpolate(copy.bulk.dispatch, { count: format.number(dispatchOrders.length) })}
                     </Button>
                   </>
                 }
               />
               ) : undefined
             }
-            expandable={{
-              // Non-essential fields (order ref, items, exact ship-by, carrier,
-              // created, payment, addresses) live in the accordion (#1620); the
-              // row keeps the scannable essentials + status badges.
-              renderDetail: (order) => (
-                <OrderRowDetail
-                  order={order}
-                  channelLabel={channelLabel}
-                  platformByConnection={platformByConnection}
-                />
-              ),
-              toggleLabel: (order, expanded) =>
-                `${expanded ? 'Collapse' : 'Expand'} details for order ${order.internalOrderId}`,
+            // Row click or "Details" opens the order peek (#4026), which
+            // replaced the inline expanded row; ↑ ↓ / J K walk the rows.
+            onRowClick={(order) => {
+              openPeek(order.internalOrderId);
             }}
+            rowClassName={(order) =>
+              order.internalOrderId === peekId ? 'list-row--peek' : undefined
+            }
             // Server-side ordering (#944/#1713): every sortable header (customer,
             // status, and the merged shipment/money columns) renders its own
             // per-label sort control that calls `applySort` directly, so no
@@ -1405,17 +2036,6 @@ export function OrdersListPage(): ReactElement {
                   </span>
                 );
               },
-              // Full field set behind a "View full details" disclosure (#1713) —
-              // the mobile counterpart of the desktop accordion. Collapsed by
-              // default so the card leads with the summary, not a wall of fields.
-              collapsibleDetail: true,
-              detail: (order) => (
-                <OrderRowDetail
-                  order={order}
-                  channelLabel={channelLabel}
-                  platformByConnection={platformByConnection}
-                />
-              ),
               // Scannable essentials shown before expanding (#1713): a tight
               // facts grid (total / payment / invoice / customer / shipment).
               // The items line that used to head this block moved out with
@@ -1424,7 +2044,7 @@ export function OrdersListPage(): ReactElement {
               // is not a summary.
               summary: (order) => {
                 const parsed = parsedFor(order);
-                const pay = paymentBadge(parsed.paymentStatus);
+                const pay = paymentBadge(parsed.paymentStatus, orders);
                 const cust = customerName(parsed);
                 // Snapshot-only (#1776): method name → method id → pickup name.
                 const carrier =
@@ -1448,27 +2068,29 @@ export function OrdersListPage(): ReactElement {
                   processorAvailable: order.deliveryResolution?.processorAvailable,
                   cancelled: parsed.status === 'cancelled',
                 });
-                const fulfillment = fulfillmentBadge(order.fulfillmentState);
+                const fulfillment = fulfillmentBadge(order.fulfillmentState, orders);
                 // "Generate label" only when there's a live OL carrier route
                 // (#1799), same gate as the desktop cell — otherwise the passive
                 // fulfillment badge (shop-fulfilled / unmapped / disabled / etc.).
                 const canGenerateLabel =
                   order.fulfillmentState === 'not-shipped' &&
                   parsed.status !== 'cancelled' &&
+                  !isHandledInOpenLinker(order) &&
                   hasLiveOlCarrierRoute(order.deliveryResolution);
+                const waiting = deriveWaiting(order, orders);
                 return (
                   <div className="orders-card-summary">
                     <dl className="orders-card-facts">
                       <div>
-                        <dt>Total</dt>
+                        <dt>{copy.cardFacts.total}</dt>
                         <dd className="mono tabular">
                           {parsed.totals
-                            ? formatCurrency(parsed.totals.total, parsed.totals.currency, locale)
+                            ? format.money(parsed.totals.total, parsed.totals.currency)
                             : '—'}
                         </dd>
                       </div>
                       <div>
-                        <dt>Payment</dt>
+                        <dt>{copy.cardFacts.payment}</dt>
                         <dd>
                           {pay ? (
                             <StatusBadge tone={pay.tone} withDot compact>
@@ -1480,11 +2102,11 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Stock</dt>
+                        <dt>{copy.cardFacts.stock}</dt>
                         <dd>
                           {/* SAME component as the desktop status cell. An
                               absent value renders an em dash, never a "fine"
-                              claim — see `stock-at-risk-copy.ts`. */}
+                              claim - see `lib/stock-at-risk.ts`. */}
                           <StockAtRiskBadge
                             shortfalls={order.reservationShortfalls}
                             layout="row"
@@ -1493,7 +2115,7 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Return</dt>
+                        <dt>{copy.cardFacts.return}</dt>
                         <dd>
                           {/* SAME component as the desktop status cell (#2998). */}
                           <OrderOpenReturnBadge
@@ -1504,7 +2126,7 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Document</dt>
+                        <dt>{copy.cardFacts.document}</dt>
                         <dd>
                           {/* SAME component as the desktop cell (#2552) — this
                               used to be a hand-duplicated parallel render
@@ -1522,12 +2144,34 @@ export function OrdersListPage(): ReactElement {
                         </dd>
                       </div>
                       <div>
-                        <dt>Customer</dt>
+                        <dt>{copy.cardFacts.customer}</dt>
                         <dd>{cust ?? '—'}</dd>
                       </div>
-                      {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+                      {order.hasBuyerNote === true ? (
+                        <div className="orders-card-facts__wide">
+                          <dt>{copy.cardFacts.buyerNote}</dt>
+                          <dd>
+                            <OrderBuyerNoteHint
+                              hasBuyerNote={order.hasBuyerNote}
+                              preview={order.buyerNotePreview}
+                              layout="card"
+                            />
+                          </dd>
+                        </div>
+                      ) : null}
+                      {showsPackingStage(order) ? (
                         <div>
-                          <dt>Packed</dt>
+                          <dt>{copy.cardFacts.packing}</dt>
+                          <dd>
+                            <OrderPackingStage
+                              handled={order.handledInOpenLinker}
+                              who={derivePackerLabel(order.handledInOpenLinker, packerNameById, orders)}
+                            />
+                          </dd>
+                        </div>
+                      ) : isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+                        <div>
+                          <dt>{copy.cardFacts.packed}</dt>
                           <dd>
                             {/* SAME component as the desktop cell. On a narrow
                                 viewport the desktop tick becomes a labelled fact,
@@ -1541,8 +2185,14 @@ export function OrdersListPage(): ReactElement {
                           </dd>
                         </div>
                       )}
+                      {waiting ? (
+                        <div className="orders-card-facts__wide">
+                          <dt>{orders.handledInOpenLinker.waitingOnFact}</dt>
+                          <dd title={waiting.hint}>{waiting.fact}</dd>
+                        </div>
+                      ) : null}
                       <div className="orders-card-facts__wide">
-                        <dt>Shipment</dt>
+                        <dt>{copy.cardFacts.shipment}</dt>
                         <dd>
                           <span className="orders-cell-stack">
                             {/* CTA deferred under the Awaiting-label chip, mirroring
@@ -1574,7 +2224,7 @@ export function OrdersListPage(): ReactElement {
                                 <span className="orders-row-cta__plus" aria-hidden="true">
                                   +
                                 </span>{' '}
-                                Generate label
+                                {copy.generateLabel}
                               </Link>
                             ) : null}
                             {carrier ? (
@@ -1590,10 +2240,10 @@ export function OrdersListPage(): ReactElement {
                 );
               },
               meta: (order) => {
-                const h = deriveOrderHealth(order);
+                const h = deriveOrderHealth(order, orders);
                 const shipBy = formatShipBy(order.dispatchByAt ?? null);
-                const sla = slaBadge(order.slaState);
-                const fulfillment = fulfillmentBadge(order.fulfillmentState);
+                const sla = slaBadge(order.slaState, orders);
+                const fulfillment = fulfillmentBadge(order.fulfillmentState, orders);
                 const failed = order.syncStatus.find((s) => s.status === 'failed');
                 const isRetrying =
                   retryMutation.isPending &&
@@ -1603,9 +2253,23 @@ export function OrdersListPage(): ReactElement {
                     <StatusBadge tone={h.tone} withDot compact>
                       {h.label}
                     </StatusBadge>
-                    <OrderPhaseBadge phase={order.lifecyclePhase} compact />
+                    <OrderHiddenBadge
+                      hiddenAt={order.hiddenAt}
+                      personalDataErasedAt={order.personalDataErasedAt}
+                    />
+                    <OrderPhaseOrWaitingBadge order={order} compact />
                     <OrderHoldBadge reason={order.activeHoldReason} compact />
+                    <OrderDestinationRoutingBadge
+                      reason={order.destinationRoutingBlockReason}
+                      compact
+                    />
+                    <OrderEditedBadge
+                      edited={order.editedInOpenLinker}
+                      needsAttention={order.editsNeedAttention}
+                      compact
+                    />
                     <OmsAttentionBadges entries={order.omsAttention ?? []} compact />
+                    <OrderPaymentMarker entries={order.paymentWriteback} />
                     <StatusBadge tone={fulfillment.tone} withDot compact>
                       {fulfillment.label}
                     </StatusBadge>
@@ -1618,10 +2282,10 @@ export function OrdersListPage(): ReactElement {
                         {order.dispatchByEstimated ? (
                           <span
                             className="text-muted"
-                            aria-label="Estimated"
-                            title="OpenLinker estimate - not a marketplace-confirmed deadline"
+                            aria-label={copy.estimated.aria}
+                            title={copy.estimated.title}
                           >
-                            est.{' '}
+                            {copy.estimated.mark}{' '}
                           </span>
                         ) : null}
                         {shipBy.remaining}
@@ -1633,7 +2297,7 @@ export function OrdersListPage(): ReactElement {
                     retryWrite.visible ? (
                       <ReadOnlyLock
                         active={retryWrite.demoReadOnly}
-                        message={DEMO_READ_ONLY_ACTION_MESSAGE}
+                        message={demoReadOnlyActionMessage()}
                       >
                         <Button
                           tone="ghost"
@@ -1641,7 +2305,7 @@ export function OrdersListPage(): ReactElement {
                           disabled={isRetrying || retryWrite.demoReadOnly}
                           onClick={() => { handleRetry(order.internalOrderId, failed.destinationConnectionId); }}
                         >
-                          {isRetrying ? 'Retrying…' : 'Retry'}
+                          {isRetrying ? copy.retry.retrying : copy.retry.action}
                         </Button>
                       </ReadOnlyLock>
                     ) : null}
@@ -1650,6 +2314,7 @@ export function OrdersListPage(): ReactElement {
               },
             }}
           />
+          </div>
 
           <ListPagination
             offset={offset}
@@ -1663,13 +2328,46 @@ export function OrdersListPage(): ReactElement {
         </>
       )}
 
+      <OrderPeek
+        view={peekView}
+        position={peekIndex + 1}
+        count={items.length}
+        onNavigate={navigatePeek}
+        onOpenChange={(open) => {
+          if (!open) setPeekId(null);
+        }}
+      />
+      <ProductPeekById
+        productId={productPeekId}
+        onClose={() => {
+          setProductPeekId(null);
+        }}
+      />
+
       <BulkDispatchDialog
         open={bulkOpen}
         onOpenChange={setBulkOpen}
-        orders={selectedOrders}
+        orders={dispatchOrders}
         channelLabelFor={channelLabelForBulk}
         onComplete={clearSelection}
       />
+
+      <BulkCancelDialog
+        open={bulkCancelOpen}
+        onOpenChange={setBulkCancelOpen}
+        orderIds={selectedOrders.map((o) => o.internalOrderId)}
+        onComplete={clearSelection}
+        connectionNames={connectionNames}
+      />
+
+      <BulkBuyerNoteReadDialog
+        open={bulkReadOpen}
+        onOpenChange={setBulkReadOpen}
+        orders={selectedOrders}
+        onComplete={clearSelection}
+      />
+
+      {view ? <ViewDialogs {...view.dialogs} /> : null}
 
       <OrderExportDialog
         open={exportOpen}

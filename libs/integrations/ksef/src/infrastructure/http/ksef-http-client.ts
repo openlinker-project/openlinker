@@ -15,7 +15,9 @@
  *    `RefreshOnUnauthorizedOutcome` distinguishes credential rejection
  *    (→ `KsefAuthenticationException`, non-retryable) from network failure
  *    (→ `KsefNetworkException`, retryable). `403` is an authorization decision
- *    — never refreshed — and fails fast as a non-retryable `KsefApiException`.
+ *    — never refreshed — and fails fast as a non-retryable
+ *    `KsefPermissionDeniedException` (a `KsefApiException` subclass carrying a
+ *    least-privilege / missing-permission hint, #1589).
  *  - Unauthenticated calls (the auth challenge/ksef-token bootstrap and the
  *    public-key-certificate fetch) pass `options.skipAuth` so the client skips
  *    the lazy handshake + bearer injection. Auth calls that carry their own
@@ -43,8 +45,11 @@ import type {
   RefreshOnUnauthorizedOutcome,
 } from './ksef-http-client.types';
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
+import { KsefPermissionDeniedException } from '../../domain/exceptions/ksef-permission-denied.exception';
 import { KsefAuthenticationException } from '../../domain/exceptions/ksef-authentication.exception';
 import { KsefNetworkException } from '../../domain/exceptions/ksef-network.exception';
+import { KSEF_SESSION_ROUND, type KsefRateLimiter } from './ksef-rate-limiter';
+import type { KsefRateLimitCategory } from './ksef-rate-limiter.types';
 
 /** Refresh proactively within this window of the access-token expiry. */
 const TOKEN_REFRESH_WINDOW_MS = 60_000;
@@ -95,6 +100,19 @@ export class KsefHttpClient implements IKsefHttpClient {
   private refreshInFlight: Promise<void> | null = null;
 
   /**
+   * Proactive per-hour pacer (#1594) for the three rate-limited online-session
+   * write endpoints, shared across every client instance keyed to the same
+   * bucket. `null` disables pacing (the pre-#1594 behaviour) so unit specs and
+   * callers that don't wire one keep working.
+   */
+  private readonly rateLimiter: KsefRateLimiter | null;
+  /**
+   * The pacing bucket key — the seller NIP when supplied (KSeF buckets by NIP),
+   * else the connection id as a safe per-connection fallback.
+   */
+  private readonly rateLimitBucketKey: string;
+
+  /**
    * `fetchImpl` is **required**, deliberately (mirrors AllegroHttpClient,
    * #1968 review). An optional `fetchImpl ?? globalThis.fetch` default would
    * make a forgotten wiring silently issue full-speed, unrated traffic — and
@@ -115,10 +133,13 @@ export class KsefHttpClient implements IKsefHttpClient {
     private readonly lifecycle: KsefTokenLifecycle,
     fetchImpl: FetchLike,
     retryConfig?: Partial<KsefRetryConfig>,
+    pacing?: { rateLimiter?: KsefRateLimiter; bucketKey?: string },
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
     this.fetchImpl = fetchImpl;
+    this.rateLimiter = pacing?.rateLimiter ?? null;
+    this.rateLimitBucketKey = pacing?.bucketKey ?? connectionId;
   }
 
   async get<T = unknown>(path: string, options?: KsefHttpRequestOptions): Promise<KsefHttpResponse<T>> {
@@ -180,6 +201,15 @@ export class KsefHttpClient implements IKsefHttpClient {
     idempotent: boolean,
     expectBinary = false,
   ): Promise<KsefHttpResponse<T>> {
+    // Proactive pacing (#1594): block until a per-hour token is free BEFORE the
+    // first attempt, so a bulk run self-throttles under KSeF's documented
+    // ceilings rather than firing all requests and relying on reactive 429s.
+    // Acquired once per logical request (not per retry attempt); reactive 429
+    // backoff below remains the backstop for anything the pacer under-estimates.
+    if (!options?.rateLimitPrepaid) {
+      await this.acquireRateLimitPermit(method, path);
+    }
+
     let lastError: Error | null = null;
     let delay = this.retryConfig.initialDelayMs;
 
@@ -227,6 +257,47 @@ export class KsefHttpClient implements IKsefHttpClient {
       }
     }
     throw lastError ?? new Error('KSeF request failed after retries');
+  }
+
+  async reserveSessionRound(): Promise<void> {
+    if (!this.rateLimiter) {
+      return;
+    }
+    await this.rateLimiter.reserve(this.rateLimitBucketKey, KSEF_SESSION_ROUND);
+  }
+
+  /**
+   * Acquire a proactive rate-limit token for a rate-limited write endpoint.
+   * No-op when no limiter is wired or the call is not one of the three paced
+   * POSTs (reads, auth, and everything else pass through unthrottled).
+   */
+  private async acquireRateLimitPermit(method: 'GET' | 'POST', path: string): Promise<void> {
+    if (!this.rateLimiter || method !== 'POST') {
+      return;
+    }
+    const category = this.classifyRateLimitCategory(path);
+    if (!category) {
+      return;
+    }
+    await this.rateLimiter.acquire(this.rateLimitBucketKey, category);
+  }
+
+  /**
+   * Map a KSeF path to its rate-limit category, or `null` when the endpoint is
+   * not one of the three documented per-hour-capped online-session writes.
+   */
+  private classifyRateLimitCategory(path: string): KsefRateLimitCategory | null {
+    const normalized = path.replace(/^\//, '').split('?')[0]?.replace(/\/$/, '') ?? '';
+    if (normalized === 'sessions/online') {
+      return 'session-open';
+    }
+    if (/^sessions\/online\/[^/]+\/invoices$/.test(normalized)) {
+      return 'invoice-submit';
+    }
+    if (/^sessions\/online\/[^/]+\/close$/.test(normalized)) {
+      return 'session-close';
+    }
+    return null;
   }
 
   private async executeRequest<T>(
@@ -448,9 +519,24 @@ export class KsefHttpClient implements IKsefHttpClient {
       throw new KsefApiException(`KSeF rate limit exceeded: ${url}`, 429, body, url, retryAfterMs);
     }
 
-    // 403 (authorization denied) + other 4xx + 5xx: KsefApiException carries
-    // diagnostics-only body. 403 is non-retryable (the retry loop fails fast on
-    // any sub-500 status that isn't 429).
+    if (statusCode === 403) {
+      // Authorization denied: the token authenticated (not a 401) but lacks the
+      // permission this action needs - most often a ksef-token generated without
+      // the "wystawianie faktur" (invoice-issuance) grant. Surface it DISTINCTLY
+      // from other 4xx so the operator gets a least-privilege hint. Non-retryable
+      // (a KsefApiException subclass, so the retry loop still fails fast).
+      this.logger.error(`[${traceId}] KSeF authorization denied (403) ${url}`);
+      throw new KsefPermissionDeniedException(
+        `KSeF authorization denied (403) for ${url} - the token may lack the required ` +
+          `permission (e.g. "wystawianie faktur" / invoice issuance)`,
+        body,
+        url,
+      );
+    }
+
+    // Other 4xx + 5xx: KsefApiException carries diagnostics-only body. All are
+    // non-retryable here (the retry loop fails fast on any sub-500 status that
+    // isn't 429; 5xx is raised as network-retryable elsewhere).
     this.logger.error(`[${traceId}] KSeF API error (${statusCode}) ${url}`);
     throw new KsefApiException(`KSeF API error (${statusCode}): ${url}`, statusCode, body, url);
   }

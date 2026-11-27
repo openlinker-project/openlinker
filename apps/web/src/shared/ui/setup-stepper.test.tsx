@@ -48,4 +48,11 @@ describe('SetupStepper', () => {
     render(<SetupStepper steps={STEPS} currentStep={0} className="my-stepper" />);
     expect(screen.getByRole('navigation').classList.contains('my-stepper')).toBe(true);
   });
+
+  it('should mark only the highlighted step as new', () => {
+    render(<SetupStepper steps={['A', 'B', 'C']} currentStep={0} highlightStep={2} />);
+    const marked = document.querySelectorAll('.setup-stepper__step--new');
+    expect(marked).toHaveLength(1);
+    expect(marked[0]).toHaveTextContent('C');
+  });
 });

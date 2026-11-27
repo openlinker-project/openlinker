@@ -15,6 +15,13 @@
  * @module libs/integrations/ksef/src/domain/exceptions
  */
 export class KsefConfigException extends Error {
+  /**
+   * Read STRUCTURALLY by the core `InvoiceService` (#1200, DEF-01): raised
+   * before any KSeF session opens, so no document exists and a re-attempt
+   * after fixing the input is safe.
+   */
+  readonly failureMode = 'rejected' as const;
+
   constructor(
     message: string,
     public readonly connectionId?: string,

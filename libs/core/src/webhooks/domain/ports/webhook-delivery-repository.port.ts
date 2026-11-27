@@ -8,6 +8,7 @@
  * @module libs/core/src/webhooks/domain/ports
  */
 import type { WebhookDelivery } from '../entities/webhook-delivery.entity';
+import type { WebhookDlqCode } from '../types/webhook-dlq-code.types';
 import type {
   PaginatedWebhookDeliveries,
   WebhookDeliveryFilters,
@@ -32,6 +33,7 @@ export interface WebhookDeliveryUpsertInput {
   downstreamJobId?: string | null;
   downstreamJobType?: string | null;
   dlqReason?: string | null;
+  dlqCode?: WebhookDlqCode | null;
   payload?: Record<string, unknown> | null;
 }
 

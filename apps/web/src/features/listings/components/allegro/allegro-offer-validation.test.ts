@@ -13,6 +13,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { CategoryParameterLike } from '../../../../shared/plugins';
 import {
+  ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER,
+  ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER,
+  ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER,
+  ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER,
+  describeNeedsProductParameters,
   ALLEGRO_EAN_UNVERIFIED_BLOCKER,
   ALLEGRO_IN_STORE_BARCODE_BLOCKER,
   ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER,
@@ -236,6 +241,17 @@ describe('allegroOfferValidation', () => {
       ).toEqual([ALLEGRO_EAN_UNVERIFIED_BLOCKER]);
     });
 
+    it('says nothing when the barcode matched a card that was set aside for the mapping (#3994)', () => {
+      expect(
+        allegroOfferValidation.validateRow({
+          ...base,
+          barcode: '5901234000017',
+          catalogueConsulted: true,
+          barcodeMatchedCatalogue: true,
+        }),
+      ).toEqual([]);
+    });
+
     it('says nothing when no catalogue was consulted - a miss would mean nothing', () => {
       expect(
         allegroOfferValidation.validateRow({
@@ -292,37 +308,74 @@ describe('allegroOfferValidation', () => {
         field: 'parameters',
         tone: 'warning',
         label: 'add product params',
+        describe: expect.any(Function),
       },
       {
         id: ALLEGRO_TITLE_TOO_LONG_BLOCKER,
         field: 'title',
         tone: 'error',
         label: 'title too long',
+        describe: expect.any(Function),
       },
       {
         id: ALLEGRO_TITLE_TOO_SHORT_BLOCKER,
         field: 'title',
         tone: 'error',
         label: 'title too short',
+        describe: expect.any(Function),
       },
       {
         id: ALLEGRO_PARAM_VALUE_INVALID_BLOCKER,
         field: 'parameters',
         tone: 'error',
         label: 'parameter value rejected',
+        describe: expect.any(Function),
       },
-      { id: ALLEGRO_NO_PHOTO_BLOCKER, field: 'images', tone: 'error', label: 'no photo' },
+      {
+        id: ALLEGRO_NO_PHOTO_BLOCKER,
+        field: 'images',
+        tone: 'error',
+        label: 'no photo',
+        describe: expect.any(Function),
+      },
       {
         id: ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER,
         field: 'ean',
         tone: 'error',
         label: 'siblings share one card',
+        describe: expect.any(Function),
+      },
+      {
+        id: ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER,
+        field: 'parameters',
+        tone: 'error',
+        label: 'fill in offer parameters',
+        describe: expect.any(Function),
+      },
+      {
+        id: ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER,
+        field: 'bundle',
+        tone: 'error',
+        label: 'component cannot be listed',
+      },
+      {
+        id: ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER,
+        field: 'bundle',
+        tone: 'error',
+        label: 'component safety data missing',
+      },
+      {
+        id: ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER,
+        field: 'bundle',
+        tone: 'error',
+        label: 'category differs from first component',
       },
       {
         id: ALLEGRO_EAN_UNVERIFIED_BLOCKER,
         field: 'ean',
         tone: 'warning',
         label: 'EAN not in catalogue',
+        describe: expect.any(Function),
         advisory: true,
       },
       {
@@ -330,6 +383,7 @@ describe('allegroOfferValidation', () => {
         field: 'ean',
         tone: 'warning',
         label: 'in-store barcode',
+        describe: expect.any(Function),
         advisory: true,
       },
     ]);
@@ -476,5 +530,194 @@ describe('allegroOfferValidation', () => {
         })
       ).toEqual([]);
     });
+  });
+
+  describe('bundle as a product-set offer (#3520)', () => {
+    const component = (problems: { code: string; message: string }[] = []) => ({
+      variantId: 'v',
+      productId: 'p',
+      name: 'Kubek',
+      problems,
+    });
+    const bundleRow = (
+      components: ReturnType<typeof component>[],
+      suggested: string | null = '74035',
+      chosen: string | null = '74035',
+    ) => ({
+      ...base,
+      barcode: '5901234123457',
+      catalogueConsulted: true,
+      needsProductParameters: true,
+      bundle: { components, suggestedCategoryId: suggested, chosenCategoryId: chosen },
+    });
+
+    const offerParam = (id: string, required = true, section = 'offer') => ({
+      id,
+      name: id,
+      type: 'string' as const,
+      required,
+      section,
+      restrictions: {},
+    });
+
+    it('should block a bundle row missing a required offer parameter other than Stan', () => {
+      const row = {
+        ...bundleRow([component()]),
+        categoryParameters: [offerParam('11323'), offerParam('p-color')],
+        suppliedParameters: [],
+      };
+      expect(allegroOfferValidation.validateRow(row)).toEqual([
+        ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER,
+      ]);
+    });
+
+    it('should not block once the required offer parameter has a value, or for product-section ones', () => {
+      const row = {
+        ...bundleRow([component()]),
+        categoryParameters: [offerParam('p-color'), offerParam('p-brand', true, 'product')],
+        suppliedParameters: [{ id: 'p-color', values: ['red'] }],
+      };
+      expect(allegroOfferValidation.validateRow(row)).toEqual([]);
+    });
+
+    it('should raise nothing for a bundle whose components are all listable', () => {
+      expect(allegroOfferValidation.validateRow(bundleRow([component()]))).toEqual([]);
+    });
+
+    it('should skip the single-product barcode and parameter rules for a bundle', () => {
+      const blockers = allegroOfferValidation.validateRow(bundleRow([component()]));
+      expect(blockers).not.toContain(ALLEGRO_EAN_UNVERIFIED_BLOCKER);
+      expect(blockers).not.toContain(ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER);
+    });
+
+    it('should block when a component cannot be listed', () => {
+      expect(
+        allegroOfferValidation.validateRow(
+          bundleRow([component([{ code: 'PRODUCT_SET_COMPONENT_UNPUBLISHABLE', message: 'x' }])]),
+        ),
+      ).toEqual([ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER]);
+    });
+
+    it('should block when a component has no safety information', () => {
+      expect(
+        allegroOfferValidation.validateRow(
+          bundleRow([component([{ code: 'PRODUCT_SET_COMPONENT_GPSR_MISSING', message: 'x' }])]),
+        ),
+      ).toEqual([ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER]);
+    });
+
+    it('should block when the category differs from the first component card category', () => {
+      expect(
+        allegroOfferValidation.validateRow(bundleRow([component()], '74035', '110886')),
+      ).toEqual([ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER]);
+    });
+
+    it('should not block on category while none is suggested or chosen', () => {
+      expect(allegroOfferValidation.validateRow(bundleRow([component()], null, '110886'))).toEqual([]);
+      expect(allegroOfferValidation.validateRow(bundleRow([component()], '74035', null))).toEqual([]);
+    });
+  });
+});
+
+describe('describeNeedsProductParameters (#4003)', () => {
+  const ctx = {};
+
+  it('should list the missing names with a count when the list was computed', () => {
+    const copy = describeNeedsProductParameters({ ...ctx, missingParameterNames: ['Model', 'Kod producenta'] });
+    expect(copy.title).toBe('Allegro needs 2 product parameters to create a product card for this variant:');
+    expect(copy.items).toEqual(['Model', 'Kod producenta']);
+  });
+
+  it('should say the list could not be loaded when the schema failed', () => {
+    const copy = describeNeedsProductParameters({ ...ctx, missingParameterNames: null });
+    expect(copy.title).toMatch(/could not be loaded/);
+    expect(copy.items).toBeUndefined();
+  });
+
+  it('should not claim nothing is missing when the list was not computed', () => {
+    const copy = describeNeedsProductParameters(ctx);
+    expect(copy.title).toBe('Allegro needs product parameters to create a product card for this variant.');
+  });
+
+  it('should tell the operator to save when every parameter now has a value', () => {
+    expect(describeNeedsProductParameters({ ...ctx, missingParameterNames: [] }).detail).toBe(
+      'Save to clear this blocker.',
+    );
+  });
+
+  it('should give every Allegro blocker a sentence of its own', () => {
+    for (const d of allegroOfferValidation.blockers) {
+      // The bundle blockers are worded by the host (`describeBundleBlocker`),
+      // which names the components; the plugin only declares the ids.
+      if (d.id.includes(':bundle-')) continue;
+      expect(d.describe, d.id).toBeDefined();
+    }
+  });
+});
+
+describe('describeNeedsProductParameters (#4003)', () => {
+  const ctx = {};
+
+  it('should list the missing names with a count when the list was computed', () => {
+    const copy = describeNeedsProductParameters({ ...ctx, missingParameterNames: ['Model', 'Kod producenta'] });
+    expect(copy.title).toBe('Allegro needs 2 product parameters to create a product card for this variant:');
+    expect(copy.items).toEqual(['Model', 'Kod producenta']);
+  });
+
+  it('should say the list could not be loaded when the schema failed', () => {
+    const copy = describeNeedsProductParameters({ ...ctx, missingParameterNames: null });
+    expect(copy.title).toMatch(/could not be loaded/);
+    expect(copy.items).toBeUndefined();
+  });
+
+  it('should not claim nothing is missing when the list was not computed', () => {
+    const copy = describeNeedsProductParameters(ctx);
+    expect(copy.title).toBe('Allegro needs product parameters to create a product card for this variant.');
+  });
+
+  it('should tell the operator to save when every parameter now has a value', () => {
+    expect(describeNeedsProductParameters({ ...ctx, missingParameterNames: [] }).detail).toBe(
+      'Save to clear this blocker.',
+    );
+  });
+
+  it('should give every Allegro blocker a sentence of its own', () => {
+    // Bundle blockers are worded host-side (bulk-blockers), from the components'
+    // own problems, so they carry no plugin describe.
+    for (const d of allegroOfferValidation.blockers.filter((b) => !b.id.includes(':bundle-'))) {
+      expect(d.describe, d.id).toBeDefined();
+    }
+  });
+});
+
+describe('allegroOfferValidation.accountLevelRefusal (#4004)', () => {
+  const refusal = allegroOfferValidation.accountLevelRefusal;
+
+  it('should declare the account-level codes Allegro sends for a sales blockade', () => {
+    expect(refusal?.errorCodes).toEqual([
+      'OfferAccessDeniedException',
+      'SellerAccountWithSellBlockadeException',
+    ]);
+  });
+
+  it('should link the sandbox Sales Center when the connection is not production', () => {
+    const copy = refusal?.describe({ affected: 1, total: 3, connectionConfig: { environment: 'sandbox' } });
+    expect(copy?.detail).toMatch(/^1 of 3 variants failed/);
+    expect(copy?.action?.href).toBe('https://salescenter.allegro.com.allegrosandbox.pl');
+  });
+
+  it('should link the production Sales Center when the connection is production', () => {
+    const copy = refusal?.describe({ affected: 2, total: 2, connectionConfig: { environment: 'production' } });
+    expect(copy?.action?.href).toBe('https://salescenter.allegro.com');
+  });
+
+  it('should default to the production Sales Center when the environment is absent', () => {
+    const copy = refusal?.describe({ affected: 1, total: 1, connectionConfig: {} });
+    expect(copy?.action?.href).toBe('https://salescenter.allegro.com');
+  });
+
+  it('should omit the action when the environment is unreadable', () => {
+    const copy = refusal?.describe({ affected: 1, total: 1, connectionConfig: { environment: 42 } });
+    expect(copy?.action).toBeUndefined();
   });
 });

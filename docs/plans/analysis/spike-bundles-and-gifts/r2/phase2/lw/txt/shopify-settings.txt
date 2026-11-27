@@ -1,0 +1,75 @@
+=== shopify-settings | Shopify: Configure channel settings
+ 
+ Shopify: Configure channel settings 
+Shopify: How to Configure 
+ Linnworks integration has multiple settings that allow detailed control of how Linnworks interacts with Shopify. This guide will help you configure your Shopify channel to ensure Linnworks is doing what is required.
+ Once the channel is added, click the pen      icon in the channel integration screen for the required Shopify integration.
+ Available for the configuration settings
+ Account 
+ Enabled: Tick this setting to allow communication between Linnworks and Shopify. Without this ticked, no information will be sent to the channel or received from the channel.
+ Site URL: Your site URL needs to be your Shopify subdomain, NOT your website domain. For example, linnworks.myshopify.com.
+ API key:  The private apps API key as provided by Shopify.
+ API password: The Private Apps API Password as provided by Shopify.
+ Test: Used to confirm the supplied credentials work correctly, allowing communication between Shopify and Linnworks. 
+ Order 
+ Dispatch notes: After processing the order in Linnworks, a dispatch notification and tracking number (if available) will be submitted to the channel. When the option is disabled, no dispatch information will be submitted to Shopify. 
+ Where possible, Linnworks will attempt to match the Carrier/Vendor name to those predefined by Shopify. However, if no match is found, the Vendor's name, as defined in Linnworks, will be submitted to Shopify.
+ Cancellation notes:  When
+ enabled, Linnworks will send order cancellation notes to your sales channel once the order is partially or fully canceled. 
+ Order refund: Refunds will only be issued on Shopify when this option is enabled. Only orders with the status of Shipped can be refunded, and the value being refunded must be less than or equal to the amount the customer paid.
+ Notify customer: Tick this setting to notify customers of order changes (e.g., dispatch, cancellations, refunds).
+ Notify POS customer: Tick this setting to notify POS customers of order changes.
+ Notify collection customer:  Enabling this setting will notify pickup in-store customers of order changes, for example, order dispatch. This relates to Shopify collection orders only. Full details are here .
+ Use channel tax settings:  When enabled, Linnworks will use the tax percentage directly from the Shopify order data when downloaded to Linnworks. If the option is not enabled, Linnworks will back-calculate tax based on the stock item or country tax defined in Linnworks.
+ Order sync date: The date and time when Linnworks last synchronized with the channel. 
+ Save discount information: If enabled, Linnworks saves additional Discount information in notes.
+ Download unpaid orders :  I f enabled, Linnworks will download unpaid orders from Shopify. 
+ Download on hold orders: If enabled, Linnworks will download fully on hold orders from Shopify as unpaid and parked. These orders will update to paid once the on hold status is removed from at least one line item on Shopify. 
+ Treat authorized payment as paid:  When enabled, orders with financial status Authorized on Shopify are downloaded as Paid in Linnworks.
+  Note: The  Download unpaid orders  setting must first be enabled to be able to enable and use the Treat authorized payment as paid setting. 
+ Download processed orders :  If enabled, Linnworks will download Shopify orders shipped during the past 30 days  (only orders that do not exist in Linnworks) and mark them as processed. Note:  This option will not deduct stock levels in Linnworks. All the downloaded orders will be added to the Processed Orders screen. The Rules Engine will still run on these orders. If you need to import shipped orders older than 30 days, please see this  guide .
+ Process POS orders:  
+ If enabled, Linnworks will process all unshipped/unfulfilled orders identified as from the point of sale (POS) source during order download. N ote:  This option will deduct stock levels in Linnworks. 
+  Info:   
+ There are currently two ways to handle Shopify POS orders in Linnworks: 
+Set POS orders as unfulfilled   on Shopify – Enable the Process POS Orders setting in Linnworks . This will deduct stock for all POS orders from the correct locations based on location mapping .
+Set POS orders as fulfilled   on Shopify – Enable the Download Processed Orders setting in Linnworks . In this case, stock will not be deducted in Linnworks. See above for a full explanation of the Download Processed Orders setting.
+ Download order fraud risks:  If enabled, Linnworks will download the order fraud risks and PARK any order based on the selection in the Order Fraud Risk Park Level setting (see below), including and higher than the risk selected. 
+ Split Orders by Shopify Fulfillments:  If enabled, Linnworks will create each fulfillment order from Shopify as a separate order in Linnworks, independent of location mapping.
+When the toggle is off (the default for customers upgrading from REST to GraphQL; see the Shopify Integration Upgrade to GraphQL guide here ):
+All fulfillment orders mapped to the same Linnworks download location are combined into a single Linnworks order matching pre-migration behavior.
+No Block from Merge flag is applied.
+Orders mapped to different Linnworks locations are still saved as separate orders (this also matches pre-migration behavior).
+When the toggle is on (the default for new Shopify integrations created on GraphQL):
+Each Shopify fulfillment order is saved as its own Linnworks order, regardless of location mapping.
+ Block from Merge is applied to orders that are part of a multi-fulfillment Shopify order.
+Related fulfillment orders are linked via order relationships.
+ Order fraud risk park level: Here, you can select the park level. The order will be parked if the fraud risk level matches this level or higher. The setting defaults to medium .
+ Download order metafields: If enabled, Linnworks will download order meta fields from Shopify and save them as order extended properties on respective orders in Linnworks.
+ Download order fulfillment:  This setting cannot be changed. It is visible to indicate the elements automatically downloaded with order data. Linnworks downloads the order fulfillments to place orders in the correct location when using multi-location on Shopify . 
+ Download order transactions:  This setting cannot be changed. It is visible to indicate the elements automatically downloaded with order data. Linnworks downloads order transactions to ensure that payment methods can be properly mapped . 
+ Inventory - Extract Inventory 
+ Download full listings:  Enable this setting to download, in the background, information about your listings, such as SKU, title, extended properties, and images, so you can create your items instantly via the  Extract Inventory  tool.  
+ Variation mapping Extended Property name:  The extended property name specified in this field will match a Linnworks variation parent item to a specific Shopify variation listing. Add this extended property to a Linnworks variation parent with a Shopify listing handle as the value. This will match it up in the Extract Inventory for the given subsource. If left empty or if a listing is already matched to an item by SKU, then this mapping is not used. See this guide for a detailed explanation of this setting's usage. 
+ Inventory 
+ Update inventory:  Allow Linnworks to submit changes in stock levels to Shopify. Linnworks supports multiple stock locations for additional warehouses/fulfillment centers/suppliers. Ensure you set which Linnworks locations are used when submitting changes in stock levels to your channel via the Location Mapping screen accessed from the main Channel Integration screen.
+ Max listed:  T his specifies the maximum level sent to the channel.  
+ For more details, go to the  Max Listed  guide.
+ Stock percentage:  This will send a percentage of the currently available stock level to the sales channel. For more details, go to the  Stock Percentage  guide.
+ End when:  T his enables you to force the listing to end when the stock level gets to the specified amount instead of the default value of zero.  
+ For more details, go to the  End When  guide.
+ Inventory - Price Change 
+ Price change:  Designed to automate updating the sales channel once a Linnworks stock item's listing price is updated and saved. For more details, go to the Price Change guide.
+ Listings 
+ Auto-link by SKU:  If enabled, Linnworks will automatically link unmatched channel SKUs to matching Linnworks SKUs during  order download  or the  mapping sync  (runs ~every 12 hours). Once linked,  inventory sync  is triggered. You can check  this guide  for full details on how this feature works. 
+ Listing download in progress: This box will tick itself if a Listing Update has begun.
+ Listing download start time: This will show the date and time the update begins.
+ Last listing download completion time: This field shows when the last listing download was completed (launched via the Download Listings button).
+ Listing download estimated completion: This will give you an estimate of when the listings download will be complete – the time can vary depending on server speeds and the number of listings.
+ Download listings:  Click this button to force Linnworks to request an update for your active listings from the channel.
+ Next steps:
+ Location Mapping 
+ Inventory Mapping 
+ Payment Mapping 
+ Shipping Mapping 
+ 

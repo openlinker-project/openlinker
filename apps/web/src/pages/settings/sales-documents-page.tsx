@@ -24,34 +24,80 @@
 import type { ReactElement } from 'react';
 import { useSession } from '../../shared/auth/use-session';
 import { ErrorState } from '../../shared/ui/feedback-state';
+import { GuideButton, PageGuide } from '../../shared/ui/guide-drawer';
 import { HelpLink } from '../../shared/ui/help-link';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
+import { GiftDocumentsDefaultPanel, useGiftDocumentsGuide } from '../../features/gift-documents';
+import { useMessages } from '../../shared/i18n';
 import { SalesDocumentRuleEnginePanel, SalesDocumentsPanel } from '../../features/sales-documents';
 
 export function SalesDocumentsPage(): ReactElement {
   const { session } = useSession();
+  const copy = useMessages('settings').salesDocumentsPage;
+  const tpl = useMessages('settings').template;
+  const guideCopy = useGiftDocumentsGuide();
+  const giftCopy = useMessages('gift-documents').settings;
 
   if (session.status === 'authenticated' && session.user?.role !== 'admin') {
     return (
-      <PageLayout eyebrow="Settings" title="Sales documents routing" description="Admin-only access.">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title} description={copy.adminOnly.description}>
         <ErrorState
-          title="Admin role required"
-          message="This page routes fiscal documents to a connection — it requires an admin session."
+          title={copy.adminOnly.title}
+          message={copy.adminOnly.message}
         />
       </PageLayout>
     );
   }
 
   return (
-    <PageLayout
-      eyebrow="Settings"
-      title="Sales documents routing"
-      description="Choose what each market issues, per country, and what each connected provider may issue. OpenLinker never decides which document an order legally needs."
-      backTo={{ to: '/settings', label: 'Settings' }}
-      actions={<HelpLink surfaceKey="sales-documents-routing" />}
+    <PageGuide
+      title={guideCopy.title}
+      lede={guideCopy.lede}
+      sections={guideCopy.sections}
+      defaultOpen={guideCopy.defaultOpen}
+      footerExtra={<HelpLink surfaceKey="sales-documents-routing" />}
     >
-      <SalesDocumentRuleEnginePanel />
-      <SalesDocumentsPanel />
-    </PageLayout>
+    <SettingsPageFrame
+      wide
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      short={tpl.salesMarkets.short}
+      description={copy.description}
+      backTo={{ to: '/settings', label: copy.backLabel }}
+      headerExtra={<GuideButton label={giftCopy.guideButton} />}
+      sections={[
+        {
+          id: 'markets',
+          label: copy.sections.markets,
+          title: tpl.salesMarkets.title,
+          hint: tpl.salesMarkets.hint,
+          children: (
+            <div data-tour="sales-markets">
+              <SalesDocumentRuleEnginePanel />
+            </div>
+          ),
+        },
+        {
+          id: 'providers',
+          label: copy.sections.providers,
+          title: tpl.salesProviders.title,
+          hint: tpl.salesProviders.hint,
+          children: (
+            <div data-tour="sales-providers">
+              <SalesDocumentsPanel />
+            </div>
+          ),
+        },
+        {
+          id: 'gifts',
+          label: copy.sections.gifts,
+          title: tpl.salesGifts.title,
+          hint: tpl.salesGifts.hint,
+          children: <GiftDocumentsDefaultPanel />,
+        },
+      ]}
+    />
+    </PageGuide>
   );
 }

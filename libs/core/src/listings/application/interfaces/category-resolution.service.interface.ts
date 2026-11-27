@@ -4,6 +4,7 @@
  * Contract for the provenance-aware destination-category placement chain
  * (ADR-023 §1), each step capability-gated:
  * provision → barcode auto-detect → per-source-category mapping → manual.
+ * A configured mapping wins over a barcode match that disagrees with it (#3994).
  *
  * @module libs/core/src/listings/application/interfaces
  */
@@ -36,7 +37,9 @@ export interface ICategoryResolutionService {
 
   /**
    * Resolve marketplace categories for N variants in one batch (#795), EAN
-   * first with a configured-mapping fallback (#1522).
+   * first with a configured-mapping fallback (#1522). A catalogue match whose
+   * category disagrees with the mapping resolves to the mapping and reports the
+   * card as `overriddenCard` (#3994).
    *
    * Primary path is the connection's `EanCategoryMatcher` sub-capability (#735).
    * When the EAN yields no catalogue match (or the variant carries no EAN) and
@@ -106,8 +109,8 @@ export interface ICategoryResolutionService {
    *   single marketplace call (a `borrows`-taxonomy destination such as Erli,
    *   ADR-025 §3; a first-class case per epic #2205 decision 4, not an error).
    *
-   * The #1522 configured-mapping fallback applies per item on both matcher
-   * paths, exactly as on the batch path, so the streamed preview cannot
+   * The configured-mapping rules (#1522 fallback, #3994 precedence) apply per
+   * item on both matcher paths, exactly as on the batch path, so the streamed preview cannot
    * disagree with what `OfferBuilderService` resolves at build time.
    *
    * Connection resolution is identical to `resolveCategoriesBatch`, so an

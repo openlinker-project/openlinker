@@ -1,0 +1,7 @@
+{
+  "plugin": {
+    "setupCard": {
+      "description": "Pakuj i wysyłaj zamówienia w OpenLinker zamiast w sklepie. Nie ma konta do połączenia: konfiguracja utworzy je automatycznie."
+    }
+  }
+}

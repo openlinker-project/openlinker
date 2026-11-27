@@ -91,6 +91,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     request: CustomerIdentityResolutionRequest
   ): Promise<CustomerIdentityResolutionResult> {
     const { externalBuyerId, email, sourceConnectionId } = request;
+    const buyerDataRemoved = request.buyerDataRemoved === true;
 
     // Resolve the per-platform email normalizer once up-front and thread
     // it through the rest of the call — keeps the hot order-ingestion
@@ -115,7 +116,13 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
 
       // Update customer projection with email if available
       if (email && normalizer) {
-        await this.upsertCustomerProjection(existingMapping, email, sourceConnectionId, normalizer);
+        await this.upsertCustomerProjection(
+          existingMapping,
+          email,
+          sourceConnectionId,
+          normalizer,
+          buyerDataRemoved
+        );
       }
 
       return {
@@ -133,7 +140,8 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
         sourceConnectionId,
         // Email is always meaningful in the fallback path; ensure the
         // baseline normalizer is used when caller passed an empty string.
-        normalizer ?? (await this.resolveEmailNormalizer(sourceConnectionId))
+        normalizer ?? (await this.resolveEmailNormalizer(sourceConnectionId)),
+        buyerDataRemoved
       );
     }
 
@@ -150,7 +158,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
 
     // Create customer projection with email if available
     if (email && normalizer) {
-      await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId, normalizer);
+      await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId, normalizer, buyerDataRemoved);
     }
 
     return {
@@ -164,7 +172,8 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     externalBuyerId: string,
     email: string,
     sourceConnectionId: string,
-    normalizer: EmailNormalizerPort
+    normalizer: EmailNormalizerPort,
+    buyerDataRemoved: boolean
   ): Promise<CustomerIdentityResolutionResult> {
     // Normalize and hash email — per-platform rules (e.g. Allegro's
     // `+transactionId` masked-email suffix) come from the source
@@ -189,7 +198,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
       );
 
       // Create customer projection with email
-      await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId, normalizer);
+      await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId, normalizer, buyerDataRemoved);
 
       return {
         internalCustomerId: newInternalId,
@@ -219,7 +228,8 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
           existingInternalId,
           email,
           sourceConnectionId,
-          normalizer
+          normalizer,
+          buyerDataRemoved
         );
 
         return {
@@ -237,7 +247,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
 
         if (mapping) {
           // Update customer projection with email
-          await this.upsertCustomerProjection(mapping, email, sourceConnectionId, normalizer);
+          await this.upsertCustomerProjection(mapping, email, sourceConnectionId, normalizer, buyerDataRemoved);
 
           return {
             internalCustomerId: mapping,
@@ -265,7 +275,7 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     );
 
     // Create customer projection with email (even in collision case)
-    await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId, normalizer);
+    await this.upsertCustomerProjection(newInternalId, email, sourceConnectionId, normalizer, buyerDataRemoved);
 
     return {
       internalCustomerId: newInternalId,
@@ -284,18 +294,26 @@ export class CustomerIdentityResolverService implements ICustomerIdentityResolve
     internalCustomerId: string,
     email: string,
     sourceConnectionId: string,
-    normalizer: EmailNormalizerPort
+    normalizer: EmailNormalizerPort,
+    buyerDataRemoved: boolean
   ): Promise<void> {
     try {
+      // A redacted order (#4178) never writes personal data back: an existing
+      // projection keeps what it holds, which may come from a newer order of
+      // another source, and a new one gets the hash only.
+      if (buyerDataRemoved && (await this.customerProjectionService.getProjection(internalCustomerId)) !== null) {
+        return;
+      }
       const normalizedEmail = normalizer.normalize(email);
       const emailHash = hashEmail(normalizedEmail);
       const piiConfig = getPiiConfig();
+      const storePii = piiConfig.storePii && !buyerDataRemoved;
       const now = new Date();
 
       const projection = new CustomerProjection(
         internalCustomerId,
         emailHash,
-        piiConfig.storePii ? normalizedEmail : null,
+        storePii ? normalizedEmail : null,
         null, // firstName - not available during identity resolution
         null, // lastName - not available during identity resolution
         now, // lastSeenAt

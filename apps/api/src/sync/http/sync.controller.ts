@@ -20,11 +20,9 @@ import {
   Param,
   HttpCode,
   HttpStatus,
-  BadRequestException,
-  ConflictException,
-  NotFoundException,
   Inject,
   ParseUUIDPipe,
+  type HttpException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import {
@@ -50,6 +48,7 @@ import { GroupedSyncJobsResponseDto } from './dto/grouped-sync-jobs-response.dto
 import { RetryGroupedSyncJobsDto } from './dto/retry-grouped-sync-jobs.dto';
 import { RetryGroupedSyncJobsResponseDto } from './dto/retry-grouped-sync-jobs-response.dto';
 import { Logger } from '@openlinker/shared/logging';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
@@ -120,10 +119,20 @@ export class SyncController {
       );
 
       if (error instanceof Error) {
-        throw new BadRequestException(`Failed to enqueue job: ${error.message}`);
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'SYNC_JOB_ENQUEUE_FAILED',
+          `Failed to enqueue job: ${error.message}`,
+          { jobType: dto.jobType, connectionId: dto.connectionId }
+        );
       }
 
-      throw new BadRequestException('Failed to enqueue job: Unknown error');
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'SYNC_JOB_ENQUEUE_FAILED',
+        'Failed to enqueue job: Unknown error',
+        { jobType: dto.jobType, connectionId: dto.connectionId }
+      );
     }
   }
 
@@ -215,14 +224,26 @@ export class SyncController {
       !connectionId?.trim() ||
       !eventId?.trim()
     ) {
-      throw new BadRequestException(
-        'platformType, connectionId, and eventId query parameters are required'
+      const missing = Object.entries({ platformType, connectionId, eventId })
+        .filter(([, value]) => !value?.trim())
+        .map(([path]) => ({ path, code: 'isNotEmpty' }));
+      throw codedHttpError(
+        HttpStatus.BAD_REQUEST,
+        'VALIDATION_FAILED',
+        'platformType, connectionId, and eventId query parameters are required',
+        undefined,
+        { fields: missing }
       );
     }
     const idempotencyKey = buildInboundJobIdempotencyKey(platformType, connectionId, eventId);
     const job = await this.syncJobRepository.findByIdempotencyKey(idempotencyKey);
     if (!job) {
-      throw new NotFoundException(`Sync job not found for idempotency key: ${idempotencyKey}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'SYNC_JOB_NOT_FOUND_FOR_EVENT',
+        `Sync job not found for idempotency key: ${idempotencyKey}`,
+        { platformType, connectionId, eventId }
+      );
     }
     return this.toDto(job);
   }
@@ -262,7 +283,7 @@ export class SyncController {
   async getJob(@Param('id', ParseUUIDPipe) id: string): Promise<SyncJobResponseDto> {
     const job = await this.syncJobRepository.findById(id);
     if (!job) {
-      throw new NotFoundException(`Sync job not found: ${id}`);
+      throw syncJobNotFound(id);
     }
     return this.toDto(job);
   }
@@ -285,10 +306,15 @@ export class SyncController {
       return this.toDto(job);
     } catch (error) {
       if (error instanceof SyncJobNotFoundError) {
-        throw new NotFoundException(`Sync job not found: ${id}`);
+        throw syncJobNotFound(id);
       }
       if (error instanceof InvalidSyncJobStateError) {
-        throw new ConflictException(`Job cannot be retried: ${error.message}`);
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'SYNC_JOB_NOT_RETRYABLE',
+          `Job cannot be retried: ${error.message}`,
+          { jobId: id, field: error.field, value: error.value }
+        );
       }
       throw error;
     }
@@ -316,4 +342,10 @@ export class SyncController {
       deferredTotalMs: job.deferredTotalMs ?? null,
     };
   }
+}
+
+function syncJobNotFound(jobId: string): HttpException {
+  return codedHttpError(HttpStatus.NOT_FOUND, 'SYNC_JOB_NOT_FOUND', `Sync job not found: ${jobId}`, {
+    jobId,
+  });
 }

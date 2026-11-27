@@ -29,11 +29,7 @@ import { Link } from 'react-router-dom';
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
-import {
-  AUTOMATION_ACTION_LABELS,
-  AUTOMATION_RUN_LOG_COPY,
-  AUTOMATION_RUN_OUTCOME_COPY,
-} from '../lib/automation.copy';
+import { renderRich, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { describeStepStatus, stepStatusTone } from '../lib/step-status';
 import { runOutcomeTone } from '../lib/run-outcome';
 import type { AutomationRunLog } from '../api/automation.types';
@@ -49,26 +45,32 @@ export function AutomationRunLogPanel({
   isLoading,
   error,
 }: AutomationRunLogPanelProps): ReactElement {
+  const messages = useMessages('automation');
+  const copy = messages.runLog;
+  const actionLabels: Record<string, string> = messages.actions;
+  const outcomeLabels: Record<string, string> = messages.runOutcomes;
+  const format = useFormat();
+  const plural = usePlural();
   if (isLoading) {
-    return <LoadingState title={AUTOMATION_RUN_LOG_COPY.loading} message="" />;
+    return <LoadingState title={copy.loading} message="" />;
   }
   if (error) {
-    return <ErrorState title={AUTOMATION_RUN_LOG_COPY.failed} message="" />;
+    return <ErrorState title={copy.failed} message="" />;
   }
   // `null` means the envelope itself was unreadable — a different fact from
   // "recording is off", and not evidence for it.
   if (log === null) {
-    return <ErrorState title={AUTOMATION_RUN_LOG_COPY.failed} message="" />;
+    return <ErrorState title={copy.failed} message="" />;
   }
 
   // Checked BEFORE the emptiness branch: while recording is off, an empty list
   // says nothing at all about whether the rule fired.
   if (!log.recordingAvailable) {
-    return <Alert tone="info">{log.note ?? AUTOMATION_RUN_LOG_COPY.empty}</Alert>;
+    return <Alert tone="info">{log.note ?? copy.empty}</Alert>;
   }
 
   if (log.runs.length === 0) {
-    return <p className="muted-text">{AUTOMATION_RUN_LOG_COPY.empty}</p>;
+    return <p className="muted-text">{copy.empty}</p>;
   }
 
   return (
@@ -77,26 +79,27 @@ export function AutomationRunLogPanel({
         <li key={run.id} className="automation-run-log__run">
           <div className="automation-run-log__head">
             <StatusBadge tone={runOutcomeTone(run.outcome)} withDot compact>
-              {(AUTOMATION_RUN_OUTCOME_COPY as Record<string, string>)[run.outcome] ?? run.outcome}
+              {outcomeLabels[run.outcome] ?? run.outcome}
             </StatusBadge>
-            <span className="mono-text">{run.firedAt}</span>
+            <span className="mono-text">{format.dateTime(run.firedAt)}</span>
             <span className="mono-text">{run.subjectId}</span>
           </div>
 
           {/* Names the OTHER rule — an operator cannot fix a collision they cannot name. */}
           {run.blockedByRuleIds !== null && run.blockedByRuleIds.length > 0 ? (
             <p className="muted-text">
-              {AUTOMATION_RUN_LOG_COPY.blockedByPrefix}{' '}
-              <span className="mono-text">
-                {run.blockedByRuleIds.filter((id) => id !== run.ruleId).join(', ')}
-              </span>
+              {renderRich(
+                messages.runLogPanel.blockedBy,
+                { ids: (chunk) => <span className="mono-text">{chunk}</span> },
+                { ids: format.list(run.blockedByRuleIds.filter((id) => id !== run.ruleId)) },
+              )}
             </p>
           ) : null}
 
           <ul className="automation-run-log__steps">
             {run.steps.map((step) => (
               <li key={step.stepIndex}>
-                <span>{AUTOMATION_ACTION_LABELS[step.action] ?? step.action}</span>
+                <span>{actionLabels[step.action] ?? step.action}</span>
                 <StatusBadge tone={stepStatusTone(step.status)} compact>
                   {describeStepStatus(step.status)}
                 </StatusBadge>
@@ -116,7 +119,7 @@ export function AutomationRunLogPanel({
                 */}
                 {step.syncJobId === null ? null : (
                   <Link className="mono-text" to={`/jobs-logs/${step.syncJobId}`}>
-                    {AUTOMATION_RUN_LOG_COPY.jobLink}
+                    {copy.jobLink}
                   </Link>
                 )}
               </li>
@@ -125,7 +128,7 @@ export function AutomationRunLogPanel({
 
           {run.unreadableStepCount > 0 ? (
             <p className="muted-text">
-              {AUTOMATION_RUN_LOG_COPY.unreadableSteps(run.unreadableStepCount)}
+              {plural(run.unreadableStepCount, copy.unreadableSteps)}
             </p>
           ) : null}
         </li>

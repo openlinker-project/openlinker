@@ -52,6 +52,12 @@ export interface KsefHttpRequestOptions {
    * Defaults to false (the normal reactive-refresh-on-401 behaviour).
    */
   noReactiveRefresh?: boolean;
+  /**
+   * The rate-limit token for this call was already taken by
+   * `reserveSessionRound` (DEF-04), so the client must not take a second one.
+   * Set by the adapter on the open / submit / close of a reserved round.
+   */
+  rateLimitPrepaid?: boolean;
 }
 
 /** Parsed JSON response: data plus status + lowercased response headers. */

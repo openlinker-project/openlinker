@@ -3,6 +3,11 @@
 
 echo "🔍 Running pre-commit checks..."
 
+# Prove which tree this hook validates BEFORE trusting lint / type-check / tests
+# (#2767): a hook whose tools resolve another worktree's packages reports on a
+# tree that is not the one being committed. Fails loudly, never skips.
+node scripts/check-worktree-identity.mjs || exit 1
+
 # Lint + type-check always run against all packages. They're fast and
 # catch cross-package import breakage.
 echo "📝 Running linter for all packages..."

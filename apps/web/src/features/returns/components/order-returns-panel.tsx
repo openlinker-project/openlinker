@@ -42,13 +42,13 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { EmptyState, ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { useReturnsQuery } from '../hooks/use-returns-query';
 import { ReturnStageCell } from './return-stage-cell';
-import { RETURNS_ROW_COPY, describeUnreadableRows } from '../lib/returns-list.copy';
-import { ORDER_RETURNS_PANEL_COPY as COPY } from '../lib/order-returns-panel.copy';
+import { describeUnreadableRows } from '../lib/returns-list-text';
 
 /**
  * One page. Deliberately well below the API's `@Max(100)`: an order with more
@@ -62,6 +62,9 @@ interface OrderReturnsPanelProps {
 }
 
 export function OrderReturnsPanel({ internalOrderId }: OrderReturnsPanelProps): ReactElement {
+  const returnsCopy = useMessages('returns');
+  const COPY = returnsCopy.orderReturnsPanel;
+  const format = useFormat();
   // The read is DISABLED on an empty id rather than issued and ignored.
   // `buildQuery` omits a falsy filter, so an empty id would issue an unfiltered
   // `GET /returns` and render the whole installation's returns under this
@@ -159,7 +162,7 @@ export function OrderReturnsPanel({ internalOrderId }: OrderReturnsPanelProps): 
               ) : (
                 <span
                   className="returns-order-panel__time text-muted"
-                  title={RETURNS_ROW_COPY.recordedAtFallback}
+                  title={returnsCopy.list.row.recordedAtFallback}
                 >
                   <TimeDisplay iso={item.createdAt} format="datetime" />
                 </span>
@@ -177,7 +180,10 @@ export function OrderReturnsPanel({ internalOrderId }: OrderReturnsPanelProps): 
             against the item count would report the SAME row twice — once as
             unreadable and once as a page limit that was never reached. */}
         {result.total > PANEL_PAGE_SIZE ? (
-          <p className="text-muted">{COPY.truncated(items.length, result.total)}</p>
+          <p className="text-muted">{interpolate(COPY.truncated, {
+              shown: format.number(items.length),
+              total: format.number(result.total),
+            })}</p>
         ) : null}
       </>
     );

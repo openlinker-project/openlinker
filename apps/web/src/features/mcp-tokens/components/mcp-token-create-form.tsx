@@ -12,8 +12,14 @@
  */
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { z } from 'zod';
+import {
+  interpolate,
+  useMessages,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
@@ -22,17 +28,22 @@ import type { CreateMcpTokenInput, McpTokenScope } from '../api/mcp-tokens.types
 
 const MAX_EXPIRY_DAYS = 365;
 
-const createMcpTokenSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required').max(100, 'Name must be 100 characters or fewer'),
-  scope: z.enum(['mcp:read', 'mcp:write']),
-  expiresInDays: z
-    .number()
-    .int('Must be a whole number of days')
-    .min(1, 'Must be at least 1 day')
-    .max(MAX_EXPIRY_DAYS, `Must be ${MAX_EXPIRY_DAYS} days or fewer`),
-});
+type CreateFormCopy = ResolvedCopy<Messages['mcp-tokens']>['mcpTokenCreateForm'];
 
-type CreateMcpTokenFormValues = z.infer<typeof createMcpTokenSchema>;
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type -- the zod type is inferred from this builder
+function createMcpTokenSchema(copy: CreateFormCopy['validation']) {
+  return z.object({
+    name: z.string().trim().min(1, copy.nameRequired).max(100, copy.nameTooLong),
+    scope: z.enum(['mcp:read', 'mcp:write']),
+    expiresInDays: z
+      .number()
+      .int(copy.wholeDays)
+      .min(1, copy.minDays)
+      .max(MAX_EXPIRY_DAYS, interpolate(copy.maxDays, { max: MAX_EXPIRY_DAYS })),
+  });
+}
+
+type CreateMcpTokenFormValues = z.infer<ReturnType<typeof createMcpTokenSchema>>;
 
 interface McpTokenCreateFormProps {
   onSubmit: (input: CreateMcpTokenInput) => void;
@@ -43,13 +54,15 @@ export function McpTokenCreateForm({
   onSubmit,
   isSubmitting,
 }: McpTokenCreateFormProps): ReactElement {
+  const copy = useMessages('mcp-tokens').mcpTokenCreateForm;
+  const schema = useMemo(() => createMcpTokenSchema(copy.validation), [copy.validation]);
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors },
   } = useForm<CreateMcpTokenFormValues>({
-    resolver: zodResolver(createMcpTokenSchema),
+    resolver: zodResolver(schema),
     defaultValues: { name: '', scope: 'mcp:read', expiresInDays: 90 },
   });
 
@@ -72,31 +85,31 @@ export function McpTokenCreateForm({
         void submit(event);
       }}
     >
-      <FormField label="Name" name="name" error={errors.name?.message}>
+      <FormField label={copy.nameLabel} name="name" error={errors.name?.message}>
         <Input
           id="mcp-token-name"
-          placeholder="e.g. Claude Desktop — laptop"
+          placeholder={copy.namePlaceholder}
           invalid={Boolean(errors.name)}
           {...register('name')}
         />
       </FormField>
 
       <FormField
-        label="Scope"
+        label={copy.scopeLabel}
         name="scope"
-        description="Read-only tokens cannot drive writes. Write implies read."
+        description={copy.scopeDescription}
         error={errors.scope?.message}
       >
         <Select id="mcp-token-scope" invalid={Boolean(errors.scope)} {...register('scope')}>
-          <option value="mcp:read">Read-only (mcp:read)</option>
-          <option value="mcp:write">Read + write (mcp:write)</option>
+          <option value="mcp:read">{copy.scopeRead}</option>
+          <option value="mcp:write">{copy.scopeWrite}</option>
         </Select>
       </FormField>
 
       <FormField
-        label="Expires in (days)"
+        label={copy.expiryLabel}
         name="expiresInDays"
-        description={`Required. Maximum ${MAX_EXPIRY_DAYS} days.`}
+        description={interpolate(copy.expiryDescription, { max: MAX_EXPIRY_DAYS })}
         error={errors.expiresInDays?.message}
       >
         <Input
@@ -110,7 +123,7 @@ export function McpTokenCreateForm({
       </FormField>
 
       <Button type="submit" tone="primary" disabled={isSubmitting}>
-        {isSubmitting ? 'Creating…' : 'Create token'}
+        {isSubmitting ? copy.submitting : copy.submit}
       </Button>
     </form>
   );

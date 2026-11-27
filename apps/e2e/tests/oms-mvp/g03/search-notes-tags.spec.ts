@@ -73,7 +73,7 @@ test.describe('G03 golden path 1 — search / notes / tags (#3536)', () => {
 
     // 2. Open the order, add a packer-visible note and a tag.
     await search.fill('');
-    await page.goto(`/orders/${order.internalOrderId}`);
+    await page.goto(`/orders/${order.internalOrderId}?tab=notes`);
     const noteBody = `E2E flagged note ${Date.now()}`;
     // #3507 (M3) — the composer sits above the list; the note text also lands
     // on the Activity timeline, so the assertion is scoped to the notes section.

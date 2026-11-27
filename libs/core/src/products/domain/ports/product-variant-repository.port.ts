@@ -15,6 +15,7 @@ import type {
   ProductPagination,
   PaginatedProductVariants,
   VariantPhysicalDimensionsFill,
+  VariantCost,
 } from '../types/product.types';
 import type { StoredTaxRate } from '../types/tax-rate.types';
 
@@ -272,4 +273,22 @@ export interface ProductVariantRepositoryPort {
    * input (or input with no numeric field) returns 0 without a round-trip.
    */
   fillPhysicalDimensionsIfAbsent(fills: readonly VariantPhysicalDimensionsFill[]): Promise<number>;
+
+  /**
+   * Record or clear (`null`) the operator-authored net unit cost (#3588, D27),
+   * stamping `costUpdatedAt` / `costUpdatedByUserId`. Unconditional. Returns
+   * false when the variant does not exist.
+   */
+  recordCost(variantId: string, cost: VariantCost | null, actorUserId: string): Promise<boolean>;
+
+  /**
+   * Fill-when-NULL bulk cost write (#3588): sets the cost only on variants that
+   * have none, in one atomic statement, and reports which ids were filled,
+   * already had a cost, or do not exist.
+   */
+  fillCostIfAbsent(
+    variantIds: readonly string[],
+    cost: VariantCost,
+    actorUserId: string
+  ): Promise<{ filled: string[]; skippedAlreadySet: string[]; notFound: string[] }>;
 }

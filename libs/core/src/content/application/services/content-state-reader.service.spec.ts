@@ -3,17 +3,18 @@
  *
  * Covers the read-side orchestration: row composition, channel eligibility
  * filter (active + OfferFieldUpdater + linked-offer count ≥ 1), bulk
- * offer-mapping count, and deterministic channel sort. Propagation of
- * ProductMaster read failures is verified by letting the rejection bubble
- * instead of silently returning an empty channel list.
+ * offer-mapping count, and deterministic channel sort. Variant ids come from
+ * OpenLinker's catalogue (`IProductsService`), never from a live master, so the
+ * read works whatever number of ProductMaster connections exist (#4068).
+ * Catalogue read failures propagate instead of silently returning an empty
+ * channel list.
  */
 import { ContentStateReaderService } from './content-state-reader.service';
 import type { ProductContentField } from '../../domain/entities/product-content-field.entity';
 import type { ProductContentFieldRepositoryPort } from '../../domain/ports/product-content-field-repository.port';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { IOfferMappingsService, OfferManagerPort } from '@openlinker/core/listings';
-import type { ProductMasterPort } from '@openlinker/core/products';
-import type { ProductVariant } from '@openlinker/core/products';
+import type { IProductsService, ProductVariant } from '@openlinker/core/products';
 
 function makeRow(overrides: Partial<ProductContentField> = {}): ProductContentField {
   return {
@@ -43,14 +44,6 @@ function buildRepoMock(
   };
 }
 
-function buildOfferMappingsMock(
-  counts: Map<string, number> = new Map()
-): jest.Mocked<Pick<IOfferMappingsService, 'countForVariants'>> {
-  return {
-    countForVariants: jest.fn().mockResolvedValue(counts),
-  };
-}
-
 function channelAdapterWithFieldUpdater(): OfferManagerPort {
   return {
     updateOfferQuantity: jest.fn(),
@@ -64,127 +57,81 @@ function channelAdapterWithoutFieldUpdater(): OfferManagerPort {
   } as unknown as OfferManagerPort;
 }
 
+interface ChannelEntry {
+  connectionId: string;
+  name: string;
+  status: string;
+  adapter: OfferManagerPort;
+}
+
+function channel(connectionId: string, name: string, status = 'active', adapter = channelAdapterWithFieldUpdater()): ChannelEntry {
+  return { connectionId, name, status, adapter };
+}
+
+function buildService(args: {
+  rows?: ProductContentField[];
+  channels?: ChannelEntry[];
+  counts?: Map<string, number>;
+  variants?: Promise<ProductVariant[]>;
+}): {
+  service: ContentStateReaderService;
+  integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>>;
+  products: jest.Mocked<Pick<IProductsService, 'getVariantsByProductId'>>;
+} {
+  const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
+    listCapabilityAdapters: jest.fn().mockResolvedValue(
+      (args.channels ?? []).map((c) => ({
+        connectionId: c.connectionId,
+        connection: { name: c.name, platformType: 'allegro', status: c.status },
+        adapter: c.adapter,
+        metadata: {},
+      }))
+    ),
+  };
+  const products: jest.Mocked<Pick<IProductsService, 'getVariantsByProductId'>> = {
+    getVariantsByProductId: jest
+      .fn()
+      .mockReturnValue(args.variants ?? Promise.resolve([{ id: 'ol_variant_a' } as ProductVariant])),
+  };
+  const offerMappings: jest.Mocked<Pick<IOfferMappingsService, 'countForVariants'>> = {
+    countForVariants: jest.fn().mockResolvedValue(args.counts ?? new Map()),
+  };
+  const service = new ContentStateReaderService(
+    buildRepoMock(args.rows),
+    integrations as unknown as IIntegrationsService,
+    offerMappings as unknown as IOfferMappingsService,
+    products as unknown as IProductsService
+  );
+  return { service, integrations, products };
+}
+
 describe('ContentStateReaderService', () => {
   it('should filter out connections that are not active', async () => {
-    const repo = buildRepoMock([]);
-    const offerMappings = buildOfferMappingsMock(new Map([['ol_variant_a', 1]]));
-    const productMaster: jest.Mocked<Pick<ProductMasterPort, 'getProductVariants'>> = {
-      getProductVariants: jest.fn().mockResolvedValue([{ id: 'ol_variant_a' } as ProductVariant]),
-    };
-    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
-      listCapabilityAdapters: jest.fn().mockImplementation((query: { capability: string }) => {
-        if (query.capability === 'ProductMaster') {
-          return Promise.resolve([
-            {
-              connectionId: 'conn-master',
-              connection: { name: 'PrestaShop', platformType: 'prestashop', status: 'active' },
-              adapter: productMaster as unknown as ProductMasterPort,
-              metadata: {},
-            },
-          ]);
-        }
-        // OfferManager: one active + one disabled
-        return Promise.resolve([
-          {
-            connectionId: 'conn-allegro-1',
-            connection: { name: 'Allegro PL', platformType: 'allegro', status: 'active' },
-            adapter: channelAdapterWithFieldUpdater(),
-            metadata: {},
-          },
-          {
-            connectionId: 'conn-allegro-2',
-            connection: { name: 'Allegro Backup', platformType: 'allegro', status: 'disabled' },
-            adapter: channelAdapterWithFieldUpdater(),
-            metadata: {},
-          },
-        ]);
-      }),
-    };
+    const { service } = buildService({
+      counts: new Map([['ol_variant_a', 1]]),
+      channels: [channel('conn-allegro-1', 'Allegro PL'), channel('conn-allegro-2', 'Allegro Backup', 'disabled')],
+    });
 
-    const service = new ContentStateReaderService(
-      repo,
-      integrations as unknown as IIntegrationsService,
-      offerMappings as unknown as IOfferMappingsService
-    );
     const state = await service.readState('ol_product_1');
 
     expect(state.channels.map((c) => c.connectionId)).toEqual(['conn-allegro-1']);
   });
 
   it('should filter out OfferManager adapters that do not implement OfferFieldUpdater', async () => {
-    const repo = buildRepoMock([]);
-    const offerMappings = buildOfferMappingsMock(new Map([['ol_variant_a', 2]]));
-    const productMaster: jest.Mocked<Pick<ProductMasterPort, 'getProductVariants'>> = {
-      getProductVariants: jest.fn().mockResolvedValue([{ id: 'ol_variant_a' } as ProductVariant]),
-    };
-    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
-      listCapabilityAdapters: jest.fn().mockImplementation((query: { capability: string }) => {
-        if (query.capability === 'ProductMaster') {
-          return Promise.resolve([
-            {
-              connectionId: 'conn-master',
-              connection: { name: 'PrestaShop', platformType: 'prestashop', status: 'active' },
-              adapter: productMaster as unknown as ProductMasterPort,
-              metadata: {},
-            },
-          ]);
-        }
-        return Promise.resolve([
-          {
-            connectionId: 'conn-legacy',
-            connection: { name: 'Legacy', platformType: 'legacy', status: 'active' },
-            adapter: channelAdapterWithoutFieldUpdater(),
-            metadata: {},
-          },
-        ]);
-      }),
-    };
+    const { service } = buildService({
+      counts: new Map([['ol_variant_a', 2]]),
+      channels: [channel('conn-legacy', 'Legacy', 'active', channelAdapterWithoutFieldUpdater())],
+    });
 
-    const service = new ContentStateReaderService(
-      repo,
-      integrations as unknown as IIntegrationsService,
-      offerMappings as unknown as IOfferMappingsService
-    );
     const state = await service.readState('ol_product_1');
 
     expect(state.channels).toHaveLength(0);
   });
 
   it('should omit connections with zero linked offers', async () => {
-    const repo = buildRepoMock([]);
     // No entries in the count map = zero offers for the queried variants.
-    const offerMappings = buildOfferMappingsMock(new Map());
-    const productMaster: jest.Mocked<Pick<ProductMasterPort, 'getProductVariants'>> = {
-      getProductVariants: jest.fn().mockResolvedValue([{ id: 'ol_variant_a' } as ProductVariant]),
-    };
-    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
-      listCapabilityAdapters: jest.fn().mockImplementation((query: { capability: string }) => {
-        if (query.capability === 'ProductMaster') {
-          return Promise.resolve([
-            {
-              connectionId: 'conn-master',
-              connection: { name: 'PrestaShop', platformType: 'prestashop', status: 'active' },
-              adapter: productMaster as unknown as ProductMasterPort,
-              metadata: {},
-            },
-          ]);
-        }
-        return Promise.resolve([
-          {
-            connectionId: 'conn-allegro-1',
-            connection: { name: 'Allegro PL', platformType: 'allegro', status: 'active' },
-            adapter: channelAdapterWithFieldUpdater(),
-            metadata: {},
-          },
-        ]);
-      }),
-    };
+    const { service } = buildService({ channels: [channel('conn-allegro-1', 'Allegro PL')] });
 
-    const service = new ContentStateReaderService(
-      repo,
-      integrations as unknown as IIntegrationsService,
-      offerMappings as unknown as IOfferMappingsService
-    );
     const state = await service.readState('ol_product_1');
 
     expect(state.channels).toHaveLength(0);
@@ -197,17 +144,8 @@ describe('ContentStateReaderService', () => {
       hasConflict: true,
       updatedBy: 'ops@example.com',
     });
-    const repo = buildRepoMock([row]);
-    const offerMappings = buildOfferMappingsMock();
-    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
-      listCapabilityAdapters: jest.fn().mockResolvedValue([]),
-    };
+    const { service } = buildService({ rows: [row] });
 
-    const service = new ContentStateReaderService(
-      repo,
-      integrations as unknown as IIntegrationsService,
-      offerMappings as unknown as IOfferMappingsService
-    );
     const state = await service.readState('ol_product_1');
 
     expect(state.master).toEqual({
@@ -219,76 +157,32 @@ describe('ContentStateReaderService', () => {
     });
   });
 
-  it('should propagate ProductMaster failures instead of swallowing them', async () => {
-    const repo = buildRepoMock([]);
-    const offerMappings = buildOfferMappingsMock();
-    const productMaster: jest.Mocked<Pick<ProductMasterPort, 'getProductVariants'>> = {
-      getProductVariants: jest.fn().mockRejectedValue(new Error('upstream down')),
-    };
-    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
-      listCapabilityAdapters: jest.fn().mockImplementation((query: { capability: string }) => {
-        if (query.capability === 'ProductMaster') {
-          return Promise.resolve([
-            {
-              connectionId: 'conn-master',
-              connection: { name: 'PrestaShop', platformType: 'prestashop', status: 'active' },
-              adapter: productMaster as unknown as ProductMasterPort,
-              metadata: {},
-            },
-          ]);
-        }
-        return Promise.resolve([]);
-      }),
-    };
+  it('should read variant ids from the catalogue and never ask a ProductMaster', async () => {
+    const { service, integrations, products } = buildService({
+      counts: new Map([['ol_variant_a', 1]]),
+      channels: [channel('conn-allegro-1', 'Allegro PL')],
+    });
 
-    const service = new ContentStateReaderService(
-      repo,
-      integrations as unknown as IIntegrationsService,
-      offerMappings as unknown as IOfferMappingsService
+    await service.readState('ol_product_1');
+
+    expect(products.getVariantsByProductId).toHaveBeenCalledWith('ol_product_1');
+    expect(integrations.listCapabilityAdapters).not.toHaveBeenCalledWith(
+      expect.objectContaining({ capability: 'ProductMaster' })
     );
-    await expect(service.readState('ol_product_1')).rejects.toThrow('upstream down');
+  });
+
+  it('should propagate catalogue read failures instead of swallowing them', async () => {
+    const { service } = buildService({ variants: Promise.reject(new Error('db down')) });
+
+    await expect(service.readState('ol_product_1')).rejects.toThrow('db down');
   });
 
   it('should sort channels by connection name (case-insensitive) then id', async () => {
-    const repo = buildRepoMock([]);
-    const offerMappings = buildOfferMappingsMock(new Map([['ol_variant_a', 1]]));
-    const productMaster: jest.Mocked<Pick<ProductMasterPort, 'getProductVariants'>> = {
-      getProductVariants: jest.fn().mockResolvedValue([{ id: 'ol_variant_a' } as ProductVariant]),
-    };
-    const integrations: jest.Mocked<Pick<IIntegrationsService, 'listCapabilityAdapters'>> = {
-      listCapabilityAdapters: jest.fn().mockImplementation((query: { capability: string }) => {
-        if (query.capability === 'ProductMaster') {
-          return Promise.resolve([
-            {
-              connectionId: 'conn-master',
-              connection: { name: 'PrestaShop', platformType: 'prestashop', status: 'active' },
-              adapter: productMaster as unknown as ProductMasterPort,
-              metadata: {},
-            },
-          ]);
-        }
-        return Promise.resolve([
-          {
-            connectionId: 'conn-2',
-            connection: { name: 'Zeta', platformType: 'allegro', status: 'active' },
-            adapter: channelAdapterWithFieldUpdater(),
-            metadata: {},
-          },
-          {
-            connectionId: 'conn-1',
-            connection: { name: 'Alpha', platformType: 'allegro', status: 'active' },
-            adapter: channelAdapterWithFieldUpdater(),
-            metadata: {},
-          },
-        ]);
-      }),
-    };
+    const { service } = buildService({
+      counts: new Map([['ol_variant_a', 1]]),
+      channels: [channel('conn-2', 'Zeta'), channel('conn-1', 'Alpha')],
+    });
 
-    const service = new ContentStateReaderService(
-      repo,
-      integrations as unknown as IIntegrationsService,
-      offerMappings as unknown as IOfferMappingsService
-    );
     const state = await service.readState('ol_product_1');
 
     expect(state.channels.map((c) => c.connectionName)).toEqual(['Alpha', 'Zeta']);

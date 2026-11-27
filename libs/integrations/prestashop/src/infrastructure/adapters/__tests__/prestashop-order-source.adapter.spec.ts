@@ -7,7 +7,11 @@
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
-import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
+import {
+  checkPaymentFactsConsistency,
+  diffOrderAmendment,
+  OrderSyncStartUnavailableError,
+} from '@openlinker/core/orders';
 import { PrestashopOrderSourceAdapter } from '../prestashop-order-source.adapter';
 import { DEFAULT_INSTALL_ORDER_STATES } from '../../../__tests__/fixtures/prestashop-order-states.fixture';
 import { createMockHttpClient } from '../../../__tests__/mocks/mock-http-client.factory';
@@ -15,6 +19,7 @@ import { createTestConnection } from '../../../__tests__/fixtures/connection.fix
 import { PrestashopOrderMapper } from '../../mappers/prestashop-order.mapper';
 import {
   PrestashopApiException,
+  PrestashopAuthenticationException,
   PrestashopCurrencyUnknownException,
   PrestashopResourceNotFoundException,
   PrestashopTruncatedReadException,
@@ -29,7 +34,7 @@ import { PrestashopOrderFeedCapabilityCache } from '../../provisioners/prestasho
 
 /**
  * Stub order-currency resolver (#2277). The adapter's own contract is "ask the
- * resolver, put the answer on `totals`" — the resolution CHAIN is the
+ * resolver, put the answer on `totals`" - the resolution CHAIN is the
  * resolver's own contract and is covered in its dedicated spec. Stubbing it
  * here also keeps the WebService call counts these tests assert on describing
  * hydration only.
@@ -49,13 +54,20 @@ function createStubCurrencyResolver(
  * `mockResolvedValueOnce(orders)` in this file would have its queue consumed by
  * the state read.
  */
+/** Flipped by the buyer-note describe so its own scripted thread reads reach the mock. */
+const serveThreads = { enabled: false };
+
 function serveOrderStates(client: jest.Mocked<IPrestashopWebserviceClient>): void {
   let listResources = client.listResources;
   const wrap = (inner: jest.Mock): jest.Mock =>
     jest.fn((resource: string, ...rest: unknown[]) =>
       resource === 'order_states'
         ? Promise.resolve([...DEFAULT_INSTALL_ORDER_STATES])
-        : (inner as (...args: unknown[]) => unknown)(resource, ...rest)
+        : resource === 'customer_threads' && !serveThreads.enabled
+          ? // The buyer-note read (#3538) is bookkeeping for every test that is not
+            // about it: an order with no thread, i.e. "the buyer wrote nothing".
+            Promise.resolve([])
+          : (inner as (...args: unknown[]) => unknown)(resource, ...rest)
     ) as unknown as jest.Mock;
   listResources = wrap(listResources as unknown as jest.Mock) as typeof listResources;
   Object.defineProperty(client, 'listResources', {
@@ -73,7 +85,7 @@ function serveOrderStates(client: jest.Mocked<IPrestashopWebserviceClient>): voi
  */
 function listCallsExcludingStates(client: jest.Mocked<IPrestashopWebserviceClient>): unknown[][] {
   const calls = (client.listResources as unknown as jest.Mock<unknown, unknown[]>).mock.calls;
-  return calls.filter((call) => call[0] !== 'order_states');
+  return calls.filter((call) => call[0] !== 'order_states' && call[0] !== 'customer_threads');
 }
 
 describe('PrestashopOrderSourceAdapter', () => {
@@ -282,10 +294,17 @@ describe('PrestashopOrderSourceAdapter', () => {
         expect(result.nextCursor).toBe('2024-05-02 08:00:00|9');
       });
 
-      it('should restart from the beginning on an unreadable cursor instead of from now', async () => {
+      it('should throw on an unreadable non-empty cursor instead of restarting from the beginning', async () => {
         mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
 
-        await adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 });
+        await expect(adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 })).rejects.toThrow(RangeError);
+        expect(mockHttpClient.listResources).not.toHaveBeenCalled();
+      });
+
+      it('should read from the beginning when the cursor is empty or blank', async () => {
+        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
+
+        await adapter.listOrderFeed({ fromCursor: '  ', limit: 10 });
 
         expect(mockHttpClient.listResources).toHaveBeenCalledWith(
           'orders',
@@ -309,15 +328,6 @@ describe('PrestashopOrderSourceAdapter', () => {
 
         expect(result.items).toEqual([]);
         expect(result.nextCursor).toBe('2024-05-01 08:00:00|0');
-      });
-
-      it('should answer no cursor at all when the caller cursor was unreadable', async () => {
-        // Echoing it back would keep an unreadable value in place for ever.
-        mockHttpClient.listResources = jest.fn().mockResolvedValue([]);
-
-        const result = await adapter.listOrderFeed({ fromCursor: 'garbage', limit: 10 });
-
-        expect(result.nextCursor).toBeNull();
       });
 
       it('should skip a row with no usable date_upd rather than stamping the worker clock', async () => {
@@ -496,7 +506,130 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('listOrderFeed — date_upd sort/filter fallback (#2877)', () => {
+  describe('headCursor (#4228)', () => {
+    it('should return the newest order itself as the cursor, with no lookback', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([
+          { id: '42', date_add: '2024-06-01 08:00:00', date_upd: '2024-06-01 08:10:00' },
+        ]);
+
+      const head = await adapter.headCursor();
+
+      expect(head).toBe('2024-06-01 08:10:00|42');
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'orders',
+        { sort: ['date_upd_DESC', 'id_DESC'] },
+        1,
+        0
+      );
+    });
+
+    it('should return null when the shop has no orders', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      await expect(adapter.headCursor()).resolves.toBeNull();
+    });
+
+    it('should fall back to id ordering when the shop refuses date_upd sorting', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(
+          new PrestashopApiException(
+            'PrestaShop API server error (500): /api/orders',
+            500,
+            JSON.stringify({ errors: [{ code: 38, message: 'Unable to filter by this field.' }] })
+          )
+        )
+        .mockResolvedValueOnce([
+          { id: '7', date_add: '2024-06-01 08:00:00', date_upd: '2024-06-01 08:00:00' },
+        ]);
+
+      const head = await adapter.headCursor();
+
+      expect(head).toBe('2024-06-01 08:00:00|7');
+      expect(mockHttpClient.listResources).toHaveBeenLastCalledWith(
+        'orders',
+        { sort: ['id_DESC'] },
+        1,
+        0
+      );
+    });
+
+    it('should throw when the newest row is unreadable', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockResolvedValueOnce([{ id: '9', date_add: 'x', date_upd: 'garbage' }]);
+
+      await expect(adapter.headCursor()).rejects.toThrow('unreadable');
+    });
+
+    it('should propagate a read failure', async () => {
+      mockHttpClient.listResources = jest.fn().mockRejectedValueOnce(new Error('boom'));
+
+      await expect(adapter.headCursor()).rejects.toThrow('boom');
+    });
+  });
+
+  describe('cursorForDate (#4228)', () => {
+    it('should return a cursor at the start of the date after probing the date filter', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      const cursor = await adapter.cursorForDate('2026-10-01');
+
+      expect(cursor).toBe('2026-10-01 00:00:00|0');
+      expect(mockHttpClient.listResources).toHaveBeenCalledWith(
+        'orders',
+        expect.objectContaining({ updatedAfter: '2026-10-01 00:00:00' }),
+        1,
+        0
+      );
+    });
+
+    it('should use the date part of a full instant', async () => {
+      mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+
+      await expect(adapter.cursorForDate('2026-10-01T22:30:00Z')).resolves.toBe(
+        '2026-10-01 00:00:00|0'
+      );
+    });
+
+    it('should refuse, never falling back to the whole history, when the shop will not filter by date_upd', async () => {
+      mockHttpClient.listResources = jest
+        .fn()
+        .mockRejectedValueOnce(
+          new PrestashopApiException(
+            'PrestaShop API server error (500): /api/orders',
+            500,
+            JSON.stringify({ errors: [{ code: 38, message: 'Unable to filter by this field.' }] })
+          )
+        );
+
+      const refusal = adapter.cursorForDate('2026-10-01');
+      await expect(refusal).rejects.toThrow(/cannot start from a date/);
+      await expect(refusal).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+
+      // The refusal is remembered, so the next attempt fails without a request.
+      mockHttpClient.listResources = jest.fn();
+      await expect(adapter.cursorForDate('2026-10-01')).rejects.toThrow(/cannot start from a date/);
+      expect(mockHttpClient.listResources).not.toHaveBeenCalled();
+    });
+
+    it('should propagate a read failure', async () => {
+      mockHttpClient.listResources = jest.fn().mockRejectedValueOnce(new Error('boom'));
+
+      await expect(adapter.cursorForDate('2026-10-01')).rejects.toThrow('boom');
+    });
+
+    it('should refuse an unreadable date', async () => {
+      await expect(adapter.cursorForDate('soon')).rejects.toBeInstanceOf(
+        OrderSyncStartUnavailableError
+      );
+      await expect(adapter.cursorForDate('soon')).rejects.toThrow('expected an ISO date');
+    });
+  });
+
+  describe('listOrderFeed - date_upd sort/filter fallback (#2877)', () => {
     /**
      * PrestaShop's own refusal, verified live on 9.0.2: `date_upd` is not on
      * this shop's allowed sort/filter field list for `orders`.
@@ -757,6 +890,149 @@ describe('PrestashopOrderSourceAdapter', () => {
       expect(incoming.items[0].productRef).toEqual({ type: 'product', externalId: '5' });
     });
 
+    describe('gift cart rules (#3937)', () => {
+      const giftOrder = (discount: string): PrestashopOrder => ({
+        id: '7',
+        reference: 'GIFTPROBE1',
+        id_customer: '3',
+        current_state: '2',
+        total_paid_tax_incl: '62.5',
+        total_paid_tax_excl: '62.5',
+        total_shipping: '12.5',
+        total_shipping_tax_incl: '12.5',
+        total_discounts_tax_incl: discount,
+        date_add: '2026-11-05 00:43:34',
+        date_upd: '2026-11-05 00:43:34',
+      });
+      const mergedRow: PrestashopOrderRow = {
+        id: '9',
+        product_id: '20',
+        product_attribute_id: '0',
+        product_quantity: '2',
+        product_price: '50.000000',
+        unit_price_tax_incl: '50.000000',
+        product_reference: 'GIFT-SKU-1',
+      };
+
+      function mockShop(discount: string, appliedRules: Array<{ id_cart_rule: string; value?: string }>): jest.Mock {
+        const getResource = jest.fn().mockImplementation((resource: string) => {
+          if (resource === 'orders') return Promise.resolve(giftOrder(discount));
+          if (resource === 'cart_rules') {
+            return Promise.resolve({ id: 1, gift_product: 20, gift_product_attribute: 0 });
+          }
+          return Promise.resolve({});
+        });
+        mockHttpClient.getResource = getResource;
+        mockHttpClient.listResources = jest.fn().mockImplementation((resource: string) => {
+          if (resource === 'order_details') return Promise.resolve([mergedRow]);
+          if (resource === 'order_cart_rules') return Promise.resolve(appliedRules);
+          return Promise.resolve([]);
+        });
+        return getResource;
+      }
+
+      it('should split the gift unit into its own 0.00 line and keep the order total', async () => {
+        mockShop('50.000000', [{ id_cart_rule: '1', value: '50.000000' }]);
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(incoming.items.map((i) => [i.id, i.quantity, i.price, i.gift])).toEqual([
+          ['9', 1, 50, undefined],
+          ['9~gift:1', 1, 0, { source: 'cart-rule', ruleRef: '1' }],
+        ]);
+        // The gift line keeps the product reference of the row it was split from.
+        expect(incoming.items[1].productRef).toEqual({ type: 'product', externalId: '20' });
+        expect((incoming.totals as { discountTotal?: number }).discountTotal).toBe(0);
+        expect(incoming.totals.total).toBe(62.5);
+      });
+
+      it('should report the same line ids on a repeated poll', async () => {
+        mockShop('50.000000', [{ id_cart_rule: '1', value: '50.000000' }]);
+
+        const first = await adapter.getOrder({ externalOrderId: '7' });
+        const second = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(second.items.map((i) => [i.id, i.quantity])).toEqual(
+          first.items.map((i) => [i.id, i.quantity])
+        );
+      });
+
+      it('should report no amendment when a stored split snapshot is polled again', async () => {
+        mockShop('50.000000', [{ id_cart_rule: '1', value: '50.000000' }]);
+
+        const stored = await adapter.getOrder({ externalOrderId: '7' });
+        const repolled = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(
+          diffOrderAmendment(
+            { items: stored.items, shippingAddress: stored.shippingAddress },
+            repolled,
+            { storePii: true }
+          )
+        ).toEqual([]);
+      });
+
+      it('should keep the split of a rule that can be read when another applied rule was deleted', async () => {
+        const getResource = mockShop('60.000000', [
+          { id_cart_rule: '1', value: '50.000000' },
+          { id_cart_rule: '2', value: '10.000000' },
+        ]);
+        getResource.mockImplementation((resource: string, id?: string) => {
+          if (resource === 'orders') return Promise.resolve(giftOrder('60.000000'));
+          if (resource === 'cart_rules') {
+            return id === '2'
+              ? Promise.reject(new Error('404 gone'))
+              : Promise.resolve({ id: 1, gift_product: 20, gift_product_attribute: 0 });
+          }
+          return Promise.resolve({});
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(incoming.items.map((i) => [i.id, i.quantity])).toEqual([
+          ['9', 1],
+          ['9~gift:1', 1],
+        ]);
+        expect((incoming.totals as { discountTotal?: number }).discountTotal).toBe(10);
+        expect(incoming.totals.total).toBe(62.5);
+      });
+
+      it('should leave a gift merged when the rule credited less than the unit', async () => {
+        mockShop('12.500000', [{ id_cart_rule: '1', value: '12.500000' }]);
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(incoming.items).toHaveLength(1);
+        expect(incoming.items[0].quantity).toBe(2);
+        expect(incoming.totals.total).toBe(62.5);
+      });
+
+      it('should not read cart rules for an order without a discount', async () => {
+        mockShop('0.000000', []);
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        const read = (mockHttpClient.listResources as unknown as jest.Mock<unknown, unknown[]>).mock.calls.map((c) => c[0]);
+        expect(read).not.toContain('order_cart_rules');
+        expect(incoming.items).toHaveLength(1);
+      });
+
+      it('should leave the gift merged when the key cannot read cart rules', async () => {
+        mockShop('50.000000', []);
+        mockHttpClient.listResources = jest.fn().mockImplementation((resource: string) => {
+          if (resource === 'order_details') return Promise.resolve([mergedRow]);
+          if (resource === 'order_cart_rules') return Promise.reject(new Error('not allowed'));
+          return Promise.resolve([]);
+        });
+
+        const incoming = await adapter.getOrder({ externalOrderId: '7' });
+
+        expect(incoming.items).toHaveLength(1);
+        expect(incoming.items[0].quantity).toBe(2);
+        expect((incoming.totals as { discountTotal?: number }).discountTotal).toBe(50);
+      });
+    });
+
     // [module, state id, expected method, expected status, expect a COD amount]
     it.each([
       // The stock "Awaiting Cash on delivery validation" state is silent about
@@ -990,7 +1266,156 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — pickupPoint resolution', () => {
+  describe('getOrder - buyer note (#3538)', () => {
+    const prestashopOrder: PrestashopOrder = {
+      id: '42',
+      reference: 'ORDER-042',
+      id_customer: '7',
+      current_state: '2',
+      total_paid: '99.99',
+      total_paid_tax_incl: '99.99',
+      total_paid_tax_excl: '99.99',
+      total_shipping: '0',
+      date_add: '2024-01-01 10:00:00',
+      date_upd: '2024-01-01 12:00:00',
+    };
+
+    beforeEach(() => {
+      serveThreads.enabled = true;
+    });
+    afterEach(() => {
+      serveThreads.enabled = false;
+    });
+
+    function script(responses: Array<unknown[] | Error>): jest.Mock {
+      const list = jest.fn();
+      for (const response of responses) {
+        if (response instanceof Error) {
+          list.mockRejectedValueOnce(response);
+        } else {
+          list.mockResolvedValueOnce(response);
+        }
+      }
+      mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(prestashopOrder);
+      mockHttpClient.listResources = list as unknown as typeof mockHttpClient.listResources;
+      return list;
+    }
+
+    it('should return only the earliest buyer message, ignoring staff replies and later buyer messages', async () => {
+      // order_details, customer_threads, customer_messages
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Second', date_add: '2024-01-02 09:00:00' },
+          { id: '10', id_customer_thread: '5', id_employee: '0', message: 'First', date_add: '2024-01-01 10:00:00' },
+          { id: '9', id_customer_thread: '5', id_employee: '3', message: 'Staff first', date_add: '2024-01-01 09:00:00' },
+          { id: '11', id_customer_thread: '5', id_employee: '3', message: 'Staff reply', date_add: '2024-01-01 11:00:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBe('First');
+    });
+
+    it('should not treat a later contact message as the checkout note (B-6)', async () => {
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Where is my parcel?', date_add: '2024-01-03 09:00:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeNull();
+    });
+
+    it('should accept a checkout message written within the window after the order (B-6)', async () => {
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Ring twice', date_add: '2024-01-01 10:04:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBe('Ring twice');
+    });
+
+    it('should decode HTML entities and line breaks in the note (N-26)', async () => {
+      script([
+        [],
+        [{ id: '5', id_order: '42' }],
+        [
+          { id: '12', id_customer_thread: '5', id_employee: '0', message: 'Tom &amp; Jerry<br />door 5', date_add: '2024-01-01 10:00:00' },
+        ],
+      ]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBe('Tom & Jerry\ndoor 5');
+    });
+
+    it('should ask the shop for the order thread and only buyer messages', async () => {
+      const list = script([[], [{ id: '5' }, { id: '6' }], []]);
+
+      await adapter.getOrder({ externalOrderId: '42' });
+
+      const calls = list.mock.calls as unknown[][];
+      const threadCall = calls.find((call) => call[0] === 'customer_threads');
+      const messageCall = calls.find((call) => call[0] === 'customer_messages');
+      expect(threadCall?.[1]).toMatchObject({ custom: { id_order: '42' } });
+      expect(messageCall?.[1]).toMatchObject({
+        custom: { id_customer_thread: ['5', '6'], id_employee: 0 },
+      });
+    });
+
+    it('should report asserted none when the order has no thread', async () => {
+      script([[], []]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeNull();
+    });
+
+    it('should report asserted none when the thread holds no buyer message', async () => {
+      script([[], [{ id: '5' }], []]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeNull();
+    });
+
+    it.each([
+      ['an authentication refusal', new PrestashopAuthenticationException('no permission')],
+      ['a 403', new PrestashopApiException('forbidden', 403, '')],
+      ['a missing resource', new PrestashopResourceNotFoundException('no resource')],
+    ])('should leave the note unknown when the thread resource answers %s', async (_label, error) => {
+      script([[], error]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeUndefined();
+      expect('buyerNote' in incoming).toBe(false);
+    });
+
+    it('should import the order with the note unknown when the thread resource answers a server error (N-24)', async () => {
+      const serverError = new PrestashopApiException('boom', 500, '');
+      script([[], serverError]);
+
+      const incoming = await adapter.getOrder({ externalOrderId: '42' });
+
+      expect(incoming.buyerNote).toBeUndefined();
+      expect('buyerNote' in incoming).toBe(false);
+    });
+  });
+
+  describe('getOrder - pickupPoint resolution', () => {
     const baseOrder: PrestashopOrder = {
       id: '42',
       reference: 'ORDER-042',
@@ -1005,7 +1430,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
     // Resource-keyed getResource mock. Since #<issue> the adapter also hydrates
     // the buyer address (and its country) inside getOrder, so the call sequence
-    // is no longer "order then address" — these tests dispatch by (resource,id)
+    // is no longer "order then address" - these tests dispatch by (resource,id)
     // instead of relying on call order.
     const keyedGetResource = (address: Record<string, unknown> | Error): void => {
       mockHttpClient.getResource = jest.fn().mockImplementation((resource: string, id: string) => {
@@ -1169,7 +1594,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — order line items (PS9 order_details rename)', () => {
+  describe('getOrder - order line items (PS9 order_details rename)', () => {
     it('should fetch order rows from the order_details resource (renamed from order_rows in PS9)', async () => {
       const prestashopOrder: PrestashopOrder = {
         id: '42',
@@ -1248,7 +1673,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — buyer address hydration', () => {
+  describe('getOrder - buyer address hydration', () => {
     const orderWithAddresses: PrestashopOrder = {
       id: '42',
       reference: 'ORDER-042',
@@ -1339,7 +1764,7 @@ describe('PrestashopOrderSourceAdapter', () => {
 
       expect(incoming.billingAddress).toBeUndefined();
       expect(incoming.shippingAddress).toBeUndefined();
-      // No address/country round-trips — the order plus the buyer e-mail read
+      // No address/country round-trips - the order plus the buyer e-mail read
       // (#1928) are the only calls.
       expect(mockHttpClient.getResource).toHaveBeenCalledTimes(2);
       expect(mockHttpClient.getResource).toHaveBeenCalledWith('orders', '42');
@@ -1448,7 +1873,7 @@ describe('PrestashopOrderSourceAdapter', () => {
     });
   });
 
-  describe('getOrder — buyer e-mail hydration (#1928)', () => {
+  describe('getOrder - buyer e-mail hydration (#1928)', () => {
     const baseOrder: PrestashopOrder = {
       id: '42',
       reference: 'ORDER-042',

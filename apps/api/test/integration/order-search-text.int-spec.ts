@@ -89,6 +89,59 @@ describe('order search text — trigram search (integration, #3527/#3528)', () =
     expect(bySku.items.map((o) => o.internalOrderId)).toContain('ol_order_pl_1');
   });
 
+  it('finds an order by a substring of its OpenLinker order id (#4229)', async () => {
+    await repository.upsert(makeOrder('ol_order_4229abcdef', { orderNumber: 'NO-ID-IN-TEXT' }));
+    await repository.upsert(makeOrder('ol_order_other0001', { orderNumber: 'ANOTHER' }));
+
+    const byFullId = await repository.findMany(
+      { search: 'ol_order_4229abcdef' },
+      { limit: 20, offset: 0 },
+    );
+    expect(byFullId.items.map((o) => o.internalOrderId)).toEqual(['ol_order_4229abcdef']);
+
+    const bySubstring = await repository.findMany({ search: '4229abc' }, { limit: 20, offset: 0 });
+    expect(bySubstring.items.map((o) => o.internalOrderId)).toEqual(['ol_order_4229abcdef']);
+    expect(await repository.countMany({ search: '4229abc' })).toBe(1);
+  });
+
+  it('matches an order id pasted as a dashed UUID (#4229)', async () => {
+    await repository.upsert(
+      makeOrder('ol_order_0123456789abcdef0123456789abcdef', { orderNumber: 'DASHED-ID' }),
+    );
+
+    const result = await repository.findMany(
+      { search: '01234567-89ab-cdef-0123-456789abcdef' },
+      { limit: 20, offset: 0 },
+    );
+    expect(result.items.map((o) => o.internalOrderId)).toEqual([
+      'ol_order_0123456789abcdef0123456789abcdef',
+    ]);
+  });
+
+  it('does not match every order on a query inside the shared id prefix (#4229)', async () => {
+    await repository.upsert(makeOrder('ol_order_prefixcase01', { orderNumber: 'PFX-1' }));
+    await repository.upsert(makeOrder('ol_order_prefixcase02', { orderNumber: 'PFX-2' }));
+
+    for (const search of ['order', 'ol', '_', 'ol_order_']) {
+      const result = await repository.findMany({ search }, { limit: 20, offset: 0 });
+      expect(result.items.map((o) => o.internalOrderId)).not.toContain('ol_order_prefixcase01');
+    }
+  });
+
+  it('combines the tracking-number ids with an id match (#4229)', async () => {
+    await repository.upsert(makeOrder('ol_order_idmatch0001', { orderNumber: 'COMBO-1' }));
+    await repository.upsert(makeOrder('ol_order_viatrack0002', { orderNumber: 'COMBO-2' }));
+
+    const result = await repository.findMany(
+      { search: 'idmatch0001', searchTrackingOrderIds: ['ol_order_viatrack0002'] },
+      { limit: 20, offset: 0 },
+    );
+    expect(result.items.map((o) => o.internalOrderId).sort()).toEqual([
+      'ol_order_idmatch0001',
+      'ol_order_viatrack0002',
+    ]);
+  });
+
   it('does not match an unrelated order', async () => {
     await repository.upsert(
       makeOrder('ol_order_pl_2', {

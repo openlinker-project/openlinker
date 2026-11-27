@@ -13,10 +13,9 @@
  * invalid fields. Abandon-prevention triggers a native confirm dialog
  * when the form is dirty and the tab is closed.
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, type Path } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
 import { useAdaptersQuery } from '../../adapters';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import { CORE_CAPABILITY_VALUES, type CoreCapability } from '../api/connections.types';
@@ -37,27 +36,50 @@ import {
 import { Alert } from '../../../shared/ui/alert';
 import { BackLink } from '../../../shared/ui/back-link';
 import { Button } from '../../../shared/ui/button';
+import { OrderSyncStartField } from './order-sync-start-field';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  describeOrderSyncStart,
+  readsOrders,
+} from '../lib/order-sync-start';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { WizardLayout } from '../../../shared/ui/wizard-layout';
 import { useToast } from '../../../shared/ui/toast-provider';
+import {
+  BuyerDataWizardReviewRows,
+  BuyerDataWizardStep,
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+} from '../../buyer-data';
 import { captureDemoEvent } from '../../demo';
+import { WizardCreatedScreen } from './wizard-created-screen';
+import { ShopPackingNextStep } from './shop-packing-next-step';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
+import { usePlatform } from '../../../shared/plugins';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { CapabilityName } from './capability-name';
 
-const STEP_LABELS = [
-  'Store details',
-  'API credentials',
-  'Capabilities',
-  'Review & create',
-] as const;
+// Analytics step names, kept in English so events stay comparable across languages.
+type StepId = 'store' | 'credentials' | 'capabilities' | 'orders' | 'review';
 
-const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<WoocommerceSetupFormValues>>> = [
-  ['name', 'siteUrl'],
-  ['consumerKey', 'consumerSecret'],
-  ['enabledCapabilities'],
-  [],
-];
+const STEP_EVENT_IDS: Record<StepId, string> = {
+  store: 'Store details',
+  credentials: 'API credentials',
+  capabilities: 'Capabilities',
+  orders: 'Order history',
+  review: 'Review & create',
+};
+
+const STEP_FIELDS: Record<StepId, ReadonlyArray<Path<WoocommerceSetupFormValues>>> = {
+  store: ['name', 'siteUrl'],
+  credentials: ['consumerKey', 'consumerSecret'],
+  capabilities: ['enabledCapabilities'],
+  orders: ['orderSyncStart'],
+  review: [],
+};
 
 function maskKey(key: string): string {
   if (key.length <= 4) return '•'.repeat(key.length);
@@ -65,9 +87,11 @@ function maskKey(key: string): string {
 }
 
 export function WoocommerceSetupForm(): ReactElement {
+  const copy = useMessages('connections').woocommerceSetupForm;
+  const setupCopy = useMessages('connections').setup;
+  const platform = usePlatform('woocommerce')?.displayName ?? copy.platformFallback;
   const createConnection = useCreateConnectionMutation();
   const { showToast } = useToast();
-  const navigate = useNavigate();
   const adaptersQuery = useAdaptersQuery();
 
   const form = useForm<WoocommerceSetupFormValues, undefined, WoocommerceSetupFormSubmission>({
@@ -76,7 +100,16 @@ export function WoocommerceSetupForm(): ReactElement {
     mode: 'onBlur',
   });
 
+  const values = form.watch();
+  // The order-history step only exists for a connection that will read orders.
+  const stepIds: StepId[] = readsOrders(values.enabledCapabilities)
+    ? ['store', 'credentials', 'capabilities', 'orders', 'review']
+    : ['store', 'credentials', 'capabilities', 'review'];
+  const STEP_LABELS = stepIds.map((id) => copy.steps[id]);
+
+  const [created, setCreated] = useState<{ id: string; name: string } | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
+  const stepId = stepIds[Math.min(stepIndex, stepIds.length - 1)];
   const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
 
   // Abandon-prevention.
@@ -90,22 +123,26 @@ export function WoocommerceSetupForm(): ReactElement {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty]);
 
+  const orderStartCopy = useMessages('connections').orderSyncStart;
+  const format = useFormat();
   const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === WOOCOMMERCE_ADAPTER_KEY);
   // The checkbox list is gated on the well-known core capabilities: the
   // create-connection request DTO is still strict on `CoreCapabilityValues`
   // (#576), so the wizard only exposes core caps today.
+  const orderSyncStartModes = adapterMetadata?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
+  const orderWindowImport = adapterMetadata?.orderWindowImport ?? false;
   const supportedCapabilities: CoreCapability[] = (
     adapterMetadata?.supportedCapabilities ?? WOOCOMMERCE_FALLBACK_CAPABILITIES
   ).filter((capability): capability is CoreCapability =>
     (CORE_CAPABILITY_VALUES as readonly string[]).includes(capability),
   );
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
 
   async function goNext(): Promise<void> {
-    const fields = STEP_FIELDS[stepIndex];
+    const fields = STEP_FIELDS[stepId];
     if (fields.length > 0) {
       const valid = await form.trigger([...fields]);
       if (!valid) return;
@@ -113,7 +150,7 @@ export function WoocommerceSetupForm(): ReactElement {
     setCompletedSteps((prev) => new Set(prev).add(stepIndex));
     captureDemoEvent('demo_connection_wizard_step_advanced', {
       platform: 'woocommerce',
-      step: STEP_LABELS[stepIndex],
+      step: STEP_EVENT_IDS[stepId],
     });
     setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
   }
@@ -122,23 +159,58 @@ export function WoocommerceSetupForm(): ReactElement {
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
+  // A submit before the last step is Enter in a field, or the click that
+  // advanced to the last step landing on the Create button that replaced Next.
+  // Either way it means "Next", never "Create" (the review step must be seen).
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (stepIndex < stepIds.length - 1) {
+      event.preventDefault();
+      void goNext();
+      return;
+    }
+    void onSubmit(event);
+  }
+
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
+      const result = await createConnection.mutateAsync(toCreateConnectionInput(values));
       form.reset(values, { keepValues: true, keepDirty: false });
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `WooCommerce connection "${created.name}" was created.`,
+        title: copy.createdTitle,
+        description: interpolate(copy.createdDescription, { platform, name: result.name }),
       });
-      void navigate('/connections');
+      setCreated({ id: result.id, name: result.name });
     } catch {
       return;
     }
   });
 
-  const values = form.watch();
   const selectedCapabilities = values.enabledCapabilities ?? [];
+  const buyerDataValue = values.buyerDataRetention ?? DEFAULT_BUYER_DATA_WIZARD_VALUE;
+  const takesOrders = selectedCapabilities.includes('OrderSource');
+
+  if (created) {
+    return (
+      <WizardLayout
+        stepper={
+          <SetupStepper
+            steps={STEP_LABELS}
+            currentStep={STEP_LABELS.length - 1}
+            completedSteps={new Set(STEP_LABELS.map((_, index) => index))}
+          />
+        }
+      >
+        <WizardCreatedScreen
+          connectionId={created.id}
+          connectionName={created.name}
+          title={copy.createdTitle}
+        >
+          <ShopPackingNextStep connectionId={created.id} />
+        </WizardCreatedScreen>
+      </WizardLayout>
+    );
+  }
 
   return (
     <WizardLayout
@@ -146,39 +218,39 @@ export function WoocommerceSetupForm(): ReactElement {
         <SetupStepper steps={STEP_LABELS} currentStep={stepIndex} completedSteps={completedSteps} />
       }
     >
-      <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-        <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+      <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
+        <BackLink to="/connections/new" label={setupCopy.connections} className="wizard-card__back" />
 
         {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
           <FormErrorSummary errors={validationMessages} />
         ) : null}
         {createConnection.error ? (
-          <Alert tone="error" title="Unable to create connection">
-            {createConnection.error.message}
+          <Alert tone="error" title={copy.createError}>
+            {describeApiError(createConnection.error, 'connections')}
           </Alert>
         ) : null}
 
-        {stepIndex === 0 ? (
+        {stepId === 'store' ? (
           <>
             <FormField
-              label="Connection name"
+              label={copy.fields.name.label}
               name="name"
               error={form.formState.errors.name?.message}
-              description="A label to identify this store in OpenLinker."
+              description={copy.fields.name.description}
             >
               <Input
                 {...form.register('name')}
-                placeholder="My WooCommerce Store"
+                placeholder={interpolate(copy.fields.name.placeholder, { platform })}
                 autoComplete="off"
                 invalid={Boolean(form.formState.errors.name)}
               />
             </FormField>
 
             <FormField
-              label="Site URL"
+              label={copy.fields.siteUrl.label}
               name="siteUrl"
               error={form.formState.errors.siteUrl?.message}
-              description="The root URL of your WooCommerce store. Must use HTTPS."
+              description={interpolate(copy.fields.siteUrl.description, { platform })}
             >
               <Input
                 {...form.register('siteUrl')}
@@ -191,20 +263,21 @@ export function WoocommerceSetupForm(): ReactElement {
           </>
         ) : null}
 
-        {stepIndex === 1 ? (
+        {stepId === 'credentials' ? (
           <>
-            <Alert tone="info" title="Before you start">
-              In your WooCommerce admin, go to{' '}
-              <strong>WooCommerce → Settings → Advanced → REST API</strong> and generate a key with{' '}
-              <strong>Read/Write</strong> permissions. Copy the consumer key and consumer secret
-              below — they are only shown once.
+            <Alert tone="info" title={copy.beforeYouStart.title}>
+              {renderRich(
+                copy.beforeYouStart.body,
+                { strong: (text) => <strong>{text}</strong> },
+                { platform },
+              )}
             </Alert>
 
             <FormField
-              label="Consumer key"
+              label={copy.fields.consumerKey.label}
               name="consumerKey"
               error={form.formState.errors.consumerKey?.message}
-              description="Starts with ck_ — generated in WooCommerce REST API settings."
+              description={interpolate(copy.fields.consumerKey.description, { platform })}
             >
               <Input
                 {...form.register('consumerKey')}
@@ -217,10 +290,10 @@ export function WoocommerceSetupForm(): ReactElement {
             </FormField>
 
             <FormField
-              label="Consumer secret"
+              label={copy.fields.consumerSecret.label}
               name="consumerSecret"
               error={form.formState.errors.consumerSecret?.message}
-              description="Starts with cs_ — generated alongside the consumer key."
+              description={copy.fields.consumerSecret.description}
             >
               <Input
                 {...form.register('consumerSecret')}
@@ -234,13 +307,10 @@ export function WoocommerceSetupForm(): ReactElement {
           </>
         ) : null}
 
-        {stepIndex === 2 ? (
+        {stepId === 'capabilities' ? (
           <fieldset className="capability-fieldset">
-            <legend className="capability-fieldset__legend">Capabilities</legend>
-            <p className="muted-text capability-fieldset__help">
-              Pick which roles this connection should fulfil. You can change this later on the
-              connection&rsquo;s detail page.
-            </p>
+            <legend className="capability-fieldset__legend">{copy.capabilities.legend}</legend>
+            <p className="muted-text capability-fieldset__help">{copy.capabilities.help}</p>
             <ul className="capability-list">
               {supportedCapabilities.map((capability) => {
                 const id = `new-cap-${capability}`;
@@ -256,7 +326,7 @@ export function WoocommerceSetupForm(): ReactElement {
                         disabled={isBlocked}
                         {...form.register('enabledCapabilities')}
                       />
-                      <span className="capability-list__name mono-text">{capability}</span>
+                      <CapabilityName capability={capability} />
                     </label>
                     <p className="capability-list__help muted-text">
                       {isBlocked && conflict
@@ -270,37 +340,64 @@ export function WoocommerceSetupForm(): ReactElement {
           </fieldset>
         ) : null}
 
-        {stepIndex === 3 ? (
+        {stepId === 'orders' ? (
+          <OrderSyncStartField
+            value={values.orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+            onChange={(next) =>
+              form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+            }
+            supportedModes={orderSyncStartModes}
+            windowImport={orderWindowImport}
+            error={form.formState.errors.orderSyncStart?.from?.message}
+          />
+        ) : null}
+
+        {stepId === 'review' ? (
+          <>
+          {takesOrders ? (
+            <BuyerDataWizardStep
+              value={buyerDataValue}
+              onChange={(next) => form.setValue('buyerDataRetention', next, { shouldDirty: true })}
+            />
+          ) : null}
           <dl className="wizard-review-list">
-            <dt>Name</dt>
+            <dt>{copy.review.name}</dt>
             <dd>{values.name || '—'}</dd>
-            <dt>Site URL</dt>
+            <dt>{copy.fields.siteUrl.label}</dt>
             <dd className="mono-text">{values.siteUrl || '—'}</dd>
-            <dt>Consumer key</dt>
+            <dt>{copy.fields.consumerKey.label}</dt>
             <dd className="mono-text">{values.consumerKey ? maskKey(values.consumerKey) : '—'}</dd>
-            <dt>Capabilities</dt>
+            <dt>{copy.capabilities.legend}</dt>
             <dd>
-              {selectedCapabilities.length > 0 ? selectedCapabilities.join(', ') : 'None selected'}
+              {selectedCapabilities.length > 0 ? selectedCapabilities.join(', ') : copy.review.noneSelected}
             </dd>
+            {takesOrders ? <BuyerDataWizardReviewRows value={buyerDataValue} /> : null}
+            {readsOrders(values.enabledCapabilities) ? (
+              <>
+                <dt>{orderStartCopy.review.label}</dt>
+                <dd>{describeOrderSyncStart(values.orderSyncStart, orderStartCopy.review, format.date)}</dd>
+              </>
+            ) : null}
           </dl>
+          </>
         ) : null}
 
         <div className="wizard-actions">
           <div className="wizard-actions__group">
             {stepIndex > 0 ? (
               <Button tone="secondary" type="button" onClick={goBack}>
-                Back
+                {setupCopy.back}
               </Button>
             ) : null}
           </div>
           <div className="wizard-actions__group">
-            {stepIndex < STEP_LABELS.length - 1 ? (
-              <Button type="button" onClick={() => void goNext()}>
-                Next
+            {stepIndex < stepIds.length - 1 ? (
+              <Button key="next" type="button" onClick={() => void goNext()}>
+                {setupCopy.next}
               </Button>
             ) : (
-              <Button type="submit" disabled={createConnection.isPending}>
-                {createConnection.isPending ? 'Creating...' : 'Create connection'}
+              <Button key="submit" type="submit" disabled={createConnection.isPending}>
+                {createConnection.isPending ? copy.creating : copy.create}
               </Button>
             )}
           </div>

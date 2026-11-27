@@ -18,7 +18,6 @@
  * @see {@link BoundedSweepInput} for the contract
  */
 
-import type { MasterSweepKind } from '@openlinker/core/sync';
 import type {
   BoundedSweepInput,
   BoundedSweepResult,
@@ -96,12 +95,9 @@ export {
   masterSweepCursorKey as sweepCursorKey,
   masterSweepCompletedAtCursorKey as sweepCompletedAtCursorKey,
   masterSweepRemainingCountCursorKey as sweepRemainingCountCursorKey,
+  /** `master:{kind}:sweep:{connectionId}` - one in-flight run per connection. Built in core so the cursor-rewind service (#4023) takes the same lock. */
+  masterSweepLockKey as sweepLockKey,
 } from '@openlinker/core/sync';
-
-/** `master:{kind}:sweep:{connectionId}` — one in-flight run per connection. */
-export function sweepLockKey(kind: MasterSweepKind, connectionId: string): string {
-  return `master:${kind}:sweep:${connectionId}`;
-}
 
 /**
  * Collects up to `budget` external ids by paging a master's own enumeration.

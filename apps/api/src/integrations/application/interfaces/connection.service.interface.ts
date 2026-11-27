@@ -7,18 +7,25 @@
  * @module apps/api/src/integrations/application/interfaces
  * @see {@link ConnectionService} for the implementation
  */
-import type {
-  Connection,
-  ConnectionUpdate,
-  ConnectionFilters,
-} from '@openlinker/core/identifier-mapping';
+import type { OrderSyncStart } from '@openlinker/core/sync';
+import type { Connection, ConnectionFilters } from '@openlinker/core/identifier-mapping';
 import type {
   ConnectionTestResult,
   WebhookProvisioningResult,
 } from '@openlinker/core/integrations';
-import type { ConnectionCreateInput } from './connection.service.types';
+import type {
+  ConnectionCreateInput,
+  ConnectionUpdateInput,
+  OrderImportRequest,
+  OrderSyncRestartResult,
+} from './connection.service.types';
 
-export type { ConnectionCreateInput };
+export type {
+  ConnectionCreateInput,
+  ConnectionUpdateInput,
+  OrderImportRequest,
+  OrderSyncRestartResult,
+};
 
 export const CONNECTION_SERVICE_TOKEN = Symbol('IConnectionService');
 
@@ -50,7 +57,17 @@ export interface IConnectionService {
    * @param patch - Partial update payload
    * @returns Updated Connection entity or throws if not found
    */
-  update(connectionId: string, patch: ConnectionUpdate): Promise<Connection>;
+  update(connectionId: string, patch: ConnectionUpdateInput): Promise<Connection>;
+
+  /**
+   * Advisory (#1594): return non-blocking warnings about a connection sharing a
+   * provider-side rate-limit bucket with another active connection (same adapter
+   * + same seller tax id). Empty when there is no collision. Never throws.
+   *
+   * @param connection - The just-created/updated connection to check
+   * @returns Zero or more operator-facing warning strings
+   */
+  findSharedRateLimitBucketWarnings(connection: Connection): Promise<string[]>;
 
   /**
    * Rotate the credentials stored for a connection. Writes to the credential
@@ -81,6 +98,12 @@ export interface IConnectionService {
    * @returns Structured result with `webhooksConfigured`, `testPingTriggered`, optional `warning`
    */
   installWebhooks(connectionId: string, actorUserId?: string): Promise<WebhookProvisioningResult>;
+
+  /** Restart the order sync from a new start: only new, from a date, or all history (#4228). */
+  restartOrderSync(connectionId: string, start: OrderSyncStart): Promise<OrderSyncRestartResult>;
+
+  /** Import orders for a chosen range on demand; returns the run id of the first queued page (#4228). */
+  startOrderImport(connectionId: string, request: OrderImportRequest): Promise<{ runId: string }>;
 
   /**
    * Disable a connection

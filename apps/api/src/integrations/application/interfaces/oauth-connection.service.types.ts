@@ -11,6 +11,7 @@
  *
  * @module apps/api/src/integrations/application/interfaces
  */
+import type { OrderSyncStart } from '@openlinker/core/sync';
 
 /**
  * Result of generating the authorization URL — returned to the caller (the
@@ -44,6 +45,14 @@ export interface GenerateAuthorizationUrlInput {
   connectionId?: string;
   /** Platform-specific connection-config seed; opaque to the host. */
   initialConfig?: Record<string, unknown>;
+  /** Where order sync starts for a NEW connection (#4228); ignored on re-auth. */
+  orderSyncStart?: OrderSyncStart;
+  /**
+   * Capabilities the created connection enables. Absent, the adapter manifest's
+   * default applies. Ignored on the re-auth-in-place path, which rotates
+   * credentials only.
+   */
+  enabledCapabilities?: string[];
 }
 
 /**
@@ -65,6 +74,10 @@ export interface OAuthStateData {
   connectionId?: string;
   /** Platform-specific connection-config seed forwarded verbatim to the adapter + merged into the connection's config. */
   initialConfig?: Record<string, unknown>;
+  /** The start choice survives the Redis round trip so the callback can store it (#4228). */
+  orderSyncStart?: OrderSyncStart;
+  /** Capabilities chosen at connect time; see `GenerateAuthorizationUrlInput`. */
+  enabledCapabilities?: string[];
 }
 
 /**

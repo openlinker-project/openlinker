@@ -18,10 +18,11 @@
  * @module apps/web/src/features/bench/components
  */
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useRef, useState, type ReactElement } from 'react';
+import { useMemo, useRef, useState, type ReactElement } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+import { useMessages, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -43,11 +44,10 @@ import {
   type ChangeSizeFormValues,
   type ChangeSizeMode,
 } from '../lib/bench-label-replace';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
 
-const copy = benchParcelCopy.changeSize;
+type ChangeSizeCopy = ResolvedCopy<Messages['bench']>['parcel']['changeSize'];
 
-const positive = (max: number) =>
+const positive = (copy: ChangeSizeCopy, max: number) =>
   z
     .string()
     .trim()
@@ -60,49 +60,54 @@ const positive = (max: number) =>
       }
     });
 
-const schema = z
-  .object({
-    mode: z.enum(['template', 'box', 'weight']),
-    template: z.string(),
-    lengthCm: z.string(),
-    widthCm: z.string(),
-    heightCm: z.string(),
-    weightKg: z.string(),
-  })
-  .superRefine((values, ctx) => {
-    const check = (
-      field: 'template' | 'lengthCm' | 'widthCm' | 'heightCm' | 'weightKg',
-      rule: z.ZodTypeAny
-    ): void => {
-      const parsed = rule.safeParse(values[field]);
-      if (!parsed.success) {
-        ctx.addIssue({ code: 'custom', path: [field], message: parsed.error.issues[0].message });
+function createChangeSizeSchema(copy: ChangeSizeCopy) {
+  return z
+    .object({
+      mode: z.enum(['template', 'box', 'weight']),
+      template: z.string(),
+      lengthCm: z.string(),
+      widthCm: z.string(),
+      heightCm: z.string(),
+      weightKg: z.string(),
+    })
+    .superRefine((values, ctx) => {
+      const check = (
+        field: 'template' | 'lengthCm' | 'widthCm' | 'heightCm' | 'weightKg',
+        rule: z.ZodTypeAny
+      ): void => {
+        const parsed = rule.safeParse(values[field]);
+        if (!parsed.success) {
+          ctx.addIssue({ code: 'custom', path: [field], message: parsed.error.issues[0].message });
+        }
+      };
+      if (values.mode === 'template') {
+        if (values.template === '') {
+          ctx.addIssue({ code: 'custom', path: ['template'], message: copy.pickTemplate });
+        }
+        return;
       }
-    };
-    if (values.mode === 'template') {
-      if (values.template === '') {
-        ctx.addIssue({ code: 'custom', path: ['template'], message: copy.pickTemplate });
+      if (values.mode === 'box') {
+        check('lengthCm', positive(copy, MAX_SIDE_CM));
+        check('widthCm', positive(copy, MAX_SIDE_CM));
+        check('heightCm', positive(copy, MAX_SIDE_CM));
       }
-      return;
-    }
-    if (values.mode === 'box') {
-      check('lengthCm', positive(MAX_SIDE_CM));
-      check('widthCm', positive(MAX_SIDE_CM));
-      check('heightCm', positive(MAX_SIDE_CM));
-    }
-    check('weightKg', positive(MAX_WEIGHT_KG));
-  });
+      check('weightKg', positive(copy, MAX_WEIGHT_KG));
+    });
+}
 
-const REFUSAL_COPY: Record<string, string> = {
-  'cannot-cancel': copy.refusedCannotCancel,
-  'adapter-unresolved': copy.refusedAdapterUnresolved,
-  'already-handed-over': copy.refusedAlreadyHandedOver,
-  'parcel-completed': copy.refusedParcelCompleted,
-  'no-label': copy.refusedNoLabel,
-  'recipient-unavailable': copy.refusedRecipientUnavailable,
-  'parcel-size-unknown': copy.refusedParcelSizeUnknown,
-  'replace-in-progress': copy.refusedReplaceInProgress,
-};
+function refusalCopy(copy: ChangeSizeCopy, reason: string): string | undefined {
+  const byReason: Record<string, string> = {
+    'cannot-cancel': copy.refusedCannotCancel,
+    'adapter-unresolved': copy.refusedAdapterUnresolved,
+    'already-handed-over': copy.refusedAlreadyHandedOver,
+    'parcel-completed': copy.refusedParcelCompleted,
+    'no-label': copy.refusedNoLabel,
+    'recipient-unavailable': copy.refusedRecipientUnavailable,
+    'parcel-size-unknown': copy.refusedParcelSizeUnknown,
+    'replace-in-progress': copy.refusedReplaceInProgress,
+  };
+  return byReason[reason];
+}
 
 export interface BenchChangeParcelDialogProps {
   readonly workId: string;
@@ -130,6 +135,8 @@ export function BenchChangeParcelDialog({
   templates,
   onResolved,
 }: BenchChangeParcelDialogProps): ReactElement {
+  const copy = useMessages('bench').parcel.changeSize;
+  const schema = useMemo(() => createChangeSizeSchema(copy), [copy]);
   const mutation = useBenchReplaceLabelMutation();
   const inFlight = useRef(false);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -166,7 +173,7 @@ export function BenchChangeParcelDialog({
       {
         onSuccess: (result) => {
           if (result.outcome === 'refused') {
-            setRefusal(REFUSAL_COPY[result.reason ?? ''] ?? copy.refusedUnknown);
+            setRefusal(refusalCopy(copy, result.reason ?? '') ?? copy.refusedUnknown);
             return;
           }
           reset();

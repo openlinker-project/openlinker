@@ -14,6 +14,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MappingPanel, type MappingRow } from './MappingPanel';
 import type { MappingOption } from '../api/mappings.types';
+import { getMessages } from '../../../shared/i18n';
+import { ApiError } from '../../../shared/api/api-error';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../demo', () => ({
@@ -271,11 +273,11 @@ describe('MappingPanel', () => {
           targetOptions={[]}
           savedRows={[]}
           onSave={vi.fn()}
-          optionsError={new Error('Allegro 502')}
+          optionsError={new ApiError('Allegro 502', 502, null)}
         />,
       );
       expect(screen.getByText(/unable to load options/i)).toBeInTheDocument();
-      expect(screen.getByText('Allegro 502')).toBeInTheDocument();
+      expect(screen.getByText(getMessages('errors').status['5xx'])).toBeInTheDocument();
     });
 
     it('shows the empty-state copy when no rows are configured', () => {
@@ -504,6 +506,117 @@ describe('MappingPanel', () => {
       expect(screen.queryByText(/Unknown method/)).not.toBeInTheDocument();
       const select = screen.getByRole('combobox', { name: /select allegro delivery method/i });
       expect(select).toHaveTextContent('Select Allegro delivery method');
+    });
+  });
+
+  describe('add -> save clarity (#4154)', () => {
+    async function stageOne(onSave = vi.fn()): Promise<ReturnType<typeof userEvent.setup>> {
+      const user = userEvent.setup();
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_PACZKOMAT, ALLEGRO_KURIER]}
+          targetOptions={[PS_INPOST, PS_DPD]}
+          savedRows={[]}
+          onSave={onSave}
+        />,
+      );
+      await user.click(screen.getByRole('combobox', { name: /select allegro delivery method/i }));
+      await user.click(screen.getByText('Allegro Kurier24 InPost'));
+      await user.click(screen.getByRole('combobox', { name: /select prestashop carrier/i }));
+      await user.click(screen.getByText('DPD courier'));
+      return user;
+    }
+
+    it('shows every option as soon as the combobox opens, without typing', async () => {
+      const user = userEvent.setup();
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={Array.from({ length: 53 }, (_, i) => ({
+            value: `m-${i}`,
+            label: `Method ${String(i).padStart(2, '0')}`,
+          }))}
+          targetOptions={[PS_INPOST]}
+          savedRows={[]}
+          onSave={vi.fn()}
+        />,
+      );
+      await user.click(screen.getByRole('combobox', { name: /select allegro delivery method/i }));
+      expect(screen.getByText('Method 00')).toBeInTheDocument();
+      expect(screen.queryByText(/Type to search/)).toBeNull();
+    });
+
+    it('explains the disabled Add button and drops the explanation once both values are chosen', async () => {
+      const user = userEvent.setup();
+      render(
+        <MappingPanel
+          {...baseProps}
+          sourceOptions={[ALLEGRO_KURIER]}
+          targetOptions={[PS_DPD]}
+          savedRows={[]}
+          onSave={vi.fn()}
+        />,
+      );
+      const add = screen.getByRole('button', { name: 'Add to list' });
+      expect(add).toBeDisabled();
+      expect(add).toHaveAccessibleDescription(/pick both fields first \(Allegro delivery method and PrestaShop carrier\)/i);
+
+      await user.click(screen.getByRole('combobox', { name: /select allegro delivery method/i }));
+      await user.click(screen.getByText('Allegro Kurier24 InPost'));
+      await user.click(screen.getByRole('combobox', { name: /select prestashop carrier/i }));
+      await user.click(screen.getByText('DPD courier'));
+      expect(add).toBeEnabled();
+      expect(screen.queryByText(/pick both fields first/i)).toBeNull();
+    });
+
+    it('marks a staged row as not saved and shows the unsaved bar until it is saved or discarded', async () => {
+      const user = await stageOne();
+      expect(screen.queryByText('Not saved yet')).toBeNull();
+
+      await user.click(screen.getByRole('button', { name: 'Add to list' }));
+
+      expect(screen.getByText('Not saved yet')).toBeInTheDocument();
+      expect(screen.getByTestId('mapping-unsaved-bar')).toHaveTextContent('1 unsaved change');
+      expect(screen.getByRole('button', { name: /save mappings/i })).toBeEnabled();
+
+      await user.click(screen.getByRole('button', { name: 'Discard' }));
+      expect(screen.queryByText('Not saved yet')).toBeNull();
+      expect(screen.getByTestId('mapping-unsaved-bar')).not.toHaveTextContent('unsaved');
+    });
+
+    it('clears the marker and confirms after a successful save', async () => {
+      const onSave = vi.fn();
+      const user = await stageOne(onSave);
+      await user.click(screen.getByRole('button', { name: 'Add to list' }));
+      await user.click(screen.getByRole('button', { name: /save mappings/i }));
+      expect(onSave).toHaveBeenCalledWith([
+        { sourceValue: ALLEGRO_KURIER.value, targetValue: PS_DPD.value },
+      ]);
+    });
+
+    it('confirms with a count and loses the chip once the parent reports the save done', async () => {
+      const row = { sourceValue: ALLEGRO_KURIER.value, targetValue: PS_DPD.value };
+      const props = {
+        ...baseProps,
+        sourceOptions: [ALLEGRO_PACZKOMAT, ALLEGRO_KURIER],
+        targetOptions: [PS_INPOST, PS_DPD],
+        onSave: vi.fn(),
+      };
+      const user = userEvent.setup();
+      const { rerender } = render(<MappingPanel {...props} savedRows={[]} />);
+      await user.click(screen.getByRole('combobox', { name: /select allegro delivery method/i }));
+      await user.click(screen.getByText('Allegro Kurier24 InPost'));
+      await user.click(screen.getByRole('combobox', { name: /select prestashop carrier/i }));
+      await user.click(screen.getByText('DPD courier'));
+      await user.click(screen.getByRole('button', { name: 'Add to list' }));
+      await user.click(screen.getByRole('button', { name: /save mappings/i }));
+
+      rerender(<MappingPanel {...props} savedRows={[]} isSaving />);
+      rerender(<MappingPanel {...props} savedRows={[row]} />);
+
+      expect(screen.queryByText('Not saved yet')).toBeNull();
+      expect(screen.getByText('1 mapping saved')).toBeInTheDocument();
     });
   });
 });

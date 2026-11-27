@@ -87,6 +87,7 @@
 import { assertNever } from '@openlinker/shared/types';
 
 import type {
+  ReturnCorrectionComponentCredit,
   ReturnCorrectionCandidate,
   ReturnCorrectionNoMatchReason,
   ReturnCorrectionProposalLine,
@@ -110,6 +111,11 @@ export interface CorrectionSnapshotLine {
    * order item backs.
    */
   orderLineId?: string;
+  /**
+   * Mirrors `InvoiceLine.bundleSetQuantity`: on a component line of a set, the
+   * set units the whole line covers.
+   */
+  bundleSetQuantity?: number;
 }
 
 /** The projection of one disposed return line these rules read. */
@@ -133,6 +139,12 @@ export interface CorrectionReturnLineInput {
    * to disambiguate a SKU (#3312).
    */
   resolvedOrderLineId: string | null;
+  /**
+   * Components of this line's set that came back on their own (confirmed
+   * partial groups), with the set units each came back for. Only read when the
+   * invoice presented the set as its component lines.
+   */
+  partialComponents?: readonly { variantId: string; bundleUnits: number }[];
 }
 
 /**
@@ -147,8 +159,10 @@ export function normalizeCorrectionLineName(name: string): string {
 /**
  * Classify every disposed return line against the issued document's lines.
  *
- * Order-preserving: the result is one entry per input line, in input order, so a
- * caller never has to re-associate. Lines with `quantityDisposed <= 0` are the
+ * Order-preserving: entries follow input order, one per input line - except a
+ * line crediting an order line the invoice split across several document lines
+ * (E-45), which yields one entry per document line touched, all sharing its
+ * `returnLineId`. Lines with `quantityDisposed <= 0` are the
  * caller's to exclude — this rule classifies what it is given.
  */
 export function classifyReturnCorrectionLines(
@@ -158,7 +172,31 @@ export function classifyReturnCorrectionLines(
   const byName = indexSnapshotByName(snapshotLines);
   const byOrderLineId = indexSnapshotByOrderLineId(snapshotLines);
 
-  return lines.map((line) => classifyOne(line, byOrderLineId, byName));
+  // `flatMap`, because a logical order line the invoice carries as several
+  // document lines (an E-45 rounding split) yields one entry per document line
+  // touched. Every other input still yields exactly one entry.
+  const setUnitsByNumber = new Map<number, number | undefined>(
+    snapshotLines.map((snapshotLine, position) => [position + 1, snapshotLine.bundleSetQuantity])
+  );
+  const componentIndex = indexSnapshotComponents(snapshotLines);
+  const orderLineIdByNumber = new Map<number, string | undefined>(
+    snapshotLines.map((snapshotLine, position) => [position + 1, snapshotLine.orderLineId])
+  );
+  return lines.flatMap((line) => {
+    if (
+      !line.hasUnconfirmedDisposition &&
+      line.name !== null &&
+      line.name.trim() !== '' &&
+      line.resolvedOrderLineId !== null &&
+      !byOrderLineId.has(line.resolvedOrderLineId)
+    ) {
+      const components = componentIndex.get(line.resolvedOrderLineId);
+      if (components !== undefined) {
+        return classifyAcrossBundleComponents(line, components, setUnitsByNumber);
+      }
+    }
+    return classifyOne(line, byOrderLineId, byName, orderLineIdByNumber);
+  });
 }
 
 /**
@@ -196,6 +234,72 @@ function indexSnapshotByOrderLineId(
   return index;
 }
 
+/**
+ * Index the component lines of sets the invoice presented as their components
+ * (`{setLineId}~c:{variantId}`): set line id -> variant id -> its document lines.
+ */
+function indexSnapshotComponents(
+  snapshotLines: readonly CorrectionSnapshotLine[]
+): Map<string, Map<string, ReturnCorrectionCandidate[]>> {
+  const index = new Map<string, Map<string, ReturnCorrectionCandidate[]>>();
+  snapshotLines.forEach((snapshotLine, position) => {
+    const id = snapshotLine.orderLineId;
+    const marker = id === undefined ? -1 : id.indexOf('~c:');
+    if (id === undefined || marker < 0) return;
+    const setId = id.slice(0, marker);
+    const variantId = id.slice(marker + 3);
+    const candidate: ReturnCorrectionCandidate = {
+      originalLineNumber: position + 1,
+      name: snapshotLine.name,
+      quantity: snapshotLine.quantity,
+      unitPriceGross: snapshotLine.unitPriceGross,
+      taxRate: snapshotLine.taxRate,
+      ...(snapshotLine.unit === undefined ? {} : { unit: snapshotLine.unit }),
+    };
+    const byVariant = index.get(setId) ?? new Map<string, ReturnCorrectionCandidate[]>();
+    byVariant.set(variantId, [...(byVariant.get(variantId) ?? []), candidate]);
+    index.set(setId, byVariant);
+  });
+  return index;
+}
+
+/**
+ * A set the invoice presented as its components: a returned component credits
+ * its own line, and a whole-set return credits EVERY component line, in
+ * proportion (component units x returned set units / set units on the line).
+ * A line whose proportion is not a whole number of units, or that does not say
+ * how many set units it covers, is not guessed: `ambiguous-invoice-line`.
+ */
+function classifyAcrossBundleComponents(
+  line: CorrectionReturnLineInput,
+  components: ReadonlyMap<string, readonly ReturnCorrectionCandidate[]>,
+  setUnitsByNumber: ReadonlyMap<number, number | undefined>
+): ReturnCorrectionProposalLine[] {
+  const requests: { variantId: string; bundleUnits: number }[] = [];
+  if (line.quantityDisposed > 0) {
+    for (const variantId of components.keys()) {
+      requests.push({ variantId, bundleUnits: line.quantityDisposed });
+    }
+  }
+  for (const partial of line.partialComponents ?? []) {
+    if (components.has(partial.variantId)) requests.push(partial);
+  }
+
+  return requests.flatMap(({ variantId, bundleUnits }) => {
+    const parts = components.get(variantId) ?? [];
+    const setUnits = setUnitsByNumber.get(parts[0].originalLineNumber);
+    const invoiced = parts.reduce((sum, part) => sum + part.quantity, 0);
+    const credit =
+      setUnits !== undefined && setUnits > 0 ? (invoiced * bundleUnits) / setUnits : Number.NaN;
+    const named: CorrectionReturnLineInput = { ...line, name: parts[0].name };
+    const entries =
+      Number.isInteger(credit) && credit > 0
+        ? classifyAcrossOrderLineParts({ ...named, quantityDisposed: credit }, parts)
+        : [noMatch({ ...named, quantityDisposed: bundleUnits }, 'ambiguous-invoice-line', [...parts])];
+    return entries.map((entry) => ({ ...entry, componentVariantId: variantId }));
+  });
+}
+
 function indexSnapshotByName(
   snapshotLines: readonly CorrectionSnapshotLine[]
 ): Map<string, ReturnCorrectionCandidate[]> {
@@ -228,14 +332,15 @@ function indexSnapshotByName(
 function classifyOne(
   line: CorrectionReturnLineInput,
   byOrderLineId: Map<string, ReturnCorrectionCandidate[]>,
-  byName: Map<string, ReturnCorrectionCandidate[]>
-): ReturnCorrectionProposalLine {
+  byName: Map<string, ReturnCorrectionCandidate[]>,
+  orderLineIdByNumber: ReadonlyMap<number, string | undefined>
+): ReturnCorrectionProposalLine[] {
   // Checked FIRST, ahead of BOTH lookups: a line whose disposal OL could not
   // confirm must not be credited even when its join is perfectly known. The
   // reason an operator needs is "attest the blocked restock", not a match
   // outcome — and any match answer would be the one they act on instead.
   if (line.hasUnconfirmedDisposition) {
-    return noMatch(line, 'disposition-not-confirmed', []);
+    return [noMatch(line, 'disposition-not-confirmed', [])];
   }
 
   // Also ahead of both lookups, deliberately: a line with no name recorded is
@@ -243,7 +348,7 @@ function classifyOne(
   // downstream candidate still carries a `name` the operator reads, and this
   // line has none to compare it against for a sanity check (#3312 review).
   if (line.name === null || line.name.trim() === '') {
-    return noMatch(line, 'no-line-name', []);
+    return [noMatch(line, 'no-line-name', [])];
   }
 
   // #3312 — id-first: deterministic, no name lookup, when the return's own
@@ -254,16 +359,75 @@ function classifyOne(
   if (line.resolvedOrderLineId !== null) {
     const idCandidates = byOrderLineId.get(line.resolvedOrderLineId);
     if (idCandidates !== undefined) {
-      return classifyAgainstCandidates(line, idCandidates);
+      // Document lines sharing one `orderLineId` are ONE logical order line
+      // (the invoice composer splits a discounted multi-unit line so the
+      // document adds up to the cent, E-45), never an ambiguity.
+      return classifyAcrossOrderLineParts(line, idCandidates);
     }
   }
 
   const byNameCandidates = byName.get(normalizeCorrectionLineName(line.name)) ?? [];
   if (byNameCandidates.length === 0) {
-    return noMatch(line, 'no-line-by-name', []);
+    return [noMatch(line, 'no-line-by-name', [])];
   }
 
-  return classifyAgainstCandidates(line, byNameCandidates);
+  // E-45: name candidates that all carry ONE orderLineId are the parts of a
+  // split order line, not an ambiguity. Candidates without an id, or with
+  // different ids, stay on the ambiguity path.
+  const sharedIds = new Set(
+    byNameCandidates.map((candidate) => orderLineIdByNumber.get(candidate.originalLineNumber))
+  );
+  const [sharedId] = [...sharedIds];
+  if (byNameCandidates.length > 1 && sharedIds.size === 1 && sharedId !== undefined) {
+    return classifyAcrossOrderLineParts(line, byNameCandidates);
+  }
+  return [classifyAgainstCandidates(line, byNameCandidates)];
+}
+
+/**
+ * Credit a returned line against the document lines that together carry ONE
+ * order line. A single part is the ordinary case. With several, the units are
+ * taken from the smallest part first (the 1-unit remainder an E-45 split
+ * creates), then the next, and one entry is emitted per part touched, so the
+ * correction names every affected line number with its own post-correction
+ * quantity. Fewer units invoiced in total than returned is
+ * `quantity-exceeds-invoiced`, as for a single line.
+ */
+function classifyAcrossOrderLineParts(
+  line: CorrectionReturnLineInput,
+  parts: readonly ReturnCorrectionCandidate[]
+): ReturnCorrectionProposalLine[] {
+  if (parts.length === 1) {
+    return [classifyAgainstCandidates(line, parts)];
+  }
+  const invoiced = parts.reduce((sum, part) => sum + part.quantity, 0);
+  if (invoiced < line.quantityDisposed) {
+    return [noMatch(line, 'quantity-exceeds-invoiced', [...parts])];
+  }
+  const ordered = [...parts].sort(
+    (a, b) => a.quantity - b.quantity || a.originalLineNumber - b.originalLineNumber
+  );
+  const result: ReturnCorrectionProposalLine[] = [];
+  let remaining = line.quantityDisposed;
+  for (const part of ordered) {
+    if (remaining <= 0) break;
+    const taken = Math.min(remaining, part.quantity);
+    remaining -= taken;
+    result.push({
+      returnLineId: line.returnLineId,
+      lineIndex: line.lineIndex,
+      name: line.name,
+      sku: line.sku,
+      quantityDisposed: taken,
+      status: 'matched',
+      candidates: [part],
+      selectedOriginalLineNumber: part.originalLineNumber,
+      newQuantity: part.quantity - taken,
+      noMatchReason: null,
+      candidatesPriceOrRateDiffer: false,
+    });
+  }
+  return result;
 }
 
 /**
@@ -359,4 +523,58 @@ export function describeCorrectionNoMatchReason(reason: ReturnCorrectionNoMatchR
     default:
       return assertNever(reason, 'ReturnCorrectionNoMatchReason');
   }
+}
+
+/**
+ * Fold the per-component acts of a return into one credit per return line
+ * (#3933). Only a PARTIAL group counts (its acts carry a price share), and only
+ * when every act of the group is book-confirmed: a group with a refused
+ * component never moved the line counters, so crediting it would be crediting
+ * stock OpenLinker could not confirm came back.
+ */
+export interface ComponentActInput {
+  returnLineId: string;
+  componentGroup: string | null;
+  componentVariantId: string | null;
+  componentShareGross: number | null;
+  quantity: number;
+  confirmed: boolean;
+}
+
+export function summarizeComponentCredits(
+  acts: readonly ComponentActInput[]
+): Map<string, ReturnCorrectionComponentCredit> {
+  const groups = new Map<string, ComponentActInput[]>();
+  for (const act of acts) {
+    if (act.componentGroup === null || act.componentVariantId === null) continue;
+    const key = `${act.returnLineId}|${act.componentGroup}`;
+    const existing = groups.get(key);
+    if (existing === undefined) groups.set(key, [act]);
+    else existing.push(act);
+  }
+
+  const result = new Map<string, ReturnCorrectionComponentCredit>();
+  for (const group of groups.values()) {
+    const partial = group.every((act) => act.componentShareGross !== null);
+    if (!partial || !group.every((act) => act.confirmed)) continue;
+    const lineId = group[0].returnLineId;
+    const entry: ReturnCorrectionComponentCredit = result.get(lineId) ?? {
+      units: 0,
+      amountGross: 0,
+      variantIds: [],
+      components: [],
+    };
+    entry.units += group[0].quantity;
+    entry.amountGross =
+      Math.round((entry.amountGross + group.reduce((sum, act) => sum + (act.componentShareGross ?? 0), 0)) * 100) /
+      100;
+    for (const act of group) {
+      if (act.componentVariantId !== null && !entry.variantIds.includes(act.componentVariantId)) {
+        entry.variantIds.push(act.componentVariantId);
+        entry.components?.push({ variantId: act.componentVariantId, bundleUnits: act.quantity });
+      }
+    }
+    result.set(lineId, entry);
+  }
+  return result;
 }

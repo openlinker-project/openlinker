@@ -20,9 +20,69 @@ export interface ReceiveLineInput {
   actorUserId?: string | null;
 }
 
+/**
+ * The composition of a returned BUNDLE line, handed in as DATA (#3933).
+ *
+ * `returns` must not take an orders-module edge, so the caller that already
+ * holds the order (the API layer) reads the frozen expansion and passes it
+ * here. `components` is the line's whole composition; `returnedVariantIds`, when
+ * present, is the subset that actually came back.
+ */
+export interface BundleReturnInput {
+  /** Gross price paid for ONE bundle unit, or null when the order does not say. */
+  paidPerUnitGross: number | null;
+  components: Array<{
+    productId: string;
+    variantId: string;
+    /** Units of the component per ONE bundle unit. */
+    perUnit: number;
+    sku?: string | null;
+  }>;
+  /** Absent means the whole set came back. */
+  returnedVariantIds?: string[];
+}
+
+/** What the operator sees before returning part of a set (#3933). Nothing is written. */
+export interface BundleReturnPreview {
+  components: Array<{
+    variantId: string;
+    sku: string | null;
+    perUnit: number;
+    /** Full standalone gross price of one unit, null when the component is not sold alone. */
+    standaloneUnitPriceGross: number | null;
+    /** Gross share of ONE bundle unit's price, null when the split is refused. */
+    shareGross: number | null;
+    shareBasis: 'price' | 'cost' | null;
+  }>;
+  /** Why the split could not be computed; null when it could. */
+  splitRefusal: 'no-split-basis' | 'bad-total' | null;
+  /** The components that made the split refuse (no price and no cost). */
+  splitRefusalVariantIds: string[];
+  /** The returned components' share of the price for `quantity` units, null when unsplit. */
+  returnedShareGross: number | null;
+  /**
+   * The Allegro-formula refund suggestion: paid for the set minus the full
+   * standalone price of what the buyer keeps, minimum 0. A HINT - never applied by
+   * default. Null when a kept component has no standalone price to subtract.
+   */
+  keptAtStandaloneRefundHintGross: number | null;
+  /** Inputs of the hint, for the "how this is calculated" view. Null when the hint is. */
+  hintInputs: { paidForSetGross: number; keptStandaloneGross: number } | null;
+}
+
+/** The components of one bundle line that came back, as the act ledger records them. */
+export interface ReturnedBundleComponents {
+  returnLineId: string;
+  /** Bundle units whose components were returned partially. */
+  units: number;
+  returnedVariantIds: string[];
+}
+
 export interface DisposeLineInput {
   quantity: number;
   disposition: ReturnDisposition;
+  /** Present only for a bundle line; a restock then writes one act per returned component. */
+  bundle?: BundleReturnInput;
   note?: string | null;
   actorUserId?: string | null;
 }
@@ -75,6 +135,8 @@ export interface DisposeLineResult {
    * deduplicated restock.
    */
   restockBlocked: RestockBlockedDetail | null;
+  /** Every refused component of a bundle restock (#3933); empty otherwise. */
+  restockBlockedComponents?: RestockBlockedDetail[];
 }
 
 /**
@@ -183,6 +245,19 @@ export interface IReturnCustodyService {
    * @throws {ReturnCustodyTransitionError} `over-disposition` / `illegal-transition` / …
    */
   disposeLine(lineId: string, input: DisposeLineInput): Promise<DisposeLineResult>;
+
+  /**
+   * Price a partial (or whole) return of a bundle line without writing anything
+   * (#3933): each component's split share, and the Allegro-formula refund hint.
+   */
+  previewBundleReturn(bundle: BundleReturnInput, quantity: number): Promise<BundleReturnPreview>;
+
+  /**
+   * The partially returned bundle lines of a return, read from the act ledger:
+   * only book-confirmed groups that carry a price share (a whole-set return has
+   * no partial component to refund by formula). Feeds the refund hint.
+   */
+  listReturnedBundleComponents(returnId: string): Promise<ReturnedBundleComponents[]>;
 
   /**
    * Record that the parcel is not coming (spec § 5.2).

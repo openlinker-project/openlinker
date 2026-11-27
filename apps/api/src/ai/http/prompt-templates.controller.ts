@@ -11,22 +11,20 @@
  * @module apps/api/src/ai/http
  */
 import {
-  BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Delete,
   Get,
   HttpCode,
+  type HttpException,
   HttpStatus,
   Inject,
-  NotFoundException,
+
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { PromptTemplate, PromptTemplateChannel } from '@openlinker/core/ai';
@@ -41,6 +39,13 @@ import {
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+import {
+  promptTemplateNotFound,
+  promptTemplatePublishedNotArchivable,
+  promptTemplateStateInvalid,
+  promptTemplateVariableMissing,
+} from './prompt-template-errors';
 import { ArchivePromptTemplateDto } from './dto/archive-prompt-template.dto';
 import { CreatePromptTemplateDto } from './dto/create-prompt-template.dto';
 import { PromptTemplateResponseDto } from './dto/prompt-template-response.dto';
@@ -50,8 +55,19 @@ import { RenderedPromptResponseDto } from './dto/rendered-prompt-response.dto';
 import { RevertPromptTemplateDto } from './dto/revert-prompt-template.dto';
 import { UpdatePromptTemplateDto } from './dto/update-prompt-template.dto';
 
+function keyQueryRequired(): HttpException {
+  return codedHttpError(
+    HttpStatus.BAD_REQUEST,
+    'VALIDATION_FAILED',
+    '`key` query parameter is required',
+    undefined,
+    { fields: [{ path: 'key', code: 'isNotEmpty' }] }
+  );
+}
+
 @ApiBearerAuth()
 @ApiTags('prompt-templates')
+
 @Controller('prompt-templates')
 export class PromptTemplatesController {
   constructor(
@@ -83,15 +99,18 @@ export class PromptTemplatesController {
     @Query('channel') channel?: string
   ): Promise<PromptTemplateResponseDto> {
     if (!key || key.trim() === '') {
-      throw new BadRequestException('`key` query parameter is required');
+      throw keyQueryRequired();
     }
     // Does not use `withDomainExceptionMapping` because the service returns
     // `null` (legitimate "no published version yet" state) rather than
     // throwing. Translating null → 404 happens inline on this single endpoint.
     const template = await this.service.getLatestPublished(key, this.parseChannelStrict(channel));
     if (template === null) {
-      throw new NotFoundException(
-        `No published template for key=${key}, channel=${channel ?? 'master'}`
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'PROMPT_TEMPLATE_NOT_PUBLISHED',
+        `No published template for key=${key}, channel=${channel ?? 'master'}`,
+        { key, channel: channel ?? 'master' }
       );
     }
     return PromptTemplateResponseDto.fromDomain(template);
@@ -106,7 +125,7 @@ export class PromptTemplatesController {
     @Query('channel') channel?: string
   ): Promise<PromptTemplateResponseDto[]> {
     if (!key || key.trim() === '') {
-      throw new BadRequestException('`key` query parameter is required');
+      throw keyQueryRequired();
     }
     const versions = await this.service.getVersions(key, this.parseChannelStrict(channel));
     return versions.map((template) => PromptTemplateResponseDto.fromDomain(template));
@@ -282,16 +301,16 @@ export class PromptTemplatesController {
       return await fn();
     } catch (error) {
       if (error instanceof PromptTemplateNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw promptTemplateNotFound(error);
       }
       if (error instanceof CannotArchivePublishedTemplateException) {
-        throw new ConflictException(error.message);
+        throw promptTemplatePublishedNotArchivable(error);
       }
       if (error instanceof PromptTemplateStateException) {
-        throw new BadRequestException(error.message);
+        throw promptTemplateStateInvalid(error);
       }
       if (error instanceof PromptTemplateRenderException) {
-        throw new UnprocessableEntityException(error.message);
+        throw promptTemplateVariableMissing(error);
       }
       throw error;
     }

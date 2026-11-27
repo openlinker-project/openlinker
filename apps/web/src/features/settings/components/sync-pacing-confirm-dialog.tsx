@@ -6,12 +6,13 @@
  * differently every time and cannot be clicked through by reflex.
  *
  * It renders nothing when nothing changed. That is not an edge case being
- * tolerated — a modal that appears for a no-op is the thing that teaches an
+ * tolerated - a modal that appears for a no-op is the thing that teaches an
  * operator to dismiss it unread.
  *
  * @module apps/web/src/features/settings/components
  */
 import type { ReactElement } from 'react';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -38,6 +39,8 @@ export function SyncPacingConfirmDialog({
   onCancel,
   onConfirm,
 }: SyncPacingConfirmDialogProps): ReactElement | null {
+  const copy = useMessages('settings').syncPacingConfirmDialog;
+  const plural = usePlural();
   if (diff.changes.length === 0) {
     return null;
   }
@@ -54,10 +57,9 @@ export function SyncPacingConfirmDialog({
       }}
     >
       <DialogContent>
-        <DialogTitle>Save these changes?</DialogTitle>
+        <DialogTitle>{copy.title}</DialogTitle>
         <DialogDescription>
-          {count === 1 ? 'One setting changed' : `${String(count)} settings changed`}. Everything
-          else stays as it is.
+          {plural(count, copy.description)}
         </DialogDescription>
 
         <div className="dialog__body">
@@ -75,7 +77,9 @@ export function SyncPacingConfirmDialog({
                 {change.aboveRecommended !== undefined ? (
                   <p className="change__ceiling">
                     <span className="change__ceiling-label">
-                      Above the {change.aboveRecommended.recommendedMax} we suggest.
+                      {interpolate(copy.aboveRecommended, {
+                        max: String(change.aboveRecommended.recommendedMax),
+                      })}
                     </span>{' '}
                     {change.aboveRecommended.reason ?? ''}
                   </p>
@@ -88,19 +92,18 @@ export function SyncPacingConfirmDialog({
           </div>
 
           {diff.lengthensDeletionWindow ? (
-            <Alert tone="warning" title="One change makes things worse">
-              A product deleted in your shop will now keep selling on your marketplaces for longer
-              than it does today. Nothing else in OpenLinker catches it.
+            <Alert tone="warning" title={copy.worseTitle}>
+              {copy.worseBody}
             </Alert>
           ) : null}
         </div>
 
         <DialogFooter>
           <Button tone="secondary" onClick={onCancel} disabled={saving}>
-            Keep editing
+            {copy.keepEditing}
           </Button>
           <Button onClick={onConfirm} disabled={saving}>
-            {saving ? 'Saving…' : 'Save changes'}
+            {saving ? copy.saving : copy.save}
           </Button>
         </DialogFooter>
       </DialogContent>

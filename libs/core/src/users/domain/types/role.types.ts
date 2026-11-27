@@ -69,6 +69,11 @@ export const PermissionValues = [
   // decorators gate the route, and a UI that offers what the route refuses
   // (or hides what it allows, which is what happened here) is the defect.
   'bench:write',
+  // Saved list views (#4241): display-only gate for the Save / Save as new controls.
+  // Held by admin, operator and viewer - each may keep PERSONAL views, a NEW policy
+  // (order-column-presets excludes viewer). Shared writes are admin-only and enforced
+  // in `SavedViewsService`, not by this value. Mirrors `SavedViewsController`'s `@Roles`.
+  'saved-views:write',
   // Read-only Fulfilment board + task detail (#3736). Held by admin, operator
   // and viewer - never packer, whose work is the bench. Must stay identical to
   // the `@Roles` lists on the GET routes of `FulfillmentWorkController` and
@@ -124,6 +129,15 @@ export const PermissionValues = [
   // on `OrderExportsController`; this permission is what the FE's Export
   // button and row checkboxes on the export dialog key on.
   'orders:export',
+  // DISPLAY-ONLY (#3520): gates the FE's bundle/multipack write affordances.
+  // Not `products:write`, which operators lack: the roles holding this MUST
+  // stay identical to the `@Roles('admin', 'operator')` lists on
+  // `BundleDefinitionsController` and the multipack-hold confirm route.
+  'bundles:write',
+  // DISPLAY-ONLY (#3940): gates the gift promotions and "Add gift" affordances.
+  // The roles holding this MUST stay identical to the `@Roles('admin', 'operator')`
+  // lists on `GiftRulesController` and the order-edit gift route.
+  'gifts:write',
 ] as const;
 
 /**
@@ -156,6 +170,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'listings:write',
     'customers:read',
     'bench:write',
+    'saved-views:write',
     'fulfillment:read',
     'bench:read',
     'shipments:read',
@@ -166,8 +181,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'automations:read',
     // D35: admin and operator only — see `PermissionValues`'s own comment.
     'orders:export',
+    'bundles:write',
+    'gifts:write',
   ],
   viewer: [
+    'saved-views:write',
     'connections:read',
     'sync:read',
     'integrations:read',

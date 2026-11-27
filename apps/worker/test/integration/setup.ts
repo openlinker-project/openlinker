@@ -119,6 +119,8 @@ export class WorkerIntegrationTestHarness {
     await truncateTables(this.dataSource, [
       'sync_jobs',
       'inventory_items',
+      'inventory_movements',
+      'channel_quantity_pushes',
       'product_variants',
       'products',
       'identifier_mappings',

@@ -17,8 +17,10 @@
  */
 import {
   parseBenchActivityEntries,
+  parseBenchBuyerNoteAcknowledgementResult,
   parseBenchClaimNextResult,
   parseBenchClaimResult,
+  parseBenchSourceChangeTakenOutResult,
   parseBenchCompleteResult,
   parseBenchDocuments,
   parseBenchLabelReplaceResult,
@@ -36,8 +38,10 @@ import {
 } from './bench-parcel.schema';
 import type {
   BenchActivityEntry,
+  BenchBuyerNoteAcknowledgementResult,
   BenchClaimNextResult,
   BenchClaimResult,
+  BenchSourceChangeTakenOutResult,
   BenchCompleteResult,
   BenchDocuments,
   BenchLabelReplaceInput,
@@ -150,8 +154,19 @@ export interface BenchApi {
 
   /** Undo the single most recent scan on an OPEN parcel (#3405). */
   undoLastScan: (workId: string) => Promise<BenchUndoResult>;
+  /**
+   * "Done, I took it out" (#3961): the packer took the extra units of an item
+   * the shop lowered back out of the box. Answers the parcel as it now stands.
+   */
+  confirmSourceChangeTakenOut: (workId: string, workLineId: string) => Promise<BenchSourceChangeTakenOutResult>;
   /** Announce presence on this parcel, and learn whether someone else already has (#3406). */
   pingPresence: (workId: string) => Promise<BenchPresence>;
+  /**
+   * Record that the signed-in packer read THIS parcel's buyer note (#3539, D12).
+   * Fill-once and idempotent per parcel; gates nothing, and is not a parcel
+   * close. A refusal is a 200 with `outcome: 'refused'`.
+   */
+  acknowledgeBuyerNote: (workId: string) => Promise<BenchBuyerNoteAcknowledgementResult>;
   /** "Claim this parcel" — self-assign the CALLER, never anyone else (#3412). */
   claimParcel: (workId: string) => Promise<BenchClaimResult>;
   /** "Take next task" — server-picked from the same sorted, filtered worklist (#3412). */
@@ -261,6 +276,14 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
       return parseBenchUnlabelledParcelList(await request<unknown>('/bench/unlabelled-parcels'));
     },
 
+    async confirmSourceChangeTakenOut(workId, workLineId): Promise<BenchSourceChangeTakenOutResult> {
+      return parseBenchSourceChangeTakenOutResult(
+        await request<unknown>(`${work(workId)}/source-change/taken-out`, {
+          method: 'POST',
+          body: JSON.stringify({ workLineId }),
+        })
+      );
+    },
     async undoLastScan(workId): Promise<BenchUndoResult> {
       return parseBenchUndoResult(
         await request<unknown>(`${work(workId)}/verifications/undo`, { method: 'POST' })
@@ -269,6 +292,11 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
     async pingPresence(workId): Promise<BenchPresence> {
       return parseBenchPresence(
         await request<unknown>(`${work(workId)}/presence`, { method: 'POST' })
+      );
+    },
+    async acknowledgeBuyerNote(workId): Promise<BenchBuyerNoteAcknowledgementResult> {
+      return parseBenchBuyerNoteAcknowledgementResult(
+        await request<unknown>(`${work(workId)}/buyer-note/acknowledge`, { method: 'POST' })
       );
     },
     async claimParcel(workId): Promise<BenchClaimResult> {

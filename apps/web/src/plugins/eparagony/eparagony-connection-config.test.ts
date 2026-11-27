@@ -44,6 +44,14 @@ describe('eparagonyConnectionConfig', () => {
         eparagonyFiscalDeviceUniqueNumber: 'ABC123',
         eparagonyApiBaseUrl: 'https://sandbox.eparagony.pl',
         eparagonyAuthBaseUrl: 'https://login.sandbox.eparagony.pl',
+        eparagonyMerchantTIN: '',
+        eparagonyMerchantName: '',
+        eparagonyMerchantStreet: '',
+        eparagonyMerchantNumber: '',
+        eparagonyMerchantApartment: '',
+        eparagonyMerchantPostalCode: '',
+        eparagonyMerchantCity: '',
+        eparagonyMerchantCountry: '',
       });
     });
 
@@ -57,6 +65,14 @@ describe('eparagonyConnectionConfig', () => {
         eparagonyFiscalDeviceUniqueNumber: '',
         eparagonyApiBaseUrl: '',
         eparagonyAuthBaseUrl: '',
+        eparagonyMerchantTIN: '',
+        eparagonyMerchantName: '',
+        eparagonyMerchantStreet: '',
+        eparagonyMerchantNumber: '',
+        eparagonyMerchantApartment: '',
+        eparagonyMerchantPostalCode: '',
+        eparagonyMerchantCity: '',
+        eparagonyMerchantCountry: '',
       });
     });
 
@@ -107,6 +123,14 @@ describe('eparagonyConnectionConfig', () => {
         eparagonyFiscalDeviceUniqueNumber: '',
         eparagonyApiBaseUrl: '',
         eparagonyAuthBaseUrl: '',
+        eparagonyMerchantTIN: '',
+        eparagonyMerchantName: '',
+        eparagonyMerchantStreet: '',
+        eparagonyMerchantNumber: '',
+        eparagonyMerchantApartment: '',
+        eparagonyMerchantPostalCode: '',
+        eparagonyMerchantCity: '',
+        eparagonyMerchantCountry: '',
       });
     });
   });
@@ -308,18 +332,34 @@ describe('eparagonyConnectionConfig', () => {
         eparagonyFiscalDeviceUniqueNumber: 'DEV-1',
         eparagonyApiBaseUrl: 'https://api.eparagony.pl',
         eparagonyAuthBaseUrl: 'https://login.eparagony.pl',
+        eparagonyMerchantTIN: '5252556107',
+        eparagonyMerchantName: 'OpenLinker Test Sp. z o.o.',
+        eparagonyMerchantStreet: 'Prosta',
+        eparagonyMerchantNumber: '51',
+        eparagonyMerchantApartment: '4',
+        eparagonyMerchantPostalCode: '00-838',
+        eparagonyMerchantCity: 'Warszawa',
+        eparagonyMerchantCountry: 'PL',
       };
       expect(readConfigToForm(applyToConfig({}, form))).toEqual(form);
     });
   });
 
   describe('schemaShape', () => {
-    it('should declare exactly the eight fields the section renders', () => {
+    it('should declare exactly the sixteen fields the section renders', () => {
       expect(Object.keys(schemaShape).sort()).toEqual([
         'eparagonyApiBaseUrl',
         'eparagonyAuthBaseUrl',
         'eparagonyDefaultTaxRateCode',
         'eparagonyFiscalDeviceUniqueNumber',
+        'eparagonyMerchantApartment',
+        'eparagonyMerchantCity',
+        'eparagonyMerchantCountry',
+        'eparagonyMerchantName',
+        'eparagonyMerchantNumber',
+        'eparagonyMerchantPostalCode',
+        'eparagonyMerchantStreet',
+        'eparagonyMerchantTIN',
         'eparagonyPaymentForm',
         'eparagonyPaymentName',
         'eparagonyPrint',
@@ -364,6 +404,137 @@ describe('eparagonyConnectionConfig', () => {
     it('should refuse a payment form outside the vendor vocabulary', () => {
       expect(schemaShape.eparagonyPaymentForm?.safeParse('Bitcoin').success).toBe(false);
       expect(schemaShape.eparagonyPaymentForm?.safeParse('Przelew').success).toBe(true);
+    });
+  });
+
+  describe('seller on invoices', () => {
+    const FULL_ADDRESS = {
+      street: 'Prosta',
+      number: '51',
+      postalCode: '00-838',
+      city: 'Warszawa',
+      country: 'PL',
+    };
+
+    it('should read a stored seller back into its form fields', () => {
+      expect(
+        readConfigToForm({
+          merchantTIN: '5252556107',
+          merchantName: 'OpenLinker Test Sp. z o.o.',
+          merchantAddress: { ...FULL_ADDRESS, apartment: '4' },
+        }),
+      ).toMatchObject({
+        eparagonyMerchantTIN: '5252556107',
+        eparagonyMerchantName: 'OpenLinker Test Sp. z o.o.',
+        eparagonyMerchantStreet: 'Prosta',
+        eparagonyMerchantNumber: '51',
+        eparagonyMerchantApartment: '4',
+        eparagonyMerchantPostalCode: '00-838',
+        eparagonyMerchantCity: 'Warszawa',
+        eparagonyMerchantCountry: 'PL',
+      });
+    });
+
+    it('should read an address that is not an object as empty rather than throwing', () => {
+      expect(readConfigToForm({ merchantAddress: 'Prosta 51' })).toMatchObject({
+        eparagonyMerchantStreet: '',
+        eparagonyMerchantCity: '',
+      });
+    });
+
+    it('should write a trimmed tax number and an explicit null when it is cleared', () => {
+      expect(applyToConfig({}, { eparagonyMerchantTIN: ' 5252556107 ' })).toEqual({
+        merchantTIN: '5252556107',
+      });
+      expect(applyToConfig({ merchantTIN: '5252556107' }, { eparagonyMerchantTIN: '' })).toEqual({
+        merchantTIN: null,
+      });
+    });
+
+    it('should overlay one address part onto the stored address and keep the others', () => {
+      expect(
+        applyToConfig({ merchantAddress: FULL_ADDRESS }, { eparagonyMerchantCity: 'Kraków' }),
+      ).toEqual({ merchantAddress: { ...FULL_ADDRESS, city: 'Kraków' } });
+    });
+
+    it('should upper-case the country code, which the backend reads as a shape only', () => {
+      expect(applyToConfig({}, { eparagonyMerchantCountry: 'pl' })).toEqual({
+        merchantAddress: { country: 'PL' },
+      });
+    });
+
+    it('should drop a cleared part instead of writing an empty string the backend refuses', () => {
+      expect(
+        applyToConfig(
+          { merchantAddress: { ...FULL_ADDRESS, apartment: '4' } },
+          { eparagonyMerchantApartment: '' },
+        ),
+      ).toEqual({ merchantAddress: FULL_ADDRESS });
+    });
+
+    it('should write an explicit null once every address part is cleared', () => {
+      expect(
+        applyToConfig({ merchantAddress: { city: 'Warszawa' } }, { eparagonyMerchantCity: '' }),
+      ).toEqual({ merchantAddress: null });
+    });
+
+    it('should leave the address untouched when the patch carries no address part', () => {
+      const config = { merchantAddress: FULL_ADDRESS };
+      expect(applyToConfig(config, { eparagonyMerchantTIN: '5252556107' }).merchantAddress).toBe(
+        FULL_ADDRESS,
+      );
+    });
+
+    it('should accept any non-empty tax number, because eparagony.pl checks it against the account, not a format', () => {
+      expect(schemaShape.eparagonyMerchantTIN?.safeParse('PL5252556107').success).toBe(true);
+    });
+
+    it('should refuse a country that is not a two-letter code', () => {
+      expect(schemaShape.eparagonyMerchantCountry?.safeParse('Poland').success).toBe(false);
+      expect(schemaShape.eparagonyMerchantCountry?.safeParse('pl').success).toBe(true);
+      expect(schemaShape.eparagonyMerchantCountry?.safeParse('').success).toBe(true);
+    });
+  });
+
+  describe('superRefine', () => {
+    function issuesFor(values: Record<string, unknown>): Array<{ path: unknown[]; message: string }> {
+      const issues: Array<{ path: unknown[]; message: string }> = [];
+      const ctx = {
+        addIssue: (issue: { path?: unknown[]; message?: string }) =>
+          issues.push({ path: issue.path ?? [], message: issue.message ?? '' }),
+        path: [],
+      };
+      eparagonyConnectionConfig.superRefine?.(values, ctx as never);
+      return issues;
+    }
+
+    it('should accept an address left entirely empty, which a plain invoice does not need', () => {
+      expect(issuesFor({})).toEqual([]);
+    });
+
+    it('should name every missing part of an address that was started', () => {
+      expect(
+        issuesFor({ eparagonyMerchantStreet: 'Prosta', eparagonyMerchantApartment: '4' }).map(
+          (issue) => issue.path[0],
+        ),
+      ).toEqual([
+        'eparagonyMerchantNumber',
+        'eparagonyMerchantPostalCode',
+        'eparagonyMerchantCity',
+        'eparagonyMerchantCountry',
+      ]);
+    });
+
+    it('should not require the apartment', () => {
+      expect(
+        issuesFor({
+          eparagonyMerchantStreet: 'Prosta',
+          eparagonyMerchantNumber: '51',
+          eparagonyMerchantPostalCode: '00-838',
+          eparagonyMerchantCity: 'Warszawa',
+          eparagonyMerchantCountry: 'PL',
+        }),
+      ).toEqual([]);
     });
   });
 });

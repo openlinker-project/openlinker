@@ -36,8 +36,10 @@
  * that becomes assignable a moment later. The retry ladder absorbs that race.
  *
  * PII: the ship-to projection is `RoutingShipTo`, ADR-062's allowlist — country,
- * postcode, city, or a hash under `OL_STORE_PII=false`. Failure logs name ids
- * only, never the projection.
+ * postcode, city, or a hash under `OL_STORE_PII=false`. A holder that ships the
+ * parcel itself also gets the delivery address (`buildFulfillmentDeliveryAddress`,
+ * ADR-062 § Amendment (#4185)), only while buyer data is stored. Failure logs
+ * name ids only, never the projection or the address.
  *
  * @module apps/worker/src/sync/handlers
  */
@@ -47,7 +49,10 @@ import {
   FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
   FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
   FulfillmentWorkUnassignedError,
+  buildFulfillmentDeliveryAddress,
   buildRoutingShipTo,
+  type FulfillmentDeliveryAddress,
+  resolveFulfillmentDispatchTimeoutMs,
   type FulfillmentExecutorPort,
   type IFulfillmentDispatchTimeoutService,
   type IFulfillmentHandshakeService,
@@ -71,7 +76,7 @@ import type {
   SyncJobHandlerResult,
 } from '@openlinker/core/sync';
 import { JOB_ENQUEUE_TOKEN, SyncJobExecutionError, type JobEnqueuePort } from '@openlinker/core/sync';
-import { getEnvBoolean } from '@openlinker/shared/config';
+import { getEnv, getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 
 @Injectable()
@@ -95,7 +100,7 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
     const payload = this.validatePayload(job);
     if (payload === null) return { outcome: 'business_failure' };
 
-    const shipTo = await this.resolveShipTo(job, payload);
+    const { shipTo, deliveryAddress } = await this.resolveDestination(job, payload);
     const executor = await this.resolveExecutor(job);
 
     try {
@@ -103,6 +108,7 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
         workId: payload.workId,
         expectedAssignmentAttempt: payload.expectedAssignmentAttempt,
         shipTo,
+        deliveryAddress,
         executor,
       });
 
@@ -220,7 +226,16 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
    */
   private async refreshAcceptanceAttention(orderId: string): Promise<void> {
     try {
-      const outcome = await this.timeouts.recomputeAcceptanceAttention(orderId);
+      // #3476 — the stalled-`unsubmitted` arm must be on here too: this write
+      // replaces the order's whole acceptance entry, so leaving it off would let
+      // one work's acceptance clear the flag a stuck sibling raised. The cutoff
+      // comes from the same resolution path the timeout sweep uses.
+      const timeoutMs = resolveFulfillmentDispatchTimeoutMs(
+        getEnv('OL_FULFILLMENT_DISPATCH_TIMEOUT_MS', '')
+      );
+      const outcome = await this.timeouts.recomputeAcceptanceAttention(orderId, {
+        stalledUnsubmittedBefore: new Date(Date.now() - timeoutMs),
+      });
       await this.orderRecords.markOmsAttention(orderId, 'acceptance', outcome);
     } catch (error) {
       this.logger.error(
@@ -241,10 +256,10 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
    * dispatch; at worst it produces the wrong ship-to, which the guard below
    * turns into a retryable failure rather than a silent mis-ship.
    */
-  private async resolveShipTo(
+  private async resolveDestination(
     job: SyncJob,
     payload: FulfillmentWorkDispatchPayloadV1
-  ): Promise<RoutingShipTo> {
+  ): Promise<{ shipTo: RoutingShipTo; deliveryAddress: FulfillmentDeliveryAddress | null }> {
     const record = await this.orderRecords.getOrderRecord(payload.orderId);
     if (record === null) {
       throw this.retryable(job, `order record not found: orderId=${payload.orderId}`);
@@ -284,7 +299,9 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
       );
     }
 
-    return buildRoutingShipTo(
+    // `getEnvBoolean`, NOT `getPiiConfig()`: see the comment on `storePii` below.
+    const storePii = getEnvBoolean('OL_STORE_PII', true);
+    const shipTo = buildRoutingShipTo(
       {
         countryIso2: shippingAddress.country,
         postalCode: shippingAddress.postalCode,
@@ -306,9 +323,10 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
         // on every ordinary deployment that never enabled hash-only mode.
         // `routing-ship-to.types.ts` states this requirement explicitly; the
         // precedent with its own rationale is `order-ingestion.service.ts`.
-        storePii: getEnvBoolean('OL_STORE_PII', true),
+        storePii,
       }
     );
+    return { shipTo, deliveryAddress: buildFulfillmentDeliveryAddress(shippingAddress, { storePii }) };
   }
 
   /**

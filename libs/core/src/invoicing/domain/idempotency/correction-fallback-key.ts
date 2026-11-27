@@ -62,6 +62,7 @@
  * @module libs/core/src/invoicing/domain/idempotency
  */
 import { createHash } from 'node:crypto';
+import type { BuyerProfile } from '../entities/buyer-profile.entity';
 import type { CorrectionLine, IssueCorrectionCommand } from '../types/invoicing.types';
 
 const FALLBACK_KEY_NAMESPACE = 'openlinker:invoicing:correction-fallback:v1';
@@ -78,22 +79,32 @@ const FALLBACK_KEY_NAMESPACE = 'openlinker:invoicing:correction-fallback:v1';
 export function deriveCorrectionFallbackKey(
   cmd: Pick<
     IssueCorrectionCommand,
-    'connectionId' | 'orderId' | 'originalProviderInvoiceId' | 'documentType' | 'reason' | 'lines'
+    | 'connectionId'
+    | 'orderId'
+    | 'originalProviderInvoiceId'
+    | 'documentType'
+    | 'reason'
+    | 'lines'
+    | 'buyerOverride'
   >,
 ): string {
-  const digest = createHash('sha256')
-    .update(
-      [
-        FALLBACK_KEY_NAMESPACE,
-        cmd.connectionId,
-        cmd.orderId,
-        cmd.originalProviderInvoiceId,
-        cmd.documentType ?? '',
-        cmd.reason ?? '',
-        canonicalizeLines(cmd.lines),
-      ].join('\0'),
-    )
-    .digest('hex');
+  const parts = [
+    FALLBACK_KEY_NAMESPACE,
+    cmd.connectionId,
+    cmd.orderId,
+    cmd.originalProviderInvoiceId,
+    cmd.documentType ?? '',
+    cmd.reason ?? '',
+    canonicalizeLines(cmd.lines),
+  ];
+  // DEF-10: two keyless corrections differing only in the buyer override are
+  // two different corrections. Appended ONLY when an override is present, so
+  // every key minted before this field existed keeps its exact digest and a
+  // retry already in flight across the deploy still finds its record.
+  if (cmd.buyerOverride) {
+    parts.push(canonicalizeBuyer(cmd.buyerOverride));
+  }
+  const digest = createHash('sha256').update(parts.join('\0')).digest('hex');
   return `correction-fallback:${digest}`;
 }
 
@@ -110,4 +121,21 @@ function canonicalizeLines(lines: CorrectionLine[]): string {
         `${line.originalLineNumber}:${line.newQuantity ?? ''}:${line.newUnitPriceGross ?? ''}`,
     )
     .join('|');
+}
+
+/** Fixed-order serialization of a buyer override, so field order never matters. */
+function canonicalizeBuyer(buyer: BuyerProfile): string {
+  return JSON.stringify([
+    buyer.name,
+    buyer.taxId?.scheme ?? '',
+    buyer.taxId?.value ?? '',
+    buyer.address.line1,
+    buyer.address.line2 ?? '',
+    buyer.address.city,
+    buyer.address.postalCode,
+    buyer.address.countryIso2,
+    buyer.type,
+    buyer.isPublicSectorEntity ?? null,
+    buyer.isTaxGroupMember ?? null,
+  ]);
 }

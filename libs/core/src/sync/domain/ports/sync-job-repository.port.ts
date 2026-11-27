@@ -10,7 +10,10 @@
  * @see {@link SyncJobRepository} for the TypeORM implementation
  */
 import type { SyncJob } from '../entities/sync-job.entity';
-import type { ConnectionBacklogStats } from '../types/connection-sync-status.types';
+import type {
+  ConnectionBacklogStats,
+  OrderImportStats,
+} from '../types/connection-sync-status.types';
 import type {
   JobOutcome,
   JobOutcomeReason,
@@ -105,6 +108,27 @@ export interface SyncJobRepositoryPort {
     limit: number;
     workerId: string;
     excludedScopes?: string[];
+  }): Promise<SyncJob[]>;
+
+  /**
+   * Claim queued jobs of ONE type and connection as peers of a running job
+   * (#3986 drain-claim batching).
+   *
+   * `FOR UPDATE SKIP LOCKED` in one transaction, so two drainers never take the
+   * same peer. Claimed rows are flipped to `running` under the CLAIMER's
+   * `lockedBy` with `lockedAt = now`, which is exactly what stuck-job recovery
+   * keys on: if the claimer dies, the peers are requeued by the ordinary
+   * lock-timeout sweep with no attempt consumed. Only due, `queued` rows are
+   * taken; `excludeJobId` keeps the claimer itself out.
+   *
+   * @returns The claimed peers, oldest first (possibly empty)
+   */
+  claimQueuedPeers(input: {
+    jobType: JobType;
+    connectionId: string;
+    limit: number;
+    workerId: string;
+    excludeJobId: string;
   }): Promise<SyncJob[]>;
 
   /**
@@ -363,6 +387,21 @@ export interface SyncJobRepositoryPort {
    * @param jobType - Job type to match (e.g. 'marketplace.orders.poll')
    * @returns The most recently succeeded matching job, or null if none exists
    */
+  /**
+   * The newest job, whatever its status, for every `(connectionId, jobType)`
+   * pair that has one (#4023). One `DISTINCT ON` read, so the cursor overview
+   * can show the last run beside every cursor without an N+1.
+   *
+   * Pairs with no job are simply absent from the result.
+   *
+   * @param connectionIds - Connections to look at (empty -> empty result)
+   * @param jobTypes - Job types to look at (empty -> empty result)
+   */
+  findLatestByConnectionsAndJobTypes(
+    connectionIds: readonly string[],
+    jobTypes: readonly JobType[]
+  ): Promise<SyncJob[]>;
+
   findLastSucceededByConnectionAndJobType(
     connectionId: string,
     jobType: JobType
@@ -416,4 +455,20 @@ export interface SyncJobRepositoryPort {
     historyStart: Date,
     now: Date
   ): Promise<ConnectionBacklogStats>;
+
+  /**
+   * How one connection's order import is doing (#4228): orders imported and
+   * failed, orders still waiting, and the history or range import that is still
+   * running. Aggregate-only and bounded by `since`, so the result and the read
+   * are independent of how many jobs the connection ever had.
+   *
+   * @param connectionId - Connection UUID
+   * @param since24h - Lower bound of the "imported recently" figure
+   * @param since7d - Lower bound of every other historical figure
+   */
+  getOrderImportStats(
+    connectionId: string,
+    since24h: Date,
+    since7d: Date
+  ): Promise<OrderImportStats>;
 }

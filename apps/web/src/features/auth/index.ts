@@ -41,4 +41,15 @@ export { ChangePasswordForm } from './components/ChangePasswordForm';
 export { ConfirmEmailStatus } from './components/ConfirmEmailStatus';
 export { ForgotPasswordForm } from './components/ForgotPasswordForm';
 export { LoginForm } from './components/LoginForm';
+export { LoginStage } from './components/login-stage';
+export type {
+  AuthLoginStep,
+  AuthTab,
+  LoginOutcome,
+  LoginStageProps,
+  LoginUi,
+  RegisterOutcome,
+} from './components/login-stage';
+export { buildDemoLoginCopy, buildProductionLoginCopy } from './lib/login-stage-copy';
+export type { LoginStageCopy } from './lib/login-stage-copy';
 export { ResetPasswordForm } from './components/ResetPasswordForm';

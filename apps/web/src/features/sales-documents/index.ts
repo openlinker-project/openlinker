@@ -19,7 +19,7 @@ export type {
 } from './api/sales-documents.types';
 export { SALES_DOCUMENT_KIND_VALUES, getSalesDocumentIssuesOptions } from './api/sales-documents.types';
 
-export { deriveSalesDocumentRows } from './lib/derive-sales-document-rows';
+export { deriveSalesDocumentRows, issuedDocumentKinds } from './lib/derive-sales-document-rows';
 export { detectSalesDocumentConflict } from './lib/detect-sales-document-conflict';
 export type { SalesDocumentConflictKind } from './lib/detect-sales-document-conflict';
 
@@ -30,12 +30,12 @@ export {
   SALES_DOCUMENT_GATE_REASON_COPY,
   SALES_DOCUMENT_UNRESOLVED_REASON_COPY,
   resolveSalesDocumentReasonCopy,
-} from './lib/sales-document-reason-copy';
+} from './lib/sales-document-reasons';
 export type {
   SalesDocumentReasonCopy,
   SalesDocumentGateReasonCopy,
   SalesDocumentReasonTone,
-} from './lib/sales-document-reason-copy';
+} from './lib/sales-document-reasons';
 
 // #3340 follow-up — whether a missing document is on a list anyone will see.
 // Derived from the same guarded values array as the copy map above.
@@ -61,3 +61,7 @@ export type {
   SalesDocumentListItem,
   SalesDocumentListPagination,
 } from './api/sales-document-list.types';
+
+// #3584 — batch issuing screen (mockup M15) and the one spelling of its URL.
+export { SalesDocumentBatchScreen } from './components/sales-document-batch-screen';
+export { BATCH_SCREEN_ROUTE_PATH, batchScreenPath } from './lib/batch-screen-path';

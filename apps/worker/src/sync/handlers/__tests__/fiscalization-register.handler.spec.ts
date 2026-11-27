@@ -7,6 +7,7 @@
  *
  * @module apps/worker/src/sync/handlers/__tests__
  */
+import type { IOrderRecordService, IOrderRefundService, OrderRecord } from '@openlinker/core/orders';
 import type { IPostSaleInventoryRefreshService } from '@openlinker/core/inventory';
 import { FiscalizationRegisterHandler, MAX_FISCAL_LINES } from '../fiscalization-register.handler';
 import {
@@ -15,6 +16,7 @@ import {
   OrderAlreadyHasInvoiceException,
   FiscalRegistrationContendedException,
   MissingFiscalTaxRateException,
+  FiscalRegistrationAttemptClosedException,
 } from '@openlinker/core/fiscalization';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
@@ -58,6 +60,8 @@ function makeJob(payload: unknown): SyncJobEntity {
 describe('FiscalizationRegisterHandler', () => {
   let fiscalRegistrations: jest.Mocked<IFiscalRegistrationService>;
   let handler: FiscalizationRegisterHandler;
+  let orderRecords: jest.Mocked<IOrderRecordService>;
+  let orderRefunds: jest.Mocked<IOrderRefundService>;
   let postSaleInventoryRefresh: jest.Mocked<IPostSaleInventoryRefreshService>;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
 
@@ -81,7 +85,18 @@ describe('FiscalizationRegisterHandler', () => {
     postSaleInventoryRefresh = {
       enqueue: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IPostSaleInventoryRefreshService>;
-    handler = new FiscalizationRegisterHandler(fiscalRegistrations, postSaleInventoryRefresh);
+    orderRecords = {
+      getOrderRecord: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<IOrderRecordService>;
+    orderRefunds = {
+      getRefundSummariesForOrders: jest.fn().mockResolvedValue(new Map()),
+    } as unknown as jest.Mocked<IOrderRefundService>;
+    handler = new FiscalizationRegisterHandler(
+      fiscalRegistrations,
+      postSaleInventoryRefresh,
+      orderRecords,
+      orderRefunds,
+    );
     warnSpy = jest
       .spyOn(
         (handler as unknown as { logger: { warn: (m: string) => void } }).logger,
@@ -206,6 +221,22 @@ describe('FiscalizationRegisterHandler', () => {
       );
       const result = await handler.execute(makeJob(makePayload()));
       expect(result).toEqual({ outcome: 'business_failure' });
+    });
+
+    it('should end terminally, never retry, when a job enqueued before #3960 hits a refused attempt', async () => {
+      // A job queued under the refused attempt's key before #3960 used to
+      // re-claim the row and re-send it. Now `register` refuses without sending,
+      // and that must read as a terminal refusal, not a plain `ok` and not a
+      // retry that can never change a persisted refusal.
+      fiscalRegistrations.register.mockRejectedValue(
+        new FiscalRegistrationAttemptClosedException('order-1', 'rec-0'),
+      );
+
+      const result = await handler.execute(makeJob(makePayload()));
+
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('rec-0'));
     });
 
     it('MissingIdempotencyKeyException is terminal', async () => {
@@ -375,5 +406,26 @@ describe('FiscalizationRegisterHandler', () => {
 
   it('is defined', () => {
     expect(FiscalizationRegisterHandler).toBeDefined();
+  });
+
+  describe('live order gate (DEF-26)', () => {
+    it('does not register a receipt for a cancelled order', async () => {
+      orderRecords.getOrderRecord.mockResolvedValue({
+        status: 'processing',
+        isCancelled: true,
+        totalAmount: 100,
+      } as unknown as OrderRecord);
+
+      const result = await handler.execute(makeJob(makePayload()));
+
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(fiscalRegistrations.register).not.toHaveBeenCalled();
+    });
+
+    it('registers as usual when the order record is absent', async () => {
+      await handler.execute(makeJob(makePayload()));
+
+      expect(fiscalRegistrations.register).toHaveBeenCalledTimes(1);
+    });
   });
 });

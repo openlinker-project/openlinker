@@ -146,7 +146,11 @@ export type {
   ShipmentFilters,
   ShipmentPagination,
   PaginatedShipments,
+  ShipmentFailedCauseGroup,
+  ShipmentSummary,
+  ShipmentSummaryOptions,
 } from './domain/types/shipment-query.types';
+export { groupFailedShipmentCauses } from './domain/failed-shipment-causes';
 
 // Domain entity
 export { Shipment } from './domain/entities/shipment.entity';
@@ -197,6 +201,7 @@ export { ShippingProviderRejectionException } from './domain/exceptions/shipping
 export { ShippingProviderAuthException } from './domain/exceptions/shipping-provider-auth.exception';
 export { LabelDocumentNotSupportedException } from './domain/exceptions/label-document-not-supported.exception';
 export { LabelNotAvailableException } from './domain/exceptions/label-not-available.exception';
+export { LabelNotReadyException } from './domain/exceptions/label-not-ready.exception';
 export { DispatchProtocolNotSupportedException } from './domain/exceptions/dispatch-protocol-not-supported.exception';
 export { InvalidProtocolBatchException } from './domain/exceptions/invalid-protocol-batch.exception';
 export { ShipmentDispatchContendedException } from './domain/exceptions/shipment-dispatch-contended.exception';
@@ -274,6 +279,17 @@ export type {
   FulfillmentStatusSyncResult,
 } from './application/types/fulfillment-status-sync.types';
 export { DEFAULT_UPDATED_SINCE_DAYS } from './application/types/fulfillment-status-sync.types';
+
+// Application - source-side fulfilment read-back (ADR-012 amendment). The
+// source-side twin of the seam above: one page of an order SOURCE's own view of
+// its orders' fulfilment, recorded as source-observed branch-1 rows. Interface +
+// result types only; the service is injected via
+// SOURCE_FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN.
+export type { ISourceFulfillmentStatusSyncService } from './application/interfaces/source-fulfillment-status-sync.service.interface';
+export type {
+  SourceFulfillmentStatusSyncOptions,
+  SourceFulfillmentStatusSyncResult,
+} from './application/types/source-fulfillment-status-sync.types';
 
 // Application — shipment-first dispatch routing for a fulfilment work (#3506,
 // G02-4). Interface + outcome types only; the service is injected via

@@ -18,6 +18,9 @@ import type { DestinationAddressMapping } from '../../domain/entities/destinatio
 import { getPiiConfig } from '@openlinker/shared/config';
 import { CUSTOMER_PROJECTION_REPOSITORY_TOKEN } from '../../customers.tokens';
 
+/** Bound-parameter ceiling per IN read. */
+const PROJECTION_READ_CHUNK = 500;
+
 @Injectable()
 export class CustomerProjectionService implements ICustomerProjectionService {
   private readonly piiConfig = getPiiConfig();
@@ -29,6 +32,29 @@ export class CustomerProjectionService implements ICustomerProjectionService {
 
   async getProjection(internalCustomerId: string): Promise<CustomerProjection | null> {
     return this.repository.findById(internalCustomerId);
+  }
+
+  async getProjectionsByIds(
+    internalCustomerIds: readonly string[]
+  ): Promise<ReadonlyMap<string, CustomerProjection>> {
+    const unique = [...new Set(internalCustomerIds)];
+    const found = new Map<string, CustomerProjection>();
+    for (let i = 0; i < unique.length; i += PROJECTION_READ_CHUNK) {
+      const rows = await this.repository.findByIds(unique.slice(i, i + PROJECTION_READ_CHUNK));
+      for (const row of rows) found.set(row.internalCustomerId, row);
+    }
+    return found;
+  }
+
+  async clearPersonalData(internalCustomerIds: readonly string[]): Promise<number> {
+    const unique = [...new Set(internalCustomerIds)];
+    let cleared = 0;
+    for (let i = 0; i < unique.length; i += PROJECTION_READ_CHUNK) {
+      cleared += await this.repository.clearPersonalData(
+        unique.slice(i, i + PROJECTION_READ_CHUNK)
+      );
+    }
+    return cleared;
   }
 
   async upsertProjection(projection: CustomerProjection): Promise<CustomerProjection> {
@@ -78,5 +104,13 @@ export class CustomerProjectionService implements ICustomerProjectionService {
   ): Promise<DestinationAddressMapping> {
     // Destination address mapping doesn't contain PII, so no filtering needed
     return this.repository.upsertDestinationAddressMapping(mapping);
+  }
+
+  async redactPersonalDataLastSeenBefore(input: {
+    readonly sourceConnectionId: string;
+    readonly lastSeenBefore: Date;
+    readonly limit: number;
+  }): Promise<number> {
+    return this.repository.redactPersonalDataLastSeenBefore(input);
   }
 }

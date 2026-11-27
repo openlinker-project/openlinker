@@ -10,6 +10,7 @@
 import { z } from 'zod';
 
 import { COD_CURRENCY_VALUES, type CodCurrency } from '../../../shared/shipping/cod-currencies';
+import type { GenerateLabelValidationCopy } from './order-form.types';
 
 /**
  * COD currency vocabulary — the source of truth now lives in
@@ -39,41 +40,55 @@ export type InsuredCurrency = (typeof INSURED_CURRENCY_VALUES)[number];
 export const LOCKER_TEMPLATE_VALUES = ['small', 'medium', 'large'] as const;
 export type LockerTemplate = (typeof LOCKER_TEMPLATE_VALUES)[number];
 
-export const generateLabelSchema = z.object({
-  length: z.coerce.number().int().positive('Length must be a positive integer'),
-  width: z.coerce.number().int().positive('Width must be a positive integer'),
-  height: z.coerce.number().int().positive('Height must be a positive integer'),
-  weightGrams: z.coerce.number().int().positive('Weight must be a positive integer'),
-  paczkomatId: z.string().trim().optional(),
-  // Locker size for paczkomat shipments (#764 InPost). Optional at the schema
-  // level (courier shipments don't use it); the form defaults it and only
-  // surfaces the picker for the paczkomat flow.
-  lockerTemplate: z.enum(LOCKER_TEMPLATE_VALUES).optional(),
-  // Optional cash-on-delivery (operator-supplied, #966). Empty amount ⇒ no COD.
-  // COD-incapable carriers ignore it server-side; DPD translates it to the COD
-  // service. Amount accepts a decimal string (comma or dot) — normalised at submit.
-  codAmount: z
-    .union([
-      z.string().trim().regex(/^\d+([.,]\d{1,2})?$/, 'Enter a valid amount, e.g. 129.90'),
-      z.literal(''),
-    ])
-    .optional(),
-  codCurrency: z.enum(COD_CURRENCY_VALUES).optional(),
-  // Optional declared-value / insurance (operator-supplied, #1542). Empty amount
-  // ⇒ no insurance. Insurance-incapable carriers ignore it server-side; InPost
-  // ShipX translates it to its `insurance` object. Amount accepts a decimal
-  // string (comma or dot) — normalised at submit, mirroring COD.
-  insuredAmount: z
-    .union([
-      z.string().trim().regex(/^\d+([.,]\d{1,2})?$/, 'Enter a valid amount, e.g. 150.00'),
-      z.literal(''),
-    ])
-    .optional(),
-  insuredCurrency: z.enum(INSURED_CURRENCY_VALUES).optional(),
-});
+/**
+ * A factory rather than a module-level schema: the messages are read when the
+ * form builds its resolver, so they follow the active language.
+ */
+export function createGenerateLabelSchema(copy: GenerateLabelValidationCopy) {
+  return z.object({
+    length: z.coerce.number().int().positive(copy.length),
+    width: z.coerce.number().int().positive(copy.width),
+    height: z.coerce.number().int().positive(copy.height),
+    weightGrams: z.coerce.number().int().positive(copy.weight),
+    paczkomatId: z.string().trim().optional(),
+    // Locker size for paczkomat shipments (#764 InPost). Optional at the schema
+    // level (courier shipments don't use it); the form defaults it and only
+    // surfaces the picker for the paczkomat flow.
+    lockerTemplate: z.enum(LOCKER_TEMPLATE_VALUES).optional(),
+    // Optional cash-on-delivery (operator-supplied, #966). Empty amount ⇒ no COD.
+    // COD-incapable carriers ignore it server-side; DPD translates it to the COD
+    // service. Amount accepts a decimal string (comma or dot) — normalised at submit.
+    codAmount: z
+      .union([
+        z
+          .string()
+          .trim()
+          .regex(/^\d+([.,]\d{1,2})?$/, copy.codAmount),
+        z.literal(''),
+      ])
+      .optional(),
+    codCurrency: z.enum(COD_CURRENCY_VALUES).optional(),
+    // Optional declared-value / insurance (operator-supplied, #1542). Empty amount
+    // ⇒ no insurance. Insurance-incapable carriers ignore it server-side; InPost
+    // ShipX translates it to its `insurance` object. Amount accepts a decimal
+    // string (comma or dot) — normalised at submit, mirroring COD.
+    insuredAmount: z
+      .union([
+        z
+          .string()
+          .trim()
+          .regex(/^\d+([.,]\d{1,2})?$/, copy.insuredAmount),
+        z.literal(''),
+      ])
+      .optional(),
+    insuredCurrency: z.enum(INSURED_CURRENCY_VALUES).optional(),
+  });
+}
+
+type GenerateLabelSchema = ReturnType<typeof createGenerateLabelSchema>;
 
 // Two derived types: `Values` is what RHF binds to (Zod's input type — for
 // `z.coerce.number()` that's `unknown`, so `string` defaults pass through);
 // `Submission` is the resolved post-coercion shape the submit handler sees.
-export type GenerateLabelFormValues = z.input<typeof generateLabelSchema>;
-export type GenerateLabelFormSubmission = z.output<typeof generateLabelSchema>;
+export type GenerateLabelFormValues = z.input<GenerateLabelSchema>;
+export type GenerateLabelFormSubmission = z.output<GenerateLabelSchema>;

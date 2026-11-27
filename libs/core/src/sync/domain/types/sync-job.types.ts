@@ -16,7 +16,12 @@
 export const JobTypeValues = [
   // Generic (Option B)
   'marketplace.orders.poll',
+  'marketplace.orders.import', // One page of a date-window order import, newest-first history or a manual range (#4228).
   'marketplace.order.sync',
+  // Pull-based inbound notifications (#4179): drains a queue the operator owns
+  // (Amazon SQS) through the same routing a webhook takes. The routed child
+  // jobs re-read the entity; this job carries no data of its own.
+  'marketplace.notifications.drain',
   // Per-order reporting-currency stamp: bounded retry after a degraded inline
   // attempt, plus the hourly reconcile that survives a dead retry job (#2125).
   // Named under `marketplace.order.*` rather than a new `order.*` namespace so
@@ -60,6 +65,12 @@ export const JobTypeValues = [
   'marketplace.shipment.statusSync',
   'marketplace.shipment.syncByExternalId',
   'marketplace.fulfillment.statusSync',
+  // The source-side twin of the line above (ADR-012 amendment): asks an order's
+  // SOURCE whether somebody other than OL shipped it there, records the waybill
+  // it reports as a source-observed branch-1 row, and relays it to the order's
+  // destinations. A separate job type, not a payload flag, because the two read
+  // different connections for different orders under different cursors.
+  'marketplace.sourceFulfillment.statusSync',
   // OMS fulfilment progress ingress (#2400, ADR-054).
   //
   // **NOT the same job as `marketplace.fulfillment.statusSync` one line above,
@@ -238,8 +249,23 @@ export const JobTypeValues = [
   // Invoicing (core-owned policy; executed by worker — OL #1120)
   'invoicing.issue',
 
+  // Attaches an issued invoice's document to the marketplace order it was issued
+  // for (#3549). Best-effort and never part of issuance, so it is its own job.
+  // `connectionId` is the order's SOURCE connection (the marketplace), never the
+  // invoicing connection - that is the scope whose rate limit the call spends.
+  'invoicing.marketplaceUpload',
+
   // Fiscalization (core-owned policy; executed by worker — #2156, ADR-041 decision 7)
   'fiscalization.register',
+
+  // Batch issuing (#3583). `tick` is the scheduler's 5-minute pass under the
+  // nil-UUID system connection: it reads every batched connection's schedule
+  // and enqueues one `run` per due slot, keyed by the slot so a slot runs once.
+  // `run` issues one connection's queue by enqueuing the ordinary
+  // `invoicing.issue` / `fiscalization.register` jobs; "Run now" enqueues the
+  // same job type. `connectionId` on a run is the batching connection.
+  'salesDocument.batch.tick',
+  'salesDocument.batch.run',
 
   // Tax-rate backfill sweep for pre-#2245 order_line_items rows (#2440).
   // Connection-scoped for the same reason `marketplace.order.fxStampSweep` is:
@@ -292,6 +318,12 @@ export const JobTypeValues = [
   // nil-UUID system connection id, like its timeout-sweep sibling.
   'fulfillment.work.relaySweep',
 
+  // The status poll of a POLLING holder (Amazon Multi-Channel Fulfillment):
+  // reads `FulfillmentStatusSource` for the work the connection accepted and
+  // records the progress through `IFulfillmentProgressService`. Scoped to the
+  // executor connection; enqueued by the plugin's scheduler task.
+  'fulfillment.work.statusPoll',
+
   // The reroute sweep (#3485, epic #3460). With the OMS on, an order the router
   // refused (a line out of stock) or failed to route is HELD in OpenLinker
   // rather than created in every product master; this pass re-enters routing
@@ -299,6 +331,21 @@ export const JobTypeValues = [
   // stock arrives. Global scope under the nil-UUID system connection id, like
   // its timeout- and relay-sweep siblings.
   'fulfillment.work.rerouteSweep',
+
+  // The stranded-routing-decision reaper (#2731). Closes a routing decision left
+  // `live` after an in-doubt `route()` once it is past the routing-decision TTL,
+  // then re-enters routing for its order by enqueueing `fulfillment.work.route`
+  // under the decision's own router. Global scope under the nil-UUID system
+  // connection id, like the other fulfilment sweeps.
+  'fulfillment.routing.reapSweep',
+  // The lost-enqueue backstop for `inventory.saleDecrement` (#3629, epic #3460).
+  // Both producers swallow an enqueue failure by design (the routing intercept is
+  // fail-open), and the decrement job has no cron, so a lost enqueue leaves the
+  // product master's stock high for ever. This finds routed works with no such job
+  // and enqueues it under the producers' own key. `bulk` lane: cron-paced
+  // reconciliation, not a buyer-facing path - the decrement job itself stays
+  // `realtime`. Global scope under the nil-UUID system connection id.
+  'inventory.saleDecrement.reconcileSweep',
 
   // Data Coverage currency-restatement driver (#2468, epic #2452 Phase 5).
   // Carries the run's scope + cursor in its payload; the connection it is
@@ -345,6 +392,14 @@ export const JobTypeValues = [
   // mint `connection.reachability.sweep` and register this one as its alias -
   // with a real second consumer to justify the alias, rather than for tidiness.
   'subiekt.bridge.reachabilitySweep',
+
+  // Payment writeback (#3963). Marks ONE destination shop's order paid after
+  // the buyer paid at the source, once the shop already holds the order as
+  // unpaid. One job per (order, destination) so one slow shop never re-drives
+  // another (#861); `connectionId` is the DESTINATION connection, which keeps
+  // per-scope lane accounting honest. Retries ride the runner's ladder; the
+  // last attempt records `not-sent` instead of throwing.
+  'order.paymentWriteback.push',
 ] as const;
 
 /**
@@ -444,6 +499,16 @@ export const JobOutcomeReasonValues = [
   // ambiguity is a persisted-state fact about the order, and blindly
   // retrying the same job cannot resolve it.
   'auto_dispatch_shipment_claimed_by_sibling_work',
+  // #3987: the carrier answered with a refusal (a 4xx / carrier code) or an
+  // adapter preflight failed on missing parcel data. Both are deterministic
+  // until an operator changes the order, connection or parcel, so retrying only
+  // burned the ladder. Transient carrier errors (5xx, 408, 429) still retry.
+  'auto_dispatch_carrier_refused',
+  'auto_dispatch_preflight_failed',
+  // #4179: a notifications drain on a connection whose adapter has no inbound
+  // queue reader (no queue URL or no AWS access key). A configuration fact
+  // only an operator edit changes, so the job ends instead of retrying.
+  'notification_queue_not_configured',
 ] as const;
 
 /**

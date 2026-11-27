@@ -7,13 +7,23 @@
  * @module apps/worker/src/sync
  */
 import { Module } from '@nestjs/common';
-import { SyncModule } from '@openlinker/core/sync';
+import { ConfigService } from '@nestjs/config';
+import type { RedisClientType } from 'redis';
+import { createClient } from 'redis';
+import {
+  SyncModule,
+  InboundRoutingPolicyService,
+  InboundQueueDrainService,
+  INBOUND_ROUTING_POLICY_TOKEN,
+  INBOUND_QUEUE_DRAIN_SERVICE_TOKEN,
+} from '@openlinker/core/sync';
 import { EventsModule } from '@openlinker/core/events';
 import { IntegrationsModule } from '@openlinker/core/integrations';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { AutomationModule } from '@openlinker/core/automation';
+import { MailerTransportModule } from '@openlinker/core/mailer';
 import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ReturnsModule } from '@openlinker/core/returns';
@@ -28,10 +38,13 @@ import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { WorkerContentModule } from '../content/worker-content.module';
 import { PriceChangeObserverBindingModule } from './price-change-observer-binding.module';
 import { JobIntakeConsumer } from './job-intake.consumer';
+import { JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN } from './sync-worker.tokens';
 import { SyncJobRunner } from './sync-job.runner';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { InventoryPropagateToMarketplacesHandler } from './handlers/inventory-propagate-to-marketplaces.handler';
 import { OrdersPollHandler } from './handlers/orders-poll.handler';
+import { NotificationsDrainHandler } from './handlers/notifications-drain.handler';
+import { OrdersImportHandler } from './handlers/orders-import.handler';
 import { MarketplaceOrderSyncHandler } from './handlers/marketplace-order-sync.handler';
 import { MarketplaceOrderFxStampHandler } from './handlers/marketplace-order-fx-stamp.handler';
 import { MarketplaceOrderFxStampSweepHandler } from './handlers/marketplace-order-fx-stamp-sweep.handler';
@@ -54,6 +67,7 @@ import { MarketplaceOfferStockRestoreHandler } from './handlers/marketplace-offe
 import { MarketplaceOfferPauseStaleHandler } from './handlers/marketplace-offer-pause-stale.handler';
 import { MarketplaceOfferPauseStaleSweepHandler } from './handlers/marketplace-offer-pause-stale-sweep.handler';
 import { SubiektBridgeReachabilitySweepHandler } from './handlers/subiekt-bridge-reachability-sweep.handler';
+import { OrderPaymentWritebackHandler } from './handlers/order-payment-writeback.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './handlers/marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './handlers/marketplace-shipment-sync-by-external-id.handler';
 import { ShippingShipmentNotifyDispatchedHandler } from './handlers/shipping-shipment-notify-dispatched.handler';
@@ -79,6 +93,7 @@ import { AutomationTriggerDeadlineSweepHandler } from './handlers/automation-tri
 import { ShopProductStatusSyncHandler } from './handlers/shop-product-status-sync.handler';
 import { DestinationTaxonomySyncHandler } from './handlers/destination-taxonomy-sync.handler';
 import { InvoicingIssueHandler } from './handlers/invoicing-issue.handler';
+import { InvoicingMarketplaceUploadHandler } from './handlers/invoicing-marketplace-upload.handler';
 import { FiscalizationRegisterHandler } from './handlers/fiscalization-register.handler';
 import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-reconcile.handler';
 import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
@@ -87,9 +102,15 @@ import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-disp
 import { FulfillmentWorkAutoDispatchHandler } from './handlers/fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-relay-sweep.handler';
+import { FulfillmentWorkStatusPollHandler } from './handlers/fulfillment-work-status-poll.handler';
 import { InventorySaleDecrementHandler } from './handlers/inventory-sale-decrement.handler';
 import { FulfillmentWorkRerouteSweepHandler } from './handlers/fulfillment-work-reroute-sweep.handler';
+import { InventorySaleDecrementReconcileSweepHandler } from './handlers/inventory-sale-decrement-reconcile-sweep.handler';
+import { MarketplaceSourceFulfillmentStatusSyncHandler } from './handlers/marketplace-source-fulfillment-status-sync.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
+import { FulfillmentRoutingReapSweepHandler } from './handlers/fulfillment-routing-reap-sweep.handler';
+import { SalesDocumentBatchRunHandler } from './handlers/sales-document-batch-run.handler';
+import { SalesDocumentBatchTickHandler } from './handlers/sales-document-batch-tick.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
 import { OrdersExportHandler } from './handlers/orders-export.handler';
@@ -123,6 +144,9 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     // for `automation.trigger.deadlineSweep`. OrdersModule imports AutomationModule too (for T5's
     // write-site emission) but does not re-export it, and Nest imports are not transitive.
     AutomationModule,
+    // The send-email automation step resolves MAILER_TOKEN lazily by token; without this
+    // binding every worker-side firing (the deadline sweeps) ended `failed` (#3552).
+    MailerTransportModule,
     CoreAnalyticsModule, // #2468 — exposes ANALYTICS_REMEDIATION_RUN_SERVICE_TOKEN for the analytics.currency.recalculate handler
     CurrencyModule, // #2468 — exposes REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN; OrdersModule imports it but does not re-export the token
   ],
@@ -132,6 +156,15 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     SyncJobHandlerRegistry,
     InventoryPropagateToMarketplacesHandler,
     OrdersPollHandler,
+    // #4179 — pull-based inbound notifications. The routing policy is bound
+    // host-side, as the API's WebhooksModule binds it; its only dependency is
+    // JOB_ENQUEUE_TOKEN from SyncModule.
+    InboundRoutingPolicyService,
+    { provide: INBOUND_ROUTING_POLICY_TOKEN, useExisting: InboundRoutingPolicyService },
+    InboundQueueDrainService,
+    { provide: INBOUND_QUEUE_DRAIN_SERVICE_TOKEN, useExisting: InboundQueueDrainService },
+    NotificationsDrainHandler,
+    OrdersImportHandler,
     MarketplaceOrderSyncHandler,
     MarketplaceOrderFxStampHandler,
     MarketplaceOrderFxStampSweepHandler,
@@ -158,10 +191,12 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOfferPauseStaleHandler,
     MarketplaceOfferPauseStaleSweepHandler,
     SubiektBridgeReachabilitySweepHandler,
+    OrderPaymentWritebackHandler,
     MarketplaceShipmentStatusSyncHandler,
     MarketplaceShipmentSyncByExternalIdHandler,
     ShippingShipmentNotifyDispatchedHandler,
     MarketplaceFulfillmentStatusSyncHandler,
+    MarketplaceSourceFulfillmentStatusSyncHandler,
     FulfillmentWorkStatusSyncHandler,
     MasterProductSyncHandler,
     MasterProductSyncBatchHandler,
@@ -183,6 +218,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     ShopProductStatusSyncHandler,
     DestinationTaxonomySyncHandler,
     InvoicingIssueHandler,
+    InvoicingMarketplaceUploadHandler,
     FiscalizationRegisterHandler,
     RegulatoryStatusReconcileHandler,
     OfflineResubmitHandler,
@@ -192,10 +228,42 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     FulfillmentWorkAutoDispatchHandler,
     FulfillmentWorkRouteHandler,
     FulfillmentWorkTimeoutSweepHandler,
+    FulfillmentRoutingReapSweepHandler,
     FulfillmentWorkRelaySweepHandler,
+    FulfillmentWorkStatusPollHandler,
+    SalesDocumentBatchTickHandler,
+    SalesDocumentBatchRunHandler,
     InventorySaleDecrementHandler,
     FulfillmentWorkRerouteSweepHandler,
+    InventorySaleDecrementReconcileSweepHandler,
     HandlerRegistrationService,
+    {
+      // Dedicated client for JobIntakeConsumer's blocking XREADGROUP loop. On
+      // the shared 'REDIS_CLIENT' the read held the connection for up to 5 s at
+      // a time, so the cross-process rate limiter (and every lock and cache
+      // call) queued behind it, timed out after 1 s and degraded to
+      // per-process limiting. Closed by the consumer's onModuleDestroy.
+      provide: JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN,
+      useFactory: async (configService: ConfigService): Promise<RedisClientType> => {
+        const client = createClient({
+          socket: {
+            host: configService.get<string>('REDIS_HOST', 'localhost'),
+            port: configService.get<number>('REDIS_PORT', 6379),
+          },
+          password: configService.get<string>('REDIS_PASSWORD'),
+          database: configService.get<number>('REDIS_DB', 0),
+        });
+        try {
+          await client.connect();
+        } catch (error) {
+          throw new Error(
+            `SyncWorkerModule: Failed to connect JOB_INTAKE_REDIS_CLIENT_BLOCKING: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+        return client as RedisClientType;
+      },
+      inject: [ConfigService],
+    },
   ],
 })
 export class SyncWorkerModule {}

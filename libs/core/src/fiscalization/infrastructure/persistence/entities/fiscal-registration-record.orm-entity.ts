@@ -33,6 +33,7 @@ import type {
   FiscalArtefact,
   FiscalRegistrationFailureMode,
 } from '../../../domain/types/fiscalization.types';
+import type { FiscalProviderFailureDetails } from '../../../domain/types/fiscal-provider-failure-details.types';
 
 @Entity('fiscal_registration_records')
 @Index('IDX_fiscal_registration_records_order_connection', ['orderId', 'connectionId'])
@@ -44,6 +45,11 @@ import type {
   ['connectionId', 'idempotencyKey'],
   { unique: true },
 )
+// One successor per refused attempt (#3960). Partial: a first attempt has none.
+@Index('UQ_fiscal_registration_records_previous_attempt', ['previousAttemptId'], {
+  unique: true,
+  where: '"previousAttemptId" IS NOT NULL',
+})
 export class FiscalRegistrationRecordOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -108,12 +114,31 @@ export class FiscalRegistrationRecordOrmEntity {
   errorMessage!: string | null;
 
   /**
+   * PII-free identifiers of the provider's refusal (#3843); safe to expose,
+   * unlike `errorMessage`. Nullable with no default and no backfill.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  providerFailureDetails!: FiscalProviderFailureDetails | null;
+
+  /**
    * Expiry of the in-flight claim; `null` unless this row holds the slot. Backs
    * the atomic guard that lets exactly one concurrent same-key attempt cross the
    * provider boundary.
    */
   @Column({ type: 'timestamptz', nullable: true })
   leaseExpiresAt!: Date | null;
+
+  /** 0-based attempt number at this (connection, order) document (#3960). */
+  @Column({ type: 'int', default: 0 })
+  attempt!: number;
+
+  /**
+   * The refused attempt this one follows (#3960). Unique when set, so a refused
+   * attempt has at most one successor even if two requests raced past the
+   * per-order lock.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  previousAttemptId!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

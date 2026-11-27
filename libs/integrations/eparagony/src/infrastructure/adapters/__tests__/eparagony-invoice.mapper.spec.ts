@@ -585,6 +585,24 @@ describe('composeInvoiceDocument - refusals before anything is sent', () => {
     );
   });
 
+  it('declares the missing seller tax number a connection-setup refusal, so core sends the operator to the connection (#3772)', () => {
+    const error = captureRefusal(() =>
+      compose(makeCommand(), makeConfig({ merchantTIN: undefined })),
+    );
+    expect(error.failureCause).toBe('connection-setup');
+  });
+
+  it('leaves refusals that are not about a connection setting undeclared (#3772)', () => {
+    // A currency or an empty order is the sale's problem, not the connection's;
+    // declaring it would show a link to settings that cannot fix it.
+    expect(
+      captureRefusal(() => compose(makeCommand({ currency: 'EUR' }))).failureCause,
+    ).toBeUndefined();
+    expect(
+      captureRefusal(() => compose(makeCommand({ documentNumber: undefined }))).failureCause,
+    ).toBeUndefined();
+  });
+
   it('words the seller-tax-number refusal so core does NOT read it as a buyer problem', () => {
     // Core's `TAX_ID_REJECTION_MARKERS` are ['tax id','tax-id','taxid',
     // 'tax identifier']. A reword to "seller tax ID" would classify a missing

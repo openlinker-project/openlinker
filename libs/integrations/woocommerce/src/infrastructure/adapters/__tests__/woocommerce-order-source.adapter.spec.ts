@@ -6,7 +6,7 @@ import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-re
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import { checkPaymentFactsConsistency } from '@openlinker/core/orders';
+import { checkPaymentFactsConsistency, OrderSyncStartUnavailableError } from '@openlinker/core/orders';
 import type { WooCommerceOrder } from '../order-source/woocommerce-order.types';
 
 const makeConnection = (overrides: Partial<Connection> = {}): Connection =>
@@ -90,6 +90,97 @@ function makeHttpClient(impl: Partial<IWooCommerceHttpClient> = {}): jest.Mocked
 }
 
 describe('WooCommerceOrderSourceAdapter', () => {
+  describe('headCursor (#4228)', () => {
+    it('should return the newest order modification time minus the safety margin', async () => {
+      const get = jest.fn().mockResolvedValue([
+        { id: 5, date_modified_gmt: '2024-06-01T10:00:10', date_modified: '2024-06-01T12:00:10' },
+      ]);
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), makeConnection());
+
+      await expect(adapter.headCursor()).resolves.toBe('2024-06-01T10:00:08.000Z');
+      expect(get).toHaveBeenCalledWith('/wp-json/wc/v3/orders', {
+        per_page: 1,
+        orderby: 'modified',
+        order: 'desc',
+      });
+    });
+
+    it('should return null when the shop has no orders', async () => {
+      const get = jest.fn().mockResolvedValue([]);
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), makeConnection());
+
+      await expect(adapter.headCursor()).resolves.toBeNull();
+    });
+
+    it('should seed at the real head and ignore initialSyncFrom when the operator chose from now', async () => {
+      const get = jest.fn().mockResolvedValue([
+        { id: 5, date_modified_gmt: '2024-06-01T10:00:10', date_modified: '2024-06-01T12:00:10' },
+      ]);
+      const conn = makeConnection({
+        config: { siteUrl: 'https://myshop.example.com', orders: { initialSyncFrom: '2024-01-01' } },
+      });
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), conn);
+
+      await expect(adapter.headCursor()).resolves.toBe('2024-06-01T10:00:08.000Z');
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw when the newest order has no readable modification time', async () => {
+      const get = jest.fn().mockResolvedValue([{ id: 5 }]);
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), makeConnection());
+
+      await expect(adapter.headCursor()).rejects.toThrow('readable');
+    });
+  });
+
+  describe('cursorForDate (#4228)', () => {
+    it('should read an instant without a timezone as UTC', async () => {
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get: jest.fn() }), makeConnection());
+
+      await expect(adapter.cursorForDate('2026-05-01T10:00:00')).resolves.toBe('2026-05-01T10:00:00.000Z');
+    });
+
+    it('should return midnight GMT of a bare date without reading orders', async () => {
+      const get = jest.fn();
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient({ get }), makeConnection());
+
+      await expect(adapter.cursorForDate('2026-10-01')).resolves.toBe('2026-10-01T00:00:00.000Z');
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it('should normalise a full instant to GMT', async () => {
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient(), makeConnection());
+
+      await expect(adapter.cursorForDate('2026-10-01T10:00:00+02:00')).resolves.toBe(
+        '2026-10-01T08:00:00.000Z'
+      );
+    });
+
+    it('should let the explicit choice win over the configured initialSyncFrom', async () => {
+      const conn = makeConnection({
+        config: { siteUrl: 'https://myshop.example.com', orders: { initialSyncFrom: '2024-01-01' } },
+      });
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient(), conn);
+
+      await expect(adapter.cursorForDate('2026-10-01')).resolves.toBe('2026-10-01T00:00:00.000Z');
+    });
+
+    it('should throw on an unreadable date', async () => {
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient(), makeConnection());
+
+      const failure = adapter.cursorForDate('soon');
+      await expect(failure).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+      await expect(failure).rejects.toThrow('expected an ISO date');
+    });
+
+    it('should refuse a day that is not on the calendar', async () => {
+      const adapter = new WooCommerceOrderSourceAdapter(makeHttpClient(), makeConnection());
+
+      await expect(adapter.cursorForDate('2026-02-30')).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+      await expect(adapter.cursorForDate('2026-13-45')).rejects.toBeInstanceOf(OrderSyncStartUnavailableError);
+    });
+  });
+
   describe('listOrderFeed', () => {
     it('should not include modified_after when fromCursor is null and no initialSyncFrom', async () => {
       const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue([]) });
@@ -150,6 +241,33 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.nextCursor).toBeNull();
     });
 
+    it('should step the cursor one second back when a full page ends in orders sharing one modified second', async () => {
+      const orders = [
+        makeOrder({ id: 1, date_modified_gmt: '2024-01-15T10:00:00', date_created_gmt: '2024-01-15T10:00:00' }),
+        makeOrder({ id: 2, date_modified_gmt: '2024-01-15T12:00:00', date_created_gmt: '2024-01-15T10:00:00' }),
+        makeOrder({ id: 3, date_modified_gmt: '2024-01-15T12:00:00', date_created_gmt: '2024-01-15T10:00:00' }),
+      ];
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(orders) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.listOrderFeed({ fromCursor: null, limit: 3 });
+
+      expect(result.nextCursor).toBe('2024-01-15T11:59:59Z');
+    });
+
+    it('should keep the cursor at the shared second when the page is not full', async () => {
+      const orders = [
+        makeOrder({ id: 2, date_modified_gmt: '2024-01-15T12:00:00', date_created_gmt: '2024-01-15T10:00:00' }),
+        makeOrder({ id: 3, date_modified_gmt: '2024-01-15T12:00:00', date_created_gmt: '2024-01-15T10:00:00' }),
+      ];
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(orders) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.listOrderFeed({ fromCursor: null, limit: 10 });
+
+      expect(result.nextCursor).toBe('2024-01-15T12:00:00Z');
+    });
+
     it('should advance cursor to max date_modified_gmt across all orders before filtering', async () => {
       const orders = [
         makeOrder({ id: 1, status: 'pending', date_modified_gmt: '2024-01-15T10:00:00', date_created_gmt: '2024-01-15T10:00:00' }),
@@ -158,7 +276,7 @@ describe('WooCommerceOrderSourceAdapter', () => {
       const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(orders) });
       const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
 
-      // Only request 'created' events — order 2 (updated) would be filtered
+      // Only request 'created' events - order 2 (updated) would be filtered
       const result = await adapter.listOrderFeed({
         fromCursor: null,
         limit: 10,
@@ -183,7 +301,7 @@ describe('WooCommerceOrderSourceAdapter', () => {
     });
 
     it('should map recoverable failed payment status to updated, not cancelled', async () => {
-      // WC `failed` is a recoverable payment failure — mapping it to cancelled
+      // WC `failed` is a recoverable payment failure - mapping it to cancelled
       // would wrongly cancel the destination order on a transient payment hiccup.
       const httpClient = makeHttpClient({
         get: jest.fn().mockResolvedValue([
@@ -323,7 +441,7 @@ describe('WooCommerceOrderSourceAdapter', () => {
     });
 
     it('should read as unknown, not throw, when a plugin writes a non-string value under an allowlisted VAT key (#2824 review)', async () => {
-      // WC REST `meta_data[].value` is arbitrary JSON — a plugin storing an
+      // WC REST `meta_data[].value` is arbitrary JSON - a plugin storing an
       // array/object under an allowlisted key must not fail the whole order
       // ingestion; the field must read as unknown (undefined), the same as
       // an unlisted plugin key.
@@ -377,7 +495,7 @@ describe('WooCommerceOrderSourceAdapter', () => {
       const result = await adapter.getOrder({ externalOrderId: '1' });
 
       expect(result.placedAt).toBeUndefined();
-      // createdAt keeps normGmt's epoch sentinel — only placedAt (which feeds
+      // createdAt keeps normGmt's epoch sentinel - only placedAt (which feeds
       // invoicing's saleDate) must fail to empty rather than to 1970-01-01.
       expect(result.createdAt).toBe(new Date(0).toISOString());
     });
@@ -394,6 +512,31 @@ describe('WooCommerceOrderSourceAdapter', () => {
       const result = await adapter.getOrder({ externalOrderId: '1' });
 
       expect(result.items[0].productRef).toEqual({ type: 'variant', externalId: '55' });
+    });
+
+    it.each([
+      ['a text', '  Ring twice ', 'Ring twice'],
+      ['the empty string core sends for none', '', null],
+      ['an HTML-escaped text with a line break (N-26)', 'Tom &amp; Jerry<br>door 5', 'Tom & Jerry\ndoor 5'],
+    ])('should report the buyer note from customer_note: %s (#3538)', async (_label, note, expected) => {
+      const order = makeOrder({ customer_note: note });
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.buyerNote).toBe(expected);
+    });
+
+    it('should leave the buyer note unknown when the payload omits customer_note (#3538)', async () => {
+      const order = makeOrder({});
+      const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
+      const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
+
+      const result = await adapter.getOrder({ externalOrderId: '1' });
+
+      expect(result.buyerNote).toBeUndefined();
+      expect('buyerNote' in result).toBe(false);
     });
 
     it.each([
@@ -528,7 +671,7 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.shipping).toBeUndefined();
     });
 
-    it('should not map a per-order dispatch deadline — WooCommerce exposes none, ship-by stays blank (#1776)', async () => {
+    it('should not map a per-order dispatch deadline - WooCommerce exposes none, ship-by stays blank (#1776)', async () => {
       const order = makeOrder({});
       const httpClient = makeHttpClient({ get: jest.fn().mockResolvedValue(order) });
       const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
@@ -627,6 +770,43 @@ describe('WooCommerceOrderSourceAdapter', () => {
       const adapter = new WooCommerceOrderSourceAdapter(httpClient, makeConnection());
 
       await expect(adapter.getOrder({ externalOrderId: '1' })).rejects.toBe(serverError);
+    });
+
+    describe('delivery VAT rate from tax_lines (#3910)', () => {
+      const readRate = async (taxLines: unknown): Promise<string | undefined> => {
+        const order = makeOrder({ tax_lines: taxLines } as never);
+        const adapter = new WooCommerceOrderSourceAdapter(
+          makeHttpClient({ get: jest.fn().mockResolvedValue(order) }),
+          makeConnection(),
+        );
+        const result = await adapter.getOrder({ externalOrderId: String(order.id) });
+        return result.totals.shippingTaxRate;
+      };
+
+      it('should carry the single rate that taxed shipping', async () => {
+        await expect(
+          readRate([
+            { rate_id: 1, rate_percent: 23, shipping_tax_total: '2.30' },
+            { rate_id: 2, rate_percent: 8, shipping_tax_total: '0.00' },
+          ]),
+        ).resolves.toBe('23');
+      });
+
+      it('should report unknown when several rates taxed shipping', async () => {
+        await expect(
+          readRate([
+            { rate_id: 1, rate_percent: 23, shipping_tax_total: '1.00' },
+            { rate_id: 2, rate_percent: 8, shipping_tax_total: '0.50' },
+          ]),
+        ).resolves.toBeUndefined();
+      });
+
+      it('should report unknown when no tax line carries shipping tax', async () => {
+        await expect(
+          readRate([{ rate_id: 1, rate_percent: 23, shipping_tax_total: '0.00' }]),
+        ).resolves.toBeUndefined();
+        await expect(readRate(undefined)).resolves.toBeUndefined();
+      });
     });
 
     describe('gross amounts WooCommerce reports as components (#3365)', () => {
@@ -749,7 +929,7 @@ describe('WooCommerceOrderSourceAdapter', () => {
       expect(result.totals.taxTreatment).toBe('exclusive');
       // `order.total` is genuinely gross, unlike the line prices (#2836).
       expect(result.totals.totalTaxTreatment).toBe('inclusive');
-      // The whole point is that they disagree — pin the split itself, not
+      // The whole point is that they disagree - pin the split itself, not
       // just the two literals, so collapsing both in one future edit fails.
       expect(result.totals.totalTaxTreatment).not.toBe(result.totals.taxTreatment);
     });

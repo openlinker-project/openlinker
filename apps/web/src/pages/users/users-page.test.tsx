@@ -1,7 +1,7 @@
 import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import { renderWithProviders, createMockApiClient, findToastTitle } from '../../test/test-utils';
 import { UsersPage } from './users-page';
 import { ApiError } from '../../shared/api/api-error';
 import type { UserListFilters, UserListResponse, UserSummary } from '../../features/users/api/users.types';
@@ -187,7 +187,7 @@ describe('UsersPage', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Deactivate' }));
 
-    expect(await screen.findByText('Deactivation failed')).toBeInTheDocument();
+    expect(await findToastTitle('Deactivation failed')).toBeInTheDocument();
   });
 
   it('should call reactivate API when Reactivate clicked', async () => {

@@ -166,11 +166,11 @@ describe('InvoiceTimeline — clearance lane', () => {
     expect(acceptedNode).toHaveClass('invoice-tl-node--done');
   });
 
-  it('rejected clearance ⇒ Submitted (done) + Rejected by authority (error)', () => {
+  it('rejected clearance ⇒ Submitted (done) + Rejected by the tax office (error)', () => {
     renderWithProviders(
       <InvoiceTimeline invoice={makeInvoice({ regulatoryStatus: 'rejected' })} />,
     );
-    const rejectedNode = screen.getByText(/rejected by authority/i).closest('li');
+    const rejectedNode = screen.getByText(/rejected by the tax office/i).closest('li');
     expect(rejectedNode).toHaveClass('invoice-tl-node--error');
   });
 });

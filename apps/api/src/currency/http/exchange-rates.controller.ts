@@ -33,14 +33,7 @@
  *
  * @module apps/api/src/currency/http
  */
-import {
-  Controller,
-  Get,
-  Inject,
-  NotFoundException,
-  Query,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { Controller, Get, HttpStatus, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   EXCHANGE_RATE_LOOKUP_SERVICE_TOKEN,
@@ -50,6 +43,7 @@ import {
   type IExchangeRateLookupService,
 } from '@openlinker/core/currency';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { ExchangeRateResponseDto } from './dto/exchange-rate-response.dto';
 import { GetExchangeRateDto } from './dto/get-exchange-rate.dto';
 
@@ -88,8 +82,11 @@ export class ExchangeRatesController {
     });
 
     if (!stored) {
-      throw new NotFoundException(
-        `No exchange rate stored for ${query.from}->${query.to} on ${query.date}`
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'EXCHANGE_RATE_NOT_FOUND',
+        `No exchange rate stored for ${query.from}->${query.to} on ${query.date}`,
+        { from: query.from, to: query.to, date: query.date }
       );
     }
 
@@ -106,10 +103,14 @@ export class ExchangeRatesController {
         // supported") - correct there, but this caller asked about a RATE,
         // not a deployment-wide setting, so it is rewrapped here rather than
         // reusing the shared message verbatim.
-        throw new UnprocessableEntityException(
+        throw codedHttpError(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          'EXCHANGE_RATE_CURRENCY_UNSUPPORTED',
           `No registered publisher quotes '${error.submitted}'; publishers serve: ` +
-            `[${error.supportedCurrencies.join(', ') || '<none>'}]`
+            `[${error.supportedCurrencies.join(', ') || '<none>'}]`,
+          { currency: error.submitted, supportedCurrencies: error.supportedCurrencies.join(', ') }
         );
+
       }
       throw error;
     }

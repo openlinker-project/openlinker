@@ -816,10 +816,9 @@ body.show-hooks .app [data-testid]::after {
             <div class="card" style="padding:0;margin-bottom:12px">
               <div class="kv"><div>Receipt no.</div><div class="m">210</div><div>Issued by</div><div>e-paragony Sandbox</div></div>
             </div>
-            <div class="alert" data-testid="one-document-guard">
-              <b>This order already has a document</b>
-              This order already has a fiscal receipt from e-paragony Sandbox. Invoice or receipt — never both for one sale. Void the receipt first if an invoice is what this order actually needs.
-            </div>
+            <!-- #3766 - the one-document-guard alert was removed: the filled slot offers no action
+                 for the other document kind, so the warning described a control nobody could reach.
+                 See docs/plans/mockups/sales-document-panel-quiet-states.html. -->
           </div>
         </div>
       </div>
@@ -873,14 +872,14 @@ body.show-hooks .app [data-testid]::after {
         <tr><td>sales-document-invoice-hash</td><td>Hash row</td><td>Present only in the waiting state <b>NOT IMPLEMENTED</b> - no data path exists; see the gap note in the state above</td></tr>
         <tr><td>clearance-cannot-retry</td><td>Explanation</td><td><b>Never</b> coexists with a retry control</td></tr>
         <tr><td>invoices-chip-awaiting</td><td>List chip</td><td>Count and age; drives the filter when clicked</td></tr>
-        <tr><td>one-document-guard</td><td>Refusal alert</td><td>Present when any document exists for the order, on any connection or role</td></tr>
+        <tr><td>one-document-guard</td><td>Refusal alert</td><td><b>REMOVED by #3766</b> - the filled slot simply offers no action for the other kind; the refusal is still enforced server-side (409)</td></tr>
       </tbody>
     </table>
     </div>
 
     <div class="note">
       <span class="lbl">The acceptance scenario for the whole epic</span>
-      Enable both roles on one connection, route receipts and invoices to it from two rules, issue one of each on two orders, then attempt the other kind on each — <b>both attempts must be refused by <code>one-document-guard</code></b>.
+      Enable both roles on one connection, route receipts and invoices to it from two rules, issue one of each on two orders, then attempt the other kind on each — <b>both attempts must be refused with a 409</b>, and neither filled slot may offer an action for the other kind (since #3766 there is no <code>one-document-guard</code> alert).
     </div>
   </div>
 </section>

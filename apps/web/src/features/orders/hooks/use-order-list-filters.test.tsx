@@ -53,6 +53,20 @@ describe('useOrderListFilters', () => {
     expect(params(result.current.search).get('invoicing')).toBeNull();
   });
 
+  it('should flip the routing-blocked toggle on and off and query it as true when toggled', () => {
+    const { result } = setup('');
+    act(() => {
+      result.current.api.toggle('destinationRoutingBlocked');
+    });
+    expect(params(result.current.search).get('routing')).toBe('blocked');
+    expect(result.current.api.filters.destinationRoutingBlocked).toBe(true);
+    act(() => {
+      result.current.api.toggle('destinationRoutingBlocked');
+    });
+    expect(params(result.current.search).get('routing')).toBeNull();
+    expect(result.current.api.filters.destinationRoutingBlocked).toBeUndefined();
+  });
+
   it('should clear both tag params in one write when a tag chip is removed', () => {
     const { result } = setup('?tag=t1&untagged=true&health=synced');
     act(() => {
@@ -105,13 +119,14 @@ describe('useOrderListFilters', () => {
   });
 
   it('should flip direction when the active sort column is clicked again', () => {
+    // #4026 - the default is Recently synced (createdAt), newest first.
     const { result } = setup('');
-    expect(result.current.api.sort).toBe('dispatchBy');
-    expect(result.current.api.dir).toBe('asc');
-    act(() => {
-      result.current.api.applySort('dispatchBy');
-    });
+    expect(result.current.api.sort).toBe('createdAt');
     expect(result.current.api.dir).toBe('desc');
+    act(() => {
+      result.current.api.applySort('createdAt');
+    });
+    expect(result.current.api.dir).toBe('asc');
   });
 
   it('should report active filters for search alone when only search is set', () => {

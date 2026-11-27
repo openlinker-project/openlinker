@@ -10,7 +10,10 @@
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginatedTotalResponseDto } from '../../../common/dto/paginated-total-response.dto';
-import { OfferLifecycleCountsResponseDto } from './paginated-offer-mappings-response.dto';
+import {
+  OfferAttentionCountsResponseDto,
+  OfferLifecycleCountsResponseDto,
+} from './paginated-offer-mappings-response.dto';
 
 export class OfferMappingCountResponseDto extends PaginatedTotalResponseDto {
   @ApiPropertyOptional({
@@ -23,4 +26,11 @@ export class OfferMappingCountResponseDto extends PaginatedTotalResponseDto {
       'a second aggregate over the same join.',
   })
   lifecycleCounts?: OfferLifecycleCountsResponseDto;
+
+  @ApiPropertyOptional({
+    type: OfferAttentionCountsResponseDto,
+    description:
+      '"Needs a look" counts (#4045). Present only when the request set `includeLifecycleCounts`.',
+  })
+  attentionCounts?: OfferAttentionCountsResponseDto;
 }

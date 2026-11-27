@@ -15,4 +15,11 @@ export interface IOrderFulfillmentProjectionService {
    * it can't fail the shipment operation that triggered it.
    */
   recompute(orderId: string): Promise<void>;
+
+  /**
+   * Announce the order shipped (#3554) once its shipment has waited out the
+   * tracking-number grace period without receiving one. A no-op when the order
+   * already announced it or is not shipped. Best-effort, never throws.
+   */
+  announceShippedWithoutTracking(orderId: string): Promise<void>;
 }

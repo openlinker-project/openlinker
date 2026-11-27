@@ -4,7 +4,15 @@
  * @module apps/api/src/orders/http
  */
 import type { TestingModule } from '@nestjs/testing';
+import {
+  RefundCeilingExceededException,
+  RefundLockUnavailableException,
+  RefundRecordContendedException,
+} from '@openlinker/core/orders';
 import { Test } from '@nestjs/testing';
+import { IDENTIFIER_MAPPING_SERVICE_TOKEN } from '@openlinker/core/identifier-mapping';
+import { BUNDLE_DEFINITION_SERVICE_TOKEN, PRODUCTS_SERVICE_TOKEN } from '@openlinker/core/products';
+import { ParseUUIDPipe } from '@nestjs/common';
 import {
   BadRequestException,
   ConflictException,
@@ -20,11 +28,13 @@ import {
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   OrderRecord,
   OrderRecordNotFoundException,
+  NoBuyerNoteException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
   MissingSourceExternalIdException,
   ORDER_HOLD_SERVICE_TOKEN,
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  ORDER_ROUTING_RETRY_SERVICE_TOKEN,
   OrderAlreadyOnHoldError,
   HoldAlreadyReleasedError,
   HoldReleaseNoteRequiredError,
@@ -49,18 +59,47 @@ import {
   FULFILLMENT_ROUTING_SERVICE_TOKEN,
   DELIVERY_RIDER_SERVICE_TOKEN,
 } from '@openlinker/core/mappings';
-import type {
-  IFulfillmentRoutingService,
-  IDeliveryRiderService,
-} from '@openlinker/core/mappings';
+import type { IFulfillmentRoutingService, IDeliveryRiderService } from '@openlinker/core/mappings';
 import { SHIPMENT_QUERY_SERVICE_TOKEN } from '@openlinker/core/shipping';
 import { RETURNS_SERVICE_TOKEN } from '@openlinker/core/returns';
-import { ORDER_TAG_SERVICE_TOKEN } from '@openlinker/core/orders';
+import { PROMOTION_APPLICATION_LOG_TOKEN } from '@openlinker/core/promotions';
+import {
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  type IFulfillmentWorkQueryService,
+} from '@openlinker/core/fulfillment';
+import type { Response } from 'express';
+import {
+  ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_TAG_SERVICE_TOKEN,
+  type IOrderChangeService,
+} from '@openlinker/core/orders';
+import { ORDER_CANCELLATION_SERVICE_TOKEN } from '../application/interfaces/order-cancellation.service.interface';
+import { ORDER_EDIT_SERVICE_TOKEN } from '../application/interfaces/order-edit.service.interface';
+import {
+  ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
+  PAYMENT_WRITEBACK_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+} from '@openlinker/core/orders';
+
+import { FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN } from '../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
+import type { IOrderCancellationService } from '../application/interfaces/order-cancellation.service.interface';
+import {
+  CancelCorrectionFailedError,
+  OrderCancellationNoteRequiredError,
+  OrderCancellationNotFoundError,
+  OrderCancellationRefusedError,
+} from '../application/errors/order-cancellation.errors';
 
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from '../application/interfaces/source-fulfillment-status.service.interface';
 
 describe('OrdersController', () => {
   let controller: OrdersController;
+  let sourceAmendment: { reconcile: jest.Mock; accept: jest.Mock };
+  let parcelClosureNotifier: { notifyParcelClosed: jest.Mock; relayRecordedClose: jest.Mock };
+  let paymentWritebackMock: { retry: jest.Mock; markHandled: jest.Mock };
+  let orderRefundsMock: { getRefundSummariesForOrders: jest.Mock };
+  let listOpenReturnOrderIds: jest.Mock;
+  let findOrderIdsNeedingAttention: jest.Mock;
   let repository: jest.Mocked<OrderRecordRepositoryPort>;
   let orderRecordService: jest.Mocked<IOrderRecordService>;
   let retryService: jest.Mocked<IOrderDestinationRetryService>;
@@ -69,8 +108,15 @@ describe('OrdersController', () => {
   let deliveryRider: jest.Mocked<IDeliveryRiderService>;
   let holdService: jest.Mocked<IOrderHoldService>;
   let provisioningResume: jest.Mocked<IOrderProvisioningResumeService>;
+  let routingRetry: { retryRouting: jest.Mock; rerouteHeldOrdersForVariant: jest.Mock };
   let salesDocumentView: jest.Mocked<ISalesDocumentViewService>;
   let testFixtureService: jest.Mocked<IOrderTestFixtureService>;
+  let fulfillmentWork: jest.Mocked<IFulfillmentWorkQueryService>;
+  let mockBundleProducts: { getVariantsByIds: jest.Mock; getProductsByIds: jest.Mock };
+  let mockBundleDefinitions: { findCurrentByVariantIds: jest.Mock };
+  let mockBundleMapping: { getInternalId: jest.Mock };
+  let orderChanges: jest.Mocked<IOrderChangeService>;
+  let orderCancellation: jest.Mocked<IOrderCancellationService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -103,12 +149,18 @@ describe('OrdersController', () => {
     return Object.assign(Object.create(OrderRecord.prototype) as OrderRecord, mockOrder, overrides);
   }
 
+  const fulfillmentWorkQuery = {
+    listBuyerNoteAcknowledgements: jest.fn().mockResolvedValue([]),
+  };
+
   beforeEach(async () => {
+    fulfillmentWorkQuery.listBuyerNoteAcknowledgements.mockResolvedValue([]);
     const mockRepository: jest.Mocked<OrderRecordRepositoryPort> = {
       findById: jest.fn(),
       findByIds: jest.fn(),
       findEarliestOrderDateByConnection: jest.fn(),
       countOrdersByRoutingCountrySince: jest.fn(),
+      getDeliveryCountryFacts: jest.fn(),
       listObservedSourcePaymentMethods: jest.fn(),
       upsert: jest.fn(),
       upsertWithLineItems: jest.fn(),
@@ -125,7 +177,9 @@ describe('OrdersController', () => {
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
       updateFulfillmentBlock: jest.fn(),
+      updateDestinationRoutingBlock: jest.fn(),
       listOrderIdsByFulfillmentBlockReasons: jest.fn(),
+      listOrderIdsHeldForVariant: jest.fn(),
       updateFulfillmentRoutingSkipReason: jest.fn(),
       updateOmsAttention: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
@@ -136,7 +190,10 @@ describe('OrdersController', () => {
       listDistinctNativeCurrencies: jest.fn(),
       countStampedByReportingCurrency: jest.fn(),
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
+      countEarlierOrdersForCustomer: jest.fn(),
       clearPacked: jest.fn(),
+      applyOrderEdit: jest.fn(),
       recordAmendment: jest.fn(),
       getDailyOrderAggregates: jest.fn(),
       getMedianOrderValue: jest.fn(),
@@ -153,11 +210,32 @@ describe('OrdersController', () => {
       stampPreRolloutEraForTesting: jest.fn(),
       findSearchTextReindexPage: jest.fn(),
       rewriteSearchText: jest.fn(),
+      countBuyerDataRetentionCandidates: jest.fn(),
+      countVisibleOrdersForBuyerData: jest.fn(),
+      findBuyerDataRetentionSamples: jest.fn(),
+      hideOrdersForBuyerDataRetention: jest.fn(),
+      findErasableOrdersForBuyerDataRetention: jest.fn(),
+      erasePersonalDataForRetention: jest.fn(),
+      findCustomerIdsWithoutPersonalDataOrders: jest.fn(),
+      findBuyerDataRetentionCandidates: jest.fn(),
+      redactBuyerData: jest.fn(),
+      isBuyerDataRedacted: jest.fn().mockResolvedValue(false),
+      claimShippedNotification: jest.fn(),
+      freezeLineExpansion: jest.fn(),
+      countOpenOrdersByBundleVersion: jest.fn(),
+      findHeldByReasonCode: jest.fn(),
+      claimPaymentWriteback: jest.fn().mockResolvedValue(true),
+      recordPaymentWriteback: jest.fn().mockResolvedValue(undefined),
+      markPaymentWritebackHandled: jest.fn().mockResolvedValue(0),
+      countOrdersMatchingSearchSince: jest.fn(),
+      getBuyerDataAgeHistogram: jest.fn(),
     };
 
     const mockOrderRecordService = {
       markPacked: jest.fn(),
+      markBuyerNoteRead: jest.fn(),
       clearPacked: jest.fn(),
+      applyOrderEdit: jest.fn(),
       recordAmendment: jest.fn(),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
@@ -193,7 +271,7 @@ describe('OrdersController', () => {
     };
 
     const mockSourceFulfillment = { read: jest.fn() };
-  const mockDeliveryRider: jest.Mocked<IDeliveryRiderService> = {
+    const mockDeliveryRider: jest.Mocked<IDeliveryRiderService> = {
       // Default: no actionable hint. Batch mirrors the input length so the
       // controller's positional zip stays aligned.
       resolve: jest.fn().mockResolvedValue({ rider: 'none' }),
@@ -217,10 +295,13 @@ describe('OrdersController', () => {
       listHolds: jest.fn().mockResolvedValue([]),
     } as unknown as jest.Mocked<IOrderHoldService>;
 
+    const mockRoutingRetry = { retryRouting: jest.fn(), rerouteHeldOrdersForVariant: jest.fn() };
     const mockProvisioningResume = {
-      resume: jest
-        .fn()
-        .mockResolvedValue({ status: 'enqueued', jobId: 'job-1', jobType: 'marketplace.order.sync' }),
+      resume: jest.fn().mockResolvedValue({
+        status: 'enqueued',
+        jobId: 'job-1',
+        jobType: 'marketplace.order.sync',
+      }),
     } as unknown as jest.Mocked<IOrderProvisioningResumeService>;
     const mockSalesDocumentView: jest.Mocked<ISalesDocumentViewService> = {
       getForOrders: jest.fn().mockResolvedValue(new Map()),
@@ -236,9 +317,21 @@ describe('OrdersController', () => {
       assertTestFixturesAllowed: jest.fn(),
     };
 
+    mockBundleProducts = {
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
+      getProductsByIds: jest.fn().mockResolvedValue([]),
+    };
+    mockBundleDefinitions = { findCurrentByVariantIds: jest.fn().mockResolvedValue([]) };
+    mockBundleMapping = { getInternalId: jest.fn().mockResolvedValue(null) };
+
+    listOpenReturnOrderIds = jest.fn().mockResolvedValue([]);
+    findOrderIdsNeedingAttention = jest.fn().mockResolvedValue([]);
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
       providers: [
+        { provide: PRODUCTS_SERVICE_TOKEN, useValue: mockBundleProducts },
+        { provide: IDENTIFIER_MAPPING_SERVICE_TOKEN, useValue: mockBundleMapping },
+        { provide: BUNDLE_DEFINITION_SERVICE_TOKEN, useValue: mockBundleDefinitions },
         {
           provide: ORDER_RECORD_REPOSITORY_TOKEN,
           useValue: mockRepository,
@@ -268,6 +361,10 @@ describe('OrdersController', () => {
           useValue: mockProvisioningResume,
         },
         {
+          provide: ORDER_ROUTING_RETRY_SERVICE_TOKEN,
+          useValue: mockRoutingRetry,
+        },
+        {
           provide: DELIVERY_RIDER_SERVICE_TOKEN,
           useValue: mockDeliveryRider,
         },
@@ -295,8 +392,22 @@ describe('OrdersController', () => {
           useValue: { list: jest.fn().mockResolvedValue({ items: [], total: 0 }) },
         },
         {
+          provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+          useValue: {
+            summarizeWorkForOrders: jest.fn().mockResolvedValue(new Map()),
+            ...fulfillmentWorkQuery,
+          },
+        },
+        {
+          provide: PROMOTION_APPLICATION_LOG_TOKEN,
+          useValue: { findOrderIdsNeedingAttention },
+        },
+        {
           provide: RETURNS_SERVICE_TOKEN,
-          useValue: { getOpenReturnSummariesForOrders: jest.fn().mockResolvedValue(new Map()) },
+          useValue: {
+            getOpenReturnSummariesForOrders: jest.fn().mockResolvedValue(new Map()),
+            listOpenReturnOrderIds: listOpenReturnOrderIds,
+          },
         },
         {
           provide: ORDER_TAG_SERVICE_TOKEN,
@@ -305,10 +416,47 @@ describe('OrdersController', () => {
             listForOrder: jest.fn().mockResolvedValue([]),
           },
         },
+        // #3540 - no open amendment unless a test says so.
+        {
+          provide: ORDER_CHANGE_SERVICE_TOKEN,
+          useValue: {
+            findOrderIdsWithOpenAmendment: jest.fn().mockResolvedValue(new Set<string>()),
+            listOperatorChangesByOrder: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: ORDER_CANCELLATION_SERVICE_TOKEN,
+          useValue: { cancelOrder: jest.fn(), confirmChange: jest.fn() },
+        },
+        {
+          provide: ORDER_EDIT_SERVICE_TOKEN,
+          useValue: { getEditsView: jest.fn().mockResolvedValue(null) },
+        },
+        {
+          provide: ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
+          useValue: { reconcile: jest.fn(), accept: jest.fn() },
+        },
+        {
+          provide: FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+          useValue: { notifyParcelClosed: jest.fn(), relayRecordedClose: jest.fn() },
+        },
+        {
+          provide: PAYMENT_WRITEBACK_SERVICE_TOKEN,
+          useValue: {
+            retry: jest.fn().mockResolvedValue(1),
+            markHandled: jest.fn().mockResolvedValue(1),
+          },
+        },
+        {
+          provide: ORDER_REFUND_SERVICE_TOKEN,
+          useValue: { getRefundSummariesForOrders: jest.fn().mockResolvedValue(new Map()) },
+        },
       ],
     }).compile();
 
     controller = module.get<OrdersController>(OrdersController);
+    paymentWritebackMock = module.get(PAYMENT_WRITEBACK_SERVICE_TOKEN);
+    orderRefundsMock = module.get(ORDER_REFUND_SERVICE_TOKEN);
     repository = module.get(ORDER_RECORD_REPOSITORY_TOKEN);
     orderRecordService = module.get(ORDER_RECORD_SERVICE_TOKEN);
     retryService = module.get(ORDER_DESTINATION_RETRY_SERVICE_TOKEN);
@@ -317,8 +465,75 @@ describe('OrdersController', () => {
     deliveryRider = module.get(DELIVERY_RIDER_SERVICE_TOKEN);
     holdService = module.get(ORDER_HOLD_SERVICE_TOKEN);
     provisioningResume = module.get(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN);
+    routingRetry = module.get(ORDER_ROUTING_RETRY_SERVICE_TOKEN);
     salesDocumentView = module.get(SALES_DOCUMENT_VIEW_SERVICE_TOKEN);
     testFixtureService = module.get(ORDER_TEST_FIXTURE_SERVICE_TOKEN);
+    fulfillmentWork = module.get(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN);
+    orderChanges = module.get(ORDER_CHANGE_SERVICE_TOKEN);
+    orderCancellation = module.get(ORDER_CANCELLATION_SERVICE_TOKEN);
+    sourceAmendment = module.get(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN);
+    parcelClosureNotifier = module.get(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN);
+  });
+
+  describe('source change actions (#3961)', () => {
+    const result = {
+      outcome: 'held' as const,
+      cause: 'box-holds-more' as const,
+      lines: [{ orderLineId: 'li_1', from: 2, to: 1 }],
+    };
+    const answer = { outcome: result.outcome, cause: result.cause, lines: result.lines };
+
+    beforeEach(() => {
+      // The shared mock predates any route reading a single record by id.
+      orderRecordService.getOrderRecord = jest.fn();
+    });
+
+    it('should run the same comparison ingestion runs on "Check again"', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as never);
+      sourceAmendment.reconcile.mockResolvedValue({ ...result, closedParcels: [] });
+
+      await expect(controller.recheckSourceChange('ol_order_1')).resolves.toEqual(answer);
+      expect(sourceAmendment.reconcile).toHaveBeenCalledWith({ internalOrderId: 'ol_order_1' });
+      expect(parcelClosureNotifier.relayRecordedClose).not.toHaveBeenCalled();
+    });
+
+    it('should relay at once a box the applied change closed', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as never);
+      sourceAmendment.reconcile.mockResolvedValue({
+        ...result,
+        outcome: 'applied',
+        cause: null,
+        closedParcels: [{ workId: 'w1', closedAt: new Date() }],
+      });
+
+      await controller.recheckSourceChange('ol_order_1');
+
+      expect(parcelClosureNotifier.relayRecordedClose).toHaveBeenCalledWith('w1');
+    });
+
+    it('should accept on behalf of the session user, never a body field', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue({} as never);
+      sourceAmendment.accept.mockResolvedValue({
+        ...result,
+        outcome: 'accepted',
+        cause: null,
+        closedParcels: [],
+      });
+
+      await controller.acceptSourceChange('ol_order_1', { id: 'user-1' } as never);
+
+      expect(sourceAmendment.accept).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_1',
+        actorUserId: 'user-1',
+      });
+    });
+
+    it('should answer 404 for an unknown order without touching the order', async () => {
+      orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+      await expect(controller.recheckSourceChange('missing')).rejects.toThrow(NotFoundException);
+      expect(sourceAmendment.reconcile).not.toHaveBeenCalled();
+    });
   });
 
   describe('listOrders', () => {
@@ -335,6 +550,76 @@ describe('OrdersController', () => {
       expect(result.items[0].syncStatus).toHaveLength(1);
       expect(result.items[0].syncStatus[0].status).toBe('synced');
       expect(result.items[0].syncStatus[0].externalOrderId).toBe('PS-456');
+    });
+
+    describe('handledInOpenLinker (#3482)', () => {
+      it('should read the packing stage once for the whole page and attach it per order', async () => {
+        const other = orderRecordWith({ internalOrderId: 'ol_order_002' });
+        repository.findMany.mockResolvedValue({ items: [mockOrder, other], total: 2 });
+        fulfillmentWork.summarizeWorkForOrders.mockResolvedValue(
+          new Map([
+            [
+              'ol_order_001',
+              {
+                stage: 'packing' as const,
+                workCount: 1,
+                assignment: 'single' as const,
+                assignedToUserId: null,
+              },
+            ],
+          ])
+        );
+
+        const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+        expect(fulfillmentWork.summarizeWorkForOrders).toHaveBeenCalledTimes(1);
+        expect(fulfillmentWork.summarizeWorkForOrders).toHaveBeenCalledWith([
+          'ol_order_001',
+          'ol_order_002',
+        ]);
+        expect(result.items[0].handledInOpenLinker).toEqual({
+          stage: 'packing',
+          workCount: 1,
+          assignment: 'single',
+          assignedToUserId: null,
+        });
+        // Absent means "no live work found", never a "not routed" claim.
+        expect(result.items[1].handledInOpenLinker).toBeUndefined();
+      });
+
+      it('should not fail the list, and should claim nothing, when the read throws', async () => {
+        repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
+        fulfillmentWork.summarizeWorkForOrders.mockRejectedValue(new Error('db down'));
+
+        const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+        expect(result.items).toHaveLength(1);
+        expect(result.items[0].handledInOpenLinker).toBeUndefined();
+      });
+
+      it('should skip the read entirely when the page is empty', async () => {
+        repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+        await controller.listOrders({ limit: 20, offset: 0 });
+
+        expect(fulfillmentWork.summarizeWorkForOrders).not.toHaveBeenCalled();
+      });
+    });
+
+    it('should forward ?waitingInOpenLinker and ?onPackBench to the repository filters (#3482)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({
+        limit: 20,
+        offset: 0,
+        waitingInOpenLinker: true,
+        onPackBench: false,
+      });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ waitingInOpenLinker: true, onPackBench: false }),
+        expect.anything()
+      );
     });
 
     it('should pass filters to repository', async () => {
@@ -563,6 +848,39 @@ describe('OrdersController', () => {
       );
     });
 
+    it('should map ?withGift= onto the repository, forwarding false as a predicate (#3940)', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ withGift: true, limit: 20, offset: 0 });
+      await controller.listOrders({ withGift: false, limit: 20, offset: 0 });
+      await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(repository.findMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ withGift: true }),
+        {
+          limit: 20,
+          offset: 0,
+        }
+      );
+      expect(repository.findMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ withGift: false }),
+        {
+          limit: 20,
+          offset: 0,
+        }
+      );
+      expect(repository.findMany).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({ withGift: undefined }),
+        {
+          limit: 20,
+          offset: 0,
+        }
+      );
+    });
+
     it('should pass the dispatch-SLA sort and dueBefore filter through to the repository (#927)', async () => {
       repository.findMany.mockResolvedValue({ items: [], total: 0 });
 
@@ -639,7 +957,13 @@ describe('OrdersController', () => {
         null,
         'conn-source-001',
         null,
-        { dispatchTime: { from: '2026-04-01T00:00:00Z', to: '2026-04-03T00:00:00Z', estimated: true } },
+        {
+          dispatchTime: {
+            from: '2026-04-01T00:00:00Z',
+            to: '2026-04-03T00:00:00Z',
+            estimated: true,
+          },
+        },
         [],
         'ready',
         new Date('2026-04-01T00:00:00Z'),
@@ -670,7 +994,13 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'ol_managed_carrier', processorConnectionId: 'conn-inpost', source: 'rule', processorAvailable: true, parcelProfile: null },
+        {
+          processorKind: 'ol_managed_carrier',
+          processorConnectionId: 'conn-inpost',
+          source: 'rule',
+          processorAvailable: true,
+          parcelProfile: null,
+        },
       ]);
 
       const result = await controller.listOrders({ limit: 20, offset: 0 });
@@ -711,7 +1041,13 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod, mockOrder], total: 2 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
+        {
+          processorKind: 'omp_fulfilled',
+          processorConnectionId: null,
+          source: 'default',
+          processorAvailable: true,
+          parcelProfile: null,
+        },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([
         { rider: 'unmapped', candidateCarrier: { platformType: 'inpost', displayName: 'InPost' } },
@@ -754,7 +1090,13 @@ describe('OrdersController', () => {
       );
       repository.findMany.mockResolvedValue({ items: [orderWithMethod], total: 1 });
       fulfillmentRouting.resolveBatch.mockResolvedValue([
-        { processorKind: 'omp_fulfilled', processorConnectionId: null, source: 'default', processorAvailable: true, parcelProfile: null },
+        {
+          processorKind: 'omp_fulfilled',
+          processorConnectionId: null,
+          source: 'default',
+          processorAvailable: true,
+          parcelProfile: null,
+        },
       ]);
       deliveryRider.resolveBatch.mockResolvedValue([{ rider: 'none' }]);
 
@@ -762,6 +1104,67 @@ describe('OrdersController', () => {
 
       expect(result.items[0].deliveryRider).toEqual({ rider: 'none' });
       expect(result.items[0].deliveryRider).not.toHaveProperty('candidateCarrier');
+    });
+  });
+
+  describe('refundState (#4100)', () => {
+    const refunded = orderRecordWith({
+      internalOrderId: 'ol_order_001',
+      totalAmount: 100,
+      currency: 'PLN',
+    });
+    const summaries = (
+      amount: string
+    ): Map<string, { count: number; totalAmount: string; currency: string }> =>
+      new Map([['ol_order_001', { count: 1, totalAmount: amount, currency: 'PLN' }]]);
+
+    it('should carry a partial refundState on a list row from one batched read', async () => {
+      repository.findMany.mockResolvedValue({ items: [refunded], total: 1 });
+      orderRefundsMock.getRefundSummariesForOrders.mockResolvedValue(summaries('40.00'));
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(orderRefundsMock.getRefundSummariesForOrders).toHaveBeenCalledTimes(1);
+      expect(orderRefundsMock.getRefundSummariesForOrders).toHaveBeenCalledWith(['ol_order_001']);
+      expect(result.items[0].refundState).toEqual({
+        state: 'partial',
+        refundedAmount: '40.00',
+        currency: 'PLN',
+      });
+    });
+
+    it('should carry a full refundState on the detail read', async () => {
+      repository.findById.mockResolvedValue(refunded);
+      orderRefundsMock.getRefundSummariesForOrders.mockResolvedValue(summaries('100.00'));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.refundState).toEqual({
+        state: 'full',
+        refundedAmount: '100.00',
+        currency: 'PLN',
+      });
+    });
+
+    it('should leave refundState absent on both reads when nothing was refunded', async () => {
+      repository.findMany.mockResolvedValue({ items: [refunded], total: 1 });
+      repository.findById.mockResolvedValue(refunded);
+
+      const list = await controller.listOrders({ limit: 20, offset: 0 });
+      const detail = await controller.getOrder('ol_order_001');
+
+      expect(list.items[0].refundState).toBeUndefined();
+      expect(detail.refundState).toBeUndefined();
+    });
+
+    it('should not fail the list and should claim nothing when the refund read throws', async () => {
+      repository.findMany.mockResolvedValue({ items: [refunded], total: 1 });
+      orderRefundsMock.getRefundSummariesForOrders.mockRejectedValue(new Error('db down'));
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].refundState).toBeUndefined();
     });
   });
 
@@ -774,7 +1177,25 @@ describe('OrdersController', () => {
         needsAttention: 1,
         synced: 1,
         awaitingDispatch: 9,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0,
+        salesDocumentBlocked: 0,
+        taxRateConflict: 0,
+        salesDocumentBlockedOldestAt: null,
+        salesDocumentIssuedOnRequest: 0,
+        omsAttention: 0,
+        paymentNotSent: 0,
+        destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        onPackBench: 0,
+        openReturn: 0,
+        hasBuyerNote: 0,
+        withGift: 0,
+        withBundle: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       const result = await controller.statusSummary({});
@@ -782,6 +1203,42 @@ describe('OrdersController', () => {
       expect(result.total).toBe(11);
       expect(result.needsAttention).toBe(1);
       expect(result.awaitingDispatch).toBe(9);
+    });
+
+    it('should report the waiting and pack-bench counts with the oldest wait as ISO (#3482)', async () => {
+      repository.countByHealth.mockResolvedValue({
+        total: 5,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 1,
+        awaitingDispatch: 4,
+        salesDocumentBlocked: 0,
+        taxRateConflict: 0,
+        salesDocumentBlockedOldestAt: null,
+        salesDocumentIssuedOnRequest: 0,
+        omsAttention: 0,
+        paymentNotSent: 0,
+        destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 3,
+        waitingInOpenLinkerOldestAt: new Date('2026-10-23T07:00:00Z'),
+        onPackBench: 14,
+        openReturn: 0,
+        hasBuyerNote: 0,
+        withGift: 0,
+        withBundle: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+      });
+
+      const result = await controller.statusSummary({});
+
+      expect(result.waitingInOpenLinker).toBe(3);
+      expect(result.waitingInOpenLinkerOldestAt).toBe('2026-10-23T07:00:00.000Z');
+      expect(result.onPackBench).toBe(14);
     });
 
     it('should forward only the scope subset (source/date) to the repository (#929)', async () => {
@@ -792,7 +1249,25 @@ describe('OrdersController', () => {
         needsAttention: 0,
         synced: 0,
         awaitingDispatch: 0,
-        salesDocumentBlocked: 0, taxRateConflict: 0, salesDocumentBlockedOldestAt: null, salesDocumentIssuedOnRequest: 0, omsAttention: 0,
+        salesDocumentBlocked: 0,
+        taxRateConflict: 0,
+        salesDocumentBlockedOldestAt: null,
+        salesDocumentIssuedOnRequest: 0,
+        omsAttention: 0,
+        paymentNotSent: 0,
+        destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        onPackBench: 0,
+        openReturn: 0,
+        hasBuyerNote: 0,
+        withGift: 0,
+        withBundle: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
       });
 
       await controller.statusSummary({
@@ -807,9 +1282,243 @@ describe('OrdersController', () => {
         })
       );
     });
+
+    it('should scope the summary to hidden orders when asked (#4289)', async () => {
+      repository.countByHealth.mockResolvedValue({
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+        salesDocumentBlockedOldestAt: null,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        taxRateConflict: 0,
+        omsAttention: 0,
+        reservationShortfalls: 0,
+        openReturn: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+      } as never);
+
+      await controller.statusSummary({ hidden: true });
+
+      expect(repository.countByHealth).toHaveBeenCalledWith(
+        expect.objectContaining({ hidden: true })
+      );
+    });
+
+    it('should pass the open-return id list to the repository and report the new counts (#4025)', async () => {
+      listOpenReturnOrderIds.mockResolvedValue(['ol_order_a', 'ol_order_b']);
+      repository.countByHealth.mockResolvedValue({
+        total: 4,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 1,
+        awaitingDispatch: 3,
+        salesDocumentBlocked: 0,
+        taxRateConflict: 0,
+        salesDocumentBlockedOldestAt: null,
+        salesDocumentIssuedOnRequest: 0,
+        omsAttention: 0,
+        paymentNotSent: 0,
+        destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        onPackBench: 0,
+        openReturn: 2,
+        hasBuyerNote: 1,
+        withGift: 0,
+        withBundle: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 3,
+        bySource: { 'conn-001': 4 },
+        attention: { lateToShip: 3, stuck: 0, toHandle: 2 },
+      });
+
+      const result = await controller.statusSummary({});
+
+      expect(repository.countByHealth).toHaveBeenCalledWith(
+        expect.objectContaining({ openReturnOrderIds: ['ol_order_a', 'ol_order_b'] })
+      );
+      expect(result.openReturn).toBe(2);
+      expect(result.bySource).toEqual({ 'conn-001': 4 });
+      expect(result.attention).toEqual({ lateToShip: 3, stuck: 0, toHandle: 2 });
+    });
+
+    it('should omit the open-return counts, not report 0, when the returns read fails (#4025)', async () => {
+      listOpenReturnOrderIds.mockRejectedValue(new Error('returns down'));
+      repository.countByHealth.mockResolvedValue({
+        total: 0,
+        sourceDeleted: 0,
+        awaitingMapping: 0,
+        needsAttention: 0,
+        synced: 0,
+        awaitingDispatch: 0,
+        salesDocumentBlocked: 0,
+        taxRateConflict: 0,
+        salesDocumentBlockedOldestAt: null,
+        salesDocumentIssuedOnRequest: 0,
+        omsAttention: 0,
+        paymentNotSent: 0,
+        destinationRoutingBlocked: 0,
+        waitingInOpenLinker: 0,
+        waitingInOpenLinkerOldestAt: null,
+        onPackBench: 0,
+        openReturn: 0,
+        hasBuyerNote: 0,
+        withGift: 0,
+        withBundle: 0,
+        giftNotAdded: 0,
+        giftShopRejected: 0,
+        dueWithin24h: 0,
+        bySource: {},
+        attention: { lateToShip: 0, stuck: 0, toHandle: 0 },
+      });
+
+      const result = await controller.statusSummary({});
+
+      expect(repository.countByHealth).toHaveBeenCalledWith(
+        expect.objectContaining({ openReturnOrderIds: [] })
+      );
+      // Both counts built on the id list are unknown, so they are absent rather
+      // than a 0 the operator would read as "no open returns".
+      expect(result).not.toHaveProperty('openReturn');
+      expect(result.attention).toEqual({ lateToShip: 0, stuck: 0 });
+      expect(result.hasBuyerNote).toBe(0);
+    });
   });
 
   describe('getOrder', () => {
+    it('should list the bundle line components and flag an older composition (#3624)', async () => {
+      const withBundle = Object.create(mockOrder, {
+        bundleLines: {
+          value: [
+            {
+              lineId: 'L1',
+              bundleVariantId: 'v-set',
+              version: 1,
+              components: [
+                { lineId: 'L1~c:v-a', variantId: 'v-a', productId: 'p-a', quantity: 2, perUnit: 2 },
+                {
+                  lineId: 'L1~c:v-b',
+                  variantId: 'v-b',
+                  productId: 'p-b',
+                  quantity: 1,
+                  perUnit: 1,
+                  giftSlot: true,
+                },
+              ],
+            },
+          ],
+        },
+      }) as OrderRecord;
+      repository.findById.mockResolvedValue(withBundle);
+      mockBundleDefinitions.findCurrentByVariantIds.mockResolvedValue([
+        { variantId: 'v-set', version: 2, components: [] },
+      ]);
+      mockBundleProducts.getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', productId: 'p-a', sku: 'A-1' },
+        { id: 'v-b', productId: 'p-b', sku: 'B-1' },
+      ]);
+      mockBundleProducts.getProductsByIds.mockResolvedValue([
+        { id: 'p-a', name: 'Kubek' },
+        { id: 'p-b', name: 'Lyzeczka' },
+      ]);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.bundleLines).toHaveLength(1);
+      expect(result.bundleLines?.[0].olderComposition).toBe(true);
+      expect(
+        result.bundleLines?.[0].components.map((c) => [c.name, c.quantity, c.giftSlot])
+      ).toEqual([
+        ['Kubek', 2, undefined],
+        ['Lyzeczka', 1, true],
+      ]);
+    });
+
+    it('should name the product a held multipack offer maps to (#3624)', async () => {
+      const held = Object.create(mockOrder, {
+        recordStatus: { value: 'awaiting_mapping' },
+        mappingFailureReason: {
+          value: 'multipack without a bundle [multipack-without-bundle]: line sells 3 units',
+        },
+        rawMultipackLines: {
+          value: [
+            {
+              itemId: 'L1',
+              name: 'Kawa 3 opakowania',
+              packQuantity: 3,
+              productRef: { type: 'offer', externalId: 'OFFER-1' },
+            },
+          ],
+        },
+      }) as OrderRecord;
+      repository.findById.mockResolvedValue(held);
+      mockBundleMapping.getInternalId.mockResolvedValue('v-coffee');
+      mockBundleProducts.getVariantsByIds.mockResolvedValue([
+        { id: 'v-coffee', productId: 'p-coffee', sku: 'KAW-250-ETI' },
+      ]);
+      mockBundleProducts.getProductsByIds.mockResolvedValue([{ id: 'p-coffee', name: 'Kawa' }]);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.multipackHold).toEqual({
+        lineId: 'L1',
+        packQuantity: 3,
+        lineName: 'Kawa 3 opakowania',
+        variantId: 'v-coffee',
+        productName: 'Kawa',
+        sku: 'KAW-250-ETI',
+      });
+    });
+
+    it('should surface every held multipack line, not only the first (#3520)', async () => {
+      const held = Object.create(mockOrder, {
+        recordStatus: { value: 'awaiting_mapping' },
+        mappingFailureReason: {
+          value: 'multipack without a bundle [multipack-without-bundle]: lines sell several units',
+        },
+        rawMultipackLines: {
+          value: [
+            {
+              itemId: 'L1',
+              name: 'A',
+              packQuantity: 2,
+              productRef: { type: 'offer', externalId: 'O1' },
+            },
+            {
+              itemId: 'L2',
+              name: 'B',
+              packQuantity: 3,
+              productRef: { type: 'offer', externalId: 'O2' },
+            },
+          ],
+        },
+      }) as OrderRecord;
+      repository.findById.mockResolvedValue(held);
+      mockBundleMapping.getInternalId.mockResolvedValue(null);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.multipackHolds?.map((h) => h.lineId)).toEqual(['L1', 'L2']);
+      expect(result.multipackHold?.lineId).toBe('L1');
+    });
+
+    it('should leave bundleLines off an order without bundles (#3624)', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      const result = await controller.getOrder('ol_order_001');
+      expect(result.bundleLines).toBeUndefined();
+    });
+
     it('should return order record when found', async () => {
       repository.findById.mockResolvedValue(mockOrder);
 
@@ -819,6 +1528,32 @@ describe('OrdersController', () => {
       expect(result.customerId).toBe('ol_customer_001');
       expect(result.sourceConnectionId).toBe('conn-source-001');
       expect(result.orderSnapshot).toEqual({ externalOrderId: 'EXT-123', items: [] });
+    });
+
+    it('should carry the same handledInOpenLinker projection as the list row (#3482)', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      fulfillmentWork.summarizeWorkForOrders.mockResolvedValue(
+        new Map([
+          [
+            'ol_order_001',
+            {
+              stage: 'packed' as const,
+              workCount: 2,
+              assignment: 'single' as const,
+              assignedToUserId: null,
+            },
+          ],
+        ])
+      );
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.handledInOpenLinker).toEqual({
+        stage: 'packed',
+        workCount: 2,
+        assignment: 'single',
+        assignedToUserId: null,
+      });
     });
 
     it('should throw NotFoundException when order not found', async () => {
@@ -1263,7 +1998,9 @@ describe('OrdersController', () => {
       });
 
       it('should answer 409 with a distinguishable code when the hold is already released', async () => {
-        holdService.release.mockRejectedValue(new HoldAlreadyReleasedError('hold-1', new Date('2026-08-21T10:00:00.000Z')));
+        holdService.release.mockRejectedValue(
+          new HoldAlreadyReleasedError('hold-1', new Date('2026-08-21T10:00:00.000Z'))
+        );
 
         await expect(
           controller.releaseHold('ol_order_001', 'hold-1', {}, USER)
@@ -1350,8 +2087,10 @@ describe('OrdersController', () => {
         blockReason: null,
         unresolvedReason: null,
         blockDetail: null,
+        blockParams: null,
         otherRecords: [],
         matchedRule: null,
+        afterIssueAttention: null,
         ...overrides,
       };
     }
@@ -1431,6 +2170,7 @@ describe('OrdersController', () => {
           documentKind: 'invoice',
           blockReason: 'missing-tax-rate',
           blockDetail: '2 lines carry no tax rate',
+          blockParams: null,
         })
       );
 
@@ -1449,6 +2189,7 @@ describe('OrdersController', () => {
           blockReason: 'unresolved-routing',
           unresolvedReason: 'ambiguous-connection-no-primary',
           blockDetail: '2 invoicing connections, none marked primary',
+          blockParams: null,
         })
       );
 
@@ -1592,6 +2333,476 @@ describe('OrdersController', () => {
     });
   });
 
+  describe('open amendment -> amending phase (#3540)', () => {
+    it('should derive the amending phase on the detail read when an order change is open', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderChanges.findOrderIdsWithOpenAmendment.mockResolvedValue(new Set(['ol_order_001']));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.lifecyclePhase).toBe('amending');
+    });
+
+    it('should not derive amending when no order change is open', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.lifecyclePhase).not.toBe('amending');
+    });
+
+    it('should batch the amendment read once for a whole list page', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
+      orderChanges.findOrderIdsWithOpenAmendment.mockResolvedValue(new Set(['ol_order_001']));
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(orderChanges.findOrderIdsWithOpenAmendment).toHaveBeenCalledTimes(1);
+      expect(orderChanges.findOrderIdsWithOpenAmendment).toHaveBeenCalledWith(['ol_order_001']);
+      expect(result.items[0].lifecyclePhase).toBe('amending');
+    });
+  });
+
+  describe('listOrderChanges (#3540)', () => {
+    const change = (overrides: Record<string, unknown>) =>
+      ({
+        id: 'change-1',
+        internalOrderId: 'ol_order_001',
+        kind: 'order.cancel_request',
+        status: 'requested',
+        payload: { reason: 'buyer-request', note: 'Called us' },
+        requestedAt: new Date('2026-09-25T11:02:00.000Z'),
+        terminalisedAt: null,
+        declinedReason: null,
+        ...overrides,
+      }) as never;
+
+    it('should answer 404 for an unknown order', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(controller.listOrderChanges('missing')).rejects.toThrow(NotFoundException);
+      expect(orderChanges.listOperatorChangesByOrder).not.toHaveBeenCalled();
+    });
+
+    it('should project a pending cancel request with its reason and note', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([
+        { change: change({}), open: true },
+      ]);
+
+      const [row] = await controller.listOrderChanges('ol_order_001');
+
+      expect(row).toMatchObject({
+        id: 'change-1',
+        kind: 'order.cancel_request',
+        open: true,
+        confirmedAt: null,
+        payload: {
+          cancelRequest: { reason: 'buyer-request', note: 'Called us' },
+          correction: null,
+          discountCorrection: null,
+          discountRefund: null,
+        },
+      });
+    });
+
+    it('should project a confirmed correction with its lines and document number', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([
+        {
+          change: change({
+            id: 'change-2',
+            kind: 'order.cancel_correction',
+            status: 'confirmed',
+            terminalisedAt: new Date('2026-09-25T12:00:00.000Z'),
+            payload: {
+              invoiceRecordId: 'inv_1',
+              documentNumber: 'FV/1',
+              currency: 'PLN',
+              reason: 'Order cancelled (buyer-request)',
+              lines: [{ originalLineNumber: 1, name: 'Mug', previousQuantity: 2, newQuantity: 0 }],
+            },
+          }),
+          open: false,
+        },
+      ]);
+
+      const [row] = await controller.listOrderChanges('ol_order_001');
+
+      expect(row.confirmedAt).toBe('2026-09-25T12:00:00.000Z');
+      expect(row.payload.cancelRequest).toBeNull();
+      expect(row.payload.correction).toEqual({
+        invoiceRecordId: 'inv_1',
+        documentNumber: 'FV/1',
+        currency: 'PLN',
+        lines: [{ originalLineNumber: 1, name: 'Mug', previousQuantity: 2, newQuantity: 0 }],
+      });
+    });
+  });
+
+  describe('listOrderChanges discount proposals (#3543)', () => {
+    const change = (overrides: Record<string, unknown>) =>
+      ({
+        id: 'change-d',
+        internalOrderId: 'ol_order_001',
+        status: 'requested',
+        requestedAt: new Date('2026-09-25T11:02:00.000Z'),
+        terminalisedAt: null,
+        declinedReason: null,
+        ...overrides,
+      }) as never;
+
+    it('should carry the repriced lines, document number and invoice id of a discount correction', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      const lines = [
+        { originalLineNumber: 1, name: 'Mug', previousUnitPriceGross: 39, newUnitPriceGross: 36 },
+      ];
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([
+        {
+          change: change({
+            kind: 'order.discount_correction',
+            payload: { invoiceRecordId: 'inv_1', documentNumber: 'FV/1', currency: 'PLN', lines },
+          }),
+          open: true,
+        },
+      ]);
+
+      const [row] = await controller.listOrderChanges('ol_order_001');
+
+      expect(row.payload.discountCorrection).toEqual({
+        invoiceRecordId: 'inv_1',
+        documentNumber: 'FV/1',
+        currency: 'PLN',
+        lines,
+      });
+      expect(row.payload.correction).toBeNull();
+      expect(row.payload.discountRefund).toBeNull();
+    });
+
+    it('should carry the amount and currency of a discount refund intent', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderChanges.listOperatorChangesByOrder.mockResolvedValue([
+        {
+          change: change({
+            kind: 'order.discount_refund',
+            payload: { amount: '15.00', currency: 'PLN' },
+          }),
+          open: true,
+        },
+      ]);
+
+      const [row] = await controller.listOrderChanges('ol_order_001');
+
+      expect(row.payload.discountRefund).toEqual({ amount: '15.00', currency: 'PLN' });
+      expect(row.payload.discountCorrection).toBeNull();
+    });
+  });
+
+  describe('cancelOrder (#3540)', () => {
+    const USER = { id: 'user-1', username: 'op', role: 'admin' } as never;
+    const cancelledResult = {
+      status: 'cancelled' as const,
+      changeId: 'change-1',
+      cancelledAt: new Date('2026-09-30T10:00:00.000Z'),
+      participants: [],
+      otherParticipantsRelayFailed: false,
+      voidedShipmentIds: [],
+      cancelledWorkIds: [],
+      stockRestoreEnqueued: true,
+      correctionProposal: null,
+      correctionUnavailableReason: null,
+    };
+    const response = { status: jest.fn() } as never as Response;
+
+    beforeEach(() => {
+      (response.status as jest.Mock).mockClear();
+    });
+
+    it('should 404 before touching the service when the order does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(
+        controller.cancelOrder('ol_order_missing', { reason: 'fraud' }, USER, response)
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(orderCancellation.cancelOrder).not.toHaveBeenCalled();
+    });
+
+    it('should stamp the actor from the session and send only the reason code and trimmed note', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderCancellation.cancelOrder.mockResolvedValue(cancelledResult);
+
+      const result = await controller.cancelOrder(
+        'ol_order_001',
+        { reason: 'other', note: '  buyer phoned  ', acknowledgeAcceptedWork: true },
+        USER,
+        response
+      );
+
+      expect(orderCancellation.cancelOrder).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_001',
+        reason: 'other',
+        note: 'buyer phoned',
+        acknowledgeAcceptedWork: true,
+        actorUserId: 'user-1',
+      });
+      expect(result.cancelledAt).toBe('2026-09-30T10:00:00.000Z');
+      expect(response.status).not.toHaveBeenCalled();
+    });
+
+    it('should answer 202 when the channel has not answered', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderCancellation.cancelOrder.mockResolvedValue({
+        ...cancelledResult,
+        status: 'pending',
+        cancelledAt: null,
+      });
+
+      const result = await controller.cancelOrder(
+        'ol_order_001',
+        { reason: 'fraud' },
+        USER,
+        response
+      );
+
+      expect(response.status).toHaveBeenCalledWith(202);
+      expect(result.status).toBe('pending');
+      expect(result.cancelledAt).toBeNull();
+    });
+
+    it.each([
+      'ORDER_ALREADY_CANCELLED',
+      'ORDER_ALREADY_SHIPPED',
+      'ORDER_HAS_FISCAL_RECEIPT',
+      'INVOICE_NOT_SETTLED',
+      'ORDER_CANCEL_IN_FLIGHT',
+      'ORDER_WORK_ACCEPTED_NEEDS_ACK',
+      'ORDER_CANCEL_CONTENDED',
+      'LABEL_NOT_VOIDABLE',
+      'CHANNEL_REFUSED_CANCEL',
+    ] as const)('should map a %s refusal to a 409 carrying that machine code', async (code) => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderCancellation.cancelOrder.mockRejectedValue(
+        new OrderCancellationRefusedError(code, 'operator message')
+      );
+
+      const error = await controller
+        .cancelOrder('ol_order_001', { reason: 'fraud' }, USER, response)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toMatchObject({
+        error: code,
+        message: 'operator message',
+      });
+    });
+
+    it('should map a missing note for other to 400', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      orderCancellation.cancelOrder.mockRejectedValue(new OrderCancellationNoteRequiredError());
+
+      await expect(
+        controller.cancelOrder('ol_order_001', { reason: 'other' }, USER, response)
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('confirmChange (#3540)', () => {
+    it('should validate changeId as a uuid so a malformed id answers 400 (no case id, runner R)', () => {
+      const args = Reflect.getMetadata(
+        '__routeArguments__',
+        OrdersController,
+        'confirmChange'
+      ) as Record<string, { data?: string; pipes?: unknown[] }>;
+      const changeArg = Object.values(args).find((a) => a.data === 'changeId');
+
+      expect(changeArg?.pipes).toContain(ParseUUIDPipe);
+    });
+
+    const USER = { id: 'user-1', username: 'op', role: 'admin' } as never;
+    it('should pass the order, change and session actor to the service', async () => {
+      orderCancellation.confirmChange.mockResolvedValue({
+        changeId: 'change-9',
+        kind: 'order.cancel_correction',
+        status: 'confirmed',
+        invoiceRecordId: 'inv-2',
+        invoiceStatus: 'issued',
+        documentNumber: 'FK/1',
+        refundRecordId: null,
+      });
+
+      const result = await controller.confirmChange('ol_order_001', 'change-9', {}, USER);
+
+      expect(orderCancellation.confirmChange).toHaveBeenCalledWith({
+        internalOrderId: 'ol_order_001',
+        changeId: 'change-9',
+        actorUserId: 'user-1',
+        acknowledgeAboveCeiling: false,
+      });
+      expect(result.status).toBe('confirmed');
+    });
+
+    it('should forward acknowledgeAboveCeiling from the body (#3543)', async () => {
+      orderCancellation.confirmChange.mockResolvedValue({
+        changeId: 'change-9',
+        kind: 'order.discount_refund',
+        status: 'confirmed',
+        invoiceRecordId: null,
+        invoiceStatus: null,
+        documentNumber: null,
+        refundRecordId: 'refund-1',
+      });
+
+      await controller.confirmChange(
+        'ol_order_001',
+        'change-9',
+        { acknowledgeAboveCeiling: true },
+        USER
+      );
+
+      expect(orderCancellation.confirmChange).toHaveBeenCalledWith(
+        expect.objectContaining({ acknowledgeAboveCeiling: true })
+      );
+    });
+
+    it('should map an exceeded refund ceiling to 409 refund_ceiling_exceeded with the figures (#3543)', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new RefundCeilingExceededException('ol_order_001', '50.00', '45.00', '12.50', 'PLN')
+      );
+
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: 'refund_ceiling_exceeded',
+          ceiling: '50.00',
+          alreadyRefunded: '45.00',
+          requested: '12.50',
+          currency: 'PLN',
+        }),
+      });
+    });
+
+    it('should map a contended refund write to 409 refund_record_contended (E-31)', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new RefundRecordContendedException('ol_order_001')
+      );
+
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'refund_record_contended' }),
+        status: 409,
+      });
+    });
+
+    it('should map an unanswered refund lock to 503 refund_lock_unavailable (R-16)', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new RefundLockUnavailableException('ol_order_001')
+      );
+
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'refund_lock_unavailable' }),
+        status: 503,
+      });
+    });
+
+    it('should map a foreign or unknown change to 404', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new OrderCancellationNotFoundError('nope', { orderId: 'ol_order_1' })
+      );
+
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('should map an already-confirmed change to 409 with its code', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new OrderCancellationRefusedError('CHANGE_ALREADY_CONFIRMED', 'done')
+      );
+
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ error: 'CHANGE_ALREADY_CONFIRMED' }),
+      });
+    });
+
+    it('should map a provider failure to 422 CORRECTION_FAILED', async () => {
+      orderCancellation.confirmChange.mockRejectedValue(
+        new CancelCorrectionFailedError('provider said no', 'provider-rejected')
+      );
+
+      await expect(controller.confirmChange('ol_order_001', 'x', {}, USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ error: 'CORRECTION_FAILED' }),
+      });
+    });
+  });
+
+  describe('operator edits on the DTO (#3542)', () => {
+    it('should flag an edited order on the list row and read no edit history for it', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [
+          orderRecordWith({
+            orderEdits: { v: 1, rev: 1, address: { address1: 'New 1', city: 'Warsaw' } } as never,
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].editedInOpenLinker).toBe(true);
+      expect(result.items[0]).not.toHaveProperty('edits');
+    });
+
+    it('should flag a list row whose line edit no longer matches a channel line (line ids change)', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [
+          orderRecordWith({
+            orderEdits: {
+              v: 1,
+              rev: 1,
+              lines: {
+                'no-such-line': {
+                  changeId: 'c',
+                  editedAt: '2026-10-26T10:00:00.000Z',
+                  editedBy: null,
+                  quantity: 1,
+                },
+              },
+            } as never,
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].editsNeedAttention).toBe(true);
+    });
+
+    it('should report an unedited order as not edited', async () => {
+      repository.findMany.mockResolvedValue({ items: [mockOrder], total: 1 });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].editedInOpenLinker).toBe(false);
+      expect(result.items[0].editsNeedAttention).toBe(false);
+    });
+
+    it('should attach the edits view on the detail read only', async () => {
+      const view = {
+        editedAt: '2026-10-26T10:00:00.000Z',
+        lines: [],
+        unmatchedLineEdits: [],
+        history: [],
+      };
+      const editService = (controller as unknown as { orderEdit: { getEditsView: jest.Mock } })
+        .orderEdit;
+      editService.getEditsView.mockResolvedValue(view);
+      repository.findById.mockResolvedValue(mockOrder);
+
+      const dto = await controller.getOrder('ol_order_001');
+
+      expect(dto.edits).toBe(view);
+    });
+  });
+
   describe('buyer tax id on the DTO (#3180)', () => {
     it('is absent from every LIST row, even when the column carries a value', async () => {
       // Data minimisation, not query cost: the column is already loaded, so
@@ -1642,6 +2853,225 @@ describe('OrdersController', () => {
     });
   });
 
+  describe('buyer note on the DTO (#3538)', () => {
+    const actor = {
+      id: 'user-op-001',
+      email: 'op@example.com',
+      role: 'operator',
+    } as unknown as Parameters<typeof controller.markBuyerNoteRead>[1];
+
+    it('keeps the note text off every LIST row but carries the flag and the scalars', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [
+          orderRecordWith({
+            buyerNote: 'No receipt in the box',
+            hasBuyerNote: true,
+            shippingCountry: 'PL',
+            billingCountry: 'DE',
+            buyerOrderCount: 2,
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0]).not.toHaveProperty('buyerNote');
+      expect(result.items[0]).not.toHaveProperty('buyerNoteAcknowledgements');
+      expect(result.items[0]).toMatchObject({
+        hasBuyerNote: true,
+        shippingCountry: 'PL',
+        billingCountry: 'DE',
+        buyerOrderCount: 2,
+      });
+    });
+
+    it('carries a state and a one-line preview on every list row, and keeps the full text off it', async () => {
+      const long = `\n  ${'x'.repeat(200)}\nsecond line`;
+      repository.findMany.mockResolvedValue({
+        items: [
+          orderRecordWith({ buyerNote: long, hasBuyerNote: true }),
+          orderRecordWith({ buyerNote: '', hasBuyerNote: false }),
+          orderRecordWith({ buyerNote: null, hasBuyerNote: false }),
+          orderRecordWith({ buyerNote: null, hasBuyerNote: true }),
+        ],
+        total: 4,
+      });
+
+      const { items } = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(items.map((i) => i.buyerNoteState)).toEqual(['present', 'none', 'unknown', 'present']);
+      expect(items[0].buyerNotePreview).toBe('x'.repeat(120));
+      expect(items[1].buyerNotePreview).toBeNull();
+      expect(items[2].buyerNotePreview).toBeNull();
+      // Flagged but text not stored (hash-only mode): present, nothing to preview.
+      expect(items[3].buyerNotePreview).toBeNull();
+      expect(items[0]).not.toHaveProperty('buyerNote');
+    });
+
+    it('projects the three note states on the detail read', async () => {
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNote: 'Leave at the door' }));
+      expect((await controller.getOrder('ol_order_001')).buyerNote).toBe('Leave at the door');
+
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNote: '' }));
+      expect((await controller.getOrder('ol_order_001')).buyerNote).toBeNull();
+
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNote: null }));
+      expect((await controller.getOrder('ol_order_001')).buyerNote).toBeUndefined();
+    });
+
+    it('projects when the note text changed, and null when it never did (N-22)', async () => {
+      repository.findById.mockResolvedValue(
+        orderRecordWith({ buyerNoteChangedAt: new Date('2026-10-02T10:00:00Z') })
+      );
+      expect((await controller.getOrder('ol_order_001')).buyerNoteChangedAt).toBe(
+        '2026-10-02T10:00:00.000Z'
+      );
+
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerNoteChangedAt: null }));
+      expect((await controller.getOrder('ol_order_001')).buyerNoteChangedAt).toBeNull();
+    });
+
+    it('projects the read marker and the per-parcel acknowledgements on the detail read', async () => {
+      repository.findById.mockResolvedValue(
+        orderRecordWith({
+          buyerNoteReadAt: new Date('2026-10-01T08:00:00Z'),
+          buyerNoteReadByUserId: 'user-1',
+        })
+      );
+      fulfillmentWorkQuery.listBuyerNoteAcknowledgements.mockResolvedValue([
+        {
+          workId: 'work-1',
+          acknowledgedAt: new Date('2026-10-01T09:00:00Z'),
+          acknowledgedByUserId: 'packer-1',
+        },
+      ]);
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
+      expect(result.buyerNoteReadByUserId).toBe('user-1');
+      expect(result.buyerNoteAcknowledgements).toEqual([
+        {
+          workId: 'work-1',
+          acknowledgedAt: '2026-10-01T09:00:00.000Z',
+          acknowledgedByUserId: 'packer-1',
+        },
+      ]);
+    });
+
+    it('should carry the read marker on list rows when listing orders (B-3)', async () => {
+      repository.findMany.mockResolvedValue({
+        items: [
+          orderRecordWith({
+            hasBuyerNote: true,
+            buyerNoteReadAt: new Date('2026-10-01T08:00:00Z'),
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0].buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
+    });
+
+    it('marks the note read as the acting user and projects the marker', async () => {
+      orderRecordService.markBuyerNoteRead.mockResolvedValue(
+        orderRecordWith({
+          buyerNoteReadAt: new Date('2026-10-01T08:00:00Z'),
+          buyerNoteReadByUserId: 'user-op-001',
+        })
+      );
+
+      const result = await controller.markBuyerNoteRead('ol_order_001', actor);
+
+      expect(orderRecordService.markBuyerNoteRead).toHaveBeenCalledWith(
+        'ol_order_001',
+        'user-op-001'
+      );
+      expect(result.buyerNoteReadAt).toBe('2026-10-01T08:00:00.000Z');
+      expect(result.buyerNoteReadByUserId).toBe('user-op-001');
+    });
+
+    it('answers 404 when marking the note of an unknown order', async () => {
+      orderRecordService.markBuyerNoteRead.mockRejectedValue(
+        new OrderRecordNotFoundException('missing')
+      );
+
+      await expect(controller.markBuyerNoteRead('missing', actor)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it('returns the marker the service set on the mark-read response (B-9)', async () => {
+      orderRecordService.markBuyerNoteRead.mockResolvedValue(
+        orderRecordWith({
+          hasBuyerNote: true,
+          buyerNoteReadAt: new Date('2026-10-02T08:00:00Z'),
+          buyerNoteReadByUserId: 'user-op-001',
+        })
+      );
+
+      const result = await controller.markBuyerNoteRead('ol_order_001', actor);
+
+      expect(result.buyerNoteReadAt).toBe('2026-10-02T08:00:00.000Z');
+      expect(result.buyerNoteReadByUserId).toBe('user-op-001');
+    });
+
+    it('answers 409 NO_BUYER_NOTE when the order has no note to mark read (B-8)', async () => {
+      orderRecordService.markBuyerNoteRead.mockRejectedValue(
+        new NoBuyerNoteException('ol_order_001')
+      );
+
+      await expect(controller.markBuyerNoteRead('ol_order_001', actor)).rejects.toMatchObject({
+        response: { error: 'NO_BUYER_NOTE' },
+      });
+    });
+
+    it('still serves the order detail when the acknowledgements cannot load (B-10)', async () => {
+      repository.findById.mockResolvedValue(orderRecordWith({ hasBuyerNote: true }));
+      fulfillmentWorkQuery.listBuyerNoteAcknowledgements.mockRejectedValue(new Error('db down'));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.buyerNoteAcknowledgements).toBeNull();
+    });
+
+    it('resolves the gift-not-added ids for ?giftNotAdded and passes them to the repository', async () => {
+      findOrderIdsNeedingAttention.mockResolvedValue(['ol_order_gift']);
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+      await controller.listOrders({ limit: 20, offset: 0, giftNotAdded: true });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ giftNotAdded: true, giftNotAddedOrderIds: ['ol_order_gift'] }),
+        expect.anything()
+      );
+    });
+
+    it('falls back to an empty id list when the promotion log cannot be read', async () => {
+      findOrderIdsNeedingAttention.mockRejectedValue(new Error('down'));
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+      await controller.listOrders({ limit: 20, offset: 0, giftNotAdded: true });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ giftNotAdded: true, giftNotAddedOrderIds: [] }),
+        expect.anything()
+      );
+    });
+
+    it('passes ?hasBuyerNote through to the repository filters', async () => {
+      repository.findMany.mockResolvedValue({ items: [], total: 0 });
+
+      await controller.listOrders({ limit: 20, offset: 0, hasBuyerNote: true });
+
+      expect(repository.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ hasBuyerNote: true }),
+        expect.anything()
+      );
+    });
+  });
+
   describe('markPreRolloutEra (#2855, TEST-FIXTURE-ONLY)', () => {
     const USER = { id: 'user-1', username: 'op', role: 'admin' } as never;
 
@@ -1660,9 +3090,9 @@ describe('OrdersController', () => {
     it('404s without calling the service when the order does not exist', async () => {
       repository.findById.mockResolvedValue(null);
 
-      await expect(
-        controller.markPreRolloutEra('ol_order_missing', USER)
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.markPreRolloutEra('ol_order_missing', USER)).rejects.toBeInstanceOf(
+        NotFoundException
+      );
       expect(testFixtureService.markPreRolloutEraForTesting).not.toHaveBeenCalled();
     });
 
@@ -1695,6 +3125,67 @@ describe('OrdersController', () => {
       testFixtureService.markPreRolloutEraForTesting.mockRejectedValue(new Error('boom'));
 
       await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toThrow('boom');
+    });
+  });
+
+  describe('retryRouting (#3558)', () => {
+    it('should return the enqueued job id', async () => {
+      routingRetry.retryRouting.mockResolvedValue({ status: 'enqueued', jobId: 'job-1' });
+
+      await expect(controller.retryRouting('ol_order_001')).resolves.toEqual({
+        internalOrderId: 'ol_order_001',
+        jobId: 'job-1',
+      });
+      expect(routingRetry.retryRouting).toHaveBeenCalledWith('ol_order_001');
+    });
+
+    it('should answer 404 for an unknown order', async () => {
+      routingRetry.retryRouting.mockResolvedValue({ status: 'order-not-found' });
+
+      await expect(controller.retryRouting('ol_order_001')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+    });
+
+    it.each([
+      ['not-held', 'ROUTING_RETRY_NOT_HELD'],
+      ['not-retryable', 'ROUTING_RETRY_NOT_RETRYABLE'],
+      ['no-router', 'ROUTING_RETRY_NO_ROUTER'],
+    ])('should answer 409 with the error code for %s', async (reason, error) => {
+      routingRetry.retryRouting.mockResolvedValue({ status: 'refused', reason });
+
+      await expect(controller.retryRouting('ol_order_001')).rejects.toMatchObject({
+        response: expect.objectContaining({ statusCode: 409, error }),
+        status: 409,
+      });
+    });
+
+    it('should answer 503 when the job could not be queued', async () => {
+      routingRetry.retryRouting.mockResolvedValue({ status: 'enqueue-failed' });
+
+      await expect(controller.retryRouting('ol_order_001')).rejects.toMatchObject({ status: 503 });
+    });
+  });
+
+  // #3963 - operator actions on a payment that did not reach a shop.
+  describe('payment writeback actions', () => {
+    it('should queue the writes again and report how many', async () => {
+      paymentWritebackMock.retry.mockResolvedValue(2);
+
+      await expect(
+        controller.retryPaymentWriteback({ internalOrderIds: ['ol_order_001'] })
+      ).resolves.toEqual({
+        enqueued: 2,
+      });
+      expect(paymentWritebackMock.retry).toHaveBeenCalledWith(['ol_order_001']);
+    });
+
+    it('should mark the orders handled and report how many changed', async () => {
+      paymentWritebackMock.markHandled.mockResolvedValue(1);
+
+      await expect(
+        controller.markPaymentWritebackHandled({ internalOrderIds: ['ol_order_001'] })
+      ).resolves.toEqual({ updated: 1 });
     });
   });
 });

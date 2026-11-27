@@ -11,6 +11,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { JobIntakeConsumer } from '../job-intake.consumer';
+import { JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN } from '../sync-worker.tokens';
 import type { RedisClientType } from 'redis';
 import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
 import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
@@ -25,6 +26,9 @@ import { randomUUID } from 'crypto';
 describe('JobIntakeConsumer', () => {
   let consumer: JobIntakeConsumer;
   let redisClient: jest.Mocked<RedisClientType>;
+  // The worker's shared client. The consumer must never touch it: a blocking
+  // read there starves the rate limiter that shares the connection.
+  let sharedRedisClient: Record<string, jest.Mock>;
   let jobRepository: jest.Mocked<SyncJobRepositoryPort>;
   let streamDeadLetters: jest.Mocked<IStreamDeadLettersService>;
   let module: TestingModule;
@@ -46,7 +50,19 @@ describe('JobIntakeConsumer', () => {
       }),
       expire: jest.fn().mockResolvedValue(true),
       del: jest.fn((key: string) => Promise.resolve(counterStore.delete(key) ? 1 : 0)),
+      isOpen: true,
+      quit: jest.fn().mockResolvedValue('OK'),
     } as unknown as jest.Mocked<RedisClientType>;
+
+    sharedRedisClient = {
+      xGroupCreate: jest.fn(),
+      xReadGroup: jest.fn(),
+      xAck: jest.fn(),
+      incr: jest.fn(),
+      expire: jest.fn(),
+      del: jest.fn(),
+      quit: jest.fn(),
+    };
 
     // Mock repository
     const mockRepository = {
@@ -64,8 +80,12 @@ describe('JobIntakeConsumer', () => {
       providers: [
         JobIntakeConsumer,
         {
-          provide: 'REDIS_CLIENT',
+          provide: JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN,
           useValue: mockRedisClient,
+        },
+        {
+          provide: 'REDIS_CLIENT',
+          useValue: sharedRedisClient,
         },
         {
           provide: SYNC_JOB_REPOSITORY_TOKEN,
@@ -88,7 +108,7 @@ describe('JobIntakeConsumer', () => {
     }).compile();
 
     consumer = module.get<JobIntakeConsumer>(JobIntakeConsumer);
-    redisClient = module.get('REDIS_CLIENT');
+    redisClient = module.get(JOB_INTAKE_REDIS_CLIENT_BLOCKING_TOKEN);
     jobRepository = module.get(SYNC_JOB_REPOSITORY_TOKEN);
     streamDeadLetters = module.get(STREAM_DEAD_LETTERS_SERVICE_TOKEN);
   });
@@ -714,6 +734,81 @@ describe('JobIntakeConsumer', () => {
 
       expect((consumer as any).initializeConsumerGroup).not.toHaveBeenCalled();
       expect((consumer as any).startConsumptionLoop).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('dedicated blocking client', () => {
+    // A blocking XREADGROUP holds its connection for BLOCK_MS. On the shared
+    // 'REDIS_CLIENT' the cross-process rate limiter queued behind it, timed out
+    // and degraded to per-process limiting, so the shop's budget was no longer
+    // shared between the api and the worker.
+    it('should issue the blocking read and its acks on the dedicated client, never the shared one', async () => {
+      jest.useFakeTimers();
+      redisClient.xReadGroup.mockResolvedValueOnce([
+        {
+          name: 'jobs.sync',
+          messages: [
+            {
+              id: '1-0',
+              message: {
+                jobType: 'master.product.syncByExternalId',
+                connectionId: randomUUID(),
+                payloadJson: '{}',
+                idempotencyKey: `k-${randomUUID()}`,
+              },
+            },
+          ],
+        },
+      ] as any);
+      redisClient.xReadGroup.mockResolvedValue(null);
+      jobRepository.createIfNotExistsByIdempotencyKey.mockResolvedValue({} as any);
+      redisClient.xAck.mockResolvedValue(1);
+      jest.spyOn(consumer as any, 'maybeReclaimOrphans').mockResolvedValue(undefined);
+
+      (consumer as any).isRunning = true;
+      const abortController = new AbortController();
+      (consumer as any).abortController = abortController;
+      const loop = (consumer as any).consumeLoop();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      abortController.abort();
+      await loop.catch(() => undefined);
+
+      expect(redisClient.xReadGroup).toHaveBeenCalledWith(
+        'job-intake',
+        expect.any(String),
+        [{ key: 'jobs.sync', id: '>' }],
+        expect.objectContaining({ BLOCK: expect.any(Number) })
+      );
+      expect(redisClient.xAck).toHaveBeenCalledWith('jobs.sync', 'job-intake', '1-0');
+      for (const fn of Object.values(sharedRedisClient)) {
+        expect(fn).not.toHaveBeenCalled();
+      }
+    });
+
+    it('should quit its dedicated client on destroy and leave the shared client open', async () => {
+      jest.useFakeTimers();
+      const destroyPromise = consumer.onModuleDestroy();
+      jest.advanceTimersByTime(2000);
+      await destroyPromise;
+
+      expect(redisClient.quit).toHaveBeenCalledTimes(1);
+      expect(sharedRedisClient.quit).not.toHaveBeenCalled();
+    });
+
+    it('should not quit a dedicated client that is already closed', async () => {
+      jest.useFakeTimers();
+      (redisClient as any).isOpen = false;
+      const destroyPromise = consumer.onModuleDestroy();
+      jest.advanceTimersByTime(2000);
+      await destroyPromise;
+
+      expect(redisClient.quit).not.toHaveBeenCalled();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
     });
   });
 

@@ -26,6 +26,11 @@
  * consume it; auto-grouping adapters (Allegro) ignore it. Single-variant /
  * simple products leave `variantGroup` absent and list standalone.
  *
+ * Images: an operator override (`overrides.imageUrls`) wins unchanged;
+ * otherwise a variant is listed with `resolveVariantDefaultImages` - its own
+ * pictures first, then the product gallery minus the pictures dedicated to its
+ * siblings - so the red variant's offer does not show the green cup.
+ *
  * @module libs/core/src/listings/application/services
  * @implements {IOfferBuilderService}
  */
@@ -43,12 +48,15 @@ import {
   type IAvailabilityService,
 } from '@openlinker/core/inventory';
 import { AvailabilityUnknownError } from '../../domain/exceptions/availability-unknown.error';
+import { OFFER_MAPPING_REPOSITORY_TOKEN } from '../../listings.tokens';
+import { OfferMappingRepositoryPort } from '../../domain/ports/offer-mapping-repository.port';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import type {
   CreateOfferCommand,
   CreateOfferOverrides,
   OfferManagerPort,
   OfferParameter,
+  OfferProductSetComponent,
   OfferVariantGroup,
   SourceAttribute,
   SourceCategoryRef,
@@ -60,10 +68,13 @@ import {
   isTaxonomyBorrower,
 } from '@openlinker/core/listings';
 import type { TaxonomyOwner } from '@openlinker/core/listings';
-import type { ProductMasterPort, ProductVariant } from '@openlinker/core/products';
+import type { Product, ProductGpsr, ProductMasterPort, ProductVariant } from '@openlinker/core/products';
 import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  IBundleDefinitionService,
   IProductsService,
   PRODUCTS_SERVICE_TOKEN,
+  resolveVariantDefaultImages,
 } from '@openlinker/core/products';
 
 import { MasterCatalogConnectionNotConfiguredException } from '../../domain/exceptions/master-catalog-connection-not-configured.exception';
@@ -79,6 +90,7 @@ import type { IOfferBuilderService } from '../interfaces/offer-builder.service.i
 import type { BuildCreateOfferCommandInput } from '../types/offer-builder.types';
 import type { AttributeProjectionMetadata } from '../types/attribute-projection.types';
 import { buildProjectionMetadata } from './build-projection-metadata';
+import { readMasterCatalogConnectionId } from './read-master-catalog-connection-id';
 import {
   formatDescriptionForDestination,
   resolveOfferDescriptionFormat,
@@ -102,7 +114,11 @@ export class OfferBuilderService implements IOfferBuilderService {
     @Inject(ATTRIBUTE_PROJECTION_SERVICE_TOKEN)
     private readonly attributeProjection: IAttributeProjectionService,
     @Inject(AVAILABILITY_SERVICE_TOKEN)
-    private readonly availabilityService: IAvailabilityService
+    private readonly availabilityService: IAvailabilityService,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService,
+    @Inject(OFFER_MAPPING_REPOSITORY_TOKEN)
+    private readonly offerMappings: OfferMappingRepositoryPort
   ) {}
 
   async buildCreateOfferCommand(input: BuildCreateOfferCommandInput): Promise<CreateOfferCommand> {
@@ -120,7 +136,7 @@ export class OfferBuilderService implements IOfferBuilderService {
     }
 
     const connection = await this.connectionPort.get(input.connectionId);
-    const masterConnectionId = this.readMasterCatalogConnectionId(connection.config);
+    const masterConnectionId = readMasterCatalogConnectionId(connection.config);
     if (!masterConnectionId) {
       throw new MasterCatalogConnectionNotConfiguredException(input.connectionId);
     }
@@ -154,7 +170,14 @@ export class OfferBuilderService implements IOfferBuilderService {
     // own barcode at BOTH catalog sites (category-resolution-by-barcode below and
     // the `variantBarcode` self-link), so a corrected/rescued EAN actually links
     // the card and groups instead of reaching the builder as null.
-    const effectiveBarcode = input.overrides?.ean ?? variant.ean ?? variant.gtin ?? null;
+    // An empty override is the operator's explicit "no barcode" (#4036): it must
+    // not fall back to the master barcode, or the offer is still category-matched
+    // and card-linked by a barcode the operator removed.
+    const overrideEan = input.overrides?.ean;
+    const explicitlyNoBarcode = overrideEan !== undefined && overrideEan.trim() === '';
+    const effectiveBarcode = explicitlyNoBarcode
+      ? null
+      : (overrideEan ?? variant.ean ?? variant.gtin ?? null);
 
     const categoryId = await this.resolveCategory(
       input,
@@ -171,7 +194,7 @@ export class OfferBuilderService implements IOfferBuilderService {
       });
     }
 
-    const price = this.resolvePrice(input, product, connection.config, issues);
+    const price = this.resolvePrice(input, product, variant, connection.config, issues);
 
     // Gate 1 — category / price. Throw before projection: projection needs a
     // resolved category, and surfacing all field problems at once is the
@@ -201,9 +224,17 @@ export class OfferBuilderService implements IOfferBuilderService {
     // #824 barcode filter) can be smaller and need not match. Resolved after the
     // validation throw above so a build that fails validation skips the read.
     const siblings = await this.productsService.getVariantsByProductId(variant.productId);
-    const variantGroup = this.resolveVariantGroup(variant, siblings.length);
+    // A sibling deleted at the master (#1689 `isStale`) is not listed, so it
+    // must not turn the last live variant into a group of one.
+    const variantGroup = this.resolveVariantGroup(
+      variant,
+      siblings.filter((sibling) => sibling.isStale !== true).length
+    );
 
-    const title = input.overrides?.title ?? product.name;
+    // A blank override is an emptied field, not a title: no destination lists
+    // an offer without one, so it falls back to the master name exactly like
+    // an absent override does.
+    const title = input.overrides?.title?.trim() ? input.overrides.title : product.name;
     // ADR-046: shape the description into what THIS destination accepts, using
     // the format the already-resolved adapter declares. Returns undefined when
     // nothing survives, which the cleanup below then omits - the Allegro
@@ -212,7 +243,9 @@ export class OfferBuilderService implements IOfferBuilderService {
       input.overrides?.description ?? product.description,
       resolveOfferDescriptionFormat(destination)
     );
-    const imageUrls = input.overrides?.imageUrls ?? product.images;
+    const imageUrls =
+      input.overrides?.imageUrls ??
+      resolveVariantDefaultImages(variant, siblings, product.images);
 
     const overrides = {
       title,
@@ -305,7 +338,8 @@ export class OfferBuilderService implements IOfferBuilderService {
       // through so the adapter links it (and inherits its required product
       // parameters) instead of re-resolving — kept off `overrides` so the
       // adapter sees it as a top-level hint alongside `variantBarcode`.
-      productCardId: input.overrides?.productCardId ?? null,
+      // A catalogue card belongs to a barcode, so none survives an explicit clear.
+      productCardId: explicitlyNoBarcode ? null : (input.overrides?.productCardId ?? null),
     };
 
     // #2249 (ADR-063) — propagate the shop's rate onto the offer, in the same
@@ -330,10 +364,41 @@ export class OfferBuilderService implements IOfferBuilderService {
       if (taxRate.countryIso2) command.taxRateCountry = taxRate.countryIso2;
     }
 
+    // GPSR travels by value so the destination can prefer a product-level
+    // declaration over its connection-level defaults. Set only when the master
+    // stated something: absent must reach the adapter as absent, so it keeps
+    // its own defaults rather than reading an empty object as "no producer".
+    const gpsr = await this.resolveProductGpsr(product, variant.productId);
+    if (gpsr) {
+      command.gpsr = gpsr;
+    }
+
     // #1065 — only set when populated, keeping the command shape tidy (mirrors
     // the `?? null` / cleanedOverrides posture above).
     if (variantGroup) {
       command.variantGroup = variantGroup;
+    }
+
+    // #3520 - a bundle publishes as a product set: one entry per component.
+    const productSet = await this.resolveProductSet(input, {
+      masterConnectionId,
+      productMaster,
+      borrowedTaxonomy,
+    });
+    if (productSet) {
+      command.productSet = productSet;
+      // A bundle made in OpenLinker has no photos of its own, and an offer
+      // without any is refused by the marketplace: list it with the pictures of
+      // its components unless the operator or the master supplied some.
+      if (!command.overrides?.imageUrls?.length) {
+        const fromComponents = productSet
+          .flatMap((entry) => entry.imageUrls ?? [])
+          .filter((url) => typeof url === 'string' && url.trim() !== '')
+          .slice(0, 8);
+        if (fromComponents.length > 0) {
+          command.overrides = { ...command.overrides, imageUrls: fromComponents };
+        }
+      }
     }
 
     this.logger.debug(
@@ -341,6 +406,244 @@ export class OfferBuilderService implements IOfferBuilderService {
     );
 
     return command;
+  }
+
+  async resolveBundleComponents(input: {
+    connectionId: string;
+    internalVariantId: string;
+    categoryId?: string;
+  }): Promise<OfferProductSetComponent[] | undefined> {
+    // Cheap exit first: most variants are not bundles, and the rest of this
+    // needs the connection and two adapters.
+    const definition = await this.bundleDefinitions.get(input.internalVariantId);
+    if (!definition || definition.components.length === 0) {
+      return undefined;
+    }
+    const connection = await this.connectionPort.get(input.connectionId);
+    const masterConnectionId = readMasterCatalogConnectionId(connection.config);
+    if (!masterConnectionId) {
+      throw new MasterCatalogConnectionNotConfiguredException(input.connectionId);
+    }
+    const [productMaster, destination] = await Promise.all([
+      this.integrationsService.getCapabilityAdapter<ProductMasterPort>(
+        masterConnectionId,
+        'ProductMaster'
+      ),
+      this.integrationsService.getCapabilityAdapter<OfferManagerPort>(
+        input.connectionId,
+        'OfferManager'
+      ),
+    ]);
+    return this.resolveProductSet(
+      {
+        internalVariantId: input.internalVariantId,
+        connectionId: input.connectionId,
+        stock: 0,
+        ...(input.categoryId ? { overrides: { categoryId: input.categoryId } } : {}),
+      },
+      {
+        masterConnectionId,
+        productMaster,
+        borrowedTaxonomy: isTaxonomyBorrower(destination)
+          ? destination.getBorrowedTaxonomy()
+          : undefined,
+      }
+    );
+  }
+
+  /**
+   * The components of a bundle variant, resolved from the catalogue (#3520).
+   * `undefined` for an ordinary variant, so its command is byte-identical to
+   * before. A component whose variant or product is gone is a hard validation
+   * failure: publishing the set without it would sell a different item than the
+   * definition promises.
+   */
+  private async resolveProductSet(
+    input: BuildCreateOfferCommandInput,
+    ctx: {
+      masterConnectionId: string;
+      productMaster: ProductMasterPort;
+      borrowedTaxonomy: TaxonomyOwner | undefined;
+    }
+  ): Promise<OfferProductSetComponent[] | undefined> {
+    const definition = await this.bundleDefinitions.get(input.internalVariantId);
+    if (!definition || definition.components.length === 0) {
+      return undefined;
+    }
+    // One batched read: components that already have a live offer here are
+    // card-linked from that offer, so their category/attributes are not resolved.
+    const liveCounts = await this.offerMappings.countByConnectionAndVariants(
+      input.connectionId,
+      definition.components.map((component) => component.variantId)
+    );
+    // Batched reads (variants and their siblings), then one concurrent pass over
+    // the components. `Promise.all` keeps the output in definition order.
+    const productIds = [...new Set(definition.components.map((c) => c.productId))];
+    const [variants, siblings, products] = await Promise.all([
+      this.productsService.getVariantsByIds(definition.components.map((c) => c.variantId)),
+      this.productsService.getVariantsByProductIds(productIds),
+      Promise.all(productIds.map((id) => this.productsService.getProduct(id))),
+    ]);
+    const variantsById = new Map(variants.map((variant) => [variant.id, variant]));
+    const productsById = new Map(products.flatMap((product) => (product ? [[product.id, product]] : [])));
+    const siblingsByProduct = new Map<string, ProductVariant[]>();
+    for (const variant of siblings) {
+      siblingsByProduct.set(variant.productId, [
+        ...(siblingsByProduct.get(variant.productId) ?? []),
+        variant,
+      ]);
+    }
+    // Refuse before any per-component work, in definition order, so the named
+    // component is deterministic.
+    for (const component of definition.components) {
+      if (!variantsById.has(component.variantId) || !productsById.has(component.productId)) {
+        throw new OfferBuilderValidationException([
+          {
+            field: 'productSet',
+            code: 'NOT_FOUND',
+            message: `Bundle component variant ${component.variantId} (product ${component.productId}) not found`,
+          },
+        ]);
+      }
+    }
+    return Promise.all(
+      definition.components.map(async (component): Promise<OfferProductSetComponent> => {
+        const componentVariant = variantsById.get(component.variantId) as ProductVariant;
+        const componentProduct = productsById.get(component.productId) as Product;
+        const barcode = componentVariant.ean ?? componentVariant.gtin ?? null;
+        const existingOfferExternalId =
+          (liveCounts.get(component.variantId) ?? 0) > 0
+            ? await this.findLiveOfferExternalId(input.connectionId, component.variantId)
+            : undefined;
+        const own = existingOfferExternalId
+          ? {}
+          : await this.resolveInlineComponentFields(
+              input,
+              ctx,
+              componentVariant,
+              component.productId,
+              barcode
+            );
+        return {
+          variantId: component.variantId,
+          productId: component.productId,
+          quantity: component.quantity,
+          ...(component.giftSlot ? { giftSlot: true } : {}),
+          name: componentProduct.name,
+          barcode,
+          imageUrls:
+            resolveVariantDefaultImages(
+              componentVariant,
+              siblingsByProduct.get(component.productId) ?? [],
+              componentProduct.images
+            ) ?? [],
+          ...(componentProduct.gpsr ? { gpsr: componentProduct.gpsr } : {}),
+          ...(existingOfferExternalId ? { existingOfferExternalId } : {}),
+          ...own,
+        };
+      })
+    );
+  }
+
+  /**
+   * External id of a variant's live offer on the connection, skipping
+   * refused-creation ones. The query already filters by connection AND variant;
+   * pages are walked until a live one is found or the set is exhausted, so there
+   * is no silent bound.
+   */
+  private async findLiveOfferExternalId(
+    connectionId: string,
+    variantId: string
+  ): Promise<string | undefined> {
+    const dead = new Set(
+      await this.offerMappings.findDeadFailedCreationOfferIds(connectionId, variantId)
+    );
+    const limit = 50;
+    for (let offset = 0; ; offset += limit) {
+      const page = await this.offerMappings.findMappingPage(
+        { connectionId, internalId: variantId },
+        { limit, offset }
+      );
+      const live = page.items.find((mapping) => !dead.has(mapping.externalId));
+      if (live) {
+        return live.externalId;
+      }
+      if (page.items.length < limit || offset + limit >= page.total) {
+        return undefined;
+      }
+    }
+  }
+
+  /**
+   * The component's own destination category and product-section parameters,
+   * resolved the way an ordinary variant's are. Failures degrade to "nothing
+   * resolved" so the adapter can refuse that component by name.
+   */
+  private async resolveInlineComponentFields(
+    input: BuildCreateOfferCommandInput,
+    ctx: {
+      masterConnectionId: string;
+      productMaster: ProductMasterPort;
+      borrowedTaxonomy: TaxonomyOwner | undefined;
+    },
+    variant: ProductVariant,
+    productId: string,
+    barcode: string | null
+  ): Promise<{ categoryId?: string; parameters?: OfferParameter[] }> {
+    try {
+      const masterProduct = await ctx.productMaster.getProduct(productId);
+      const categoryId = await this.resolveCategory(
+        { ...input, overrides: undefined },
+        barcode,
+        masterProduct.categories,
+        { borrowedTaxonomy: ctx.borrowedTaxonomy, sourceConnectionId: ctx.masterConnectionId }
+      );
+      if (!categoryId) {
+        return {};
+      }
+      const projection = await this.attributeProjection.project({
+        sourceConnectionId: ctx.masterConnectionId,
+        destinationConnectionId: input.connectionId,
+        destinationCategoryId: categoryId,
+        attributes: variant.attributes ?? {},
+        metadata: buildProjectionMetadata(masterProduct, variant, barcode),
+        ...(ctx.borrowedTaxonomy ? { borrowedTaxonomy: ctx.borrowedTaxonomy } : {}),
+      });
+      const parameters = projection.parameters.filter((p) => p.section === 'product');
+      return { categoryId, ...(parameters.length > 0 ? { parameters } : {}) };
+    } catch (error) {
+      this.logger.warn(
+        `Bundle component ${variant.id}: could not resolve its own category/parameters (${(error as Error).message})`
+      );
+      return {};
+    }
+  }
+
+  /**
+   * The product's GPSR declaration: the live master read first, because that
+   * is what every other field of the offer comes from; the stored catalogue
+   * projection only when the live read did not report GPSR at all (a master
+   * that does not model it, or whose GPSR reference read failed this time).
+   * The fallback is best-effort - an offer is still buildable from the
+   * destination's own defaults, so a failed read is logged, never raised.
+   */
+  private async resolveProductGpsr(
+    product: Product,
+    internalProductId: string
+  ): Promise<ProductGpsr | undefined> {
+    if (product.gpsr !== undefined) {
+      return product.gpsr ?? undefined;
+    }
+    try {
+      const stored = await this.productsService.getProduct(internalProductId);
+      return stored?.gpsr ?? undefined;
+    } catch (error) {
+      this.logger.warn(
+        `GPSR fallback read failed for product=${internalProductId}; the offer uses the ` +
+          `destination's own defaults: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return undefined;
+    }
   }
 
   /**
@@ -527,7 +830,9 @@ export class OfferBuilderService implements IOfferBuilderService {
    * Resolve `command.price`. An explicit `input.price` always wins (per-item
    * operator/UI-resolved price, e.g. the bulk wizard's client-side pricing
    * policy) and is used verbatim — no rule applies to it. Otherwise falls back
-   * to the master catalog price, run through the connection's pricing-resolution
+   * to the variant's own master price (siblings of a multi-variant product can
+   * differ, #4039), then to the product price when the variant carries none,
+   * run through the connection's pricing-resolution
    * rule (#1843, `pricing-rule.types.ts`) — markup/margin formula + rounding.
    * A connection with no configured rule is untouched (`applyPricingRule`
    * returns the master price unchanged), preserving the pre-#1843 passthrough.
@@ -535,13 +840,14 @@ export class OfferBuilderService implements IOfferBuilderService {
   private resolvePrice(
     input: BuildCreateOfferCommandInput,
     product: { price: number | null; currency: string | null },
+    variant: { price?: number },
     connectionConfig: Parameters<typeof readPricingRule>[0],
     issues: OfferBuilderValidationIssue[]
   ): { amount: number; currency: string } | null {
     if (input.price) {
       return input.price;
     }
-    const amount = product.price;
+    const amount = variant.price ?? product.price;
     const currency = product.currency;
     if (typeof amount !== 'number') {
       issues.push({
@@ -583,13 +889,6 @@ export class OfferBuilderService implements IOfferBuilderService {
     return { amount: resolvedAmount, currency };
   }
 
-  private readMasterCatalogConnectionId(
-    config: Record<string, unknown> | null | undefined
-  ): string | null {
-    if (!config) return null;
-    const value = config['masterCatalogConnectionId'];
-    return typeof value === 'string' && value.length > 0 ? value : null;
-  }
 
 }
 

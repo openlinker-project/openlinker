@@ -20,12 +20,12 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import type { Connection } from '../../connections';
 import { SalesDocumentsPanel, deriveSalesDocumentRows } from '../../sales-documents';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { SETUP_STEP_NUMBERS } from '../lib/onboarding-state';
 import { SETUP_STEP_PATHS, hasAutomaticDocumentIssuing } from '../lib/setup-steps';
 import { StepPanel } from './step-panel';
@@ -52,6 +52,7 @@ export function StepSalesDocuments({
   onContinue,
   onSetSkipped,
 }: StepSalesDocumentsProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const rows = deriveSalesDocumentRows(connections);
   const hasProvider = rows.length > 0;
   // Required, not advised: the OMS setup is not done while documents wait for
@@ -60,7 +61,7 @@ export function StepSalesDocuments({
   // "Not needed" is the way out for a shop with no use for documents, so the
   // requirement cannot dead-end the wizard.
   const canContinue = automatic || skipped;
-  const disabledTitle = demoReadOnly ? DEMO_READ_ONLY_ACTION_MESSAGE : !canWrite ? COPY.adminOnly : undefined;
+  const disabledTitle = demoReadOnly ? demoReadOnlyActionMessage() : !canWrite ? COPY.adminOnly : undefined;
 
   return (
     <StepPanel

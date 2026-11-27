@@ -83,6 +83,18 @@ export class ShipmentRepository implements ShipmentRepositoryPort {
     return { items: entities.map((entity) => this.toDomain(entity)), total };
   }
 
+  async count(filters: ShipmentFilters): Promise<number> {
+    return this.repository.count({ where: this.buildWhere(filters) });
+  }
+
+  async listConnectionIds(): Promise<string[]> {
+    const rows = await this.repository
+      .createQueryBuilder('shipment')
+      .select('DISTINCT shipment.connectionId', 'connectionId')
+      .getRawMany<{ connectionId: string }>();
+    return rows.map((row) => row.connectionId);
+  }
+
   async findById(id: string): Promise<Shipment | null> {
     const entity = await this.repository.findOne({ where: { id } });
     return entity ? this.toDomain(entity) : null;

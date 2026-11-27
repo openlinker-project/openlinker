@@ -21,8 +21,12 @@
  *   still `pending` on a later run is never re-sent — it becomes `in_doubt`;
  * - any throw after the boundary is `in_doubt` — OpenLinker cannot tell a
  *   refusal made before the write from a failure halfway through it;
- * - only a failure proven to have happened BEFORE the boundary (the owner's
- *   adapter could not be built) is `retryable`, the one re-claimable state.
+ * - only a failure proven to have happened BEFORE the boundary is `retryable`,
+ *   the one re-claimable state: the owner's adapter could not be built, or the
+ *   adapter's HTTP client proved the request never left (DNS failure or a
+ *   refused connection, see `isRequestNotSentError`, #4041). A timeout or any
+ *   other transport failure stays `in_doubt`: it can happen after the request
+ *   was written.
  *
  * `in_doubt` is paired with a best-effort re-read of the master's stock, so the
  * marketplaces show the master's real number whichever way the write went.
@@ -74,6 +78,11 @@ export const InventorySaleDecrementReasonValues = [
   'master-product-not-found',
   /** The adapter threw; the detail carries its own words. */
   'master-error',
+  /**
+   * The adapter threw, and its client proved the request never left (DNS
+   * failure, connection refused), so nothing was applied. Transient (#4041).
+   */
+  'request-not-sent',
   /** A claim was found still `pending` — a previous run died mid-call. */
   'interrupted',
   /** The adapter answered with a disposition this build does not recognise. */
@@ -307,4 +316,14 @@ export function deriveSaleDecrementAttention(
     );
   }
   return { kind: 'blocked', detail: parts.join('; ') };
+}
+
+/**
+ * Key of a line-scoped reversal an operator order edit makes (#3542):
+ * `edit:{changeId}:{orderLineId}`. Keyed on the ORDER CHANGE, which is the one
+ * stable identity of the act, so a retried edit claims the same row and never
+ * gives stock back twice. A third spelling beside `sale:` / `sale-reversal:`.
+ */
+export function buildEditReversalIdempotencyKey(changeId: string, orderLineId: string): string {
+  return `edit:${changeId}:${orderLineId}`;
 }

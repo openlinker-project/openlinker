@@ -45,9 +45,9 @@ adapter ships **five** capabilities, not one.
 
 | Capability | Sub-capabilities |
 |---|---|
-| `ProductMaster` | catalogue read, including models-as-variants |
+| `ProductMaster` | catalogue read, including models-as-variants; `BundleReader` (komplet composition, below, guard-only) |
 | `InventoryMaster` | stock read, plus PW/RW stock adjustment |
-| `OrderSource` | order feed + hydrate, poll-only (see *Ingestion latency* below) |
+| `OrderSource` | order feed + hydrate, poll-only (see *Ingestion latency* below); start choice `now` / `from` / `all` (`OrderFeedBootstrap`, `OrderFeedDateBootstrap`; no window import) |
 | `OrderProcessorManager` | order push as a ZK |
 | `Invoicing` | `RegulatoryStatusReader` (read the bridge-reported KSeF regulatory status), `CorrectionIssuer` (issue corrections of an already-issued document, #1229), `BankAccountsReader` / `BankAccountDefaultSetter` (list and default the seller's payable bank accounts, #1303), `RegulatoryRecordLocator` (crash-recovery - locate a document by its original idempotency key when a prior issuance's outcome is unknown, #3389), `PaymentStatusReader` (read whether a document is settled, `dok_Rozliczony`, #3390) |
 
@@ -61,6 +61,29 @@ product images, and the towar's group.
 - Images are read from Subiekt's own `tw_ZdjecieTw` blobs and served back by
   the bridge over HTTP, so OpenLinker never needs direct SQL or file-share
   access to the images.
+
+**Kits (komplet)** (`BundleReader`). A Subiekt komplet is a towar with
+`tw_Rodzaj = 8`, and its components live in `tw_Komplet` (component towar and
+quantity). The adapter reads that through the bridge route
+`GET /api/products/{symbol}/komplet`, which is plain SQL and never touches Sfera
+or writes anything. Behaviour worth knowing:
+
+- A towar that is not a kit answers `null` (OpenLinker reads that as "not a
+  bundle"); an unknown symbol is reported as absent at the master.
+- Each component is keyed the same way its variant is stored (the bare symbol on
+  older installs, otherwise `{symbol}::variant`), so OpenLinker finds the variant
+  without any translation. A component that has not been synced yet is reported
+  by core as an unsynced component, not guessed.
+- The read refuses, rather than quietly shortening the kit, when a component is
+  deleted or missing in Subiekt, or when a quantity is not a positive whole
+  number. Subiekt stores the quantity as money, so a fractional one is possible.
+- Like `ModifiedProductLister`, this capability is guard-only: it is not listed in
+  the manifest and not in the core capability set, it is found by checking the
+  adapter.
+- **Watch for a double decrement.** Subiekt itself takes the components out of
+  stock when a komplet is sold. If OpenLinker also decrements the components for
+  the same sale (because it knows the bundle composition), the same units would be
+  counted twice. Check this with a real sale before relying on both.
 
 **Stock read** (`InventoryMaster`), from `tw_Stan`, for one release warehouse
 per towar. See the multi-warehouse note below - this is the one place where
@@ -98,6 +121,18 @@ researched and confirmed live, not assumed — see #3392 / #3393 for the full ev
 Both gaps are structural to the exposed Sfera automation surface, not something this
 adapter's implementation could route around safely. If InsERT exposes a broader
 finance/reporting manager in a future Sfera license tier, both should be revisited.
+
+## Where order sync starts (#4228, #4265)
+
+Only customer orders (ZK documents) are read. `headCursor` ("only new orders") and `cursorForDate` ("from a date")
+are implemented; `listOrdersInWindow` is not, so "import older orders" is unavailable. A date, given as `YYYY-MM-DD`
+or as an ISO instant, is read as the ZK **issue date** (the calendar-day prefix is used).
+
+`headCursor` needs a bridge with `GET /api/orders/feed/head` (commit `4e0d21b` of the bridge repo, branch
+`4265-orders-feed-head`, until a release exists). A bridge without
+that route still works: the adapter walks the feed within a time budget (about 3 minutes) to find its end, logging
+that the bridge should be upgraded, and past the budget refuses with a message asking for an upgrade. The date
+column is date-only, so a back-dated or later-edited ZK is never re-read. See the [runbook](./docs/runbook.md#version-support-matrix-v1).
 
 ## Ingestion latency (#3396)
 

@@ -52,6 +52,7 @@ describe('SyncController', () => {
     findAndLockDueJobs: jest.fn(),
     findAndLockDueJobsForLane: jest.fn(),
     findById: jest.fn(),
+    claimQueuedPeers: jest.fn(),
     findByIdempotencyKey: jest.fn(),
     findMany: jest.fn(),
     markSucceeded: jest.fn(),
@@ -67,7 +68,9 @@ describe('SyncController', () => {
     heartbeat: jest.fn(),
     requeueWithoutPenalty: jest.fn(),
     findLastSucceededByConnectionAndJobType: jest.fn(),
-    getConnectionBacklogStats: jest.fn(),
+    findLatestByConnectionsAndJobTypes: jest.fn(),
+    getOrderImportStats: jest.fn(),
+      getConnectionBacklogStats: jest.fn(),
   };
 
   const mockRetryService = {
@@ -244,6 +247,19 @@ describe('SyncController', () => {
       syncJobRepository.findById.mockResolvedValue(null);
 
       await expect(controller.getJob('missing-id')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should name the missing job by code and id (#3865)', async () => {
+      syncJobRepository.findById.mockResolvedValue(null);
+
+      const error = await controller.getJob('missing-id').catch((caught: unknown) => caught);
+
+      expect((error as NotFoundException).getResponse()).toEqual({
+        statusCode: 404,
+        code: 'SYNC_JOB_NOT_FOUND',
+        message: 'Sync job not found: missing-id',
+        params: { jobId: 'missing-id' },
+      });
     });
   });
 

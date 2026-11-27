@@ -27,14 +27,15 @@ import {
   INVOICE_TRIGGER_MODEL_LABELS,
   type InvoiceTriggerModel,
 } from '../../features/connections';
+import { getSubiektGtMessages } from './messages';
 
 export const SUBIEKT_TRIGGER_MODELS = INVOICE_TRIGGER_MODEL_VALUES;
 
 export type SubiektTriggerModel = InvoiceTriggerModel;
 
 /**
- * AC-2 trigger dropdown labels. Routed through `t(key, fallback)` at render
- * time; the English fallback lives in the feature-layer types module.
+ * AC-2 trigger dropdown labels. The feature-layer map reads each label from
+ * the `connections` namespace when it is accessed.
  */
 export const SUBIEKT_TRIGGER_MODEL_LABELS: Record<SubiektTriggerModel, string> =
   INVOICE_TRIGGER_MODEL_LABELS;
@@ -48,8 +49,13 @@ export const SUBIEKT_TRIGGER_MODEL_LABELS: Record<SubiektTriggerModel, string> =
  * never hardcoded in the shared component).
  */
 export const SUBIEKT_CAPABILITY_DESCRIPTORS: Record<string, { label: string; help?: string }> = {
+  // Getters, so the label follows the active language when it is read.
   'regulatory-transmission-tracking': {
-    label: 'Show KSeF status badge',
-    help: 'Surface the bridge-reported regulatory transmission (KSeF) status on orders for this connection.',
+    get label(): string {
+      return getSubiektGtMessages().subiektCapabilityDescriptors.regulatoryTransmissionTracking.label;
+    },
+    get help(): string {
+      return getSubiektGtMessages().subiektCapabilityDescriptors.regulatoryTransmissionTracking.help;
+    },
   },
 };

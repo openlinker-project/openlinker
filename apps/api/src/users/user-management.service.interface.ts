@@ -100,6 +100,14 @@ export interface IUserManagementService {
    */
   recordBenchActivity(userId: string): Promise<void>;
 
+  /**
+   * Display names for a set of user ids, for surfaces that attribute an act to a
+   * person (#3568). A name only - never an email. An id naming nobody (a deleted
+   * user) is simply absent from the map; a user with no display name falls back
+   * to their username.
+   */
+  getDisplayNames(userIds: readonly string[]): Promise<Map<string, string>>;
+
   confirmEmail(userId: string): Promise<void>;
 }
 

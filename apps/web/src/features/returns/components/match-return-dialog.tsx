@@ -48,6 +48,7 @@
 import { useMemo, useState, type FormEvent, type ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { isUnmappedApiError } from '../../../shared/api/api-error';
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import {
   Dialog,
@@ -65,7 +66,6 @@ import type { WriteAccess } from '../../../shared/auth/use-permission';
 import { useOrdersQuery } from '../../orders';
 import { useMatchReturnToOrderMutation } from '../hooks/use-match-return-to-order-mutation';
 import { readMatchRefusalReason } from '../lib/match-error';
-import { MATCH_RETURN_DIALOG_COPY as COPY } from '../lib/match-return-dialog.copy';
 
 /** Recent orders offered as suggestions, matching the command-palette bound. */
 const RECENT_ORDERS_LIMIT = 20;
@@ -94,6 +94,7 @@ export function MatchReturnDialog({
   onMatched,
   writeAccess,
 }: MatchReturnDialogProps): ReactElement {
+  const COPY = useMessages('returns').matchReturnDialog;
   const [value, setValue] = useState('');
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
   // A DISTINCT rendering from the mutation's own `isError` — a lost race is a
@@ -150,7 +151,7 @@ export function MatchReturnDialog({
         onError: (error) => {
           const reason = readMatchRefusalReason(error);
           if (reason === 'unknown-order') {
-            setFieldError(COPY.unknownOrder(trimmed));
+            setFieldError(interpolate(COPY.unknownOrder, { typed: trimmed }));
             return;
           }
           if (reason === 'already-attributed') {
@@ -228,9 +229,10 @@ export function MatchReturnDialog({
 
               {resolvedOrder !== null ? (
                 <p className="text-muted match-return-dialog__resolved-order">
-                  {COPY.resolvedOrder(
-                    resolvedOrder.syncStatus[0]?.externalOrderNumber ?? resolvedOrder.internalOrderId,
-                  )}
+                  {interpolate(COPY.resolvedOrder, {
+                    orderNumber:
+                      resolvedOrder.syncStatus[0]?.externalOrderNumber ?? resolvedOrder.internalOrderId,
+                  })}
                 </p>
               ) : null}
 

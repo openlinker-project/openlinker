@@ -1,0 +1,597 @@
+{
+  "deletionAuditCadence": {
+    "everyHours": {
+      "few": "Co {n} godziny",
+      "many": "Co {n} godzin",
+      "one": "Co godzinę",
+      "other": "Co {n} godziny"
+    },
+    "everyMinutes": {
+      "few": "Co {n} minuty",
+      "many": "Co {n} minut",
+      "one": "Co minutę",
+      "other": "Co {n} minuty"
+    },
+    "options": {
+      "every15Minutes": "Co 15 minut",
+      "every30Minutes": "Co 30 minut",
+      "every4Hours": "Co 4 godziny",
+      "everyHour": "Co godzinę",
+      "onceADay": "Raz dziennie"
+    }
+  },
+  "inventoryMovementRetentionSection": {
+    "changed": "Zmieniono czas przechowywania historii stanów",
+    "eyebrow": "Porządki",
+    "field": {
+      "ariaLabel": "Liczba dni przechowywania historii ruchów magazynowych",
+      "description": "Jak długo ruch magazynowy (sprzedaż, przyjęcie na stan ze zwrotu, korekta, zmiana wykryta przy synchronizacji) pozostaje w historii. Starsze wiersze są usuwane małymi partiami.",
+      "label": "Historia stanów przechowywana przez"
+    },
+    "save": "Zapisz czas przechowywania historii",
+    "savedOnItsOwn": "zapisywane osobno",
+    "savesOnItsOwn": "Zapisuje się osobno, bez potwierdzenia.",
+    "title": "Przechowywanie historii stanów",
+    "undo": "Cofnij",
+    "unitDays": "dni",
+    "useDefault": "Użyj wartości domyślnej"
+  },
+  "operationalSettingsPage": {
+    "adminOnly": {
+      "description": "Dostęp tylko dla administratora.",
+      "message": "Ta strona zmienia, jak mocno OpenLinker obciąża sklep - wymaga sesji administratora.",
+      "title": "Wymagana rola administratora"
+    },
+    "boundReasons": {
+      "catalogueSweepBudget": {
+        "absolute": "To zabezpieczenie przed pomyłką przy wpisywaniu, a nie limit Twojego sklepu. Wszystko, co pobiera jedno przejście, jest trzymane w pamięci naraz.",
+        "recommended": "Przy 2000 produktów jedno przejście trwa około 3 minut z 20 minut między przejściami. Powyżej tej wartości większa liczba głównie wydłuża kolejkę, zamiast przyspieszać pracę."
+      },
+      "deletionAuditBudget": {
+        "absolute": "To samo zabezpieczenie przed pomyłką przy wpisywaniu co przy synchronizacji produktów.",
+        "recommended": "Przy domyślnych 100 sklep ze 100 000 produktów sprawdza wszystkie produkty pod kątem usunięcia w około 42 dni, a usunięty produkt sprzedaje się dalej, dopóki nie zostanie sprawdzony."
+      },
+      "inventoryMovementRetentionDays": {
+        "absolute": "Pięć lat to najdłuższa historia stanów warta przechowywania; dłuższy okres to niemal zawsze pomyłka przy wpisywaniu.",
+        "recommended": "Jak długo ruch magazynowy jest przechowywany w historii. Duży katalog zapisuje jeden wiersz na każdą zmianę stanu, więc powyżej około dwóch lat tabela to głównie koszt miejsca."
+      },
+      "inventorySweepBudget": {
+        "absolute": "To samo zabezpieczenie przed pomyłką przy wpisywaniu co przy synchronizacji produktów.",
+        "recommended": "Przy domyślnych 100 sklep ze 100 000 produktów sprawdza wszystkie stany magazynowe w około 10 dni. 2000 skraca to do kilku godzin i odpowiada limitowi synchronizacji produktów."
+      },
+      "stockStaleSyncThresholdHours": {
+        "absolute": "Tydzień - powyżej tej wartości oznaczenie nie zadziałałoby dla synchronizacji, która zatrzymała się w poprzedni weekend.",
+        "recommended": "Jak długo stan magazynowy może pozostać bez świeżego odczytu z systemu źródłowego, zanim widok stanów oznaczy go jako nieaktualny. Powyżej dwóch dni oznaczenie przestaje wykrywać synchronizację, która po cichu się zatrzymała."
+      },
+      "sweepPageSize": {
+        "absolute": "Każdy produkt w jednym zapytaniu wydłuża jego adres. Przy około 500 adres ma około 4 KB, co serwery akceptują; kilka razy więcej jest odrzucane.",
+        "recommended": "100 to rozmiar strony, który sklep PrestaShop obsługuje najlepiej i dla którego wykonano pomiary. Większa wartość oszczędza niewiele zapytań, a jedno nieudane zapytanie kosztuje więcej pracy."
+      },
+      "syncJobDeadRetentionDays": {
+        "absolute": "Wartość powyżej 365 dni jest niedozwolona.",
+        "recommended": "Jak długo trwale nieudane zadanie synchronizacji jest przechowywane jako ślad utraconej pracy. Domyślnie dłużej niż zakończone zadanie, bo to jedyny zapis tej pracy. Dozwolony zakres: 30-365 dni."
+      },
+      "syncJobRetentionDays": {
+        "absolute": "Wartość powyżej 365 dni jest niedozwolona.",
+        "recommended": "Jak długo zakończone zadanie synchronizacji jest przechowywane na potrzeby diagnozy i ochrony przed powtórzonym ponowieniem. Dozwolony zakres: 30-365 dni."
+      }
+    },
+    "catalogue": {
+      "assumedCadence": "co 20 min (założenie)",
+      "budget": {
+        "ariaLabel": "Produkty na jedno przejście katalogu",
+        "description": "Ile produktów OpenLinker odczytuje ze sklepu w jednym przebiegu. Większa wartość skraca pełne przejście, ale każdy przebieg mocniej obciąża sklep."
+      },
+      "eyebrow": "Katalog",
+      "pageSize": {
+        "ariaLabel": "Produkty na jedno zapytanie do sklepu",
+        "description": "O ile produktów OpenLinker prosi sklep w jednym zapytaniu. Mniejsza wartość oznacza więcej zapytań przy tej samej pracy; większa sprawia, że jedno nieudane zapytanie kosztuje więcej.",
+        "label": "Produkty na zapytanie do sklepu"
+      },
+      "title": "Przegląd produktów"
+    },
+    "deletions": {
+      "budget": {
+        "ariaLabel": "Produkty sprawdzane w jednym przebiegu kontroli usunięć",
+        "description": "Ile produktów jest sprawdzanych w jednym przebiegu.",
+        "label": "Produkty sprawdzane w przebiegu"
+      },
+      "cadenceDescription": "Razem z liczbą powyżej decyduje o tym, jak długo usunięty produkt może się jeszcze sprzedawać. Nie można tego wyłączyć.",
+      "cadenceLabel": "Jak często się uruchamia",
+      "cadenceNotSaved": "{cadence} (jeszcze nie zapisano)",
+      "cadenceWithSource": "{cadence} ({source})",
+      "changedFrom": "zmieniono z {cadence}",
+      "eyebrow": "Usunięte produkty",
+      "intro": "OpenLinker przechodzi przez własną listę produktów i sprawdza każdy w sklepie, więc usunięcie zostanie wykryte nawet wtedy, gdy nikt o nim nie poinformował. Niektóre sklepy informują - moduł sklepu może zgłosić usunięcie w chwili, gdy nastąpi - i wtedy kontrola jest zabezpieczeniem, a nie jedyną drogą. Ta strona nie wie, który przypadek dotyczy danego połączenia.",
+      "noOffSwitch": "tu nie można wyłączyć",
+      "noSwitch": "Na tej stronie nie ma przełącznika wyłączającego kontrolę, bo to ona sprawia, że oferty usuniętego produktu przestają się sprzedawać. Nadal można ją wyłączyć w konfiguracji serwera OpenLinker, czego ta strona nie widzi.",
+      "sourceDefault": "domyślnie",
+      "sourceEnv": "z ustawienia serwera",
+      "sourceSetting": "ustawione ręcznie",
+      "title": "Kontrola usunięć",
+      "whenThisStarts": "Kiedy to zacznie działać"
+    },
+    "description": "Jak mocno OpenLinker obciąża sklep i ile trwa pełne przejście. Zmiana tych wartości to wybór między obciążeniem sklepu a tym, jak szybko OpenLinker zauważy zmianę.",
+    "error": {
+      "retry": "Ponów",
+      "title": "Nie udało się wczytać tempa synchronizacji"
+    },
+    "eyebrow": "Ustawienia",
+    "fieldErrors": {
+      "absolute": "Maksymalna dozwolona wartość to {limit}.",
+      "cadenceFormat": "Wpisz wyrażenie cron z 5 lub 6 polami.",
+      "cadenceInvalid": "To nie jest poprawne wyrażenie cron.",
+      "cadenceTooRare": "Sprawdzanie usunięć musi działać co najmniej raz na 7 dni.",
+      "min": "Wpisz liczbę całkowitą nie mniejszą niż {limit}.",
+      "notANumber": "Wpisz liczbę.",
+      "recommended": "Ta wartość przekracza zalecane {limit}. Potwierdź ją, aby zapisać."
+    },
+    "footer": {
+      "retentionChanged": "Zmieniono czas przechowywania zadań w tle",
+      "retentionSave": "Zapisz czas przechowywania",
+      "retentionUndo": "Cofnij",
+      "save": "Zapisz zmiany",
+      "savesOnItsOwn": "Zapisuje się osobno, bez potwierdzenia.",
+      "undo": "Cofnij moje zmiany"
+    },
+    "hosting": {
+      "catalogueSize": "Produkty w OpenLinker",
+      "catalogueSizeDescription": "Używane tylko do wyliczenia czasu pełnego przejścia. To liczba produktów skopiowanych dotąd do OpenLinker, która podczas pierwszej synchronizacji jest mniejsza niż w sklepie.",
+      "eyebrow": "Twój serwer",
+      "fromCatalogue": "odczytane z katalogu",
+      "keptInBrowser": "zapisane w tej przeglądarce",
+      "meta": "Używane przez kalkulator",
+      "notKnownYet": "jeszcze nieznane",
+      "processTimeLimit": "Limit czasu procesu",
+      "processTimeLimitAria": "Limit czasu procesu w sekundach",
+      "processTimeLimitDescription": "Jak długo hosting pozwala działać pojedynczemu procesowi, zanim go zakończy. Na hostingu współdzielonym to często 300 sekund. Zapytaj dostawcę albo zostaw 300. OpenLinker nie może odczytać tej wartości z hostingu.",
+      "secondsUnit": "s",
+      "title": "Limity hostingu"
+    },
+    "loading": {
+      "message": "Odczytywanie obowiązujących wartości…",
+      "title": "Wczytywanie tempa synchronizacji"
+    },
+    "mobileBar": {
+      "ariaLabel": "Niezapisane zmiany",
+      "save": "Zapisz"
+    },
+    "notSaved": "Zmiana nie została zapisana",
+    "productsPerRun": "Produkty na przebieg",
+    "saveStatus": {
+      "noChanges": "Brak zmian.",
+      "oneUnacknowledged": "Jedna wartość przekracza zalecaną. Zaznacz pole obok niej, aby kontynuować.",
+      "ready": "Przed zapisem zobaczysz, co zmieni każda z wartości.",
+      "someUnacknowledged": "Niektóre wartości przekraczają zalecane. Zaznacz pole obok każdej z nich, aby kontynuować."
+    },
+    "savedToast": {
+      "description": "Kolejny przebieg użyje nowych wartości.",
+      "descriptionWithCadence": "Kolejny przebieg użyje nowych wartości. Częstotliwość sprawdzania usuniętych produktów zmieni się przy najbliższym ponownym uruchomieniu usługi w tle.",
+      "title": "Zapisano tempo synchronizacji"
+    },
+    "sections": {
+      "catalogue": "Katalog",
+      "deletions": "Usunięte produkty",
+      "hosting": "Hosting",
+      "inventoryHistory": "Historia stanów",
+      "retention": "Przechowywanie zadań w tle",
+      "stock": "Stan magazynowy",
+      "stockStaleness": "Nieaktualny stan"
+    },
+    "sectionsNavLabel": "Sekcje tej strony",
+    "stock": {
+      "assumedCadence": "co 15 min (założenie)",
+      "budget": {
+        "ariaLabel": "Produkty na jeden przebieg stanów",
+        "description": "Ile produktów ma ponownie odczytywany stan w jednym przebiegu. W sklepie, który nie przesyła zmian stanów do OpenLinker, to jedyny sposób wykrycia zmiany ilości."
+      },
+      "eyebrow": "Stan magazynowy",
+      "title": "Przegląd stanów"
+    },
+    "title": "Tempo synchronizacji",
+    "unsavedChanges": {
+      "few": "{n} niezapisane zmiany",
+      "many": "{n} niezapisanych zmian",
+      "one": "{n} niezapisana zmiana",
+      "other": "{n} niezapisanej zmiany"
+    },
+    "workerMayDiffer": {
+      "body": "Niezapisane tu wartości pochodzą z ustawień tego serwera lub z wartości domyślnych OpenLinker. Część OpenLinker wykonująca synchronizację działa jako osobny proces i odczytuje własne ustawienia, więc może używać czegoś innego. Zapisanie wartości tutaj ustala ją dla obu.",
+      "title": "Część tych wartości nie jest jeszcze tu zapisana"
+    }
+  },
+  "pacingValueField": {
+    "aboveOurRecommendation": "{source}, powyżej zalecenia",
+    "acknowledge": "Rozumiem i chcę mimo to ustawić {value}. Serwer to wytrzyma.",
+    "changedFrom": "zmieniono z {value}",
+    "notSavedYet": "{value} (jeszcze nie zapisano)",
+    "pastSuggestedFallback": "To więcej niż maksimum zalecane przez OpenLinker.",
+    "pastSuggestedTitle": "Powyżej zalecanej wartości",
+    "source": {
+      "default": "domyślnie",
+      "env": "ze środowiska tego serwera",
+      "setting": "ustawione ręcznie"
+    },
+    "suggestedMax": "zalecane ≤ {max}",
+    "valueWithSource": "{value} ({source})"
+  },
+  "releaseCenterPage": {
+    "adminOnly": {
+      "message": "Te ustawienia zmienia administrator.",
+      "title": "Wymagana rola administratora"
+    },
+    "back": "Wróć do ustawień",
+    "description": "Zdecyduj, czy po aktualizacji użytkownicy widzą okno ze zmianami, karty nowości w dzwonku i przewodniki po nowych funkcjach.",
+    "error": {
+      "retry": "Spróbuj ponownie",
+      "title": "Nie udało się wczytać ustawień"
+    },
+    "eyebrow": "Dostęp i wygląd",
+    "loading": {
+      "message": "To potrwa chwilę.",
+      "title": "Wczytuję ustawienia"
+    },
+    "title": "Nowości po aktualizacji"
+  },
+  "releaseCenterRow": {
+    "description": "Okno z listą zmian po aktualizacji, karty wydań w dzwonku i przewodniki po nowych funkcjach.",
+    "off": "Wyłączone",
+    "on": "Włączone",
+    "open": "Otwórz ustawienia nowości po aktualizacji",
+    "title": "Nowości po aktualizacji"
+  },
+  "releaseCenterSection": {
+    "backToEnv": "Wróć do ustawienia serwera",
+    "field": {
+      "ariaLabel": "Nowości po aktualizacji włączone lub wyłączone",
+      "description": "Po wyłączeniu po aktualizacji nie pojawi się okno ze zmianami, a w dzwonku zniknie karta nowości z krokami do ustawienia i przewodnikami po nowych funkcjach. Dzwonek i pozostałe powiadomienia zostają. Lista zmian nadal jest na stronie „Nowości i powiadomienia”.",
+      "label": "Pokazuj nowości po aktualizacji"
+    },
+    "lead": "Dotyczy wszystkich użytkowników instalacji.",
+    "newChip": "Nowe",
+    "reset": "Cofnij",
+    "save": "Zapisz zmiany",
+    "saveFailed": "Nie udało się zapisać ustawienia.",
+    "savedToast": {
+      "description": "U Ciebie działa od razu, u pozostałych użytkowników po odświeżeniu strony.",
+      "title": "Zapisano ustawienie"
+    },
+    "sourceLine": {
+      "default": "Teraz obowiązuje ustawienie domyślne: włączone.",
+      "env": "Teraz obowiązuje ustawienie serwera. Zapisz tutaj, żeby je zastąpić.",
+      "setting": "Ustawione tutaj."
+    },
+    "title": "Nowości po aktualizacji"
+  },
+  "salesDocumentsPage": {
+    "adminOnly": {
+      "description": "Dostęp tylko dla administratora.",
+      "message": "Ta strona kieruje dokumenty fiskalne do połączeń - wymaga sesji administratora.",
+      "title": "Wymagana rola administratora"
+    },
+    "backLabel": "Ustawienia",
+    "description": "Które połączenie wystawia fakturę albo paragon i jak gratisy wyglądają na dokumencie.",
+    "eyebrow": "Ustawienia",
+    "sections": {
+      "gifts": "Gratisy na dokumentach",
+      "markets": "Rynki",
+      "providers": "Dostawcy dokumentów"
+    },
+    "sectionsLabel": "Sekcje strony",
+    "title": "Kierowanie dokumentów sprzedaży"
+  },
+  "settingsPage": {
+    "account": {
+      "anonymous": "Brak aktywnej sesji.",
+      "email": "E-mail",
+      "loading": "Wczytywanie sesji…",
+      "role": "Rola",
+      "signedInAs": "Zalogowano jako",
+      "title": "Konto",
+      "username": "Nazwa użytkownika"
+    },
+    "description": "Wszystkie obszary konfiguracji, pogrupowane według tego, do czego służą.",
+    "environment": {
+      "apiBaseUrl": "Adres API",
+      "environment": "Środowisko",
+      "title": "Środowisko",
+      "version": "Wersja aplikacji"
+    },
+    "notifications": {
+      "title": "Powiadomienia"
+    },
+    "organization": {
+      "title": "Organizacja"
+    },
+    "plannedLine": "W planach także: {items}.",
+    "preferences": {
+      "title": "Preferencje"
+    },
+    "title": "Ustawienia"
+  },
+  "stockStalenessSection": {
+    "eyebrow": "Widok stanów",
+    "field": {
+      "ariaLabel": "Liczba godzin, po których stan jest oznaczany jako nieaktualny",
+      "description": "Jak długo stan może pozostać bez świeżego odczytu z systemu głównego, zanim widok stanów oznaczy go jako nieaktualny.",
+      "label": "Oznacz stan jako nieaktualny po"
+    },
+    "reset": "Przywróć",
+    "save": "Zapisz próg",
+    "savedOnItsOwn": "zapisywane osobno",
+    "savedToast": {
+      "description": "Widok stanów od razu używa nowego progu.",
+      "title": "Zapisano ostrzeżenie o nieaktualnym stanie"
+    },
+    "title": "Ostrzeżenie o nieaktualnym stanie",
+    "unitHours": "godz."
+  },
+  "syncJobRetentionSection": {
+    "completed": {
+      "ariaLabel": "Liczba dni przechowywania zakończonego zadania synchronizacji",
+      "description": "Jak długo zapis zakończonego (udanego) zadania synchronizacji jest przechowywany do diagnozowania problemów i aby nie zostało przypadkiem uruchomione dwukrotnie. Od 30 do 365 dni.",
+      "label": "Zakończone zadania w tle przechowywane przez"
+    },
+    "eyebrow": "Porządki",
+    "failed": {
+      "ariaLabel": "Liczba dni przechowywania trwale nieudanego zadania synchronizacji",
+      "description": "Jak długo przechowywane jest zadanie, któremu skończyły się ponowienia. To jedyny ślad utraconej pracy, więc wartość domyślna jest dłuższa niż dla zakończonego zadania. Od 30 do 365 dni.",
+      "label": "Nieudane zadania w tle przechowywane przez"
+    },
+    "savedOnItsOwn": "zapisywane osobno",
+    "title": "Przechowywanie zadań w tle",
+    "unitDays": "dni"
+  },
+  "syncPacingChanges": {
+    "cadenceTimingNote": "Ta zmiana nie zadziała od razu. Nowy harmonogram zostanie uwzględniony przy najbliższym ponownym uruchomieniu usługi w tle OpenLinker. Wszystko inne na tej stronie obowiązuje od kolejnego przebiegu.",
+    "cataloguePass": {
+      "changed": "Pełne przejście zmieni się z około {from} na około {to}.",
+      "same": "Pełne przejście pozostanie na poziomie około {to}.",
+      "unknown": "OpenLinker nie wie, ile produktów ma ten sklep, więc nie można jeszcze wyliczyć czasu pełnego przejścia."
+    },
+    "catalogueSweepBudget": {
+      "hostLimitExceeded": "Hosting zatrzymuje procesy po {limit}, więc to się nie zmieści.",
+      "hostLimitFits": "Hosting zatrzymuje procesy po {limit}, więc to nadal się zmieści.",
+      "label": "Katalog: produkty na przebieg",
+      "runChange": "Przebieg zmieni się z około {from} na około {to}."
+    },
+    "deletionAuditBudget": {
+      "label": "Usunięte produkty: sprawdzane na przebieg"
+    },
+    "deletionAuditCadence": {
+      "label": "Usunięte produkty: jak często OpenLinker sprawdza"
+    },
+    "deletionWindow": {
+      "changed": "Czas, przez jaki usunięty produkt może się jeszcze sprzedawać, zmieni się z około {from} na około {to}.",
+      "same": "Czas, przez jaki usunięty produkt może się jeszcze sprzedawać, pozostanie na poziomie około {to}.",
+      "unknown": "OpenLinker nie wie, ile produktów ma ten sklep, więc nie można jeszcze wyliczyć, jak długo usunięty produkt może się sprzedawać."
+    },
+    "inventorySweepBudget": {
+      "label": "Stan magazynowy: produkty na przebieg",
+      "requestChange": "Każdy przebieg odpyta sklep o około {to} pozycji zamiast {from}."
+    },
+    "stockPass": {
+      "changed": "Pełne przejście stanów zmieni się z około {from} na około {to}.",
+      "same": "Pełne przejście stanów pozostanie na poziomie około {to}.",
+      "unknown": "OpenLinker nie wie, ile produktów ma ten sklep, więc nie można jeszcze wyliczyć czasu pełnego przejścia stanów."
+    },
+    "sweepPageSize": {
+      "fewerMeansMore": "Mniejsza liczba naraz oznacza więcej zapytań przy tej samej pracy; nie zmienia tego, ile OpenLinker zdąży przetworzyć.",
+      "label": "Produkty na zapytanie do sklepu",
+      "pageChange": "OpenLinker poprosi sklep o {to} produktów naraz zamiast {from}."
+    }
+  },
+  "syncPacingConfirmDialog": {
+    "aboveRecommended": "Powyżej zalecanej wartości {max}.",
+    "description": {
+      "few": "Zmieniono {n} ustawienia. Wszystko inne pozostaje bez zmian.",
+      "many": "Zmieniono {n} ustawień. Wszystko inne pozostaje bez zmian.",
+      "one": "Zmieniono jedno ustawienie. Wszystko inne pozostaje bez zmian.",
+      "other": "Zmieniono {n} ustawienia. Wszystko inne pozostaje bez zmian."
+    },
+    "keepEditing": "Edytuj dalej",
+    "save": "Zapisz zmiany",
+    "saving": "Zapisywanie…",
+    "title": "Zapisać te zmiany?",
+    "worseBody": "Produkt usunięty w sklepie będzie teraz sprzedawał się w marketplace'ach dłużej niż obecnie. Nic innego w OpenLinker tego nie wychwyci.",
+    "worseTitle": "Jedna zmiana pogarsza sytuację"
+  },
+  "syncPacingModel": {
+    "days": "{n} d",
+    "hours": "{n} h",
+    "seconds": "{n} s"
+  },
+  "syncPacingRail": {
+    "ariaLabel": "Podsumowanie tych ustawień",
+    "assumedCatalogueCadence": "co 20 min (założenie)",
+    "assumedStockCadence": "co 15 min (założenie)",
+    "catalogue": {
+      "fullPass": "Pełne przejście katalogu",
+      "productsPerRequest": "Produkty na zapytanie do sklepu",
+      "title": "Przegląd katalogu"
+    },
+    "caveats": {
+      "notWhereItBreaks": "To nie jest granica wytrzymałości sklepu. Te wartości wynikają z tempa pracy OpenLinker, a nie z obciążania sklepu aż do awarii. Pokazują obciążenie, nie przewidują awarii.",
+      "oneService": "Jedna usługa w tle. Jeśli działają dwie, każda liczba zapytań tutaj się podwaja.",
+      "sizeKnown": "Długość przejść liczona jest dla produktów już skopiowanych do OpenLinker, a nie dla wszystkich produktów sklepu. Podczas pierwszej synchronizacji rzeczywiste przejście jest dłuższe, często znacznie. Wartości na przebieg są dokładne w każdym przypadku.",
+      "sizeUnknown": "OpenLinker nie wie jeszcze, ile produktów ma ten sklep, więc nie można wyliczyć długości przejść. Wartości na przebieg nadal są dokładne.",
+      "summary": "Czego te liczby nie powiedzą",
+      "testCatalogue": "Zmierzone na testowym katalogu 100 000 produktów, po 3 warianty, 9 kategorii, bez zestawów. Twój sklep będzie się różnił."
+    },
+    "changesTo": "zmienia się na",
+    "days": {
+      "few": "{n} dni",
+      "many": "{n} dni",
+      "one": "{n} dzień",
+      "other": "{n} dnia"
+    },
+    "deletions": {
+      "checkedPerRun": "Produkty sprawdzane w przebiegu",
+      "fullCycle": "Pełny cykl kontroli",
+      "fullCycleHint": "Najdłuższy czas, przez jaki usunięty produkt może się sprzedawać, gdy sklep sam nie zgłasza usunięcia.",
+      "title": "Kontrola usunięć"
+    },
+    "edited": "zmienione",
+    "eyebrow": "Podsumowanie",
+    "hosting": {
+      "cutShort": "<strong>Ten przebieg zostanie przerwany.</strong> Przy {budget} produktach przebieg trwa około {run}, czyli dłużej niż limit hostingu {limit}. Spróbuj {suggestion} lub mniej.",
+      "keptInBrowser": "Zapisane w tej przeglądarce.",
+      "longestRun": "Najdłuższy przebieg (katalog)",
+      "overlap": "<strong>Przebiegi będą się nakładać.</strong> Przebieg trwa około {run}, a kolejny zaczyna się po {window}.",
+      "processTimeLimit": "Limit czasu procesu",
+      "title": "Hosting"
+    },
+    "lede": "Aktualizowane na bieżąco według wpisanych wartości. Zmienione wiersze najpierw pokazują zapisaną wartość.",
+    "productsPerRun": "Produkty na przebieg",
+    "retention": {
+      "cleanUpHint": "Starsze zapisy zadań w tle są usuwane podczas regularnych porządków OpenLinker.",
+      "completedKept": "Zakończone zadania w tle przechowywane przez",
+      "failedKept": "Nieudane zadania w tle przechowywane przez",
+      "title": "Przechowywanie zadań w tle"
+    },
+    "runs": "Przebiegi",
+    "shopRequestsPerRun": "Zapytania do sklepu na przebieg",
+    "stock": {
+      "fullPass": "Pełne przejście stanów",
+      "title": "Przegląd stanów"
+    },
+    "title": "Co robią te wartości"
+  },
+  "syncPacingTile": {
+    "adjust": "Dostosuj tempo",
+    "adminOnly": "Tylko administrator",
+    "cataloguePerRun": "Produkty na przebieg katalogu",
+    "description": "Jak mocno OpenLinker obciąża sklep i jak długo usunięty produkt może się jeszcze sprzedawać.",
+    "eyebrow": "Obciążenie sklepu",
+    "sourceDefault": "domyślnie",
+    "sourceEnv": "z ustawienia serwera",
+    "sourceSetting": "ustawione ręcznie",
+    "title": "Tempo synchronizacji",
+    "valueWithSource": "{value} ({source})"
+  },
+  "template": {
+    "aiProvider": {
+      "hint": "Klucze dla każdego dostawcy i aktywny dostawca.",
+      "short": "Dostawca AI",
+      "title": "Dostawcy AI"
+    },
+    "batch": {
+      "hint": "Kiedy i jak dokumenty są wystawiane razem dla tego połączenia.",
+      "short": "Wystawianie zbiorcze",
+      "title": "Wystawianie zbiorcze"
+    },
+    "buyerEmailEditor": {
+      "hint": "Nadawca, temat i treść tego e-maila.",
+      "short": "E-mail do kupującego",
+      "title": "Treść e-maila"
+    },
+    "buyerEmails": {
+      "hint": "Wybierz połączenie i ustaw, jakie e-maile dostają kupujący.",
+      "short": "E-maile do kupujących",
+      "title": "E-maile według połączenia"
+    },
+    "inventoryLocations": {
+      "hint": "Magazyny i inne miejsca, w których leży towar.",
+      "short": "Lokalizacje",
+      "title": "Lokalizacje magazynowe"
+    },
+    "loginPage": {
+      "hint": "Co goście widzą na ekranie logowania tej instalacji.",
+      "short": "Strona logowania",
+      "title": "Treść strony logowania"
+    },
+    "mcpTokens": {
+      "hint": "Dane dostępowe, którymi klient MCP łączy się z tą instalacją.",
+      "short": "Tokeny MCP",
+      "title": "Tokeny dostępu"
+    },
+    "orderTags": {
+      "hint": "Etykiety, które zespół nadaje zamówieniom.",
+      "short": "Tagi zamówień",
+      "title": "Tagi zamówień"
+    },
+    "salesGifts": {
+      "hint": "Jak darmowe gratisy wyglądają na wystawionych dokumentach.",
+      "short": "Gratisy",
+      "title": "Gratisy na dokumentach"
+    },
+    "salesMarkets": {
+      "hint": "Jaki dokument dostaje każdy kraj dostawy.",
+      "short": "Rynki",
+      "title": "Rynki"
+    },
+    "salesProviders": {
+      "hint": "Połączenia wystawiające dokumenty i moment ich wystawiania.",
+      "short": "Dostawcy",
+      "title": "Dostawcy dokumentów"
+    },
+    "settingsEnv": {
+      "hint": "Instalacja, do której jesteś zalogowany.",
+      "short": "Środowisko",
+      "title": "Środowisko i konto"
+    },
+    "settingsGroups": {
+      "access": {
+        "hint": "Kto może łączyć się z tą instalacją i co widzą odwiedzający.",
+        "short": "Dostęp",
+        "title": "Dostęp i wygląd"
+      },
+      "data": {
+        "hint": "Jak często czytamy katalog i stany oraz w jakiej walucie raportujemy.",
+        "short": "Dane",
+        "title": "Dane i synchronizacja"
+      },
+      "orders": {
+        "hint": "Jak zamówienia są rozstrzygane, dokumentowane i komunikowane.",
+        "short": "Zamówienia",
+        "title": "Zamówienia i dokumenty"
+      }
+    },
+    "settingsHome": {
+      "hint": "Każdy obszar, który możesz skonfigurować.",
+      "short": "Ustawienia",
+      "title": "Obszary ustawień"
+    },
+    "sourcingRules": {
+      "hint": "Uporządkowane reguły wybierające, skąd realizowane jest zamówienie.",
+      "short": "Reguły źródeł",
+      "title": "Reguły źródeł"
+    },
+    "syncPacing": {
+      "hint": "Jak mocno OpenLinker pracuje na katalogu sklepu.",
+      "short": "Tempo synchronizacji",
+      "title": "Tempo synchronizacji"
+    },
+    "whoDecides": {
+      "hint": "Który system odpowiada za stany, zamówienia, zwroty, zwroty pieniędzy i dokumenty.",
+      "short": "Kto decyduje",
+      "title": "Kto o czym decyduje"
+    }
+  },
+  "tickBudgetBar": {
+    "ariaHostLimit": "Hosting zatrzymuje procesy po {limit}.",
+    "ariaHostLimitPassed": "Hosting zatrzymuje procesy po {limit}, a ten przebieg by to przekroczył.",
+    "ariaNext": "Kolejny zaczyna się po {window}.",
+    "ariaRun": "Szacowany czas przebiegu: {run}.",
+    "hostStopsAt": "hosting zatrzymuje po {limit}",
+    "nextRun": "{window} (kolejny przebieg)",
+    "runLength": "Czas przebiegu",
+    "runOfWindow": "{run} z {window}"
+  },
+  "useInventoryMovementRetentionDraft": {
+    "resetToast": {
+      "description": "Domyślny okres obowiązuje od kolejnych porządków.",
+      "title": "Przywrócono domyślny czas przechowywania historii"
+    },
+    "savedToast": {
+      "description": "Kolejne porządki użyją nowego okresu.",
+      "title": "Zapisano czas przechowywania historii"
+    }
+  },
+  "useSyncJobRetentionDraft": {
+    "savedToast": {
+      "description": "Kolejne porządki użyją nowych okresów.",
+      "title": "Zapisano czas przechowywania zadań w tle"
+    }
+  }
+}

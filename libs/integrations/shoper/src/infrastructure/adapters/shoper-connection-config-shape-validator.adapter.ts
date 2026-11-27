@@ -22,6 +22,7 @@ import type { ConnectionConfigShapeValidatorPort } from '@openlinker/core/integr
 import { InvalidConnectionConfigException } from '@openlinker/core/integrations';
 
 import { parseShoperBaseUrl } from '../../domain/policies/shoper-base-url.policy';
+import { SHOPER_DEFAULT_KEYS } from '../mappers/shoper-order-input.mapper';
 
 export class ShoperConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
@@ -42,8 +43,6 @@ export class ShoperConnectionConfigShapeValidatorAdapter
   }
 }
 
-const DEFAULT_KEYS = ['shippingId', 'paymentId', 'statusId'] as const;
-
 /** `defaults` is optional; when present each id must be a positive integer (an unset key is `null`/absent). */
 function validateDefaults(defaults: unknown): Array<{ path: string; message: string }> {
   if (defaults === undefined || defaults === null) {
@@ -53,7 +52,7 @@ function validateDefaults(defaults: unknown): Array<{ path: string; message: str
     return [{ path: 'defaults', message: 'must be an object' }];
   }
   const record = defaults as Record<string, unknown>;
-  return DEFAULT_KEYS.flatMap((key) => {
+  return SHOPER_DEFAULT_KEYS.flatMap((key) => {
     const value = record[key];
     if (value === undefined || value === null) {
       return [];

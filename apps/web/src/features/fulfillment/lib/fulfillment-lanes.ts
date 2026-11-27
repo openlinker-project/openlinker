@@ -23,7 +23,7 @@
  * @module apps/web/src/features/fulfillment/lib
  */
 import type { FulfillmentTask } from '../api/fulfillment.types';
-import { FULFILLMENT_WORKLIST_COPY } from './fulfillment-worklist.copy';
+import { getMessages } from '../../../shared/i18n';
 
 export interface FulfillmentLane {
   /** Stable within one render — `locationId` and `deliveryMethod` joined. */
@@ -61,6 +61,7 @@ function laneKey(locationId: string | null, deliveryMethod: string | null): stri
  */
 export function groupTasksIntoLanes(tasks: readonly FulfillmentTask[]): FulfillmentLane[] {
   const lanes = new Map<string, FulfillmentLane>();
+  const laneCopy = getMessages('fulfillment').worklist.lane;
 
   for (const task of tasks) {
     const key = laneKey(task.locationId, task.deliveryMethod);
@@ -73,8 +74,8 @@ export function groupTasksIntoLanes(tasks: readonly FulfillmentTask[]): Fulfillm
       id: key,
       locationId: task.locationId,
       deliveryMethod: task.deliveryMethod,
-      locationLabel: task.locationId ?? FULFILLMENT_WORKLIST_COPY.lane.noLocation,
-      deliveryMethodLabel: task.deliveryMethod ?? FULFILLMENT_WORKLIST_COPY.lane.noDeliveryMethod,
+      locationLabel: task.locationId ?? laneCopy.noLocation,
+      deliveryMethodLabel: task.deliveryMethod ?? laneCopy.noDeliveryMethod,
       tasks: [task],
     });
   }
@@ -95,7 +96,8 @@ export function summariseLaneLines(lane: FulfillmentLane): { fulfilled: number; 
   for (const task of lane.tasks) {
     for (const line of task.lines) {
       fulfilled += line.fulfilledQuantity;
-      total += line.totalQuantity;
+      // #3961: a cancelled unit (a line the shop lowered) is never packed.
+      total += Math.max(0, line.totalQuantity - line.cancelledQuantity);
     }
   }
   return { fulfilled, total };

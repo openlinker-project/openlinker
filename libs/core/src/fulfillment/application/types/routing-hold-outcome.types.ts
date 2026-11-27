@@ -72,8 +72,8 @@ const LINE_ATTENTION_UNTOUCHED: AuthorityAttentionOutcome<'routing'> = { kind: '
  * **Not the complete mapping (#3503 review):** this maps a `RoutingCommitOutcome`
  * and therefore cannot produce `routing-failed`. That block is spelled at each
  * call site's catch - an error AFTER selection means the commit may already have
- * happened, so holding is right - so "one rule, two sites" covers four of the
- * five reachable block reasons, and the fifth is written by the intercept and by
+ * happened, so holding is right - so "one rule, two sites" covers five of the
+ * six reachable block reasons, and the fifth is written by the intercept and by
  * `FulfillmentWorkRouteHandler` themselves.
  */
 export function deriveRoutingHoldOutcome(outcome: RoutingCommitOutcome): RoutingHoldOutcome {
@@ -108,6 +108,16 @@ export function deriveRoutingHoldOutcome(outcome: RoutingCommitOutcome): Routing
         // A cancelled order needs no hold and has no line decision left to make.
         return { held: false, block: null, lineAttention: LINE_ATTENTION_CLEARED };
       }
+      if (outcome.reason === 'awaiting-payment') {
+        // #4033 — held, not mirrored: the OMS is this order's router, so it
+        // waits in OpenLinker for the payment. Nothing was routed, so there is
+        // no line decision to report.
+        return {
+          held: true,
+          block: { reason: 'routing-awaiting-payment', detail: null },
+          lineAttention: LINE_ATTENTION_UNTOUCHED,
+        };
+      }
       // The #2047 guard: some route already owns this order.
       return {
         held: true,
@@ -118,15 +128,30 @@ export function deriveRoutingHoldOutcome(outcome: RoutingCommitOutcome): Routing
         lineAttention: LINE_ATTENTION_UNTOUCHED,
       };
 
-    case 'refused':
+    case 'refused': {
+      if (outcome.reason !== 'plan-carries-unfulfillable') {
+        return {
+          held: true,
+          block: { reason: 'routing-refused', detail: outcome.reason },
+          lineAttention: LINE_ATTENTION_CLEARED,
+        };
+      }
+      // #3476 — the router's own reasons, so the operator can tell "out of
+      // stock" from "the holder cannot execute". Fixed sentences, already
+      // distinct and sorted, so the detail is stable across re-routes.
+      const reasons = outcome.unfulfillableReasons.join('; ');
       return {
         held: true,
-        block: { reason: 'routing-refused', detail: outcome.reason },
+        block: {
+          reason: 'routing-refused',
+          detail: reasons.length > 0 ? `${outcome.reason}: ${reasons}` : outcome.reason,
+        },
         lineAttention:
-          outcome.reason === 'plan-carries-unfulfillable'
-            ? { kind: 'blocked', reason: 'line-unfulfillable' }
-            : LINE_ATTENTION_CLEARED,
+          reasons.length > 0
+            ? { kind: 'blocked', reason: 'line-unfulfillable', detail: reasons }
+            : { kind: 'blocked', reason: 'line-unfulfillable' },
       };
+    }
 
     default: {
       const unreachable: never = outcome;

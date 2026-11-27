@@ -1,0 +1,7 @@
+{
+  "plugin": {
+    "setupCard": {
+      "description": "Pack and ship orders in OpenLinker instead of your shop. There is no account to connect: the setup creates it for you."
+    }
+  }
+}

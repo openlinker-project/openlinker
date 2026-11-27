@@ -36,6 +36,7 @@ import { useCreateConnectionMutation } from '../hooks/use-create-connection-muta
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
 import type { ConnectionTestResult } from '../api/connections.types';
 import {
+  SUBIEKT_GT_IDENTITY,
   SUBIEKT_SETUP_DEFAULT_VALUES,
   buildSubiektSetupSchema,
   toCreateConnectionInput,
@@ -51,6 +52,16 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
+import { useAdaptersQuery } from '../../adapters';
+import { OrderSyncStartSection } from './order-sync-start-section';
+import { collectFormErrorMessages } from '../lib/collect-form-error-messages';
+import { ORDER_SYNC_START_DEFAULT_VALUE, readsOrders } from '../lib/order-sync-start';
+
+// The product family name, the same in every language.
+const SUBIEKT_FAMILY_NAME = 'Subiekt';
 
 /**
  * One form, two products. `identity` is REQUIRED and has no default: Subiekt
@@ -64,10 +75,21 @@ export function SubiektSetupForm({
 }: {
   identity: SubiektProductIdentity;
 }): ReactElement {
+  const copy = useMessages('connections').subiektSetupForm;
+  const setupCopy = useMessages('connections').setup;
+  const format = useFormat();
+  const product = identity.productName;
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const adaptersQuery = useAdaptersQuery();
+  const adapterMetadata = adaptersQuery.data?.find((a) => a.adapterKey === identity.adapterKey);
+  // Capabilities are not chosen here, so the adapter's own set decides: Subiekt GT
+  // reads orders, nexo is invoicing only. Unknown until the registry answers.
+  // nexo reads no orders: its pending/error states must never show the start note.
+  const isGtIdentity = identity.adapterKey === SUBIEKT_GT_IDENTITY.adapterKey;
+  const willReadOrders = readsOrders(adapterMetadata?.supportedCapabilities);
   const [createdConnectionId, setCreatedConnectionId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 
@@ -92,19 +114,17 @@ export function SubiektSetupForm({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty, createdConnectionId]);
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
-  );
+  const validationMessages = collectFormErrorMessages(form.formState.errors);
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values, identity));
+      const created = await createConnection.mutateAsync(toCreateConnectionInput(values, identity, willReadOrders));
       form.reset(values, { keepValues: true, keepDirty: false });
       setCreatedConnectionId(created.id);
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `Subiekt connection "${created.name}" was created.`,
+        title: copy.createdTitle,
+        description: interpolate(copy.createdDescription, { platform: SUBIEKT_FAMILY_NAME, name: created.name }),
       });
     } catch {
       return;
@@ -126,44 +146,49 @@ export function SubiektSetupForm({
 
   return (
     <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-      <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+      <BackLink to="/connections/new" label={setupCopy.connections} className="wizard-card__back" />
 
       {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
         <FormErrorSummary errors={validationMessages} />
       ) : null}
       {createConnection.error ? (
-        <Alert tone="error" title="Unable to create connection">
-          {createConnection.error.message}
+        <Alert tone="error" title={copy.createError}>
+          {describeApiError(createConnection.error, 'connections')}
         </Alert>
       ) : null}
 
-      <Alert tone="info" title="Before you start">
-        Run the OpenLinker bridge on the Windows machine where{' '}
-        <strong>{identity.productName}</strong> is installed, give it a token in its{' '}
-        <code>appsettings.json</code>, then paste that machine&rsquo;s address and the same token
-        below. OpenLinker talks to {identity.productName} only through the bridge — it never
-        connects to it directly.
+      <Alert tone="info" title={copy.beforeYouStart.title}>
+        {renderRich(
+          copy.beforeYouStart.body,
+          {
+            strong: (text) => <strong>{text}</strong>,
+            code: (text) => <code>{text}</code>,
+          },
+          { product },
+        )}
       </Alert>
 
       <FormField
-        label="Connection name"
+        label={copy.fields.name.label}
         name="name"
         error={form.formState.errors.name?.message}
-        description="A label to identify this Subiekt account in OpenLinker."
+        description={interpolate(copy.fields.name.description, { platform: SUBIEKT_FAMILY_NAME })}
       >
         <Input
           {...form.register('name')}
-          placeholder="My Subiekt"
+          placeholder={interpolate(copy.fields.name.placeholder, { platform: SUBIEKT_FAMILY_NAME })}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.name)}
         />
       </FormField>
 
       <FormField
-        label="Bridge URL"
+        label={copy.fields.bridgeBaseUrl.label}
         name="bridgeBaseUrl"
         error={form.formState.errors.bridgeBaseUrl?.message}
-        description={`The bridge address, without a path. Usually a LAN address — http is allowed (e.g. ${identity.bridgeUrlExample}).`}
+        description={interpolate(copy.fields.bridgeBaseUrl.description, {
+          example: identity.bridgeUrlExample,
+        })}
       >
         <Input
           {...form.register('bridgeBaseUrl')}
@@ -174,26 +199,38 @@ export function SubiektSetupForm({
         />
       </FormField>
 
-      <FormField
-        label="Request timeout (ms, optional)"
-        name="timeoutMs"
-        error={form.formState.errors.timeoutMs?.message}
-        description="Advanced — how long OpenLinker waits for the bridge before giving up. Between 1000 and 120000 ms. Leave blank for the bridge default."
+      {/* Open while the field is invalid, or a bad value would hide behind a closed disclosure. */}
+      <details
+        className="subiekt-advanced"
+        open={form.formState.errors.timeoutMs ? true : undefined}
       >
-        <Input
-          {...form.register('timeoutMs')}
-          inputMode="numeric"
-          placeholder="30000"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.timeoutMs)}
-        />
-      </FormField>
+        <summary className="subiekt-advanced__summary">{copy.advanced}</summary>
+        <FormField
+          label={copy.fields.timeoutMs.label}
+          name="timeoutMs"
+          error={form.formState.errors.timeoutMs?.message}
+          description={interpolate(copy.fields.timeoutMs.description, {
+            min: format.number(1000),
+            max: format.number(120000),
+          })}
+        >
+          <Input
+            {...form.register('timeoutMs')}
+            inputMode="numeric"
+            placeholder="30000"
+            autoComplete="off"
+            invalid={Boolean(form.formState.errors.timeoutMs)}
+          />
+        </FormField>
+      </details>
 
       <FormField
-        label={identity.tokenRequired ? 'Bridge token' : 'Bridge token (optional)'}
+        label={identity.tokenRequired ? copy.fields.bridgeToken.label : copy.fields.bridgeToken.labelOptional}
         name="bridgeToken"
         error={form.formState.errors.bridgeToken?.message}
-        description={`You choose this value yourself — it is not issued by anyone. ${identity.tokenConfigHint} Paste the same value here. Stored securely on the server and never shown again.`}
+        description={interpolate(copy.fields.bridgeToken.description, {
+          hint: identity.tokenConfigHint,
+        })}
       >
         <Input
           {...form.register('bridgeToken')}
@@ -205,57 +242,76 @@ export function SubiektSetupForm({
       </FormField>
 
       <FormField
-        label="Issue the invoice"
+        label={copy.fields.triggerModel.label}
         name="triggerModel"
         error={form.formState.errors.triggerModel?.message}
-        description={`Every order OpenLinker sends to ${identity.productName} becomes a ZK. This decides whether the invoice follows automatically, or waits for you. Change it later in Settings → Sales documents routing.`}
+        description={interpolate(copy.fields.triggerModel.description, { product })}
       >
         <Select
           {...form.register('triggerModel')}
           invalid={Boolean(form.formState.errors.triggerModel)}
         >
-          <option value="manual">By hand — I issue each one myself</option>
-          <option value="auto-on-paid">Automatically, once the order is paid</option>
+          <option value="manual">{copy.fields.triggerModel.manual}</option>
+          <option value="auto-on-paid">{copy.fields.triggerModel.autoOnPaid}</option>
         </Select>
       </FormField>
+
+      {/* Whether this product reads orders is only known once the adapter list answers,
+          so the section also covers the loading and failed states itself. */}
+      {isGtIdentity && (willReadOrders || adaptersQuery.isPending || adaptersQuery.isError) && !createdConnectionId ? (
+        <OrderSyncStartSection
+          adapterKey={identity.adapterKey}
+          value={form.watch('orderSyncStart') ?? ORDER_SYNC_START_DEFAULT_VALUE}
+          onChange={(next) =>
+            form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+          }
+          error={form.formState.errors.orderSyncStart?.from?.message}
+          sourceKind="system"
+          separated
+        />
+      ) : null}
 
       {createdConnectionId ? (
         <>
           {testResult ? (
             <Alert
               tone={testResult.success ? 'success' : 'error'}
-              title={testResult.success ? 'Connection test passed' : 'Connection test failed'}
+              title={testResult.success ? copy.testPassed : copy.testFailed}
             >
-              {testResult.message}
-              {typeof testResult.latencyMs === 'number' ? ` (${testResult.latencyMs}ms)` : null}
+              {testResult.success ? null : describeConnectionTestFailure(testResult)}
+              {typeof testResult.latencyMs === 'number'
+                ? ` ${interpolate(copy.latency, { ms: format.number(testResult.latencyMs) })}`
+                : null}
             </Alert>
           ) : null}
           {testConnection.error ? (
-            <Alert tone="error" title="Unable to test connection">
-              {testConnection.error.message}
+            <Alert tone="error" title={copy.testError}>
+              {describeApiError(testConnection.error, 'connections')}
             </Alert>
           ) : null}
-          <Alert tone="info" title="Where the invoice setting lives">
-            This connection will issue invoices{' '}
+          <Alert tone="info" title={copy.invoiceSetting.title}>
             {form.getValues('triggerModel') === 'auto-on-paid'
-              ? 'automatically once an order is paid'
-              : 'only when you issue them by hand'}
-            . Change that, or switch it off entirely, in{' '}
-            <Link to="/settings/sales-documents">Settings → Sales documents routing</Link>.
+              ? copy.invoiceSetting.auto
+              : copy.invoiceSetting.manual}{' '}
+            {renderRich(copy.invoiceSetting.change, {
+              link: (text) => <Link to="/settings/sales-documents">{text}</Link>,
+            })}
           </Alert>
           <div className="form-actions">
             <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>
-              {testConnection.isPending ? 'Testing…' : 'Test connection'}
+              {testConnection.isPending ? copy.testing : copy.test}
             </Button>
             <Button tone="secondary" type="button" onClick={() => void navigate('/connections')}>
-              Done
+              {copy.done}
             </Button>
           </div>
         </>
       ) : (
         <div className="form-actions">
           <Button type="submit" disabled={createConnection.isPending}>
-            {createConnection.isPending ? 'Connecting…' : 'Connect Subiekt'}
+            {createConnection.isPending
+              ? copy.connecting
+              : interpolate(copy.connect, { platform: SUBIEKT_FAMILY_NAME })}
           </Button>
         </div>
       )}

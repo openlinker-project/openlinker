@@ -9,7 +9,11 @@
  * @module libs/core/src/integrations/domain/types/__tests__
  */
 import type { CoreCapability, AdapterMetadata } from '../adapter.types';
-import { CoreCapabilityValues, resolveRequiresCredentials } from '../adapter.types';
+import {
+  CoreCapabilityValues,
+  readRateLimitBucketKey,
+  resolveRequiresCredentials,
+} from '../adapter.types';
 
 describe('adapter.types', () => {
   describe('CoreCapabilityValues', () => {
@@ -112,5 +116,29 @@ describe('resolveRequiresCredentials', () => {
 
   it('should honour an explicit true', () => {
     expect(resolveRequiresCredentials({ requiresCredentials: true })).toBe(true);
+  });
+});
+
+describe('readRateLimitBucketKey', () => {
+  const connection = { id: 'conn-1', config: { baseUrl: 'sklep1.shoparena.pl' } };
+
+  it('should return undefined when the adapter declares no bucket resolver', () => {
+    expect(readRateLimitBucketKey({}, connection)).toBeUndefined();
+    expect(readRateLimitBucketKey(undefined, connection)).toBeUndefined();
+    expect(readRateLimitBucketKey(null, connection)).toBeUndefined();
+  });
+
+  it('should return the declared shared bucket when the adapter names one', () => {
+    const metadata: Pick<AdapterMetadata, 'resolveRateLimitBucketKey'> = {
+      resolveRateLimitBucketKey: (c) => `shop:${String(c.config?.['baseUrl'])}`,
+    };
+
+    expect(readRateLimitBucketKey(metadata, connection)).toBe('shop:sklep1.shoparena.pl');
+  });
+
+  it('should fall back to the default bucket when the resolver answers an empty key', () => {
+    expect(
+      readRateLimitBucketKey({ resolveRateLimitBucketKey: () => '' }, connection)
+    ).toBeUndefined();
   });
 });

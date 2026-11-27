@@ -29,6 +29,7 @@
  *   GET  /api/products/{symbol}               -> BridgeProduct (404 envelope when absent)
  *   POST /api/products                        -> BridgeProduct (create; body BridgeCreateProductRequest)
  *   PUT  /api/products/{symbol}                -> BridgeProduct (update; body BridgeUpdateProductRequest)
+ *   GET  /api/products/{symbol}/komplet        -> BridgeKomplet (404 envelope when the symbol is unknown)
  *
  * @module libs/integrations/subiekt/bridge
  */
@@ -181,4 +182,31 @@ export interface BridgeListProductSymbolsResponse {
 
 export interface BridgeSearchProductsResponse {
   products: BridgeProduct[];
+}
+
+/**
+ * `GET /api/products/{symbol}/komplet` response (`data`): the composition of a
+ * Subiekt komplet (kit), read over SQL from `tw__Towar.tw_Rodzaj` (8 = komplet)
+ * and `tw_Komplet`.
+ *
+ * A towar that exists but is not a kit answers 200 with `jestKompletem: false`
+ * and no `skladniki`; an unknown symbol is a 404 envelope. The two are kept
+ * apart on purpose so "not a kit" never has to be read out of a reason string.
+ */
+export interface BridgeKomplet {
+  symbol: string;
+  /** `tw__Towar.tw_Rodzaj`: 1 towar, 2 usluga, 4 opakowanie, 8 komplet, 16 oplata. */
+  rodzaj: number;
+  jestKompletem: boolean;
+  skladniki: BridgeKompletSkladnik[];
+}
+
+/** One `tw_Komplet` row. */
+export interface BridgeKompletSkladnik {
+  /** The component towar's `tw_Symbol`; `null` when that towar row no longer exists. */
+  symbol: string | null;
+  /** `kpl_Liczba`, a money column, so it can be fractional in Subiekt. */
+  ilosc: number;
+  /** True for a soft-deleted or missing component towar. */
+  usuniety: boolean;
 }

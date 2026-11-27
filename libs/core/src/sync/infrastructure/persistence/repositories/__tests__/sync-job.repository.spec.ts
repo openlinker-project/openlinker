@@ -392,8 +392,18 @@ describe('SyncJobRepository', () => {
       });
 
       expect(manager.query).toHaveBeenCalledWith(
-        expect.stringContaining('"connectionId" != ALL($4)'),
-        ['queued', expect.any(Date), ['marketplace.order.sync'], ['conn-at-cap'], 2]
+        expect.stringContaining('::text END) != ALL($8)'),
+        [
+          'queued',
+          expect.any(Date),
+          ['marketplace.order.sync'],
+          'master.product.syncByExternalId',
+          ':hook-sync',
+          'master.inventory.syncByExternalId',
+          ':hook-sync-inventory',
+          ['conn-at-cap'],
+          2,
+        ]
       );
     });
 

@@ -127,7 +127,7 @@ describe('BulkShopPublishController', () => {
       submit: jest.fn().mockResolvedValue({ batchId: 'batch-1', items: [] }),
       getBatch: jest.fn(),
     };
-    controller = new BulkShopPublishController(bulkSubmit as never);
+    controller = new BulkShopPublishController(bulkSubmit as never, { retryFailed: jest.fn() } as never);
   });
 
   it('should submit a bulk batch stamping initiatedBy from the session, with each item keeping its own stock', async () => {

@@ -104,6 +104,8 @@ describe('orderAnalyticsProjection', () => {
         taxRate: null,
         taxSource: null,
         taxRateReadAt: null,
+        // #3588 (D27) - no candidate was supplied, so the line is `not-recorded`, never zero.
+        cost: { costState: 'not-recorded', unitCostNet: null, unitCostCurrency: null },
       });
       expect(drafts[1]).toMatchObject({
         lineNumber: 1,
@@ -160,6 +162,51 @@ describe('orderAnalyticsProjection', () => {
       const drafts = deriveOrderLineItems(order, 'conn-123');
 
       expect(drafts.every((d) => d.placedAt?.getTime() === order.placedAt?.getTime())).toBe(true);
+    });
+  });
+
+  describe('deriveOrderLineItems cost snapshot (#3588)', () => {
+    const order = (): Order => ({
+      id: 'ol_order_1',
+      orderNumber: 'ORD-001',
+      status: 'pending',
+      items: [
+        { id: 'item-1', productId: 'ol_product_1', variantId: 'ol_variant_1', quantity: 2, price: 10 },
+        { id: 'item-2', productId: 'ol_product_2', quantity: 1, price: 5 },
+        { id: 'item-3', productId: 'ol_product_3', variantId: 'ol_variant_3', quantity: 1, price: 5 },
+      ],
+      totals: { subtotal: 25, tax: 0, shipping: 0, total: 25, currency: 'PLN' },
+      createdAt: new Date('2026-08-01T10:00:00.000Z'),
+      updatedAt: new Date('2026-08-01T10:00:00.000Z'),
+    });
+
+    it('should attach the candidate cost to a line whose variant is in the map', () => {
+      const lines = deriveOrderLineItems(
+        order(),
+        'conn',
+        new Map([['ol_variant_1', { unitCostNet: '0.0000', currency: 'PLN' }]])
+      );
+
+      expect(lines[0].cost).toEqual({
+        costState: 'recorded',
+        unitCostNet: '0.0000',
+        unitCostCurrency: 'PLN',
+      });
+    });
+
+    it('should mark a product-only line and an absent variant not-recorded', () => {
+      const lines = deriveOrderLineItems(
+        order(),
+        'conn',
+        new Map([['ol_variant_1', { unitCostNet: '1.0000', currency: 'PLN' }]])
+      );
+
+      expect(lines[1].cost.costState).toBe('not-recorded');
+      expect(lines[2].cost).toEqual({
+        costState: 'not-recorded',
+        unitCostNet: null,
+        unitCostCurrency: null,
+      });
     });
   });
 });

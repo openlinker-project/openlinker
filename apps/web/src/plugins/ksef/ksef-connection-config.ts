@@ -28,15 +28,34 @@
 import { z } from 'zod';
 import type { ConnectionConfigContribution } from '../../shared/plugins';
 import { readConfigString, readOptionalConfigString } from '../../shared/plugins';
-import { normalizeNip } from './lib/ksef-nip';
+import { normalizeNip, isValidNipChecksum } from './lib/ksef-nip';
 import { normalizeNrRb } from './lib/ksef-nrb';
 import { applyKsefSellerToConfig, type KsefSellerProfileInput } from './lib/ksef-seller-config';
 import { applyKsefPaymentToConfig, type KsefPaymentInput } from './lib/ksef-payment-config';
+import {
+  applyKsefAnnotationsToConfig,
+  KSEF_EXEMPTION_KIND_VALUES,
+  KSEF_MARGIN_KIND_VALUES,
+  readKsefAnnotations,
+} from './lib/ksef-annotations-config';
 import {
   KSEF_ENVIRONMENT_VALUES,
   KSEF_FORMA_PLATNOSCI_VALUES,
   POLISH_POSTAL_CODE,
 } from './components/ksef-setup.schema';
+import { getKsefMessages } from './messages';
+
+type KsefConnectionConfigKey = keyof ReturnType<typeof getKsefMessages>['ksefConnectionConfig'];
+
+/** Validation copy read at validation time, so it follows the active language. */
+function text(key: KsefConnectionConfigKey): string {
+  return getKsefMessages().ksefConnectionConfig[key];
+}
+
+/** Zod `{ error }` parameter whose text is looked up when a value is validated. */
+function msg(key: KsefConnectionConfigKey): { error: () => string } {
+  return { error: () => text(key) };
+}
 
 declare module '../../shared/plugins/plugin.types' {
   interface PluginEditConnectionFields {
@@ -73,6 +92,15 @@ declare module '../../shared/plugins/plugin.types' {
      * emitted as `FaWiersz/P_8A`; empty = the unit element is not emitted.
      */
     invoiceDefaultLineUnit?: string;
+    /** `config.allowCrossBorder` (DEF-18), `'true'` or `''`. */
+    ksefAllowCrossBorder?: string;
+    /** `config.annotationsDefault.*` (DEF-20 / DEF-22). Checkboxes are `'true'` or `''`. */
+    annCashAccounting?: string;
+    annSelfBilling?: string;
+    annMarginScheme?: string;
+    annMarginKind?: string;
+    annExemptionKind?: string;
+    annExemptionText?: string;
   }
 }
 
@@ -98,9 +126,9 @@ const ksefSchemaShape: ConnectionConfigContribution['schemaShape'] = {
       z
         .string()
         .transform(normalizeNip)
-        .refine((v) => v === '' || /^\d{10}$/.test(v), {
-          message: 'Seller NIP must be 10 digits.',
-        }),
+        .refine((v) => v === '' || /^\d{10}$/.test(v), msg('nipDigits'))
+        // mod-11 check digit (#1595) - parity with the create wizard.
+        .refine((v) => v === '' || isValidNipChecksum(v), msg('nipChecksum')),
       z.literal(''),
     ])
     .optional(),
@@ -115,9 +143,7 @@ const ksefSchemaShape: ConnectionConfigContribution['schemaShape'] = {
         .string()
         .trim()
         .transform((value) => value.toUpperCase())
-        .refine((v) => v === '' || /^[A-Z]{2}$/.test(v), {
-          message: 'Country must be a 2-letter ISO code (e.g. PL).',
-        }),
+        .refine((v) => v === '' || /^[A-Z]{2}$/.test(v), msg('countryIso2')),
       z.literal(''),
     ])
     .optional(),
@@ -133,9 +159,7 @@ const ksefSchemaShape: ConnectionConfigContribution['schemaShape'] = {
       z
         .string()
         .transform(normalizeNrRb)
-        .refine((v) => v === '' || (v.length >= 10 && v.length <= 34), {
-          message: 'Bank account number must be 10-34 characters (per the FA(3) NrRB format).',
-        }),
+        .refine((v) => v === '' || (v.length >= 10 && v.length <= 34), msg('bankAccountLength')),
       z.literal(''),
     ])
     .optional(),
@@ -150,10 +174,8 @@ const ksefSchemaShape: ConnectionConfigContribution['schemaShape'] = {
       z
         .string()
         .trim()
-        .regex(/^\d+$/, 'Payment term must be a non-negative whole number of days.')
-        .refine((v) => Number.parseInt(v, 10) <= 999, {
-          message: 'Payment term must be at most 999 days.',
-        }),
+        .regex(/^\d+$/, msg('paymentTermWhole'))
+        .refine((v) => Number.parseInt(v, 10) <= 999, msg('paymentTermMax')),
       z.literal(''),
     ])
     .optional(),
@@ -161,6 +183,14 @@ const ksefSchemaShape: ConnectionConfigContribution['schemaShape'] = {
   paymentSkontoAmount: z.union([z.string().trim().max(64), z.literal('')]).optional(),
   // Mirrors the BE shape validator's 20-char (after trim) cap (#1525).
   invoiceDefaultLineUnit: z.union([z.string().trim().max(20), z.literal('')]).optional(),
+  ksefAllowCrossBorder: z.union([z.literal('true'), z.literal('')]).optional(),
+  annCashAccounting: z.union([z.literal('true'), z.literal('')]).optional(),
+  annSelfBilling: z.union([z.literal('true'), z.literal('')]).optional(),
+  annMarginScheme: z.union([z.literal('true'), z.literal('')]).optional(),
+  annMarginKind: z.union([z.enum(KSEF_MARGIN_KIND_VALUES), z.literal('')]).optional(),
+  annExemptionKind: z.union([z.enum(KSEF_EXEMPTION_KIND_VALUES), z.literal('')]).optional(),
+  // TZnakowy: at most 256 characters (DEF-22 / DEF-25).
+  annExemptionText: z.union([z.string().max(256), z.literal('')]).optional(),
 };
 
 function ksefSuperRefine(values: Record<string, unknown>, ctx: z.RefinementCtx): void {
@@ -176,7 +206,7 @@ function ksefSuperRefine(values: Record<string, unknown>, ctx: z.RefinementCtx):
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['sellerPostalCode'],
-        message: 'Postal code must use the PL format NN-NNN.',
+        message: text('postalCode'),
       });
     }
   }
@@ -186,19 +216,35 @@ function ksefSuperRefine(values: Record<string, unknown>, ctx: z.RefinementCtx):
   // fires only at submit time and anchors the error on the missing field —
   // otherwise the operator gets the BE shape validator's form-level 400.
   // The BE validator stays the strict gate for direct API writes.
+  // DEF-22: exemption grounds are a kind AND a text, or neither.
+  const exemptionKind = readConfigString(values, 'annExemptionKind').trim();
+  const exemptionText = readConfigString(values, 'annExemptionText').trim();
+  if (exemptionKind.length > 0 && exemptionText.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['annExemptionText'],
+      message: text('exemptionTextRequired'),
+    });
+  } else if (exemptionText.length > 0 && exemptionKind.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['annExemptionKind'],
+      message: text('exemptionKindRequired'),
+    });
+  }
   const skontoConditions = readConfigString(values, 'paymentSkontoConditions').trim();
   const skontoAmount = readConfigString(values, 'paymentSkontoAmount').trim();
   if (skontoConditions.length > 0 && skontoAmount.length === 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['paymentSkontoAmount'],
-      message: 'Discount amount is required when discount conditions are set.',
+      message: text('skontoAmountRequired'),
     });
   } else if (skontoAmount.length > 0 && skontoConditions.length === 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['paymentSkontoConditions'],
-      message: 'Discount conditions are required when a discount amount is set.',
+      message: text('skontoConditionsRequired'),
     });
   }
 }
@@ -370,6 +416,7 @@ function applyKsefConfig(
   next = applyKsefSellerToConfig(next, toSellerPatch(patch));
   next = applyKsefPaymentToConfig(next, toPaymentPatch(patch));
   next = applyKsefInvoiceDefaultsToConfig(next, patch);
+  next = applyKsefAnnotationsToConfig(next, patch);
   return next;
 }
 
@@ -413,6 +460,7 @@ export const ksefConnectionConfig: ConnectionConfigContribution = {
     ...readKsefSeller(config),
     ...readKsefPayment(config),
     ...readKsefInvoiceDefaults(config),
+    ...readKsefAnnotations(config),
     contextIdentifier: readConfigString(config, 'contextIdentifier'),
   }),
   applyToConfig: applyKsefConfig,

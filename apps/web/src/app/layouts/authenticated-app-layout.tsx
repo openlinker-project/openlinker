@@ -5,7 +5,14 @@ import { useSession } from '../../shared/auth/use-session';
 import { LoadingState } from '../../shared/ui/feedback-state';
 import { AppShell } from '../app-shell';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { useMessages } from '../../shared/i18n';
 import { useSystemConfigQuery } from '../../features/system';
+import {
+  ReleaseCenterProvider,
+  ReleaseDialogHost,
+  ReleaseStepObserver,
+  TourProvider,
+} from '../../features/release-center';
 
 /** The /login query string: the original params, plus `next` for a deep link. */
 function loginSearch(location: { pathname: string; search: string }): string {
@@ -16,6 +23,7 @@ function loginSearch(location: { pathname: string; search: string }): string {
 }
 
 export function AuthenticatedAppLayout(): ReactElement {
+  const copy = useMessages('app');
   const { isReady, session } = useSession();
   const location = useLocation();
   // Demo mode decides whether the consent gate below applies at all, so the
@@ -52,13 +60,13 @@ export function AuthenticatedAppLayout(): ReactElement {
     return (
       <AppShell>
         <PageLayout
-          eyebrow="Session"
-          title="Preparing workspace"
-          description="Loading session and environment context before rendering operator routes."
+          eyebrow={copy.loading.sessionEyebrow}
+          title={copy.loading.workspaceTitle}
+          description={copy.loading.workspaceDescription}
         >
           <LoadingState
-            title="Loading application shell"
-            message="Checking the current session state and workspace metadata."
+            title={copy.loading.shellTitle}
+            message={copy.loading.shellMessage}
           />
         </PageLayout>
       </AppShell>
@@ -105,8 +113,14 @@ export function AuthenticatedAppLayout(): ReactElement {
   }
 
   return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
+    <ReleaseCenterProvider>
+      <TourProvider>
+        <AppShell>
+          <ReleaseStepObserver />
+          <ReleaseDialogHost />
+          <Outlet />
+        </AppShell>
+      </TourProvider>
+    </ReleaseCenterProvider>
   );
 }

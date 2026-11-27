@@ -13,6 +13,12 @@ import { InventoryItemOrmEntity } from './infrastructure/persistence/entities/in
 import { InventoryLocationOrmEntity } from './infrastructure/persistence/entities/inventory-location.orm-entity';
 import { ReservationOrmEntity } from './infrastructure/persistence/entities/reservation.orm-entity';
 import { ReservationShortfallEpisodeOrmEntity } from './infrastructure/persistence/entities/reservation-shortfall-episode.orm-entity';
+import { InventoryMovementOrmEntity } from './infrastructure/persistence/entities/inventory-movement.orm-entity';
+import { ChannelQuantityPushOrmEntity } from './infrastructure/persistence/entities/channel-quantity-push.orm-entity';
+import { ChannelQuantityPushRepository } from './infrastructure/persistence/repositories/channel-quantity-push.repository';
+import { InventoryMovementRepository } from './infrastructure/persistence/repositories/inventory-movement.repository';
+import { InventoryMovementService } from './application/services/inventory-movement.service';
+import { InventoryCorrectionService } from './application/services/inventory-correction.service';
 import { InventorySaleDecrementOrmEntity } from './infrastructure/persistence/entities/inventory-sale-decrement.orm-entity';
 import { InventoryRepository } from './infrastructure/persistence/repositories/inventory.repository';
 import { LocationRepository } from './infrastructure/persistence/repositories/location.repository';
@@ -27,6 +33,7 @@ import { InventoryQueryService } from './application/services/inventory-query.se
 import { LocationService } from './application/services/location.service';
 import { AvailabilityService } from './application/services/availability.service';
 import { ReservationService } from './application/services/reservation.service';
+import { MasterAbsorbedReservationService } from './application/services/master-absorbed-reservation.service';
 import { ReservationExpiryService } from './application/services/reservation-expiry.service';
 import { ReservationShortfallService } from './application/services/reservation-shortfall.service';
 import { UnavailableOrderHoldReader } from './infrastructure/reservations/unavailable-order-hold.reader';
@@ -42,6 +49,7 @@ import {
   RESERVATION_OBLIGATION_READERS_TOKEN,
   RESERVATION_REPOSITORY_TOKEN,
   RESERVATION_SERVICE_TOKEN,
+  MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN,
   RESERVATION_SHORTFALL_REPOSITORY_TOKEN,
   RESERVATION_SHORTFALL_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
@@ -56,6 +64,10 @@ import {
   INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN,
   INVENTORY_SALE_DECREMENT_SERVICE_TOKEN,
   INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
+  INVENTORY_MOVEMENT_REPOSITORY_TOKEN,
+  INVENTORY_MOVEMENT_SERVICE_TOKEN,
+  INVENTORY_CORRECTION_SERVICE_TOKEN,
+  CHANNEL_QUANTITY_PUSH_REPOSITORY_TOKEN,
 } from './inventory.tokens';
 import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -90,6 +102,8 @@ export {
       ReservationOrmEntity,
       ReservationShortfallEpisodeOrmEntity,
       InventorySaleDecrementOrmEntity,
+      InventoryMovementOrmEntity,
+      ChannelQuantityPushOrmEntity,
     ]),
     ProductsModule, // Required for FK relationship to ProductOrmEntity
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN (marketplace adapter resolution)
@@ -112,6 +126,8 @@ export {
     ReservationShortfallRepository,
     ReservationShortfallService,
     ReservationService,
+    // Consumes holds a destination-that-is-also-the-master absorbed.
+    MasterAbsorbedReservationService,
     // #2346 — the state-dependent expiry sweep. The obligation readers map is
     // bound as a VALUE rather than a class so its mapped type over
     // `ReservationObligationKindValues` is checked here: a kind added without a
@@ -131,6 +147,12 @@ export {
     InventorySaleDecrementService,
     // #3479 — the inverse, on cancellation.
     InventorySaleReversalService,
+    // #3565 — the append-only stock movement ledger.
+    InventoryMovementRepository,
+    InventoryMovementService,
+    InventoryCorrectionService,
+    // #4062 — what OpenLinker sent each channel.
+    ChannelQuantityPushRepository,
     // Then provide token bindings using useExisting
     {
       provide: INVENTORY_REPOSITORY_TOKEN,
@@ -171,6 +193,10 @@ export {
     {
       provide: RESERVATION_SERVICE_TOKEN,
       useExisting: ReservationService,
+    },
+    {
+      provide: MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN,
+      useExisting: MasterAbsorbedReservationService,
     },
     {
       provide: RESERVATION_OBLIGATION_READERS_TOKEN,
@@ -255,6 +281,22 @@ export {
       provide: INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
       useExisting: InventorySaleReversalService,
     },
+    {
+      provide: INVENTORY_MOVEMENT_REPOSITORY_TOKEN,
+      useExisting: InventoryMovementRepository,
+    },
+    {
+      provide: INVENTORY_MOVEMENT_SERVICE_TOKEN,
+      useExisting: InventoryMovementService,
+    },
+    {
+      provide: CHANNEL_QUANTITY_PUSH_REPOSITORY_TOKEN,
+      useExisting: ChannelQuantityPushRepository,
+    },
+    {
+      provide: INVENTORY_CORRECTION_SERVICE_TOKEN,
+      useExisting: InventoryCorrectionService,
+    },
   ],
   exports: [
     POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
@@ -268,6 +310,7 @@ export {
     RESERVATION_LEDGER_READER_TOKEN,
     RESERVATION_REPOSITORY_TOKEN,
     RESERVATION_SERVICE_TOKEN,
+    MASTER_ABSORBED_RESERVATION_SERVICE_TOKEN,
     RESERVATION_EXPIRY_SERVICE_TOKEN,
     RESERVATION_OBLIGATION_READERS_TOKEN,
     RESERVATION_SHORTFALL_REPOSITORY_TOKEN,
@@ -276,6 +319,8 @@ export {
     INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
     INVENTORY_SALE_DECREMENT_SERVICE_TOKEN,
     INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
+    INVENTORY_MOVEMENT_SERVICE_TOKEN,
+    INVENTORY_CORRECTION_SERVICE_TOKEN,
   ],
 })
 export class InventoryModule {}

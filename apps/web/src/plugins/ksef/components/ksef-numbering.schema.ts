@@ -22,6 +22,11 @@ import {
   type ResetPolicy,
   type UpdateNumberingSeriesInput,
 } from '../../../features/invoicing';
+import { interpolate } from '../../../shared/i18n';
+import type { getKsefMessages } from '../messages';
+
+/** The schema's slice of the `ksef` namespace. */
+export type NumberingSchemaCopy = ReturnType<typeof getKsefMessages>['ksefNumberingSchema'];
 
 const MAX_PADDING = 20;
 
@@ -44,62 +49,67 @@ export interface NumberingFormValues {
   fiscalYearStartMonth: string;
 }
 
-export const numberingFormSchema = z
-  .object({
-    name: z.string(),
-    documentType: z.enum(DocumentTypeValues),
-    register: z.string(),
-    pattern: z.string(),
-    resetPolicy: z.enum(ResetPolicyValues),
-    seqPadding: z.string(),
-    nextSeq: z.string(),
-    fiscalYearStartMonth: z.string(),
-  })
-  .superRefine((values, ctx) => {
-    if (values.name.trim().length === 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['name'], message: 'Give the series a name.' });
-    }
-    for (const issue of validateNumberingPattern(values.pattern, values.resetPolicy)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pattern'], message: issue });
-    }
-    const padding = parseIntStrict(values.seqPadding);
-    if (padding === null || padding > MAX_PADDING) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['seqPadding'],
-        message: `Padding must be a whole number between 0 and ${MAX_PADDING}.`,
-      });
-    }
-    const seq = parseIntStrict(values.nextSeq);
-    if (seq === null || seq < 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['nextSeq'],
-        message: 'Next number must be a whole number of at least 1.',
-      });
-    }
-    // Only relevant when the pattern uses {FY}; still range-checked defensively.
-    const fyStart = parseIntStrict(values.fiscalYearStartMonth);
-    if (fyStart === null || fyStart < 1 || fyStart > 12) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['fiscalYearStartMonth'],
-        message: 'Fiscal year start must be a month between 1 and 12.',
-      });
-    }
-  });
+/** The editor schema, built with the active language's messages. */
+export function createNumberingFormSchema(copy: NumberingSchemaCopy) {
+  return z
+    .object({
+      name: z.string(),
+      documentType: z.enum(DocumentTypeValues),
+      register: z.string(),
+      pattern: z.string(),
+      resetPolicy: z.enum(ResetPolicyValues),
+      seqPadding: z.string(),
+      nextSeq: z.string(),
+      fiscalYearStartMonth: z.string(),
+    })
+    .superRefine((values, ctx) => {
+      if (values.name.trim().length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['name'], message: copy.errors.nameRequired });
+      }
+      for (const issue of validateNumberingPattern(values.pattern, values.resetPolicy)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pattern'], message: issue });
+      }
+      const padding = parseIntStrict(values.seqPadding);
+      if (padding === null || padding > MAX_PADDING) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['seqPadding'],
+          message: interpolate(copy.errors.padding, { max: MAX_PADDING }),
+        });
+      }
+      const seq = parseIntStrict(values.nextSeq);
+      if (seq === null || seq < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['nextSeq'],
+          message: copy.errors.nextSeq,
+        });
+      }
+      // Only relevant when the pattern uses {FY}; still range-checked defensively.
+      const fyStart = parseIntStrict(values.fiscalYearStartMonth);
+      if (fyStart === null || fyStart < 1 || fyStart > 12) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['fiscalYearStartMonth'],
+          message: copy.errors.fiscalYearStart,
+        });
+      }
+    });
+}
 
 /** Prefills for a brand-new series (a standard monthly VAT series). */
-export const NUMBERING_CREATE_DEFAULTS: NumberingFormValues = {
-  name: 'Sales invoices',
-  documentType: 'invoice',
-  register: '',
-  pattern: 'FV/{seq}/{MM}/{YYYY}',
-  resetPolicy: 'monthly',
-  seqPadding: '0',
-  nextSeq: '1',
-  fiscalYearStartMonth: '1',
-};
+export function numberingCreateDefaults(copy: NumberingSchemaCopy): NumberingFormValues {
+  return {
+    name: copy.defaults.name,
+    documentType: 'invoice',
+    register: '',
+    pattern: 'FV/{seq}/{MM}/{YYYY}',
+    resetPolicy: 'monthly',
+    seqPadding: '0',
+    nextSeq: '1',
+    fiscalYearStartMonth: '1',
+  };
+}
 
 /** Seed the form from an existing series (edit mode). */
 export function seriesToFormValues(series: NumberingSeries): NumberingFormValues {

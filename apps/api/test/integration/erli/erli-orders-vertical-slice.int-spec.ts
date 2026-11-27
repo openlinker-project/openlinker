@@ -64,8 +64,11 @@ import {
 import { OrderRecordOrmEntity } from '@openlinker/core/orders/orm-entities';
 import {
   INBOUND_ROUTING_POLICY_TOKEN,
+  ORDER_SYNC_START_CURSOR_KEY,
+  SYNC_CURSORS_SERVICE_TOKEN,
   SYNC_JOB_QUEUE_TOKEN,
   type IInboundRoutingPolicyService,
+  type ISyncCursorsService,
   type SyncJobQueuePort,
 } from '@openlinker/core/sync';
 import { ErliWebhookEventTranslator } from '@openlinker/integrations-erli/infrastructure/adapters/erli-webhook-event-translator.adapter';
@@ -222,19 +225,14 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
    * slice; the order record is upserted with `recordStatus:'ready'` (step 5,
    * `order-ingestion.service.ts:274`) BEFORE destination dispatch (step `syncOrder`,
    * `:294`). With no `OrderProcessorManager` connection seeded (the Erli orders
-   * half is OrderSource-only — destination dispatch is a separate vertical slice),
-   * `OrderSyncService.syncOrder` throws `NoOrderDestinationsAvailableException`
-   * AFTER the record is persisted. We swallow ONLY that error (matched by name) so
-   * the persisted-record assertions can run; any other error propagates.
+   * half is OrderSource-only - destination dispatch is a separate vertical slice),
+   * there is nothing to copy the order to. Before #3959 `OrderSyncService.syncOrder`
+   * threw `NoOrderDestinationsAvailableException` here and this helper swallowed
+   * it; since #3959 that is a "nothing to mirror" outcome, so the call must
+   * complete, and any error now fails the test.
    */
   async function syncTolerateNoDestination(externalOrderId: string): Promise<void> {
-    try {
-      await ingestion().syncOrderFromSource(connectionId, externalOrderId);
-    } catch (error) {
-      if ((error as Error).name !== 'NoOrderDestinationsAvailableException') {
-        throw error;
-      }
-    }
+    await ingestion().syncOrderFromSource(connectionId, externalOrderId);
   }
 
   /**
@@ -401,6 +399,43 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
     expect(record!.orderSnapshot.status).toBe('processing');
   });
 
+  // ── S3b: a connection created after #4228 seeds first, then ingests only new orders ─
+  it('S3b: a now-intent connection seeds at the inbox head on poll 1 and ingests only the next order on poll 2', async () => {
+    const cursors = harness.getApp().get<ISyncCursorsService>(SYNC_CURSORS_SERVICE_TOKEN);
+    const cursorKey = 'erli.orders.inboxCursor';
+    const externalProductId = `erli-variant-${ORDER_COD}`;
+    await seedReadyItem(externalProductId);
+
+    // What ConnectionService.create stores for an order-importing connection.
+    await cursors.advanceCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY, '{"mode":"now"}');
+
+    // History already sitting in the inbox when the connection is added.
+    erli.fake.setRawGet(INBOX_PATH, [buildInboxMessage('1001', ORDER_POLL)]);
+
+    const first = await ingestion().ingestOrders(connectionId, { cursorKey, limit: 200 });
+    expect(first.fetched).toBe(0);
+    expect(first.enqueued).toBe(0);
+    expect(first.committed).toBe(true);
+    expect(await cursors.getCursor(connectionId, cursorKey)).toBe('1001');
+    expect(await cursors.getCursor(connectionId, `${cursorKey}.seededAt`)).not.toBeNull();
+    expect(await cursors.getCursor(connectionId, ORDER_SYNC_START_CURSOR_KEY)).toBeNull();
+
+    // A genuinely new order arrives after the connection was added.
+    erli.fake.setRawGet(INBOX_PATH, [
+      buildInboxMessage('1001', ORDER_POLL),
+      buildInboxMessage('1002', ORDER_COD),
+    ]);
+    erli.fake.setRawGet(
+      orderPath(ORDER_COD),
+      buildErliOrder(ORDER_COD, { productExternalId: externalProductId }),
+    );
+
+    const second = await ingestion().ingestOrders(connectionId, { cursorKey, limit: 200 });
+    expect(second.fetched).toBe(1);
+    expect(second.enqueued).toBe(1);
+    expect(second.nextCursor).toBe('1002');
+  });
+
   // ── S4: webhook + poll convergence (one order) ─────────────────────────────
   it('S4: two syncOrderFromSource calls for one externalOrderId converge on a single order_records row', async () => {
     const externalProductId = `erli-variant-${ORDER_CONVERGE}`;
@@ -451,11 +486,14 @@ describe('Erli Orders Vertical Slice Integration (#998)', () => {
   });
 
   // ── S5b: negative — unmapped item leaves the order awaiting_mapping ─────────
-  it('S5b: an order whose item has no variant mapping persists awaiting_mapping + throws', async () => {
+  it('S5b: an order whose item has no offer mapping persists awaiting_mapping without throwing (#4040)', async () => {
     // No seedReadyItem — the line item's productRef cannot be resolved.
     erli.fake.setRawGet(orderPath(ORDER_AWAITING), buildErliOrder(ORDER_AWAITING));
 
-    await expect(ingestion().syncOrderFromSource(connectionId, ORDER_AWAITING)).rejects.toThrow();
+    // Erli items are `offer` refs; an unlisted offer is not retried (#4040).
+    await expect(
+      ingestion().syncOrderFromSource(connectionId, ORDER_AWAITING)
+    ).resolves.toEqual([]);
 
     const record = await findOrderRecord(ORDER_AWAITING);
     expect(record).not.toBeNull();

@@ -50,6 +50,13 @@
  *   `IMappingConfigService.resolveCarrierMapping`, keyed on the source
  *   connection + `order.shipping.methodId` — falls back to WC's `flat_rate`
  *   when unmapped, matching what `listCarriers()` advertises.
+ * - Stock effect (`OrderCreateStockEffect`): WooCommerce lowers stock only when
+ *   the order reaches a paid-like status (`processing` / `completed` /
+ *   `on-hold`, or `set_paid`), only with `woocommerce_manage_stock = yes`, and
+ *   only for products that manage stock - so whether a create lowered stock is
+ *   a fact about THAT order, not about the store. The adapter answers from the
+ *   `_reduced_stock` item meta WooCommerce stamps on every line it took out of
+ *   stock, read off the create response itself.
  * - Non-idempotent create (#3469): `createOrder`'s `POST /orders` is never
  *   retried by the HTTP client on an ambiguous 5xx/network failure, and a 2xx
  *   response with no `id` raises `WooCommerceOrderCreateAmbiguousException`
@@ -62,6 +69,7 @@
  * @implements {OrderStatusWriteback}
  * @implements {DestinationOptionsReader}
  * @implements {FulfillmentStatusReader}
+ * @implements {OrderCreateStockEffect}
  */
 import type {
   OrderProcessorManagerPort,
@@ -80,6 +88,7 @@ import type {
   MappingOption,
   FulfillmentStatusReader,
   FulfillmentStatusSnapshot,
+  OrderCreateStockEffect,
 } from '@openlinker/core/orders';
 import type { IdentifierMappingPort, Connection, ExternalIdMapping } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -96,6 +105,8 @@ import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../../http/woocommerce-http-client.interface';
 import { WooCommerceHttpResponseException } from '../../http/woocommerce-http-response.exception';
 import { WooCommerceResourceNotFoundException } from '../../../domain/exceptions/woocommerce-resource-not-found.exception';
+import { WooCommerceNetworkException } from '../../../domain/exceptions/woocommerce-network.exception';
+import { WooCommerceAmbiguousWriteException } from '../../../domain/exceptions/woocommerce-ambiguous-write.exception';
 import { WooCommerceOrderProcessingException } from '../../../domain/exceptions/woocommerce-order-processing.exception';
 import { WooCommerceOrderCreateAmbiguousException } from '../../../domain/exceptions/woocommerce-order-create-ambiguous.exception';
 import { WooCommerceInvalidArgumentException } from '../../../domain/exceptions/woocommerce-invalid-argument.exception';
@@ -108,6 +119,8 @@ import type {
   WooCommerceOrderCreateRequest,
   WooCommerceOrderUpdateRequest,
   WooCommerceOrderResponse,
+  WooCommerceOrderNoteRequest,
+  WooCommerceOrderLineItemResponse,
   WooCommerceOrderAddress,
   WooCommerceLineItemRequest,
   WooCommerceShippingLineRequest,
@@ -143,6 +156,48 @@ export function isValidEmail(value: unknown): value is string {
  */
 const DEFAULT_SHIPPING_METHOD_ID = 'flat_rate';
 
+/**
+ * The item meta key WooCommerce's `wc_reduce_stock_levels` writes on a line it
+ * took out of stock, holding the quantity it removed. Its presence is the
+ * store's own record that the sale was booked against stock.
+ */
+const WC_REDUCED_STOCK_META_KEY = '_reduced_stock';
+
+/**
+ * Whether WooCommerce reports that it lowered stock for EVERY line of an order
+ * it just created.
+ *
+ * Reading the response rather than the store setting is deliberate: the
+ * decrement also depends on the status the order was created in (a `pending`
+ * order lowers nothing until it is paid) and on each product managing stock,
+ * and `_reduced_stock` already accounts for all three. A single line without
+ * it - a product that does not track stock, an unpaid order, a store with stock
+ * management off, an extension vetoing the reduction - answers `false`, which
+ * keeps the order's holds until dispatch: an under-sell, never an oversell.
+ */
+export function wooCommerceOrderReducedStock(
+  lineItems: readonly WooCommerceOrderLineItemResponse[] | undefined,
+): boolean {
+  if (!lineItems || lineItems.length === 0) {
+    return false;
+  }
+  return lineItems.every((item) =>
+    (item.meta_data ?? []).some(
+      (meta) => meta.key === WC_REDUCED_STOCK_META_KEY && Number(meta.value) > 0,
+    ),
+  );
+}
+
+/**
+ * The core WooCommerce gateways the neutral payment methods name (#3294). Only
+ * a positively identified method has one; `online` and `unknown` stay on
+ * `other`, since no core gateway stands for "paid somewhere else".
+ */
+const NEUTRAL_GATEWAYS: Readonly<Record<string, { id: string; title: string }>> = {
+  cash_on_delivery: { id: 'cod', title: 'Cash on delivery' },
+  bank_transfer: { id: 'bacs', title: 'Direct bank transfer' },
+};
+
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
 export class WooCommerceOrderProcessorAdapter
@@ -151,9 +206,18 @@ export class WooCommerceOrderProcessorAdapter
     OrderFulfillmentUpdater,
     OrderStatusWriteback,
     DestinationOptionsReader,
-    FulfillmentStatusReader
+    FulfillmentStatusReader,
+    OrderCreateStockEffect
 {
   private readonly logger = new Logger(WooCommerceOrderProcessorAdapter.name);
+
+  /**
+   * Whether the order this instance created lowered the store's stock, or
+   * `null` when it created none. Per instance because core asks the very
+   * adapter it created the order with (a fresh one per resolution), and the
+   * answer is about that order - see {@link lowersStockOnOrderCreate}.
+   */
+  private lastCreateReducedStock: boolean | null = null;
 
   constructor(
     private readonly httpClient: IWooCommerceHttpClient,
@@ -174,9 +238,31 @@ export class WooCommerceOrderProcessorAdapter
     ),
   ) {}
 
+  // ─── OrderCreateStockEffect ───────────────────────────────────────────────
+
+  /**
+   * `OrderCreateStockEffect`: whether the order this adapter just created
+   * lowered the store's stock, as WooCommerce itself recorded it on the
+   * created lines (`_reduced_stock`). Not answered from
+   * `woocommerce_manage_stock` alone, because with that setting on a `pending`
+   * order or a product that does not manage stock still lowers nothing.
+   *
+   * `false` when this instance created no order - core also asks after a
+   * skipped create (the order already existed from an earlier run), and this
+   * instance has no record of what that earlier create did, so the holds stay
+   * until dispatch rather than being consumed on a guess.
+   */
+  lowersStockOnOrderCreate(): Promise<boolean> {
+    return Promise.resolve(this.lastCreateReducedStock === true);
+  }
+
   // ─── OrderProcessorManagerPort ────────────────────────────────────────────
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {
+    // Cleared first so a create that fails part-way can never leave an earlier
+    // order's answer standing.
+    this.lastCreateReducedStock = null;
+
     this.logger.debug(
       `createOrder: status=${order.status} items=${order.items.length} (connection: ${this.connection.id})`,
     );
@@ -262,6 +348,7 @@ export class WooCommerceOrderProcessorAdapter
     const markPaid = order.paymentStatus === PAYMENT_STATUS.Paid;
 
     const metaData = this.buildOrderMetaData(order, internalOrderId);
+    const gateway = await this.resolvePaymentGateway(order);
 
     const payload: WooCommerceOrderCreateRequest = {
       status: WC_ORDER_STATUS_MAP[order.status],
@@ -274,8 +361,8 @@ export class WooCommerceOrderProcessorAdapter
       line_items: lineItems,
       ...(shippingLines.length > 0 ? { shipping_lines: shippingLines } : {}),
       ...(feeLines.length > 0 ? { fee_lines: feeLines } : {}),
-      payment_method: 'other',
-      payment_method_title: 'External',
+      payment_method: gateway.id,
+      payment_method_title: gateway.title,
       currency: currencyCode,
       ...(markPaid ? { set_paid: true } : {}),
       ...(metaData.length > 0 ? { meta_data: metaData } : {}),
@@ -302,6 +389,7 @@ export class WooCommerceOrderProcessorAdapter
     }
 
     this.warnOnTotalMismatch(order, raw);
+    this.lastCreateReducedStock = wooCommerceOrderReducedStock(raw.line_items);
 
     return { orderId: String(raw.id), orderNumber: raw.number };
   }
@@ -390,6 +478,9 @@ export class WooCommerceOrderProcessorAdapter
    *   event carried a tracking number, which WC core cannot store: `unsupported`
    *   instead, so the #1947 late-waybill relay marker is not burned on a
    *   waybill the shop never actually received.
+   * - **The cancel reason stays in OpenLinker (#3540)**: the status PUT carries no
+   *   reason, and this adapter makes no order-notes call. `cancelled.reason` is
+   *   ignored here by design rather than by omission.
    * - `cancelled`  → refuse (`rejected`) if WC has already reached a terminal
    *   fulfilled state (`completed` / `refunded`) — the shop is authoritative for
    *   its own live state, so we surface the conflict rather than force a
@@ -510,6 +601,9 @@ export class WooCommerceOrderProcessorAdapter
           return { outcome: 'applied' };
         }
 
+        case 'paid':
+          return await this.writePaid(event);
+
         default: {
           // Unreachable in-tree: the binding is the compile break when an
           // `OrderLifecycleEvent` member is added without an arm here (#2286).
@@ -531,6 +625,64 @@ export class WooCommerceOrderProcessorAdapter
         error instanceof Error ? error.stack : undefined,
       );
       return { outcome: 'rejected', detail };
+    }
+  }
+
+  /**
+   * The `paid` arm (#3963): mark an order the shop holds as unpaid as paid
+   * with `set_paid`, and leave a private note saying who did it and why, so a
+   * merchant reading the order understands the change.
+   *
+   * Never reopens a finished order: cancelled, refunded, failed or trashed is
+   * refused. An order WC already shows as paid (`date_paid_gmt` set) is
+   * reported as applied without a write. A failed note is logged, never fatal,
+   * because the payment write already landed.
+   *
+   * A transport failure, an ambiguous write or a 5xx is reported as
+   * `transient`: `set_paid` is idempotent, so the writeback job may safely
+   * try again.
+   */
+  private async writePaid(
+    event: Extract<OrderLifecycleEvent, { type: 'paid' }>,
+  ): Promise<OrderWritebackResult> {
+    const path = `/wp-json/wc/v3/orders/${event.externalOrderId}`;
+    try {
+      const order = await this.httpClient.get<WooCommerceOrderResponse>(path);
+      const status = order.status ?? '';
+      if (['cancelled', 'refunded', 'failed', 'trash'].includes(status)) {
+        return { outcome: 'rejected', detail: `order is already ${status} in the shop` };
+      }
+      if (order.date_paid_gmt) {
+        return { outcome: 'applied', detail: 'already paid in the shop' };
+      }
+
+      await this.httpClient.put<WooCommerceOrderResponse>(path, {
+        set_paid: true,
+      } satisfies WooCommerceOrderUpdateRequest);
+
+      try {
+        await this.httpClient.post<unknown>(`${path}/notes`, {
+          note: `Marked paid by OpenLinker. ${event.paidOn} payment ${event.amount.toFixed(2)} ${event.currency}.`,
+          customer_note: false,
+        } satisfies WooCommerceOrderNoteRequest);
+      } catch (noteError) {
+        this.logger.warn(
+          `WooCommerce order ${event.externalOrderId} marked paid, but the order note failed: ` +
+            `${noteError instanceof Error ? noteError.message : String(noteError)} (connection: ${this.connection.id})`,
+        );
+      }
+      return { outcome: 'applied' };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const transient =
+        error instanceof WooCommerceNetworkException ||
+        error instanceof WooCommerceAmbiguousWriteException ||
+        (error instanceof WooCommerceHttpResponseException && error.statusCode >= 500);
+      this.logger.warn(
+        `OrderStatusWriteback 'paid' failed for WooCommerce order ${event.externalOrderId}: ${detail} ` +
+          `(connection: ${this.connection.id})`,
+      );
+      return { outcome: 'rejected', detail, ...(transient ? { transient: true } : {}) };
     }
   }
 
@@ -591,6 +743,48 @@ export class WooCommerceOrderProcessorAdapter
       value: String(row.id),
       label: row.title ?? String(row.id),
     }));
+  }
+
+  /**
+   * The WooCommerce gateway to record on the order (#3294).
+   *
+   * Chain: the operator's payment mapping (its value is a gateway id, as
+   * `listPaymentMethods` offers them) -> the core gateway of the neutral
+   * `order.paymentMethod` (`cod`, `bacs`) -> `other` / `External`, exactly what
+   * was always sent. Never throws: a payment label is not worth an order.
+   * `set_paid` is untouched - it still follows the source's own payment status.
+   */
+  private async resolvePaymentGateway(
+    order: OrderCreate,
+  ): Promise<{ id: string; title: string }> {
+    const neutral = order.paymentMethod ? NEUTRAL_GATEWAYS[order.paymentMethod] : undefined;
+    const fallback = neutral ?? { id: 'other', title: 'External' };
+
+    const sourceConnectionId = order.source?.connectionId;
+    const sourcePaymentMethod = order.sourcePaymentMethod;
+    if (!this.mappingConfigService || !sourceConnectionId || !sourcePaymentMethod) {
+      return fallback;
+    }
+    try {
+      const mapped = (
+        await this.mappingConfigService.resolvePaymentMapping(
+          sourceConnectionId,
+          sourcePaymentMethod,
+        )
+      )?.trim();
+      if (!mapped) {
+        return fallback;
+      }
+      const known = Object.values(NEUTRAL_GATEWAYS).find((g) => g.id === mapped);
+      return known ?? { id: mapped, title: mapped };
+    } catch (err) {
+      this.logger.warn(
+        `Payment mapping lookup failed for sourcePaymentMethod=${sourcePaymentMethod} ` +
+          `(sourceConnectionId=${sourceConnectionId}, destinationConnectionId=${this.connection.id}); ` +
+          `using "${fallback.id}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return fallback;
+    }
   }
 
   // ─── FulfillmentStatusReader ──────────────────────────────────────────────

@@ -89,4 +89,22 @@ describe('fulfillment api', () => {
 
     expect(request).toHaveBeenCalledWith('/fulfillment/works/a%20b%26c/shipments');
   });
+  it('reads an order\'s routing decision and normalises absent fields to null (#3557)', async () => {
+    const request = vi.fn().mockResolvedValue({
+      decisionId: 'd1',
+      state: 'live',
+      routerConnectionId: 'r1',
+      createdAt: '2026-10-28T08:00:00.000Z',
+      ageMs: 10,
+      ttlMs: 3600000,
+      strandedSince: null,
+    });
+
+    const decision = await createFulfillmentApi(request).getRoutingDecision('ol_order_1');
+
+    expect(request).toHaveBeenCalledWith('/orders/ol_order_1/routing-decision');
+    expect(decision.ttlMs).toBe(3600000);
+    expect(decision.abandonReason).toBeNull();
+    expect(decision.terminalisedAt).toBeNull();
+  });
 });

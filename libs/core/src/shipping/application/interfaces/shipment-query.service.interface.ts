@@ -16,11 +16,21 @@ import type {
   PaginatedShipments,
   ShipmentFilters,
   ShipmentPagination,
+  ShipmentSummary,
+  ShipmentSummaryOptions,
 } from '../../domain/types/shipment-query.types';
 
 export interface IShipmentQueryService {
   /** Filtered, paginated list across all orders/connections (most-recent first). */
   list(filters: ShipmentFilters, pagination: ShipmentPagination): Promise<PaginatedShipments>;
+
+  /**
+   * The list's counts for the same filters (#4043): per status, processor,
+   * method and connection (each with its own axis removed), stuck tracking
+   * relays, shipments still to send, and the largest shared failure causes
+   * across every page.
+   */
+  summarize(filters: ShipmentFilters, options: ShipmentSummaryOptions): Promise<ShipmentSummary>;
 
   /** Single shipment by internal id, or null when absent. */
   getById(id: string): Promise<Shipment | null>;
@@ -31,6 +41,16 @@ export interface IShipmentQueryService {
    * (`TerminalShipmentStatusValues`) so the FE doesn't re-derive it.
    */
   getActiveByOrderId(orderId: string): Promise<Shipment | null>;
+
+  /**
+   * EVERY outbound shipment of an order, terminal ones included (#3540).
+   *
+   * Distinct from {@link getActiveByOrderId}, which returns only the latest
+   * non-terminal row: an operator cancel must void each outstanding label and a
+   * split order can carry several. Outbound only (#2373) - a return label is not
+   * something the buyer's order cancellation voids.
+   */
+  getOutboundByOrderId(orderId: string): Promise<readonly Shipment[]>;
 
   /**
    * Outbound shipments for a page of `FulfillmentWork` ids, keyed by work id
@@ -57,6 +77,19 @@ export interface IShipmentQueryService {
     workIds: readonly string[],
     direction: ShipmentDirection,
   ): Promise<Map<string, Shipment[]>>;
+
+  /**
+   * The tracking number of the order's newest OUTBOUND shipment that carries one
+   * (#3553), or `null` when no shipment exists or none has a number yet. Feeds
+   * the `{shipment.tracking}` automation merge field, which renders its own
+   * fallback for `null`.
+   *
+   * Outbound only, for the reason given on {@link findByFulfillmentWorkIds}: a
+   * return label shares the table and must never answer "where is my parcel".
+   * A `cancelled` or `failed` shipment is skipped, since its number names a
+   * parcel that never left; a `delivered` one still answers.
+   */
+  getLatestOutboundTrackingNumber(orderId: string): Promise<string | null>;
 
   /**
    * Did this order's goods already leave the building — i.e. has any of its

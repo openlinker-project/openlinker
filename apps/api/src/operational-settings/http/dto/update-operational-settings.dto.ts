@@ -25,8 +25,22 @@
  * @module apps/api/src/operational-settings/http/dto
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
-import { OPERATIONAL_SETTING_BOUNDS } from '@openlinker/core/operational-settings';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+import {
+  BUYER_DATA_ERASE_MODES,
+  BUYER_DATA_PERIOD_MAX_DAYS,
+  OPERATIONAL_SETTING_BOUNDS,
+  type BuyerDataEraseMode,
+} from '@openlinker/core/operational-settings';
 
 const BOUNDS = OPERATIONAL_SETTING_BOUNDS;
 
@@ -122,6 +136,36 @@ export class UpdateOperationalSettingsDto {
   syncJobDeadRetentionDays?: number | null;
 
   @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    minimum: BOUNDS.inventoryMovementRetentionDays.min,
+    maximum: BOUNDS.inventoryMovementRetentionDays.absoluteMax,
+    description:
+      'Days a stock movement is kept (#3565). Recommended maximum 730; above that set `acknowledgeAboveRecommended`. `null` clears it back to the env var, then to the built-in default of 365.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(BOUNDS.inventoryMovementRetentionDays.min)
+  @Max(BOUNDS.inventoryMovementRetentionDays.absoluteMax)
+  inventoryMovementRetentionDays?: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    minimum: BOUNDS.stockStaleSyncThresholdHours.min,
+    maximum: BOUNDS.stockStaleSyncThresholdHours.absoluteMax,
+    description:
+      'Hours a stock observation may age before the stock view flags it stale (#3621). `null` clears it back to the env var, then to the built-in default of 6.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(BOUNDS.stockStaleSyncThresholdHours.min)
+  @Max(BOUNDS.stockStaleSyncThresholdHours.absoluteMax)
+  stockStaleSyncThresholdHours?: number | null;
+
+  @ApiPropertyOptional({
     type: String,
     nullable: true,
     example: '0 * * * *',
@@ -132,6 +176,64 @@ export class UpdateOperationalSettingsDto {
   @ValidateIf((_, value) => value !== null)
   @IsString()
   deletionAuditCadence?: string | null;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    nullable: true,
+    description:
+      'Master switch for buyer data retention (#4289). Off by default. `null` clears it back to off.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsBoolean()
+  buyerDataRetentionEnabled?: boolean | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Days after the order date an order is hidden from lists. 0 = never; otherwise 30 to 3650. Exact range and ordering are enforced by the service.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(0)
+  @Max(BUYER_DATA_PERIOD_MAX_DAYS)
+  buyerDataHideAfterDays?: number | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description:
+      'Days after the order date the buyer personal data is erased. 0 = never; otherwise 30 to 3650, and not shorter than the hide period.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(0)
+  @Max(BUYER_DATA_PERIOD_MAX_DAYS)
+  buyerDataEraseAfterDays?: number | null;
+
+  @ApiPropertyOptional({
+    enum: BUYER_DATA_ERASE_MODES,
+    nullable: true,
+    description: '`personal-data` or `whole-order`. `null` clears it back to `personal-data`.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsIn([...BUYER_DATA_ERASE_MODES])
+  buyerDataEraseMode?: BuyerDataEraseMode | null;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    nullable: true,
+    description:
+      'Release center on/off (#4143). `null` clears it back to OL_RELEASE_CENTER_ENABLED (read by the API), then to the built-in default of on.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsBoolean()
+  releaseCenterEnabled?: boolean | null;
 
   @ApiPropertyOptional({
     type: Boolean,

@@ -21,6 +21,7 @@
  */
 import type {
   ConnectionTesterPort,
+  ConnectionTestOutcome,
   ConnectionTestResult,
   CredentialsResolverPort,
 } from '@openlinker/core/integrations';
@@ -49,15 +50,15 @@ export class DpdConnectionTesterAdapter implements ConnectionTesterPort {
         typeof environment !== 'string' ||
         !DpdEnvironmentValues.includes(environment)
       ) {
-        return this.fail('Connection is missing a valid DPD environment', startedAt);
+        return this.fail('Connection is missing a valid DPD environment', startedAt, undefined, 'misconfigured');
       }
 
       if (!connection.credentialsRef) {
-        return this.fail('Connection has no stored credentials', startedAt);
+        return this.fail('Connection has no stored credentials', startedAt, undefined, 'misconfigured');
       }
       const credentials = await credentialsResolver.get<DpdCredentials>(connection.credentialsRef);
       if (!credentials?.login || !credentials?.password) {
-        return this.fail('Stored credentials are missing login/password', startedAt);
+        return this.fail('Stored credentials are missing login/password', startedAt, undefined, 'misconfigured');
       }
 
       const status = await this.probe(connection, environment, credentials, config.masterFid);
@@ -124,7 +125,12 @@ export class DpdConnectionTesterAdapter implements ConnectionTesterPort {
     return this.fail(`Unexpected DPD probe status ${status}`, startedAt, status);
   }
 
-  private fail(message: string, startedAt: number, status?: number): ConnectionTestResult {
-    return { success: false, status, message, latencyMs: Date.now() - startedAt };
+  private fail(
+    message: string,
+    startedAt: number,
+    status?: number,
+    outcome?: ConnectionTestOutcome
+  ): ConnectionTestResult {
+    return { success: false, status, message, latencyMs: Date.now() - startedAt, outcome };
   }
 }

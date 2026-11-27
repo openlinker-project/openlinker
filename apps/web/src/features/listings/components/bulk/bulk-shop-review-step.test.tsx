@@ -38,6 +38,8 @@ function makeVariantRow(id: string, over: Partial<BulkVariantRow> = {}): BulkVar
     resolvedCategoryId: null,
     resolvedProductCardId: null,
     resolutionMethod: null,
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
     ...over,

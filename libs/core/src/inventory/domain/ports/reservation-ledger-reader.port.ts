@@ -43,6 +43,31 @@ export interface SumReservedInput {
   readonly atpEffect: ReservationAtpEffect;
 }
 
+/**
+ * One located position's claimed units (#3475): the reservation sum for ONE
+ * `(location, variant)` pair. Only LOCATED positions appear - a pooled position
+ * (`locationId IS NULL`) names no location and a location-keyed consumer cannot
+ * place a number against it.
+ */
+export interface LocatedReservedSum {
+  readonly locationId: string;
+  readonly productVariantId: string;
+  readonly reserved: number;
+}
+
+export interface SumReservedByLocationInput {
+  readonly variantIds: readonly string[];
+  /** Required, never defaulted - same rule as {@link SumReservedInput.atpEffect}. */
+  readonly atpEffect: ReservationAtpEffect;
+  /**
+   * Leave out the holds of ONE order. The fulfilment router needs it: an order's
+   * own `published` hold is written BEFORE it is routed (#3480), so counting it
+   * against its own stock would make the last unit look promised to the very
+   * order being placed.
+   */
+  readonly excludeOrderRecordId?: string;
+}
+
 export interface ReservationLedgerReaderPort {
   /**
    * Sum live reservations per variant for one scope and one `atpEffect` stamp.
@@ -52,4 +77,18 @@ export interface ReservationLedgerReaderPort {
    * so the caller zero-fills once.
    */
   sumReservedByVariantIds(input: SumReservedInput): Promise<ReadonlyMap<string, number>>;
+
+  /**
+   * The same live, non-stale, stamp-scoped sum as {@link sumReservedByVariantIds},
+   * partitioned by `(location, variant)` instead of collapsed to the variant.
+   *
+   * A SEPARATE method rather than a `location` arm of `AvailabilityScope`: that
+   * scope deliberately throws (ADR-061), because answering it from a variant-keyed
+   * sum would hand a caller a whole-catalogue number dressed up as a location's.
+   * This one answers the narrower question the fulfilment router asks - how much
+   * of each location's stock is already promised - and nothing else.
+   *
+   * Entries only for pairs with a non-zero sum; an absent pair means zero.
+   */
+  sumReservedByLocation(input: SumReservedByLocationInput): Promise<readonly LocatedReservedSum[]>;
 }

@@ -70,6 +70,7 @@ import type {
   IssuedDocumentSeller,
   RegulatoryClearanceResult,
 } from '@openlinker/core/invoicing';
+import { CONNECTION_SETUP_FAILURE_CAUSE } from '@openlinker/core/invoicing';
 
 import { EparagonyConfigException } from '../../domain/exceptions/eparagony-config.exception';
 import { toMinorUnits, toQuantityString } from '../../domain/policies/money.policy';
@@ -288,6 +289,8 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
       // classify a missing CONNECTION field as `buyer-tax-id-invalid`, sending
       // the operator to correct the buyer's data instead.
       'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.',
+      undefined,
+      CONNECTION_SETUP_FAILURE_CAUSE,
     );
   }
 
@@ -450,6 +453,8 @@ export function composeCorrectiveInvoiceDocument(
       // `TAX_ID_REJECTION_MARKERS` would classify a missing CONNECTION field as a
       // problem with the BUYER's data.
       'This connection has no seller tax number set, which every correction requires. Set it on the connection and re-issue.',
+      undefined,
+      CONNECTION_SETUP_FAILURE_CAUSE,
     );
   }
 
@@ -464,6 +469,8 @@ export function composeCorrectiveInvoiceDocument(
       `eparagony.pl cannot correct order ${orderId}: the connection declares no seller name, ` +
         `which every correction requires. Set it on the connection and re-issue`,
       'This connection has no seller name set, which every correction requires. Set it on the connection and re-issue.',
+      undefined,
+      CONNECTION_SETUP_FAILURE_CAUSE,
     );
   }
   // Read through the SAME completeness check the issue path uses, so a
@@ -476,6 +483,8 @@ export function composeCorrectiveInvoiceDocument(
       `eparagony.pl cannot correct order ${orderId}: the connection declares no complete seller ` +
         `address, which every correction requires. Set it on the connection and re-issue`,
       'This connection has no complete seller address set, which every correction requires. Set it on the connection and re-issue.',
+      undefined,
+      CONNECTION_SETUP_FAILURE_CAUSE,
     );
   }
 

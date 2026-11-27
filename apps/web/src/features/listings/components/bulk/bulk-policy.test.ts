@@ -10,6 +10,7 @@ import {
   clampMarkupPercent,
   computeBlockers,
   computeResolvedPrice,
+  bundleStock,
   computeResolvedStock,
   productCategoryIdOf,
   roundHalfUp,
@@ -111,13 +112,20 @@ describe('computeResolvedStock', () => {
     });
   });
 
-  it('blocks no-master-stock under use-master when master is 0 or null', () => {
+  it('blocks no-master-stock under use-master when the master reports 0', () => {
     expect(computeResolvedStock({ mode: 'use-master' }, 0, NO_OVERRIDE).blocker).toBe(
       'no-master-stock'
     );
-    expect(computeResolvedStock({ mode: 'use-master' }, null, NO_OVERRIDE).blocker).toBe(
-      'no-master-stock'
-    );
+  });
+
+  // #3851: an unknown stock used to share `no-master-stock` with a known 0, and
+  // the 0 the editor pre-filled for it then listed with no blocker at all.
+  it('blocks stock-unknown under use-master when OpenLinker has no stock', () => {
+    expect(computeResolvedStock({ mode: 'use-master' }, null, NO_OVERRIDE)).toEqual({
+      value: null,
+      source: 'master',
+      blocker: 'stock-unknown',
+    });
   });
 
   it('caps to min(master, N) under cap', () => {
@@ -129,9 +137,9 @@ describe('computeResolvedStock', () => {
     expect(computeResolvedStock({ mode: 'cap', value: 5 }, 3, NO_OVERRIDE).value).toBe(3);
   });
 
-  it('blocks cap when master is null or the capped value is 0', () => {
+  it('blocks cap when master is unknown or the capped value is 0', () => {
     expect(computeResolvedStock({ mode: 'cap', value: 5 }, null, NO_OVERRIDE).blocker).toBe(
-      'no-master-stock'
+      'stock-unknown'
     );
     expect(computeResolvedStock({ mode: 'cap', value: 5 }, 0, NO_OVERRIDE).blocker).toBe(
       'no-master-stock'
@@ -324,7 +332,7 @@ describe('computeBlockers', () => {
         masterStock: null,
       })
     );
-    expect(result).toEqual([NEEDS_PARAMS, 'no-master-price', 'no-master-stock']);
+    expect(result).toEqual([NEEDS_PARAMS, 'no-master-price', 'stock-unknown']);
   });
 
   // #1962 - the host feeds the submit title through to the platform validator,
@@ -352,12 +360,18 @@ describe('computeBlockers', () => {
 
 // ── Per-variant helpers (#1741) ──────────────────────────────────────────────
 import {
+  defaultImagesForVariant,
   distinguishingLabel,
   duplicateEanVariantIds,
   effectiveVariantEan,
+  hasExplicitNoBarcode,
+  variantProductCardIdOf,
   imageCountForVariant,
   isValidGtin,
+  operatorPickedCategory,
   recomputeVariantBlockers,
+  siblingStockBlockers,
+  submitCategoryIdOf,
   titleForRow,
   titleForVariant,
   toGtin14,
@@ -388,6 +402,8 @@ function makeVariant(id: string, over: Partial<BulkVariantRow> = {}): BulkVarian
     resolvedCategoryId: 'cat-1',
     resolvedProductCardId: 'card-1',
     resolutionMethod: 'auto_detect',
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
     ...over,
@@ -441,6 +457,87 @@ describe('effectiveVariantEan', () => {
   });
 });
 
+describe('a cleared barcode is an explicit "no barcode" (#4036)', () => {
+  const cleared = (): BulkVariantRow =>
+    makeVariant('ol_variant_1', { override: { overrides: { ean: '' } } });
+
+  it('should read an empty ean override as no barcode, not as inherit', () => {
+    expect(hasExplicitNoBarcode(cleared())).toBe(true);
+    expect(hasExplicitNoBarcode(makeVariant('ol_variant_1'))).toBe(false);
+    expect(effectiveVariantEan(cleared())).toBeNull();
+  });
+
+  it('should drop the catalogue card together with the barcode', () => {
+    expect(variantProductCardIdOf(makeVariant('ol_variant_1'))).toBe('card-1');
+    expect(variantProductCardIdOf(cleared())).toBeNull();
+    expect(
+      variantProductCardIdOf(
+        makeVariant('ol_variant_1', { override: { overrides: { ean: '', productCardId: 'card-2' } } }),
+      ),
+    ).toBeNull();
+  });
+
+  it('should require product parameters once the card link is gone', () => {
+    const row = makeWizardRow([cleared()]);
+    const blockers = recomputeVariantBlockers(
+      row,
+      row.variants[0],
+      CONFIG,
+      new Map([['cat-1', ['p1']]]),
+      allegroValidate,
+    );
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+});
+
+describe('a card-linked variant moved to another category (#4035)', () => {
+  const blockersFor = (variant: BulkVariantRow): string[] => {
+    const row = makeWizardRow([variant]);
+    return recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+  };
+
+  it('should block the row when the chosen category differs from the card category', () => {
+    const moved = makeVariant('ol_variant_1', { override: { overrides: { categoryId: 'cat-2' } } });
+    expect(blockersFor(moved)).toContain('card-category-mismatch');
+  });
+
+  it('should stay ready when the chosen category is the card category', () => {
+    const same = makeVariant('ol_variant_1', { override: { overrides: { categoryId: 'cat-1' } } });
+    expect(blockersFor(same)).not.toContain('card-category-mismatch');
+    expect(blockersFor(makeVariant('ol_variant_1'))).not.toContain('card-category-mismatch');
+  });
+
+  it('should not block once the barcode is cleared or the card was picked explicitly', () => {
+    const cleared = makeVariant('ol_variant_1', {
+      override: { overrides: { categoryId: 'cat-2', ean: '' } },
+    });
+    const picked = makeVariant('ol_variant_1', {
+      override: { overrides: { categoryId: 'cat-2', productCardId: 'card-9' } },
+    });
+    expect(blockersFor(cleared)).not.toContain('card-category-mismatch');
+    expect(blockersFor(picked)).not.toContain('card-category-mismatch');
+  });
+});
+
+describe('a sibling card in another category than the resolved one (#4035 review)', () => {
+  const card = { id: 'card-1', name: 'Card' } as unknown as BulkVariantRow['overriddenCard'];
+
+  it('should block a resolved-only mismatch with no operator pick', () => {
+    const variant = makeVariant('ol_variant_1');
+    const row = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-family' };
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+    expect(blockers).toContain('card-category-mismatch');
+  });
+
+  it('should never show the advisory chip next to the gating one', () => {
+    const variant = makeVariant('ol_variant_1', { overriddenCard: card });
+    const row = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-family' };
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map(), allegroValidate);
+    expect(blockers).toContain('card-category-mismatch');
+    expect(blockers).not.toContain('card-category-differs');
+  });
+});
+
 describe('distinguishingLabel', () => {
   it('uses attributes, falling back to Variant {n}', () => {
     expect(distinguishingLabel(makeVariant('ol_variant_1'), 0)).toBe('Rozmiar: M');
@@ -458,6 +555,30 @@ describe('imageCountForVariant', () => {
       override: { overrides: { imageUrls: [] } },
     });
     expect(imageCountForVariant(makeWizardRow([withOverride]), withOverride)).toBe(0);
+  });
+
+  it("counts the variant's resolved default images when it has no override", () => {
+    const red = makeVariant('red', {});
+    red.variant = { ...red.variant, defaultImages: ['314.jpg', 'a.jpg', 'b.jpg'] };
+    expect(imageCountForVariant(makeWizardRow([red]), red)).toBe(3);
+  });
+});
+
+describe('defaultImagesForVariant', () => {
+  it('reads the API-resolved default list', () => {
+    const red = makeVariant('red');
+    red.variant = { ...red.variant, defaultImages: ['314.jpg', ' ', '312.jpg'] };
+    expect(defaultImagesForVariant(red, ['312.jpg', '314.jpg'])).toEqual(['314.jpg', '312.jpg']);
+  });
+
+  it.each([
+    ['is absent (older API)', undefined],
+    ['is null', null],
+    ['is empty', []],
+  ])('falls back to the product images when the resolved list %s', (_label, defaultImages) => {
+    const v = makeVariant('v');
+    v.variant = { ...v.variant, defaultImages };
+    expect(defaultImagesForVariant(v, ['312.jpg', '313.jpg'])).toEqual(['312.jpg', '313.jpg']);
   });
 });
 
@@ -520,6 +641,24 @@ describe('recomputeVariantBlockers', () => {
       false,
       true
     );
+    expect(blockers).not.toContain('no-master-stock');
+  });
+
+  it('blocks a multi-variant sibling whose stock OpenLinker does not have (#3851)', () => {
+    const variant = makeVariant('ol_variant_1', { masterStock: null });
+    const row = makeWizardRow([variant, makeVariant('ol_variant_2')]);
+    // Flat policy on purpose: no policy reaches a sibling's offer, which always
+    // lists at its master stock, so an unknown one blocks regardless.
+    const blockers = recomputeVariantBlockers(
+      row,
+      variant,
+      { ...CONFIG, stockPolicy: { mode: 'flat', value: 5 } },
+      new Map(),
+      undefined,
+      false,
+      true
+    );
+    expect(blockers).toContain('stock-unknown');
     expect(blockers).not.toContain('no-master-stock');
   });
 
@@ -816,5 +955,288 @@ describe('computeBlockers - unknown resolve outcome (#2240)', () => {
     expect(recomputeVariantBlockers(row, variant, CONFIG, new Map())).toEqual([
       'unknown-category-result',
     ]);
+  });
+});
+
+describe('siblingStockBlockers (#3851)', () => {
+  it('should drop a known zero, which lists the sibling out of stock', () => {
+    expect(siblingStockBlockers(['no-master-stock', 'no-ean'], 0)).toEqual(['no-ean']);
+  });
+
+  it('should block a sibling whose stock is unknown', () => {
+    expect(siblingStockBlockers(['no-ean'], null)).toEqual(['no-ean', 'stock-unknown']);
+  });
+
+  it('should not duplicate an existing stock-unknown blocker', () => {
+    expect(siblingStockBlockers(['stock-unknown'], null)).toEqual(['stock-unknown']);
+  });
+
+  it('should leave a sibling with a known stock alone', () => {
+    expect(siblingStockBlockers([], 4)).toEqual([]);
+  });
+});
+
+// ── Attribute rule preview (#3995) ───────────────────────────────────────────
+import { projectedFor } from './bulk-policy';
+
+describe('attribute rule preview and the required-parameter check (#3995)', () => {
+  const cardless = (id: string, over: Partial<BulkVariantRow> = {}): BulkVariantRow =>
+    makeVariant(id, { resolvedProductCardId: null, ...over });
+  const required = new Map<string, readonly string[]>([['cat-1', ['rozmiar', 'kolor']]]);
+
+  it('should clear needs-product-parameters when the rules fill every required product parameter', () => {
+    const variant = cardless('v1');
+    const row = makeWizardRow([variant]);
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, required, allegroValidate, false, false, {
+      projectedByVariant: new Map([
+        [
+          'v1',
+          {
+            categoryId: 'cat-1',
+            parameters: [
+              { id: 'rozmiar', valuesIds: ['m'], section: 'product' },
+              { id: 'kolor', valuesIds: ['black'], section: 'product' },
+            ],
+          },
+        ],
+      ]),
+    });
+    expect(blockers).not.toContain(NEEDS_PARAMS);
+  });
+
+  it('should keep the flag when a rule covers only some required parameters', () => {
+    const variant = cardless('v1');
+    const row = makeWizardRow([variant]);
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, required, allegroValidate, false, false, {
+      projectedByVariant: new Map([
+        ['v1', { categoryId: 'cat-1', parameters: [{ id: 'rozmiar', valuesIds: ['m'], section: 'product' }] }],
+      ]),
+    });
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+
+  it('should count a rule value and an operator value together', () => {
+    const variant = cardless('v1', {
+      override: { overrides: { parameters: [{ id: 'kolor', valuesIds: ['white'], section: 'product' }] } },
+    });
+    const row = makeWizardRow([variant]);
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, required, allegroValidate, false, false, {
+      projectedByVariant: new Map([
+        ['v1', { categoryId: 'cat-1', parameters: [{ id: 'rozmiar', valuesIds: ['m'], section: 'product' }] }],
+      ]),
+    });
+    expect(blockers).not.toContain(NEEDS_PARAMS);
+  });
+
+  it('should not credit a preview computed for a different category', () => {
+    const variant = cardless('v1', { override: { overrides: { categoryId: 'cat-1' } } });
+    const row = makeWizardRow([variant]);
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, required, allegroValidate, false, false, {
+      projectedByVariant: new Map([
+        [
+          'v1',
+          {
+            categoryId: 'cat-old',
+            parameters: [
+              { id: 'rozmiar', valuesIds: ['m'], section: 'product' },
+              { id: 'kolor', valuesIds: ['black'], section: 'product' },
+            ],
+          },
+        ],
+      ]),
+    });
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+
+  it('should not let an offer-section rule value satisfy a product-section requirement', () => {
+    const variant = cardless('v1');
+    const row = makeWizardRow([variant]);
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, required, allegroValidate, false, false, {
+      projectedByVariant: new Map([
+        [
+          'v1',
+          {
+            categoryId: 'cat-1',
+            parameters: [
+              { id: 'rozmiar', valuesIds: ['m'], section: 'offer' },
+              { id: 'kolor', valuesIds: ['black'], section: 'offer' },
+            ],
+          },
+        ],
+      ]),
+    });
+    expect(blockers).toContain(NEEDS_PARAMS);
+  });
+
+  it('projectedFor should answer only for the category the variant submits under', () => {
+    const context = {
+      projectedByVariant: new Map([['v1', { categoryId: 'cat-1', parameters: [] }]]),
+    };
+    expect(projectedFor(context, 'v1', 'cat-1')).toEqual([]);
+    expect(projectedFor(context, 'v1', 'cat-2')).toBeUndefined();
+    expect(projectedFor(context, 'v1', null)).toBeUndefined();
+    expect(projectedFor(context, 'v2', 'cat-1')).toBeUndefined();
+  });
+
+  it('submitCategoryIdOf should prefer the variant override, then the product tier, then its own match', () => {
+    const own = cardless('v1', { resolvedCategoryId: 'cat-match' });
+    expect(submitCategoryIdOf(makeWizardRow([own]), own)).toBe('cat-match');
+    const pinned = cardless('v1', { override: { overrides: { categoryId: 'cat-variant' } } });
+    expect(submitCategoryIdOf(makeWizardRow([pinned]), pinned)).toBe('cat-variant');
+  });
+});
+
+describe('catalogue card vs category mapping (#3994)', () => {
+  const card = { allegroCategoryId: 'cat-powerbanki', productCardId: 'card-power' };
+  const mappedVariant = (over: Partial<BulkVariantRow> = {}): BulkVariantRow =>
+    makeVariant('ol_variant_1', {
+      resolvedCategoryId: 'cat-tshirty',
+      resolvedProductCardId: null,
+      resolutionMethod: 'category_mapping',
+      overriddenCard: card,
+      ...over,
+    });
+
+  it('should emit the advisory card chip when a card was set aside for the mapping', () => {
+    const variant = mappedVariant();
+    const row = makeWizardRow([variant]);
+
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map());
+
+    expect(blockers).toContain('card-category-differs');
+  });
+
+  it('should keep the chip on a multi-variant sibling, whose category is always the product pin', () => {
+    // The product tier carries the resolved category for every sibling, which
+    // is what `hasCategoryOverride` reads - the chip must not hide behind it.
+    const variant = mappedVariant();
+    const row: BulkWizardRow = {
+      ...makeWizardRow([variant, makeVariant('ol_variant_2')]),
+      resolvedCategoryId: 'cat-tshirty',
+    };
+
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map());
+
+    expect(blockers).toContain('card-category-differs');
+  });
+
+  it('should drop the chip once the operator picks a category at the product tier', () => {
+    const variant = mappedVariant();
+    const row: BulkWizardRow = {
+      ...makeWizardRow([variant]),
+      override: { overrides: { categoryId: 'cat-powerbanki', productCardId: 'card-power' } },
+    };
+
+    const blockers = recomputeVariantBlockers(row, variant, CONFIG, new Map());
+
+    expect(blockers).not.toContain('card-category-differs');
+  });
+
+  it('should never emit the chip when no card was set aside', () => {
+    const variant = makeVariant('ol_variant_1');
+    const row = makeWizardRow([variant]);
+
+    expect(recomputeVariantBlockers(row, variant, CONFIG, new Map())).not.toContain(
+      'card-category-differs',
+    );
+  });
+
+  it('should treat a resolved category as not picked by the operator', () => {
+    const variant = makeVariant('ol_variant_1');
+    const row: BulkWizardRow = { ...makeWizardRow([variant]), resolvedCategoryId: 'cat-1' };
+
+    expect(operatorPickedCategory(row, variant)).toBe(false);
+    expect(
+      operatorPickedCategory(row, { ...variant, override: { overrides: { categoryId: 'cat-2' } } }),
+    ).toBe(true);
+  });
+
+  it('should resolve the submitted category variant override first, then product tier, then own match', () => {
+    const variant = makeVariant('ol_variant_1', { resolvedCategoryId: 'cat-own' });
+    const row = makeWizardRow([variant]);
+
+    expect(submitCategoryIdOf(row, variant)).toBe('cat-own');
+    expect(submitCategoryIdOf({ ...row, resolvedCategoryId: 'cat-product' }, variant)).toBe(
+      'cat-product',
+    );
+    expect(
+      submitCategoryIdOf(
+        { ...row, resolvedCategoryId: 'cat-product' },
+        { ...variant, override: { overrides: { categoryId: 'cat-variant' } } },
+      ),
+    ).toBe('cat-variant');
+  });
+});
+
+describe('computeBlockers for a bundle (#3520)', () => {
+  const bundle = (suggested: string | null, chosen: string | null, codes: string[] = []) => ({
+    components: [
+      {
+        variantId: 'c1',
+        productId: 'p1',
+        name: 'Kubek',
+        problems: codes.map((code) => ({ code, message: code })),
+      },
+    ],
+    suggestedCategoryId: suggested,
+    chosenCategoryId: chosen,
+  });
+  const input = (over: Partial<ComputeBlockersInput> = {}): ComputeBlockersInput => ({
+    hasVariant: true,
+    categoryResult: { kind: 'no-ean' },
+    pricingPolicy: { mode: 'use-master' },
+    stockPolicy: { mode: 'use-master' },
+    masterPrice: 12,
+    masterStock: 3,
+    masterCurrency: 'PLN',
+    batchCurrency: 'PLN',
+    override: {},
+    platformValidate: allegroValidate,
+    imageCount: 1,
+    effectiveTitle: 'Zestaw poranny kawa i kubek',
+    barcode: '5901234123457',
+    catalogueConsulted: true,
+    ...over,
+  });
+
+  it('should drop the own-barcode category and catalogue chips when a category is suggested', () => {
+    const blockers = computeBlockers(input({ bundle: bundle('74035', '74035') }));
+    expect(blockers).toEqual([]);
+  });
+
+  it('should still ask for a category when nothing is suggested or chosen', () => {
+    expect(computeBlockers(input({ bundle: bundle(null, null) }))).toEqual(['no-match']);
+  });
+
+  it('should say the catalogue card names no category rather than "not in the catalogue"', () => {
+    // The composition panel reports the component as a catalogue card, so the
+    // row must not claim the catalogue has no match.
+    const blockers = computeBlockers(
+      input({ bundle: bundle(null, null), bundleCardWithoutCategory: true }),
+    );
+    expect(blockers).toEqual(['bundle-card-no-category']);
+    expect(blockers).not.toContain('no-match');
+  });
+
+  it('should name a category that differs from the first component card', () => {
+    expect(computeBlockers(input({ bundle: bundle('74035', '110886'), productCategoryId: '110886' }))).toEqual([
+      'allegro:bundle-category-mismatch',
+    ]);
+  });
+
+  it('should carry the component problems through as blockers', () => {
+    expect(
+      computeBlockers(
+        input({ bundle: bundle('74035', '74035', ['PRODUCT_SET_COMPONENT_UNPUBLISHABLE']) }),
+      ),
+    ).toEqual(['allegro:bundle-component-missing']);
+  });
+
+  it('should list at the sets sellable and fall back to the row stock when unknown', () => {
+    const variant = { masterStock: 50 } as unknown as Parameters<typeof bundleStock>[1];
+    const preview = (availableSets: number | null) =>
+      ({ availableSets }) as unknown as Parameters<typeof bundleStock>[0];
+    expect(bundleStock(preview(3), variant)).toBe(3);
+    expect(bundleStock(preview(null), variant)).toBe(50);
   });
 });

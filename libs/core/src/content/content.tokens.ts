@@ -14,3 +14,4 @@ export const CONTENT_PUBLISHER_PORT_TOKEN = Symbol('ContentPublisherPort');
 export const CONTENT_DRAFT_SERVICE_TOKEN = Symbol('IContentDraftService');
 export const CONTENT_SUGGESTION_SERVICE_TOKEN = Symbol('IContentSuggestionService');
 export const CONTENT_STATE_READER_SERVICE_TOKEN = Symbol('IContentStateReaderService');
+export const PRODUCT_MASTER_RESOLVER_SERVICE_TOKEN = Symbol('IProductMasterResolverService');

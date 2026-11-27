@@ -92,8 +92,13 @@ export interface IFiscalRegistrationService {
    *   - `registered`                    -> returned verbatim;
    *   - a live in-flight lease          -> returned as-is, no second call;
    *   - an `in-doubt` failure           -> returned as-is for reconciliation;
-   *   - `pending` / expired lease /
-   *     a terminal `rejected` failure   -> re-attemptable under the same key.
+   *   - `pending` / expired lease       -> re-attemptable under the same key;
+   *   - a terminal `rejected` failure   -> throws
+   *     `FiscalRegistrationAttemptClosedException` (#3960). A refusal is final
+   *     under its key and nothing is sent; the next attempt is started by
+   *     `requestRegistration` under a new key. Thrown rather than returned so a
+   *     job still queued under the refused key ends as a terminal refusal
+   *     instead of a plain success.
    *
    * Never throws on a provider rejection: the outcome is persisted on the record
    * and the record is returned, so a failure surfaces on the order with an
@@ -104,8 +109,9 @@ export interface IFiscalRegistrationService {
    * of operation, and a caller must not port assumptions across: an HTTP 200 here
    * says the request was handled, NOT that the sale was registered. A caller -
    * including the FE - reads `status` / `failureMode`, never the status code.
-   * A refusal (missing key, order already registered) still throws, because
-   * nothing was attempted and there is no record to reason about.
+   * A refusal (missing key, order already registered, an attempt already
+   * refused under this key) still throws, because nothing was attempted by this
+   * call.
    */
   register(cmd: RegisterTransactionCommand): Promise<FiscalRegistrationRecord>;
 

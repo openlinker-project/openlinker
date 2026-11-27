@@ -113,6 +113,7 @@ describe('ReturnCustodyService', () => {
   let integrations: { listCapabilityAdapters: jest.Mock; getAdapter?: jest.Mock };
   let products: { getVariantsBySkus: jest.Mock };
   let inventory: { resolveStockOwner: jest.Mock };
+  let inventoryService: { setInventory: jest.Mock };
   let lock: { acquire: jest.Mock; release: jest.Mock; extend: jest.Mock };
   let adjustInventory: jest.Mock;
   let service: ReturnCustodyService;
@@ -212,6 +213,8 @@ describe('ReturnCustodyService', () => {
       ),
     };
 
+    inventoryService = { setInventory: jest.fn(() => Promise.resolve(undefined)) };
+
     lock = {
       acquire: jest.fn(() => Promise.resolve('token-1')),
       release: jest.fn(() => Promise.resolve(true)),
@@ -224,7 +227,8 @@ describe('ReturnCustodyService', () => {
       integrations as never,
       products as never,
       lock as never,
-      inventory as never
+      inventory as never,
+      inventoryService as never
     );
   });
 
@@ -236,6 +240,46 @@ describe('ReturnCustodyService', () => {
       // A receipt never had a book write to make.
       expect(lastWrite?.event.restockState).toBe('not_applicable');
       expect(lastWrite?.outcome).toMatchObject({ custodyState: 'received', quantityReceived: 3 });
+    });
+
+    it('should fire return.received for the receipt, once per arrival (#3554)', async () => {
+      const emit = jest.fn(() =>
+        Promise.resolve({ firedRuleIds: [], alreadyFiredRuleIds: [], evaluatedRuleCount: 0 })
+      );
+      const withAutomation = new ReturnCustodyService(
+        repository as never,
+        returns as never,
+        integrations as never,
+        products as never,
+        lock as never,
+        inventory as never,
+        inventoryService as never,
+        { emit } as never
+      );
+
+      await withAutomation.receiveLine(LINE_ID, { quantity: 1 });
+
+      expect(emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          trigger: 'return.received',
+          facts: expect.objectContaining({ subjectKind: 'return' }),
+        })
+      );
+    });
+
+    it('should not fail the receipt when the emission fails (#3554)', async () => {
+      const withAutomation = new ReturnCustodyService(
+        repository as never,
+        returns as never,
+        integrations as never,
+        products as never,
+        lock as never,
+        inventory as never,
+        inventoryService as never,
+        { emit: jest.fn(() => Promise.reject(new Error('down'))) } as never
+      );
+
+      await expect(withAutomation.receiveLine(LINE_ID, { quantity: 1 })).resolves.toBeDefined();
     });
 
     it('should refuse an over-receipt with the actionable reason rather than a message', async () => {
@@ -503,16 +547,119 @@ describe('ReturnCustodyService', () => {
     // #3486 — with one master the restock goes there exactly as before; the
     // owner read is for several masters only, so a single-master install whose
     // positions predate provenance keeps working.
-    it('should not read stock ownership when exactly one inventory master is connected', async () => {
+    it('should not read stock ownership to PICK the master when exactly one is connected', async () => {
       const result = await service.disposeLine(LINE_ID, {
         quantity: 2,
         disposition: 'restock',
       });
 
-      expect(inventory.resolveStockOwner).not.toHaveBeenCalled();
+      // The only read is the post-write mirror (#3565), never the planning step:
+      // a blocked answer here must not have refused the restock.
+      expect(inventory.resolveStockOwner).toHaveBeenCalledTimes(1);
       expect(adjustInventory).toHaveBeenCalledTimes(1);
       expect(result.restockBlocked).toBeNull();
       expect(lastWrite?.event.masterConnectionId).toBe('conn-master');
+    });
+
+    describe('mirroring an applied restock into the stock ledger (#3565)', () => {
+      const ownedByMaster = {
+        kind: 'owner',
+        ownerConnectionId: 'conn-master',
+        position: {
+          inventoryItemId: 'inv-1',
+          productId: 'ol_product_1',
+          productVariantId: 'ol_variant_1',
+          locationId: null,
+          sourceConnectionId: 'conn-master',
+          availableQuantity: 5,
+          reservedQuantity: 1,
+        },
+        availableQuantity: 5,
+      };
+
+      it('should mirror the adapter result with a return_restock attribution', async () => {
+        inventory.resolveStockOwner.mockResolvedValue(ownedByMaster);
+
+        await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        expect(inventoryService.setInventory).toHaveBeenCalledTimes(1);
+        const [item, owner, movement] = inventoryService.setInventory.mock.calls[0] as [
+          { availableQuantity: number; reservedQuantity: number; sourceConnectionId: string },
+          string,
+          unknown,
+        ];
+        expect(item.availableQuantity).toBe(7);
+        expect(item.reservedQuantity).toBe(1);
+        expect(item.sourceConnectionId).toBe('conn-master');
+        expect(owner).toBe('conn-master');
+        expect(movement).toEqual({
+          reason: 'return_restock',
+          sourceKind: 'return',
+          sourceRef: lineState.returnId,
+        });
+      });
+
+      it('should mirror under the sale decrement position lock and release it afterwards', async () => {
+        inventory.resolveStockOwner.mockResolvedValue(ownedByMaster);
+
+        await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        const key = 'sale-decrement:conn-master:ol_product_1:ol_variant_1';
+        expect(lock.acquire).toHaveBeenCalledWith(key, 30_000);
+        expect(lock.release).toHaveBeenCalledWith(key, 'token-1');
+      });
+
+      it('should release the position lock even when the mirror write throws', async () => {
+        inventory.resolveStockOwner.mockResolvedValue(ownedByMaster);
+        inventoryService.setInventory.mockRejectedValueOnce(new Error('db down'));
+
+        await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        expect(lock.release).toHaveBeenCalledWith(
+          'sale-decrement:conn-master:ol_product_1:ol_variant_1',
+          'token-1'
+        );
+      });
+
+      it('should skip the mirror, without failing the restock, when the position lock is contended', async () => {
+        inventory.resolveStockOwner.mockResolvedValue(ownedByMaster);
+        // First acquire is the per-line disposal lock; the second the position lock.
+        lock.acquire.mockResolvedValueOnce('token-1').mockResolvedValueOnce(null);
+
+        const result = await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        expect(inventoryService.setInventory).not.toHaveBeenCalled();
+        expect(result.restockBlocked).toBeNull();
+      });
+
+      it('should skip the mirror when the position owner is not the connection written to', async () => {
+        inventory.resolveStockOwner.mockResolvedValue({
+          ...ownedByMaster,
+          ownerConnectionId: 'someone-else',
+        });
+
+        await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        expect(inventoryService.setInventory).not.toHaveBeenCalled();
+      });
+
+      it('should not change the restock outcome when the mirror fails', async () => {
+        inventory.resolveStockOwner.mockResolvedValue(ownedByMaster);
+        inventoryService.setInventory.mockRejectedValueOnce(new Error('db down'));
+
+        const result = await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        expect(result.restockBlocked).toBeNull();
+      });
+
+      it('should not mirror a restock the master refused', async () => {
+        inventory.resolveStockOwner.mockResolvedValue(ownedByMaster);
+        adjustInventory.mockRejectedValueOnce(new Error('refused'));
+
+        await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        expect(inventoryService.setInventory).not.toHaveBeenCalled();
+      });
     });
 
     describe('with several product masters (#3486)', () => {
@@ -590,8 +737,11 @@ describe('ReturnCustodyService', () => {
 
       // A mixed basket: each line's units go back to its own owner.
       it('should route each line to its own owner when two lines belong to different masters', async () => {
+        // Two reads per disposal: the restock plan, then the mirror (#3565).
         inventory.resolveStockOwner
           .mockResolvedValueOnce(ownedBy('master-a'))
+          .mockResolvedValueOnce(ownedBy('master-a'))
+          .mockResolvedValueOnce(ownedBy('master-b'))
           .mockResolvedValueOnce(ownedBy('master-b'));
 
         await service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock' });
@@ -1170,6 +1320,133 @@ describe('ReturnCustodyService', () => {
       // here reaches an OfferManager or a ShopProductManager.
       expect(capabilities).not.toContain('OfferManager');
       expect(capabilities).not.toContain('ProductPublisher');
+    });
+  });
+
+  describe('bundle line restock (#3933)', () => {
+    const bundle = (returnedVariantIds?: string[]) => ({
+      paidPerUnitGross: 100,
+      components: [
+        { productId: 'p-a', variantId: 'v-a', perUnit: 2, sku: 'A' },
+        { productId: 'p-b', variantId: 'v-b', perUnit: 1, sku: 'B' },
+      ],
+      ...(returnedVariantIds === undefined ? {} : { returnedVariantIds }),
+    });
+
+    beforeEach(() => {
+      lineState = makeLine({ quantityReceived: 3, custodyState: 'received' });
+      ((products as unknown) as { getVariantsByIds: jest.Mock }).getVariantsByIds = jest.fn(() =>
+        Promise.resolve([
+          { id: 'v-a', price: 30 },
+          { id: 'v-b', price: 40 },
+        ])
+      );
+    });
+
+    it('should restock every component with its own key when the whole set came back', async () => {
+      await service.disposeLine(LINE_ID, {
+        quantity: 1,
+        disposition: 'restock',
+        bundle: bundle(),
+      });
+
+      expect(adjustInventory).toHaveBeenCalledTimes(2);
+      const calls = adjustInventory.mock.calls.map(([arg]) => arg as Record<string, unknown>);
+      expect(calls[0]).toMatchObject({ variantId: 'v-a', quantity: 2 });
+      expect(calls[1]).toMatchObject({ variantId: 'v-b', quantity: 1 });
+      expect(calls[0].idempotencyKey).toBe(`return:${RETURN_ID}:${LINE_ID}~c:v-a:1`);
+      expect(calls[1].idempotencyKey).toBe(`return:${RETURN_ID}:${LINE_ID}~c:v-b:1`);
+      // The counters moved once, on the last act, in LINE units.
+      expect(settledOutcome).toMatchObject({ quantityRestocked: 1 });
+    });
+
+    it('should persist every component act as in_doubt before the first master call (#3520)', async () => {
+      await service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock', bundle: bundle() });
+
+      const writes = repository.runLineWrite.mock.invocationCallOrder;
+      const firstCall = adjustInventory.mock.invocationCallOrder[0];
+      expect(writes).toHaveLength(2);
+      expect(Math.max(...writes)).toBeLessThan(firstCall);
+    });
+
+    it('should restock only the returned component and price its share', async () => {
+      await service.disposeLine(LINE_ID, {
+        quantity: 1,
+        disposition: 'restock',
+        bundle: bundle(['v-b']),
+      });
+
+      expect(adjustInventory).toHaveBeenCalledTimes(1);
+      expect((adjustInventory.mock.calls[0] as unknown[])[0]).toMatchObject({ variantId: 'v-b', quantity: 1 });
+      const share = lastWrite?.event.componentShareGross as number;
+      // 2 x 30 = 60 vs 1 x 40 = 40 of 100: the returned component carries 40.
+      expect(share).toBe(40);
+      expect(lastWrite?.event.componentVariantId).toBe('v-b');
+    });
+
+    it('should not move the counters when one component was refused', async () => {
+      adjustInventory
+        .mockResolvedValueOnce({
+          id: 'i',
+          productId: 'p',
+          quantity: 1,
+          reserved: 0,
+          available: 1,
+          adjustmentOutcome: { disposition: 'applied', idempotency: 'honoured', appliedAt: null },
+        })
+        .mockRejectedValueOnce(new Error('master down'));
+
+      const result = await service.disposeLine(LINE_ID, {
+        quantity: 1,
+        disposition: 'restock',
+        bundle: bundle(),
+      });
+
+      expect(settledOutcome).toBeNull();
+      expect(result.restockBlockedComponents).toHaveLength(1);
+      expect(result.restockBlocked?.sku).toBe('B');
+    });
+
+    it('should refuse a partial return when a component has neither price nor cost', async () => {
+      ((products as unknown) as { getVariantsByIds: jest.Mock }).getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', price: 30 },
+        { id: 'v-b' },
+      ]);
+
+      await expect(
+        service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock', bundle: bundle(['v-a']) })
+      ).rejects.toMatchObject({ reason: 'no-split-basis', variantIds: ['v-b'] });
+      expect(adjustInventory).not.toHaveBeenCalled();
+    });
+
+    it('should offer the Allegro-formula hint without applying anything', async () => {
+      // Paid 100 per set; the buyer keeps v-a (2 x 30 = 60), so the hint is 40.
+      const preview = await service.previewBundleReturn(bundle(['v-b']), 1);
+
+      expect(preview.keptAtStandaloneRefundHintGross).toBe(40);
+      expect(preview.returnedShareGross).toBe(40);
+      expect(adjustInventory).not.toHaveBeenCalled();
+    });
+
+    it('should floor the hint at zero and withhold it when a kept component has no price', async () => {
+      ((products as unknown) as { getVariantsByIds: jest.Mock }).getVariantsByIds.mockResolvedValue([
+        { id: 'v-a', price: 90 },
+        { id: 'v-b', price: 40 },
+      ]);
+      expect((await service.previewBundleReturn(bundle(['v-b']), 1)).keptAtStandaloneRefundHintGross).toBe(0);
+
+      ((products as unknown) as { getVariantsByIds: jest.Mock }).getVariantsByIds.mockResolvedValue([
+        { id: 'v-b', price: 40 },
+      ]);
+      const preview = await service.previewBundleReturn(bundle(['v-b']), 1);
+      expect(preview.keptAtStandaloneRefundHintGross).toBeNull();
+      expect(preview.splitRefusal).toBe('no-split-basis');
+    });
+
+    it('should refuse a selection that names a component the line does not have', async () => {
+      await expect(
+        service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock', bundle: bundle(['zzz']) })
+      ).rejects.toMatchObject({ reason: 'bad-selection' });
     });
   });
 });

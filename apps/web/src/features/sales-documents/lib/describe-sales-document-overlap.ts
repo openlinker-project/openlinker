@@ -9,6 +9,7 @@
  */
 import type { SalesDocumentConditionInput } from '../api/sales-document-rules.types';
 import { describeSalesDocumentCondition } from './describe-sales-document-condition';
+import { getBcp47Locale, getLocale, getMessages, interpolate } from '../../../shared/i18n';
 
 /** How a rival rule reads back, for a sentence that has to name it. */
 export interface SalesDocumentOverlapRival {
@@ -18,18 +19,24 @@ export interface SalesDocumentOverlapRival {
 }
 
 function describeRival(rival: SalesDocumentOverlapRival | undefined, ruleId: string): string {
-  if (rival === undefined) return `rule ${ruleId}`;
-  const conditions = rival.conditions.map(describeSalesDocumentCondition).join(' and ');
-  return conditions === '' ? `rule ${ruleId}` : `"${conditions}"`;
+  const copy = getMessages('sales-documents').overlap;
+  if (rival === undefined) return interpolate(copy.ruleById, { ruleId });
+  const conditions = new Intl.ListFormat(getBcp47Locale(getLocale()), { type: 'conjunction' }).format(
+    rival.conditions.map(describeSalesDocumentCondition),
+  );
+  return conditions === ''
+    ? interpolate(copy.ruleById, { ruleId })
+    : interpolate(copy.ruleByConditions, { conditions });
 }
 
 /**
  * The consequence, stated once however many rivals there are, because it is
  * the part an operator cannot infer: two matching rules do not pick a winner,
- * they HOLD the order.
+ * they HOLD the order. Read at call time so a language switch reaches it.
  */
-export const SALES_DOCUMENT_OVERLAP_CONSEQUENCE =
-  'Two matching rules hold the order instead of one winning. Narrow one of them.';
+export function describeSalesDocumentOverlapConsequence(): string {
+  return getMessages('sales-documents').overlap.consequence;
+}
 
 /**
  * The refusal, for ONE rival (#3190 review, replacing a joined-sentence
@@ -44,27 +51,23 @@ export function describeSalesDocumentOverlapConflictRival(
   rival: SalesDocumentOverlapRival | undefined,
   ruleId: string,
 ): string {
-  return `${describeRival(rival, ruleId)} can match the same order as this one.`;
+  return interpolate(getMessages('sales-documents').overlap.conflictRival, {
+    rule: describeRival(rival, ruleId),
+  });
 }
 
 /**
  * Keyed by the CORE vocabulary's own reason values, and deliberately NOT held
- * to one by a `check-*-mirror.mjs` the way `SalesDocumentGateBlockReason` is
- * (#3190 review). The drift this would guard against is fail-SOFT in both
- * directions and asserted as such by this module's spec: a reason with no
- * entry here still names the rival and simply stops short of explaining why,
- * and an entry with no reason is unreachable copy. A mirror script buys a
- * build failure for a condition whose worst outcome is a shorter true
- * sentence - unlike the gate-reason mirror, where a missing entry renders a
- * raw enum value at an operator.
+ * to one by a `check-*-mirror.mjs` (#3190 review). A reason with no entry
+ * still names the rival and simply stops short of explaining why.
  */
-const DISJOINT_REASON_COPY: Record<string, string> = {
-  currency: 'their currencies differ, and an amount is compared rather than converted',
-  'amount-range': 'no order total satisfies both',
-  'buyer-tax-id': 'one wants a customer with a tax ID and the other a customer without one',
-  'order-country': 'they are scoped to different delivery countries',
-  'effective-window': 'their effective periods never coincide',
-};
+const DISJOINT_REASON_KEYS = {
+  currency: 'currency',
+  'amount-range': 'amountRange',
+  'buyer-tax-id': 'buyerTaxId',
+  'order-country': 'orderCountry',
+  'effective-window': 'effectiveWindow',
+} as const;
 
 /** The positive statement: this rule provably cannot collide with that one. */
 export function describeSalesDocumentOverlapClear(
@@ -72,21 +75,17 @@ export function describeSalesDocumentOverlapClear(
   rival: SalesDocumentOverlapRival | undefined,
   ruleId: string,
 ): string {
-  // An unrecognised reason is not silently dropped: the sentence still names
-  // the rival and simply stops short of explaining why, which is honest.
-  const why = DISJOINT_REASON_COPY[reason];
-  const who = describeRival(rival, ruleId);
-  return why === undefined
-    ? `This rule cannot match the same order as ${who}.`
-    : `This rule cannot match the same order as ${who} - ${why}.`;
+  const copy = getMessages('sales-documents').overlap.clear;
+  const key = (DISJOINT_REASON_KEYS as Record<string, keyof typeof copy | undefined>)[reason];
+  return interpolate(key === undefined ? copy.generic : copy[key], {
+    rule: describeRival(rival, ruleId),
+  });
 }
 
-const UNDECIDED_REASON_COPY: Record<string, string> = {
-  'unreadable-condition':
-    'it carries a condition this version does not understand. Open it and check what it says.',
-  'multi-currency-rule':
-    'one of the two bounds the total in more than one currency, which matches no order at all.',
-};
+const UNDECIDED_REASON_KEYS = {
+  'unreadable-condition': 'unreadableCondition',
+  'multi-currency-rule': 'multiCurrencyRule',
+} as const;
 
 /**
  * The third outcome. Never phrased as reassurance: the operator is told the
@@ -97,6 +96,9 @@ export function describeSalesDocumentOverlapUndecided(
   rival: SalesDocumentOverlapRival | undefined,
   ruleId: string,
 ): string {
-  const why = UNDECIDED_REASON_COPY[reason] ?? 'this version could not compare the two.';
-  return `We could not tell whether this rule collides with ${describeRival(rival, ruleId)} - ${why}`;
+  const copy = getMessages('sales-documents').overlap.undecided;
+  const key = (UNDECIDED_REASON_KEYS as Record<string, keyof typeof copy | undefined>)[reason];
+  return interpolate(key === undefined ? copy.generic : copy[key], {
+    rule: describeRival(rival, ruleId),
+  });
 }

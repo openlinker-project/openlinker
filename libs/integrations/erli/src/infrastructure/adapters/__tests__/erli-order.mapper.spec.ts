@@ -125,6 +125,16 @@ describe('mapErliOrderToIncomingOrder', () => {
     expect(result.paymentStatus).toBe('paid');
   });
 
+  it.each([
+    ['a text', '  Leave it with the neighbour ', 'Leave it with the neighbour'],
+    ['an absent comment', undefined, null],
+    ['a blank comment', '  ', null],
+  ])('should report the buyer note from comment: %s (#3538)', (_label, comment, expected) => {
+    const result = mapErliOrderToIncomingOrder(buildErliOrder({ comment }));
+
+    expect(result.buyerNote).toBe(expected);
+  });
+
   it('should report cash on delivery for a COD order and unknown for any other (#3294)', () => {
     const cod = mapErliOrderToIncomingOrder(
       buildErliOrder({ status: 'purchased', delivery: { cod: true } }),

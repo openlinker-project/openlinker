@@ -1,6 +1,7 @@
 /**
  * Top Products Controller — Unit Tests (#1988)
  */
+import type { IConnectionService } from '../../integrations/application/interfaces/connection.service.interface';
 import { BadRequestException } from '@nestjs/common';
 import { TopProductsController } from './top-products.controller';
 import type { TopProductsResponseDto } from './dto/top-products-response.dto';
@@ -12,6 +13,7 @@ describe('TopProductsController', () => {
     items: [],
     total: 0,
     unresolvedProductCount: 0,
+    unmatchedOfferCount: 0,
     coverageGapAvailable: true,
   };
 
@@ -39,7 +41,8 @@ describe('TopProductsController', () => {
   ): TopProductsController =>
     new TopProductsController(
       service,
-      displaySettings as unknown as IAnalyticsDisplaySettingsService
+      displaySettings as unknown as IAnalyticsDisplaySettingsService,
+      { list: jest.fn().mockResolvedValue([]) } as unknown as IConnectionService
     );
 
   it('maps query params to filters (with defaults) and returns the service result', async () => {

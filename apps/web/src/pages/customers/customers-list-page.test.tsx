@@ -32,6 +32,7 @@ import type {
   CustomerProjection,
   PaginatedCustomers,
 } from '../../features/customers/api/customers.types';
+import { getMessages } from '../../shared/i18n';
 
 const ALLEGRO_CONNECTION_ID = '3f9c1d2e-8a7b-4c5d-9e0f-1a2b3c4d5e6f';
 const NAMED_CUSTOMER_ID = 'ol_customer_74b1e9c03a2d48f6b85c1e70d92f4a36';
@@ -177,7 +178,7 @@ describe('CustomersListPage', () => {
     renderWithProviders(<CustomersListPage />, { apiClient: mockApiClient });
 
     expect(await screen.findByText('Unable to load customers')).toBeInTheDocument();
-    expect(screen.getByText('Network error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('should show empty state with a Browse orders CTA when no customers exist', async () => {
@@ -653,4 +654,38 @@ describe('CustomersListPage', () => {
     });
   });
 
+  describe('saved views (#4241)', () => {
+    it('should open on the built-in All customers view with the sort it implies', async () => {
+      renderWithProviders(<CustomersListPage />, { apiClient: mockApi() });
+
+      const strip = await screen.findByRole('group', { name: 'Views' });
+      expect(within(strip).getByRole('button', { name: 'All customers' })).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('should drop a column from the table when the Columns panel hides it', async () => {
+      renderWithProviders(<CustomersListPage />, { apiClient: mockApi() });
+
+      const table = await screen.findByRole('table');
+      expect(within(table).getByRole('columnheader', { name: 'Customer ID' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /Columns & sort/ }));
+      fireEvent.click(await screen.findByRole('checkbox', { name: /Customer ID/ }));
+
+      await waitFor(() => {
+        expect(within(table).queryByRole('columnheader', { name: 'Customer ID' })).toBeNull();
+      });
+    });
+
+    it('should sort the page by customer name from the header, nameless rows last', async () => {
+      renderWithProviders(<CustomersListPage />, { apiClient: mockApi() });
+
+      await screen.findByText('Jane Smith');
+      fireEvent.click(screen.getByRole('button', { name: /Customer(, | |$)/ }));
+
+      await waitFor(() => {
+        const rows = screen.getAllByRole('row');
+        expect(rows[1]).toHaveTextContent('Jane Smith');
+      });
+    });
+  });
 });

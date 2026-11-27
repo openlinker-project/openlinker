@@ -18,6 +18,7 @@ import type {
   ProductStockAggregate,
   PruneStaleVariantsResult,
   ProvenanceScope,
+  ReportedLocationSet,
   DuplicatePositionReport,
   InventoryOwnerPosition,
   InventoryPositionCandidate,
@@ -155,6 +156,17 @@ export interface InventoryRepositoryPort {
   findAvailabilityByVariantIds(
     variantIds: readonly string[]
   ): Promise<readonly VariantStockRow[]>;
+
+  /**
+   * Every position row for the given variants, STALE ones included (#3621).
+   *
+   * The stock view's drill-down: unlike every other read on this port it does
+   * not filter `isStale`, because the operator is shown a stale position
+   * flagged as such rather than silently missing. Totals must therefore be
+   * computed by the caller over the live subset. Parameterised, one statement
+   * per call; empty input returns `[]` without a storage round trip.
+   */
+  findPositionsByVariantIds(variantIds: readonly string[]): Promise<readonly InventoryItem[]>;
 
   /**
    * Bin/shelf codes per variant (#3402/#3410, mockup-parity epic #3401), for
@@ -368,6 +380,46 @@ export interface InventoryRepositoryPort {
   markLocatedStaleForSource(
     productId: string,
     pooledVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult>;
+
+  /**
+   * Multi-location pruning: soft-stale this source's own LOCATED rows of a
+   * variant at a location the master did NOT report in a pull that declared
+   * its location set complete (`Inventory.locationSetComplete`). The one case
+   * the per-variant prune and both decision-(2) repairs leave open: a master
+   * that drops one of several locations.
+   *
+   * Only rows at a non-null location are touched (pooled rows belong to the
+   * #2322/#3206 repairs), only for the listed variants, and only for the
+   * source named by `scope` (required, as for the repairs). Emits nothing:
+   * a location going away is not a product deletion, and firing
+   * `master.variant.stale` would pause live offers for stock still sold from
+   * the other locations (#1689).
+   */
+  markUnreportedLocationsStaleForSource(
+    productId: string,
+    reported: readonly ReportedLocationSet[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult>;
+
+  /**
+   * Multi-location pruning: soft-stale this source's own LOCATED rows of a
+   * variant at a location the master did NOT report in a pull that declared
+   * its location set complete (`Inventory.locationSetComplete`). The one case
+   * the per-variant prune and both decision-(2) repairs leave open: a master
+   * that drops one of several locations.
+   *
+   * Only rows at a non-null location are touched (pooled rows belong to the
+   * #2322/#3206 repairs), only for the listed variants, and only for the
+   * source named by `scope` (required, as for the repairs). Emits nothing:
+   * a location going away is not a product deletion, and firing
+   * `master.variant.stale` would pause live offers for stock still sold from
+   * the other locations (#1689).
+   */
+  markUnreportedLocationsStaleForSource(
+    productId: string,
+    reported: readonly ReportedLocationSet[],
     scope: ProvenanceScope
   ): Promise<PruneStaleVariantsResult>;
 

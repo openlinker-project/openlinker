@@ -5,8 +5,10 @@ import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
   renderWithProviders,
+  findToastTitle,
 } from '../../test/test-utils';
 import { ApiError } from '../../shared/api/api-error';
+import { getMessages } from '../../shared/i18n';
 import { InventoryLocationsPage } from './inventory-locations-page';
 import type { InventoryLocation, PaginatedInventoryLocations } from '../../features/inventory';
 
@@ -120,7 +122,9 @@ describe('InventoryLocationsPage', () => {
     const listLocations = vi.fn().mockResolvedValue(page([]));
     const bootstrapLocations = vi
       .fn()
-      .mockRejectedValue(new ApiError('Insufficient permissions', 403, {}));
+      .mockRejectedValue(
+        new ApiError('Insufficient permissions', 403, { code: 'INSUFFICIENT_PERMISSIONS' })
+      );
     const apiClient = createMockApiClient({ inventory: { listLocations, bootstrapLocations } });
     renderWithProviders(<InventoryLocationsPage />, {
       apiClient,
@@ -129,10 +133,12 @@ describe('InventoryLocationsPage', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Create first location' }));
 
-    expect(await screen.findByText('Could not create the location')).toBeInTheDocument();
-    // The server's own reason, not a flattened "try again" - the reachable
-    // failures here are distinguishable and actionable.
-    expect(screen.getByText('Insufficient permissions')).toBeInTheDocument();
+    expect(await findToastTitle('Could not create the location')).toBeInTheDocument();
+    // The reason read from the error's code, not a flattened "try again" - the
+    // reachable failures here are distinguishable and actionable.
+    expect(
+      screen.getByText(getMessages('errors').codes.INSUFFICIENT_PERMISSIONS)
+    ).toBeInTheDocument();
   });
 
   it('turning the Show retired toggle off filters to status=active', async () => {

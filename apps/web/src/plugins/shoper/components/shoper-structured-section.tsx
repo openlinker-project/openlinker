@@ -14,6 +14,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import type { StructuredConfigSectionProps } from '../../../shared/plugins';
+import { useShoperMessages } from '../messages';
 import { ShoperOrderDefaultsSection } from './shoper-order-defaults-section';
 
 export function ShoperStructuredSection({
@@ -22,15 +23,18 @@ export function ShoperStructuredSection({
   configIsParseable,
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
-  const orderSourceEnabled = connection.enabledCapabilities.includes('OrderSource');
+  const copy = useShoperMessages().shoperStructuredSection;
+  const webhookCapabilityEnabled =
+    connection.enabledCapabilities.includes('OrderSource') ||
+    connection.enabledCapabilities.includes('ProductMaster');
 
   return (
     <>
       <FormField
-        label="OL callback URL"
+        label={copy.callbackUrl.label}
         name="openlinkerCallbackBaseUrl"
         error={form.formState.errors.openlinkerCallbackBaseUrl?.message}
-        description="OpenLinker's public URL as Shoper can reach it. Shoper calls it when an order changes. Pre-filled from your browser; it must be reachable from the internet. Required for the 'Configure webhooks' action."
+        description={copy.callbackUrl.description}
       >
         <Input
           value={form.watch('openlinkerCallbackBaseUrl') ?? ''}
@@ -42,10 +46,9 @@ export function ShoperStructuredSection({
           invalid={Boolean(form.formState.errors.openlinkerCallbackBaseUrl)}
         />
       </FormField>
-      {orderSourceEnabled ? null : (
-        <Alert tone="warning" title="Order source is off">
-          Webhooks only deliver orders when the Order source capability is enabled on this
-          connection. Enable it first, then configure webhooks.
+      {webhookCapabilityEnabled ? null : (
+        <Alert tone="warning" title={copy.noWebhookCapability.title}>
+          {copy.noWebhookCapability.body}
         </Alert>
       )}
       <ShoperOrderDefaultsSection

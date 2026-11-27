@@ -86,9 +86,8 @@ export const REQUIRED_CAPABILITY_BY_CORE_KIND: Readonly<Record<CoreSalesDocument
 
 /**
  * One candidate connection, reduced to what the resolve depends on.
- * Structural on purpose — mirrors `InvoicingConnectionCandidate`
- * (`libs/core/src/invoicing/domain/types/invoicing-primary.types.ts`): the
- * resolve is a pure function that needs no `Connection` entity (and
+ * Structural on purpose, as the #2047 invoicing-only candidate this replaced
+ * was: the resolve is a pure function that needs no `Connection` entity (and
  * therefore no cross-context value import here, preserving this concern's
  * dependency-free-leaf property). The caller resolves `documentKind` /
  * `isPrimary` via `readSalesDocumentRouting(connection.config)` and
@@ -137,7 +136,7 @@ export function isCoreSalesDocumentKind(value: SalesDocumentKind): value is Core
  *    decision 9): a connection with neither is not a routing candidate at
  *    all.
  * 2. Exactly one such candidate wins outright, primary flag irrelevant
- *    (mirrors `selectPrimaryInvoicingConnection`'s single-candidate rule): a
+ *    (the single-candidate rule #2047 introduced for invoicing): a
  *    single-connection install must not require the operator to also set
  *    `isPrimary`.
  * 3. Several candidates: the operator-set primary among THEM wins; none or
@@ -152,8 +151,8 @@ export function isCoreSalesDocumentKind(value: SalesDocumentKind): value is Core
  *    and "no unambiguous primary among the candidates" is equally true
  *    whether there are zero or several non-primary candidates. A caller that
  *    already knows it has zero eligible connections is expected to
- *    short-circuit before calling this resolver (mirroring
- *    `selectPrimaryInvoicingConnection`'s own `'none'` pre-check today) —
+ *    short-circuit before calling this resolver (as the #2047 invoicing selection
+ *    did with its own `'none'` pre-check) —
  *    this branch is a defensive fallback, not the common path.
  * 5. SELF-ROUTING SHORT-CIRCUIT (decision 9): if the winning candidate
  *    self-routes, return `documentKind: null` immediately — there is no OL-

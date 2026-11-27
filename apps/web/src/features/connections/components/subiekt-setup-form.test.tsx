@@ -16,6 +16,7 @@ import {
 } from '../../../test/test-utils';
 import { SubiektSetupForm } from './subiekt-setup-form';
 import { SUBIEKT_GT_IDENTITY, SUBIEKT_NEXO_IDENTITY } from './subiekt-setup.schema';
+import { getMessages } from '../../../shared/i18n';
 
 describe('SubiektSetupForm', () => {
   afterEach(cleanup);
@@ -26,6 +27,14 @@ describe('SubiektSetupForm', () => {
     expect(screen.getByLabelText('Bridge URL')).toBeInTheDocument();
     expect(screen.getByLabelText('Request timeout (ms, optional)')).toBeInTheDocument();
     expect(screen.getByLabelText('Bridge token')).toBeInTheDocument();
+  });
+
+  it('should keep the request timeout inside a collapsed Advanced disclosure', () => {
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
+    const details = screen.getByText('Advanced').closest('details');
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute('open');
+    expect(details).toContainElement(screen.getByLabelText('Request timeout (ms, optional)'));
   });
 
   it('requires connection name to be non-empty', async () => {
@@ -101,8 +110,7 @@ describe('SubiektSetupForm', () => {
             // and reports nothing: no document kind means the connection is
             // not a routing candidate at all, and the trigger model defaults
             // to `manual` even when it is.
-            salesDocument: { documentKind: 'invoice' },
-            invoicing: { triggerModel: 'manual' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'manual' } },
           },
         }),
       );
@@ -115,9 +123,7 @@ describe('SubiektSetupForm', () => {
     expect(payload).not.toHaveProperty('enabledCapabilities');
     // `isPrimary` is a CROSS-connection tiebreaker the settings panel owns; a
     // wizard writing it would claim a precedence it cannot see.
-    expect((payload.config as { invoicing: Record<string, unknown> }).invoicing).not.toHaveProperty(
-      'isPrimary',
-    );
+    expect(payload.config).not.toHaveProperty('invoicing.isPrimary');
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
 
@@ -147,8 +153,7 @@ describe('SubiektSetupForm', () => {
           config: {
             bridgeBaseUrl: 'https://bridge.local:5000',
             timeoutMs: 30000,
-            salesDocument: { documentKind: 'invoice' },
-            invoicing: { triggerModel: 'manual' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'manual' } },
           },
           credentials: { bridgeToken: 'shared-secret-token' },
         }),
@@ -187,8 +192,7 @@ describe('SubiektSetupForm', () => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
           config: expect.objectContaining({
-            salesDocument: { documentKind: 'invoice' },
-            invoicing: { triggerModel: 'auto-on-paid' },
+            salesDocument: { documentKind: 'invoice', triggerModels: { invoice: 'auto-on-paid' } },
           }),
         }),
       );
@@ -303,7 +307,7 @@ describe('SubiektSetupForm', () => {
     fireEvent.click(testButton);
 
     expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
-    expect(screen.getByText(/Bridge offline/)).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
     // The success/fail result alert must NOT appear on the rejected path.
     expect(screen.queryByText('Connection test passed')).not.toBeInTheDocument();
     expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();
@@ -344,6 +348,159 @@ describe('SubiektSetupForm', () => {
     expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();
   });
   // --- the defects this wizard used to ship ----------------------------------
+
+  describe('order history (#4265)', () => {
+    const adapters = (adapterKey: string, supportedCapabilities: string[]) => ({
+      list: vi.fn().mockResolvedValue([
+        {
+          adapterKey,
+          platformType: 'subiekt',
+          supportedCapabilities,
+          orderSyncStartModes: ['now', 'from', 'all'],
+        },
+      ]),
+    });
+
+    function fillRequired(): void {
+      fireEvent.change(screen.getByLabelText('Connection name'), { target: { value: 'My Subiekt' } });
+      fireEvent.change(screen.getByLabelText('Bridge URL'), {
+        target: { value: 'http://127.0.0.1:5056' },
+      });
+      fireEvent.change(screen.getByLabelText('Bridge token'), { target: { value: 'a-token' } });
+    }
+
+    it('shows the start choice when the adapter reads orders, defaulting to new orders only', async () => {
+      const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Subiekt' });
+      const apiClient = createMockApiClient({
+        connections: { create },
+        adapters: adapters('subiekt.gt.v1', ['Invoicing', 'OrderSource']),
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      expect(await screen.findByRole('radio', { name: /New orders only/ })).toBeChecked();
+      fillRequired();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
+
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+      expect((create.mock.calls[0][0] as { orderSyncStart?: unknown }).orderSyncStart).toBeUndefined();
+    });
+
+    it('sends the chosen start date', async () => {
+      const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Subiekt' });
+      const apiClient = createMockApiClient({
+        connections: { create },
+        adapters: adapters('subiekt.gt.v1', ['Invoicing', 'OrderSource']),
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+      fireEvent.change(screen.getByLabelText('First day to import'), {
+        target: { value: '2024-03-01' },
+      });
+      fillRequired();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
+
+      await waitFor(() =>
+        expect(create).toHaveBeenCalledWith(
+          expect.objectContaining({ orderSyncStart: { mode: 'from', from: '2024-03-01' } }),
+        ),
+      );
+    });
+
+    it('refuses a start date in the future', async () => {
+      const create = vi.fn();
+      const apiClient = createMockApiClient({
+        connections: { create },
+        adapters: adapters('subiekt.gt.v1', ['Invoicing', 'OrderSource']),
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+      fireEvent.change(screen.getByLabelText('First day to import'), {
+        target: { value: '2999-01-01' },
+      });
+      fillRequired();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
+
+      await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(0));
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('shows a loading line, not a disabled date card, while the adapter list loads', async () => {
+      const apiClient = createMockApiClient({
+        adapters: { list: vi.fn().mockReturnValue(new Promise(() => undefined)) },
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      expect(await screen.findByText(getMessages('connections').orderSyncStart.loading)).toBeInTheDocument();
+      expect(screen.queryByRole('radio', { name: /Orders since a date/ })).toBeNull();
+    });
+
+    it('says the start will be new orders only when the adapter list cannot be read', async () => {
+      const apiClient = createMockApiClient({
+        adapters: { list: vi.fn().mockRejectedValue(new Error('down')) },
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      expect(await screen.findByText(getMessages('connections').orderSyncStart.loadFailed)).toBeInTheDocument();
+      expect(screen.queryByRole('radio', { name: /Orders since a date/ })).toBeNull();
+    });
+
+    it('disables the modes the bridge does not declare', async () => {
+      const apiClient = createMockApiClient({
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: 'subiekt.gt.v1',
+              platformType: 'subiekt',
+              supportedCapabilities: ['Invoicing', 'OrderSource'],
+              orderSyncStartModes: ['now'],
+            },
+          ]),
+        },
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      expect(await screen.findByRole('radio', { name: /Orders since a date/ })).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('radio', { name: /Every order in the source system/ })).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('explains a refused start date in the error summary', async () => {
+      const apiClient = createMockApiClient({
+        connections: { create: vi.fn() },
+        adapters: adapters('subiekt.gt.v1', ['Invoicing', 'OrderSource']),
+      });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+      fireEvent.click(await screen.findByRole('radio', { name: /Orders since a date/ }));
+      fillRequired();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
+
+      expect(await screen.findByText(/Please correct the highlighted fields/)).toBeInTheDocument();
+      expect(
+        screen.getAllByText(getMessages('connections').orderSyncStartSchema.dateRequired).length,
+      ).toBeGreaterThan(1);
+    });
+
+    it('should render no start note for nexo when the adapters query fails', async () => {
+      const list = vi.fn().mockRejectedValue(new Error('boom'));
+      const apiClient = createMockApiClient({ adapters: { list } });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_NEXO_IDENTITY} />, { apiClient });
+
+      await waitFor(() => expect(list).toHaveBeenCalled());
+      expect(screen.queryByText(getMessages('connections').orderSyncStart.loadFailed)).toBeNull();
+      expect(screen.queryByText(getMessages('connections').orderSyncStart.loading)).toBeNull();
+    });
+
+    it('does not ask for a start when the adapter does not read orders', async () => {
+      const list = adapters('subiekt.nexo.v1', ['Invoicing']).list;
+      const apiClient = createMockApiClient({ adapters: { list } });
+      renderWithProviders(<SubiektSetupForm identity={SUBIEKT_NEXO_IDENTITY} />, { apiClient });
+
+      await waitFor(() => expect(list).toHaveBeenCalled());
+      expect(screen.queryByRole('radio', { name: /New orders only/ })).toBeNull();
+    });
+  });
 
   it('refuses to submit without a bridge token', async () => {
     // Both bridges reject every /api/* request without one, so a connection

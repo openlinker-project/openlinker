@@ -10,13 +10,33 @@
  *
  * @module apps/web/src/pages/orders
  */
-import { useCallback, useEffect, useRef, type ReactElement } from 'react';
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { useIsPackerSession, useWriteAccess } from '../../shared/auth/use-permission';
+import { useDemoMode } from '../../features/system';
+import { useQueryClient } from '@tanstack/react-query';
+import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { interpolate, useFormat, useMessages, usePlural } from '../../shared/i18n';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { Alert } from '../../shared/ui/alert';
 import { StockAtRiskCallout } from '../../features/orders/components/stock-at-risk-callout';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
+import { Tabs, TabsContent } from '../../shared/ui/tabs';
+import { OrderNextStepCard } from '../../features/orders/components/order-next-step-card';
+import { deriveOrderIssues } from '../../features/orders/lib/order-next-step';
+import { hasLiveOlCarrierRoute } from '../../features/orders/lib/delivery-outcome';
+import { OrderShipToBox } from '../../features/orders/components/order-ship-to-box';
+import { ProductPeekById } from '../products/product-peek-by-id';
+import { OrderProgressLine } from '../../features/orders/components/order-progress-line';
+import { OrderHeaderMenu } from '../../features/orders/components/order-header-menu';
+import { holdReasonLabel } from '../../features/orders/lib/order-hold.types';
+import { OrderDetailTabList, type OrderDetailTabEntry } from '../../features/orders/components/order-detail-tab-list';
+import {
+  DEFAULT_ORDER_DETAIL_TAB,
+  resolveOrderDetailTab,
+  tabForAnchor,
+  type OrderDetailTabId,
+} from '../../features/orders/lib/order-detail-tabs';
 import { KeyValueList, type KeyValueItem } from '../../shared/ui/key-value-list';
 import { RawPayloadPanel } from '../../shared/ui/raw-payload-panel';
 import { StatusBadge, type StatusBadgeTone } from '../../shared/ui/status-badge';
@@ -41,6 +61,7 @@ import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
 import { useFulfilmentOwnedConnectionIds } from '../../features/orders/hooks/use-fulfilment-owned-connection-ids';
 import { isFulfilmentOwnedByDestination } from '../../features/orders/lib/fulfilment-ownership';
+import { describeSalesDocumentBlockDetail } from '../../features/orders/lib/sales-document-block-detail';
 import { OrderHoldPanel } from '../../features/orders/components/order-hold-panel';
 import {
   OrderNotesPanel,
@@ -48,16 +69,33 @@ import {
 } from '../../features/orders/components/order-notes-panel';
 import { OrderTagsHeaderRow } from '../../features/orders/components/order-tags-header-row';
 import { useOrderNotesTimelineQuery } from '../../features/orders/hooks/use-order-notes-timeline-query';
+import { useOrderDocumentEmailsQuery } from '../../features/orders/hooks/use-order-document-emails-query';
+import { mapDocumentEmailsToEvents } from '../../features/orders/lib/document-email-timeline-events';
+import {
+  OrderBuyerEmailsPanel,
+  mapBuyerEmailsToEvents,
+  useOrderBuyerEmailsQuery,
+} from '../../features/buyer-emails';
 import { mapNoteTimelineToEvents } from '../../features/orders/lib/order-note-timeline-events';
+import {
+  mapBuyerNoteAcknowledgementsToEvents,
+  mapBuyerNoteChangeToEvents,
+} from '../../features/orders/lib/buyer-note-timeline-events';
+import { OrderBuyerNote } from '../../features/orders/components/order-buyer-note';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
 import { OrderShipmentPanel } from '../../features/orders/components/order-shipment-panel';
 import { SalesDocumentPanel } from '../../features/orders/components/sales-document-panel';
 import { UnlinkedCatalogueLinesBadge } from '../../features/orders/components/unlinked-catalogue-lines-badge';
 import { WarehouseReleaseBadge } from '../../features/orders/components/warehouse-release-badge';
-import { OrderDetailHeader } from '../../features/orders/components/order-detail-header';
+import { OrderDetailHeader, isChannelStatusStale } from '../../features/orders/components/order-detail-header';
+import { DestinationRoutingCallout } from '../../features/orders/components/destination-routing-callout';
 import { OrderHealthSummary } from '../../features/orders/components/order-health-summary';
+import { MultipackHoldBanner } from '../../features/bundles';
+import { orderStatusLabel } from '../../features/orders/lib/order-status-label';
+import { displayConnectionName } from '../../shared/lib/display-connection-name';
 import { OrderPricingPanel } from '../../features/orders/components/order-pricing-panel';
+import { OrderPaymentPanel } from '../../features/orders/components/order-payment-panel';
 import { OrderDeliveryPanel } from '../../features/orders/components/order-delivery-panel';
 import { deriveFulfillment } from '../../features/orders/lib/order-health';
 import { deriveDeliveryOutcome } from '../../features/orders/lib/delivery-outcome';
@@ -70,9 +108,33 @@ import {
   mapReturnEventsToTimeline,
   useOrderReturnEventsQuery,
 } from '../../features/returns';
-import { OrderFulfillmentTasksPanel } from '../../features/fulfillment';
+import {
+  OrderFulfillmentTasksPanel,
+  RoutingDecisionPanel,
+  fulfillmentQueryKeys,
+  useOrderFulfillmentTasksQuery,
+} from '../../features/fulfillment';
+import { invoicingQueryKeys, minorUnitExponentFor } from '../../features/invoicing';
+import { shipmentsQueryKeys } from '../../features/shipments';
+import { OrderConfirmRefundAction } from '../../features/orders/components/order-confirm-refund-action';
+import { useOrderChangesQuery } from '../../features/orders/hooks/use-order-changes-query';
+import { useOrderRefundsQuery } from '../../features/orders/hooks/use-order-refunds-query';
+import { OrderCancelAction } from '../../features/orders/components/order-cancel-action';
+import { OrderCancelResultNotice } from '../../features/orders/components/order-cancel-result-notice';
+import { buildOrderCancelTimelineEvents } from '../../features/orders/components/order-cancel-timeline-events';
+import type { CancelOrderResult } from '../../features/orders/api/order-cancel.types';
+import { OrderEditAction } from '../../features/orders/components/order-edit-action';
+import { GiftsGuide, OrderAddGiftAction, OrderGiftAttention } from '../../features/gifts';
+import { OrderEditedNotice } from '../../features/orders/components/order-edited-notice';
+import { OrderSourceChangeCard } from '../../features/orders/components/order-source-change-card';
+import { buildOrderEditTimelineEvents } from '../../features/orders/components/order-edit-timeline-events';
+import type { OrderDiscountResult, OrderEditLineStock } from '../../features/orders/api/order-edit.types';
+import type { EditOrderOutput } from '../../features/orders/hooks/use-edit-order-mutation';
+import type { OrderEditRemedyTarget } from '../../features/orders/lib/order-edit';
+import { hasAcceptedFulfilmentWork, isOrderCancelTerminal } from '../../features/orders/lib/order-cancel';
 import { useOmsRoutingState } from '../../features/fulfillment-authority';
 import { useSession } from '../../shared/auth/use-session';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
 const RAW_SNAPSHOT_ANCHOR_ID = 'order-raw-snapshot';
 const SHIPPING_CAPABILITY = 'ShippingProviderManager';
@@ -95,6 +157,10 @@ const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
 
 export function OrderDetailPage(): ReactElement {
   const { internalOrderId = '' } = useParams<{ internalOrderId: string }>();
+  const ordersCopy = useMessages('orders');
+  const copy = ordersCopy.orderDetailPage;
+  const format = useFormat();
+  const plural = usePlural();
   const query = useOrderQuery(internalOrderId);
   const connectionsQuery = useConnectionsQuery();
   // Destinations the operator declared as packing and shipping by themselves (#2118).
@@ -106,6 +172,8 @@ export function OrderDetailPage(): ReactElement {
   // #3531 — the notes' authored acts, same non-fatal contract as returns: an
   // unreadable answer contributes no rows rather than failing the timeline.
   const noteTimelineQuery = useOrderNotesTimelineQuery(internalOrderId);
+  const documentEmailsQuery = useOrderDocumentEmailsQuery(internalOrderId);
+  const buyerEmailsQuery = useOrderBuyerEmailsQuery(internalOrderId);
   const platforms = usePlatforms();
   // #3505 — whether fulfilment routing is on decides whether an order with no
   // fulfilment tasks gets a section saying so.
@@ -117,6 +185,58 @@ export function OrderDetailPage(): ReactElement {
   const automationRunsQuery = useSubjectAutomationRunsQuery('order', internalOrderId);
   const retry = useRetryOrderDestinationMutation();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  // #3541 - the fulfilment tasks decide whether the cancel dialog shows its
+  // pack-bench acknowledgement up front. The same read the tasks panel makes, so
+  // it costs no extra request. A failed read leaves the box to appear after the
+  // server answers `ORDER_WORK_ACCEPTED_NEEDS_ACK` instead. The buyer-note block
+  // (B-15) reads the same query to decide whether the bench line applies.
+  const fulfilmentTasksQuery = useOrderFulfillmentTasksQuery(internalOrderId);
+  // The Packing tab is for orders OpenLinker packs or holds: routing on, fulfilment tasks, a hold (now or before) or an order already packed.
+  const showPackingTab =
+    omsRouting === 'on' ||
+    (fulfilmentTasksQuery.data?.total ?? 0) > 0 ||
+    Boolean(query.data?.activeHold) ||
+    (query.data?.holdHistory?.length ?? 0) > 0 ||
+    Boolean(query.data?.packedAt);
+  // #3541 - the cancel request and its credit proposal come from the server, so
+  // the notice, "Review correction" and the timeline survive a reload and show
+  // for a second admin. Refunds the operator confirmed decide what is still owed.
+  const orderChangesQuery = useOrderChangesQuery(internalOrderId);
+  const orderRefundsQuery = useOrderRefundsQuery(internalOrderId);
+  // The one cancel RESPONSE this session holds. It carries only what the server
+  // does not persist (per-participant outcomes, voided labels, why a correction
+  // could not be drafted) and is gone after a reload, by design. Tagged with its
+  // order so a navigation never shows it on another.
+  // A packer works on the pack bench; the order routes refuse them anyway (#4286).
+  const isPacker = useIsPackerSession();
+  const demoMode = useDemoMode();
+  const canAddGift = useWriteAccess('gifts:write', demoMode).canWrite;
+  const [giftDialogOpen, setGiftDialogOpen] = useState(false);
+  const [issuesOpen, setIssuesOpen] = useState(false);
+  // The retryShipmentId link picks the Shipping tab once; after any tab change the operator's choice wins.
+  const [retryTabConsumed, setRetryTabConsumed] = useState(false);
+  const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
+  const [productPeekId, setProductPeekId] = useState<string | null>(null);
+  const [cancelOutcome, setCancelOutcome] = useState<{
+    internalOrderId: string;
+    result: CancelOrderResult;
+  } | null>(null);
+  // The one discount RESPONSE this session holds (#3544): it carries what the
+  // server does not persist (the repriced invoice lines of a correction, whether
+  // the refund intent could be opened) and is gone after a reload, by design.
+  const [stockOutcome, setStockOutcome] = useState<{
+    internalOrderId: string;
+    stock: OrderEditLineStock[];
+  } | null>(null);
+  const [workFailureOutcome, setWorkFailureOutcome] = useState<{
+    internalOrderId: string;
+    lineCount: number;
+  } | null>(null);
+  const [discountOutcome, setDiscountOutcome] = useState<{
+    internalOrderId: string;
+    result: OrderDiscountResult;
+  } | null>(null);
   const location = useLocation();
   // Deep-link recovery target from a `/shipments` row's Regenerate/Generate
   // action (#1826): `/orders/:orderId?retryShipmentId={id}&from=shipments` —
@@ -149,10 +269,60 @@ export function OrderDetailPage(): ReactElement {
   // render with it) — the app has no other hash-scroll, and the panels mount
   // asynchronously, so a native browser jump on first paint would miss.
   const hasOrder = query.data !== undefined;
+  // The selected tab is URL state (`?tab=`); a legacy anchor or a
+  // `retryShipmentId` link picks the tab that holds its target (#4286).
+  const resolvedTab: OrderDetailTabId = resolveOrderDetailTab({
+    tabParam: searchParams.get('tab'),
+    hash: location.hash,
+    hasRetryShipmentId: retryShipmentId !== undefined && !retryTabConsumed,
+  });
+  const activeTab: OrderDetailTabId =
+    resolvedTab === 'packing' && !showPackingTab ? DEFAULT_ORDER_DETAIL_TAB : resolvedTab;
+  // An anchor in a tab that is not shown lives on Overview instead.
+  const tabForTarget = (anchorId: string): OrderDetailTabId | null => {
+    const tab = tabForAnchor(anchorId);
+    return tab === 'packing' && !showPackingTab ? DEFAULT_ORDER_DETAIL_TAB : tab;
+  };
+  const handleTabChange = useCallback(
+    (value: string): void => {
+      setRetryTabConsumed(true);
+      const next = new URLSearchParams(searchParams);
+      if (value === DEFAULT_ORDER_DETAIL_TAB) next.delete('tab');
+      else next.set('tab', value);
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+  // Scroll to an anchor, opening the tab that holds it first: panels stay
+  // mounted but a hidden one cannot be scrolled to.
+  const goToAnchor = useCallback(
+    (targetId: string): void => {
+      const tab = tabForTarget(targetId);
+      if (tab && tab !== activeTab) handleTabChange(tab);
+      setPendingAnchor(targetId);
+    },
+    [activeTab, handleTabChange, showPackingTab],
+  );
+  // Scroll after the target tab has rendered, not on a fixed frame delay.
+  useEffect(() => {
+    if (!pendingAnchor) return;
+    const id = requestAnimationFrame(() => {
+      document.getElementById(pendingAnchor)?.scrollIntoView({ block: 'start' });
+      setPendingAnchor(null);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [pendingAnchor, activeTab]);
   useEffect(() => {
     if (!hasOrder) return;
     const targetId = location.hash.replace(/^#/, '');
     if (!targetId) return;
+    const anchorTab = tabForTarget(targetId);
+    // A `?tab=` already in the URL wins at resolve time, so an in-page anchor
+    // link (e.g. "view raw") must switch the tab itself before it can scroll.
+    if (anchorTab && anchorTab !== activeTab) {
+      handleTabChange(anchorTab);
+      return;
+    }
     const raf = requestAnimationFrame(() => {
       const target = document.getElementById(targetId);
       if (!target) return;
@@ -165,7 +335,7 @@ export function OrderDetailPage(): ReactElement {
       target.scrollIntoView({ behavior, block: 'start' });
     });
     return () => { cancelAnimationFrame(raf); };
-  }, [hasOrder, location.hash]);
+  }, [hasOrder, location.hash, activeTab, handleTabChange, showPackingTab]);
 
   const pendingDestinationId =
     retry.isPending && retry.variables ? retry.variables.destinationConnectionId : null;
@@ -178,40 +348,48 @@ export function OrderDetailPage(): ReactElement {
           onSuccess: () => {
             showToast({
               tone: 'success',
-              title: 'Retry queued',
-              description: 'Sync queued for the failed destination.',
+              title: copy.retryQueuedTitle,
+              description: copy.retryQueuedDescription,
             });
           },
           onError: (error) => {
-            showToast({ tone: 'error', title: 'Retry failed', description: error.message });
+            showToast({
+              tone: 'error',
+              title: copy.retryFailedTitle,
+              description: describeApiError(error, 'orders'),
+            });
           },
         },
       );
     },
-    [retry, internalOrderId, showToast],
+    [retry, internalOrderId, showToast, copy]
   );
+
+  if (isPacker) {
+    return <Navigate to="/bench" replace />;
+  }
 
   if (query.isLoading) {
     return (
-      <PageLayout eyebrow="Orders" title="Order detail">
-        <LoadingState liveRegion="off" title="Loading order" message="Fetching order details…" />
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
+        <LoadingState liveRegion="off" title={copy.loadingTitle} message={copy.loadingMessage} />
       </PageLayout>
     );
   }
 
   if (query.error || !query.data) {
     return (
-      <PageLayout eyebrow="Orders" title="Order detail">
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title}>
         <ErrorState
-          title="Unable to load order"
-          message={query.error?.message ?? 'Order not found'}
+          title={copy.loadErrorTitle}
+          message={query.error ? describeApiError(query.error, 'orders') : copy.notFound}
           action={
             <Button
               onClick={() => {
                 void query.refetch();
               }}
             >
-              Retry
+              {copy.retry}
             </Button>
           }
         />
@@ -231,7 +409,92 @@ export function OrderDetailPage(): ReactElement {
     session.user?.id ?? null,
   );
   const noteTimelineEvents = mapNoteTimelineToEvents(noteTimelineQuery.data ?? []);
+  // #3539 - the bench's per-parcel buyer-note acknowledgements, from the order read itself.
+  const buyerNoteTimelineEvents = mapBuyerNoteAcknowledgementsToEvents(
+    order.buyerNoteAcknowledgements,
+    session.user?.id ?? null,
+  );
+  // N-22 - the note text changed after a bench read; bench reads are not reset.
+  const buyerNoteChangeEvents = mapBuyerNoteChangeToEvents(
+    order.buyerNoteChangedAt,
+    order.buyerNoteAcknowledgements,
+  );
+  const documentEmailEvents = mapDocumentEmailsToEvents(documentEmailsQuery.data ?? []);
+  const buyerEmailEvents = mapBuyerEmailsToEvents(buyerEmailsQuery.data ?? []);
   const failedDestinations = order.syncStatus.filter((s) => s.status === 'failed');
+  // Mirrors the backend refusal (#3990): a live work object or a persisted routing
+  // block means routing owns the order, so a destination retry is a 409. The 409
+  // stays the backstop for the one case this cannot see (a router decision with
+  // neither a work nor a block yet).
+  const isRoutedOrder = Boolean(order.handledInOpenLinker) || Boolean(order.fulfillmentBlockReason);
+
+  // #3541 - cancel action inputs. All derived from data the page already holds.
+  const sessionCancelResult =
+    cancelOutcome?.internalOrderId === order.internalOrderId ? cancelOutcome.result : null;
+  const orderChanges = orderChangesQuery.data ?? [];
+  const orderRefunds = orderRefundsQuery.data ?? [];
+  // A refund is not confirmable until the cancel is: an open request leaves the
+  // order amending and the money not yet owed (C-2).
+  const hasConfirmedCancel = orderChanges.some(
+    (change) => change.kind === 'order.cancel_request' && change.status === 'confirmed',
+  );
+  const cancelTotalLabel = snapshot.totals
+    ? format.money(snapshot.totals.total, snapshot.totals.currency)
+    : null;
+  const cancelUnitCount = snapshot.items.reduce((sum, item) => sum + item.quantity, 0);
+  const cancelSourceConnection = connectionsQuery.data?.find((c) => c.id === order.sourceConnectionId);
+  const cancelSourceName = cancelSourceConnection ? displayConnectionName(cancelSourceConnection.name) : null;
+  const handleOrderCancelResult = (result: CancelOrderResult): void => {
+    setCancelOutcome({ internalOrderId: order.internalOrderId, result });
+    // The cancel voids labels, cancels fulfilment work and opens a credit
+    // proposal; those panels read keys outside the orders domain.
+    void queryClient.invalidateQueries({ queryKey: shipmentsQueryKeys.all });
+    void queryClient.invalidateQueries({ queryKey: fulfillmentQueryKeys.all });
+    void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
+  };
+  const cancelTimelineEvents = buildOrderCancelTimelineEvents({
+    changes: orderChanges,
+    refunds: orderRefunds,
+    sourceName: cancelSourceName,
+    sessionResult: sessionCancelResult,
+  });
+
+  // #3544 - the order beside the channel's record, and the edit actions' inputs.
+  const sessionDiscount =
+    discountOutcome?.internalOrderId === order.internalOrderId ? discountOutcome.result : null;
+  const editTimeline = buildOrderEditTimelineEvents(order.edits, cancelSourceName);
+  const sessionStock = stockOutcome?.internalOrderId === order.internalOrderId ? stockOutcome.stock : null;
+  const sessionWorkFailureCount =
+    workFailureOutcome?.internalOrderId === order.internalOrderId ? workFailureOutcome.lineCount : 0;
+  const handleOrderEdited = (outputs: readonly EditOrderOutput[]): void => {
+    const workFailures = outputs.flatMap((output) =>
+      'workNarrowingFailures' in output && !output.dryRun ? (output.workNarrowingFailures ?? []) : [],
+    );
+    setWorkFailureOutcome(
+      workFailures.length > 0
+        ? { internalOrderId: order.internalOrderId, lineCount: workFailures.length }
+        : null,
+    );
+    // The restore outcome is not persisted on the order, so it is held for this
+    // session only; an edit without line changes reports none (E-52).
+    const stock = outputs.flatMap((output) =>
+      'stock' in output && !output.dryRun ? output.stock : [],
+    );
+    if (stock.length > 0) setStockOutcome({ internalOrderId: order.internalOrderId, stock });
+    const discount = outputs.find(
+      (output): output is OrderDiscountResult => 'paymentBranch' in output,
+    );
+    if (discount) setDiscountOutcome({ internalOrderId: order.internalOrderId, result: discount });
+    // An edit narrows fulfilment work, changes what a label or invoice is built
+    // from and may open a correction; those panels read keys outside the orders domain.
+    void queryClient.invalidateQueries({ queryKey: shipmentsQueryKeys.all });
+    void queryClient.invalidateQueries({ queryKey: fulfillmentQueryKeys.all });
+    void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
+  };
+  const scrollToRemedy = (target: OrderEditRemedyTarget): void => {
+    const id = target === 'packing' ? 'packing' : target === 'shipment' ? 'shipment' : 'invoicing';
+    goToAnchor(id);
+  };
 
   const connections = connectionsQuery.data ?? [];
   // The notes section's "Never sent to …" promise names THIS order's channels
@@ -310,32 +573,56 @@ export function OrderDetailPage(): ReactElement {
 
   // Internal ID is the header copy-chip; not duplicated here.
   const shipByView = formatShipBy(order.dispatchByAt ?? null);
+  const estimatedCopy = ordersCopy.orderRowDetail.estimated;
+  const summary = copy.summary;
+  const sourceName = connectionsById.get(order.sourceConnectionId)?.name;
+  const syncStatusLabels: Readonly<Record<string, string>> = copy.syncStatus.statuses;
+  const syncStatusLabel = (status: string): string =>
+    Object.prototype.hasOwnProperty.call(syncStatusLabels, status) ? syncStatusLabels[status] : status;
   const summaryItems: KeyValueItem[] = [
     ...(snapshot.orderNumber
-      ? [{ id: 'orderNumber', label: 'Order #', value: snapshot.orderNumber, mono: true }]
+      ? [{ id: 'orderNumber', label: summary.orderNumber, value: snapshot.orderNumber, mono: true }]
       : []),
-    ...(snapshot.status ? [{ id: 'status', label: 'Status', value: snapshot.status }] : []),
+    ...(snapshot.status
+      ? [
+          isChannelStatusStale(order.lifecyclePhase, snapshot.status)
+            ? {
+                // C-23: not the order's status - OL cancelled it and the channel
+                // has not re-polled yet.
+                id: 'status',
+                label: sourceName
+                  ? interpolate(summary.statusAtChannel, { channel: sourceName })
+                  : summary.statusAtUnknownChannel,
+                value: <span className="text-muted">{orderStatusLabel(snapshot.status, summary.statusValues)}</span>,
+              }
+            : {
+                id: 'status',
+                label: summary.status,
+                value: orderStatusLabel(snapshot.status, summary.statusValues),
+              },
+        ]
+      : []),
     {
       id: 'sourceConnection',
-      label: 'Source',
+      label: summary.source,
       value: <ConnectionEntityLabel connectionId={order.sourceConnectionId} />,
     },
     ...(order.sourceEventId
-      ? [{ id: 'sourceEvent', label: 'Source Event ID', value: order.sourceEventId, mono: true }]
+      ? [{ id: 'sourceEvent', label: summary.sourceEventId, value: order.sourceEventId, mono: true }]
       : []),
     // Buyer-placed-on-marketplace time leads (#926); the OL ingestion clocks
     // (Received / Updated) are demoted to "OpenLinker processing" below it.
     ...(snapshot.placedAt
-      ? [{ id: 'placedAt', label: 'Placed', value: <TimeDisplay iso={snapshot.placedAt} format="datetime" /> }]
+      ? [{ id: 'placedAt', label: summary.placed, value: <TimeDisplay iso={snapshot.placedAt} format="datetime" /> }]
       : []),
-    { id: 'createdAt', label: 'Received (OL)', value: <TimeDisplay iso={order.createdAt} format="datetime" /> },
-    { id: 'updatedAt', label: 'Updated (OL)', value: <TimeDisplay iso={order.updatedAt} format="datetime" /> },
+    { id: 'createdAt', label: summary.receivedOl, value: <TimeDisplay iso={order.createdAt} format="datetime" /> },
+    { id: 'updatedAt', label: summary.updatedOl, value: <TimeDisplay iso={order.updatedAt} format="datetime" /> },
     // Dispatch SLA countdown (#927) — the ship-by deadline + urgency badge.
     ...(order.dispatchByAt && shipByView
       ? [
           {
             id: 'shipBy',
-            label: 'Ship by',
+            label: summary.shipBy,
             value: (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                 <TimeDisplay iso={order.dispatchByAt} format="datetime" />
@@ -345,10 +632,10 @@ export function OrderDetailPage(): ReactElement {
                 {order.dispatchByEstimated ? (
                   <span
                     className="text-muted"
-                    aria-label="Estimated"
-                    title="OpenLinker estimate - not a marketplace-confirmed deadline"
+                    aria-label={estimatedCopy.ariaLabel}
+                    title={estimatedCopy.title}
                   >
-                    est.
+                    {estimatedCopy.label}
                   </span>
                 ) : null}
               </span>
@@ -362,10 +649,237 @@ export function OrderDetailPage(): ReactElement {
     // an absent optional fact elsewhere in this list is.
     {
       id: 'buyerTaxId',
-      label: 'Buyer tax ID',
+      label: summary.buyerTaxId,
       value: <OrderBuyerTaxIdValue buyerTaxId={order.buyerTaxId} />,
     },
   ];
+
+
+  // Cancelled in OpenLinker or at the source: the channel snapshot can lag behind an OpenLinker cancel.
+  const isCancelledOrder =
+    snapshot.status === 'cancelled' ||
+    order.lifecyclePhase === 'cancelled';
+  const issues = deriveOrderIssues({
+    cancelled: isCancelledOrder,
+    failedDestinationCount: failedDestinations.length,
+    activeHoldLabel: order.activeHold ? holdReasonLabel(order.activeHold.reason) : null,
+    // A manual-trigger block is the configured workflow, not a problem, and an
+    // existing document supersedes the block (same reading as the orders list).
+    documentBlocked:
+      order.salesDocumentBlockReason != null &&
+      order.salesDocumentBlockReason !== 'trigger-model-manual' &&
+      order.salesDocument?.document == null,
+    shipByOverdue: shipByView?.level === 'overdue',
+    fulfillment,
+    recordReady: order.recordStatus === 'ready',
+    awaitingPayment: snapshot.paymentStatus === 'awaiting',
+    shipmentsLoaded: !shipmentsQuery.isLoading && !shipmentsQuery.isError,
+    canGenerateLabel: hasLiveOlCarrierRoute(order.deliveryResolution),
+  });
+  const nextStep = issues[0] ?? null;
+  const issueTabs = new Set(
+    issues
+      .filter((i) => i.tone !== 'info')
+      .map((i) => (i.tab === 'packing' && !showPackingTab ? DEFAULT_ORDER_DETAIL_TAB : i.tab)),
+  );
+  const tabLabels: Record<OrderDetailTabId, string> = {
+    overview: copy.tabs.overview,
+    shipping: copy.tabs.shipping,
+    packing: copy.tabs.packing,
+    documents: copy.tabs.documents,
+    returns: copy.tabs.returns,
+    notes: copy.tabs.notes,
+    history: copy.tabs.history,
+    technical: copy.tabs.technical,
+  };
+
+  // Packing and hold are a tab only where OpenLinker takes part in packing; elsewhere they stay on Overview (#4286).
+  const packingPanels = (
+    <>
+          {/* Packing is a fact about EVERY order, so this sits in the always
+              rendered left stack rather than inside the capability-gated
+              shipment panel — an order with no shipping-capable connection
+              still gets packed. */}
+          {/* #2118 - hidden for an order routed to a destination the operator
+              declared as packing and shipping by itself. Display-only: the
+              packed endpoint still accepts a write, so that system can still
+              report the order as packed. */}
+          {/* #3544 - the anchor an edit refusal's "Mark as not packed" remedy scrolls to. */}
+          <div id="packing" tabIndex={-1}>
+            {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
+              <OrderPackedControl
+                internalOrderId={internalOrderId}
+                packedAt={order.packedAt}
+                packedByUserId={order.packedByUserId}
+              />
+            )}
+          </div>
+
+          {/* #2342 — the list DISPLAYS a hold, the detail page ACTS on it
+              (#2081 rule 3). Beside the packed control for the same reason it
+              sits in the always-rendered stack: a hold is a fact about every
+              order, whatever capabilities its connections declare. */}
+          <OrderHoldPanel
+            // Remount per order. `resumeFailure` is session-local state inside
+            // the panel and was cleared only by a release; navigating to a
+            // CACHED next order re-renders without remounting (the page
+            // early-returns a skeleton on `isLoading` only), so the "did not
+            // start moving again" alert leaked onto an order that was never
+            // held — a false claim about someone else's order.
+            key={order.internalOrderId}
+            internalOrderId={internalOrderId}
+            activeHold={order.activeHold}
+            holdHistory={order.holdHistory}
+          />
+
+      {/* #2411 — work-grain holds. Full width and BELOW the grid: a routed
+          order can carry several fulfilment tasks, each with its own lines and
+          holds, which is more than a rail column can hold without wrapping into
+          nonsense on a tablet. Keyed per order so the panel's dialog state
+          cannot leak onto a cached next order (the OrderHoldPanel precedent).
+          With routing on, an order with no fulfilment tasks SAYS so — what a
+          reader needs when an order was not routed. With routing off (or its
+          state not known) the section appears only for an order that has tasks
+          from when routing was on (#3505); it is never hidden outright, since
+          those tasks still carry actions. */}
+      {/* The key is namespaced: `OrderReturnsPanel` below is keyed on the same
+          order id, and two siblings sharing a key let React duplicate this
+          panel's DOM once it can render nothing (`hideWhenEmpty`). */}
+      {/* #3557 - the routing decision (stuck / resolved / healthy). Read only.
+          Not even queried unless routing is on. Namespaced key, as above. */}
+      <RoutingDecisionPanel
+        key={`routing-decision:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        orderBlockReason={order.fulfillmentBlockReason}
+        enabled={omsRouting === 'on'}
+      />
+
+      <OrderFulfillmentTasksPanel
+        key={`fulfilment-tasks:${order.internalOrderId}`}
+        internalOrderId={internalOrderId}
+        hideWhenEmpty={omsRouting !== 'on'}
+      />
+
+    </>
+  );
+
+  const allTabEntries: OrderDetailTabEntry[] = [
+    { id: 'overview', label: copy.tabs.overview, flag: issueTabs.has('overview') },
+    { id: 'shipping', label: copy.tabs.shipping, count: shipmentsQuery.data?.items.length, flag: issueTabs.has('shipping') },
+    {
+      id: 'packing',
+      label: copy.tabs.packing,
+      count: (fulfilmentTasksQuery.data?.total ?? 0) + (order.activeHold ? 1 : 0),
+      flag: issueTabs.has('packing'),
+    },
+    { id: 'documents', label: copy.tabs.documents, count: order.salesDocument?.document ? 1 : 0, flag: issueTabs.has('documents') },
+    { id: 'returns', label: copy.tabs.returns },
+    { id: 'notes', label: copy.tabs.notes },
+    { id: 'history', label: copy.tabs.history },
+    { id: 'technical', label: copy.tabs.technical, count: failedDestinations.length + snapshot.parseWarnings.length, flag: issueTabs.has('technical') },
+  ];
+  const tabEntries = allTabEntries.filter((tab) => tab.id !== 'packing' || showPackingTab);
+
+  const canGenerateLabel =
+    fulfillment === 'not-shipped' &&
+    !isCancelledOrder &&
+    hasShippingCapability &&
+    hasLiveOlCarrierRoute(order.deliveryResolution);
+  const headerActions = (
+    <>
+    <OrderConfirmRefundAction
+      internalOrderId={order.internalOrderId}
+      currency={snapshot.totals?.currency ?? null}
+      sourceConnectionId={order.sourceConnectionId}
+      orderTotal={
+        snapshot.totals
+          ? snapshot.totals.total.toFixed(minorUnitExponentFor(snapshot.totals.currency))
+          : null
+      }
+      visible={snapshot.status === 'cancelled' || hasConfirmedCancel}
+    />
+    <OrderEditAction
+      // Remount per order so an open dialog never carries over to a cached next order.
+      key={`edit:${order.internalOrderId}`}
+      internalOrderId={order.internalOrderId}
+      orderNumber={snapshot.orderNumber ?? null}
+      sourceName={cancelSourceName}
+      snapshot={snapshot}
+      edits={order.edits}
+      packed={order.packedAt !== null && order.packedAt !== undefined}
+      shipped={order.fulfillmentState === 'dispatched'}
+      acceptedWork={hasAcceptedFulfilmentWork(fulfilmentTasksQuery.data?.works ?? [])}
+      terminal={isOrderCancelTerminal({
+        snapshotStatus: snapshot.status,
+        lifecyclePhase: order.lifecyclePhase,
+        fulfillmentState: order.fulfillmentState,
+      })}
+      amending={order.lifecyclePhase === 'amending'}
+      onSaved={handleOrderEdited}
+      onGoTo={scrollToRemedy}
+    />
+    {canGenerateLabel ? (
+      <Button
+        tone="secondary"
+        className="button--sm"
+        disabled={Boolean(order.activeHold)}
+        title={order.activeHold ? copy.nextStep.onHold.replace('{reason}', holdReasonLabel(order.activeHold.reason)) : undefined}
+        onClick={() => {
+          handleTabChange('shipping');
+        }}
+      >
+        {copy.generateLabel}
+      </Button>
+    ) : null}
+    <OrderHeaderMenu label={copy.tabs.seeMore}>
+    <GiftsGuide variant="detail" />
+    <OrderAddGiftAction
+      key={`gift:${order.internalOrderId}`}
+      internalOrderId={order.internalOrderId}
+      orderLabel={snapshot.orderNumber ?? order.internalOrderId}
+      currency={snapshot.totals?.currency}
+      terminal={isOrderCancelTerminal({
+        snapshotStatus: snapshot.status,
+        lifecyclePhase: order.lifecyclePhase,
+        fulfillmentState: order.fulfillmentState,
+      })}
+      parcelClosed={
+        (order.packedAt !== null && order.packedAt !== undefined) ||
+        order.fulfillmentState === 'dispatched' ||
+        (shipmentsQuery.data?.items ?? []).some(
+          (shipment) => shipment.status === 'generated' || shipment.status === 'dispatched',
+        )
+      }
+      hasSalesDocument={order.salesDocument?.document != null}
+      documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
+      notReady={order.recordStatus !== 'ready'}
+      open={giftDialogOpen}
+      onOpenChange={setGiftDialogOpen}
+    />
+    <OrderCancelAction
+      // Remount per order so an open dialog never carries over to a cached next order.
+      key={order.internalOrderId}
+      internalOrderId={order.internalOrderId}
+      orderNumber={snapshot.orderNumber ?? null}
+      sourceName={cancelSourceName}
+      unitCount={cancelUnitCount}
+      totalLabel={cancelTotalLabel}
+      invoiced={snapshot.invoice?.status === 'issued'}
+      acceptedWork={hasAcceptedFulfilmentWork(fulfilmentTasksQuery.data?.works ?? [])}
+      terminal={isOrderCancelTerminal({
+        snapshotStatus: snapshot.status,
+        lifecyclePhase: order.lifecyclePhase,
+        fulfillmentState: order.fulfillmentState,
+      })}
+      amending={order.lifecyclePhase === 'amending'}
+      onResult={handleOrderCancelResult}
+      onGoToShipment={() => {
+        goToAnchor('shipment');
+      }}
+    />
+    </OrderHeaderMenu>
+    </>
+  );
 
   return (
     <PageLayout
@@ -373,41 +887,104 @@ export function OrderDetailPage(): ReactElement {
       // `/shipments` triage jump otherwise had only browser-back to return.
       backTo={
         cameFromShipments
-          ? { to: '/shipments', label: 'Shipments' }
-          : { to: '/orders', label: 'Orders' }
+          ? { to: '/shipments', label: copy.backToShipments }
+          : { to: '/orders', label: copy.backToOrders }
       }
-      eyebrow="Orders"
-      title="Order detail"
+      eyebrow={copy.eyebrow}
+      title={copy.title}
     >
       <OrderDetailHeader
         order={order}
         snapshot={snapshot}
-        tags={<OrderTagsHeaderRow internalOrderId={order.internalOrderId} />}
+        tags={<OrderTagsHeaderRow internalOrderId={internalOrderId} />}
+        actions={headerActions}
+        accent={nextStep ? nextStep.tone : 'ok'}
+        issuesCount={issues.length}
+        onShowIssues={() => { setIssuesOpen(true); }}
+        buyerName={
+          [snapshot.shippingAddress?.firstName, snapshot.shippingAddress?.lastName]
+            .filter(Boolean)
+            .join(' ') || null
+        }
+        channelName={cancelSourceName}
+        onOpenProduct={setProductPeekId}
+        statusPill={
+          nextStep && nextStep.tone !== 'info'
+            ? { tone: nextStep.tone === 'error' ? 'error' : 'warning', label: copy.nextStep.short[nextStep.kind] }
+            : null
+        }
+        deliveryFact={[carrier, snapshot.pickupPoint?.name].filter(Boolean).join(', ') || null}
+        shipByFact={
+          shipByView && order.dispatchByAt
+            ? { iso: order.dispatchByAt, tone: SHIP_BY_TONE[shipByView.level] }
+            : null
+        }
+        footer={
+          issues.length > 0 ? (
+            <OrderNextStepCard
+              steps={issues}
+              tabLabels={tabLabels}
+              onOpenTab={handleTabChange}
+              expanded={issuesOpen}
+              onToggleExpanded={() => { setIssuesOpen((v) => !v); }}
+            />
+          ) : null
+        }
       />
 
-      <PinnedOrderNoteBanner internalOrderId={order.internalOrderId} />
+      <PinnedOrderNoteBanner internalOrderId={internalOrderId} />
 
-      <OrderHealthSummary
-        syncStatus={order.syncStatus}
-        fulfillment={fulfillment}
-        totals={snapshot.totals}
-        itemCount={snapshot.items.length}
-        failedDestinationId={failedDestinations[0]?.destinationConnectionId ?? null}
-        fulfillmentPending={connectionsQuery.isLoading || shipmentsQuery.isLoading}
+      <OrderCancelResultNotice
+        key={order.internalOrderId}
+        internalOrderId={order.internalOrderId}
+        changes={orderChanges}
+        refundRecorded={orderRefunds.length > 0}
+        sourceName={cancelSourceName}
+        totalLabel={cancelTotalLabel}
+        sessionResult={sessionCancelResult}
+        onCorrectionConfirmed={() => {
+          void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
+        }}
+      />
+
+      <OrderEditedNotice
+        key={`edited:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        edits={order.edits}
+        sourceName={cancelSourceName}
+        sessionDiscount={sessionDiscount}
+        sessionStock={sessionStock}
+        sessionWorkFailureCount={sessionWorkFailureCount}
+        onDiscountResent={handleOrderEdited}
+        onConfirmed={() => {
+          void queryClient.invalidateQueries({ queryKey: invoicingQueryKeys.all });
+        }}
+      />
+
+      {/* #3961 - a line the shop changed after packing started: what changed,
+          what OpenLinker already did, and what is left to decide. */}
+      <OrderSourceChangeCard
+        key={`source-change:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        lastAmendmentChanges={order.lastAmendmentChanges}
+        lastAmendedAt={order.lastAmendedAt}
+        omsAttention={order.omsAttention}
+        itemNames={Object.fromEntries(snapshot.items.map((item) => [item.id, item.name ?? item.sku ?? item.id]))}
+        hasPackingWork={(fulfilmentTasksQuery.data?.total ?? 0) > 0}
+        sourceName={cancelSourceName}
+        sourcePlatform={sourcePlatformType}
       />
 
       {failedDestinations.length > 0 ? (
         <Alert
           tone="error"
-          title={`${failedDestinations.length} destination${
-            failedDestinations.length > 1 ? 's' : ''
-          } failed`}
+          title={plural(failedDestinations.length, copy.failedDestinations)}
           action={
             <Link
               to={`/orders/failed?connectionId=${encodeURIComponent(order.sourceConnectionId)}`}
               className="button button--secondary button--sm"
             >
-              View failed orders
+              {copy.viewFailedOrders}
             </Link>
           }
         >
@@ -422,22 +999,31 @@ export function OrderDetailPage(): ReactElement {
                     </span>
                   ) : null}
                   <a className="order-detail__failed-raw" href={`#${RAW_SNAPSHOT_ANCHOR_ID}`}>
-                    view raw ▸
+                    {copy.viewRaw} <span aria-hidden="true">▸</span>
                   </a>
                 </div>
-                <Button
-                  tone="primary"
-                  className="button--sm"
-                  onClick={() => handleRetry(status.destinationConnectionId)}
-                  disabled={pendingDestinationId === status.destinationConnectionId}
-                >
-                  {pendingDestinationId === status.destinationConnectionId ? 'Retrying…' : 'Retry'}
-                </Button>
+                {isRoutedOrder ? (
+                  <span className="order-detail__failed-error">{copy.routedNote}</span>
+                ) : (
+                  <Button
+                    tone="primary"
+                    className="button--sm"
+                    onClick={() => handleRetry(status.destinationConnectionId)}
+                    disabled={pendingDestinationId === status.destinationConnectionId}
+                  >
+                    {pendingDestinationId === status.destinationConnectionId ? copy.retrying : copy.retry}
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
         </Alert>
       ) : null}
+
+      <DestinationRoutingCallout
+        reason={order.destinationRoutingBlockReason}
+        detail={order.destinationRoutingBlockDetail}
+      />
 
       {/* #2350 — the shortfall callout, in the same full-width Alert slot as the
           failed-destinations callout. `warning`, not `error`: the order is at
@@ -447,95 +1033,102 @@ export function OrderDetailPage(): ReactElement {
           presence of an episode is a claim. */}
       <StockAtRiskCallout shortfalls={order.reservationShortfalls} />
 
-      {snapshot.items.length > 0 || snapshot.totals ? (
+      {/* #3624 - a multipack waiting for a bundle: the next step is on the banner. */}
+      {(order.multipackHolds ?? (order.multipackHold ? [order.multipackHold] : [])).map(
+        (hold, _index, all) => (
+          <MultipackHoldBanner key={hold.lineId} hold={hold} otherLinesHeld={all.length > 1} />
+        ),
+      )}
+
+      {/* #3539 (mockup M2) - the buyer's own message, in the same full-width slot
+          as the callout above and ABOVE the panels the operator acts in. Not an
+          Alert: it is the buyer's voice. Renders nothing without a note. */}
+      <OrderBuyerNote
+        order={order}
+        channelLabel={
+          sourcePlatformType === null ? null : resolvePlatformLabel(platforms, sourcePlatformType)
+        }
+        channelPlatform={sourcePlatformType}
+        placedAt={snapshot.placedAt ?? null}
+        hasFulfilmentWork={(fulfilmentTasksQuery.data?.total ?? 0) > 0}
+      />
+
+      {/* #3940 - why a gift that should be here is not: the gift rules' own
+          records for this order, plus a shop that refused a gift line. */}
+      <OrderGiftAttention
+        key={`gift-attention:${order.internalOrderId}`}
+        internalOrderId={order.internalOrderId}
+        shopRejected={
+          snapshot.items.some((item) => item.gift != null) && failedDestinations.length > 0
+        }
+        onAddGift={canAddGift ? () => setGiftDialogOpen(true) : undefined}
+      />
+
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <OrderDetailTabList
+          ariaLabel={copy.tabs.ariaLabel}
+          attentionLabel={copy.tabs.needsAttention}
+          tabs={tabEntries}
+        />
+
+      <TabsContent value="overview" forceMount className="order-detail__tab">
+        <OrderProgressLine
+          input={{
+            placedAt: snapshot.placedAt ?? null,
+            paid: snapshot.paymentStatus === 'paid',
+            syncedCount: order.syncStatus.filter((x) => x.status === 'synced').length,
+            syncTotal: order.syncStatus.length,
+            packedAt: order.packedAt ?? null,
+            dispatched: fulfillment === 'dispatched' || fulfillment === 'delivered',
+            delivered: fulfillment === 'delivered',
+          }}
+        />
+        <div className="order-detail__flat">
+        <OrderHealthSummary
+          syncStatus={order.syncStatus}
+          fulfillment={fulfillment}
+          totals={snapshot.totals}
+          itemCount={snapshot.items.length}
+          failedDestinationId={failedDestinations[0]?.destinationConnectionId ?? null}
+          fulfillmentPending={connectionsQuery.isLoading || shipmentsQuery.isLoading}
+          destinationRoutingBlockReason={order.destinationRoutingBlockReason}
+          handledInOpenLinker={order.handledInOpenLinker}
+        />
+        </div>
+        {snapshot.items.length > 0 || snapshot.totals ? (
         <section className="detail-section">
-          <h3 className="detail-section__title">Pricing &amp; tax</h3>
-          <OrderPricingPanel items={snapshot.items} totals={snapshot.totals} />
+          <h3 className="detail-section__title">{copy.pricingTitle}</h3>
+          <OrderPricingPanel
+            items={snapshot.items}
+            totals={snapshot.totals}
+            internalOrderId={internalOrderId}
+            edits={order.edits}
+            channelName={cancelSourceName}
+            bundleLines={order.bundleLines}
+            documentConnectionId={order.salesDocument?.document?.identity.connectionId ?? null}
+            onOpenProduct={setProductPeekId}
+            documentNumber={order.salesDocument?.document?.identity.documentNumber ?? null}
+          />
         </section>
       ) : null}
-
-      {/* Detail grid: left = summary + sync status, right = delivery + shipment + customer */}
-      <div className="order-detail__primary-grid order-detail__primary-grid--split">
-        <div className="order-detail__stack">
+        <div className="order-detail__overview-grid" data-tour="order-detail">
+          <div className="order-detail__overview-main">
+          
           <section className="detail-section">
-            <h3 className="detail-section__title">Summary</h3>
+            <h3 className="detail-section__title">{summary.title}</h3>
             <KeyValueList items={summaryItems} />
           </section>
 
-          {/* Packing is a fact about EVERY order, so this sits in the always
-              rendered left stack rather than inside the capability-gated
-              shipment panel — an order with no shipping-capable connection
-              still gets packed. */}
-          {/* #2118 - hidden for an order routed to a destination the operator
-              declared as packing and shipping by itself. Display-only: the
-              packed endpoint still accepts a write, so that system can still
-              report the order as packed. */}
-          {isFulfilmentOwnedByDestination(order.syncStatus, fulfilmentOwnedIds) ? null : (
-            <OrderPackedControl
-              internalOrderId={order.internalOrderId}
-              packedAt={order.packedAt}
-              packedByUserId={order.packedByUserId}
-            />
-          )}
-
-          {/* #2342 — the list DISPLAYS a hold, the detail page ACTS on it
-              (#2081 rule 3). Beside the packed control for the same reason it
-              sits in the always-rendered stack: a hold is a fact about every
-              order, whatever capabilities its connections declare. */}
-          <OrderHoldPanel
-            // Remount per order. `resumeFailure` is session-local state inside
-            // the panel and was cleared only by a release; navigating to a
-            // CACHED next order re-renders without remounting (the page
-            // early-returns a skeleton on `isLoading` only), so the "did not
-            // start moving again" alert leaked onto an order that was never
-            // held — a false claim about someone else's order.
-            key={order.internalOrderId}
+          {/* #3963 - did a payment that arrived after the shops got the order reach them? */}
+          <OrderPaymentPanel
             internalOrderId={order.internalOrderId}
-            activeHold={order.activeHold}
-            holdHistory={order.holdHistory}
+            entries={order.paymentWriteback ?? []}
+            sourceName={cancelSourceName}
+            amountLabel={cancelTotalLabel}
           />
-
-          {/* #3531/#3533 — beside Hold and Packing: notes are a fact about
-              every order, independent of which integration it came through. */}
-          <OrderNotesPanel
-            key={order.internalOrderId}
-            internalOrderId={order.internalOrderId}
-            channelNames={orderChannelNames}
-          />
-
-          <section className="detail-section">
-            <h3 className="detail-section__title">
-              Sync status{order.syncStatus.length > 0 ? ` (${order.syncStatus.length})` : ''}
-            </h3>
-            {order.syncStatus.length > 0 ? (
-              <ul className="order-sync-list">
-                {order.syncStatus.map((status) => (
-                  <li key={status.destinationConnectionId} className="order-sync-row">
-                    <ConnectionEntityLabel connectionId={status.destinationConnectionId} showId={false} />
-                    <StatusBadge tone={SYNC_STATUS_TONES[status.status]} compact>
-                      {status.status}
-                    </StatusBadge>
-                    <span className="order-sync-row__ext">
-                      {status.externalOrderId ? (
-                        <span className="mono-text">#{status.externalOrderId}</span>
-                      ) : (
-                        <span className="text-muted">no destination order id yet</span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-muted">No sync destinations configured.</p>
-            )}
-            <p className="order-sync-list__note text-muted">
-              Idempotent create (#909) — a retry won&rsquo;t double-create; a synced row shows its destination
-              order id.
-            </p>
-          </section>
-        </div>
-
-        <div className="order-detail__stack">
+          {showPackingTab ? null : packingPanels}
+          </div>
+          <div className="order-detail__overview-side">
           <OrderDeliveryPanel
             shippingAddress={snapshot.shippingAddress}
             shipping={snapshot.shipping}
@@ -545,18 +1138,50 @@ export function OrderDetailPage(): ReactElement {
             methodFallback={methodFallback}
             deliveryOutcome={deliveryOutcome}
             deliveryOwner={deliveryOwner}
+            deliveryResolution={order.deliveryResolution}
             deliveryRider={order.deliveryRider}
             sourceConnectionId={order.sourceConnectionId}
             sourceDeliveryMethodId={order.sourceDeliveryMethodId}
             sourceDeliveryMethodName={order.sourceDeliveryMethodName}
+            edits={order.edits}
+            channelName={cancelSourceName}
           />
+
+          <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
+          </div>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="shipping" forceMount className="order-detail__tab">
           {/* Anchor wrappers (#1713) for the orders-list deep-link CTAs
               (`/orders/{id}#shipment`, `/orders/{id}#invoicing`). Page-level
               divs so the target exists even while a panel is capability-gated
               (renders null) or still loading. */}
           <div id="shipment" tabIndex={-1}>
-            <OrderShipmentPanel order={order} autoOpenForShipmentId={retryShipmentId} />
+            <div className="order-shipping-grid">
+              <OrderShipToBox
+                methodName={snapshot.shipping?.methodName ?? methodFallback ?? null}
+                address={snapshot.shippingAddress}
+                pickupPoint={snapshot.pickupPoint}
+              />
+              <OrderShipmentPanel
+                order={order}
+                autoOpenForShipmentId={retryShipmentId}
+                // A held order's Generate button is disabled, so its form must not open by itself either.
+                defaultFormOpen={!isCancelledOrder && !order.activeHold}
+              />
+            </div>
           </div>
+
+      </TabsContent>
+
+      {showPackingTab ? (
+        <TabsContent value="packing" forceMount className="order-detail__tab order-detail__split">
+          {packingPanels}
+        </TabsContent>
+      ) : null}
+
+      <TabsContent value="documents" forceMount className="order-detail__tab order-detail__split">
           {/* #2160: one unified "Sales document" slot replaces the two
               independent OrderInvoicePanel / OrderReceiptPanel siblings.
               `id="invoicing"` is kept (not renamed to e.g. "sales-document")
@@ -573,53 +1198,37 @@ export function OrderDetailPage(): ReactElement {
             <UnlinkedCatalogueLinesBadge invoice={snapshot.invoice} />
             <WarehouseReleaseBadge invoice={snapshot.invoice} />
           </div>
-          <OrderCustomerCard customerId={order.customerId} sourceConnectionId={order.sourceConnectionId} />
-        </div>
-      </div>
 
-      {/* #2411 — work-grain holds. Full width and BELOW the grid: a routed
-          order can carry several fulfilment tasks, each with its own lines and
-          holds, which is more than a rail column can hold without wrapping into
-          nonsense on a tablet. Keyed per order so the panel's dialog state
-          cannot leak onto a cached next order (the OrderHoldPanel precedent).
-          With routing on, an order with no fulfilment tasks SAYS so — what a
-          reader needs when an order was not routed. With routing off (or its
-          state not known) the section appears only for an order that has tasks
-          from when routing was on (#3505); it is never hidden outright, since
-          those tasks still carry actions. */}
-      {/* The key is namespaced: `OrderReturnsPanel` below is keyed on the same
-          order id, and two siblings sharing a key let React duplicate this
-          panel's DOM once it can render nothing (`hideWhenEmpty`). */}
-      <OrderFulfillmentTasksPanel
-        key={`fulfilment-tasks:${order.internalOrderId}`}
-        internalOrderId={order.internalOrderId}
-        hideWhenEmpty={omsRouting !== 'on'}
-      />
+          <OrderBuyerEmailsPanel internalOrderId={order.internalOrderId} />
 
+      </TabsContent>
+
+      <TabsContent value="returns" forceMount className="order-detail__tab">
       {/* #2640 — returns spec § 5.4's third surface. Rendered UNCONDITIONALLY
           and keyed per order: an absent panel would read as "this order cannot
           have returns", which is a fourth wrong answer beside the three the
           panel itself distinguishes (failed / unreadable / confirmed-empty). */}
       <OrderReturnsPanel
         key={order.internalOrderId}
-        internalOrderId={order.internalOrderId}
+        internalOrderId={internalOrderId}
       />
 
-      {snapshot.parseWarnings.length > 0 ? (
-        <p className="order-detail__parse-warning-row">
-          <a
-            href={`#${RAW_SNAPSHOT_ANCHOR_ID}`}
-            className="order-detail__parse-warning"
-            title="Some fields couldn't be parsed — see raw snapshot"
-          >
-            <span aria-hidden="true">⚠</span> {snapshot.parseWarnings.length} field
-            {snapshot.parseWarnings.length > 1 ? 's' : ''} couldn&rsquo;t be parsed · view raw
-          </a>
-        </p>
-      ) : null}
+      </TabsContent>
 
+      <TabsContent value="notes" forceMount className="order-detail__tab">
+          {/* #3531/#3533 — beside Hold and Packing: notes are a fact about
+              every order, independent of which integration it came through. */}
+          <OrderNotesPanel
+            key={order.internalOrderId}
+            internalOrderId={internalOrderId}
+            channelNames={orderChannelNames}
+          />
+
+      </TabsContent>
+
+      <TabsContent value="history" forceMount className="order-detail__tab">
       <section className="detail-section">
-        <h3 className="detail-section__title">Activity</h3>
+        <h3 className="detail-section__title">{copy.activityTitle}</h3>
         <OrderActivityTimeline
           createdAt={order.createdAt}
           recordStatus={order.recordStatus}
@@ -628,7 +1237,12 @@ export function OrderDetailPage(): ReactElement {
           mappingFailureReason={order.mappingFailureReason}
           salesDocumentBlockReason={order.salesDocumentBlockReason}
           salesDocumentUnresolvedReason={order.salesDocumentUnresolvedReason}
-          salesDocumentBlockDetail={order.salesDocumentBlockDetail}
+          salesDocumentBlockDetail={describeSalesDocumentBlockDetail({
+            reason: order.salesDocumentBlockReason,
+            unresolvedReason: order.salesDocumentUnresolvedReason,
+            detail: order.salesDocumentBlockDetail,
+            params: order.salesDocumentBlockParams,
+          })}
           invoice={snapshot.invoice}
           lastAmendedAt={order.lastAmendedAt}
           lastAmendmentChanges={order.lastAmendmentChanges}
@@ -636,15 +1250,84 @@ export function OrderDetailPage(): ReactElement {
           packedByUserId={order.packedByUserId}
           salesDocumentBlockedAt={order.salesDocumentBlockedAt}
           salesDocumentBlockReleasedAt={order.salesDocumentBlockReleasedAt}
-          extraEvents={[...returnTimelineEvents, ...noteTimelineEvents]}
+          extraEvents={[
+            ...returnTimelineEvents,
+            ...noteTimelineEvents,
+            ...buyerNoteTimelineEvents,
+            ...buyerNoteChangeEvents,
+            ...documentEmailEvents,
+            ...buyerEmailEvents,
+            ...editTimeline.dated,
+          ]}
           holds={order.holdHistory}
           automationRuns={automationRunsQuery.data?.runs ?? []}
+          trailingEvents={[...cancelTimelineEvents, ...editTimeline.trailing]}
         />
       </section>
 
+      </TabsContent>
+
+      <TabsContent value="technical" forceMount className="order-detail__tab order-detail__split">
+          <section className="detail-section">
+            <h3 className="detail-section__title">
+              {order.syncStatus.length > 0
+                ? interpolate(copy.syncStatus.titleWithCount, {
+                    count: format.number(order.syncStatus.length),
+                  })
+                : copy.syncStatus.title}
+            </h3>
+            {order.syncStatus.length > 0 ? (
+              <ul className="order-sync-list">
+                {order.syncStatus.map((status) => (
+                  <li key={status.destinationConnectionId} className="order-sync-row">
+                    <ConnectionEntityLabel connectionId={status.destinationConnectionId} showId={false} />
+                    <StatusBadge tone={SYNC_STATUS_TONES[status.status]} compact>
+                      {syncStatusLabel(status.status)}
+                    </StatusBadge>
+                    <span className="order-sync-row__ext">
+                      {status.externalOrderId ? (
+                        <span className="mono-text">#{status.externalOrderId}</span>
+                      ) : (
+                        <span className="text-muted">{copy.syncStatus.noDestinationOrderId}</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted">{copy.syncStatus.noDestinations}</p>
+            )}
+            <p className="order-sync-list__note text-muted">
+              {copy.syncStatus.note}
+            </p>
+          </section>
+
+      {snapshot.parseWarnings.length > 0 ? (
+        <p className="order-detail__parse-warning-row">
+          <a
+            href={`#${RAW_SNAPSHOT_ANCHOR_ID}`}
+            className="order-detail__parse-warning"
+            title={copy.parseWarnings.title}
+          >
+            <span aria-hidden="true">⚠</span>{' '}
+            {plural(snapshot.parseWarnings.length, copy.parseWarnings.label)}
+          </a>
+        </p>
+      ) : null}
+
       <section className="detail-section" id={RAW_SNAPSHOT_ANCHOR_ID}>
-        <RawPayloadPanel title="Order Snapshot" payload={order.orderSnapshot} />
+        <RawPayloadPanel title={copy.rawSnapshotTitle} payload={order.orderSnapshot} />
       </section>
+
+      </TabsContent>
+
+      </Tabs>
+      <ProductPeekById
+        productId={productPeekId}
+        onClose={() => {
+          setProductPeekId(null);
+        }}
+      />
     </PageLayout>
   );
 }
