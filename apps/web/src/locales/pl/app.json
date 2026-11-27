@@ -112,6 +112,9 @@
   },
   "userMenu": {
     "accountMenu": "Menu konta {username}",
+    "backgroundGlow": "Poświata w tle",
+    "backgroundGlowOff": "Wyłączona",
+    "backgroundGlowOn": "Włączona",
     "density": "Gęstość",
     "fontSize": "Rozmiar tekstu",
     "language": "Język",

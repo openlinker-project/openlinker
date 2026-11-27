@@ -5,6 +5,8 @@ import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as spotsModule from './dashboard-glow-spots';
 import { DashboardGlow } from './dashboard-glow';
+import { useBackgroundGlow } from './hooks/use-background-glow';
+import { renderHook } from '@testing-library/react';
 
 let navigateTo: (path: string) => void = () => undefined;
 
@@ -58,5 +60,25 @@ describe('DashboardGlow', () => {
 
     expect(pick).not.toHaveBeenCalled();
     expect(screen.getByTestId('dashboard-glow')).toHaveClass('dashboard-glow--still');
+  });
+
+  it('should fade out and stop drifting when the operator switches it off', () => {
+    const pick = vi.spyOn(spotsModule, 'pickGlowSpots');
+    renderGlow();
+    const toggle = renderHook(() => useBackgroundGlow());
+
+    act(() => {
+      toggle.result.current[1](false);
+    });
+    expect(screen.getByTestId('dashboard-glow')).toHaveClass('dashboard-glow--off');
+
+    act(() => navigateTo('/products'));
+    expect(pick).not.toHaveBeenCalled();
+
+    act(() => {
+      toggle.result.current[1](true);
+    });
+    expect(screen.getByTestId('dashboard-glow')).not.toHaveClass('dashboard-glow--off');
+    window.localStorage.removeItem('openlinker-background-glow');
   });
 });

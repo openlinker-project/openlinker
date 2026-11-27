@@ -24,6 +24,10 @@
  * so an idle pointer costs nothing. Touch screens and reduced motion get no
  * pointer layer; reduced motion also gets no travel and no breathing.
  *
+ * The operator can switch it off in the account menu (`useBackgroundGlow`).
+ * It then fades out and goes quiet: no pointer listener, no travel, and the
+ * breathing pauses where it is, so turning it back on resumes without a jump.
+ *
  * Rendered before `.shell`, which is positioned and so paints over it; the
  * shell's content area is transparent, the sidebar and top bar stay solid.
  *
@@ -40,6 +44,7 @@ import {
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { useLocation } from 'react-router-dom';
 import { GLOW_START_SPOTS, pickGlowSpots, type GlowSpots } from './dashboard-glow-spots';
+import { useBackgroundGlow } from './hooks/use-background-glow';
 
 // Duration-based springs with no bounce: they settle in a known time, so the
 // animation (and its frame callbacks) ends a few seconds after a page change.
@@ -154,26 +159,33 @@ function GlowOrb({
 
 export function DashboardGlow(): ReactElement {
   const still = useReducedMotionConfig() ?? false;
+  const [enabled] = useBackgroundGlow();
   const { pathname } = useLocation();
   const [spots, setSpots] = useState<GlowSpots>(GLOW_START_SPOTS);
   const [breath, setBreath] = useState(0);
   const lastPathname = useRef(pathname);
-  const pointer = usePointerLean(!still);
+  const pointer = usePointerLean(!still && enabled);
 
   useEffect(() => {
     if (lastPathname.current === pathname) {
       return;
     }
     lastPathname.current = pathname;
-    if (!still) {
+    if (!still && enabled) {
       setSpots((previous) => pickGlowSpots(previous));
       setBreath((previous) => previous + 1);
     }
-  }, [pathname, still]);
+  }, [pathname, still, enabled]);
 
   return (
     <div
-      className={['dashboard-glow', still ? 'dashboard-glow--still' : ''].filter(Boolean).join(' ')}
+      className={[
+        'dashboard-glow',
+        still ? 'dashboard-glow--still' : '',
+        enabled ? '' : 'dashboard-glow--off',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       aria-hidden="true"
       data-testid="dashboard-glow"
     >

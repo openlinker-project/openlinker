@@ -112,6 +112,9 @@
   },
   "userMenu": {
     "accountMenu": "Account menu for {username}",
+    "backgroundGlow": "Background glow",
+    "backgroundGlowOff": "Off",
+    "backgroundGlowOn": "On",
     "density": "Density",
     "fontSize": "Text size",
     "language": "Language",

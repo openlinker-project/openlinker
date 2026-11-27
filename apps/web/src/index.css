@@ -1452,6 +1452,31 @@ textarea,
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
+  transition:
+    opacity 480ms var(--ease-out),
+    visibility 0s;
+}
+
+/* Switched off in the account menu: fade out, then leave the compositor
+   (visibility flips once the fade ends). The breathing pauses rather than
+   stopping, so switching back on resumes it without a jump. */
+.dashboard-glow--off {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 480ms var(--ease-standard),
+    visibility 0s linear 480ms;
+}
+
+.dashboard-glow--off .dashboard-glow__orb {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-glow,
+  .dashboard-glow--off {
+    transition: none;
+  }
 }
 
 .dashboard-glow::after {

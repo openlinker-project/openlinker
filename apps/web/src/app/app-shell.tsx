@@ -38,6 +38,7 @@ import { useScrollEdges } from './hooks/use-scroll-edges';
 import { useBackdropDismiss } from './hooks/use-backdrop-dismiss';
 import { prefersMotion } from '../shared/ui/prefers-motion';
 import { DashboardGlow } from './dashboard-glow';
+import { BackgroundGlowToggle } from './background-glow-toggle';
 import { Button } from '../shared/ui/button';
 import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/language';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
@@ -352,6 +353,10 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
         <div className="shell-user-chip__menu-section">
           <div className="shell-user-chip__menu-section-label">{themeCopy.label}</div>
           <ThemePicker />
+        </div>
+        <div className="shell-user-chip__menu-section">
+          <div className="shell-user-chip__menu-section-label">{copy.backgroundGlow}</div>
+          <BackgroundGlowToggle />
         </div>
         <div className="shell-user-chip__menu-section">
           <div className="shell-user-chip__menu-section-label">{copy.density}</div>
