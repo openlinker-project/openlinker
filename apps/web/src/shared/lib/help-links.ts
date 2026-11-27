@@ -58,10 +58,13 @@ export const HELP_LINKS: Readonly<Record<HelpSurfaceKey, string>> = Object.fromE
   })
 ) as Record<HelpSurfaceKey, string>;
 
-/** The accessible label rendered for each surface's link. */
-export const HELP_LINK_LABELS: Readonly<Record<HelpSurfaceKey, string>> = {
-  'sales-documents-routing': 'Help: how sales document routing works',
-  'who-decides': 'Help: how fulfilment authority is decided',
-  'connection-rate-limit': 'Help: connection rate limiting',
-  'connection-stock-and-pricing': 'Help: stock and pricing controls',
-};
+/**
+ * Which `ui.helpLink` key names each surface's link. The words themselves live
+ * in the locale files, so a Polish operator hears the label in Polish.
+ */
+export const HELP_LINK_LABEL_KEYS = {
+  'sales-documents-routing': 'salesDocumentsRouting',
+  'who-decides': 'whoDecides',
+  'connection-rate-limit': 'connectionRateLimit',
+  'connection-stock-and-pricing': 'connectionStockAndPricing',
+} as const satisfies Readonly<Record<HelpSurfaceKey, string>>;

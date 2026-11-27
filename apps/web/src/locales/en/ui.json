@@ -207,6 +207,12 @@
     "footOpen": "on this page to open the guide,",
     "footPress": "Press"
   },
+  "helpLink": {
+    "connectionRateLimit": "Help: connection rate limiting",
+    "connectionStockAndPricing": "Help: stock and pricing controls",
+    "salesDocumentsRouting": "Help: how sales document routing works",
+    "whoDecides": "Help: who decides what"
+  },
   "inlineDisclosure": {
     "change": "Change"
   },

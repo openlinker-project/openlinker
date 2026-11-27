@@ -559,11 +559,11 @@ export function OperationalSettingsPage(): ReactElement {
                 />
               </div>
 
-              {/* The API's own sentence. A cap restated here would have to be
-                  kept in step with every adapter, and would be wrong first. */}
+              {/* The API reports THAT an adapter caps the page size; the words
+                  are ours, so they follow the operator's language. */}
               {view.adapterClampNote !== undefined &&
               view.adapterClampNote.trim().length > 0 ? (
-                <p className="pacing-card__note">{view.adapterClampNote}</p>
+                <p className="pacing-card__note">{copy.catalogue.pageSize.adapterClampNote}</p>
               ) : null}
             </section>
 

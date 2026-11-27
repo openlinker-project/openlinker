@@ -62,8 +62,8 @@ export function resolveInvoiceHeadline(
       return { state: copy.notIssued, tone: 'error', identity };
     }
     return invoice.failureMode === 'rejected'
-      ? { state: copy.rejected, tone: 'error', identity }
-      : { state: copy.unconfirmed, tone: 'warning', identity };
+      ? { state: copy.invoiceRejected, tone: 'error', identity }
+      : { state: copy.invoiceUnconfirmed, tone: 'warning', identity };
   }
 
   // status === 'issued' — the clearance axis decides the word from here.

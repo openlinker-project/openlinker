@@ -11,12 +11,14 @@
  * @module apps/web/src/shared/lib
  */
 import { describe, expect, it } from 'vitest';
-import { HELP_LINKS, HELP_LINK_LABELS, HELP_LINK_TARGETS, HELP_SURFACE_KEYS } from './help-links';
+import enUi from '../../locales/en/ui.json';
+import plUi from '../../locales/pl/ui.json';
+import { HELP_LINKS, HELP_LINK_LABEL_KEYS, HELP_LINK_TARGETS, HELP_SURFACE_KEYS } from './help-links';
 
 describe('HELP_LINKS', () => {
   it('should carry exactly the declared surface keys, no more and no fewer', () => {
     expect(Object.keys(HELP_LINKS).sort()).toEqual([...HELP_SURFACE_KEYS].sort());
-    expect(Object.keys(HELP_LINK_LABELS).sort()).toEqual([...HELP_SURFACE_KEYS].sort());
+    expect(Object.keys(HELP_LINK_LABEL_KEYS).sort()).toEqual([...HELP_SURFACE_KEYS].sort());
   });
 
   it('should resolve every surface to a section of a docs.openlinker.io page, never a page top', () => {
@@ -29,10 +31,11 @@ describe('HELP_LINKS', () => {
     }
   });
 
-  it('should give every surface a non-empty, screen-reader-usable label naming the surface', () => {
+  it('should give every surface a non-empty label in every language', () => {
     for (const key of HELP_SURFACE_KEYS) {
-      expect(HELP_LINK_LABELS[key].trim().length).toBeGreaterThan(0);
-      expect(HELP_LINK_LABELS[key].toLowerCase()).toContain('help');
+      const labelKey = HELP_LINK_LABEL_KEYS[key];
+      expect(enUi.helpLink[labelKey].toLowerCase()).toContain('help');
+      expect(plUi.helpLink[labelKey].toLowerCase()).toContain('pomoc');
     }
   });
 });

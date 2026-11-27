@@ -486,10 +486,10 @@
     }
   },
   "recordWord": {
-    "atClearance": "W rozliczeniu",
-    "clearanceRejected": "Odrzucony przy rozliczeniu",
+    "atClearance": "Czeka na przyjęcie",
+    "clearanceRejected": "Odrzucona przy przyjęciu",
     "failed": "Błąd",
-    "issued": "Wystawiony",
+    "issued": "Wystawiona",
     "issuing": "Wystawianie",
     "needsReview": "Do sprawdzenia",
     "queued": "W kolejce",
@@ -577,7 +577,7 @@
     }
   },
   "salesDocumentListCell": {
-    "clearance": "Rozliczenie",
+    "clearance": "Przyjęcie",
     "dupeMany": {
       "few": "Dla tego zamówienia istnieją {n} dokumenty",
       "many": "Dla tego zamówienia istnieje {n} dokumentów",
@@ -592,12 +592,12 @@
     "provider": "Dostawca",
     "providerWithType": "{name} ({type})",
     "regulatory": {
-      "accepted": "Przyjęty",
-      "cleared": "W rozliczeniu",
+      "accepted": "Przyjęta",
+      "cleared": "Czeka na przyjęcie",
       "not-applicable": "Nie dotyczy",
       "pending-submission": "Czeka na przesłanie",
-      "rejected": "Odrzucony",
-      "submitted": "Przesłany"
+      "rejected": "Odrzucona",
+      "submitted": "Przesłana"
     },
     "spokenState": "{kind}: {word}",
     "spokenWithDupe": "{state}. {dupe}",

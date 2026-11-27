@@ -624,7 +624,7 @@
       "fulfilment": "Realizacja",
       "items": "Pozycje",
       "order": "Zamówienie",
-      "shipBy": "Wyślij do",
+      "shipBy": "Termin wysyłki",
       "source": "Źródło"
     },
     "description": "Zamówienia uszeregowane według tego, jak szybko przekroczą termin wysyłki. Nadane, doręczone i anulowane zamówienia są pominięte.",
@@ -1144,7 +1144,7 @@
       "salesDocs": "Dokumenty sprzedaży",
       "search": "Szukaj",
       "searchValue": "„{query}”",
-      "shipBy": "Wyślij do",
+      "shipBy": "Termin wysyłki",
       "shopChanged": "Sklep",
       "shopChangedValue": "Zmienione",
       "source": "Źródło",
@@ -1333,7 +1333,7 @@
       "order": "Zamówienie",
       "payment": "Płatność",
       "placed": "Złożone",
-      "shipBy": "Wyślij do",
+      "shipBy": "Termin wysyłki",
       "shipment": "Przesyłka",
       "status": "Status",
       "total": "Razem"
@@ -1663,7 +1663,7 @@
       "refunded": "Zwrócono pieniądze"
     },
     "received": "Otrzymane",
-    "shipBy": "Wyślij do",
+    "shipBy": "Termin wysyłki",
     "title": "Zamówienie {number}",
     "units": {
       "few": "{n} sztuki",
@@ -2864,7 +2864,7 @@
       "channel": "Kanał",
       "customer": "Klient",
       "document": "Dokument",
-      "shipTo": "Wyślij do"
+      "shipTo": "Termin wysyłki"
     },
     "invoice": "Faktura",
     "itemPrice": "{quantity} × {price}",
@@ -2963,7 +2963,7 @@
       "second": "Dla tego zamówienia istnieje drugi dokument"
     },
     "fact": {
-      "clearance": "Rozliczenie",
+      "clearance": "Przyjęcie",
       "number": "Numer",
       "provider": "Dostawca",
       "providerWithType": "{name} ({type})"
@@ -2975,14 +2975,15 @@
     },
     "noDocument": "Brak dokumentu",
     "notIssued": "Niewystawiony",
+    "notIssuedInvoice": "Niewystawiona",
     "openOrder": "Otwórz zamówienie",
     "regulatory": {
-      "accepted": "Przyjęty",
-      "cleared": "W rozliczeniu",
+      "accepted": "Przyjęta",
+      "cleared": "Czeka na przyjęcie",
       "notApplicable": "Nie dotyczy",
       "pendingSubmission": "Czeka na przesłanie",
-      "rejected": "Odrzucony",
-      "submitted": "Przesłany"
+      "rejected": "Odrzucona",
+      "submitted": "Przesłana"
     },
     "setRouting": "Ustaw wybór dokumentu",
     "spokenState": "{kind}: {word}",
@@ -2990,16 +2991,18 @@
   },
   "salesDocumentHeadline": {
     "awaitingClearance": "Czeka na przyjęcie",
-    "cleared": "Przyjęty",
+    "cleared": "Przyjęta",
     "inProgressElsewhere": "W toku w innym miejscu",
-    "issued": "Wystawiony",
+    "invoiceRejected": "Odrzucona",
+    "invoiceUnconfirmed": "Niepotwierdzona",
+    "issued": "Wystawiona",
     "issuing": "Wystawianie",
-    "notIssued": "Niewystawiony",
+    "notIssued": "Niewystawiona",
     "notRegistered": "Niezarejestrowany",
     "registered": "Zarejestrowany",
     "registering": "Rejestrowanie",
     "rejected": "Odrzucony",
-    "rejectedByAuthority": "Odrzucony przy przesłaniu",
+    "rejectedByAuthority": "Odrzucona przy przyjęciu",
     "stalled": "Zatrzymany",
     "unconfirmed": "Niepotwierdzony"
   },
