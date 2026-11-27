@@ -6,6 +6,7 @@ import type {
 import type { UpdateConnectionInput } from '../api/connections.types';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { isMappablePaymentMethod } from '../lib/payment-method-map';
 
 /**
  * Connection-level seller-defaults schema (#430 / #445). Each sub-field is
@@ -413,6 +414,8 @@ export const editConnectionSchema = z
     stockLocationOverride: stockLocationOverrideFormSchema,
     // Per-connection "this system packs and ships orders itself" flag (#2118) — platform-neutral.
     fulfilmentOwnedByDestination: z.boolean().nullable().optional(),
+    // Per-connection payment-method map (#3774/#3775): gateway id -> method, '' = not set.
+    paymentMethodMap: z.record(z.string(), z.string()).optional(),
   });
 
 /**
@@ -590,6 +593,12 @@ export type StructuredConfigPatch = {
    * keeps the shallow-spread merge honest (see `rateLimit`).
    */
   fulfilmentOwnedByDestination?: boolean | null;
+  /**
+   * Per-connection payment-method map - `config.paymentMethodMap` (#3774).
+   * Entries with a blank choice are dropped; an empty result writes an EXPLICIT
+   * `null` rather than deleting the key (see `rateLimit` for why not a delete).
+   */
+  paymentMethodMap?: Record<string, string> | null;
 };
 
 /**
@@ -960,6 +969,19 @@ export function mergeStructuredIntoConfig(
   // `true` is a statement, everything else is written as an explicit `false`.
   if (structured.fulfilmentOwnedByDestination !== undefined) {
     next.fulfilmentOwnedByDestination = structured.fulfilmentOwnedByDestination === true;
+  }
+  // Operator payment-method map (#3774/#3775). Only a mappable method is a
+  // statement; a blank cell is "not set" and is dropped, and an empty map is an
+  // explicit `null` so the shallow-spread merge can actually clear the key.
+  if (structured.paymentMethodMap !== undefined) {
+    const kept: Record<string, string> = {};
+    for (const [key, value] of Object.entries(structured.paymentMethodMap ?? {})) {
+      const normalized = key.trim().toLowerCase();
+      if (normalized !== '' && isMappablePaymentMethod(value)) {
+        kept[normalized] = value;
+      }
+    }
+    next.paymentMethodMap = Object.keys(kept).length === 0 ? null : kept;
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are
   // assembled by the platform contribution with the same partial-patch

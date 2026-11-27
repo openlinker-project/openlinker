@@ -12,6 +12,8 @@ export const connectionsQueryKeys = {
   rateLimitStatus: (connectionId: string) =>
     ['connections', 'rate-limit-status', connectionId] as const,
   catalogTrust: (connectionId: string) => ['connections', 'catalog-trust', connectionId] as const,
+  observedPaymentMethods: (connectionId: string) =>
+    ['connections', 'payment-methods-observed', connectionId] as const,
   syncStatus: (connectionId: string) => ['connections', 'sync-status', connectionId] as const,
   subiektBankAccounts: (connectionId: string) =>
     ['connections', 'subiekt-bank-accounts', connectionId] as const,

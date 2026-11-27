@@ -21,6 +21,8 @@ import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
 import { FulfilmentOwnershipSection } from './fulfilment-ownership-section';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
+import { readPaymentMethodMapForm } from '../lib/payment-method-map';
+import { PaymentMethodsSection } from './payment-methods-section';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -491,6 +493,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       stockLocationOverride: readStockLocationOverride(connection.config),
       // "This system packs and ships orders itself" (#2118) — platform-neutral.
       fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
+      // Operator payment-method map (#3775) - platform-neutral, OrderSource only.
+      paymentMethodMap: readPaymentMethodMapForm(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -712,6 +716,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, {
       fulfilmentOwnedByDestination: form.getValues('fulfilmentOwnedByDestination'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #3775 - re-serialize `config.paymentMethodMap` into configText. Clone of
+  // `syncFulfilmentOwnershipToJson`: reads CURRENT form state, takes NO argument,
+  // keeps the `!configIsParseable` early-return. The section MUST
+  // setValue('paymentMethodMap', …) BEFORE calling this.
+  function syncPaymentMethodMapToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      paymentMethodMap: form.getValues('paymentMethodMap'),
     });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
@@ -958,6 +975,18 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
           form={form}
           configIsParseable={configIsParseable}
           syncFulfilmentOwnershipToJson={syncFulfilmentOwnershipToJson}
+        />
+      ) : null}
+
+      {/* #3775 - only a connection that ingests orders reports payment gateway
+          ids, so the section is withheld elsewhere. */}
+      {connection.enabledCapabilities.includes('OrderSource') ? (
+        <PaymentMethodsSection
+          form={form}
+          connectionId={connection.id}
+          configIsParseable={configIsParseable}
+          canWrite={write.canWrite}
+          syncPaymentMethodMapToJson={syncPaymentMethodMapToJson}
         />
       ) : null}
 

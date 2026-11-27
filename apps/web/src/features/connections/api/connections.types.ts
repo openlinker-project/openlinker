@@ -1,3 +1,4 @@
+import type { PaymentMethod } from '../../../shared/types/payment-method.types';
 /**
  * Well-known platform types shipped in-tree. Mirrors `CORE_CAPABILITY_VALUES`
  * below — open at the boundary: plugin authors can register additional
@@ -337,6 +338,36 @@ export interface CatalogTrust {
   lastReconcileCompletedAt: string | null;
   /** A cycle started and has not completed — not "actively running". */
   reconcileCycleOpen: boolean;
+}
+
+/**
+ * Observed payment methods (#3775) - the gateway ids a connection's recent
+ * orders carried, mirroring `GET /connections/:id/payment-methods/observed`.
+ *
+ * `mapSupport` is three states on purpose: `unsupported` (the integration
+ * ignores the map) and `unknown` (the connection could not be asked) call for
+ * different UI. The platform / operator / resolved fields are null unless
+ * `mapSupport` is `supported`.
+ */
+export type PaymentMethodMapSupport = 'supported' | 'unsupported' | 'unknown';
+export type PaymentMethodResolvedBy = 'platform' | 'operator' | 'none';
+
+export interface ObservedPaymentMethod {
+  /** Trimmed, lower-cased native gateway id. */
+  sourcePaymentMethod: string;
+  orderCount: number;
+  lastSeenAt: string;
+  platformMethod: PaymentMethod | null;
+  operatorMethod: PaymentMethod | null;
+  resolvedMethod: PaymentMethod | null;
+  resolvedBy: PaymentMethodResolvedBy | null;
+}
+
+export interface ObservedPaymentMethods {
+  mapSupport: PaymentMethodMapSupport;
+  /** Look-back window in days; present in every state. */
+  windowDays: number;
+  items: ObservedPaymentMethod[];
 }
 
 /**
