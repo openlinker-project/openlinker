@@ -18,4 +18,5 @@ export type ConnectionConfigRule =
   | 'required-with'
   | 'set-together'
   | 'known-template'
-  | 'shop-only-template';
+  | 'shop-only-template'
+  | 'unique';

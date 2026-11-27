@@ -26,6 +26,7 @@
  */
 import type {
   OrderSourcePort,
+  PlatformPaymentMethodClassifier,
   OrderFeedInput,
   OrderFeedOutput,
   OrderFeedItem,
@@ -39,12 +40,16 @@ import type {
   OrderWindowReader,
   OrderWindowInput,
   OrderWindowPage,
+  PaymentMethod,
 } from '@openlinker/core/orders';
 import {
+  PAYMENT_METHOD,
   PAYMENT_STATUS,
+  readPaymentMethodMap,
   readSourceBuyerNote,
   decodeHtmlNoteText,
   readSourceBuyerTaxId,
+  resolveSourcePaymentMethod,
   toCodToCollect,
   OrderSyncStartUnavailableError,
 } from '@openlinker/core/orders';
@@ -62,7 +67,8 @@ import type {
   PrestashopOrderRow,
 } from '../mappers/prestashop.mapper.interface';
 import {
-  derivePrestashopPaymentMethod,
+  classifyPrestashopPaymentModule,
+  readPrestashopPaymentModule,
   withCashOnDeliveryPaymentStatus,
 } from '../mappers/prestashop-payment-method';
 import { PrestashopOrderStateCatalog } from '../provisioners/prestashop-order-state.catalog';
@@ -102,7 +108,14 @@ import { Logger } from '@openlinker/shared/logging';
  * why the id is part of the read position and why the timestamp is never
  * interpreted. `null` input means "start from the beginning".
  */
-export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedBootstrap, OrderFeedDateBootstrap, OrderWindowReader {
+export class PrestashopOrderSourceAdapter
+  implements
+    OrderSourcePort,
+    OrderFeedBootstrap,
+    OrderFeedDateBootstrap,
+    OrderWindowReader,
+    PlatformPaymentMethodClassifier
+{
   private readonly logger = new Logger(PrestashopOrderSourceAdapter.name);
 
   /**
@@ -684,6 +697,16 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
   }
 
   /**
+   * What PrestaShop itself says a payment module means (#3774): `ps_cashondelivery`
+   * and `ps_wirepayment`, `unknown` for every other module. The discovery read
+   * uses it to tell which modules an operator may map, and `getOrder` resolves
+   * through the same classification, so the two cannot disagree.
+   */
+  classifyPlatformPaymentMethod(sourcePaymentMethod: string): PaymentMethod {
+    return classifyPrestashopPaymentModule(sourcePaymentMethod);
+  }
+
+  /**
    * Derive the feed event type for a PrestaShop order row.
    *
    * Cancellation is checked **first**, with precedence over created/updated.
@@ -774,8 +797,19 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
     // `'awaiting'`: a missing row is not evidence about somebody's money.
     const stateStatus = orderStates.paymentStatusOf(prestashopOrder.current_state) ?? undefined;
     // How the buyer pays (#3294), from the order's payment module. Only the two
-    // modules PrestaShop ships are evidence; any other is `unknown`.
-    const paymentMethod = derivePrestashopPaymentMethod(prestashopOrder);
+    // modules PrestaShop ships are evidence on their own; for any other module
+    // the operator's own map (#3774) may say what it means, and a module
+    // PrestaShop defines is never overridden by it. The module name is also
+    // reported verbatim as the identifier an operator maps.
+    const sourcePaymentMethod = readPrestashopPaymentModule(prestashopOrder);
+    const { method: paymentMethod } = resolveSourcePaymentMethod({
+      platformMethod:
+        sourcePaymentMethod === undefined
+          ? PAYMENT_METHOD.Unknown
+          : classifyPrestashopPaymentModule(sourcePaymentMethod),
+      sourcePaymentMethod,
+      map: readPaymentMethodMap(this.connection.config),
+    });
     // The state row is silent about an unpaid order; for a core COD module that
     // silence would leave the courier label with no COD amount, so it is filled
     // - and only it, never a state that already says paid.
@@ -870,6 +904,7 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort, OrderFeedB
       // Checkout message (#3538): `undefined` = the shop's thread resource could
       // not be read (unknown), `null` = read and the buyer wrote nothing.
       ...(buyerNote !== undefined && { buyerNote }),
+      ...(sourcePaymentMethod !== undefined && { sourcePaymentMethod }),
       // The courier collects the whole order on delivery: nothing is paid in
       // advance on a COD order and PrestaShop states no separate amount, so it
       // is the order's gross total. Only while the order is reported `cod`.

@@ -8,7 +8,9 @@
  * @module libs/integrations/prestashop/src/infrastructure/mappers/__tests__
  */
 import {
+  classifyPrestashopPaymentModule,
   derivePrestashopPaymentMethod,
+  readPrestashopPaymentModule,
   withCashOnDeliveryPaymentStatus,
 } from '../prestashop-payment-method';
 
@@ -81,5 +83,29 @@ describe('withCashOnDeliveryPaymentStatus', () => {
     (method) => {
       expect(withCashOnDeliveryPaymentStatus(undefined, method, 'processing')).toBeUndefined();
     },
+  );
+});
+
+describe('classifyPrestashopPaymentModule (#3774)', () => {
+  it.each([
+    ['ps_cashondelivery', 'cash_on_delivery'],
+    ['  PS_WirePayment ', 'bank_transfer'],
+    ['payu', 'unknown'],
+    ['', 'unknown'],
+  ])('should classify module %j as %s', (moduleName, expected) => {
+    expect(classifyPrestashopPaymentModule(moduleName)).toBe(expected);
+  });
+});
+
+describe('readPrestashopPaymentModule (#3774)', () => {
+  it('should return the module trimmed but with its case left alone', () => {
+    expect(readPrestashopPaymentModule({ module: '  PayU ' })).toBe('PayU');
+  });
+
+  it.each([[{}], [{ module: '' }], [{ module: '   ' }], [{ module: 42 }], [{ module: null }]])(
+    'should report nothing for %j',
+    (order) => {
+      expect(readPrestashopPaymentModule(order)).toBeUndefined();
+    }
   );
 });

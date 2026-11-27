@@ -59,6 +59,7 @@ describe('OrderRecordService', () => {
       findEarliestOrderDateByConnection: jest.fn(),
       countOrdersByRoutingCountrySince: jest.fn(),
       getDeliveryCountryFacts: jest.fn(),
+      listObservedSourcePaymentMethods: jest.fn(),
       upsert: jest.fn(),
       upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),
@@ -560,6 +561,30 @@ describe('OrderRecordService', () => {
       expect(callArg.orderSnapshot).not.toHaveProperty('paymentMethod');
       expect(callArg.paymentMethod).toBeNull();
       expect(callArg.paymentMethodOrUnknown).toBe('unknown');
+    });
+
+    it('should keep the source gateway id in the snapshot, verbatim (#3774)', async () => {
+      const order = createMockOrder();
+      order.sourcePaymentMethod = 'PayU';
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.orderSnapshot['sourcePaymentMethod']).toBe('PayU');
+    });
+
+    it('should leave the source gateway id absent when the source reported none (#3774)', async () => {
+      const order = createMockOrder();
+      expect(order.sourcePaymentMethod).toBeUndefined();
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      expect(callArg.orderSnapshot).not.toHaveProperty('sourcePaymentMethod');
     });
 
     it('should warn, and still persist, when the payment facts contradict each other (#3294)', async () => {
@@ -1859,6 +1884,23 @@ describe('OrderRecordService', () => {
       expect(repository.upsert).not.toHaveBeenCalled();
       expect(repository.upsertWithLineItems).not.toHaveBeenCalled();
       expect(repository.updateSalesDocumentBlock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listObservedSourcePaymentMethods (#3774)', () => {
+    it('delegates to the repository as a pure passthrough', async () => {
+      const rows = [{ sourcePaymentMethod: 'payu', orderCount: 2, lastSeenAt: new Date() }];
+      repository.listObservedSourcePaymentMethods.mockResolvedValue(rows);
+      const since = new Date('2026-06-01T00:00:00.000Z');
+
+      const result = await service.listObservedSourcePaymentMethods('conn-1', since, 100);
+
+      expect(result).toBe(rows);
+      expect(repository.listObservedSourcePaymentMethods).toHaveBeenCalledWith(
+        'conn-1',
+        since,
+        100
+      );
     });
   });
 

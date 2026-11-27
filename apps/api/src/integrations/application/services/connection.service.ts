@@ -14,7 +14,17 @@ import {
   validateDeliveryOnDocumentsShape,
   validateGiftOnDocumentsShape,
 } from '@openlinker/core/sales-documents';
-import { BadRequestException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  PAYMENT_METHOD,
+  findPaymentMethodMapKeyCollisions,
+  isPaymentMethod,
+  normalizeSourcePaymentMethodKey,
+} from '@openlinker/core/orders';
+import {
+  BadRequestException,
+  HttpStatus,
+  Injectable,
+} from '@nestjs/common';
 import type { ApiErrorParams, KnownApiErrorCode } from '@openlinker/shared/errors';
 import { randomUUID } from 'node:crypto';
 import type { IConnectionService } from '../interfaces/connection.service.interface';
@@ -724,6 +734,52 @@ export class ConnectionService implements IConnectionService {
 
     this.validatePricingRuleConfig(config.pricingRule);
     this.validatePriceSyncModeConfig(config.priceSyncMode);
+    this.validatePaymentMethodMapConfig(config.paymentMethodMap);
+  }
+
+  /**
+   * The operator's payment-method map (#3774): `{ <source identifier>: <PaymentMethod> }`.
+   *
+   * Refused rather than coerced, because the read side silently DROPS bad
+   * entries and the operator would believe a gateway was mapped when it was
+   * not: a non-object, a blank key, a value outside the neutral vocabulary,
+   * `unknown` (mapping to it decides nothing), and keys that collide after
+   * normalisation (`PayU` + `payu`, where JSON key order would pick the winner).
+   * Absent / null is accepted. Reached from `create` and `update` through
+   * `validateStockAndPricingConfig`.
+   */
+  private validatePaymentMethodMapConfig(map: unknown): void {
+    if (map === undefined || map === null) return;
+    const field = 'config.paymentMethodMap';
+    if (typeof map !== 'object' || Array.isArray(map)) {
+      throw connectionConfigInvalid(field, 'object', `${field} must be an object`);
+    }
+    const mappable = Object.values(PAYMENT_METHOD).filter(
+      (method) => method !== PAYMENT_METHOD.Unknown
+    );
+    for (const [key, value] of Object.entries(map as Record<string, unknown>)) {
+      if (normalizeSourcePaymentMethodKey(key) === '') {
+        throw connectionConfigInvalid(field, 'string', `${field} keys must not be blank`);
+      }
+      if (!isPaymentMethod(value) || value === PAYMENT_METHOD.Unknown) {
+        throw connectionConfigInvalid(
+          `${field}.${key}`,
+          'one-of',
+          `${field}["${key}"] must be one of ${mappable.join(', ')}`,
+          { allowed: allowedValues(mappable) }
+        );
+      }
+    }
+    const collisions = findPaymentMethodMapKeyCollisions(map as Record<string, unknown>);
+    if (collisions.length > 0) {
+      throw connectionConfigInvalid(
+        field,
+        'unique',
+        `${field} has keys that differ only by case or spacing: ${collisions
+          .map((group) => group.map((k) => `"${k}"`).join(' / '))
+          .join('; ')}`
+      );
+    }
   }
 
   /**

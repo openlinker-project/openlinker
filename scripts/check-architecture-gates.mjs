@@ -197,6 +197,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
       key: 'config.catalogueMode',
     },
   ],
+  [
+    'libs/core/src/orders/domain/types/payment-method-map.types.ts',
+    { helper: 'readPaymentMethodMap', key: 'config.paymentMethodMap' },
+  ],
 ]);
 
 /**
@@ -482,7 +486,14 @@ const NON_KNOBS = new Map([
 // `operational_settings` singleton (absent = inherit), the same shape #3941
 // gave the gift-line form, and per connection by nature: marketplaces carry
 // their own retention obligations. Registered rather than excused.
-const KNOB_THRESHOLD = 19;
+//
+// #3774 raised it to 20 for `config.paymentMethodMap` - the operator's
+// `{ gateway id: PaymentMethod }` table for gateways a source reports that
+// OpenLinker does not recognise. Per connection by nature: each shop names its
+// own gateway modules, so an install-wide setting could not hold it, and it is
+// a lookup the operator authors rather than a rule. Registered rather than
+// excused; raised by one so the next knob asks again.
+const KNOB_THRESHOLD = 20;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

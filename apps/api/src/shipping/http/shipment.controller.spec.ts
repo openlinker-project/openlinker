@@ -173,6 +173,7 @@ describe('ShipmentController', () => {
       freezeLineExpansion: jest.fn(),
       countOpenOrdersByBundleVersion: jest.fn(),
       countOrdersForSkusSince: jest.fn(),
+      listObservedSourcePaymentMethods: jest.fn(),
     };
     controller = new ShipmentController(
       query,

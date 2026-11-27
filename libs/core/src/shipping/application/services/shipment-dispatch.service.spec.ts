@@ -255,6 +255,7 @@ describe('ShipmentDispatchService', () => {
       freezeLineExpansion: jest.fn(),
       countOpenOrdersByBundleVersion: jest.fn(),
       countOrdersForSkusSince: jest.fn(),
+      listObservedSourcePaymentMethods: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn(), announceShippedWithoutTracking: jest.fn() };
     // Unheld by default (#2339): as with the lock below, every pre-existing test

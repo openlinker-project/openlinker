@@ -36,6 +36,9 @@ import { OrderTagsController } from './http/order-tags.controller';
 import { OrderTagAssignmentsController } from './http/order-tag-assignments.controller';
 import { OrderExportsController } from './http/order-exports.controller';
 import { BuyerDataRetentionController } from './http/buyer-data-retention.controller';
+import { ConnectionPaymentMethodsController } from './http/connection-payment-methods.controller';
+import { ConnectionPaymentMethodsService } from './application/services/connection-payment-methods.service';
+import { CONNECTION_PAYMENT_METHODS_SERVICE_TOKEN } from './application/interfaces/connection-payment-methods.service.interface';
 import { SourceFulfillmentStatusService } from './application/services/source-fulfillment-status.service';
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interfaces/source-fulfillment-status.service.interface';
 import { OrderCancellationService } from './application/services/order-cancellation.service';
@@ -129,6 +132,7 @@ import { FulfillmentApiModule } from '../fulfillment/fulfillment-api.module';
     BuyerEmailsController,
     OrderTagsController,
     OrderTagAssignmentsController,
+    ConnectionPaymentMethodsController,
   ],
   // #3365 - composed HERE rather than in `libs/core/orders`, for the reason the
   // invoice and shortfall projections above already are: it reaches an
@@ -140,6 +144,11 @@ import { FulfillmentApiModule } from '../fulfillment/fulfillment-api.module';
     // #3542 - composed HERE for the reason the cancel above is: it needs `shipping`.
     OrderEditService,
     { provide: ORDER_EDIT_SERVICE_TOKEN, useExisting: OrderEditService },
+    ConnectionPaymentMethodsService,
+    {
+      provide: CONNECTION_PAYMENT_METHODS_SERVICE_TOKEN,
+      useExisting: ConnectionPaymentMethodsService,
+    },
     SourceFulfillmentStatusService,
     {
       provide: SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN,

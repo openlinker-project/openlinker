@@ -34,10 +34,14 @@ import {
   type PaymentStatus,
 } from '@openlinker/core/orders';
 
-export function derivePrestashopPaymentMethod(order: Readonly<Record<string, unknown>>): PaymentMethod {
-  const module = typeof order.module === 'string' ? order.module.trim().toLowerCase() : '';
-
-  switch (module) {
+/**
+ * What PrestaShop itself says a payment module means (#3294), from the module's
+ * technical name alone. `unknown` for every module the platform does not define.
+ * Also the platform answer behind the operator payment-method map (#3774): the
+ * map fills an `unknown` from here, and never overrides a module defined here.
+ */
+export function classifyPrestashopPaymentModule(moduleName: string): PaymentMethod {
+  switch (moduleName.trim().toLowerCase()) {
     case 'ps_cashondelivery':
       return PAYMENT_METHOD.CashOnDelivery;
     case 'ps_wirepayment':
@@ -45,6 +49,32 @@ export function derivePrestashopPaymentMethod(order: Readonly<Record<string, unk
     default:
       return PAYMENT_METHOD.Unknown;
   }
+}
+
+/**
+ * The order's payment module, verbatim and trimmed (#3774) - the native
+ * identifier reported as `IncomingOrder.sourcePaymentMethod` and the key an
+ * operator maps. `undefined` when the column is missing, not a string or blank,
+ * never a guess. Case is left as the shop sent it: the destination payment
+ * mapping (#3474) keys on it, and only the operator-map lookup folds case.
+ */
+export function readPrestashopPaymentModule(
+  order: Readonly<Record<string, unknown>>
+): string | undefined {
+  if (typeof order.module !== 'string') {
+    return undefined;
+  }
+  const trimmed = order.module.trim();
+  return trimmed === '' ? undefined : trimmed;
+}
+
+export function derivePrestashopPaymentMethod(
+  order: Readonly<Record<string, unknown>>
+): PaymentMethod {
+  const moduleName = readPrestashopPaymentModule(order);
+  return moduleName === undefined
+    ? PAYMENT_METHOD.Unknown
+    : classifyPrestashopPaymentModule(moduleName);
 }
 
 /**

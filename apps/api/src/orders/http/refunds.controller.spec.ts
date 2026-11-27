@@ -78,6 +78,7 @@ describe('RefundsController', () => {
       freezeLineExpansion: jest.fn(),
       countOpenOrdersByBundleVersion: jest.fn(),
       countOrdersForSkusSince: jest.fn(),
+      listObservedSourcePaymentMethods: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

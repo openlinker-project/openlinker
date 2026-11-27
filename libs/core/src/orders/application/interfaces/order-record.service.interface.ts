@@ -10,6 +10,7 @@
 import type { LineExpansion } from '@openlinker/core/products';
 import type { LineCostCandidate } from '../../domain/order-line-cost-snapshot';
 import type { ApplyOrderEditInput } from '../../domain/types/order-edits.types';
+import type { ObservedSourcePaymentMethod } from '../../domain/types/observed-source-payment-method.types';
 import type { Order } from '../../domain/types/order.types';
 import type { OrderRecord, OrderSyncStatus } from '../../domain/entities/order-record.entity';
 import type { IncomingOrder } from '../../domain/types/incoming-order.types';
@@ -169,6 +170,17 @@ export interface IOrderRecordService {
    * figure, so no administrative-bucket exclusion applies.
    */
   getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
+
+  /**
+   * Native payment identifiers a connection's orders carried since `since`
+   * (#3774), grouped case-insensitively, most frequent first, capped at `limit`.
+   * Feeds the operator's payment-method map discovery.
+   */
+  listObservedSourcePaymentMethods(
+    connectionId: string,
+    since: Date,
+    limit: number
+  ): Promise<ObservedSourcePaymentMethod[]>;
 
   /**
    * How many orders carry at least one COUNTED OMS inert state (#2352/#2353)?

@@ -149,6 +149,7 @@ describe('ShipmentDispatchNotificationService', () => {
       freezeLineExpansion: jest.fn(),
       countOpenOrdersByBundleVersion: jest.fn(),
       countOrdersForSkusSince: jest.fn(),
+      listObservedSourcePaymentMethods: jest.fn(),
     };
 
     integrations = {
