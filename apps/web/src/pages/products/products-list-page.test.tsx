@@ -408,20 +408,51 @@ describe('ProductsListPage', () => {
     expect(screen.getAllByText(getMessages('errors').status.other).length).toBeGreaterThan(0);
   });
 
-  it('should render a thumbnail image for products with an image URL', async () => {
+  it('should load the thumbnail through the API image proxy when a product has a picture', async () => {
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:proxied-thumb'),
+      revokeObjectURL: vi.fn(),
+    });
+    const requestBlob = vi.fn().mockResolvedValue(new Blob(['x']));
     const mockApi = createMockApiClient({
       products: {
         list: vi.fn().mockResolvedValue(sampleProducts),
       },
+      requestBlob,
     });
 
     const { container } = renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await within(container).findByText('Test Product');
-    const image = container.querySelector<HTMLImageElement>(
-      'img[src="https://cdn.example.com/test-product.jpg"]',
-    );
-    expect(image).not.toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector('img[src="blob:proxied-thumb"]')).not.toBeNull();
+    });
+    expect(requestBlob).toHaveBeenCalledWith('/products/ol_product_abc123/images/0');
+    // The stored shop url never reaches an <img> (#3915).
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/test-product.jpg"]'),
+    ).toBeNull();
+  });
+
+  it('should show the placeholder when the image proxy fails', async () => {
+    const requestBlob = vi.fn().mockRejectedValue(new Error('404'));
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue(sampleProducts),
+      },
+      requestBlob,
+    });
+
+    const { container } = renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await within(container).findByText('Test Product');
+    await waitFor(() => {
+      expect(requestBlob).toHaveBeenCalledWith('/products/ol_product_abc123/images/0');
+    });
+    const thumbnails = Array.from(container.querySelectorAll('.product-thumbnail'));
+    const testProductThumb = thumbnails.find((el) => el.textContent === 'T');
+    expect(testProductThumb).not.toBeUndefined();
+    expect(testProductThumb?.querySelector('img')).toBeNull();
   });
 
   it('should render a placeholder thumbnail for products without an image', async () => {
@@ -436,11 +467,11 @@ describe('ProductsListPage', () => {
     await within(container).findByText('Another Product');
     const thumbnails = container.querySelectorAll('.product-thumbnail');
     expect(thumbnails.length).toBeGreaterThanOrEqual(2);
-    const placeholderRow = Array.from(thumbnails).find(
-      (el) => el.querySelector('img') === null,
-    );
+    const placeholderRow = Array.from(thumbnails).find((el) => el.textContent === 'A');
     expect(placeholderRow).not.toBeUndefined();
-    expect(placeholderRow?.textContent).toBe('A');
+    expect(placeholderRow?.querySelector('img')).toBeNull();
+    // A product without pictures asks the proxy for nothing.
+    expect(mockApi.requestBlob).not.toHaveBeenCalledWith('/products/ol_product_def456/images/0');
   });
 
   it('should show empty state with a Manage connections CTA when no products exist', async () => {

@@ -18,10 +18,9 @@ import { renderRich, useMessages } from '../../shared/i18n';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
 import { PeekPanel, PeekStateCard } from '../../shared/ui/peek-panel';
-import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { ProductGallery } from '../../features/products/components/product-gallery';
 import { StatusBadge } from '../../shared/ui/status-badge';
-import type { Product } from '../../features/products';
+import { productImagePath, VariantThumbnail, type Product } from '../../features/products';
 
 export interface ProductPeekView {
   product: Product;
@@ -82,7 +81,11 @@ export function ProductPeek({
       title={
         product ? (
           <span className="peek-panel__ref product-peek__id">
-            <ProductThumbnail src={product.images?.[0]} name={product.name} size="sm" />
+            <VariantThumbnail
+              src={productImagePath(product)}
+              name={product.name}
+              size="sm"
+            />
             <Link className="peek-panel__title-link" to={`/products/${product.id}`}>
               {product.name}
               <span className="peek-panel__title-arrow" aria-hidden="true">

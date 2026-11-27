@@ -46,7 +46,6 @@ import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
 import { Alert } from '../../shared/ui/alert';
 import { StatusBadge } from '../../shared/ui/status-badge';
-import { ProductThumbnail } from '../../shared/ui/product-thumbnail';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { CheckboxCell } from '../../shared/ui/checkbox-cell';
@@ -85,6 +84,8 @@ import {
   type ProductCountProbe,
   type ProductFilters,
   type ProductListSort,
+  productImagePath,
+  VariantThumbnail,
 } from '../../features/products';
 import { deriveAtpStatus } from '../../features/inventory';
 import {
@@ -546,7 +547,11 @@ function ProductsListPageBody(): ReactElement {
                     <i className="t-c" />
                   </span>
                 ) : (
-                  <ProductThumbnail src={product.images?.[0]} name={product.name} />
+                  <VariantThumbnail
+                    src={productImagePath(product)}
+                    name={product.name}
+                    size="md"
+                  />
                 )}
                 <span className="products-cell-stack">
                   <span className="ds-row products-name-row">
@@ -1165,7 +1170,11 @@ function ProductsListPageBody(): ReactElement {
               select: (product) => renderSelectCheckbox(product),
               title: (product) => (
                 <span className="product-row">
-                  <ProductThumbnail src={product.images?.[0]} name={product.name} size="sm" />
+                  <VariantThumbnail
+                    src={productImagePath(product)}
+                    name={product.name}
+                    size="sm"
+                  />
                   {/* Unlike the desktop column cell, the card has no fixed
                       width to truncate against - wrap the full name instead
                       of clipping it with no visible ellipsis (#1720 review). */}
