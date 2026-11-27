@@ -1609,6 +1609,7 @@ body.side-panel-sheet-open .dashboard-glow {
    sticky group label steps down below the top arrow while it shows. */
 .shell-nav-scroll {
   --nav-arrow-h: 28px;
+  --nav-arrow-up-h: 18px;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -1627,11 +1628,11 @@ body.side-panel-sheet-open .dashboard-glow {
 }
 
 .shell-nav-scroll[data-scroll-up] {
-  --nav-top-inset: var(--nav-arrow-h);
+  --nav-top-inset: var(--nav-arrow-up-h);
 }
 
 .shell-nav-scroll[data-scroll-up] .shell-nav {
-  scroll-padding-top: calc(30px + var(--nav-arrow-h));
+  scroll-padding-top: calc(30px + var(--nav-arrow-up-h));
 }
 
 .shell-nav-scroll .shell-nav-scroll__arrow {
@@ -1662,7 +1663,10 @@ body.side-panel-sheet-open .dashboard-glow {
 
 .shell-nav-scroll .shell-nav-scroll__arrow--up {
   top: 0;
-  background: linear-gradient(var(--bg-shell) 62%, color-mix(in oklab, var(--bg-shell) 0%, transparent));
+  /* Solid, not a fade: the sticky group label sits right under it, so the two
+     read as one header and the label's own shade does the fading. */
+  height: var(--nav-arrow-up-h);
+  background: var(--bg-shell);
 }
 
 .shell-nav-scroll .shell-nav-scroll__arrow--down {
