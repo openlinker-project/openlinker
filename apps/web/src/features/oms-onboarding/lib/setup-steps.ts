@@ -14,7 +14,7 @@ import type { SalesDocumentRow } from '../../sales-documents';
 import { withConfigKey } from './config-merge';
 import { omsOnboardingCopy as COPY } from './oms-onboarding.copy';
 
-export const SetupStepKeys = ['salesDocuments', 'automations', 'whoDecides'] as const;
+export const SetupStepKeys = ['salesDocuments', 'automations', 'whoDecides', 'shippingLabels'] as const;
 export type SetupStepKey = (typeof SetupStepKeys)[number];
 
 /**
@@ -25,16 +25,23 @@ export type SetupStepKey = (typeof SetupStepKeys)[number];
 export type SetupStepState = 'done' | 'pending' | 'skipped' | 'unknown';
 
 /**
- * Steps that are only looked at: nothing is set on them, so an installation
- * with none of them is not "partially set up".
+ * Steps that are only looked at: nothing is required of them, so an installation
+ * with none of them is not "partially set up". `shippingLabels` is here for a
+ * different reason than `automations` (it IS set on the OMS connection, in the step
+ * itself), but the consequence is the one that matters: buying labels by hand is a
+ * complete setup, and counting it as unfinished would flag every installation that
+ * never wanted automatic labels.
  */
-export const SETUP_REVIEW_ONLY: readonly SetupStepKey[] = ['automations'];
+export const SETUP_REVIEW_ONLY: readonly SetupStepKey[] = ['automations', 'shippingLabels'];
 
 /** Where the operator takes each step. */
 export const SETUP_STEP_PATHS: Readonly<Record<SetupStepKey, string>> = {
   salesDocuments: '/settings/sales-documents',
   automations: '/automations',
   whoDecides: '/settings/who-decides',
+  // The settings live on this very page, under the setup list (#3572), so the
+  // row takes the operator to that section rather than to a page of its own.
+  shippingLabels: '/settings/packing#automatic-labels',
 };
 
 /** Key on the OMS connection's config recording the steps declared not needed. */

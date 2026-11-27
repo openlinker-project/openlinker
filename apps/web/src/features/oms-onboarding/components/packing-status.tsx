@@ -59,6 +59,12 @@ export interface PackingStatusProps {
   readonly toggleError: Error | null;
   readonly onAskStop: () => void;
   readonly onStartAgain: () => void;
+  /**
+   * Rendered under the setup list (#2729): the automatic-labels settings. A slot
+   * rather than an import, so this status view stays a presentational component
+   * and the page that owns the packing connection decides what to mount.
+   */
+  readonly afterSetup?: ReactElement | null;
 }
 
 export function PackingStatus(props: PackingStatusProps): ReactElement {
@@ -228,6 +234,7 @@ export function PackingStatus(props: PackingStatusProps): ReactElement {
         <h2 className="oms-onboarding__panel-title">{COPY.status.setupTitle}</h2>
         <SetupChecklist rows={rows} testId="setup-status-list" />
       </section>
+      {props.afterSetup ?? null}
 
       {props.canAddPackers ? (
         <AddPackerDialog

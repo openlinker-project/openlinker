@@ -11,6 +11,7 @@
  *
  * @module features/oms-onboarding/hooks
  */
+import { isAutoDispatchEnabled } from '../../auto-dispatch';
 import { useAutomationSummaryQuery } from '../../automation';
 import { useWhoDecidesStatusQuery } from '../../fulfillment-authority';
 import type { Connection } from '../../connections';
@@ -59,6 +60,12 @@ export function useSetupSteps(
     salesDocuments: deriveSetupStepState(salesDocumentsDone, skipped.includes('salesDocuments')),
     automations: deriveSetupStepState(automationsDone, skipped.includes('automations')),
     whoDecides: deriveSetupStepState(whoDecidesDone, skipped.includes('whoDecides')),
+    // Read off the packing connection itself: unlike the three above it is OMS
+    // config, so there is no other place to ask.
+    shippingLabels: deriveSetupStepState(
+      isAutoDispatchEnabled(packingConnection.config),
+      skipped.includes('shippingLabels')
+    ),
   };
   return { states, ...summariseSetup(states) };
 }
