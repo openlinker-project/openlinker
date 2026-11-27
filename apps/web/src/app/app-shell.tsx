@@ -521,19 +521,36 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
           openView('main');
         }}
       >
+        {/* The frame stays put: the head row and the rule under it keep their
+            place, and only what is inside them changes. The head cross-fades
+            (its back control brings its own entrance); the body glides. */}
+        <MenuDrillIn
+          className="shell-user-chip__head-slot"
+          viewKey={`${view}-${visit}`}
+          direction={direction}
+          shift={0}
+        >
+          {view === 'main' ? (
+            <DropdownMenuLabel className="shell-user-chip__view-head">
+              <span className="shell-user-chip__avatar shell-user-chip__avatar--lg" aria-hidden="true">
+                {initialsFrom(username)}
+              </span>
+              <span className="shell-user-chip__identity">
+                <span className="shell-user-chip__menu-name">{username}</span>
+                {email ? <span className="shell-user-chip__menu-email">{email}</span> : null}
+              </span>
+            </DropdownMenuLabel>
+          ) : (
+            <AppearanceHeader
+              focusBack={!openedByPointer.current}
+              onBack={() => openView('main')}
+            />
+          )}
+        </MenuDrillIn>
+        <DropdownMenuSeparator />
         <MenuDrillIn viewKey={`${view}-${visit}`} direction={direction}>
           {view === 'main' ? (
             <>
-              <DropdownMenuLabel className="shell-user-chip__view-head">
-                <span className="shell-user-chip__avatar shell-user-chip__avatar--lg" aria-hidden="true">
-                  {initialsFrom(username)}
-                </span>
-                <span className="shell-user-chip__identity">
-                  <span className="shell-user-chip__menu-name">{username}</span>
-                  {email ? <span className="shell-user-chip__menu-email">{email}</span> : null}
-                </span>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
               <div className="shell-user-chip__menu-section">
                 <div className="shell-user-chip__menu-section-label">{copy.language}</div>
                 <LanguageMenuList />
@@ -570,16 +587,9 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
               </DropdownMenuItem>
             </>
           ) : (
-            <>
-              <AppearanceHeader
-                focusBack={!openedByPointer.current}
-                onBack={() => openView('main')}
-              />
-              <DropdownMenuSeparator />
-              <div className="shell-user-chip__settings">
-                <AppearanceControls />
-              </div>
-            </>
+            <div className="shell-user-chip__settings">
+              <AppearanceControls />
+            </div>
           )}
         </MenuDrillIn>
       </DropdownMenuAnimatedContent>

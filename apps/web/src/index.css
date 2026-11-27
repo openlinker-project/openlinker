@@ -2396,13 +2396,14 @@ body.side-panel-sheet-open .dashboard-glow {
   font-size: 12px;
 }
 
-/* Account menu. One fixed width for every view, so drilling into Appearance
+/* Account menu. One fixed width for every view (220px, the generic menu's
+   floor and the narrowest at which the e-mail line still fits whole), so
+   drilling into Appearance
    never changes the popover's width (only its height eases); one inset grid:
    row text, section labels and the identity line all start 16px in from the
    edge, controls 12px. */
 .shell-user-chip__menu {
-  width: 248px;
-  min-width: 0;
+  width: 220px;
   /* Never taller than the room the browser leaves: at 200% browser zoom the
      viewport is ~400 css px high and this menu (language, theme, density, text
      size, sign out) is taller, so without a cap the lower rows are

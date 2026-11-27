@@ -30,7 +30,14 @@ import {
   useReducedMotionConfig,
   type Variants,
 } from 'motion/react';
-import { useCallback, useLayoutEffect, useRef, type ReactElement, type ReactNode } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 
 /** 1 = going deeper (the new view comes from the right), -1 = going back. */
 export type MenuDrillDirection = 1 | -1;
@@ -41,6 +48,11 @@ export interface MenuDrillInProps {
   direction: MenuDrillDirection;
   children: ReactNode;
   className?: string;
+  /**
+   * How far the views travel, in px. A small region (a header) wants a
+   * shorter move than a body of controls, or it reads as thrown.
+   */
+  shift?: number;
 }
 
 // Sized to a small popover (Emil Kowalski's 150-250ms band for menus, no
@@ -54,26 +66,29 @@ const FADE = { duration: 0.18, ease: [0.23, 1, 0.32, 1] } as const;
 // A short move plus a fade, not the panel's full width: in a popover this
 // narrow a full-width push reads heavy. The brief blur hides the moment the two
 // views overlap.
-const SHIFT = 28;
-const SLIDE_VARIANTS: Variants = {
-  enter: (direction: MenuDrillDirection) => ({
-    x: direction * SHIFT,
-    opacity: 0,
-    filter: 'blur(2px)',
-  }),
-  center: {
-    x: 0,
-    opacity: 1,
-    filter: 'blur(0px)',
-    transition: { x: SLIDE, opacity: FADE, filter: FADE },
-  },
-  exit: (direction: MenuDrillDirection) => ({
-    x: direction * -SHIFT,
-    opacity: 0,
-    filter: 'blur(2px)',
-    transition: { x: SLIDE, opacity: { duration: 0.12 }, filter: { duration: 0.12 } },
-  }),
-};
+const DEFAULT_SHIFT = 28;
+
+function slideVariants(shift: number): Variants {
+  return {
+    enter: (direction: MenuDrillDirection) => ({
+      x: direction * shift,
+      opacity: 0,
+      filter: 'blur(2px)',
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      filter: 'blur(0px)',
+      transition: { x: SLIDE, opacity: FADE, filter: FADE },
+    },
+    exit: (direction: MenuDrillDirection) => ({
+      x: direction * -shift,
+      opacity: 0,
+      filter: 'blur(2px)',
+      transition: { x: SLIDE, opacity: { duration: 0.12 }, filter: { duration: 0.12 } },
+    }),
+  };
+}
 
 const FADE_VARIANTS: Variants = {
   enter: { opacity: 0 },
@@ -136,8 +151,10 @@ export function MenuDrillIn({
   direction,
   children,
   className,
+  shift = DEFAULT_SHIFT,
 }: MenuDrillInProps): ReactElement {
   const still = useReducedMotionConfig() ?? false;
+  const slide = useMemo(() => slideVariants(shift), [shift]);
   // The container's height is pinned to a number from the first measurement
   // on. Left at `auto` it would grow to the new view the instant it mounts,
   // leaving the animation nothing to animate from.
@@ -170,7 +187,7 @@ export function MenuDrillIn({
       <AnimatePresence initial={false} custom={direction}>
         <DrillView
           key={viewKey}
-          variants={still ? FADE_VARIANTS : SLIDE_VARIANTS}
+          variants={still ? FADE_VARIANTS : slide}
           direction={direction}
           onHeight={onHeight}
         >
