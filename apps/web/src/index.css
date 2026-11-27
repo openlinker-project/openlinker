@@ -2390,8 +2390,19 @@ body.side-panel-sheet-open .dashboard-glow {
   }
 }
 
+.shell-user-chip__avatar--lg {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+}
+
+/* Account menu. One fixed width for every view, so drilling into Appearance
+   never changes the popover's width (only its height eases); one inset grid:
+   row text, section labels and the identity line all start 16px in from the
+   edge, controls 12px. */
 .shell-user-chip__menu {
-  min-width: 240px;
+  width: 272px;
+  min-width: 0;
   /* Never taller than the room the browser leaves: at 200% browser zoom the
      viewport is ~400 css px high and this menu (language, theme, density, text
      size, sign out) is taller, so without a cap the lower rows are
@@ -2402,32 +2413,95 @@ body.side-panel-sheet-open .dashboard-glow {
   overscroll-behavior: contain;
 }
 
+/* Both views open with a head of the same height (identity, or back + title),
+   so the rule under it stays put while the views swap. */
+.shell-user-chip__menu .shell-user-chip__view-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 12px;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.shell-user-chip__identity {
+  display: grid;
+  min-width: 0;
+}
+
 .shell-user-chip__menu-name {
   font-size: 13px;
   font-weight: 600;
+  line-height: 18px;
   color: var(--text-primary);
-  text-transform: none;
-  letter-spacing: 0;
 }
 
 .shell-user-chip__menu-email {
+  overflow: hidden;
   font-size: 12px;
   font-weight: 400;
+  line-height: 16px;
   color: var(--text-muted);
-  text-transform: none;
-  letter-spacing: 0;
-  margin-top: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shell-user-chip__menu-section {
-  padding: 6px 10px 10px;
   display: grid;
   gap: 6px;
+  padding: 8px 8px 10px;
 }
 
-/* Account menu drill-in (MenuDrillIn): the Appearance row and the header of
-   the view it opens. The container clips the views while they glide past
-   each other and eases its height between them. */
+/* Sentence case and quiet: the controls are the content, the label only names
+   them. Indented 4px past the controls so it lines up with row text. */
+.shell-user-chip__menu-section-label {
+  padding-inline: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.shell-user-chip__settings {
+  padding-bottom: 2px;
+}
+
+/* Rows with a leading 16px icon: Appearance and Sign out. */
+.shell-user-chip__appearance-row,
+.shell-user-chip__signout {
+  gap: 10px;
+  min-height: 34px;
+}
+
+.shell-user-chip__appearance-row > svg,
+.shell-user-chip__signout > svg {
+  flex: none;
+  color: var(--text-muted);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    translate var(--duration-fast) var(--ease-out);
+}
+
+.shell-user-chip__appearance-row[data-highlighted] > svg,
+.shell-user-chip__signout[data-highlighted] > svg {
+  color: var(--text-primary);
+}
+
+/* The trailing chevron nudges toward where the row leads. */
+.shell-user-chip__appearance-row[data-highlighted] > svg:last-child {
+  translate: 2px 0;
+}
+
+.shell-user-chip__appearance-value {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Account menu drill-in (MenuDrillIn): the container clips the views while
+   they glide past each other and eases its height between them. */
 .menu-drill {
   position: relative;
   overflow: clip;
@@ -2439,45 +2513,20 @@ body.side-panel-sheet-open .dashboard-glow {
   pointer-events: none;
 }
 
-.shell-user-chip__appearance-row {
-  margin-top: 2px;
-}
-
-.shell-user-chip__appearance-row > svg {
-  flex: none;
-  color: var(--text-muted);
-  transition: translate var(--duration-fast) var(--ease-out);
-}
-
-.shell-user-chip__appearance-row[data-highlighted] > svg {
-  translate: 2px 0;
-  color: var(--text-primary);
-}
-
-.shell-user-chip__appearance-value {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.shell-user-chip__view-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px 6px;
-}
-
-/* Scoped under the header so it outranks the global button rules. */
+/* Back sits where the avatar sits in the main view: a quiet round control,
+   filled only on hover, so the title carries the header. Scoped under the
+   header so it outranks the global button rules. */
 .shell-user-chip__view-header .shell-user-chip__back {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  flex: none;
+  width: 32px;
+  height: 32px;
   min-height: 0;
   padding: 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   box-shadow: none;
   color: var(--text-secondary);
   cursor: pointer;
@@ -2486,8 +2535,11 @@ body.side-panel-sheet-open .dashboard-glow {
     color var(--duration-fast) var(--ease-out);
 }
 
-.shell-user-chip__view-header .shell-user-chip__back:hover {
+.shell-user-chip__view-header .shell-user-chip__back:hover,
+.shell-user-chip__view-header .shell-user-chip__back:active {
+  border: 0;
   background: var(--bg-surface-muted);
+  box-shadow: none;
   color: var(--text-primary);
 }
 
@@ -2497,6 +2549,8 @@ body.side-panel-sheet-open .dashboard-glow {
 }
 
 .shell-user-chip__back svg {
+  width: 16px;
+  height: 16px;
   transition: translate var(--duration-fast) var(--ease-out);
 }
 
@@ -2505,25 +2559,19 @@ body.side-panel-sheet-open .dashboard-glow {
 }
 
 .shell-user-chip__view-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
+  line-height: 20px;
   color: var(--text-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .shell-user-chip__appearance-row > svg,
+  .shell-user-chip__signout > svg,
   .shell-user-chip__back svg {
     transition: none;
     translate: none;
   }
-}
-
-.shell-user-chip__menu-section-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
 }
 
 .shell-content {

@@ -7,8 +7,13 @@
  * options: `cozy` (default, matches existing row heights) and
  * `compact` (tighter rows for dense ops tables).
  */
-import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useMessages } from '../i18n/use-messages';
+import {
+  SegmentedSwitch,
+  type SegmentedSwitchOption,
+  type SegmentedSwitchSize,
+} from './segmented-switch';
 
 export type Density = 'cozy' | 'compact';
 
@@ -84,5 +89,53 @@ export function DensityToggle(): ReactElement {
         </span>
       </button>
     </div>
+  );
+}
+
+function DensityIcon({ density }: { density: Density }): ReactElement {
+  const rows = density === 'cozy' ? [4, 8, 12] : [3, 6.3, 9.7, 13];
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      {rows.map((y) => (
+        <line
+          key={y}
+          x1="2.5"
+          x2="13.5"
+          y1={y}
+          y2={y}
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      ))}
+    </svg>
+  );
+}
+
+/**
+ * The same choice as `DensityToggle`, as a `SegmentedSwitch` with names, so it
+ * sits in the account menu's appearance view in the one control language the
+ * theme, glow and text-size pickers there use.
+ */
+export function DensityPicker({ size }: { size?: SegmentedSwitchSize } = {}): ReactElement {
+  const copy = useMessages('ui').density;
+  const [density, setDensity] = useDensity();
+  const options = useMemo<SegmentedSwitchOption<Density>[]>(
+    () => [
+      { value: 'cozy', label: copy.cozyShort, icon: <DensityIcon density="cozy" /> },
+      { value: 'compact', label: copy.compactShort, icon: <DensityIcon density="compact" /> },
+    ],
+    [copy]
+  );
+  return (
+    <SegmentedSwitch
+      options={options}
+      value={density}
+      onChange={setDensity}
+      labels="always"
+      slideThumb
+      size={size}
+      aria-label={copy.group}
+    />
   );
 }

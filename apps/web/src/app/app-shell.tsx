@@ -54,7 +54,7 @@ import {
   DropdownMenuTrigger,
 } from '../shared/ui/dropdown-menu';
 import { ThemePicker, useThemeOptions } from '../features/appearance';
-import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
+import { DensityPicker, useDensity } from '../shared/ui/density-toggle';
 import { FontSizeToggle, useFontSize } from '../shared/ui/font-size-toggle';
 import { useToast } from '../shared/ui/toast-provider';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
@@ -324,7 +324,7 @@ function AppearanceControls(): ReactElement {
       </div>
       <div className="shell-user-chip__menu-section shell-user-chip__menu-section--density">
         <div className="shell-user-chip__menu-section-label">{copy.density}</div>
-        <DensityToggle />
+        <DensityPicker size="sm" />
       </div>
       <div className="shell-user-chip__menu-section">
         <div className="shell-user-chip__menu-section-label">{copy.fontSize}</div>
@@ -347,6 +347,31 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }): ReactEleme
         fill="none"
         stroke="currentColor"
         strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Half-lit disc: the appearance (light/dark) mark beside the row. */
+function AppearanceIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M8 2.25a5.75 5.75 0 0 1 0 11.5Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function SignOutIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <path
+        d="M9.5 2.75H4.25a1.5 1.5 0 0 0-1.5 1.5v7.5a1.5 1.5 0 0 0 1.5 1.5H9.5M7 8h6.5m0 0-2.25-2.25M13.5 8l-2.25 2.25"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -380,7 +405,7 @@ function AppearanceHeader({
   }, [focusBack]);
   return (
     <div
-      className="shell-user-chip__view-header"
+      className="shell-user-chip__view-head shell-user-chip__view-header"
       onKeyDown={(event) => {
         if (event.key !== 'ArrowLeft') return;
         event.preventDefault();
@@ -499,9 +524,14 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
         <MenuDrillIn viewKey={`${view}-${visit}`} direction={direction}>
           {view === 'main' ? (
             <>
-              <DropdownMenuLabel>
-                <div className="shell-user-chip__menu-name">{username}</div>
-                {email ? <div className="shell-user-chip__menu-email">{email}</div> : null}
+              <DropdownMenuLabel className="shell-user-chip__view-head">
+                <span className="shell-user-chip__avatar shell-user-chip__avatar--lg" aria-hidden="true">
+                  {initialsFrom(username)}
+                </span>
+                <span className="shell-user-chip__identity">
+                  <span className="shell-user-chip__menu-name">{username}</span>
+                  {email ? <span className="shell-user-chip__menu-email">{email}</span> : null}
+                </span>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <div className="shell-user-chip__menu-section">
@@ -528,12 +558,16 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
                   openView('appearance');
                 }}
               >
+                <AppearanceIcon />
                 <span className="shell-user-chip__appearance-name">{copy.appearance}</span>
                 <AppearanceRowValue />
                 <ChevronIcon direction="right" />
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
+              <DropdownMenuItem className="shell-user-chip__signout" onSelect={onLogout}>
+                <SignOutIcon />
+                {copy.signOut}
+              </DropdownMenuItem>
             </>
           ) : (
             <>
@@ -541,7 +575,10 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
                 focusBack={!openedByPointer.current}
                 onBack={() => openView('main')}
               />
-              <AppearanceControls />
+              <DropdownMenuSeparator />
+              <div className="shell-user-chip__settings">
+                <AppearanceControls />
+              </div>
             </>
           )}
         </MenuDrillIn>

@@ -153,7 +153,9 @@
   },
   "density": {
     "compact": "Widok zwarty",
+    "compactShort": "Zwarty",
     "cozy": "Widok wygodny",
+    "cozyShort": "Wygodny",
     "group": "Gęstość wierszy"
   },
   "desktopOnly": {
