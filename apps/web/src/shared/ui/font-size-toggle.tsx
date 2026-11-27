@@ -22,7 +22,11 @@ import {
   type ReactElement,
 } from 'react';
 import { useMessages } from '../i18n/use-messages';
-import { SegmentedSwitch, type SegmentedSwitchOption } from './segmented-switch';
+import {
+  SegmentedSwitch,
+  type SegmentedSwitchOption,
+  type SegmentedSwitchSize,
+} from './segmented-switch';
 export const FontSizeValues = ['s', 'm', 'l', 'xl'] as const;
 export type FontSize = (typeof FontSizeValues)[number];
 
@@ -90,7 +94,7 @@ function FontSizeIcon({ size }: { size: FontSize }): ReactElement {
   );
 }
 
-export function FontSizeToggle(): ReactElement {
+export function FontSizeToggle({ size: switchSize }: { size?: SegmentedSwitchSize } = {}): ReactElement {
   const [size, setSize] = useFontSize();
   const copy = useMessages('ui').fontSize;
   const options = useMemo<SegmentedSwitchOption<FontSize>[]>(
@@ -111,6 +115,7 @@ export function FontSizeToggle(): ReactElement {
       onChange={setSize}
       labels="always"
       slideThumb
+      size={switchSize}
       aria-label={copy.group}
     />
   );

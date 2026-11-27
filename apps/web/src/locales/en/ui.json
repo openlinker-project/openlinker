@@ -137,7 +137,9 @@
   },
   "density": {
     "compact": "Compact density",
+    "compactShort": "Compact",
     "cozy": "Cozy density",
+    "cozyShort": "Cozy",
     "group": "Row density"
   },
   "desktopOnly": {

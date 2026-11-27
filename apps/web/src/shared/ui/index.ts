@@ -188,11 +188,12 @@ export { OptionList } from './option-list';
 export type { OptionListItem, OptionListProps } from './option-list';
 export { DescribedSelect } from './described-select';
 export type { DescribedSelectOption, DescribedSelectProps } from './described-select';
-export { SegmentedSwitch } from './segmented-switch';
+export { SegmentedSwitch, SegmentedSwitchSizeValues } from './segmented-switch';
 export type {
   SegmentedSwitchLabels,
   SegmentedSwitchOption,
   SegmentedSwitchProps,
+  SegmentedSwitchSize,
 } from './segmented-switch';
 export { SNAPPY_SPRING, THUMB_SPRING, ENTRANCE_GROUP, ENTRANCE_ITEM } from './motion-presets';
 

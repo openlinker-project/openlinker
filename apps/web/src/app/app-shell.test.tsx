@@ -395,7 +395,56 @@ describe('AppShell', () => {
     await user.click(trigger);
 
     expect(await screen.findByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
-    expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
+    // Theme and the other appearance controls sit one level down.
+    expect(screen.queryByRole('radiogroup', { name: 'Theme' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: /^Appearance/ }));
+    expect(await screen.findByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
+  });
+
+  it('should switch the background glow off from the appearance panel', async () => {
+    const user = userEvent.setup();
+    renderShell({ pathname: '/' });
+
+    await user.click(await screen.findByRole('button', { name: /Account menu for/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /^Appearance/ }));
+    const glow = await screen.findByRole('radiogroup', { name: 'Background glow' });
+    await user.click(within(glow).getByRole('radio', { name: 'Off' }));
+
+    expect(window.localStorage.getItem('openlinker-background-glow')).toBe('off');
+    expect(screen.getByTestId('dashboard-glow')).toHaveClass('dashboard-glow--off');
+    window.localStorage.removeItem('openlinker-background-glow');
+  });
+
+  it('should slide back to the main view and return focus to the Appearance row', async () => {
+    const user = userEvent.setup();
+    renderShell({ pathname: '/' });
+
+    await user.click(await screen.findByRole('button', { name: /Account menu for/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /^Appearance/ }));
+    const back = await screen.findByRole('button', { name: 'Back' });
+    // The main view leaves once its slide-out ends.
+    await waitFor(() =>
+      expect(screen.queryByRole('menuitem', { name: 'Sign out' })).not.toBeInTheDocument()
+    );
+
+    await user.click(back);
+
+    const row = await screen.findByRole('menuitem', { name: /^Appearance/ });
+    await waitFor(() => expect(row).toHaveFocus());
+    expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
+  });
+
+  it('should step back from Appearance on Escape instead of closing the menu', async () => {
+    const user = userEvent.setup();
+    renderShell({ pathname: '/' });
+
+    await user.click(await screen.findByRole('button', { name: /Account menu for/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /^Appearance/ }));
+    await screen.findByRole('button', { name: 'Back' });
+
+    await user.keyboard('{Escape}');
+
+    expect(await screen.findByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
   });
 
   it('should offer the language in the account menu, not in the sidebar (#4021)', async () => {
@@ -408,9 +457,11 @@ describe('AppShell', () => {
 
     const language = await screen.findByRole('listbox', { name: 'Language' });
     expect(within(language).getByRole('option', { name: /English/ })).toHaveAttribute('aria-selected', 'true');
-    // First section of the menu, above Theme.
-    const theme = screen.getByRole('radiogroup', { name: 'Theme' });
-    expect(language.compareDocumentPosition(theme) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // First section of the menu, above the appearance panel's row.
+    const appearance = screen.getByRole('menuitem', { name: /^Appearance/ });
+    expect(
+      language.compareDocumentPosition(appearance) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it('opens the mobile drawer when the hamburger is clicked', async () => {
@@ -440,6 +491,66 @@ describe('AppShell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close menu' }));
     expect(drawer.open).toBe(false);
+  });
+
+  it('should close the drawer when the backdrop is pressed and released', () => {
+    renderShell({ pathname: '/' });
+    const drawer = getDrawer();
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+
+    // A backdrop hit lands on the dialog itself, outside its box.
+    fireEvent.pointerDown(drawer, { clientX: 9999, clientY: 9999 });
+    fireEvent.click(drawer, { clientX: 9999, clientY: 9999 });
+
+    expect(drawer.open).toBe(false);
+  });
+
+  it('should keep the drawer open when a click lands inside the panel', () => {
+    renderShell({ pathname: '/' });
+    const drawer = getDrawer();
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+
+    const inner = drawer.querySelector('.shell-drawer__inner');
+    if (!(inner instanceof HTMLElement)) {
+      throw new Error('drawer panel not found');
+    }
+    fireEvent.pointerDown(inner);
+    fireEvent.click(inner);
+
+    expect(drawer.open).toBe(true);
+  });
+
+  it('should keep the drawer open when a selection drag is released over the backdrop', () => {
+    renderShell({ pathname: '/' });
+    const drawer = getDrawer();
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+
+    const inner = drawer.querySelector('.shell-drawer__inner');
+    if (!(inner instanceof HTMLElement)) {
+      throw new Error('drawer panel not found');
+    }
+    // Pressed inside, released outside: the click reaches the dialog itself.
+    fireEvent.pointerDown(inner);
+    fireEvent.click(drawer, { clientX: 9999, clientY: 9999 });
+
+    expect(drawer.open).toBe(true);
+  });
+
+  it('should show the down scroll arrow only while the menu has more below', async () => {
+    renderShell({ pathname: '/' });
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+    const wrapper = nav.parentElement;
+    if (!wrapper) {
+      throw new Error('scroll wrapper not found');
+    }
+    expect(wrapper).not.toHaveAttribute('data-scroll-down');
+
+    Object.defineProperty(nav, 'scrollHeight', { configurable: true, value: 900 });
+    Object.defineProperty(nav, 'clientHeight', { configurable: true, value: 400 });
+    fireEvent.scroll(nav);
+
+    await waitFor(() => expect(wrapper).toHaveAttribute('data-scroll-down'));
+    expect(wrapper).not.toHaveAttribute('data-scroll-up');
   });
 
   it('closes the drawer when the route changes externally', () => {

@@ -1,8 +1,10 @@
 /**
  * AppShell
  *
- * Authenticated-app chrome: persistent left nav (240 px sidebar with mobile
- * drawer fallback), top utility bar, and the main content slot. Every
+ * Authenticated-app chrome: persistent left nav (a 240 px floating sidebar
+ * box from 1024 px, a floating drawer below that), a full-width top bar
+ * carrying the brand, a slow brand glow behind the content (DashboardGlow),
+ * and the main content slot. Every
  * authenticated route renders inside this shell.
  *
  * Sidebar nav items carry count badges fed by `useNavCounts` (fanning out
@@ -19,6 +21,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type PropsWithChildren,
   type ReactElement,
   type ReactNode,
@@ -31,7 +34,15 @@ import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registr
 import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
+import { useScrollEdges } from './hooks/use-scroll-edges';
+import { useBackdropDismiss } from './hooks/use-backdrop-dismiss';
+import { prefersMotion } from '../shared/ui/prefers-motion';
+import { motion, useReducedMotionConfig } from 'motion/react';
+import { DashboardGlow } from './dashboard-glow';
+import { BackgroundGlowToggle } from './background-glow-toggle';
 import { Button } from '../shared/ui/button';
+import { MenuDrillIn, type MenuDrillDirection } from '../shared/ui/menu-drill-in';
+import { useTheme } from '../shared/theme/use-theme';
 import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/language';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
@@ -42,8 +53,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../shared/ui/dropdown-menu';
-import { ThemePicker } from '../features/appearance';
-import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
+import { ThemePicker, useThemeOptions } from '../features/appearance';
+import { DensityPicker, useDensity } from '../shared/ui/density-toggle';
 import { FontSizeToggle, useFontSize } from '../shared/ui/font-size-toggle';
 import { useToast } from '../shared/ui/toast-provider';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
@@ -79,6 +90,24 @@ export function SidebarNav({
   const numberFormatter = useNumberFormat();
   const formatCount = (value: number | null): string | null =>
     value === null ? null : numberFormatter.format(value);
+  const navRef = useRef<HTMLElement>(null);
+  const edges = useScrollEdges(navRef, groups);
+  // The arrows are hidden from assistive tech, so a click must not leave focus
+  // on them.
+  const keepFocus = (event: ReactMouseEvent<HTMLButtonElement>): void => {
+    event.preventDefault();
+  };
+  // One click moves most of a screen, keeping a couple of rows for context.
+  const scrollMenu = (direction: 1 | -1): void => {
+    const nav = navRef.current;
+    if (!nav) {
+      return;
+    }
+    nav.scrollBy({
+      top: direction * nav.clientHeight * 0.7,
+      behavior: prefersMotion() ? 'smooth' : 'auto',
+    });
+  };
   // Shared render for a greyed-out, non-clickable nav item (planned items and
   // demo-locked `restricted` groups use the same treatment; only the tooltip
   // source differs — per-item `reason` for planned, group-level for restricted).
@@ -110,43 +139,98 @@ export function SidebarNav({
     </li>
   );
   return (
-    <nav className="shell-nav" aria-label={ariaLabel}>
-      {groups.map((group) => (
-        <section key={group.label} className="shell-nav__group">
-          <p className="shell-nav__label">{group.label}</p>
-          <ul className="shell-nav__list">
-            {group.kind === 'live'
-              ? group.items.map((item) => {
-                  const countText = item.countKey ? formatCount(counts[item.countKey]) : null;
-                  return (
-                    <li key={item.label}>
-                      <NavLink
-                        to={item.to}
-                        end={item.end}
-                        onClick={onNavigate}
-                        className={({ isActive }) =>
-                          (activeTo === undefined ? isActive : activeTo === item.to)
-                            ? 'shell-nav__link shell-nav__link--active'
-                            : 'shell-nav__link'
-                        }
-                      >
-                        <span className="shell-nav__link-label" title={item.label}>
-                          {item.label}
-                        </span>
-                        {countText !== null ? (
-                          <span className="shell-nav__link-count mono-text">{countText}</span>
-                        ) : null}
-                      </NavLink>
-                    </li>
-                  );
-                })
-              : group.kind === 'restricted'
-                ? group.items.map((item) => renderDisabledItem(item.label, group.reason, true))
-                : group.items.map((item) => renderDisabledItem(item.label, item.reason, false))}
-          </ul>
-        </section>
-      ))}
-    </nav>
+    <div
+      className="shell-nav-scroll"
+      data-scroll-up={edges.up ? '' : undefined}
+      data-scroll-down={edges.down ? '' : undefined}
+    >
+      {/* Mouse affordance only: keyboard focus already scrolls the menu, so the
+          arrows are hidden from assistive tech and out of the tab order. */}
+      <button
+        type="button"
+        className="shell-nav-scroll__arrow shell-nav-scroll__arrow--up"
+        aria-hidden="true"
+        tabIndex={-1}
+        onMouseDown={keepFocus}
+        onClick={() => scrollMenu(-1)}
+      >
+        <span className="shell-nav-scroll__hit">
+          <ScrollChevron />
+        </span>
+      </button>
+      <nav ref={navRef} className="shell-nav" aria-label={ariaLabel}>
+        {groups.map((group) => (
+          <section key={group.label} className="shell-nav__group">
+            <p className="shell-nav__label">
+              <span className="shell-nav__label-text">{group.label}</span>
+            </p>
+            <ul className="shell-nav__list">
+              {group.kind === 'live'
+                ? group.items.map((item) => {
+                    const countText = item.countKey ? formatCount(counts[item.countKey]) : null;
+                    return (
+                      <li key={item.label}>
+                        <NavLink
+                          to={item.to}
+                          end={item.end}
+                          onClick={onNavigate}
+                          className={({ isActive }) =>
+                            (activeTo === undefined ? isActive : activeTo === item.to)
+                              ? 'shell-nav__link shell-nav__link--active'
+                              : 'shell-nav__link'
+                          }
+                        >
+                          <span className="shell-nav__link-label" title={item.label}>
+                            {item.label}
+                          </span>
+                          {countText !== null ? (
+                            <span className="shell-nav__link-count mono-text">{countText}</span>
+                          ) : null}
+                        </NavLink>
+                      </li>
+                    );
+                  })
+                : group.kind === 'restricted'
+                  ? group.items.map((item) => renderDisabledItem(item.label, group.reason, true))
+                  : group.items.map((item) => renderDisabledItem(item.label, item.reason, false))}
+            </ul>
+          </section>
+        ))}
+      </nav>
+      <button
+        type="button"
+        className="shell-nav-scroll__arrow shell-nav-scroll__arrow--down"
+        aria-hidden="true"
+        tabIndex={-1}
+        onMouseDown={keepFocus}
+        onClick={() => scrollMenu(1)}
+      >
+        <span className="shell-nav-scroll__hit">
+          <ScrollChevron />
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function ScrollChevron(): ReactElement {
+  return (
+    <svg
+      className="shell-nav-scroll__chevron"
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      aria-hidden="true"
+    >
+      <path
+        d="M4 6l4 4 4-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -224,6 +308,144 @@ function initialsFrom(username: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+/** Theme, background glow, density and text size, in the compact switches. */
+function AppearanceControls(): ReactElement {
+  const copy = useMessages('app').userMenu;
+  const themeCopy = useMessages('ui').theme;
+  return (
+    <>
+      <div className="shell-user-chip__menu-section">
+        <div className="shell-user-chip__menu-section-label">{themeCopy.label}</div>
+        <ThemePicker size="sm" />
+      </div>
+      <div className="shell-user-chip__menu-section">
+        <div className="shell-user-chip__menu-section-label">{copy.backgroundGlow}</div>
+        <BackgroundGlowToggle size="sm" />
+      </div>
+      <div className="shell-user-chip__menu-section shell-user-chip__menu-section--density">
+        <div className="shell-user-chip__menu-section-label">{copy.density}</div>
+        <DensityPicker size="sm" />
+      </div>
+      <div className="shell-user-chip__menu-section">
+        <div className="shell-user-chip__menu-section-label">{copy.fontSize}</div>
+        <FontSizeToggle size="sm" />
+      </div>
+    </>
+  );
+}
+
+// The back control arrives a beat after the panel starts moving, from the side
+// it points to, so it reads as the way you came in; the title follows it.
+const BACK_ENTRANCE = { type: 'spring', bounce: 0.2, visualDuration: 0.3, delay: 0.05 } as const;
+const TITLE_ENTRANCE = { type: 'spring', bounce: 0, visualDuration: 0.28, delay: 0.09 } as const;
+
+function ChevronIcon({ direction }: { direction: 'left' | 'right' }): ReactElement {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path
+        d={direction === 'left' ? 'M10 3.5L5.5 8L10 12.5' : 'M6 3.5L10.5 8L6 12.5'}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Half-lit disc: the appearance (light/dark) mark beside the row. */
+function AppearanceIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M8 2.25a5.75 5.75 0 0 1 0 11.5Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function SignOutIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <path
+        d="M9.5 2.75H4.25a1.5 1.5 0 0 0-1.5 1.5v7.5a1.5 1.5 0 0 0 1.5 1.5H9.5M7 8h6.5m0 0-2.25-2.25M13.5 8l-2.25 2.25"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** The Appearance view's header: a back control and the view's name. */
+function AppearanceHeader({
+  onBack,
+  focusBack,
+}: {
+  onBack: () => void;
+  /** Keyboard entry lands on the back control; a click keeps focus quiet. */
+  focusBack: boolean;
+}): ReactElement {
+  const copy = useMessages('app').userMenu;
+  const still = useReducedMotionConfig() ?? false;
+  const backRef = useRef<HTMLButtonElement>(null);
+  // Keyboard users land on the way out of the view they just opened. After a
+  // click the menu itself takes focus instead, so arrows and Escape keep
+  // working without a focus ring appearing on a control nobody tabbed to.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const back = backRef.current;
+      if (!back) return;
+      const target = focusBack ? back : back.closest<HTMLElement>('[role="menu"]');
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusBack]);
+  return (
+    <div
+      className="shell-user-chip__view-head shell-user-chip__view-header"
+      onKeyDown={(event) => {
+        if (event.key !== 'ArrowLeft') return;
+        event.preventDefault();
+        onBack();
+      }}
+    >
+      <motion.button
+        ref={backRef}
+        type="button"
+        className="shell-user-chip__back"
+        aria-label={copy.back}
+        onClick={onBack}
+        initial={still ? false : { opacity: 0, x: -10, scale: 0.85 }}
+        animate={{ opacity: 1, x: 0, scale: 1 }}
+        transition={BACK_ENTRANCE}
+      >
+        <ChevronIcon direction="left" />
+      </motion.button>
+      <motion.span
+        className="shell-user-chip__view-title"
+        initial={still ? false : { opacity: 0, x: -6 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={TITLE_ENTRANCE}
+      >
+        {copy.appearance}
+      </motion.span>
+    </div>
+  );
+}
+
+/** The current theme beside the Appearance row; read only while the menu is open. */
+function AppearanceRowValue(): ReactElement {
+  const { theme } = useTheme();
+  const options = useThemeOptions();
+  const label = options.find((option) => option.value === theme)?.label ?? '';
+  return <span className="shell-user-chip__appearance-value">{label}</span>;
+}
+
+type AccountMenuView = 'main' | 'appearance';
+
 interface UserChipProps {
   email?: string | null;
   onLogout: () => void;
@@ -233,14 +455,47 @@ interface UserChipProps {
 function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   const copy = useMessages('app').userMenu;
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<AccountMenuView>('main');
+  const [direction, setDirection] = useState<MenuDrillDirection>(1);
+  // Every visit gets its own key: re-entering a view while its previous copy is
+  // still sliding out would otherwise revive that copy instead of mounting a
+  // fresh one, skipping the entrance and the focus move.
+  const [visit, setVisit] = useState(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const appearanceRowRef = useRef<HTMLDivElement>(null);
+  const returning = useRef(false);
+  const openedByPointer = useRef(false);
   // A language picked in this menu remounts the app; focus comes back here.
   useEffect(() => {
     restoreFocusAfterLanguageChange(triggerRef.current);
   }, []);
-  const themeCopy = useMessages('ui').theme;
+  // Back from Appearance: focus returns to the row that opened it.
+  useEffect(() => {
+    if (view !== 'main' || !returning.current) return undefined;
+    returning.current = false;
+    const frame = requestAnimationFrame(() =>
+      appearanceRowRef.current?.focus({ preventScroll: true })
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [view]);
+
+  const openView = (next: AccountMenuView): void => {
+    setDirection(next === 'main' ? -1 : 1);
+    if (next === 'main') returning.current = true;
+    setVisit((previous) => previous + 1);
+    setView(next);
+  };
+
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu
+      open={open}
+      onOpenChange={(next) => {
+        // Every opening starts on the first view; closing leaves it as is so
+        // the panel does not slide while the menu fades out.
+        if (next) setView('main');
+        setOpen(next);
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <button
           ref={triggerRef}
@@ -259,30 +514,84 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
         align="end"
         sideOffset={6}
         className="shell-user-chip__menu"
+        // In the Appearance view Escape steps back before it closes the menu.
+        onEscapeKeyDown={(event) => {
+          if (view === 'main') return;
+          event.preventDefault();
+          openView('main');
+        }}
       >
-        <DropdownMenuLabel>
-          <div className="shell-user-chip__menu-name">{username}</div>
-          {email ? <div className="shell-user-chip__menu-email">{email}</div> : null}
-        </DropdownMenuLabel>
+        {/* The frame stays put: the head row and the rule under it keep their
+            place, and only what is inside them changes. The head cross-fades
+            (its back control brings its own entrance); the body glides. */}
+        <MenuDrillIn
+          className="shell-user-chip__head-slot"
+          viewKey={`${view}-${visit}`}
+          direction={direction}
+          shift={0}
+        >
+          {view === 'main' ? (
+            <DropdownMenuLabel className="shell-user-chip__view-head">
+              <span className="shell-user-chip__avatar shell-user-chip__avatar--lg" aria-hidden="true">
+                {initialsFrom(username)}
+              </span>
+              <span className="shell-user-chip__identity">
+                <span className="shell-user-chip__menu-name">{username}</span>
+                {email ? <span className="shell-user-chip__menu-email">{email}</span> : null}
+              </span>
+            </DropdownMenuLabel>
+          ) : (
+            <AppearanceHeader
+              focusBack={!openedByPointer.current}
+              onBack={() => openView('main')}
+            />
+          )}
+        </MenuDrillIn>
         <DropdownMenuSeparator />
-        <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">{copy.language}</div>
-          <LanguageMenuList />
-        </div>
-        <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">{themeCopy.label}</div>
-          <ThemePicker />
-        </div>
-        <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">{copy.density}</div>
-          <DensityToggle />
-        </div>
-        <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">{copy.fontSize}</div>
-          <FontSizeToggle />
-        </div>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
+        <MenuDrillIn viewKey={`${view}-${visit}`} direction={direction}>
+          {view === 'main' ? (
+            <>
+              <div className="shell-user-chip__menu-section">
+                <div className="shell-user-chip__menu-section-label">{copy.language}</div>
+                <LanguageMenuList />
+              </div>
+              {/* Theme, glow, density and text size slide in from here, inside
+                  this same popover, so the menu stays short. */}
+              <DropdownMenuItem
+                ref={appearanceRowRef}
+                textValue={copy.appearance}
+                className="shell-user-chip__appearance-row"
+                onPointerDown={() => {
+                  openedByPointer.current = true;
+                }}
+                onKeyDown={(event) => {
+                  openedByPointer.current = false;
+                  if (event.key !== 'ArrowRight') return;
+                  event.preventDefault();
+                  openView('appearance');
+                }}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  openView('appearance');
+                }}
+              >
+                <AppearanceIcon />
+                <span className="shell-user-chip__appearance-name">{copy.appearance}</span>
+                <AppearanceRowValue />
+                <ChevronIcon direction="right" />
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="shell-user-chip__signout" onSelect={onLogout}>
+                <SignOutIcon />
+                {copy.signOut}
+              </DropdownMenuItem>
+            </>
+          ) : (
+            <div className="shell-user-chip__settings">
+              <AppearanceControls />
+            </div>
+          )}
+        </MenuDrillIn>
       </DropdownMenuAnimatedContent>
     </DropdownMenu>
   );
@@ -346,8 +655,8 @@ export function ShellTopbar({
         </button>
       ) : null}
 
-      {/* On an ultrawide screen the brand moves out of the sidebar box into
-          the bar, above the sidebar; CSS shows this copy only there. */}
+      {/* From 1024 px the brand sits in the bar, above the floating sidebar
+          box, instead of inside it; CSS shows this copy only there. */}
       {showBrand ? <SidebarBrand /> : <SidebarBrand className="shell-brand--wide" />}
 
       <nav aria-label={copy.shell.breadcrumb} className="shell-crumbs">
@@ -436,6 +745,8 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
     drawerRef.current?.close();
   }, []);
 
+  const drawerBackdrop = useBackdropDismiss();
+
   const openDrawer = useCallback((): void => {
     drawerRef.current?.showModal();
   }, []);
@@ -473,6 +784,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
 
   return (
     <CommandPaletteProvider>
+      {settled ? <DashboardGlow /> : null}
       <div className={settled ? 'shell shell--app' : 'shell shell--pending'}>
         <div className="shell-sidebar">
           <SidebarBrand />
@@ -485,7 +797,13 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
           />
         </div>
 
-        <dialog ref={drawerRef} className="shell-drawer" aria-label={copy.shell.mobileNavigation}>
+        <dialog
+          ref={drawerRef}
+          className="shell-drawer"
+          aria-label={copy.shell.mobileNavigation}
+          onPointerDown={drawerBackdrop.onPointerDown}
+          onClick={drawerBackdrop.onClick}
+        >
           <div className="shell-drawer__inner">
             <div className="shell-drawer__header">
               <SidebarBrand />

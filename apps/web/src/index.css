@@ -1243,11 +1243,14 @@ textarea,
  * ── Shell (FE-002 / Phase 2) ─────────────────────────────────────────
  * Mobile-first: content is full-width, sidebar is hidden and surfaced
  * via a native <dialog> drawer triggered by the topbar hamburger.
- * Desktop (≥ 1024 px): persistent 240 px sidebar on the left, sticky
- * topbar, main region fills the rest.
+ * Desktop (≥ 1024 px): full-width sticky topbar carrying the brand, the
+ * 240 px sidebar floats below it in a box, main region fills the rest.
  */
 
 .shell {
+  /* Positioned so it paints over the fixed dashboard glow (z-index 0) that
+     the app shell renders just before it. */
+  position: relative;
   min-height: calc(100 * var(--ui-vh));
   background: var(--bg-canvas);
   display: grid;
@@ -1263,54 +1266,25 @@ textarea,
   display: none;
 }
 
+/* Desktop (>= 1024px): one layout from here up, the one ultrawide introduced
+   (#4026 follow-up). The top bar spans the full width with the brand in it,
+   and the sidebar floats below it in a box, so the brand never moves between
+   the bar and the sidebar as the window is resized, and the brand light
+   (.dashboard-glow) shows around the box instead of stopping at a hard rule.
+
+     --shell-side = the sidebar column: 12px gap + the 240px box. The box sits
+     at the column's right edge, right beside the content, whose own 32px
+     padding is the gap on that side. */
 @media (min-width: 1024px) {
   .shell {
-    grid-template-columns: 240px minmax(0, 1fr);
+    --shell-side: 252px;
+    grid-template-columns: var(--shell-side) minmax(0, 1fr);
     grid-template-areas: 'sidebar main';
   }
 
-  .shell-sidebar {
-    grid-area: sidebar;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-shell);
-    border-right: 1px solid var(--border-subtle);
-    padding: 12px 0;
-    position: sticky;
-    top: 0;
-    height: calc(100 * var(--ui-vh));
-    overflow: hidden;
-  }
-}
-
-/* Ultrawide (>= 2560px): the sidebar and the content move together as one
-   centred block (#4026 follow-up). The sidebar floats in a box at the right
-   edge of its own column, right beside the content, and the column absorbs
-   the left half of the spare width:
-
-     block = --layout-max-width = 240px (box) + 32px (content padding) + content
-     side  = (100vw - block) / 2 + 240px   so that the outer gaps are equal:
-     left  = side - 240px
-     right = 100vw - side - (block - 240px)
-
-   The top bar keeps its full width, but its content is padded to line up
-   with the content block's edges. */
-/* Keep this media query equal to --layout-max-width (a media query cannot
-   read a custom property). */
-@media (min-width: 2560px) {
-  .shell {
-    --shell-side: max(264px, calc((calc(100 * var(--ui-vw)) - var(--layout-max-width)) / 2 + 240px));
-    grid-template-columns: var(--shell-side) minmax(0, 1fr);
-  }
-
-  .shell .page-layout,
-  .shell .shell-content:not(.shell-content--flush):not(.login-backdrop__scenes) > * {
-    margin-inline: 0 auto;
-  }
-
-  .shell .shell-topbar {
+  /* Not the pack bench (.shell--no-sidebar): its bar starts at the left edge. */
+  .shell:not(.shell--no-sidebar) .shell-topbar {
     padding-left: 32px;
-    padding-right: max(16px, calc(calc(100 * var(--ui-vw)) - var(--shell-side) - var(--layout-max-width) + 240px));
   }
 
   /* The brand sits in the bar above the sidebar box: the box starts 240px
@@ -1333,7 +1307,7 @@ textarea,
   /* The bar lives in the main column; with the sidebar now below it, its
      background and bottom rule continue over the sidebar column so the bar
      reads as one full-width strip. */
-  .shell .shell-topbar::before {
+  .shell:not(.shell--no-sidebar) .shell-topbar::before {
     content: '';
     position: absolute;
     top: 0;
@@ -1346,16 +1320,56 @@ textarea,
   }
 
   .shell-sidebar {
+    grid-area: sidebar;
+    display: flex;
+    flex-direction: column;
     justify-self: end;
     width: 240px;
-    /* Below the top bar, not beside it; the menu inside (`.shell-nav`)
-       scrolls on its own when it outgrows the box. */
-    top: calc(var(--shell-topbar-height) + 12px);
-    height: calc(calc(100 * var(--ui-vh)) - var(--shell-topbar-height) - 24px);
-    margin: calc(var(--shell-topbar-height) + 12px) 0 12px;
+    background: var(--bg-shell);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-sm);
+    padding: 12px 0;
+    /* Pinned to the viewport by its edges, not sized from a viewport unit:
+       `vh` inside the text-size `zoom` resolves differently per engine
+       (Safari left the box 1/zoom short of the window), while `top` and
+       `bottom` always measure from the window itself. Below the top bar, at
+       the right edge of the sidebar column; the menu inside (`.shell-nav`)
+       scrolls on its own when it outgrows the box. */
+    position: fixed;
+    top: calc(var(--shell-topbar-height) + 12px);
+    bottom: 12px;
+    left: calc(var(--shell-side) - 240px);
+    z-index: 1;
+    overflow: hidden;
+  }
+}
+
+/* Ultrawide (>= 2560px): the sidebar and the content move together as one
+   centred block (#4026 follow-up). The sidebar column absorbs the left half
+   of the spare width:
+
+     block = --layout-max-width = 240px (box) + 32px (content padding) + content
+     side  = (100vw - block) / 2 + 240px   so that the outer gaps are equal:
+     left  = side - 240px
+     right = 100vw - side - (block - 240px)
+
+   The top bar keeps its full width, but its content is padded to line up
+   with the content block's edges. */
+/* Keep this media query equal to --layout-max-width (a media query cannot
+   read a custom property). */
+@media (min-width: 2560px) {
+  .shell {
+    --shell-side: max(264px, calc((calc(100 * var(--ui-vw)) - var(--layout-max-width)) / 2 + 240px));
+  }
+
+  .shell .page-layout,
+  .shell .shell-content:not(.shell-content--flush):not(.login-backdrop__scenes) > * {
+    margin-inline: 0 auto;
+  }
+
+  .shell:not(.shell--no-sidebar) .shell-topbar {
+    padding-right: max(16px, calc(calc(100 * var(--ui-vw)) - var(--shell-side) - var(--layout-max-width) + 240px));
   }
 }
 
@@ -1396,7 +1410,7 @@ textarea,
   flex-shrink: 0;
 }
 
-/* The ultrawide copy of the brand (#4026 follow-up) shows only from 2560px. */
+/* The wide copy of the brand (#4026 follow-up) shows only from 1024px, in the top bar. */
 .shell-brand--wide {
   display: none;
 }
@@ -1414,6 +1428,163 @@ textarea,
 /* The page owns its own gutters (`.bench-shell`), so the shell adds none. */
 .shell-content.shell-content--flush {
   padding: 0;
+}
+
+/* ── Dashboard glow ──────────────────────────────────────────────────
+ * The login light (.login-glow, #4029), dimmer, behind the signed-in shell.
+ * `html` and `body` both carry the canvas colour here, so a negative z-index
+ * would paint UNDER body's background and vanish. The glow sits at z-index 0
+ * instead and `.shell` is positioned, which paints it later in DOM order; the
+ * shell's content area is transparent and lets the light through, while the
+ * sidebar and top bar keep their own solid background.
+ *
+ * Every orb has four layers, and each animates only transform and opacity,
+ * so nothing here costs a layout:
+ *   __lean   the size of the viewport, translated by motion: a percentage of
+ *            its own size is a percentage of the screen (the page's spot);
+ *   __drift  the size of the viewport, translated by the pointer;
+ *   __pos    pins the orb's centre to the top-left corner;
+ *   __orb    breathes (CSS keyframes).
+ */
+.dashboard-glow {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    opacity 480ms var(--ease-out),
+    visibility 0s;
+}
+
+/* Switched off in the account menu: fade out, then leave the compositor
+   (visibility flips once the fade ends). The breathing pauses rather than
+   stopping, so switching back on resumes it without a jump. */
+.dashboard-glow--off {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 480ms var(--ease-standard),
+    visibility 0s linear 480ms;
+}
+
+.dashboard-glow--off .dashboard-glow__orb {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-glow,
+  .dashboard-glow--off {
+    transition: none;
+  }
+}
+
+.dashboard-glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.dashboard-glow__lean {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.dashboard-glow__drift {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.dashboard-glow__pos {
+  --orb-size: calc(58 * max(var(--ui-vw), var(--ui-vh)));
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--orb-size);
+  height: var(--orb-size);
+  margin: calc(var(--orb-size) / -2) 0 0 calc(var(--orb-size) / -2);
+}
+
+.dashboard-glow__lean--b .dashboard-glow__pos {
+  --orb-size: calc(46 * max(var(--ui-vw), var(--ui-vh)));
+}
+
+.dashboard-glow__orb {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  /* An eased fall-off: a two-stop gradient at low alpha bands into visible rings. */
+  background: radial-gradient(
+    closest-side,
+    var(--glow) 0%,
+    color-mix(in oklab, var(--glow) 82%, transparent) 16%,
+    color-mix(in oklab, var(--glow) 56%, transparent) 36%,
+    color-mix(in oklab, var(--glow) 30%, transparent) 56%,
+    color-mix(in oklab, var(--glow) 12%, transparent) 74%,
+    color-mix(in oklab, var(--glow) 3%, transparent) 88%,
+    transparent 100%
+  );
+  /* Rests on the breathe's first frame, so the animation starts and ends
+     without a jump. */
+  opacity: 0.9;
+  will-change: transform, opacity;
+  /* Two breaths, then still: an endless animation keeps the compositor drawing
+     a frame every vsync on an idle page. DashboardGlow remounts the orb on a
+     page change, which starts it again. */
+  animation: dashboard-glow-breathe 14s ease-in-out 2 alternate;
+}
+
+.dashboard-glow__orb--a {
+  --glow: color-mix(in oklab, var(--accent-primary) 10%, transparent);
+}
+
+.dashboard-glow__orb--b {
+  --glow: color-mix(in oklab, var(--accent-primary) 6%, transparent);
+  animation-duration: 18s;
+  /* Out of step with orb a. A positive delay holds the resting frame, so the
+     restart on a page change does not jump. */
+  animation-delay: 3s;
+}
+
+/* Muted text over orb a's centre has to keep 4.5:1. Light lands near 4.8:1 at
+   10%; dark is tighter, so it takes 9% to keep a margin above 4.5:1. */
+html[data-theme='dark'] .dashboard-glow__orb--a {
+  --glow: color-mix(in oklab, var(--accent-primary) 9%, transparent);
+}
+
+html[data-theme='dark'] .dashboard-glow__orb--b {
+  --glow: color-mix(in oklab, var(--accent-primary) 7%, transparent);
+}
+
+@keyframes dashboard-glow-breathe {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(1.05); opacity: 1; }
+}
+
+.dashboard-glow--still .dashboard-glow__orb {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-glow__orb {
+    animation: none;
+  }
+}
+
+/* The app shell's content area lets the light through. Only the app shell:
+   the pack bench and the login page's preview keep the canvas colour. */
+.shell:is(.shell--app, .shell--pending) {
+  background: transparent;
+}
+
+/* A phone sheet pushes the shell back over a near-black backdrop; the light
+   would show in that gap as a coloured halo. */
+body.side-panel-sheet-open .dashboard-glow {
+  display: none;
 }
 
 /* ── Environment badge: version on hover (#3287) ─────────────────────
@@ -1470,11 +1641,196 @@ textarea,
   }
 }
 
+/* The scrolling menu and its two scroll arrows. The arrows exist only on the
+   side where there is more menu, so an overflowing sidebar says so at a glance
+   instead of relying on a thin scrollbar. They overlay the menu edges; the
+   sticky group label steps down below the top arrow while it shows. */
+.shell-nav-scroll {
+  --nav-arrow-h: 28px;
+  --nav-arrow-up-h: 18px;
+  /* Fade under the top arrow; also the stuck label's top padding while the
+     arrow shows, so the fade covers only the label's background. */
+  --nav-fade-h: 12px;
+  /* Arrows enter a touch slower than they leave, and the label moves with the
+     top arrow on the same curve, so the two arrive as one header. */
+  --nav-arrow-in: 240ms;
+  --nav-arrow-out: 160ms;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Hidden arrows wait just outside this box; clip keeps them out of sight
+     without making it a scroll container. */
+  overflow: clip;
+}
+
 .shell-nav {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 0 12px;
+  padding: 0 12px 16px;
   scrollbar-width: thin;
+  /* Keyboard focus scrolls a link clear of the sticky group label. */
+  scroll-padding-top: 30px;
+}
+
+.shell-nav-scroll[data-scroll-up] {
+  --nav-top-inset: var(--nav-arrow-up-h);
+}
+
+.shell-nav-scroll[data-scroll-up] .shell-nav__label {
+  padding-top: var(--nav-fade-h);
+  transition:
+    top var(--nav-arrow-in) var(--ease-out),
+    padding-top var(--nav-arrow-in) var(--ease-out);
+}
+
+/* A soft fade under the top arrow, so a group label being pushed out by the
+   next group (or a link between two groups) dissolves instead of being cut
+   mid-letter by the arrow's edge. It sits above the labels, so while the arrow
+   shows the stuck label grows a matching top padding: the fade then lies over
+   the label's empty background and never dims its text. */
+.shell-nav-scroll::before {
+  content: '';
+  position: absolute;
+  top: var(--nav-arrow-up-h);
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: var(--nav-fade-h);
+  background: linear-gradient(var(--bg-shell), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--nav-arrow-out) var(--ease-standard);
+}
+
+.shell-nav-scroll[data-scroll-up]::before {
+  opacity: 1;
+  transition: opacity var(--nav-arrow-in) var(--ease-out);
+}
+
+.shell-nav-scroll[data-scroll-up] .shell-nav {
+  scroll-padding-top: calc(24px + var(--nav-fade-h) + var(--nav-arrow-up-h));
+}
+
+.shell-nav-scroll .shell-nav-scroll__arrow {
+  /* Scoped under the wrapper so it outranks the global button and
+     button:hover rules, which would paint it as a primary button. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--nav-arrow-h);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    translate var(--nav-arrow-out) var(--ease-standard),
+    opacity var(--nav-arrow-out) var(--ease-standard),
+    color var(--duration-fast) var(--ease-out),
+    visibility 0s linear var(--nav-arrow-out);
+}
+
+.shell-nav-scroll .shell-nav-scroll__arrow--up {
+  top: 0;
+  /* Solid, not a fade: the sticky group label sits right under it, so the two
+     read as one header and the label's own shade does the fading. */
+  height: var(--nav-arrow-up-h);
+  background: var(--bg-shell);
+  translate: 0 -100%;
+}
+
+.shell-nav-scroll .shell-nav-scroll__arrow--down {
+  bottom: 0;
+  background: linear-gradient(color-mix(in oklab, var(--bg-shell) 0%, transparent), var(--bg-shell) 38%);
+  translate: 0 100%;
+}
+
+.shell-nav-scroll__arrow--up .shell-nav-scroll__chevron {
+  rotate: 180deg;
+}
+
+.shell-nav-scroll[data-scroll-up] .shell-nav-scroll__arrow--up,
+.shell-nav-scroll[data-scroll-down] .shell-nav-scroll__arrow--down {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  translate: 0 0;
+  transition:
+    translate var(--nav-arrow-in) var(--ease-out),
+    opacity var(--nav-arrow-in) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    visibility 0s;
+}
+
+/* The hit area. The bottom arrow's top part is a fade over still-readable
+   rows, so only its solid lower strip takes clicks; a half-visible link above
+   it stays clickable. */
+.shell-nav-scroll__hit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.shell-nav-scroll .shell-nav-scroll__arrow--down {
+  align-items: flex-end;
+}
+
+.shell-nav-scroll[data-scroll-down] .shell-nav-scroll__arrow--down {
+  pointer-events: none;
+}
+
+.shell-nav-scroll[data-scroll-down] .shell-nav-scroll__arrow--down .shell-nav-scroll__hit {
+  height: 16px;
+  pointer-events: auto;
+}
+
+.shell-nav-scroll__chevron {
+  transition: translate var(--duration-fast) var(--ease-out);
+}
+
+.shell-nav-scroll .shell-nav-scroll__arrow:is(:hover, :active, :focus-visible) {
+  border: 0;
+  box-shadow: none;
+  color: var(--accent-primary);
+}
+
+/* A small nudge in the direction the menu will move. */
+.shell-nav-scroll__arrow--down:hover .shell-nav-scroll__chevron {
+  translate: 0 2px;
+}
+
+.shell-nav-scroll__arrow--up:hover .shell-nav-scroll__chevron {
+  translate: 0 -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No slide: the arrows only fade, and the label steps without moving. */
+  .shell-nav-scroll .shell-nav-scroll__arrow.shell-nav-scroll__arrow {
+    translate: 0 0;
+  }
+
+  .shell-nav-scroll__chevron,
+  .shell-nav-scroll .shell-nav__label,
+  .shell-nav-scroll[data-scroll-up] .shell-nav__label {
+    transition: none;
+  }
+
+  .shell-nav-scroll__arrow:hover .shell-nav-scroll__chevron {
+    translate: none;
+  }
 }
 
 .shell-nav__group {
@@ -1482,13 +1838,48 @@ textarea,
 }
 
 .shell-nav__label {
-  margin: 0 0 4px;
-  padding: 0 8px;
+  /* Sticky to the top of the scrolling menu until its own group scrolls away
+     (sticky is bounded by the parent .shell-nav__group). It carries the
+     sidebar background so links pass underneath it, not through it. */
+  position: sticky;
+  top: var(--nav-top-inset, 0px);
+  /* Steps down under the top arrow on the arrow's own curve. Animating `top`
+     costs layout, but only for this short moment when the arrow toggles. */
+  transition:
+    top var(--nav-arrow-out) var(--ease-standard),
+    padding-top var(--nav-arrow-out) var(--ease-standard);
+  z-index: 1;
+  margin: 0 0 2px;
+  padding: 6px 8px 4px;
+  background: var(--bg-shell);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.11em;
   text-transform: uppercase;
   color: var(--text-muted);
+  container-type: scroll-state;
+}
+
+/* A soft shade under the label, only while it is actually stuck, so the links
+   fade into it rather than being cut by a hard edge. Browsers without
+   scroll-state queries simply show no shade. */
+.shell-nav__label-text::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 14px;
+  background: linear-gradient(var(--bg-shell), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+@container scroll-state(stuck: top) {
+  .shell-nav__label-text::after {
+    opacity: 1;
+  }
 }
 
 .shell-nav__list {
@@ -1622,21 +2013,102 @@ textarea,
   text-decoration: underline;
 }
 
-/* Mobile drawer — native <dialog>. Hidden on desktop. */
+/* Mobile drawer — native <dialog>. Hidden on desktop.
+ * The same floating box the desktop sidebar uses: 8px clear of the screen
+ * edges, rounded, bordered. It slides in from the left edge while the scrim
+ * fades, then the menu groups settle in one after another; closing plays the
+ * slide in reverse. Pure CSS: `@starting-style` gives the open state a start
+ * point and `allow-discrete` keeps the dialog on screen while it leaves, so
+ * the existing showModal()/close() calls need no change. Browsers without
+ * either feature simply open and close without the animation. */
 .shell-drawer {
+  --drawer-gap: 8px;
+  --drawer-in: 280ms;
+  --drawer-out: 200ms;
   padding: 0;
-  border: none;
-  border-radius: 0 12px 12px 0;
-  margin: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  margin: var(--drawer-gap);
+  margin-top: calc(var(--drawer-gap) + env(safe-area-inset-top, 0px));
   width: min(280px, calc(85 * var(--ui-vw)));
-  height: calc(100 * var(--ui-vh));
-  max-height: calc(100 * var(--ui-vh));
+  height: calc(calc(100 * var(--ui-vh)) - 2 * var(--drawer-gap) - env(safe-area-inset-top, 0px));
+  max-height: none;
   background: var(--bg-shell);
   box-shadow: var(--shadow-overlay);
+  opacity: 0;
+  transform: translateX(calc(-100% - 2 * var(--drawer-gap)));
+  transition:
+    transform var(--drawer-out) var(--ease-standard),
+    opacity var(--drawer-out) var(--ease-standard),
+    overlay var(--drawer-out) allow-discrete,
+    display var(--drawer-out) allow-discrete;
+}
+
+.shell-drawer[open] {
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    transform var(--drawer-in) var(--ease-out),
+    opacity calc(var(--drawer-in) * 0.6) var(--ease-out),
+    overlay var(--drawer-in) allow-discrete,
+    display var(--drawer-in) allow-discrete;
+}
+
+@starting-style {
+  .shell-drawer[open] {
+    opacity: 0;
+    transform: translateX(calc(-100% - 2 * var(--drawer-gap)));
+  }
 }
 
 .shell-drawer::backdrop {
   background: var(--overlay-scrim);
+  opacity: 0;
+  transition:
+    opacity var(--drawer-out) var(--ease-standard),
+    overlay var(--drawer-out) allow-discrete,
+    display var(--drawer-out) allow-discrete;
+}
+
+.shell-drawer[open]::backdrop {
+  opacity: 1;
+  transition:
+    opacity var(--drawer-in) var(--ease-out),
+    overlay var(--drawer-in) allow-discrete,
+    display var(--drawer-in) allow-discrete;
+}
+
+@starting-style {
+  .shell-drawer[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* The menu groups follow the box in, a beat apart, so the eye lands on the
+   first group first. Short and without overshoot: this is a work tool. */
+.shell-drawer[open] .shell-nav__group {
+  animation: shell-drawer-group-in 320ms var(--ease-out) both;
+}
+
+.shell-drawer[open] .shell-nav__group:nth-child(2) { animation-delay: 40ms; }
+.shell-drawer[open] .shell-nav__group:nth-child(3) { animation-delay: 80ms; }
+.shell-drawer[open] .shell-nav__group:nth-child(4) { animation-delay: 120ms; }
+.shell-drawer[open] .shell-nav__group:nth-child(n + 5) { animation-delay: 160ms; }
+
+@keyframes shell-drawer-group-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-drawer,
+  .shell-drawer[open] {
+    transform: none;
+  }
+
+  .shell-drawer[open] .shell-nav__group {
+    animation: none;
+  }
 }
 
 .shell-drawer__inner {
@@ -1793,6 +2265,19 @@ textarea,
   text-align: left;
 }
 
+/* 1024-1279: the floating sidebar column is 12px wider than the old flush
+   one, so the search gives up width before the breadcrumb does. */
+@media (min-width: 1024px) and (max-width: 1279.98px) {
+  .shell-topbar__search {
+    min-width: 180px;
+  }
+
+  .shell-crumbs {
+    flex-shrink: 0;
+    max-width: 40%;
+  }
+}
+
 @media (min-width: 1024px) {
   .shell-topbar__search {
     display: inline-flex;
@@ -1905,8 +2390,20 @@ textarea,
   }
 }
 
+.shell-user-chip__avatar--lg {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+}
+
+/* Account menu. One fixed width for every view (220px, the generic menu's
+   floor and the narrowest at which the e-mail line still fits whole), so
+   drilling into Appearance
+   never changes the popover's width (only its height eases); one inset grid:
+   row text, section labels and the identity line all start 16px in from the
+   edge, controls 12px. */
 .shell-user-chip__menu {
-  min-width: 240px;
+  width: 220px;
   /* Never taller than the room the browser leaves: at 200% browser zoom the
      viewport is ~400 css px high and this menu (language, theme, density, text
      size, sign out) is taller, so without a cap the lower rows are
@@ -1917,35 +2414,165 @@ textarea,
   overscroll-behavior: contain;
 }
 
+/* Both views open with a head of the same height (identity, or back + title),
+   so the rule under it stays put while the views swap. */
+.shell-user-chip__menu .shell-user-chip__view-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 6px 12px;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.shell-user-chip__identity {
+  display: grid;
+  min-width: 0;
+}
+
 .shell-user-chip__menu-name {
   font-size: 13px;
   font-weight: 600;
+  line-height: 18px;
   color: var(--text-primary);
-  text-transform: none;
-  letter-spacing: 0;
 }
 
 .shell-user-chip__menu-email {
+  overflow: hidden;
   font-size: 12px;
   font-weight: 400;
+  line-height: 16px;
   color: var(--text-muted);
-  text-transform: none;
-  letter-spacing: 0;
-  margin-top: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shell-user-chip__menu-section {
-  padding: 6px 10px 10px;
   display: grid;
   gap: 6px;
+  padding: 8px 8px 10px;
 }
 
+/* Sentence case and quiet: the controls are the content, the label only names
+   them. Indented 4px past the controls so it lines up with row text. */
 .shell-user-chip__menu-section-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding-inline: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.shell-user-chip__settings {
+  padding-bottom: 2px;
+}
+
+/* Rows with a leading 16px icon: Appearance and Sign out. */
+.shell-user-chip__appearance-row,
+.shell-user-chip__signout {
+  gap: 10px;
+  min-height: 34px;
+}
+
+.shell-user-chip__appearance-row > svg,
+.shell-user-chip__signout > svg {
+  flex: none;
   color: var(--text-muted);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    translate var(--duration-fast) var(--ease-out);
+}
+
+.shell-user-chip__appearance-row[data-highlighted] > svg,
+.shell-user-chip__signout[data-highlighted] > svg {
+  color: var(--text-primary);
+}
+
+/* The trailing chevron nudges toward where the row leads. */
+.shell-user-chip__appearance-row[data-highlighted] > svg:last-child {
+  translate: 2px 0;
+}
+
+.shell-user-chip__appearance-value {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Account menu drill-in (MenuDrillIn): the container clips the views while
+   they glide past each other and eases its height between them. */
+.menu-drill {
+  position: relative;
+  overflow: clip;
+}
+
+.menu-drill__view[data-leaving] {
+  position: absolute;
+  inset: 0 0 auto;
+  pointer-events: none;
+}
+
+/* Back sits where the avatar sits in the main view: a quiet round control,
+   filled only on hover, so the title carries the header. Scoped under the
+   header so it outranks the global button rules. */
+.shell-user-chip__view-header .shell-user-chip__back {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.shell-user-chip__view-header .shell-user-chip__back:hover,
+.shell-user-chip__view-header .shell-user-chip__back:active {
+  border: 0;
+  background: var(--bg-surface-muted);
+  box-shadow: none;
+  color: var(--text-primary);
+}
+
+.shell-user-chip__view-header .shell-user-chip__back:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.shell-user-chip__back svg {
+  width: 16px;
+  height: 16px;
+  transition: translate var(--duration-fast) var(--ease-out);
+}
+
+.shell-user-chip__back:hover svg {
+  translate: -2px 0;
+}
+
+.shell-user-chip__view-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shell-user-chip__appearance-row > svg,
+  .shell-user-chip__signout > svg,
+  .shell-user-chip__back svg {
+    transition: none;
+    translate: none;
+  }
 }
 
 .shell-content {
@@ -6815,6 +7442,20 @@ html:has(.login-stage) {
 .login-backdrop .shell {
   min-height: 0;
   height: 100%;
+}
+
+/* The preview is a frame of its own size, not the viewport: the floating
+   sidebar box fills the frame's row instead of 100vh. */
+@media (min-width: 1024px) {
+  .login-backdrop .shell-sidebar {
+    position: relative;
+    top: auto;
+    bottom: auto;
+    left: auto;
+    height: auto;
+    margin: calc(var(--shell-topbar-height) + 12px) 0 12px;
+    align-self: stretch;
+  }
 }
 
 .login-backdrop .shell-content {
@@ -16769,9 +17410,9 @@ a.kpi-card:focus-visible {
 }
 
 /* Frozen-pane budget (#2089). 1024px is the worst case by construction: the
- * sidebar becomes a persistent 240px grid column at exactly this width (:1048)
- * AND the tables hosting this cell un-hide their Connection column there, so
- * content width is 1024 - 240 - 64 = 720px. Shipments freezes Status + Order
+ * sidebar becomes a persistent 252px grid column (12px gap + the 240px box)
+ * at exactly this width AND the tables hosting this cell un-hide their
+ * Connection column there, so content width is 1024 - 252 - 64 = 708px. Shipments freezes Status + Order
  * (`stickyLeftColumns={2}`), and on a triage page Status carries a 32ch error
  * string — at 250px the frozen cluster leaves under 100px of scrollable window
  * for every remaining column. Narrower only inside the frozen pane, and only
@@ -17168,7 +17809,8 @@ body > *:not([data-radix-popper-content-wrapper]),
 
   /* Density toggle hides on the smallest viewports — density only
      matters when you can see >5 rows at once, which a phone can't. */
-  .shell-user-chip__menu .density-toggle {
+  .shell-user-chip__menu .density-toggle,
+  .shell-user-chip__menu-section--density {
     display: none;
   }
 }
@@ -37126,6 +37768,45 @@ legend.analytics-settings-dialog__label {
   color: var(--text-primary);
 }
 
+/* `size="sm"`: the compact variant for a crowded popover. Same track padding
+ * and gap as the default, so the sliding thumb's arithmetic still holds. */
+.segmented-switch--sm .segmented-switch__option,
+.segmented-switch--sm .segmented-switch__option:hover,
+.segmented-switch--sm .segmented-switch__option:active {
+  height: 24px;
+  border-radius: 6px;
+}
+
+.segmented-switch--sm .segmented-switch__track {
+  border-radius: var(--radius-md);
+}
+
+.segmented-switch--sm .segmented-switch__thumb {
+  border-radius: 6px;
+}
+
+.segmented-switch--sm .segmented-switch__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.segmented-switch--sm .segmented-switch__caption {
+  font-size: 10.5px;
+  line-height: 18px;
+}
+
+.segmented-switch--sm .segmented-switch__names {
+  padding-top: 2px;
+}
+
+/* A long name may use the gap beside it rather than be cut: in a narrow menu
+   the Polish "Największy" is a few px wider than its column, and its
+   neighbour ("Duży") leaves the room. Centred, so it spills evenly. */
+.segmented-switch--sm .segmented-switch__name {
+  overflow: visible;
+  text-overflow: clip;
+}
+
 /* PeekButton `touchSize`: the global 44px button floor turned the pill into a
  * lumpy near-circle with a tiny icon. A proper 40px capsule with a larger icon
  * instead; a 2px invisible ring brings the tap target to 44px. */
@@ -44539,11 +45220,11 @@ button.followers-count:focus-visible {
   background: var(--overlay-scrim);
   pointer-events: none;
 }
-/* Ultrawide: the brand sits in a strip the bar extends over the sidebar column
+/* Desktop: the brand sits in a strip the bar extends over the sidebar column
    (see `.shell-topbar::before`), outside the bar's own box, so the dim reaches
    across it too and the logo does not stay lit while the rest is dimmed. */
-@media (min-width: 2560px) {
-  .tour-active .shell .shell-topbar::after {
+@media (min-width: 1024px) {
+  .tour-active .shell:not(.shell--no-sidebar) .shell-topbar::after {
     left: calc(-1 * var(--shell-side));
     /* Above the brand copy, which is lifted with z-index: 1. */
     z-index: 2;
