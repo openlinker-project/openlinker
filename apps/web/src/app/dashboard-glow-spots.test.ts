@@ -38,7 +38,7 @@ describe('pickGlowSpots', () => {
     for (let i = 0; i < 500; i += 1) {
       spots = pickGlowSpots(spots, random);
       expect(Math.hypot(spots[0].x - spots[1].x, spots[0].y - spots[1].y)).toBeGreaterThanOrEqual(
-        GLOW_MIN_APART,
+        GLOW_MIN_APART
       );
     }
   });
@@ -46,7 +46,9 @@ describe('pickGlowSpots', () => {
   it('should move each orb only a little when picking from the start layout', () => {
     const next = pickGlowSpots(GLOW_START_SPOTS, seeded(3));
     for (const [i, spot] of next.entries()) {
-      expect(Math.hypot(spot.x - GLOW_START_SPOTS[i].x, spot.y - GLOW_START_SPOTS[i].y)).toBeLessThanOrEqual(GLOW_STEP_MAX + 0.01);
+      expect(
+        Math.hypot(spot.x - GLOW_START_SPOTS[i].x, spot.y - GLOW_START_SPOTS[i].y)
+      ).toBeLessThanOrEqual(GLOW_STEP_MAX + 0.01);
     }
   });
 

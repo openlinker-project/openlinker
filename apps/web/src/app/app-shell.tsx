@@ -3,7 +3,8 @@
  *
  * Authenticated-app chrome: persistent left nav (a 240 px floating sidebar
  * box from 1024 px, a floating drawer below that), a full-width top bar
- * carrying the brand, a slow brand glow behind the content (DashboardGlow), and the main content slot. Every
+ * carrying the brand, a slow brand glow behind the content (DashboardGlow),
+ * and the main content slot. Every
  * authenticated route renders inside this shell.
  *
  * Sidebar nav items carry count badges fed by `useNavCounts` (fanning out
@@ -34,6 +35,8 @@ import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { useScrollEdges } from './hooks/use-scroll-edges';
+import { useBackdropDismiss } from './hooks/use-backdrop-dismiss';
+import { prefersMotion } from '../shared/ui/prefers-motion';
 import { DashboardGlow } from './dashboard-glow';
 import { Button } from '../shared/ui/button';
 import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/language';
@@ -85,14 +88,21 @@ export function SidebarNav({
     value === null ? null : numberFormatter.format(value);
   const navRef = useRef<HTMLElement>(null);
   const edges = useScrollEdges(navRef, groups);
+  // The arrows are hidden from assistive tech, so a click must not leave focus
+  // on them.
+  const keepFocus = (event: ReactMouseEvent<HTMLButtonElement>): void => {
+    event.preventDefault();
+  };
   // One click moves most of a screen, keeping a couple of rows for context.
   const scrollMenu = (direction: 1 | -1): void => {
     const nav = navRef.current;
     if (!nav) {
       return;
     }
-    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    nav.scrollBy({ top: direction * nav.clientHeight * 0.7, behavior: still ? 'auto' : 'smooth' });
+    nav.scrollBy({
+      top: direction * nav.clientHeight * 0.7,
+      behavior: prefersMotion() ? 'smooth' : 'auto',
+    });
   };
   // Shared render for a greyed-out, non-clickable nav item (planned items and
   // demo-locked `restricted` groups use the same treatment; only the tooltip
@@ -137,9 +147,12 @@ export function SidebarNav({
         className="shell-nav-scroll__arrow shell-nav-scroll__arrow--up"
         aria-hidden="true"
         tabIndex={-1}
+        onMouseDown={keepFocus}
         onClick={() => scrollMenu(-1)}
       >
-        <ScrollChevron />
+        <span className="shell-nav-scroll__hit">
+          <ScrollChevron />
+        </span>
       </button>
       <nav ref={navRef} className="shell-nav" aria-label={ariaLabel}>
         {groups.map((group) => (
@@ -185,9 +198,12 @@ export function SidebarNav({
         className="shell-nav-scroll__arrow shell-nav-scroll__arrow--down"
         aria-hidden="true"
         tabIndex={-1}
+        onMouseDown={keepFocus}
         onClick={() => scrollMenu(1)}
       >
-        <ScrollChevron />
+        <span className="shell-nav-scroll__hit">
+          <ScrollChevron />
+        </span>
       </button>
     </div>
   );
@@ -493,29 +509,14 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const omsRouting = useOmsRoutingState({ enabled: sessionNeedsOmsRouting(permissions, role) });
   const groups = useMemo(
     () => buildNavGroups({ isAdmin, demoMode, permissions, role, omsRouting, copy }),
-    [isAdmin, demoMode, permissions, role, omsRouting, copy]
+    [isAdmin, demoMode, permissions, role, omsRouting, copy],
   );
 
   const closeDrawer = useCallback((): void => {
     drawerRef.current?.close();
   }, []);
 
-  // A click on the dimmed backdrop reaches the <dialog> itself, with the point
-  // outside the panel's box; a click inside the panel never does.
-  const handleDrawerClick = useCallback((event: ReactMouseEvent<HTMLDialogElement>): void => {
-    if (event.target !== event.currentTarget) {
-      return;
-    }
-    const box = event.currentTarget.getBoundingClientRect();
-    const inside =
-      event.clientX >= box.left &&
-      event.clientX <= box.right &&
-      event.clientY >= box.top &&
-      event.clientY <= box.bottom;
-    if (!inside) {
-      event.currentTarget.close();
-    }
-  }, []);
+  const drawerBackdrop = useBackdropDismiss();
 
   const openDrawer = useCallback((): void => {
     drawerRef.current?.showModal();
@@ -567,12 +568,12 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
           />
         </div>
 
-        {/* Backdrop click is a pointer shortcut; Escape and the close button cover the keyboard. */}
         <dialog
           ref={drawerRef}
           className="shell-drawer"
           aria-label={copy.shell.mobileNavigation}
-          onClick={handleDrawerClick}
+          onPointerDown={drawerBackdrop.onPointerDown}
+          onClick={drawerBackdrop.onClick}
         >
           <div className="shell-drawer__inner">
             <div className="shell-drawer__header">

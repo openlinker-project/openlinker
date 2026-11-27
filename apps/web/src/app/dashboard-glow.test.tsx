@@ -23,7 +23,7 @@ function renderGlow(reducedMotion: 'never' | 'always' = 'never'): RenderResult {
         <NavigateProbe />
         <DashboardGlow />
       </MemoryRouter>
-    </MotionConfig>,
+    </MotionConfig>
   );
 }
 

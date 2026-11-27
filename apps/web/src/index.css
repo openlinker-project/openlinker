@@ -1363,7 +1363,7 @@ textarea,
     margin-inline: 0 auto;
   }
 
-  .shell .shell-topbar {
+  .shell:not(.shell--no-sidebar) .shell-topbar {
     padding-right: max(16px, calc(calc(100 * var(--ui-vw)) - var(--shell-side) - var(--layout-max-width) + 240px));
   }
 }
@@ -1498,11 +1498,16 @@ textarea,
     color-mix(in oklab, var(--glow) 3%, transparent) 88%,
     transparent 100%
   );
+  /* Rests on the breathe's first frame, so the animation starts and ends
+     without a jump. */
+  opacity: 0.9;
   will-change: transform, opacity;
-  animation: dashboard-glow-breathe 14s ease-in-out infinite alternate;
+  /* Two breaths, then still: an endless animation keeps the compositor drawing
+     a frame every vsync on an idle page. DashboardGlow remounts the orb on a
+     page change, which starts it again. */
+  animation: dashboard-glow-breathe 14s ease-in-out 2 alternate;
 }
 
-/* Light mode reads orange far more strongly than dark at the same mix, so it gets less. */
 .dashboard-glow__orb--a {
   --glow: color-mix(in oklab, var(--accent-primary) 10%, transparent);
 }
@@ -1510,12 +1515,15 @@ textarea,
 .dashboard-glow__orb--b {
   --glow: color-mix(in oklab, var(--accent-primary) 6%, transparent);
   animation-duration: 18s;
-  animation-delay: -6s;
+  /* Out of step with orb a. A positive delay holds the resting frame, so the
+     restart on a page change does not jump. */
+  animation-delay: 3s;
 }
 
-/* 10%, not more: muted text over the orb's centre has to keep 4.5:1. */
+/* Muted text over orb a's centre has to keep 4.5:1. Light lands near 4.8:1 at
+   10%; dark is tighter, so it takes 9% to keep a margin above 4.5:1. */
 html[data-theme='dark'] .dashboard-glow__orb--a {
-  --glow: color-mix(in oklab, var(--accent-primary) 10%, transparent);
+  --glow: color-mix(in oklab, var(--accent-primary) 9%, transparent);
 }
 
 html[data-theme='dark'] .dashboard-glow__orb--b {
@@ -1703,6 +1711,30 @@ body.side-panel-sheet-open .dashboard-glow {
     opacity var(--nav-arrow-in) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
     visibility 0s;
+}
+
+/* The hit area. The bottom arrow's top part is a fade over still-readable
+   rows, so only its solid lower strip takes clicks; a half-visible link above
+   it stays clickable. */
+.shell-nav-scroll__hit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.shell-nav-scroll .shell-nav-scroll__arrow--down {
+  align-items: flex-end;
+}
+
+.shell-nav-scroll[data-scroll-down] .shell-nav-scroll__arrow--down {
+  pointer-events: none;
+}
+
+.shell-nav-scroll[data-scroll-down] .shell-nav-scroll__arrow--down .shell-nav-scroll__hit {
+  height: 16px;
+  pointer-events: auto;
 }
 
 .shell-nav-scroll__chevron {

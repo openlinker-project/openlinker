@@ -15,7 +15,9 @@
  *   __lean   the size of the viewport, translated to the page's spot;
  *   __drift  the size of the viewport, translated by the pointer;
  *   __pos    pins the orb's centre to the top-left corner;
- *   __orb    breathes (CSS keyframes).
+ *   __orb    breathes (CSS keyframes): two breaths after each page change,
+ *            then still, so an idle page draws no frames. Remounting the orb
+ *            on a page change starts the breathing again.
  *
  * The pointer never re-renders React: it writes two motion values, and the
  * springs behind them run on Motion's frame loop only while they are moving,
@@ -52,6 +54,24 @@ const ORBS = [
 // Soft and slow, so the light trails the pointer instead of tracking it.
 const POINTER_SPRING = { stiffness: 22, damping: 18, mass: 1.2 } as const;
 
+const FINE_POINTER_QUERY = '(hover: hover) and (pointer: fine)';
+
+function useFinePointer(): boolean {
+  const [fine, setFine] = useState(
+    () => typeof window.matchMedia === 'function' && window.matchMedia(FINE_POINTER_QUERY).matches
+  );
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const query = window.matchMedia(FINE_POINTER_QUERY);
+    const onChange = (): void => setFine(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return fine;
+}
+
 function usePointerLean(enabled: boolean): {
   x: MotionValue<number>;
   y: MotionValue<number>;
@@ -60,8 +80,11 @@ function usePointerLean(enabled: boolean): {
   const rawX = useMotionValue(0);
   const rawY = useMotionValue(0);
 
+  // A hybrid device can gain or lose a mouse while the app is open.
+  const finePointer = useFinePointer();
+
   useEffect(() => {
-    if (!enabled || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    if (!enabled || !finePointer) {
       rawX.set(0);
       rawY.set(0);
       return;
@@ -81,7 +104,7 @@ function usePointerLean(enabled: boolean): {
       window.removeEventListener('pointermove', onMove);
       document.documentElement.removeEventListener('pointerleave', onLeave);
     };
-  }, [enabled, rawX, rawY]);
+  }, [enabled, finePointer, rawX, rawY]);
 
   return { x: useSpring(rawX, POINTER_SPRING), y: useSpring(rawY, POINTER_SPRING) };
 }
@@ -90,16 +113,26 @@ function GlowOrb({
   orb,
   spot,
   still,
+  breath,
   pointer,
 }: {
   orb: (typeof ORBS)[number];
   spot: GlowSpots[number];
   still: boolean;
+  breath: number;
   pointer: { x: MotionValue<number>; y: MotionValue<number> };
 }): ReactElement {
   const range = [-orb.lean, orb.lean];
-  const x = useTransform(pointer.x, [-1, 1], range.map((v) => `${v}%`));
-  const y = useTransform(pointer.y, [-1, 1], range.map((v) => `${v}%`));
+  const x = useTransform(
+    pointer.x,
+    [-1, 1],
+    range.map((v) => `${v}%`)
+  );
+  const y = useTransform(
+    pointer.y,
+    [-1, 1],
+    range.map((v) => `${v}%`)
+  );
 
   return (
     <motion.div
@@ -112,7 +145,7 @@ function GlowOrb({
     >
       <motion.div className="dashboard-glow__drift" style={{ x, y }}>
         <div className="dashboard-glow__pos">
-          <div className={`dashboard-glow__orb dashboard-glow__orb--${orb.key}`} />
+          <div key={breath} className={`dashboard-glow__orb dashboard-glow__orb--${orb.key}`} />
         </div>
       </motion.div>
     </motion.div>
@@ -123,6 +156,7 @@ export function DashboardGlow(): ReactElement {
   const still = useReducedMotionConfig() ?? false;
   const { pathname } = useLocation();
   const [spots, setSpots] = useState<GlowSpots>(GLOW_START_SPOTS);
+  const [breath, setBreath] = useState(0);
   const lastPathname = useRef(pathname);
   const pointer = usePointerLean(!still);
 
@@ -133,6 +167,7 @@ export function DashboardGlow(): ReactElement {
     lastPathname.current = pathname;
     if (!still) {
       setSpots((previous) => pickGlowSpots(previous));
+      setBreath((previous) => previous + 1);
     }
   }, [pathname, still]);
 
@@ -143,7 +178,14 @@ export function DashboardGlow(): ReactElement {
       data-testid="dashboard-glow"
     >
       {ORBS.map((orb, index) => (
-        <GlowOrb key={orb.key} orb={orb} spot={spots[index]} still={still} pointer={pointer} />
+        <GlowOrb
+          key={orb.key}
+          orb={orb}
+          spot={spots[index]}
+          still={still}
+          breath={breath}
+          pointer={pointer}
+        />
       ))}
     </div>
   );

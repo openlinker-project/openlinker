@@ -442,6 +442,66 @@ describe('AppShell', () => {
     expect(drawer.open).toBe(false);
   });
 
+  it('should close the drawer when the backdrop is pressed and released', () => {
+    renderShell({ pathname: '/' });
+    const drawer = getDrawer();
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+
+    // A backdrop hit lands on the dialog itself, outside its box.
+    fireEvent.pointerDown(drawer, { clientX: 9999, clientY: 9999 });
+    fireEvent.click(drawer, { clientX: 9999, clientY: 9999 });
+
+    expect(drawer.open).toBe(false);
+  });
+
+  it('should keep the drawer open when a click lands inside the panel', () => {
+    renderShell({ pathname: '/' });
+    const drawer = getDrawer();
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+
+    const inner = drawer.querySelector('.shell-drawer__inner');
+    if (!(inner instanceof HTMLElement)) {
+      throw new Error('drawer panel not found');
+    }
+    fireEvent.pointerDown(inner);
+    fireEvent.click(inner);
+
+    expect(drawer.open).toBe(true);
+  });
+
+  it('should keep the drawer open when a selection drag is released over the backdrop', () => {
+    renderShell({ pathname: '/' });
+    const drawer = getDrawer();
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+
+    const inner = drawer.querySelector('.shell-drawer__inner');
+    if (!(inner instanceof HTMLElement)) {
+      throw new Error('drawer panel not found');
+    }
+    // Pressed inside, released outside: the click reaches the dialog itself.
+    fireEvent.pointerDown(inner);
+    fireEvent.click(drawer, { clientX: 9999, clientY: 9999 });
+
+    expect(drawer.open).toBe(true);
+  });
+
+  it('should show the down scroll arrow only while the menu has more below', async () => {
+    renderShell({ pathname: '/' });
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+    const wrapper = nav.parentElement;
+    if (!wrapper) {
+      throw new Error('scroll wrapper not found');
+    }
+    expect(wrapper).not.toHaveAttribute('data-scroll-down');
+
+    Object.defineProperty(nav, 'scrollHeight', { configurable: true, value: 900 });
+    Object.defineProperty(nav, 'clientHeight', { configurable: true, value: 400 });
+    fireEvent.scroll(nav);
+
+    await waitFor(() => expect(wrapper).toHaveAttribute('data-scroll-down'));
+    expect(wrapper).not.toHaveAttribute('data-scroll-up');
+  });
+
   it('closes the drawer when the route changes externally', () => {
     function Redirector({ to }: { to: string }): ReactElement {
       const navigate = useNavigate();
