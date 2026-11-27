@@ -60,6 +60,7 @@ import {
   isStep1Done,
   readSourcingStanding,
   resolveDataSource,
+  LAST_SETUP_STEP,
   SETUP_STEP_NUMBERS,
   TOTAL_STEPS,
   TURN_ON_STEP,
@@ -69,10 +70,12 @@ import {
 } from '../lib/onboarding-state';
 import { selectProductMasters } from '../lib/product-masters';
 import { FirstOrderPanel } from './first-order-panel';
+import { AutomaticLabelsSection } from '../../auto-dispatch';
 import { PackingStatus } from './packing-status';
 import { StepPackers } from './step-packers';
 import { StepSalesDocuments } from './step-sales-documents';
 import { StepSetupPage } from './step-setup-page';
+import { StepShippingLabels } from './step-shipping-labels';
 import { StepProductMaster } from './step-product-master';
 import { StepTurnOn } from './step-turn-on';
 import { StepWhatChanges } from './step-what-changes';
@@ -310,7 +313,7 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
           completedSteps={completedSteps}
           // Packing that is already on lets the operator move between the setup
           // steps; "Turn it on" itself is behind them.
-          maxReachedStep={live ? SETUP_STEP_NUMBERS.whoDecides - 1 : maxReached - 1}
+          maxReachedStep={live ? LAST_SETUP_STEP - 1 : maxReached - 1}
           onSelectStep={(index) => goToStep(index + 1)}
           testId="wizard-stepper"
           orientation="vertical"
@@ -372,21 +375,30 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
           onBack={() => goToStep(WIZARD_STEPS.packers)}
           onContinue={() => completeStep(WIZARD_STEPS.whatChanges)}
         />
-      ) : step >= WIZARD_STEPS.automations && step < TURN_ON_STEP ? (
+      ) : step === WIZARD_STEPS.shippingLabels ? (
+        <StepShippingLabels
+          packingConnectionId={packingConnection?.id ?? null}
+          state={setup?.states.shippingLabels ?? null}
+          last={live}
+          canWrite={canWrite && packingConnection !== null}
+          writeVisible={write.visible}
+          demoReadOnly={write.demoReadOnly}
+          onBack={() => goToStep(step - 1)}
+          // The last setup step: coming back to a setup that was already live goes
+          // to its status; otherwise on to "Turn it on".
+          onContinue={() => (live ? setView('status') : completeStep(step))}
+        />
+      ) : step >= WIZARD_STEPS.automations && step < WIZARD_STEPS.shippingLabels ? (
         <StepSetupPage
           step={step}
           stepKey={setupStepKeyAt(step)}
           state={setup?.states[setupStepKeyAt(step)] ?? null}
-          last={live && step === SETUP_STEP_NUMBERS.whoDecides}
+          last={false}
           canWrite={canWrite && packingConnection !== null}
           demoReadOnly={write.demoReadOnly}
           saving={setStepSkipped.isPending}
           onBack={() => goToStep(step - 1)}
-          // Finishing right after turning packing on leads to the first-order wait;
-          // coming back later to a setup that was already live goes to its status.
-          onContinue={() =>
-            live && step === SETUP_STEP_NUMBERS.whoDecides ? setView('status') : completeStep(step)
-          }
+          onContinue={() => completeStep(step)}
           onSetSkipped={(skipped) => {
             if (packingConnection === null) return;
             setStepSkipped.mutate({
@@ -471,6 +483,16 @@ function OnboardingFlow(props: OnboardingFlowProps): ReactElement {
           setStopOpen(true);
         }}
         onStartAgain={() => turnOn('status')}
+        afterSetup={
+          packingConnection === null ? null : (
+            <AutomaticLabelsSection
+              connectionId={packingConnection.id}
+              canWrite={canWrite}
+              writeVisible={write.visible}
+              demoReadOnly={write.demoReadOnly}
+            />
+          )
+        }
         onContinueSetup={() => {
           const next = setup?.left[0];
           goToStep(next === undefined ? SETUP_STEP_NUMBERS.salesDocuments : SETUP_STEP_NUMBERS[next]);

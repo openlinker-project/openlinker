@@ -108,6 +108,10 @@ import {
   type FulfillmentAuthorityApi,
 } from '../../features/fulfillment-authority/api/who-decides.api';
 import {
+  createAutoDispatchApi,
+  type AutoDispatchApi,
+} from '../../features/auto-dispatch/api/auto-dispatch.api';
+import {
   createBenchApi,
   type BenchApi,
 } from '../../features/bench/api/bench-work.api';
@@ -253,6 +257,7 @@ export interface CoreApiClient {
   salesDocumentRules: SalesDocumentRulesApi;
   sourcingRules: SourcingRulesApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
+  autoDispatch: AutoDispatchApi;
   fulfillment: FulfillmentApi;
   bench: BenchApi;
   shipments: ShipmentsApi;
@@ -491,6 +496,7 @@ export function createApiClient({
     sourcingRules: createSourcingRulesApi(request),
     automations: createAutomationsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
+    autoDispatch: createAutoDispatchApi(request),
     fulfillment: createFulfillmentApi(request),
     bench: createBenchApi(request, requestBlob),
     returns: createReturnsApi(request),

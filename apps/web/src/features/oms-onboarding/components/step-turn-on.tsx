@@ -12,7 +12,8 @@
  * - **No active warehouse** (#2407). Step 1 creates one, so this is reachable
  *   only if it was retired since; mapped by code, never by message.
  *
- * State (mockup vocabulary): `step-7-turn-on`.
+ * State (mockup vocabulary): `step-8-turn-on` (`step-7-turn-on` before #3572 added the
+ * shipping-labels step ahead of it).
  *
  * @module features/oms-onboarding/components
  */
@@ -23,7 +24,12 @@ import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode'
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
-import { SETUP_STEP_NUMBERS, TURN_ON_STEP, WIZARD_STEPS } from '../lib/onboarding-state';
+import {
+  LAST_SETUP_STEP,
+  SETUP_STEP_NUMBERS,
+  TURN_ON_STEP,
+  WIZARD_STEPS,
+} from '../lib/onboarding-state';
 import { isRoutingRequiresLocationError } from '../lib/routing-requires-location-error';
 import type { SetupStepsView } from '../hooks/use-setup-steps';
 import { SetupStepKeys, describeSetupStep } from '../lib/setup-steps';
@@ -108,7 +114,7 @@ export function StepTurnOn(props: StepTurnOnProps): ReactElement {
     <StepPanel
       step={TURN_ON_STEP}
       why={COPY.step4.why}
-      onBack={() => props.onGoToStep(SETUP_STEP_NUMBERS.whoDecides)}
+      onBack={() => props.onGoToStep(LAST_SETUP_STEP)}
       next={
         <Button
           type="button"

@@ -887,6 +887,14 @@ export function createMockApiClient(
       applyPreset: vi.fn().mockResolvedValue(null),
       ...overrides.fulfillmentAuthority,
     } as ApiClient['fulfillmentAuthority'],
+    // #2729. Both reads default to the SHAPE the parse layer returns (an
+    // object, never `undefined`), so a component reading `.needsInput` is not
+    // passing against a mock the real client could never produce.
+    autoDispatch: {
+      getRefusals: vi.fn().mockResolvedValue(null),
+      preview: vi.fn().mockResolvedValue(null),
+      ...overrides.autoDispatch,
+    } as ApiClient['autoDispatch'],
     // #2411. The default answers the SHAPE the parse layer returns (a page
     // object), never a bare array — a mock returning `[]` would let the panel
     // read `.works` as undefined and pass, while the real client never can.

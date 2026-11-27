@@ -55,20 +55,57 @@ describe('deriveSetupStepState', () => {
 describe('summariseSetup', () => {
   it('should be complete when every step is done or skipped', () => {
     expect(
-      summariseSetup({ salesDocuments: 'done', automations: 'skipped', whoDecides: 'done' }).complete
+      summariseSetup({
+        salesDocuments: 'done',
+        automations: 'skipped',
+        whoDecides: 'done',
+        shippingLabels: 'done',
+      }).complete
     ).toBe(true);
   });
 
   it('should list pending and unknown steps as left, never as complete', () => {
-    const summary = summariseSetup({ salesDocuments: 'pending', automations: 'done', whoDecides: 'unknown' });
+    const summary = summariseSetup({
+      salesDocuments: 'pending',
+      automations: 'done',
+      whoDecides: 'unknown',
+      shippingLabels: 'done',
+    });
     expect(summary.complete).toBe(false);
     expect(summary.left).toEqual(['salesDocuments', 'whoDecides']);
   });
 
   it('should not count automations as left, since nothing is set on that step', () => {
-    const summary = summariseSetup({ salesDocuments: 'done', automations: 'pending', whoDecides: 'done' });
+    const summary = summariseSetup({
+      salesDocuments: 'done',
+      automations: 'pending',
+      whoDecides: 'done',
+      shippingLabels: 'done',
+    });
     expect(summary.complete).toBe(true);
     expect(summary.left).toEqual([]);
+  });
+
+  it('should not count shipping labels as left: buying labels by hand is a complete setup', () => {
+    const summary = summariseSetup({
+      salesDocuments: 'done',
+      automations: 'done',
+      whoDecides: 'done',
+      shippingLabels: 'pending',
+    });
+    expect(summary.complete).toBe(true);
+    expect(summary.left).toEqual([]);
+  });
+
+  it('should not count an unreadable shipping-labels state as left either', () => {
+    expect(
+      summariseSetup({
+        salesDocuments: 'done',
+        automations: 'done',
+        whoDecides: 'done',
+        shippingLabels: 'unknown',
+      }).left
+    ).toEqual([]);
   });
 });
 

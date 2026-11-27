@@ -25,7 +25,7 @@ import type { InventoryLocation } from '../../inventory';
 import { readSourcingClaim, readStockLocationOverride } from './config-merge';
 import { MAX_PRODUCT_MASTERS } from './product-masters';
 
-export const TOTAL_STEPS = 7;
+export const TOTAL_STEPS = 8;
 
 /**
  * The wizard's steps, in order (1-based). Sales documents come right after the
@@ -41,7 +41,9 @@ export const WIZARD_STEPS = {
   whatChanges: 4,
   automations: 5,
   whoDecides: 6,
-  turnOn: 7,
+  /** Automatic shipping labels (#3572): settled here, right before the switch is thrown. */
+  shippingLabels: 7,
+  turnOn: 8,
 } as const;
 
 export const TURN_ON_STEP = WIZARD_STEPS.turnOn;
@@ -51,7 +53,11 @@ export const SETUP_STEP_NUMBERS = {
   salesDocuments: WIZARD_STEPS.salesDocuments,
   automations: WIZARD_STEPS.automations,
   whoDecides: WIZARD_STEPS.whoDecides,
+  shippingLabels: WIZARD_STEPS.shippingLabels,
 } as const;
+
+/** The last of the setup steps, i.e. the one right before "Turn it on". */
+export const LAST_SETUP_STEP = WIZARD_STEPS.shippingLabels;
 
 /** The capability the packing connection needs for work to reach the bench (#3476). */
 export const PACKING_EXECUTOR_CAPABILITY = 'FulfillmentExecutor';
@@ -70,7 +76,8 @@ export type OnboardingDataState =
   | 'step-4-what-changes'
   | 'step-5-automations'
   | 'step-6-who-decides'
-  | 'step-7-turn-on'
+  | 'step-7-shipping-labels'
+  | 'step-8-turn-on'
   | 'waiting-first-order'
   | 'first-order-arrived'
   | 'status-on'
@@ -198,8 +205,10 @@ export function deriveDataState(input: DataStateInput): OnboardingDataState {
       return 'step-5-automations';
     case 6:
       return 'step-6-who-decides';
+    case 7:
+      return 'step-7-shipping-labels';
     default:
-      return 'step-7-turn-on';
+      return 'step-8-turn-on';
   }
 }
 
