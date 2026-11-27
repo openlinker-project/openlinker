@@ -141,7 +141,7 @@ describe('sales document headline - Polish agreement with the document kind', ()
   // masculine ones.
   it('should use the feminine words for a failed invoice', async () => {
     await loadMessages('pl');
-    const pl = messagesIn('pl', 'orders').salesDocumentHeadline;
+    const pl = messagesIn('orders', 'pl').salesDocumentHeadline;
     expect(
       resolveInvoiceHeadline(invoice({ status: 'failed', failureMode: 'rejected' }), 'KSeF', pl).state,
     ).toBe('Odrzucona');
@@ -152,7 +152,7 @@ describe('sales document headline - Polish agreement with the document kind', ()
 
   it('should keep the masculine words for a failed fiscal receipt', async () => {
     await loadMessages('pl');
-    const pl = messagesIn('pl', 'orders').salesDocumentHeadline;
+    const pl = messagesIn('orders', 'pl').salesDocumentHeadline;
     expect(
       resolveFiscalHeadline(
         fiscalRecord({ status: 'failed', failureMode: 'rejected' }),
