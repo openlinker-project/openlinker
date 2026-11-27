@@ -1330,12 +1330,17 @@ textarea,
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-sm);
     padding: 12px 0;
-    position: sticky;
-    /* Below the top bar, not beside it; the menu inside (`.shell-nav`)
+    /* Pinned to the viewport by its edges, not sized from a viewport unit:
+       `vh` inside the text-size `zoom` resolves differently per engine
+       (Safari left the box 1/zoom short of the window), while `top` and
+       `bottom` always measure from the window itself. Below the top bar, at
+       the right edge of the sidebar column; the menu inside (`.shell-nav`)
        scrolls on its own when it outgrows the box. */
+    position: fixed;
     top: calc(var(--shell-topbar-height) + 12px);
-    height: calc(calc(100 * var(--ui-vh)) - var(--shell-topbar-height) - 24px);
-    margin: calc(var(--shell-topbar-height) + 12px) 0 12px;
+    bottom: 12px;
+    left: calc(var(--shell-side) - 240px);
+    z-index: 1;
     overflow: hidden;
   }
 }
@@ -7246,7 +7251,10 @@ html:has(.login-stage) {
   .login-backdrop .shell-sidebar {
     position: relative;
     top: auto;
+    bottom: auto;
+    left: auto;
     height: auto;
+    margin: calc(var(--shell-topbar-height) + 12px) 0 12px;
     align-self: stretch;
   }
 }
