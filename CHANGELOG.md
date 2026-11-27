@@ -12,6 +12,34 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.21.0](https://github.com/openlinker-project/openlinker/compare/v0.20.0...v0.21.0) (2026-11-26)
+
+
+### Features
+
+* **bundles:** Subiekt GT sets and multipacks with a clearer creation flow ([#4267](https://github.com/openlinker-project/openlinker/issues/4267)) ([d7f4661](https://github.com/openlinker-project/openlinker/commit/d7f466117869a97e92462a354c561ae325eee74c))
+* **connections:** catalogue mode fieldset on the connection edit page ([#4285](https://github.com/openlinker-project/openlinker/issues/4285)) ([708d236](https://github.com/openlinker-project/openlinker/commit/708d236a387b1f0feb0f2a1277369d47dc9c28d2))
+* **integrations:** Amazon Selling Partner API integration ([#4176](https://github.com/openlinker-project/openlinker/issues/4176)) ([#4262](https://github.com/openlinker-project/openlinker/issues/4262)) ([28d81b4](https://github.com/openlinker-project/openlinker/commit/28d81b48aefdef4008b16d1fd386458d5b243cbe))
+* **orders:** catalogue-less mode for marketplace order sources ([#4283](https://github.com/openlinker-project/openlinker/issues/4283)) ([d153d60](https://github.com/openlinker-project/openlinker/commit/d153d60acf00ef2ffea45dd8c2fc337a8c4df2f9))
+* **orders:** choose where order sync starts for Shopify, Shoper and Subiekt ([#4287](https://github.com/openlinker-project/openlinker/issues/4287)) ([aefa5a1](https://github.com/openlinker-project/openlinker/commit/aefa5a1a32b62d19b95e49d591b231a96425fbc8))
+* **orders:** choose where order sync starts, and change it later ([#4252](https://github.com/openlinker-project/openlinker/issues/4252)) ([60cfbbb](https://github.com/openlinker-project/openlinker/commit/60cfbbb7616670afbabd493cd5a0a2413ffaf100))
+* **orders:** hide old orders and erase buyer data by retention rules ([#4290](https://github.com/openlinker-project/openlinker/issues/4290)) ([ff596ed](https://github.com/openlinker-project/openlinker/commit/ff596ed06b9fec2db50c147fd9d8f60ae8aa3b84))
+* **orders:** order detail page tabs with ?tab= URL state ([#4288](https://github.com/openlinker-project/openlinker/issues/4288)) ([a0f7164](https://github.com/openlinker-project/openlinker/commit/a0f71644f4e3fa7b26d0c0b23c562b271e230d54))
+* **release-center:** release center with guides, message notifications and update settings ([#4155](https://github.com/openlinker-project/openlinker/issues/4155)) ([75bc68c](https://github.com/openlinker-project/openlinker/commit/75bc68c32ede13fecabc9733055a8428ffead9f0))
+* **saved-views:** saved views for list tables ([#4251](https://github.com/openlinker-project/openlinker/issues/4251)) ([115c728](https://github.com/openlinker-project/openlinker/commit/115c72878440ef5bed22fa080d2c2c30e84efa18))
+* **web:** dev inspector that marks every text falling back to English ([#4093](https://github.com/openlinker-project/openlinker/issues/4093)) ([b2048f2](https://github.com/openlinker-project/openlinker/commit/b2048f2a92ce0d467acd6244604e0d086478e4bd))
+* **web:** text size switch in the user menu ([#4264](https://github.com/openlinker-project/openlinker/issues/4264)) ([ebee8ca](https://github.com/openlinker-project/openlinker/commit/ebee8ca1118720aacdbc6390f7dc43797af5622f))
+* **web:** translate the OpenLinker OMS setup page ([#4094](https://github.com/openlinker-project/openlinker/issues/4094)) ([fbcdd26](https://github.com/openlinker-project/openlinker/commit/fbcdd26969b98093aaf377f47262627bb63853ec))
+
+
+### Bug Fixes
+
+* **listings:** keep a cleared variant barcode in the offer wizard ([#4112](https://github.com/openlinker-project/openlinker/issues/4112)) ([76e01c3](https://github.com/openlinker-project/openlinker/commit/76e01c37f888ab2d407a1ce201c583d42ac78e42))
+* **listings:** send a dictionary pick on a custom-values parameter as valuesIds ([#4038](https://github.com/openlinker-project/openlinker/issues/4038)) ([#4099](https://github.com/openlinker-project/openlinker/issues/4099)) ([5c9cba3](https://github.com/openlinker-project/openlinker/commit/5c9cba396124329cff0b64454ecfd4fca2e29bf0))
+* **listings:** show an account-level marketplace refusal once per batch ([#4006](https://github.com/openlinker-project/openlinker/issues/4006)) ([98c0875](https://github.com/openlinker-project/openlinker/commit/98c08752d06a816d9273554309acd89f252584c6))
+* **web:** give the SidePanel modal a definite height on wide screens ([#4270](https://github.com/openlinker-project/openlinker/issues/4270)) ([9a43f8c](https://github.com/openlinker-project/openlinker/commit/9a43f8c3a9f69c3296ed168519cfcaf32992a54e)), closes [#4269](https://github.com/openlinker-project/openlinker/issues/4269)
+* **web:** keep the Polish failed-jobs badge inside the Connection health table ([#4272](https://github.com/openlinker-project/openlinker/issues/4272)) ([343c95e](https://github.com/openlinker-project/openlinker/commit/343c95e4d0cea4c95f5f5c89895c075cbb6f3b0c))
+
 ## [0.20.0](https://github.com/openlinker-project/openlinker/compare/v0.19.0...v0.20.0) (2026-11-19)
 
 
