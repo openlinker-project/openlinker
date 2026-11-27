@@ -2401,7 +2401,7 @@ body.side-panel-sheet-open .dashboard-glow {
    row text, section labels and the identity line all start 16px in from the
    edge, controls 12px. */
 .shell-user-chip__menu {
-  width: 272px;
+  width: 248px;
   min-width: 0;
   /* Never taller than the room the browser leaves: at 200% browser zoom the
      viewport is ~400 css px high and this menu (language, theme, density, text
@@ -37796,6 +37796,14 @@ legend.analytics-settings-dialog__label {
 
 .segmented-switch--sm .segmented-switch__names {
   padding-top: 2px;
+}
+
+/* A long name may use the gap beside it rather than be cut: in a narrow menu
+   the Polish "Największy" is a few px wider than its column, and its
+   neighbour ("Duży") leaves the room. Centred, so it spills evenly. */
+.segmented-switch--sm .segmented-switch__name {
+  overflow: visible;
+  text-overflow: clip;
 }
 
 /* PeekButton `touchSize`: the global 44px button floor turned the pill into a
