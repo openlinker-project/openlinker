@@ -65,6 +65,7 @@ describe('RefundsController', () => {
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      listObservedSourcePaymentMethods: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

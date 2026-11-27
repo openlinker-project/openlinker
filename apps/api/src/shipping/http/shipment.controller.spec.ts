@@ -158,6 +158,7 @@ describe('ShipmentController', () => {
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      listObservedSourcePaymentMethods: jest.fn(),
     };
     controller = new ShipmentController(
       query,

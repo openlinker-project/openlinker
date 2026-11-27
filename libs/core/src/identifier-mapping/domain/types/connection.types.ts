@@ -99,6 +99,16 @@ export interface ConnectionConfig {
    */
   stockSafetyBuffer?: number;
   /**
+   * Operator-defined payment-method map for an ORDER SOURCE connection (#3774):
+   * `{ <the source's own payment identifier>: <neutral PaymentMethod> }`. It only
+   * fills a method the platform itself reported as `unknown`, never overrides a
+   * platform-defined one. Keys are matched trimmed and case-insensitively. Read
+   * via `readPaymentMethodMap` (`@openlinker/core/orders`,
+   * `payment-method-map.types.ts`); typed loosely here so this context stays
+   * decoupled from the orders vocabulary.
+   */
+  paymentMethodMap?: Record<string, string>;
+  /**
    * Per-connection pricing-resolution rule (#1843). Markup/margin formula +
    * rounding applied when a destination's price is derived from the master
    * catalog price (no explicit per-item price override). A missing value

@@ -19,15 +19,23 @@ import type {
   IncomingOrderAddress,
   IncomingOrderTotals,
   OrderFeedEventType,
+  PaymentMethod,
   PaymentStatus,
+  PlatformPaymentMethodClassifier,
 } from '@openlinker/core/orders';
 import {
   readSourceBuyerTaxId,
   PAYMENT_METHOD,
   PAYMENT_STATUS,
+  readPaymentMethodMap,
+  resolveSourcePaymentMethod,
   toCodToCollect,
 } from '@openlinker/core/orders';
-import { deriveWooCommercePaymentMethod } from './woocommerce-payment-method';
+import {
+  classifyWooCommerceGateway,
+  deriveWooCommercePaymentMethod,
+  readWooCommerceGatewayId,
+} from './woocommerce-payment-method';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { Logger } from '@openlinker/shared/logging';
 import type { IWooCommerceHttpClient } from '../http/woocommerce-http-client.interface';
@@ -60,7 +68,9 @@ const COD_DEAD_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'failed', '
  */
 const COD_SETTLED_STATUSES: ReadonlySet<string> = new Set(['completed']);
 
-export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
+export class WooCommerceOrderSourceAdapter
+  implements OrderSourcePort, PlatformPaymentMethodClassifier
+{
   private readonly logger = new Logger(WooCommerceOrderSourceAdapter.name);
 
   constructor(
@@ -138,6 +148,16 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
     return { items: filtered, nextCursor: nextCursor ?? input.fromCursor ?? null };
   }
 
+  /**
+   * What WooCommerce itself says a gateway id means (#3774): `cod` and `bacs`,
+   * `unknown` for every plugin slug. The discovery read uses it to tell which
+   * gateways an operator may map, and `getOrder` resolves through the same
+   * classification, so the two cannot disagree.
+   */
+  classifyPlatformPaymentMethod(sourcePaymentMethod: string): PaymentMethod {
+    return classifyWooCommerceGateway(sourcePaymentMethod);
+  }
+
   async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {
     const { externalOrderId } = input;
 
@@ -177,12 +197,27 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
       throw error;
     }
 
+    // How the buyer pays (#3294): only WooCommerce core's own gateway ids are
+    // evidence on their own. For any other id the operator's own map (#3774) may
+    // say what the plugin means; an id WooCommerce defines is never overridden.
+    // The id is also reported verbatim as the identifier an operator maps. The
+    // status below reads the RESOLVED method, so a gateway mapped to COD gets
+    // the COD status and amount a core COD order does, not a `paid` read off
+    // its `processing` status.
+    const gatewayId = readWooCommerceGatewayId(order);
+    const { method: paymentMethod } = resolveSourcePaymentMethod({
+      platformMethod:
+        gatewayId === undefined ? PAYMENT_METHOD.Unknown : classifyWooCommerceGateway(gatewayId),
+      sourcePaymentMethod: gatewayId,
+      map: readPaymentMethodMap(this.connection.config),
+    });
+
     return {
       externalOrderId,
       orderNumber: order.number,
       status: order.status,
       ...(() => {
-        const paymentStatus = deriveWooCommercePaymentStatus(order);
+        const paymentStatus = deriveWooCommercePaymentStatus(order, paymentMethod);
         // The courier collects the whole order on delivery (#3294): nothing is
         // paid in advance on a COD order and WooCommerce states no separate
         // amount to collect, so it is the order's gross `total` (which, unlike
@@ -198,9 +233,8 @@ export class WooCommerceOrderSourceAdapter implements OrderSourcePort {
           ...(codToCollect === undefined ? {} : { codToCollect }),
         };
       })(),
-      // How the buyer pays (#3294): only WooCommerce core's own gateway ids
-      // are evidence; every plugin slug is `unknown`.
-      paymentMethod: deriveWooCommercePaymentMethod(order),
+      paymentMethod,
+      ...(gatewayId !== undefined && { sourcePaymentMethod: gatewayId }),
       customerExternalId: order.customer_id > 0 ? String(order.customer_id) : undefined,
       customerEmail: order.billing.email || undefined,
       items: order.line_items.map(mapLineItem),
@@ -317,6 +351,10 @@ function mapWooCommerceEventType(status: string, isNew: boolean): OrderFeedEvent
  */
 export function deriveWooCommercePaymentStatus(
   order: Pick<WooCommerceOrder, 'status' | 'date_paid' | 'date_paid_gmt' | 'payment_method'>,
+  // The method AFTER the operator map (#3774). Defaults to what the platform
+  // says about the order's own gateway id, so every pre-#3774 caller is
+  // unchanged.
+  paymentMethod: PaymentMethod = deriveWooCommercePaymentMethod(order)
 ): PaymentStatus | undefined {
   const status = order.status.toLowerCase();
   // Withheld, not reported: `refunded` is a dispatch-blocking status, and the
@@ -330,7 +368,7 @@ export function deriveWooCommercePaymentStatus(
     return PAYMENT_STATUS.Paid;
   }
   if (
-    deriveWooCommercePaymentMethod(order) === PAYMENT_METHOD.CashOnDelivery &&
+    paymentMethod === PAYMENT_METHOD.CashOnDelivery &&
     !COD_DEAD_STATUSES.has(status) &&
     !COD_SETTLED_STATUSES.has(status)
   ) {
@@ -512,7 +550,7 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
     // nothing here reads a rate. Left ABSENT when `shipping_tax` is missing or
     // unreadable - an absent component must not be silently read as zero tax,
     // which would publish a net figure while claiming it was gross.
-    ...(((): { shippingGross?: number } => {
+    ...((): { shippingGross?: number } => {
       const shippingTax = Number(order.shipping_tax);
       if (order.shipping_tax === undefined || !Number.isFinite(shippingTax)) {
         return {};
@@ -520,7 +558,7 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
       return Number.isFinite(shipping)
         ? { shippingGross: roundCurrency(shipping + shippingTax) }
         : {};
-    })()),
+    })(),
   };
 }
 

@@ -18,6 +18,8 @@ export type { DestinationOptionsReader } from './domain/ports/capabilities/desti
 export { isDestinationOptionsReader } from './domain/ports/capabilities/destination-options-reader.capability';
 export type { SourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
 export { isSourceOptionsReader } from './domain/ports/capabilities/source-options-reader.capability';
+export type { PlatformPaymentMethodClassifier } from './domain/ports/capabilities/platform-payment-method-classifier.capability';
+export { isPlatformPaymentMethodClassifier } from './domain/ports/capabilities/platform-payment-method-classifier.capability';
 // Destination post-create fulfillment update (#858). Retained for order
 // provisioning (OL driving an order it created), outside the relay path;
 // the source-side dispatch notify folded into OrderStatusWriteback (#1168).
@@ -124,6 +126,18 @@ export type {
   PaymentFacts,
   PaymentFactsViolation,
 } from './domain/types/payment-facts-consistency.types';
+export {
+  PAYMENT_METHOD_MAP_CONFIG_KEY,
+  PaymentMethodResolutionValues,
+  normalizeSourcePaymentMethodKey,
+  readPaymentMethodMap,
+  findPaymentMethodMapKeyCollisions,
+  resolveSourcePaymentMethod,
+} from './domain/types/payment-method-map.types';
+export type {
+  PaymentMethodResolution,
+  ResolvedSourcePaymentMethod,
+} from './domain/types/payment-method-map.types';
 export type { CodToCollect } from './domain/types/cod-to-collect.types';
 export { toCodToCollect } from './domain/types/cod-to-collect.types';
 export { OrderCreate, OrderRef, OrderSourceRef } from './domain/types/order-processor.types';
@@ -546,3 +560,5 @@ export type { IOrderHoldProjectionReconcileService } from './application/interfa
 export type { HoldProjectionReconcileResult } from './domain/types/order-hold-projection.types';
 export { OrderHoldsModule } from './order-holds.module';
 export * from './domain/types/order-discount-split.types';
+
+export type { ObservedSourcePaymentMethod } from './domain/types/observed-source-payment-method.types';

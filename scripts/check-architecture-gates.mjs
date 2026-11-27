@@ -154,6 +154,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/listings/domain/types/price-change-block.types.ts',
     { helper: 'readConnectionCurrency', key: 'config.currency' },
   ],
+  [
+    'libs/core/src/orders/domain/types/payment-method-map.types.ts',
+    { helper: 'readPaymentMethodMap', key: 'config.paymentMethodMap' },
+  ],
 ]);
 
 /**
@@ -391,7 +395,13 @@ const NON_KNOBS = new Map([
 // per-connection knobs in JSONB is the accretion #1032's rules model is meant to
 // replace, and that is still true - it is simply not something a review fix may
 // take on. The number is raised by one so the next knob asks again.
-const KNOB_THRESHOLD = 12;
+//
+// #3774 (the operator's payment-method map) is the twelfth: a per-connection
+// `{ gateway id: PaymentMethod }` table. It is genuinely per connection (each
+// shop names its own gateway modules) and is a lookup the operator authors, not
+// a rule - it does not fit a shared rules model, and an env var would make it
+// install-wide. Raised by one so the next knob asks again.
+const KNOB_THRESHOLD = 13;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

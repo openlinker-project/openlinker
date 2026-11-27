@@ -20,6 +20,7 @@ import type {
   FailedSyncValueSummary,
   SalesDocumentMatchedRuleWrite,
 } from '../types/order-record.types';
+import type { ObservedSourcePaymentMethod } from '../types/observed-source-payment-method.types';
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
@@ -99,6 +100,19 @@ export interface OrderRecordRepositoryPort {
    * cancelled orders.
    */
   findEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>>;
+
+  /**
+   * The native payment identifiers a connection's orders carried since `since`
+   * (#3774), grouped on the normalised identifier, most frequent first, capped
+   * at `limit`. Orders whose snapshot has no `sourcePaymentMethod` are excluded;
+   * other connections' orders never appear. Window is the placement instant
+   * (`placedAt`, falling back to `createdAt`).
+   */
+  listObservedSourcePaymentMethods(
+    connectionId: string,
+    since: Date,
+    limit: number
+  ): Promise<ObservedSourcePaymentMethod[]>;
 
   /**
    * Orders per routing country since `since`, most orders first (#2518,

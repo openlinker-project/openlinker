@@ -807,6 +807,106 @@ describe('PrestashopOrderSourceAdapter', () => {
       },
     );
 
+    describe('operator payment-method map (#3774)', () => {
+      const order = (module: string | undefined, state = '13'): PrestashopOrder => ({
+        id: '42',
+        reference: 'ORDER-042',
+        id_customer: '7',
+        current_state: state,
+        total_paid: '99.99',
+        total_paid_tax_incl: '99.99',
+        total_paid_tax_excl: '99.99',
+        total_shipping: '0',
+        date_add: '2024-01-01 10:00:00',
+        date_upd: '2024-01-01 12:00:00',
+        ...(module === undefined ? {} : { module }),
+      });
+
+      const adapterWithMap = (
+        map: Record<string, string> | undefined
+      ): PrestashopOrderSourceAdapter =>
+        new PrestashopOrderSourceAdapter(
+          mockHttpClient,
+          orderMapper,
+          {
+            ...connection,
+            config: {
+              ...connection.config,
+              ...(map === undefined ? {} : { paymentMethodMap: map }),
+            },
+          },
+          currencyResolver as unknown as PrestashopOrderCurrencyResolver
+        );
+
+      const read = async (
+        target: PrestashopOrderSourceAdapter,
+        prestashopOrder: PrestashopOrder
+      ): ReturnType<PrestashopOrderSourceAdapter['getOrder']> => {
+        mockHttpClient.getResource = jest.fn().mockResolvedValueOnce(prestashopOrder);
+        mockHttpClient.listResources = jest.fn().mockResolvedValueOnce([]);
+        return target.getOrder({ externalOrderId: '42' });
+      };
+
+      it('should report the payment module verbatim as the source payment method', async () => {
+        const incoming = await read(adapterWithMap(undefined), order('PayU'));
+
+        expect(incoming.sourcePaymentMethod).toBe('PayU');
+        expect(incoming.paymentMethod).toBe('unknown');
+      });
+
+      it('should omit the source payment method when the order carries no module', async () => {
+        const incoming = await read(adapterWithMap({ payu: 'online' }), order(undefined));
+
+        expect(incoming).not.toHaveProperty('sourcePaymentMethod');
+        expect(incoming.paymentMethod).toBe('unknown');
+      });
+
+      it('should fill an unknown module from the operator map, case-insensitively', async () => {
+        const incoming = await read(adapterWithMap({ payu: 'online' }), order('PayU', '2'));
+
+        expect(incoming.paymentMethod).toBe('online');
+        expect(incoming.paymentStatus).toBe('paid');
+        expect(incoming).not.toHaveProperty('codToCollect');
+        expect(checkPaymentFactsConsistency(incoming)).toEqual([]);
+      });
+
+      it('should give a module mapped to cash on delivery the COD status and the gross total', async () => {
+        const incoming = await read(
+          adapterWithMap({ pobranie_plus: 'cash_on_delivery' }),
+          order('pobranie_plus')
+        );
+
+        expect(incoming.paymentMethod).toBe('cash_on_delivery');
+        expect(incoming.paymentStatus).toBe('cod');
+        expect(incoming.codToCollect).toEqual({
+          amount: incoming.totals.total.toFixed(2),
+          currency: incoming.totals.currency,
+        });
+        expect(checkPaymentFactsConsistency(incoming)).toEqual([]);
+      });
+
+      it('should never override a module PrestaShop itself defines', async () => {
+        const incoming = await read(
+          adapterWithMap({ ps_cashondelivery: 'online' }),
+          order('ps_cashondelivery')
+        );
+
+        expect(incoming.paymentMethod).toBe('cash_on_delivery');
+      });
+
+      it('should leave an unmapped module unknown', async () => {
+        const incoming = await read(adapterWithMap({ payu: 'online' }), order('stripe'));
+
+        expect(incoming.paymentMethod).toBe('unknown');
+      });
+
+      it('should classify only the modules PrestaShop defines for the discovery read', () => {
+        expect(adapter.classifyPlatformPaymentMethod('ps_cashondelivery')).toBe('cash_on_delivery');
+        expect(adapter.classifyPlatformPaymentMethod('PS_WirePayment')).toBe('bank_transfer');
+        expect(adapter.classifyPlatformPaymentMethod('payu')).toBe('unknown');
+      });
+    });
+
     describe('currency (#2277)', () => {
       const orderWithCurrency: PrestashopOrder = {
         id: '42',

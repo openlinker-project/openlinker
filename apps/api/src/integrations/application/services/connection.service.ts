@@ -11,6 +11,12 @@
  * @see {@link ConnectionPort} for the core port
  */
 import {
+  PAYMENT_METHOD,
+  findPaymentMethodMapKeyCollisions,
+  isPaymentMethod,
+  normalizeSourcePaymentMethodKey,
+} from '@openlinker/core/orders';
+import {
   BadRequestException,
   ConflictException,
   Injectable,
@@ -340,6 +346,44 @@ export class ConnectionService implements IConnectionService {
 
     this.validatePricingRuleConfig(config.pricingRule);
     this.validatePriceSyncModeConfig(config.priceSyncMode);
+    this.validatePaymentMethodMapConfig(config.paymentMethodMap);
+  }
+
+  /**
+   * The operator's payment-method map (#3774): `{ <source identifier>: <PaymentMethod> }`.
+   *
+   * Refused rather than coerced, because the read side silently DROPS bad
+   * entries and the operator would believe a gateway was mapped when it was
+   * not: a non-object, a blank key, a value outside the neutral vocabulary,
+   * `unknown` (mapping to it decides nothing), and keys that collide after
+   * normalisation (`PayU` + `payu`, where JSON key order would pick the winner).
+   * Absent / null is accepted. Reached from `create` and `update` through
+   * `validateStockAndPricingConfig`.
+   */
+  private validatePaymentMethodMapConfig(map: unknown): void {
+    if (map === undefined || map === null) return;
+    if (typeof map !== 'object' || Array.isArray(map)) {
+      throw new BadRequestException('config.paymentMethodMap must be an object');
+    }
+    const entries = Object.entries(map as Record<string, unknown>);
+    for (const [key, value] of entries) {
+      if (normalizeSourcePaymentMethodKey(key) === '') {
+        throw new BadRequestException('config.paymentMethodMap keys must not be blank');
+      }
+      if (!isPaymentMethod(value) || value === PAYMENT_METHOD.Unknown) {
+        throw new BadRequestException(
+          `config.paymentMethodMap["${key}"] must be one of online, bank_transfer, cash_on_delivery`
+        );
+      }
+    }
+    const collisions = findPaymentMethodMapKeyCollisions(map as Record<string, unknown>);
+    if (collisions.length > 0) {
+      throw new BadRequestException(
+        `config.paymentMethodMap has keys that differ only by case or spacing: ${collisions
+          .map((group) => group.map((k) => `"${k}"`).join(' / '))
+          .join('; ')}`
+      );
+    }
   }
 
   private validatePricingRuleConfig(pricingRule: unknown): void {

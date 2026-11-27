@@ -143,6 +143,7 @@ describe('FulfillmentStatusSyncService', () => {
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      listObservedSourcePaymentMethods: jest.fn(),
     };
 
     routing = {

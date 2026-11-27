@@ -26,10 +26,14 @@
 import { PAYMENT_METHOD, type PaymentMethod } from '@openlinker/core/orders';
 import type { WooCommerceOrder } from './order-source/woocommerce-order.types';
 
-export function deriveWooCommercePaymentMethod(
-  order: Pick<WooCommerceOrder, 'payment_method'>
-): PaymentMethod {
-  switch (order.payment_method?.trim().toLowerCase()) {
+/**
+ * What WooCommerce itself says a gateway id means (#3294), from the id alone.
+ * `unknown` for every id the platform does not define. Also the platform answer
+ * behind the operator payment-method map (#3774): the map fills an `unknown`
+ * from here and never overrides an id defined here.
+ */
+export function classifyWooCommerceGateway(gatewayId: string): PaymentMethod {
+  switch (gatewayId.trim().toLowerCase()) {
     case 'cod':
       return PAYMENT_METHOD.CashOnDelivery;
     case 'bacs':
@@ -37,4 +41,24 @@ export function deriveWooCommercePaymentMethod(
     default:
       return PAYMENT_METHOD.Unknown;
   }
+}
+
+/**
+ * The order's gateway id, verbatim and trimmed (#3774) - the native identifier
+ * reported as `IncomingOrder.sourcePaymentMethod` and the key an operator maps.
+ * `undefined` when the payload omits it or it is blank. Case is left as the
+ * store sent it; only the operator-map lookup folds case.
+ */
+export function readWooCommerceGatewayId(
+  order: Pick<WooCommerceOrder, 'payment_method'>
+): string | undefined {
+  const trimmed = order.payment_method?.trim();
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed;
+}
+
+export function deriveWooCommercePaymentMethod(
+  order: Pick<WooCommerceOrder, 'payment_method'>
+): PaymentMethod {
+  const gatewayId = readWooCommerceGatewayId(order);
+  return gatewayId === undefined ? PAYMENT_METHOD.Unknown : classifyWooCommerceGateway(gatewayId);
 }

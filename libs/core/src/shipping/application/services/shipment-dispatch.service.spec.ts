@@ -240,6 +240,7 @@ describe('ShipmentDispatchService', () => {
       getCurrencyMismatchOrders: jest.fn(),
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
+      listObservedSourcePaymentMethods: jest.fn(),
     };
     const fulfillmentProjection = { recompute: jest.fn() };
     // Unheld by default (#2339): as with the lock below, every pre-existing test

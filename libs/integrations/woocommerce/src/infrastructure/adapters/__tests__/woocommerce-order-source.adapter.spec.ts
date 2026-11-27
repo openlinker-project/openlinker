@@ -424,6 +424,88 @@ describe('WooCommerceOrderSourceAdapter', () => {
       },
     );
 
+    describe('operator payment-method map (#3774)', () => {
+      const adapterWithMap = (
+        order: WooCommerceOrder,
+        map: Record<string, string> | undefined
+      ): WooCommerceOrderSourceAdapter =>
+        new WooCommerceOrderSourceAdapter(
+          makeHttpClient({ get: jest.fn().mockResolvedValue(order) }),
+          makeConnection({
+            config: {
+              siteUrl: 'https://myshop.example.com',
+              ...(map === undefined ? {} : { paymentMethodMap: map }),
+            },
+          })
+        );
+
+      it('should report the gateway id verbatim as the source payment method', async () => {
+        const result = await adapterWithMap(
+          makeOrder({ payment_method: 'Przelewy24' }),
+          undefined
+        ).getOrder({ externalOrderId: '1' });
+
+        expect(result.sourcePaymentMethod).toBe('Przelewy24');
+        expect(result.paymentMethod).toBe('unknown');
+      });
+
+      it('should omit the source payment method when the payload carries no gateway id', async () => {
+        const result = await adapterWithMap(makeOrder({ payment_method: undefined }), {
+          przelewy24: 'online',
+        }).getOrder({ externalOrderId: '1' });
+
+        expect(result).not.toHaveProperty('sourcePaymentMethod');
+        expect(result.paymentMethod).toBe('unknown');
+      });
+
+      it('should fill an unknown gateway from the operator map, case-insensitively', async () => {
+        const result = await adapterWithMap(
+          makeOrder({ status: 'processing', payment_method: 'Przelewy24' }),
+          { przelewy24: 'online' }
+        ).getOrder({ externalOrderId: '1' });
+
+        expect(result.paymentMethod).toBe('online');
+        expect(result.paymentStatus).toBe('paid');
+        expect(result).not.toHaveProperty('codToCollect');
+        expect(checkPaymentFactsConsistency(result)).toEqual([]);
+      });
+
+      it('should give a gateway mapped to cash on delivery the COD status and the gross total', async () => {
+        // `processing` is exactly the status a core COD order is created in, and
+        // used to read as `paid`; a mapped gateway must not repeat that.
+        const result = await adapterWithMap(
+          makeOrder({ status: 'processing', payment_method: 'pobranie_plus' }),
+          { pobranie_plus: 'cash_on_delivery' }
+        ).getOrder({ externalOrderId: '1' });
+
+        expect(result.paymentMethod).toBe('cash_on_delivery');
+        expect(result.paymentStatus).toBe('cod');
+        expect(result.codToCollect).toEqual({
+          amount: expect.any(String),
+          currency: expect.any(String),
+        });
+        expect(checkPaymentFactsConsistency(result)).toEqual([]);
+      });
+
+      it('should never override a gateway WooCommerce itself defines', async () => {
+        const result = await adapterWithMap(
+          makeOrder({ status: 'processing', payment_method: 'cod' }),
+          { cod: 'online' }
+        ).getOrder({ externalOrderId: '1' });
+
+        expect(result.paymentMethod).toBe('cash_on_delivery');
+        expect(result.paymentStatus).toBe('cod');
+      });
+
+      it('should classify only the gateways WooCommerce defines for the discovery read', () => {
+        const adapter = adapterWithMap(makeOrder(), undefined);
+
+        expect(adapter.classifyPlatformPaymentMethod('cod')).toBe('cash_on_delivery');
+        expect(adapter.classifyPlatformPaymentMethod(' BACS ')).toBe('bank_transfer');
+        expect(adapter.classifyPlatformPaymentMethod('przelewy24')).toBe('unknown');
+      });
+    });
+
     it('should map shipping.methodName from the shipping line method_title so the delivery-method label populates (#1776)', async () => {
       const order = makeOrder({
         shipping_lines: [{ id: 1, method_id: 'flat_rate', method_title: 'Flat Rate', total: '5.00' }],

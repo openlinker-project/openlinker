@@ -9,6 +9,7 @@
  * @implements {IOrderRecordService}
  */
 import { Injectable, Inject } from '@nestjs/common';
+import type { ObservedSourcePaymentMethod } from '../../domain/types/observed-source-payment-method.types';
 import type { Order, OrderDispatchWindow } from '../../domain/types/order.types';
 import { checkPaymentFactsConsistency } from '../../domain/types/payment-facts-consistency.types';
 import {
@@ -212,6 +213,11 @@ export class OrderRecordService implements IOrderRecordService {
       // How the buyer pays (#3294) - present-only like paymentStatus, and NOT
       // PII (a closed four-value vocabulary), so it is kept in both PII modes.
       ...(order.paymentMethod !== undefined && { paymentMethod: order.paymentMethod }),
+      // The source's own gateway id (#3774) - present-only and NOT PII (a technical
+      // module/gateway name); the discovery read groups on it.
+      ...(order.sourcePaymentMethod !== undefined && {
+        sourcePaymentMethod: order.sourcePaymentMethod,
+      }),
       // Marketplace-sourced COD collect amount (#1435) — present-only, like
       // paymentStatus. Read back by `OrderRecord.codToCollect` for the dispatch
       // COD gate; absent for prepaid orders and sources that don't expose it.
@@ -485,6 +491,10 @@ export class OrderRecordService implements IOrderRecordService {
       ...(incoming.paymentStatus !== undefined && { paymentStatus: incoming.paymentStatus }),
       // How the buyer pays (#3294) - see persistOrder.
       ...(incoming.paymentMethod !== undefined && { paymentMethod: incoming.paymentMethod }),
+      // The source's own gateway id (#3774) - see persistOrder.
+      ...(incoming.sourcePaymentMethod !== undefined && {
+        sourcePaymentMethod: incoming.sourcePaymentMethod,
+      }),
       // Marketplace-sourced COD collect amount (#1435) — see persistOrder.
       ...(incoming.codToCollect !== undefined && { codToCollect: incoming.codToCollect }),
       ...(incoming.dispatchTime !== undefined && { dispatchTime: incoming.dispatchTime }),
@@ -742,6 +752,14 @@ export class OrderRecordService implements IOrderRecordService {
 
   async getEarliestOrderDateByConnection(connectionIds: string[]): Promise<Map<string, Date>> {
     return this.repository.findEarliestOrderDateByConnection(connectionIds);
+  }
+
+  async listObservedSourcePaymentMethods(
+    connectionId: string,
+    since: Date,
+    limit: number
+  ): Promise<ObservedSourcePaymentMethod[]> {
+    return this.repository.listObservedSourcePaymentMethods(connectionId, since, limit);
   }
 
   async countOrdersWithOmsAttention(): Promise<number> {

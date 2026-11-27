@@ -24,6 +24,9 @@ import { OrderNotesController } from './http/order-notes.controller';
 import { OrderTagsController } from './http/order-tags.controller';
 import { OrderTagAssignmentsController } from './http/order-tag-assignments.controller';
 import { OrderExportsController } from './http/order-exports.controller';
+import { ConnectionPaymentMethodsController } from './http/connection-payment-methods.controller';
+import { ConnectionPaymentMethodsService } from './application/services/connection-payment-methods.service';
+import { CONNECTION_PAYMENT_METHODS_SERVICE_TOKEN } from './application/interfaces/connection-payment-methods.service.interface';
 import { SourceFulfillmentStatusService } from './application/services/source-fulfillment-status.service';
 import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interfaces/source-fulfillment-status.service.interface';
 
@@ -79,12 +82,18 @@ import { SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN } from './application/interface
     OrderNotesController,
     OrderTagsController,
     OrderTagAssignmentsController,
+    ConnectionPaymentMethodsController,
   ],
   // #3365 - composed HERE rather than in `libs/core/orders`, for the reason the
   // invoice and shortfall projections above already are: it reaches an
   // `integrations` adapter, and doing that inside core would add an
   // `orders -> integrations` runtime edge for one read surface.
   providers: [
+    ConnectionPaymentMethodsService,
+    {
+      provide: CONNECTION_PAYMENT_METHODS_SERVICE_TOKEN,
+      useExisting: ConnectionPaymentMethodsService,
+    },
     SourceFulfillmentStatusService,
     {
       provide: SOURCE_FULFILLMENT_STATUS_SERVICE_TOKEN,

@@ -10,6 +10,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { ObservedSourcePaymentMethod } from '../../../domain/types/observed-source-payment-method.types';
 import type { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
 import {
   getMetadataArgsStorage,
@@ -227,6 +228,35 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .getRawMany<{ source_connection_id: string; earliest_at: Date }>();
 
     return new Map(rows.map((row) => [row.source_connection_id, row.earliest_at]));
+  }
+
+  async listObservedSourcePaymentMethods(
+    connectionId: string,
+    since: Date,
+    limit: number
+  ): Promise<ObservedSourcePaymentMethod[]> {
+    // Same normalisation as `normalizeSourcePaymentMethodKey` (trim + lower),
+    // done in SQL so case variants group; NULLIF drops a blank id.
+    const keyExpr = `NULLIF(lower(btrim(rec."orderSnapshot"->>'sourcePaymentMethod')), '')`;
+    const rows = await this.repository
+      .createQueryBuilder('rec')
+      .select(keyExpr, 'source_payment_method')
+      .addSelect('COUNT(*)', 'order_count')
+      .addSelect(`MAX(COALESCE(rec."placedAt", rec."createdAt"))`, 'last_seen_at')
+      .where('rec.sourceConnectionId = :connectionId', { connectionId })
+      .andWhere(`COALESCE(rec."placedAt", rec."createdAt") >= :since`, { since })
+      .andWhere(`${keyExpr} IS NOT NULL`)
+      .groupBy(keyExpr)
+      .orderBy('COUNT(*)', 'DESC')
+      .addOrderBy(keyExpr, 'ASC')
+      .limit(limit)
+      .getRawMany<{ source_payment_method: string; order_count: string; last_seen_at: Date }>();
+
+    return rows.map((row) => ({
+      sourcePaymentMethod: row.source_payment_method,
+      orderCount: Number(row.order_count),
+      lastSeenAt: row.last_seen_at,
+    }));
   }
 
   async countOrdersByRoutingCountrySince(

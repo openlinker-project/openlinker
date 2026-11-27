@@ -1038,6 +1038,49 @@ describe('ConnectionService', () => {
       });
     });
 
+    describe('payment-method map config validation (#3774)', () => {
+      const withMap = (paymentMethodMap: unknown): typeof payload => ({
+        ...payload,
+        config: { ...payload.config, paymentMethodMap: paymentMethodMap as Record<string, string> },
+      });
+
+      it('should accept a valid map, an absent key and a null map on create', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create(
+            withMap({ payu: 'online', Cheque: 'bank_transfer', cod: 'cash_on_delivery' })
+          )
+        ).resolves.toEqual(mockConnection);
+        await expect(service.create(withMap(null))).resolves.toEqual(mockConnection);
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+      });
+
+      it.each([
+        ['a non-object map', 'online'],
+        ['an array map', ['payu']],
+        ['an invalid value', { payu: 'card' }],
+        ['unknown as a value', { payu: 'unknown' }],
+        ['a non-string value', { payu: 5 }],
+        ['a blank key', { '  ': 'online' }],
+        ['case-folded duplicate keys', { PayU: 'online', payu: 'bank_transfer' }],
+      ])('should refuse %s on create', async (_label, map) => {
+        await expect(service.create(withMap(map))).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should refuse an invalid map on update too', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', paymentMethodMap: { payu: 'card' } },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+    });
+
     describe('neutral stock and pricing config validation (#2610)', () => {
       it('should accept a create carrying all three keys within bounds', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);

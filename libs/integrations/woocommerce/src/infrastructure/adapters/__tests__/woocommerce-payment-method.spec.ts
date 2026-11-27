@@ -6,7 +6,11 @@
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters/__tests__
  */
-import { deriveWooCommercePaymentMethod } from '../woocommerce-payment-method';
+import {
+  classifyWooCommerceGateway,
+  deriveWooCommercePaymentMethod,
+  readWooCommerceGatewayId,
+} from '../woocommerce-payment-method';
 
 describe('deriveWooCommercePaymentMethod', () => {
   it.each([
@@ -33,4 +37,28 @@ describe('deriveWooCommercePaymentMethod', () => {
   it('should report unknown when the payload carries no gateway id', () => {
     expect(deriveWooCommercePaymentMethod({})).toBe('unknown');
   });
+});
+
+describe('classifyWooCommerceGateway (#3774)', () => {
+  it.each([
+    ['cod', 'cash_on_delivery'],
+    ['  BACS ', 'bank_transfer'],
+    ['przelewy24', 'unknown'],
+    ['', 'unknown'],
+  ])('should classify gateway %j as %s', (gatewayId, expected) => {
+    expect(classifyWooCommerceGateway(gatewayId)).toBe(expected);
+  });
+});
+
+describe('readWooCommerceGatewayId (#3774)', () => {
+  it('should return the id trimmed but with its case left alone', () => {
+    expect(readWooCommerceGatewayId({ payment_method: '  Przelewy24 ' })).toBe('Przelewy24');
+  });
+
+  it.each([[{}], [{ payment_method: '' }], [{ payment_method: '   ' }]])(
+    'should report nothing for %j',
+    (order) => {
+      expect(readWooCommerceGatewayId(order)).toBeUndefined();
+    }
+  );
 });
