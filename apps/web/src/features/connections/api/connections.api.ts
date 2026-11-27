@@ -1,6 +1,7 @@
 import type {
   BankAccount,
   CatalogTrust,
+  ObservedPaymentMethods,
   ConnectionSyncStatus,
   Connection,
   ConnectionDiagnostics,
@@ -41,6 +42,7 @@ export interface ConnectionsApi {
   getWebhookStatus: (connectionId: string) => Promise<WebhookStatus>;
   getRateLimitStatus: (connectionId: string) => Promise<RateLimitStatus>;
   getCatalogTrust: (connectionId: string) => Promise<CatalogTrust>;
+  getObservedPaymentMethods: (connectionId: string) => Promise<ObservedPaymentMethods>;
   getSyncStatus: (connectionId: string) => Promise<ConnectionSyncStatus>;
   list: (filters?: ConnectionFilters) => Promise<Connection[]>;
   setDefaultBankAccount: (connectionId: string, accountId: string) => Promise<void>;
@@ -152,6 +154,9 @@ export function createConnectionsApi(request: ApiRequest): ConnectionsApi {
     },
     getRateLimitStatus(connectionId): Promise<RateLimitStatus> {
       return request<RateLimitStatus>(`/connections/${connectionId}/rate-limit-status`);
+    },
+    getObservedPaymentMethods(connectionId): Promise<ObservedPaymentMethods> {
+      return request<ObservedPaymentMethods>(`/connections/${connectionId}/payment-methods/observed`);
     },
     getCatalogTrust(connectionId): Promise<CatalogTrust> {
       return request<CatalogTrust>(`/connections/${connectionId}/catalog-trust`);

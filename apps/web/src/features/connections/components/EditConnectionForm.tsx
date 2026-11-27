@@ -44,6 +44,8 @@ import { LabelPurchaseNotificationSection } from './label-purchase-notification-
 import { BuyerDataSection, readBuyerDataSettings } from '../../buyer-data';
 import { readNotifyOnLabelPurchase } from '../lib/label-purchase-notification';
 import { readFulfilmentOwnedByDestination } from '../lib/fulfilment-ownership';
+import { readPaymentMethodMapForm } from '../lib/payment-method-map';
+import { PaymentMethodsSection } from './payment-methods-section';
 import { readPaymentWritebackForm } from '../lib/payment-writeback-config';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
@@ -550,6 +552,8 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
       stockLocationOverride: readStockLocationOverride(connection.config),
       // "This system packs and ships orders itself" (#2118) — platform-neutral.
       fulfilmentOwnedByDestination: readFulfilmentOwnedByDestination(connection.config),
+      // Operator payment-method map (#3775) - platform-neutral, OrderSource only.
+      paymentMethodMap: readPaymentMethodMapForm(connection.config),
       // "When the buyer pays later" (#3963) — platform-neutral.
       paymentWriteback: readPaymentWritebackForm(connection.config),
       // "Tell the shop when a label is bought" (#4097) — carrier connections.
@@ -789,6 +793,19 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
     const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
     const merged = mergeStructuredIntoConfig(parsed, {
       fulfilmentOwnedByDestination: form.getValues('fulfilmentOwnedByDestination'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
+  // #3775 - re-serialize `config.paymentMethodMap` into configText. Clone of
+  // `syncFulfilmentOwnershipToJson`: reads CURRENT form state, takes NO argument,
+  // keeps the `!configIsParseable` early-return. The section MUST
+  // setValue('paymentMethodMap', …) BEFORE calling this.
+  function syncPaymentMethodMapToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      paymentMethodMap: form.getValues('paymentMethodMap'),
     });
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
@@ -1152,6 +1169,25 @@ export function EditConnectionForm({ connection, backTo, mark, subtitle }: EditC
       ),
     });
   }
+
+  // #3775 - only a connection that ingests orders reports payment gateway ids,
+  // so the section is withheld elsewhere.
+  if (connection.enabledCapabilities.includes('OrderSource')) {
+    sections.push({
+      id: 'payment-methods',
+      label: copy.sections.paymentMethods,
+      children: (
+        <PaymentMethodsSection
+          form={form}
+          connectionId={connection.id}
+          configIsParseable={configIsParseable}
+          canWrite={write.canWrite}
+          syncPaymentMethodMapToJson={syncPaymentMethodMapToJson}
+        />
+      ),
+    });
+  }
+
 
   // #4289 - buyer data rules: read for any connection that takes orders. `null` inherits
   // the general rules from the settings page.

@@ -12,7 +12,7 @@
 // transitively naming a component module.
 import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
 import type { HoldReason, ProvisioningResume } from '../lib/order-hold.types';
-import type { PaymentMethod } from './order-snapshot.schema';
+import type { PaymentMethod } from '../../../shared/types/payment-method.types';
 import type { OrderEditsView } from './order-edit.types';
 
 // Re-exported so a consumer of the orders transport types can name a hold's

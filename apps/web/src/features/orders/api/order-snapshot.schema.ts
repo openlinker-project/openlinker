@@ -11,6 +11,10 @@
  * @module apps/web/src/features/orders/api
  */
 import { z } from 'zod/v4';
+import { PaymentMethodValues, type PaymentMethod } from '../../../shared/types/payment-method.types';
+
+// Re-exported so existing readers keep importing it from the snapshot schema.
+export { PaymentMethodValues, type PaymentMethod };
 
 // Optional string fields use `.nullish()` (string | null | undefined), not
 // `.optional()` (string | undefined): the persisted snapshot serialises absent
@@ -241,20 +245,6 @@ export interface ParseWarning {
  */
 export const PaymentStatusValues = ['paid', 'cod', 'awaiting', 'refunded'] as const;
 export type PaymentStatus = (typeof PaymentStatusValues)[number];
-
-/**
- * Payment method (#3294) - hand-mirrored from the backend `PaymentMethod` union
- * (`libs/core/src/orders/domain/types/payment-method.types.ts`); the web app
- * cannot import `@openlinker/core` (#591). How the buyer pays, independent of
- * the payment status above. `unknown` is a first-class value, not an absence.
- */
-export const PaymentMethodValues = [
-  'online',
-  'bank_transfer',
-  'cash_on_delivery',
-  'unknown',
-] as const;
-export type PaymentMethod = (typeof PaymentMethodValues)[number];
 
 export interface ParsedOrderSnapshot {
   id?: string;

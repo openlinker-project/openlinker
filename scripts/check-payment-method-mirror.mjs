@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 const CORE_FILE = join('libs', 'core', 'src', 'orders', 'domain', 'types', 'payment-method.types.ts');
-const FRONTEND_FILE = join('apps', 'web', 'src', 'features', 'orders', 'api', 'order-snapshot.schema.ts');
+const FRONTEND_FILE = join('apps', 'web', 'src', 'shared', 'types', 'payment-method.types.ts');
 const DECLARATION = 'PaymentMethodValues';
 
 function stripComments(source) {

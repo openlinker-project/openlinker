@@ -869,6 +869,7 @@
       "fulfilment": "Packing",
       "general": "General",
       "labelPurchase": "Shipping notification",
+      "paymentMethods": "Payment methods",
       "paymentWriteback": "Payment writeback",
       "platform": "Platform settings",
       "rateLimit": "Request rate limit",

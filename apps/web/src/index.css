@@ -8865,6 +8865,28 @@ html:has(.login-stage) {
   font-size: 0.875rem;
 }
 
+/* Payment-method mapping (#3775): one stacked row per gateway, so the select sits
+   under its id and the section needs no horizontal scroll at 390 px. */
+.payment-methods-section__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.payment-methods-section__row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.payment-methods-section__summary {
+  overflow-wrap: anywhere;
+}
+
 .rate-limit-section__toggle {
   display: flex;
   align-items: center;

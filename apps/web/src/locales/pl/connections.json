@@ -895,6 +895,7 @@
       "fulfilment": "Pakowanie",
       "general": "Ogólne",
       "labelPurchase": "Powiadomienie o wysyłce",
+      "paymentMethods": "Metody płatności",
       "paymentWriteback": "Zapis płatności",
       "platform": "Ustawienia platformy",
       "rateLimit": "Limit zapytań",
