@@ -1623,6 +1623,9 @@ body.side-panel-sheet-open .dashboard-glow {
 .shell-nav-scroll {
   --nav-arrow-h: 28px;
   --nav-arrow-up-h: 18px;
+  /* Fade under the top arrow; also the stuck label's top padding while the
+     arrow shows, so the fade covers only the label's background. */
+  --nav-fade-h: 12px;
   /* Arrows enter a touch slower than they leave, and the label moves with the
      top arrow on the same curve, so the two arrive as one header. */
   --nav-arrow-in: 240ms;
@@ -1652,11 +1655,38 @@ body.side-panel-sheet-open .dashboard-glow {
 }
 
 .shell-nav-scroll[data-scroll-up] .shell-nav__label {
-  transition: top var(--nav-arrow-in) var(--ease-out);
+  padding-top: var(--nav-fade-h);
+  transition:
+    top var(--nav-arrow-in) var(--ease-out),
+    padding-top var(--nav-arrow-in) var(--ease-out);
+}
+
+/* A soft fade under the top arrow, so a group label being pushed out by the
+   next group (or a link between two groups) dissolves instead of being cut
+   mid-letter by the arrow's edge. It sits above the labels, so while the arrow
+   shows the stuck label grows a matching top padding: the fade then lies over
+   the label's empty background and never dims its text. */
+.shell-nav-scroll::before {
+  content: '';
+  position: absolute;
+  top: var(--nav-arrow-up-h);
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: var(--nav-fade-h);
+  background: linear-gradient(var(--bg-shell), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--nav-arrow-out) var(--ease-standard);
+}
+
+.shell-nav-scroll[data-scroll-up]::before {
+  opacity: 1;
+  transition: opacity var(--nav-arrow-in) var(--ease-out);
 }
 
 .shell-nav-scroll[data-scroll-up] .shell-nav {
-  scroll-padding-top: calc(30px + var(--nav-arrow-up-h));
+  scroll-padding-top: calc(24px + var(--nav-fade-h) + var(--nav-arrow-up-h));
 }
 
 .shell-nav-scroll .shell-nav-scroll__arrow {
@@ -1790,7 +1820,9 @@ body.side-panel-sheet-open .dashboard-glow {
   top: var(--nav-top-inset, 0px);
   /* Steps down under the top arrow on the arrow's own curve. Animating `top`
      costs layout, but only for this short moment when the arrow toggles. */
-  transition: top var(--nav-arrow-out) var(--ease-standard);
+  transition:
+    top var(--nav-arrow-out) var(--ease-standard),
+    padding-top var(--nav-arrow-out) var(--ease-standard);
   z-index: 1;
   margin: 0 0 2px;
   padding: 6px 8px 4px;
