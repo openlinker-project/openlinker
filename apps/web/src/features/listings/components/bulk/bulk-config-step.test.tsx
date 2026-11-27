@@ -47,6 +47,7 @@ function makeConnectionClient() {
     status: 'active',
     platformType: 'allegro',
     supportedCapabilities: ['OfferManager', 'OfferCreator'],
+    enabledCapabilities: ['OfferManager'],
     // A publish destination without this fails 100% of its records
     // (`MASTER_CATALOG_NOT_CONFIGURED`), so the wizard blocks Proceed (#1934/F4).
     config: { masterCatalogConnectionId: 'conn-master' },
@@ -97,6 +98,7 @@ describe('BulkConfigStep', () => {
       status: 'active',
       platformType: 'allegro',
       supportedCapabilities: ['OfferManager', 'OfferCreator'],
+      enabledCapabilities: ['OfferManager'],
       config: {},
     } as unknown as Connection;
     renderWithProviders(
@@ -188,6 +190,7 @@ describe('BulkConfigStep', () => {
         status: 'active',
         platformType: 'some-future-marketplace',
         supportedCapabilities: ['OfferManager', 'OfferCreator'],
+        enabledCapabilities: ['OfferManager'],
         config: { masterCatalogConnectionId: 'conn-master' },
       } as unknown as Connection;
       return createMockApiClient({
@@ -271,6 +274,7 @@ describe('BulkConfigStep', () => {
         status: 'active',
         platformType: 'allegro',
         supportedCapabilities: ['OfferManager', 'OfferCreator'],
+        enabledCapabilities: ['OfferManager'],
         config: { masterCatalogConnectionId: 'conn-master' },
       } as unknown as Connection;
       const shop = {
@@ -357,6 +361,7 @@ describe('BulkConfigStep', () => {
             status: 'active',
             platformType: 'allegro',
             supportedCapabilities: ['OfferManager', 'OfferCreator'],
+            enabledCapabilities: ['OfferManager'],
             config: { masterCatalogConnectionId: 'conn-master' },
           } as unknown as Connection,
         ]) },
@@ -399,6 +404,7 @@ describe('BulkConfigStep', () => {
               status: 'active',
               platformType: 'allegro',
               supportedCapabilities: ['OfferManager', 'OfferCreator'],
+              enabledCapabilities: ['OfferManager'],
               config: { masterCatalogConnectionId: 'conn-master' },
             } as unknown as Connection,
           ]),

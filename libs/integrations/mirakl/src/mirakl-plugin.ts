@@ -1,0 +1,167 @@
+/**
+ * Mirakl Plugin Descriptor
+ *
+ * Framework-neutral `AdapterPlugin` for one Mirakl operator. The Mirakl
+ * Seller API is the same on every Mirakl marketplace, so the plugin is built
+ * from an operator profile (`createMiraklPlugin(empikOperatorProfile)`), and
+ * each profile becomes its own adapter key, platform type and connection type
+ * (ADR-088).
+ *
+ * It registers what every capability depends on (config and credentials
+ * validators, the connection tester, the retry and auth-failure classifiers)
+ * and advertises `OrderSource` (#4275): the orders poll, which also accepts
+ * new orders, and `OfferManager` (#4277): stock and price for offers listed
+ * on the operator, offer linking and offer status. Each capability is added to
+ * `supportedCapabilities` together with the adapter that delivers it, in
+ * lockstep with the dispatch table below.
+ *
+ * Mirakl offers sellers no webhooks (they are operator-only), so the plugin
+ * registers no webhook decoder or provisioner; capabilities poll.
+ *
+ * @module libs/integrations/mirakl/src
+ */
+import { dispatchCapability, type AdapterPlugin, type HostServices } from '@openlinker/plugin-sdk';
+import type { AdapterMetadata } from '@openlinker/core/integrations';
+import type { Connection } from '@openlinker/core/identifier-mapping';
+import {
+  MiraklAdapterFactory,
+  type MiraklAdapterFactoryDeps,
+} from './application/mirakl-adapter.factory';
+import type { MiraklOperatorProfile } from './domain/types/mirakl-operator-profile.types';
+import { MiraklAuthFailureClassifierAdapter } from './infrastructure/adapters/mirakl-auth-failure-classifier.adapter';
+import { MiraklConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/mirakl-connection-config-shape-validator.adapter';
+import { MiraklConnectionCredentialsShapeValidatorAdapter } from './infrastructure/adapters/mirakl-connection-credentials-shape-validator.adapter';
+import { MiraklConnectionTesterAdapter } from './infrastructure/adapters/mirakl-connection-tester.adapter';
+import { MiraklEmailNormalizerAdapter } from './infrastructure/adapters/mirakl-email-normalizer.adapter';
+import { MiraklRetryClassifierAdapter } from './infrastructure/adapters/mirakl-retry-classifier.adapter';
+import { buildMiraklSchedulerTasks } from './infrastructure/scheduler/mirakl-scheduler-tasks';
+
+/**
+ * Manifest for an operator. No `defaultRateLimit` (#1810): a manifest default
+ * is for merchant-hosted platforms, and Mirakl publishes no ceiling, so any
+ * number here would be invented. 429s are handled with `Retry-After` in the
+ * client; an operator can still set `connection.config.rateLimit`.
+ */
+/**
+ * What a new connection enables when the operator picks nothing: a marketplace
+ * connection, as before #4284. Enabling the whole manifest would pair
+ * InventoryMaster with OfferManager, which connection create refuses.
+ */
+export const MIRAKL_DEFAULT_ENABLED_CAPABILITIES = [
+  'OrderSource',
+  'ReturnSourceReader',
+  'OfferManager',
+  'OfferLister',
+  'OfferStatusReader',
+  'OfferQuantityBatchUpdater',
+  'PendingQuantityAckReconciler',
+  'OfferFieldUpdater',
+  'OfferCreator',
+  'CategoryBrowser',
+  'EanCategoryMatcher',
+] as const;
+
+export function buildMiraklAdapterManifest(profile: MiraklOperatorProfile): AdapterMetadata {
+  return {
+    adapterKey: profile.adapterKey,
+    platformType: profile.platformType,
+    // Sub-capabilities are listed for host-side discovery only; they are
+    // resolved by narrowing the dispatched adapter with core's guards.
+    supportedCapabilities: [
+      'OrderSource',
+      // Returns feed over RT11 (#4279), resolved by narrowing the order source.
+      'ReturnSourceReader',
+      'OfferManager',
+      'OfferLister',
+      'OfferStatusReader',
+      'OfferQuantityBatchUpdater',
+      'PendingQuantityAckReconciler',
+      'OfferFieldUpdater',
+      // Listing on an existing catalogue card (#4278). The FE gates offer
+      // creation on `OfferCreator` and the category step on these two.
+      'OfferCreator',
+      'CategoryBrowser',
+      'EanCategoryMatcher',
+      // Catalogue and stock master over the seller's offers (#4284). Opt-in:
+      // left out of the defaults below, and InventoryMaster cannot sit beside
+      // OfferManager on one connection (#1498).
+      'ProductMaster',
+      'InventoryMaster',
+    ],
+    defaultEnabledCapabilities: [...MIRAKL_DEFAULT_ENABLED_CAPABILITIES],
+    // Readable by every role: the orders UI words a refund confirmation by it.
+    publicConfigKeys: ['refundsThroughMarketplace'],
+    // No start choice yet (#4265): the order feed starts from its 7-day lookback
+    // on the first poll. "From now" and "from a date" are a follow-up; the feed
+    // cursor is a plain ISO date, so both are cheap to add.
+    orderSyncStartModes: [],
+    displayName: profile.displayName,
+    version: profile.version,
+    isDefault: true,
+  };
+}
+
+export function createMiraklPlugin(
+  profile: MiraklOperatorProfile,
+  deps: MiraklAdapterFactoryDeps = {}
+): AdapterPlugin {
+  const manifest = buildMiraklAdapterManifest(profile);
+  const factory = new MiraklAdapterFactory(profile, deps);
+
+  return {
+    manifest,
+
+    register(host: HostServices): void {
+      host.connectionConfigShapeValidatorRegistry.register(
+        profile.adapterKey,
+        new MiraklConnectionConfigShapeValidatorAdapter(profile.brand)
+      );
+      host.connectionCredentialsShapeValidatorRegistry.register(
+        profile.adapterKey,
+        new MiraklConnectionCredentialsShapeValidatorAdapter(profile.brand)
+      );
+      host.connectionTesterRegistry.register(
+        profile.adapterKey,
+        new MiraklConnectionTesterAdapter(host.http, factory, profile.brand)
+      );
+      // The runner asks every registered classifier (it holds the raw error, not
+      // an adapter key), so the key is a label; each classifier only recognises
+      // Mirakl's own exceptions, so registering one per operator is harmless.
+      host.retryClassifierRegistry.register(profile.adapterKey, new MiraklRetryClassifierAdapter());
+      host.authFailureClassifierRegistry.register(
+        profile.adapterKey,
+        new MiraklAuthFailureClassifierAdapter()
+      );
+      host.emailNormalizerRegistry.register(profile.adapterKey, new MiraklEmailNormalizerAdapter());
+      // Registered unconditionally; the env gate is re-read at every tick.
+      for (const task of buildMiraklSchedulerTasks(profile)) {
+        host.schedulerTaskRegistry.register(task);
+      }
+    },
+
+    async createCapabilityAdapter<T>(
+      connection: Connection,
+      capability: string,
+      host: HostServices
+    ): Promise<T> {
+      const adapters = await factory.createAdapters(
+        connection,
+        host.credentialsResolver,
+        // Connection-bound outbound transport (#1810): the operator's own rate
+        // limit, if any; the manifest declares no default.
+        host.http.forConnection(connection),
+        { identifierMapping: host.identifierMapping, cache: host.cache }
+      );
+      return dispatchCapability<T>(
+        capability,
+        {
+          OrderSource: () => adapters.orderSource,
+          OfferManager: () => adapters.offerManager,
+          ProductMaster: () => adapters.productMaster,
+          InventoryMaster: () => adapters.inventoryMaster,
+        },
+        profile.brand
+      );
+    },
+  };
+}

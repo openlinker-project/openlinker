@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
+import type { OfferRowValidationInput } from '../../../../shared/plugins';
 import { allegroOfferValidation } from '../allegro/allegro-offer-validation';
 import {
   clampMarkupPercent,
@@ -15,6 +16,7 @@ import {
   productCategoryIdOf,
   roundHalfUp,
   type ComputeBlockersInput,
+  descriptionPresentFor,
 } from './bulk-policy';
 
 // #1096 - `needs-product-parameters` is emitted by Allegro's row validator
@@ -662,6 +664,34 @@ describe('recomputeVariantBlockers', () => {
     expect(blockers).not.toContain('no-master-stock');
   });
 
+  it('should not report a catalogue lookup for an EAN typed after Resolve', () => {
+    const seen: OfferRowValidationInput[] = [];
+    const capture = (input: OfferRowValidationInput): string[] => {
+      seen.push(input);
+      return [];
+    };
+    const typed = makeVariant('ol_variant_1', {
+      override: { overrides: { ean: '9788377585061' } },
+    });
+    const master = makeVariant('ol_variant_2');
+
+    for (const variant of [typed, master]) {
+      recomputeVariantBlockers(
+        makeWizardRow([variant]),
+        variant,
+        CONFIG,
+        new Map(),
+        capture,
+        false,
+        false,
+        { catalogueConsulted: true }
+      );
+    }
+
+    // The lookup answered for the master barcode, not the one typed since.
+    expect(seen.map((input) => input.catalogueConsulted)).toEqual([false, true]);
+  });
+
   it('flags an invalid supplied barcode as invalid-barcode, not no-ean (#2240)', () => {
     const variant = makeVariant('ol_variant_1', {
       override: { overrides: { ean: '5901234567890' } },
@@ -1238,5 +1268,25 @@ describe('computeBlockers for a bundle (#3520)', () => {
       ({ availableSets }) as unknown as Parameters<typeof bundleStock>[0];
     expect(bundleStock(preview(3), variant)).toBe(3);
     expect(bundleStock(preview(null), variant)).toBe(50);
+  });
+});
+
+describe('descriptionPresentFor', () => {
+  const row = (description: string | null, override?: string | null): BulkWizardRow =>
+    ({
+      product: { description },
+      override: override === undefined ? {} : { overrides: { description: override } },
+    }) as unknown as BulkWizardRow;
+
+  it('should read the override first, a cleared one as none, then the master description', () => {
+    const noAi = { generateDescription: false };
+    expect(descriptionPresentFor(row('<p>Opis</p>'), null, noAi)).toBe(true);
+    expect(descriptionPresentFor(row('<p> </p>'), null, noAi)).toBe(false);
+    expect(descriptionPresentFor(row('Opis', null), null, noAi)).toBe(false);
+    expect(descriptionPresentFor(row(null, 'Nowy opis'), null, noAi)).toBe(true);
+  });
+
+  it('should count a description AI writes for the batch', () => {
+    expect(descriptionPresentFor(row(null), null, { generateDescription: true })).toBe(true);
   });
 });

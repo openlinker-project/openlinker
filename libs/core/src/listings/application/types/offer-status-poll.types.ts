@@ -85,6 +85,16 @@ export function resolveOfferPollCadence(
 }
 
 /**
+ * Pace and ceiling for an offer the marketplace is still reviewing
+ * (`OfferStatusReadResult.awaitingMarketplaceReview`, #4278): every 15
+ * minutes, for at most 48 hours on top of the normal budget. A review is
+ * measured in tens of minutes to hours, so the normal ~9-minute budget would
+ * fail an offer that is fine, and polling faster would only spend requests.
+ */
+export const OFFER_POLL_REVIEW_DELAY_SECONDS = 15 * 60;
+export const OFFER_POLL_REVIEW_MAX_ATTEMPTS = (48 * 60 * 60) / OFFER_POLL_REVIEW_DELAY_SECONDS;
+
+/**
  * Delay before poll iteration `pollAttempt` (1-indexed):
  * `initialDelay x multiplier^(attempt-1)`, clamped to `maxDelay`.
  */

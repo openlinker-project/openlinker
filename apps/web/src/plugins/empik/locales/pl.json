@@ -1,0 +1,25 @@
+{
+  "empikCredentialsPanel": {
+    "cancel": "Anuluj",
+    "description": "Bezpiecznie przechowywany na serwerze. Wygenerowanie nowego klucza w panelu sprzedawcy Empik wyłącza poprzedni, więc wklej tutaj nowy klucz.",
+    "envBacked": "Zmienna środowiskowa (nie można edytować w interfejsie)",
+    "label": "Klucz API",
+    "newKeyPlaceholder": "Nowy klucz API",
+    "rotate": "Wymień klucz API",
+    "rotating": "Zapisywanie...",
+    "save": "Zapisz nowy klucz API",
+    "toast": {
+      "description": "Nowy klucz API Empik jest już w użyciu.",
+      "title": "Klucz API wymieniony"
+    }
+  },
+  "empikSetupRoute": {
+    "crumb": "Połącz Empik Marketplace"
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "Klucz API",
+      "description": "Połącz konto sprzedawcy Empik Marketplace za pomocą klucza API sklepu."
+    }
+  }
+}

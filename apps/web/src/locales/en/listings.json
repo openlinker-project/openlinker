@@ -422,6 +422,24 @@
         "title": "{destination} returned a category result this version doesn't recognise."
       }
     },
+    "empik": {
+      "cardMissingParameters": {
+        "detail": "Fill the required card attributes for the chosen category, for example the producer.",
+        "title": "A new Empik product card needs more details."
+      },
+      "cardNoDescription": {
+        "detail": "The master product has no description. Write one in this offer's editor or let AI write it.",
+        "title": "A new Empik product card needs a description."
+      },
+      "cardNoImage": {
+        "detail": "Add at least one image to the product or to this offer. The first image becomes the card cover.",
+        "title": "A new Empik product card needs an image."
+      },
+      "newCard": {
+        "detail": "The card goes to Empik with the next card import (at most every 15 minutes). Empik reviews new cards; the offer is listed once Empik accepts the card, which can take a while.",
+        "title": "Empik has no product card for this EAN yet, so OpenLinker will create one."
+      }
+    },
     "erli": {
       "missingImage": {
         "detail": "Erli needs at least one. Add one in the images section.",
@@ -1480,6 +1498,29 @@
     "validation": {
       "priceInvalid": "Price must be a positive number with up to 2 decimal places",
       "titleTooLong": "Title must be {max} characters or fewer"
+    }
+  },
+  "empikBulkConfigSection": {
+    "leadTime": {
+      "description": "Days from order to shipment that {platform} shows buyers, 0 to {max}.",
+      "invalid": "Enter a whole number of days from 0 to {max}.",
+      "label": "Lead time (days)"
+    },
+    "logisticClass": {
+      "description": "The {platform} logistic class code that sets shipping rates, e.g. 1 for small items.",
+      "label": "Logistic class"
+    },
+    "note": {
+      "cards": "Offers go on an existing {platform} product card found by EAN. When there is none, OpenLinker creates the card from the title, description, images and attributes you set here and lists the offer once {platform} accepts the card. An offer on an existing card takes its title, description and images from the card, and {platform} has no draft offers.",
+      "currency": "Prices are sent in PLN."
+    }
+  },
+  "empikOfferValidation": {
+    "blockers": {
+      "cardMissingParameters": "card details missing",
+      "cardNoDescription": "card needs description",
+      "cardNoImage": "card needs image",
+      "newCard": "new Empik card"
     }
   },
   "erliBulkConfigSection": {

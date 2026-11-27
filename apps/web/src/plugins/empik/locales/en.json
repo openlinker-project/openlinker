@@ -1,0 +1,25 @@
+{
+  "empikCredentialsPanel": {
+    "cancel": "Cancel",
+    "description": "Stored securely on the server. Generating a new key in the Empik seller panel disables the old one, so paste the new key here.",
+    "envBacked": "Environment variable (not editable via UI)",
+    "label": "API key",
+    "newKeyPlaceholder": "New API key",
+    "rotate": "Replace API key",
+    "rotating": "Saving...",
+    "save": "Save new API key",
+    "toast": {
+      "description": "The new Empik API key is now in use.",
+      "title": "API key replaced"
+    }
+  },
+  "empikSetupRoute": {
+    "crumb": "Connect Empik Marketplace"
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "API key",
+      "description": "Connect your Empik Marketplace seller account with the shop API key."
+    }
+  }
+}

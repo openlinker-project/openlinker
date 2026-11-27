@@ -13,7 +13,11 @@ import type { ConfigService } from '@nestjs/config';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 import type { OfferManagerPort, OfferStatusReadResult } from '@openlinker/core/listings';
 import { OfferNotFoundOnMarketplaceException } from '@openlinker/core/listings';
-import type { PollOnceInput } from '../../types/offer-status-poll.types';
+import {
+  OFFER_POLL_REVIEW_DELAY_SECONDS,
+  OFFER_POLL_REVIEW_MAX_ATTEMPTS,
+  type PollOnceInput,
+} from '../../types/offer-status-poll.types';
 import type { ISyncJobsService } from '@openlinker/core/sync';
 
 import { OfferCreationRecord } from '../../../domain/entities/offer-creation-record.entity';
@@ -437,10 +441,10 @@ describe('OfferStatusPollService', () => {
       expect(scheduledJobTypes).toContain('marketplace.offer.refreshSnapshot');
     });
 
-    it('pollAttempt > maxAttempts on entry (forward guard) → POLL_TIMEOUT, no marketplace call', async () => {
+    it('pollAttempt past the absolute ceiling on entry (forward guard) → POLL_TIMEOUT, no marketplace call', async () => {
       // Defensive: payload-level overshoot is treated as terminal without
-      // hitting the marketplace.
-      const result = await service.pollOnce(pollInput(13));
+      // hitting the marketplace. The ceiling includes a review's budget.
+      const result = await service.pollOnce(pollInput(12 + OFFER_POLL_REVIEW_MAX_ATTEMPTS + 1));
 
       expect(result.outcome).toBe('business_failure');
       expect(integrations.getCapabilityAdapter).not.toHaveBeenCalled();
@@ -523,6 +527,61 @@ describe('OfferStatusPollService', () => {
     });
   });
 
+  describe('pollOnce — marketplace review (#4278)', () => {
+    function pollInput(pollAttempt = 1): PollOnceInput {
+      return {
+        offerCreationRecordId: RECORD_ID,
+        externalOfferId: EXTERNAL_OFFER_ID,
+        connectionId: CONNECTION_ID,
+        pollAttempt,
+      };
+    }
+    const underReview = (): OfferManagerPort =>
+      statusReader({
+        publicationStatus: 'activating',
+        validationErrors: [],
+        awaitingMarketplaceReview: true,
+      });
+
+    it('should keep waiting past the normal budget, at the slow pace, while the marketplace reviews', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(underReview());
+      const before = Date.now();
+
+      const result = await service.pollOnce(pollInput(12));
+
+      expect(result.outcome).toBe('ok');
+      expect(records.updateStatus).not.toHaveBeenCalled();
+      const [input] = syncJobs.schedule.mock.calls[0];
+      expect(input.jobType).toBe('marketplace.offer.pollCreationStatus');
+      const delayMs = input.runAfter.getTime() - before;
+      expect(delayMs).toBeGreaterThanOrEqual(OFFER_POLL_REVIEW_DELAY_SECONDS * 1000 - 500);
+      expect(delayMs).toBeLessThanOrEqual(OFFER_POLL_REVIEW_DELAY_SECONDS * 1000 + 500);
+    });
+
+    it('should time the create out once the review budget is spent', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(underReview());
+
+      await service.pollOnce(pollInput(12 + OFFER_POLL_REVIEW_MAX_ATTEMPTS));
+
+      const [, status, errors] = records.updateStatus.mock.calls[0];
+      expect(status).toBe('failed');
+      expect(errors?.[0]).toMatchObject({
+        code: 'POLL_TIMEOUT',
+        message: expect.stringContaining('did not finish reviewing'),
+      });
+    });
+
+    it('should land the record active once the reviewed offer goes live', async () => {
+      integrations.getCapabilityAdapter.mockResolvedValue(
+        statusReader({ publicationStatus: 'active', validationErrors: [] })
+      );
+
+      await service.pollOnce(pollInput(40));
+
+      expect(records.updateStatus).toHaveBeenCalledWith(RECORD_ID, 'active', null);
+    });
+  });
+
   describe('pollOnce — cadence cap (final)', () => {
     function pollInput(pollAttempt = 1): PollOnceInput {
       return {
@@ -594,7 +653,7 @@ describe('OfferStatusPollService', () => {
     });
 
     it('should reclassify the batch child as failed when the forward guard times the record out', async () => {
-      await service.pollOnce(pollInput(13));
+      await service.pollOnce(pollInput(12 + OFFER_POLL_REVIEW_MAX_ATTEMPTS + 1));
 
       expect(bulkProgress.reclassifyChildAsFailed).toHaveBeenCalledWith(BATCH_ID, RECORD_ID);
     });

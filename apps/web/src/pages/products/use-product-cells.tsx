@@ -21,7 +21,7 @@ import {
   useConnectionsQuery,
 } from '../../features/connections';
 import type { Connection, ConnectionChipChannel } from '../../features/connections';
-import { selectPublishDestinations } from '../../features/listings';
+import { isOfferPublishDestination, selectPublishDestinations } from '../../features/listings';
 import {
   deriveStockStatus,
   STOCK_STATUS_BADGE_TONE,
@@ -72,10 +72,11 @@ export function useProductCells() {
   const offerManagerConnections = useMemo<Connection[]>(
     () =>
       (connectionsQuery.data ?? [])
-        // OfferCreator (not coarse OfferManager, #1498): a quantity-only
-        // OfferManager (WooCommerce stock write-back) must not surface in
+        // OfferCreator advertised AND OfferManager enabled: a quantity-only
+        // OfferManager (WooCommerce stock write-back, #1498) and an Empik
+        // catalogue source with OfferManager off (#4284) must not surface in
         // offer-creation flows.
-        .filter((c) => c.status === 'active' && c.supportedCapabilities?.includes('OfferCreator'))
+        .filter((c) => c.status === 'active' && isOfferPublishDestination(c))
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name)),
     [connectionsQuery.data]

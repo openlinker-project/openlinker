@@ -462,6 +462,24 @@
         "title": "{destination} zwrócił wynik kategorii, którego ta wersja nie rozpoznaje."
       }
     },
+    "empik": {
+      "cardMissingParameters": {
+        "detail": "Uzupełnij wymagane atrybuty karty dla wybranej kategorii, na przykład producenta.",
+        "title": "Nowa karta produktu w Empik wymaga więcej danych."
+      },
+      "cardNoDescription": {
+        "detail": "Produkt w katalogu głównym nie ma opisu. Napisz go w edycji tej oferty albo zleć to AI.",
+        "title": "Nowa karta produktu w Empik wymaga opisu."
+      },
+      "cardNoImage": {
+        "detail": "Dodaj co najmniej jedno zdjęcie do produktu albo do tej oferty. Pierwsze zdjęcie będzie okładką karty.",
+        "title": "Nowa karta produktu w Empik wymaga zdjęcia."
+      },
+      "newCard": {
+        "detail": "Karta trafi do Empiku z najbliższym importem kart (najwyżej co 15 minut). Empik sprawdza nowe karty; oferta zostanie wystawiona, gdy Empik przyjmie kartę, co może chwilę potrwać.",
+        "title": "Empik nie ma jeszcze karty produktu dla tego EAN, więc OpenLinker ją utworzy."
+      }
+    },
     "erli": {
       "missingImage": {
         "detail": "Erli wymaga co najmniej jednego. Dodaj je w sekcji zdjęć.",
@@ -1636,6 +1654,29 @@
     "validation": {
       "priceInvalid": "Cena musi być liczbą dodatnią z maks. 2 miejscami po przecinku",
       "titleTooLong": "Tytuł może mieć maks. {max} znaków"
+    }
+  },
+  "empikBulkConfigSection": {
+    "leadTime": {
+      "description": "Liczba dni od zamówienia do wysyłki, którą {platform} pokazuje kupującym, od 0 do {max}.",
+      "invalid": "Podaj pełną liczbę dni od 0 do {max}.",
+      "label": "Czas wysyłki (dni)"
+    },
+    "logisticClass": {
+      "description": "Kod klasy logistycznej {platform}, od której zależą stawki dostawy, np. 1 dla drobnych produktów.",
+      "label": "Klasa logistyczna"
+    },
+    "note": {
+      "cards": "Oferty trafiają na istniejącą kartę produktu w {platform}, wyszukiwaną po EAN. Gdy jej nie ma, OpenLinker tworzy kartę z tytułu, opisu, zdjęć i atrybutów ustawionych tutaj i wystawia ofertę, gdy {platform} przyjmie kartę. Oferta na istniejącej karcie bierze tytuł, opis i zdjęcia z karty, a {platform} nie ma ofert w wersji roboczej.",
+      "currency": "Ceny są wysyłane w PLN."
+    }
+  },
+  "empikOfferValidation": {
+    "blockers": {
+      "cardMissingParameters": "brak danych karty",
+      "cardNoDescription": "karta bez opisu",
+      "cardNoImage": "karta bez zdjęcia",
+      "newCard": "nowa karta Empik"
     }
   },
   "erliBulkConfigSection": {

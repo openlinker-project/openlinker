@@ -179,6 +179,7 @@ One pointer per section, identical format every time.
 | [ADR-085](./085-connection-archive-hook-port.md) | A plugin may drop its own per-connection state when a connection is archived | Accepted | 2026-11-17 |
 | [ADR-086](./086-release-center.md) | Release center is a leaf context with two-scope database state and a catalog of setup steps | Proposed | 2026-11-17 |
 | [ADR-087](./087-order-sync-start-and-window-import.md) | Order sync start and window import | Accepted | 2026-11-23 |
+| [ADR-088](./088-mirakl-plugin-with-operator-profiles.md) | One Mirakl plugin, one operator profile per Mirakl marketplace | Accepted | 2026-11-23 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 

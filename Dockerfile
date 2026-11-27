@@ -34,6 +34,7 @@ COPY libs/integrations/allegro/package.json ./libs/integrations/allegro/
 COPY libs/integrations/dpd-polska/package.json ./libs/integrations/dpd-polska/
 COPY libs/integrations/eparagony/package.json ./libs/integrations/eparagony/
 COPY libs/integrations/erli/package.json ./libs/integrations/erli/
+COPY libs/integrations/mirakl/package.json ./libs/integrations/mirakl/
 COPY libs/integrations/fx/package.json ./libs/integrations/fx/
 COPY libs/integrations/infakt/package.json ./libs/integrations/infakt/
 COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
@@ -92,6 +93,7 @@ COPY libs/integrations/allegro/package.json ./libs/integrations/allegro/
 COPY libs/integrations/dpd-polska/package.json ./libs/integrations/dpd-polska/
 COPY libs/integrations/eparagony/package.json ./libs/integrations/eparagony/
 COPY libs/integrations/erli/package.json ./libs/integrations/erli/
+COPY libs/integrations/mirakl/package.json ./libs/integrations/mirakl/
 COPY libs/integrations/fx/package.json ./libs/integrations/fx/
 COPY libs/integrations/infakt/package.json ./libs/integrations/infakt/
 COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
@@ -136,6 +138,7 @@ COPY --from=base --chown=node:node /app/libs/integrations/allegro/dist ./libs/in
 COPY --from=base --chown=node:node /app/libs/integrations/dpd-polska/dist ./libs/integrations/dpd-polska/dist
 COPY --from=base --chown=node:node /app/libs/integrations/eparagony/dist ./libs/integrations/eparagony/dist
 COPY --from=base --chown=node:node /app/libs/integrations/erli/dist ./libs/integrations/erli/dist
+COPY --from=base --chown=node:node /app/libs/integrations/mirakl/dist ./libs/integrations/mirakl/dist
 COPY --from=base --chown=node:node /app/libs/integrations/fx/dist ./libs/integrations/fx/dist
 COPY --from=base --chown=node:node /app/libs/integrations/infakt/dist ./libs/integrations/infakt/dist
 COPY --from=base --chown=node:node /app/libs/integrations/inpost/dist ./libs/integrations/inpost/dist

@@ -41,6 +41,13 @@ describe('useRefundSendTarget', () => {
     expect(other.result.current).toBeNull();
   });
 
+  it('should name Empik when its connection opted in to marketplace refunds', async () => {
+    const { result } = renderHook(() => useRefundSendTarget('c1'), {
+      wrapper: wrap({ ...shopify({}), platformType: 'empik', publicConfig: { refundsThroughMarketplace: true } }),
+    });
+    await waitFor(() => expect(result.current).toBe('empik'));
+  });
+
   it('should stay false when publicConfig does not report the opt-in', async () => {
     const getById = vi.fn<(connectionId: string) => Promise<Connection>>().mockResolvedValue(shopify({}));
     const { result } = renderHook(() => useRefundSendTarget('c1'), { wrapper: wrapWith(getById) });

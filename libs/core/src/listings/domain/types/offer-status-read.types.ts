@@ -89,6 +89,15 @@ export interface OfferStatusReadResult {
    * never populates it behaves exactly as it did pre-#2024.
    */
   commercial?: OfferCommercialObservation;
+  /**
+   * The marketplace is still reviewing what the offer needs before it can
+   * exist (#4278: a Mirakl operator reviewing a product card OpenLinker
+   * created), which takes far longer than a validation. Only meaningful with
+   * `activating`: the creation poller then keeps asking at a slow pace
+   * instead of timing the create out after its normal budget. Optional; an
+   * adapter that never sets it behaves as before.
+   */
+  awaitingMarketplaceReview?: boolean;
 }
 
 /**

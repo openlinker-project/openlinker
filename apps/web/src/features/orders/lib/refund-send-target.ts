@@ -3,7 +3,8 @@
  *
  * A marketplace's order source is a refund executor only when its connection
  * opted in (Shopify: `config.refundsThroughShopify`, Amazon:
- * `config.refundsEnabled`); otherwise a confirmed refund is just recorded. The
+ * `config.refundsEnabled`, Empik: `config.refundsThroughMarketplace`, #4284);
+ * otherwise a confirmed refund is just recorded. The
  * copy must follow that, because "OpenLinker does not move money" is false on
  * an opted-in connection and "OpenLinker sends it" is false on every other one.
  * Anything unreadable falls back to the recording-only wording.
@@ -12,7 +13,7 @@
  */
 import { useConnectionQuery } from '../../connections';
 
-export const RefundSendTargetValues = ['shopify', 'amazon'] as const;
+export const RefundSendTargetValues = ['shopify', 'amazon', 'empik'] as const;
 export type RefundSendTarget = (typeof RefundSendTargetValues)[number];
 
 /**
@@ -25,6 +26,7 @@ export type RefundSendTarget = (typeof RefundSendTargetValues)[number];
 const OPT_IN_KEY: Record<RefundSendTarget, string> = {
   shopify: 'refundsThroughShopify',
   amazon: 'refundsEnabled',
+  empik: 'refundsThroughMarketplace',
 };
 
 export function useRefundSendTarget(

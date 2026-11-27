@@ -960,6 +960,82 @@
     "unmanagedStockInvalid": "Ilość dla stanu niezarządzanego musi być dodatnią liczbą całkowitą.",
     "wholeNumberOrZero": "Musi być liczbą całkowitą równą 0 lub większą"
   },
+  "empikSetupForm": {
+    "beforeYouStart": {
+      "body": "W panelu sprzedawcy {platform} otwórz menu użytkownika, przejdź do zakładki <strong>Klucz API</strong> i wygeneruj klucz. Empik pozwala na jeden klucz na sklep, a wygenerowanie nowego wyłącza poprzedni. OpenLinker przechowuje klucz bezpiecznie na serwerze.",
+      "title": "Zanim zaczniesz"
+    },
+    "connect": "Połącz z {platform}",
+    "connecting": "Łączenie…",
+    "createError": "Nie udało się utworzyć połączenia",
+    "createdDescription": "Utworzono połączenie {platform} „{name}”.",
+    "createdTitle": "Połączenie utworzone",
+    "done": "Gotowe",
+    "environments": {
+      "production": "Produkcja",
+      "staging": "Testowe"
+    },
+    "fields": {
+      "apiKey": {
+        "description": "Klucz API sklepu z panelu sprzedawcy Empik.",
+        "label": "Klucz API"
+      },
+      "environment": {
+        "description": "Wybierz Testowe dla konta testowego Empik. Klucz testowy nie działa na produkcji.",
+        "label": "Środowisko",
+        "option": "{name} - {url}"
+      },
+      "name": {
+        "description": "Nazwa identyfikująca to konto {platform} w OpenLinker.",
+        "label": "Nazwa połączenia",
+        "placeholder": "Mój sklep {platform}"
+      },
+      "shopId": {
+        "description": "Potrzebne tylko wtedy, gdy jeden klucz API ma dostęp do kilku sklepów. Zostaw puste, aby używać sklepu przypisanego do klucza.",
+        "label": "ID sklepu (opcjonalnie)"
+      }
+    },
+    "latency": "({ms} ms)",
+    "platformFallback": "marketplace",
+    "review": {
+      "defaultShop": "Sklep przypisany do klucza",
+      "name": "Nazwa"
+    },
+    "shippingZone": {
+      "body": "Empik pokazuje oferty tylko sklepów, które mają ustawione opłaty za wysyłkę. W panelu sprzedawcy przejdź do <strong>Ustawienia</strong>, potem <strong>Konfiguracja wysyłki</strong> i <strong>Opłaty za wysyłkę</strong>, i dodaj co najmniej jedną strefę. Bez tego każda oferta pozostaje nieaktywna.",
+      "title": "Ustaw wysyłkę w panelu sprzedawcy Empik"
+    },
+    "steps": {
+      "credentials": "Dane dostępowe",
+      "review": "Sprawdź i połącz"
+    },
+    "test": "Przetestuj połączenie",
+    "testError": "Nie udało się przetestować połączenia",
+    "testFailed": "Test połączenia nie powiódł się",
+    "testPassed": "Test połączenia zakończony powodzeniem",
+    "testing": "Testowanie…"
+  },
+  "empikSetupPage": {
+    "chip": "Klucz API",
+    "description": "Podaj klucz API sklepu {platform}. OpenLinker używa go do synchronizacji ofert i zamówień z kontem sprzedawcy {platform}.",
+    "fallbackPlatform": "marketplace",
+    "title": "Połącz z {platform}"
+  },
+  "empikSetupSchema": {
+    "apiKeyRequired": "Klucz API jest wymagany",
+    "nameRequired": "Nazwa połączenia jest wymagana",
+    "shopIdInvalid": "ID sklepu musi być liczbą całkowitą większą od 0"
+  },
+  "empikSetupSummary": {
+    "connection": "Połączenie",
+    "environment": "Środowisko",
+    "environments": {
+      "production": "Produkcja",
+      "staging": "Testowe"
+    },
+    "name": "Nazwa",
+    "shopId": "ID sklepu"
+  },
   "enableConnectionButton": {
     "enable": "Włącz",
     "enabling": "Włączanie…",

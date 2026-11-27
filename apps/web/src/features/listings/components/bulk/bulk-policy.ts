@@ -228,6 +228,8 @@ export interface ComputeBlockersInput {
    * length rule can reject.
    */
   effectiveTitle?: string;
+  /** Whether the submit would carry a description (#4278); see `descriptionPresentFor`. */
+  hasDescription?: boolean;
   /**
    * Per-platform row validator (#1096) - the resolved connection's
    * `offerValidation.validateRow`. When present, its returned blocker ids are
@@ -393,6 +395,7 @@ export function computeBlockers(input: ComputeBlockersInput): BulkRowBlocker[] {
         needsProductParameters: input.bundle ? false : computeNeedsProductParameters(input),
         willLinkProductCard: input.willLinkProductCard ?? false,
         title: input.effectiveTitle ?? '',
+        ...(input.hasDescription !== undefined && { hasDescription: input.hasDescription }),
         categoryParameters: input.categoryParameters,
         suppliedParameters: effectiveSuppliedParameters(
           input.suppliedParameters,
@@ -559,6 +562,7 @@ export function recomputeRowBlockers(
       : undefined,
     imageCount: imageCountForRow(row),
     effectiveTitle: titleForRow(row),
+    hasDescription: descriptionPresentFor(row, null, config),
     platformValidate,
     destinationResolvesCategoryAtSubmit,
   });
@@ -681,6 +685,29 @@ export function imageCountForVariant(row: BulkWizardRow, variant: BulkVariantRow
  * precedence the submit payload resolves, so a per-variant title an operator
  * shortened clears the blocker for that sibling alone.
  */
+/**
+ * Whether the submit carries a description (#4278), following the offer
+ * builder: a variant override, else the product override (`null` = cleared),
+ * else the master product's description. AI writing it for the batch counts.
+ * Markup alone is not a description.
+ */
+export function descriptionPresentFor(
+  row: BulkWizardRow,
+  variant: BulkVariantRow | null,
+  config: Pick<BulkWizardConfig, 'generateDescription'>,
+): boolean {
+  if (config.generateDescription) return true;
+  const variantOverride = variant?.override.overrides?.description;
+  const rowOverride = row.override.overrides?.description;
+  const description =
+    variantOverride !== undefined
+      ? variantOverride
+      : rowOverride !== undefined
+        ? rowOverride
+        : (row.product?.description ?? null);
+  return (description ?? '').replace(/<[^>]*>/g, '').trim() !== '';
+}
+
 export function titleForVariant(row: BulkWizardRow, variant: BulkVariantRow): string {
   return variant.override.overrides?.title ?? titleForRow(row);
 }
@@ -696,6 +723,16 @@ export function effectiveVariantEan(variant: BulkVariantRow): string | null {
     variant.variant.gtin ??
     null;
   return raw && raw.trim() !== '' ? raw.trim() : null;
+}
+
+/**
+ * Whether the operator typed a barcode for this sibling in the row editor. The
+ * editor stores one only when it differs from the master's, so any non-empty
+ * value is one the Resolve step never looked up.
+ */
+export function hasBarcodeOverride(variant: BulkVariantRow): boolean {
+  const ean = variant.override.overrides?.ean;
+  return ean !== undefined && ean.trim() !== '';
 }
 
 /**
@@ -958,6 +995,7 @@ export function recomputeVariantBlockers(
           bundlePreview.components.filter((component) => component.imageUrl).length
         : imageCountForVariant(row, variant),
     effectiveTitle: titleForVariant(row, variant),
+    hasDescription: descriptionPresentFor(row, variant, config),
     platformValidate,
     destinationResolvesCategoryAtSubmit,
     categoryParameters: submitCategoryId
@@ -966,7 +1004,10 @@ export function recomputeVariantBlockers(
     suppliedParameters: variant.override.overrides?.parameters,
     projectedParameters: projectedFor(context, variant.variantId, submitCategoryId),
     barcode: effectiveVariantEan(variant),
-    catalogueConsulted: context.catalogueConsulted,
+    // The lookup ran for the barcode the variant had at Resolve. A barcode the
+    // operator typed since was never looked up, so for this row nothing was
+    // consulted: "no card for this barcode" would describe a different EAN.
+    catalogueConsulted: context.catalogueConsulted === true && !hasBarcodeOverride(variant),
     barcodeMatchedCatalogue: variant.overriddenCard !== null,
     siblingsWithoutCatalogueCard: coverage.withoutCard,
     includedSiblingCount: coverage.included,
