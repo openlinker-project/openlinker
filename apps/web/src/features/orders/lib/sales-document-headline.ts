@@ -61,6 +61,8 @@ export function resolveInvoiceHeadline(
     if (invoice.failureCode === 'connection-setup-incomplete') {
       return { state: copy.notIssued, tone: 'error', identity };
     }
+    // Invoice-only keys: English matches the shared ones, but Polish agrees
+    // the word with "Faktura" (feminine), unlike the receipt's masculine one.
     return invoice.failureMode === 'rejected'
       ? { state: copy.invoiceRejected, tone: 'error', identity }
       : { state: copy.invoiceUnconfirmed, tone: 'warning', identity };

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { loadMessages } from '../../../shared/i18n';
+import { setActiveLocale } from '../../../shared/i18n/active-locale';
 import { resolveSalesDocumentCellState } from './sales-document-cell-state';
 import type { SalesDocumentIdentity, SalesDocumentView } from '../api/orders.types';
 
@@ -81,6 +83,24 @@ describe('resolveSalesDocumentCellState (#2552)', () => {
   it('renders "Not issued" when routing decided but nothing blocks and nothing was attempted', () => {
     const state = resolveSalesDocumentCellState(baseView({ documentKind: 'invoice' }));
     expect(state).toMatchObject({ word: 'Not issued', tone: 'idle', keepsAction: true });
+  });
+
+  // English says "Not issued" for both kinds, so only Polish can tell the two
+  // keys apart: the word agrees with "Faktura" (feminine) and "Paragon
+  // fiskalny" (masculine).
+  it('agrees the "not issued" word with the document kind in Polish', async () => {
+    await loadMessages('pl');
+    setActiveLocale('pl');
+    try {
+      expect(resolveSalesDocumentCellState(baseView({ documentKind: 'invoice' })).word).toBe(
+        'Niewystawiona',
+      );
+      expect(
+        resolveSalesDocumentCellState(baseView({ documentKind: 'fiscal-receipt' })).word,
+      ).toBe('Niewystawiony');
+    } finally {
+      setActiveLocale('en');
+    }
   });
 
   it('prefers the authority answer over issuance when an invoice was rejected by the authority', () => {

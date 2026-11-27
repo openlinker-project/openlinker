@@ -560,7 +560,11 @@ export function OperationalSettingsPage(): ReactElement {
               </div>
 
               {/* The API reports THAT an adapter caps the page size; the words
-                  are ours, so they follow the operator's language. */}
+                  are ours, so they follow the operator's language. The "100"
+                  in the copy restates the WooCommerce adapter's cap (also in
+                  the API's own note, operational-settings-response.dto.ts);
+                  a second capping adapter needs a code plus params from the
+                  API instead of this fixed sentence. */}
               {view.adapterClampNote !== undefined &&
               view.adapterClampNote.trim().length > 0 ? (
                 <p className="pacing-card__note">{copy.catalogue.pageSize.adapterClampNote}</p>
