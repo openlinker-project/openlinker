@@ -1610,11 +1610,18 @@ body.side-panel-sheet-open .dashboard-glow {
 .shell-nav-scroll {
   --nav-arrow-h: 28px;
   --nav-arrow-up-h: 18px;
+  /* Arrows enter a touch slower than they leave, and the label moves with the
+     top arrow on the same curve, so the two arrive as one header. */
+  --nav-arrow-in: 240ms;
+  --nav-arrow-out: 160ms;
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Hidden arrows wait just outside this box; clip keeps them out of sight
+     without making it a scroll container. */
+  overflow: clip;
 }
 
 .shell-nav {
@@ -1629,6 +1636,10 @@ body.side-panel-sheet-open .dashboard-glow {
 
 .shell-nav-scroll[data-scroll-up] {
   --nav-top-inset: var(--nav-arrow-up-h);
+}
+
+.shell-nav-scroll[data-scroll-up] .shell-nav__label {
+  transition: top var(--nav-arrow-in) var(--ease-out);
 }
 
 .shell-nav-scroll[data-scroll-up] .shell-nav {
@@ -1656,9 +1667,10 @@ body.side-panel-sheet-open .dashboard-glow {
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity var(--duration-fast) var(--ease-out),
+    translate var(--nav-arrow-out) var(--ease-standard),
+    opacity var(--nav-arrow-out) var(--ease-standard),
     color var(--duration-fast) var(--ease-out),
-    visibility 0s linear var(--duration-fast);
+    visibility 0s linear var(--nav-arrow-out);
 }
 
 .shell-nav-scroll .shell-nav-scroll__arrow--up {
@@ -1667,11 +1679,13 @@ body.side-panel-sheet-open .dashboard-glow {
      read as one header and the label's own shade does the fading. */
   height: var(--nav-arrow-up-h);
   background: var(--bg-shell);
+  translate: 0 -100%;
 }
 
 .shell-nav-scroll .shell-nav-scroll__arrow--down {
   bottom: 0;
   background: linear-gradient(color-mix(in oklab, var(--bg-shell) 0%, transparent), var(--bg-shell) 38%);
+  translate: 0 100%;
 }
 
 .shell-nav-scroll__arrow--up .shell-nav-scroll__chevron {
@@ -1683,8 +1697,10 @@ body.side-panel-sheet-open .dashboard-glow {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+  translate: 0 0;
   transition:
-    opacity var(--duration-fast) var(--ease-out),
+    translate var(--nav-arrow-in) var(--ease-out),
+    opacity var(--nav-arrow-in) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
     visibility 0s;
 }
@@ -1709,7 +1725,14 @@ body.side-panel-sheet-open .dashboard-glow {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shell-nav-scroll__chevron {
+  /* No slide: the arrows only fade, and the label steps without moving. */
+  .shell-nav-scroll .shell-nav-scroll__arrow.shell-nav-scroll__arrow {
+    translate: 0 0;
+  }
+
+  .shell-nav-scroll__chevron,
+  .shell-nav-scroll .shell-nav__label,
+  .shell-nav-scroll[data-scroll-up] .shell-nav__label {
     transition: none;
   }
 
@@ -1728,6 +1751,9 @@ body.side-panel-sheet-open .dashboard-glow {
      sidebar background so links pass underneath it, not through it. */
   position: sticky;
   top: var(--nav-top-inset, 0px);
+  /* Steps down under the top arrow on the arrow's own curve. Animating `top`
+     costs layout, but only for this short moment when the arrow toggles. */
+  transition: top var(--nav-arrow-out) var(--ease-standard);
   z-index: 1;
   margin: 0 0 2px;
   padding: 6px 8px 4px;
