@@ -1,8 +1,9 @@
 /**
  * AppShell
  *
- * Authenticated-app chrome: persistent left nav (240 px sidebar with mobile
- * drawer fallback), top utility bar, and the main content slot. Every
+ * Authenticated-app chrome: persistent left nav (a 240 px floating sidebar
+ * box from 1024 px, a floating drawer below that), a full-width top bar
+ * carrying the brand, a slow brand glow behind the content (DashboardGlow), and the main content slot. Every
  * authenticated route renders inside this shell.
  *
  * Sidebar nav items carry count badges fed by `useNavCounts` (fanning out
@@ -31,6 +32,7 @@ import { buildNavGroups, navRoleOf, sessionNeedsOmsRouting } from './nav-registr
 import { useOmsRoutingState } from '../features/fulfillment-authority';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
+import { DashboardGlow } from './dashboard-glow';
 import { Button } from '../shared/ui/button';
 import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/language';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
@@ -113,7 +115,9 @@ export function SidebarNav({
     <nav className="shell-nav" aria-label={ariaLabel}>
       {groups.map((group) => (
         <section key={group.label} className="shell-nav__group">
-          <p className="shell-nav__label">{group.label}</p>
+          <p className="shell-nav__label">
+            <span className="shell-nav__label-text">{group.label}</span>
+          </p>
           <ul className="shell-nav__list">
             {group.kind === 'live'
               ? group.items.map((item) => {
@@ -346,8 +350,8 @@ export function ShellTopbar({
         </button>
       ) : null}
 
-      {/* On an ultrawide screen the brand moves out of the sidebar box into
-          the bar, above the sidebar; CSS shows this copy only there. */}
+      {/* From 1024 px the brand sits in the bar, above the floating sidebar
+          box, instead of inside it; CSS shows this copy only there. */}
       {showBrand ? <SidebarBrand /> : <SidebarBrand className="shell-brand--wide" />}
 
       <nav aria-label={copy.shell.breadcrumb} className="shell-crumbs">
@@ -473,6 +477,7 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
 
   return (
     <CommandPaletteProvider>
+      {settled ? <DashboardGlow /> : null}
       <div className={settled ? 'shell shell--app' : 'shell shell--pending'}>
         <div className="shell-sidebar">
           <SidebarBrand />

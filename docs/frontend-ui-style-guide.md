@@ -179,6 +179,14 @@ Avoid:
 - over-rounded cards
 - decorative glow effects
 
+One exception: the brand glow behind the login page and the signed-in app (`DashboardGlow`, #4305). It is allowed because it stays behind content, at low intensity, and never competes with data:
+
+- two accent orbs, dimmer in light mode than in dark, with muted text over an orb's centre keeping 4.5:1;
+- it moves only by `transform` and does no layout work;
+- it is off for touch input and fully still under reduced motion.
+
+Do not add a second glow or reuse this one as a highlight on a component.
+
 ### FE-001 Visual Correction
 
 The FE-001 baseline should move away from a dark SaaS concept-shot aesthetic and toward a light, enterprise e-commerce operations console.

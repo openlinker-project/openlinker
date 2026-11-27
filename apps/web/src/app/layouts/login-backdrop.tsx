@@ -751,6 +751,8 @@ export function LoginBackdrop(): ReactElement {
                 <button type="button" className="shell-topbar__hamburger" tabIndex={-1}>
                   <span aria-hidden="true">☰</span>
                 </button>
+                {/* Same as the real bar: from 1024 px the brand sits here, above the sidebar box. */}
+                <SidebarBrand className="shell-brand--wide" />
                 <nav className="shell-crumbs">
                   <span className="shell-crumbs__group">{copy.nav.operations}</span>
                   <span className="shell-crumbs__sep" aria-hidden="true">
