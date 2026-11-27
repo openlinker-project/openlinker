@@ -113,6 +113,7 @@
   "userMenu": {
     "accountMenu": "Account menu for {username}",
     "appearance": "Appearance",
+    "back": "Back",
     "backgroundGlow": "Background glow",
     "backgroundGlowOff": "Off",
     "backgroundGlowOn": "On",

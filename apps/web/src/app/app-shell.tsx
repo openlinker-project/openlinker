@@ -18,7 +18,6 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -38,10 +37,12 @@ import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { useScrollEdges } from './hooks/use-scroll-edges';
 import { useBackdropDismiss } from './hooks/use-backdrop-dismiss';
 import { prefersMotion } from '../shared/ui/prefers-motion';
+import { motion, useReducedMotionConfig } from 'motion/react';
 import { DashboardGlow } from './dashboard-glow';
 import { BackgroundGlowToggle } from './background-glow-toggle';
 import { Button } from '../shared/ui/button';
-import { useMediaQuery } from '../shared/ui/use-media-query';
+import { MenuDrillIn, type MenuDrillDirection } from '../shared/ui/menu-drill-in';
+import { useTheme } from '../shared/theme/use-theme';
 import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/language';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
@@ -50,12 +51,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '../shared/ui/dropdown-menu';
-import { ThemePicker } from '../features/appearance';
+import { ThemePicker, useThemeOptions } from '../features/appearance';
 import { DensityToggle, useDensity } from '../shared/ui/density-toggle';
 import { FontSizeToggle, useFontSize } from '../shared/ui/font-size-toggle';
 import { useToast } from '../shared/ui/toast-provider';
@@ -310,9 +308,6 @@ function initialsFrom(username: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// Below this a side panel has no room beside the account menu.
-const NARROW_MENU_QUERY = '(max-width: 767px)';
-
 /** Theme, background glow, density and text size, in the compact switches. */
 function AppearanceControls(): ReactElement {
   const copy = useMessages('app').userMenu;
@@ -339,45 +334,92 @@ function AppearanceControls(): ReactElement {
   );
 }
 
-/** The phone form of the appearance panel: a row that unfolds in place. */
-function InlineAppearance({ label }: { label: string }): ReactElement {
-  const [expanded, setExpanded] = useState(false);
-  const regionId = useId();
+// The back control arrives a beat after the panel starts moving, from the side
+// it points to, so it reads as the way you came in; the title follows it.
+const BACK_ENTRANCE = { type: 'spring', bounce: 0.2, visualDuration: 0.3, delay: 0.05 } as const;
+const TITLE_ENTRANCE = { type: 'spring', bounce: 0, visualDuration: 0.28, delay: 0.09 } as const;
+
+function ChevronIcon({ direction }: { direction: 'left' | 'right' }): ReactElement {
   return (
-    <>
-      <button
-        type="button"
-        className="dropdown-menu__item shell-user-chip__appearance-trigger shell-user-chip__appearance-toggle"
-        aria-expanded={expanded}
-        aria-controls={regionId}
-        onClick={() => setExpanded((previous) => !previous)}
-      >
-        {label}
-        <svg
-          className="dropdown-menu__sub-chevron"
-          viewBox="0 0 16 16"
-          width="14"
-          height="14"
-          aria-hidden="true"
-        >
-          <path
-            d="M3.5 6L8 10.5L12.5 6"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-      {expanded ? (
-        <div id={regionId} className="shell-user-chip__appearance-inline">
-          <AppearanceControls />
-        </div>
-      ) : null}
-    </>
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path
+        d={direction === 'left' ? 'M10 3.5L5.5 8L10 12.5' : 'M6 3.5L10.5 8L6 12.5'}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
+
+/** The Appearance view's header: a back control and the view's name. */
+function AppearanceHeader({
+  onBack,
+  focusBack,
+}: {
+  onBack: () => void;
+  /** Keyboard entry lands on the back control; a click keeps focus quiet. */
+  focusBack: boolean;
+}): ReactElement {
+  const copy = useMessages('app').userMenu;
+  const still = useReducedMotionConfig() ?? false;
+  const backRef = useRef<HTMLButtonElement>(null);
+  // Keyboard users land on the way out of the view they just opened. After a
+  // click the menu itself takes focus instead, so arrows and Escape keep
+  // working without a focus ring appearing on a control nobody tabbed to.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const back = backRef.current;
+      if (!back) return;
+      const target = focusBack ? back : back.closest<HTMLElement>('[role="menu"]');
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusBack]);
+  return (
+    <div
+      className="shell-user-chip__view-header"
+      onKeyDown={(event) => {
+        if (event.key !== 'ArrowLeft') return;
+        event.preventDefault();
+        onBack();
+      }}
+    >
+      <motion.button
+        ref={backRef}
+        type="button"
+        className="shell-user-chip__back"
+        aria-label={copy.back}
+        onClick={onBack}
+        initial={still ? false : { opacity: 0, x: -10, scale: 0.85 }}
+        animate={{ opacity: 1, x: 0, scale: 1 }}
+        transition={BACK_ENTRANCE}
+      >
+        <ChevronIcon direction="left" />
+      </motion.button>
+      <motion.span
+        className="shell-user-chip__view-title"
+        initial={still ? false : { opacity: 0, x: -6 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={TITLE_ENTRANCE}
+      >
+        {copy.appearance}
+      </motion.span>
+    </div>
+  );
+}
+
+/** The current theme beside the Appearance row; read only while the menu is open. */
+function AppearanceRowValue(): ReactElement {
+  const { theme } = useTheme();
+  const options = useThemeOptions();
+  const label = options.find((option) => option.value === theme)?.label ?? '';
+  return <span className="shell-user-chip__appearance-value">{label}</span>;
+}
+
+type AccountMenuView = 'main' | 'appearance';
 
 interface UserChipProps {
   email?: string | null;
@@ -388,14 +430,47 @@ interface UserChipProps {
 function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   const copy = useMessages('app').userMenu;
   const [open, setOpen] = useState(false);
+  const [view, setView] = useState<AccountMenuView>('main');
+  const [direction, setDirection] = useState<MenuDrillDirection>(1);
+  // Every visit gets its own key: re-entering a view while its previous copy is
+  // still sliding out would otherwise revive that copy instead of mounting a
+  // fresh one, skipping the entrance and the focus move.
+  const [visit, setVisit] = useState(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const appearanceRowRef = useRef<HTMLDivElement>(null);
+  const returning = useRef(false);
+  const openedByPointer = useRef(false);
   // A language picked in this menu remounts the app; focus comes back here.
   useEffect(() => {
     restoreFocusAfterLanguageChange(triggerRef.current);
   }, []);
-  const narrow = useMediaQuery(NARROW_MENU_QUERY);
+  // Back from Appearance: focus returns to the row that opened it.
+  useEffect(() => {
+    if (view !== 'main' || !returning.current) return undefined;
+    returning.current = false;
+    const frame = requestAnimationFrame(() =>
+      appearanceRowRef.current?.focus({ preventScroll: true })
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [view]);
+
+  const openView = (next: AccountMenuView): void => {
+    setDirection(next === 'main' ? -1 : 1);
+    if (next === 'main') returning.current = true;
+    setVisit((previous) => previous + 1);
+    setView(next);
+  };
+
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu
+      open={open}
+      onOpenChange={(next) => {
+        // Every opening starts on the first view; closing leaves it as is so
+        // the panel does not slide while the menu fades out.
+        if (next) setView('main');
+        setOpen(next);
+      }}
+    >
       <DropdownMenuTrigger asChild>
         <button
           ref={triggerRef}
@@ -414,34 +489,62 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
         align="end"
         sideOffset={6}
         className="shell-user-chip__menu"
+        // In the Appearance view Escape steps back before it closes the menu.
+        onEscapeKeyDown={(event) => {
+          if (view === 'main') return;
+          event.preventDefault();
+          openView('main');
+        }}
       >
-        <DropdownMenuLabel>
-          <div className="shell-user-chip__menu-name">{username}</div>
-          {email ? <div className="shell-user-chip__menu-email">{email}</div> : null}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">{copy.language}</div>
-          <LanguageMenuList />
-        </div>
-        {/* Theme, glow, density and text size live one level down, so the
-            account menu stays short; the controls there use the compact
-            `sm` switch. A phone has no room beside the menu for a side panel,
-            so there the same controls unfold in place instead. */}
-        {narrow ? (
-          <InlineAppearance label={copy.appearance} />
-        ) : (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="shell-user-chip__appearance-trigger">
-              {copy.appearance}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="shell-user-chip__menu shell-user-chip__appearance">
+        <MenuDrillIn viewKey={`${view}-${visit}`} direction={direction}>
+          {view === 'main' ? (
+            <>
+              <DropdownMenuLabel>
+                <div className="shell-user-chip__menu-name">{username}</div>
+                {email ? <div className="shell-user-chip__menu-email">{email}</div> : null}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <div className="shell-user-chip__menu-section">
+                <div className="shell-user-chip__menu-section-label">{copy.language}</div>
+                <LanguageMenuList />
+              </div>
+              {/* Theme, glow, density and text size slide in from here, inside
+                  this same popover, so the menu stays short. */}
+              <DropdownMenuItem
+                ref={appearanceRowRef}
+                textValue={copy.appearance}
+                className="shell-user-chip__appearance-row"
+                onPointerDown={() => {
+                  openedByPointer.current = true;
+                }}
+                onKeyDown={(event) => {
+                  openedByPointer.current = false;
+                  if (event.key !== 'ArrowRight') return;
+                  event.preventDefault();
+                  openView('appearance');
+                }}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  openView('appearance');
+                }}
+              >
+                <span className="shell-user-chip__appearance-name">{copy.appearance}</span>
+                <AppearanceRowValue />
+                <ChevronIcon direction="right" />
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
+            </>
+          ) : (
+            <>
+              <AppearanceHeader
+                focusBack={!openedByPointer.current}
+                onBack={() => openView('main')}
+              />
               <AppearanceControls />
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
+            </>
+          )}
+        </MenuDrillIn>
       </DropdownMenuAnimatedContent>
     </DropdownMenu>
   );

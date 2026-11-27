@@ -397,7 +397,7 @@ describe('AppShell', () => {
     expect(await screen.findByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
     // Theme and the other appearance controls sit one level down.
     expect(screen.queryByRole('radiogroup', { name: 'Theme' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('menuitem', { name: 'Appearance' }));
+    await user.click(screen.getByRole('menuitem', { name: /^Appearance/ }));
     expect(await screen.findByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
   });
 
@@ -406,16 +406,45 @@ describe('AppShell', () => {
     renderShell({ pathname: '/' });
 
     await user.click(await screen.findByRole('button', { name: /Account menu for/i }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Appearance' }));
+    await user.click(await screen.findByRole('menuitem', { name: /^Appearance/ }));
     const glow = await screen.findByRole('radiogroup', { name: 'Background glow' });
-    // A direct click: user-event's pointer walk leaves the sub-trigger in a
-    // straight line, which closes a nested Radix panel in jsdom (a real
-    // pointer is covered by Radix's grace area; checked live).
-    fireEvent.click(within(glow).getByRole('radio', { name: 'Off' }));
+    await user.click(within(glow).getByRole('radio', { name: 'Off' }));
 
     expect(window.localStorage.getItem('openlinker-background-glow')).toBe('off');
     expect(screen.getByTestId('dashboard-glow')).toHaveClass('dashboard-glow--off');
     window.localStorage.removeItem('openlinker-background-glow');
+  });
+
+  it('should slide back to the main view and return focus to the Appearance row', async () => {
+    const user = userEvent.setup();
+    renderShell({ pathname: '/' });
+
+    await user.click(await screen.findByRole('button', { name: /Account menu for/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /^Appearance/ }));
+    const back = await screen.findByRole('button', { name: 'Back' });
+    // The main view leaves once its slide-out ends.
+    await waitFor(() =>
+      expect(screen.queryByRole('menuitem', { name: 'Sign out' })).not.toBeInTheDocument()
+    );
+
+    await user.click(back);
+
+    const row = await screen.findByRole('menuitem', { name: /^Appearance/ });
+    await waitFor(() => expect(row).toHaveFocus());
+    expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
+  });
+
+  it('should step back from Appearance on Escape instead of closing the menu', async () => {
+    const user = userEvent.setup();
+    renderShell({ pathname: '/' });
+
+    await user.click(await screen.findByRole('button', { name: /Account menu for/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /^Appearance/ }));
+    await screen.findByRole('button', { name: 'Back' });
+
+    await user.keyboard('{Escape}');
+
+    expect(await screen.findByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
   });
 
   it('should offer the language in the account menu, not in the sidebar (#4021)', async () => {
@@ -429,7 +458,7 @@ describe('AppShell', () => {
     const language = await screen.findByRole('listbox', { name: 'Language' });
     expect(within(language).getByRole('option', { name: /English/ })).toHaveAttribute('aria-selected', 'true');
     // First section of the menu, above the appearance panel's row.
-    const appearance = screen.getByRole('menuitem', { name: 'Appearance' });
+    const appearance = screen.getByRole('menuitem', { name: /^Appearance/ });
     expect(
       language.compareDocumentPosition(appearance) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();

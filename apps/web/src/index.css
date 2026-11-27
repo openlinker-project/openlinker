@@ -2425,54 +2425,97 @@ body.side-panel-sheet-open .dashboard-glow {
   gap: 6px;
 }
 
-/* The "Appearance" row that opens the nested panel: a menu row with the
-   chevron pushed to the end, inset to line up with the sections. */
-.shell-user-chip__appearance-trigger {
-  margin: 2px 4px;
+/* Account menu drill-in (MenuDrillIn): the Appearance row and the header of
+   the view it opens. The container clips the views while they glide past
+   each other and eases its height between them. */
+.menu-drill {
+  position: relative;
+  overflow: clip;
 }
 
-.dropdown-menu__sub-chevron {
+.menu-drill__view[data-leaving] {
+  position: absolute;
+  inset: 0 0 auto;
+  pointer-events: none;
+}
+
+.shell-user-chip__appearance-row {
+  margin-top: 2px;
+}
+
+.shell-user-chip__appearance-row > svg {
+  flex: none;
+  color: var(--text-muted);
+  transition: translate var(--duration-fast) var(--ease-out);
+}
+
+.shell-user-chip__appearance-row[data-highlighted] > svg {
+  translate: 2px 0;
+  color: var(--text-primary);
+}
+
+.shell-user-chip__appearance-value {
   margin-left: auto;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
-.dropdown-menu__sub-trigger[data-state='open'] {
-  background: var(--bg-surface-muted);
+.shell-user-chip__view-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 6px;
 }
 
-.shell-user-chip__appearance-toggle,
-.shell-user-chip__appearance-toggle:hover,
-.shell-user-chip__appearance-toggle:active {
-  width: calc(100% - 8px);
-  border: 0;
-  background: transparent;
+/* Scoped under the header so it outranks the global button rules. */
+.shell-user-chip__view-header .shell-user-chip__back {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
   box-shadow: none;
-  font: inherit;
-  font-size: 0.8125rem;
-  color: var(--text-primary);
-  text-align: left;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
-.shell-user-chip__appearance-toggle:focus-visible {
+.shell-user-chip__view-header .shell-user-chip__back:hover {
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+}
+
+.shell-user-chip__view-header .shell-user-chip__back:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
 }
 
-.shell-user-chip__appearance-toggle[aria-expanded='true'] {
-  background: var(--bg-surface-muted);
+.shell-user-chip__back svg {
+  transition: translate var(--duration-fast) var(--ease-out);
 }
 
-.shell-user-chip__appearance-toggle[aria-expanded='true'] .dropdown-menu__sub-chevron {
-  rotate: 180deg;
+.shell-user-chip__back:hover svg {
+  translate: -2px 0;
 }
 
-.shell-user-chip__appearance-toggle .dropdown-menu__sub-chevron {
-  transition: rotate var(--duration-fast) var(--ease-out);
+.shell-user-chip__view-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-.shell-user-chip__appearance {
-  width: 248px;
-  padding-block: 6px 2px;
+@media (prefers-reduced-motion: reduce) {
+  .shell-user-chip__appearance-row > svg,
+  .shell-user-chip__back svg {
+    transition: none;
+    translate: none;
+  }
 }
 
 .shell-user-chip__menu-section-label {
