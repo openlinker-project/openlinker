@@ -47,6 +47,9 @@ export interface SegmentedSwitchOption<T extends string> {
 
 export type SegmentedSwitchLabels = 'always' | 'hover' | 'none';
 
+export const SegmentedSwitchSizeValues = ['md', 'sm'] as const;
+export type SegmentedSwitchSize = (typeof SegmentedSwitchSizeValues)[number];
+
 export interface SegmentedSwitchProps<T extends string> {
   options: readonly SegmentedSwitchOption<T>[];
   value: T;
@@ -65,6 +68,11 @@ export interface SegmentedSwitchProps<T extends string> {
   autoFocus?: boolean;
   /** Escape or Tab: close the popover the switch lives in. */
   onDismiss?: () => void;
+  /**
+   * `sm` is the compact variant for a crowded popover (the account menu's
+   * appearance panel): a shorter track, a smaller icon and caption.
+   */
+  size?: SegmentedSwitchSize;
   'aria-label'?: string;
   'aria-labelledby'?: string;
   /** Id of the radio group (for a trigger's `aria-controls`). */
@@ -86,8 +94,8 @@ const CAPTION_VARIANTS = {
   shown: { opacity: 1, y: 0, filter: 'blur(0px)' },
 } as const;
 
-// Caption row (22px) plus the gap above it.
-const CAPTION_HEIGHT = 26;
+// Caption row (22px, 18px in `sm`) plus the gap above it.
+const CAPTION_HEIGHT: Record<SegmentedSwitchSize, number> = { md: 26, sm: 20 };
 
 function SegmentedSwitchInner<T extends string>(
   {
@@ -101,6 +109,7 @@ function SegmentedSwitchInner<T extends string>(
     onDismiss,
     id,
     className,
+    size = 'md',
     ...aria
   }: SegmentedSwitchProps<T>,
   ref: ForwardedRef<HTMLDivElement>
@@ -194,7 +203,9 @@ function SegmentedSwitchInner<T extends string>(
   return (
     <div
       ref={ref}
-      className={['segmented-switch', className].filter(Boolean).join(' ')}
+      className={['segmented-switch', size === 'sm' ? 'segmented-switch--sm' : '', className]
+        .filter(Boolean)
+        .join(' ')}
       onPointerLeave={() => setPointing(null)}
       onFocus={(event) => setKeyboard(event.target.matches(':focus-visible'))}
       onBlur={() => setKeyboard(false)}
@@ -271,7 +282,7 @@ function SegmentedSwitchInner<T extends string>(
                   key="caption"
                   className="segmented-switch__caption"
                   initial={{ height: 0 }}
-                  animate={{ height: CAPTION_HEIGHT }}
+                  animate={{ height: CAPTION_HEIGHT[size] }}
                   exit={{ height: 0 }}
                   transition={SNAPPY_SPRING}
                 >

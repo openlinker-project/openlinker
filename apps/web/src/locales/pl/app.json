@@ -112,6 +112,7 @@
   },
   "userMenu": {
     "accountMenu": "Menu konta {username}",
+    "appearance": "Wygląd",
     "backgroundGlow": "Poświata w tle",
     "backgroundGlowOff": "Wyłączona",
     "backgroundGlowOn": "Włączona",

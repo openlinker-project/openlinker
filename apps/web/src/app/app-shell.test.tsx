@@ -395,7 +395,27 @@ describe('AppShell', () => {
     await user.click(trigger);
 
     expect(await screen.findByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
-    expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
+    // Theme and the other appearance controls sit one level down.
+    expect(screen.queryByRole('radiogroup', { name: 'Theme' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Appearance' }));
+    expect(await screen.findByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
+  });
+
+  it('should switch the background glow off from the appearance panel', async () => {
+    const user = userEvent.setup();
+    renderShell({ pathname: '/' });
+
+    await user.click(await screen.findByRole('button', { name: /Account menu for/i }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Appearance' }));
+    const glow = await screen.findByRole('radiogroup', { name: 'Background glow' });
+    // A direct click: user-event's pointer walk leaves the sub-trigger in a
+    // straight line, which closes a nested Radix panel in jsdom (a real
+    // pointer is covered by Radix's grace area; checked live).
+    fireEvent.click(within(glow).getByRole('radio', { name: 'Off' }));
+
+    expect(window.localStorage.getItem('openlinker-background-glow')).toBe('off');
+    expect(screen.getByTestId('dashboard-glow')).toHaveClass('dashboard-glow--off');
+    window.localStorage.removeItem('openlinker-background-glow');
   });
 
   it('should offer the language in the account menu, not in the sidebar (#4021)', async () => {
@@ -408,9 +428,11 @@ describe('AppShell', () => {
 
     const language = await screen.findByRole('listbox', { name: 'Language' });
     expect(within(language).getByRole('option', { name: /English/ })).toHaveAttribute('aria-selected', 'true');
-    // First section of the menu, above Theme.
-    const theme = screen.getByRole('radiogroup', { name: 'Theme' });
-    expect(language.compareDocumentPosition(theme) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // First section of the menu, above the appearance panel's row.
+    const appearance = screen.getByRole('menuitem', { name: 'Appearance' });
+    expect(
+      language.compareDocumentPosition(appearance) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it('opens the mobile drawer when the hamburger is clicked', async () => {

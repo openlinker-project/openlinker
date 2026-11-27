@@ -10,7 +10,11 @@
  */
 import { useMemo, type ReactElement } from 'react';
 import { useMessages } from '../shared/i18n';
-import { SegmentedSwitch, type SegmentedSwitchOption } from '../shared/ui/segmented-switch';
+import {
+  SegmentedSwitch,
+  type SegmentedSwitchOption,
+  type SegmentedSwitchSize,
+} from '../shared/ui/segmented-switch';
 import { useBackgroundGlow } from './hooks/use-background-glow';
 
 type GlowChoice = 'on' | 'off';
@@ -28,7 +32,7 @@ function GlowIcon({ off }: { off: boolean }): ReactElement {
   );
 }
 
-export function BackgroundGlowToggle(): ReactElement {
+export function BackgroundGlowToggle({ size }: { size?: SegmentedSwitchSize } = {}): ReactElement {
   const copy = useMessages('app').userMenu;
   const [enabled, setEnabled] = useBackgroundGlow();
   const options = useMemo<SegmentedSwitchOption<GlowChoice>[]>(
@@ -45,6 +49,7 @@ export function BackgroundGlowToggle(): ReactElement {
       onChange={(next) => setEnabled(next === 'on')}
       labels="always"
       slideThumb
+      size={size}
       aria-label={copy.backgroundGlow}
     />
   );

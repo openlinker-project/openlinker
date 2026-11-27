@@ -18,6 +18,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -40,6 +41,7 @@ import { prefersMotion } from '../shared/ui/prefers-motion';
 import { DashboardGlow } from './dashboard-glow';
 import { BackgroundGlowToggle } from './background-glow-toggle';
 import { Button } from '../shared/ui/button';
+import { useMediaQuery } from '../shared/ui/use-media-query';
 import { LanguageMenuList, restoreFocusAfterLanguageChange } from '../features/language';
 import { EnvironmentBadge } from '../shared/ui/environment-badge';
 import {
@@ -48,6 +50,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '../shared/ui/dropdown-menu';
 import { ThemePicker } from '../features/appearance';
@@ -305,6 +310,75 @@ function initialsFrom(username: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+// Below this a side panel has no room beside the account menu.
+const NARROW_MENU_QUERY = '(max-width: 767px)';
+
+/** Theme, background glow, density and text size, in the compact switches. */
+function AppearanceControls(): ReactElement {
+  const copy = useMessages('app').userMenu;
+  const themeCopy = useMessages('ui').theme;
+  return (
+    <>
+      <div className="shell-user-chip__menu-section">
+        <div className="shell-user-chip__menu-section-label">{themeCopy.label}</div>
+        <ThemePicker size="sm" />
+      </div>
+      <div className="shell-user-chip__menu-section">
+        <div className="shell-user-chip__menu-section-label">{copy.backgroundGlow}</div>
+        <BackgroundGlowToggle size="sm" />
+      </div>
+      <div className="shell-user-chip__menu-section shell-user-chip__menu-section--density">
+        <div className="shell-user-chip__menu-section-label">{copy.density}</div>
+        <DensityToggle />
+      </div>
+      <div className="shell-user-chip__menu-section">
+        <div className="shell-user-chip__menu-section-label">{copy.fontSize}</div>
+        <FontSizeToggle size="sm" />
+      </div>
+    </>
+  );
+}
+
+/** The phone form of the appearance panel: a row that unfolds in place. */
+function InlineAppearance({ label }: { label: string }): ReactElement {
+  const [expanded, setExpanded] = useState(false);
+  const regionId = useId();
+  return (
+    <>
+      <button
+        type="button"
+        className="dropdown-menu__item shell-user-chip__appearance-trigger shell-user-chip__appearance-toggle"
+        aria-expanded={expanded}
+        aria-controls={regionId}
+        onClick={() => setExpanded((previous) => !previous)}
+      >
+        {label}
+        <svg
+          className="dropdown-menu__sub-chevron"
+          viewBox="0 0 16 16"
+          width="14"
+          height="14"
+          aria-hidden="true"
+        >
+          <path
+            d="M3.5 6L8 10.5L12.5 6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {expanded ? (
+        <div id={regionId} className="shell-user-chip__appearance-inline">
+          <AppearanceControls />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 interface UserChipProps {
   email?: string | null;
   onLogout: () => void;
@@ -319,7 +393,7 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
   useEffect(() => {
     restoreFocusAfterLanguageChange(triggerRef.current);
   }, []);
-  const themeCopy = useMessages('ui').theme;
+  const narrow = useMediaQuery(NARROW_MENU_QUERY);
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -350,22 +424,22 @@ function UserChip({ email, onLogout, username }: UserChipProps): ReactElement {
           <div className="shell-user-chip__menu-section-label">{copy.language}</div>
           <LanguageMenuList />
         </div>
-        <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">{themeCopy.label}</div>
-          <ThemePicker />
-        </div>
-        <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">{copy.backgroundGlow}</div>
-          <BackgroundGlowToggle />
-        </div>
-        <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">{copy.density}</div>
-          <DensityToggle />
-        </div>
-        <div className="shell-user-chip__menu-section">
-          <div className="shell-user-chip__menu-section-label">{copy.fontSize}</div>
-          <FontSizeToggle />
-        </div>
+        {/* Theme, glow, density and text size live one level down, so the
+            account menu stays short; the controls there use the compact
+            `sm` switch. A phone has no room beside the menu for a side panel,
+            so there the same controls unfold in place instead. */}
+        {narrow ? (
+          <InlineAppearance label={copy.appearance} />
+        ) : (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="shell-user-chip__appearance-trigger">
+              {copy.appearance}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="shell-user-chip__menu shell-user-chip__appearance">
+              <AppearanceControls />
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={onLogout}>{copy.signOut}</DropdownMenuItem>
       </DropdownMenuAnimatedContent>

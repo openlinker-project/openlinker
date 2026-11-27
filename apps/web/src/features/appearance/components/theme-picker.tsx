@@ -10,7 +10,11 @@
 import type { ReactElement } from 'react';
 import { useMessages } from '../../../shared/i18n/use-messages';
 import { useTheme } from '../../../shared/theme/use-theme';
-import { SegmentedSwitch, type SegmentedSwitchLabels } from '../../../shared/ui/segmented-switch';
+import {
+  SegmentedSwitch,
+  type SegmentedSwitchLabels,
+  type SegmentedSwitchSize,
+} from '../../../shared/ui/segmented-switch';
 import { useThemeOptions } from '../hooks/use-theme-options';
 
 export interface ThemePickerProps {
@@ -19,12 +23,15 @@ export interface ThemePickerProps {
   /** Accessible name of the group; defaults to "Theme". */
   label?: string;
   className?: string;
+  /** `sm` for a crowded popover. */
+  size?: SegmentedSwitchSize;
 }
 
 export function ThemePicker({
   labels = 'always',
   label,
   className,
+  size,
 }: ThemePickerProps): ReactElement {
   const { theme, setTheme } = useTheme();
   const copy = useMessages('ui').theme;
@@ -36,6 +43,7 @@ export function ThemePicker({
       value={theme}
       onChange={setTheme}
       labels={labels}
+      size={size}
       aria-label={label ?? copy.label}
     />
   );

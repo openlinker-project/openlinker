@@ -2425,6 +2425,56 @@ body.side-panel-sheet-open .dashboard-glow {
   gap: 6px;
 }
 
+/* The "Appearance" row that opens the nested panel: a menu row with the
+   chevron pushed to the end, inset to line up with the sections. */
+.shell-user-chip__appearance-trigger {
+  margin: 2px 4px;
+}
+
+.dropdown-menu__sub-chevron {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.dropdown-menu__sub-trigger[data-state='open'] {
+  background: var(--bg-surface-muted);
+}
+
+.shell-user-chip__appearance-toggle,
+.shell-user-chip__appearance-toggle:hover,
+.shell-user-chip__appearance-toggle:active {
+  width: calc(100% - 8px);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.shell-user-chip__appearance-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.shell-user-chip__appearance-toggle[aria-expanded='true'] {
+  background: var(--bg-surface-muted);
+}
+
+.shell-user-chip__appearance-toggle[aria-expanded='true'] .dropdown-menu__sub-chevron {
+  rotate: 180deg;
+}
+
+.shell-user-chip__appearance-toggle .dropdown-menu__sub-chevron {
+  transition: rotate var(--duration-fast) var(--ease-out);
+}
+
+.shell-user-chip__appearance {
+  width: 248px;
+  padding-block: 6px 2px;
+}
+
 .shell-user-chip__menu-section-label {
   font-size: 11px;
   font-weight: 600;
@@ -17667,7 +17717,8 @@ body > *:not([data-radix-popper-content-wrapper]),
 
   /* Density toggle hides on the smallest viewports — density only
      matters when you can see >5 rows at once, which a phone can't. */
-  .shell-user-chip__menu .density-toggle {
+  .shell-user-chip__menu .density-toggle,
+  .shell-user-chip__menu-section--density {
     display: none;
   }
 }
@@ -37623,6 +37674,37 @@ legend.analytics-settings-dialog__label {
 
 .segmented-switch__name[data-state='pointed'] {
   color: var(--text-primary);
+}
+
+/* `size="sm"`: the compact variant for a crowded popover. Same track padding
+ * and gap as the default, so the sliding thumb's arithmetic still holds. */
+.segmented-switch--sm .segmented-switch__option,
+.segmented-switch--sm .segmented-switch__option:hover,
+.segmented-switch--sm .segmented-switch__option:active {
+  height: 24px;
+  border-radius: 6px;
+}
+
+.segmented-switch--sm .segmented-switch__track {
+  border-radius: var(--radius-md);
+}
+
+.segmented-switch--sm .segmented-switch__thumb {
+  border-radius: 6px;
+}
+
+.segmented-switch--sm .segmented-switch__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.segmented-switch--sm .segmented-switch__caption {
+  font-size: 10.5px;
+  line-height: 18px;
+}
+
+.segmented-switch--sm .segmented-switch__names {
+  padding-top: 2px;
 }
 
 /* PeekButton `touchSize`: the global 44px button floor turned the pill into a
