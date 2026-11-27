@@ -64,4 +64,16 @@ export interface BulkAssignOrderTagResult {
   added: number;
   /** Orders that already carried it — informational, matches the "1 of 3 has it" copy. */
   alreadyTagged: number;
+  /** The orders behind `added` (#3545), so a caller can report a per-row outcome. */
+  addedOrderIds: string[];
+  /** The orders behind `alreadyTagged` (#3545). */
+  alreadyTaggedOrderIds: string[];
+}
+
+/** Result of removing ONE tag from many orders (#3545). */
+export interface BulkUnassignOrderTagResult {
+  tagId: string;
+  removedOrderIds: string[];
+  /** Orders that did not carry the tag - a no-op, never an error. */
+  notTaggedOrderIds: string[];
 }

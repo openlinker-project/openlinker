@@ -17,7 +17,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
   Query,
@@ -44,7 +43,9 @@ import {
 import type { ListingCreationRecord } from '@openlinker/core/listings';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
+import { shopPublishMasterPublisherConflict } from './listings-errors';
 import { PublishProductRequestDto } from './dto/publish-product.dto';
 import {
   ListingCreationRecordResponseDto,
@@ -79,28 +80,32 @@ export class ShopPublishController {
   })
   @ApiResponse({ status: 202, description: 'Publish enqueued', type: ShopPublishResponseDto })
   @ApiResponse({ status: 404, description: 'Connection not found' })
-  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({ status: 409, description: 'Connection disabled, or it is both a ProductMaster and a ProductPublisher (SHOP_PUBLISH_MASTER_PUBLISHER_CONFLICT)' })
   @ApiResponse({ status: 422, description: 'Adapter does not support ProductPublisher' })
   async publish(
     @Param('connectionId') connectionId: string,
     @Body() dto: PublishProductRequestDto,
     @Headers('x-idempotency-key') idempotencyKey?: string,
   ): Promise<ShopPublishResponseDto> {
-    const { jobId, listingCreationRecord } = await this.enqueue.enqueuePublish({
-      connectionId,
-      internalVariantId: dto.internalVariantId,
-      status: dto.status,
-      stock: dto.stock,
-      ...(dto.price !== undefined && { price: dto.price }),
-      ...(dto.content !== undefined && { content: dto.content }),
-      ...(dto.commerce !== undefined && { commerce: dto.commerce }),
-      ...(dto.generateDescription !== undefined && {
-        generateDescription: dto.generateDescription,
-      }),
-      ...(dto.descriptionTone !== undefined && { descriptionTone: dto.descriptionTone }),
-      ...(idempotencyKey !== undefined && { idempotencyKey }),
-    });
-    return { jobId, listingCreationRecordId: listingCreationRecord.id };
+    try {
+      const { jobId, listingCreationRecord } = await this.enqueue.enqueuePublish({
+        connectionId,
+        internalVariantId: dto.internalVariantId,
+        status: dto.status,
+        stock: dto.stock,
+        ...(dto.price !== undefined && { price: dto.price }),
+        ...(dto.content !== undefined && { content: dto.content }),
+        ...(dto.commerce !== undefined && { commerce: dto.commerce }),
+        ...(dto.generateDescription !== undefined && {
+          generateDescription: dto.generateDescription,
+        }),
+        ...(dto.descriptionTone !== undefined && { descriptionTone: dto.descriptionTone }),
+        ...(idempotencyKey !== undefined && { idempotencyKey }),
+      });
+      return { jobId, listingCreationRecordId: listingCreationRecord.id };
+    } catch (error) {
+      throw shopPublishMasterPublisherConflict(error) ?? error;
+    }
   }
 
   @AnyRole()
@@ -190,7 +195,12 @@ export class ShopPublishController {
   async getRecord(@Param('recordId') recordId: string): Promise<ListingCreationRecordResponseDto> {
     const record = await this.query.getById(recordId);
     if (!record) {
-      throw new NotFoundException(`Listing creation record not found: ${recordId}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'LISTING_CREATION_RECORD_NOT_FOUND',
+        `Listing creation record not found: ${recordId}`,
+        { recordId }
+      );
     }
     return this.toRecordDto(record);
   }

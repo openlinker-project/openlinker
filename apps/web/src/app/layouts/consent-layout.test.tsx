@@ -7,7 +7,10 @@ import { ANONYMOUS_SESSION } from '../../shared/auth/session.types';
 import { renderWithProviders } from '../../test/test-utils';
 import { ConsentLayout } from './consent-layout';
 
-function makeAdapter(session: Session, refresh = vi.fn().mockResolvedValue('token')): SessionAdapter {
+function makeAdapter(
+  session: Session,
+  refresh = vi.fn().mockResolvedValue('token')
+): SessionAdapter {
   return {
     getSession: vi.fn().mockResolvedValue(session),
     getAccessToken: vi.fn().mockResolvedValue('token'),
@@ -35,14 +38,12 @@ function authenticated(analyticsConsent: boolean): Session {
 function renderLayout(sessionAdapter: SessionAdapter, route = '/consent'): void {
   renderWithProviders(
     <Routes>
-      <Route path="/consent" element={<ConsentLayout />}>
-        <Route index element={<p>Consent gate</p>} />
-      </Route>
+      <Route path="/consent" element={<ConsentLayout />} />
       <Route path="/orders" element={<p>Orders page</p>} />
       <Route path="/" element={<p>Dashboard page</p>} />
       <Route path="/login" element={<p>Login page</p>} />
     </Routes>,
-    { sessionAdapter, route },
+    { sessionAdapter, route }
   );
 }
 
@@ -52,8 +53,8 @@ describe('ConsentLayout', () => {
   it('should render the gate for an authenticated account without consent', async () => {
     renderLayout(makeAdapter(authenticated(false)));
 
-    expect(await screen.findByText('Consent gate')).toBeInTheDocument();
-    expect(screen.getByText('OpenLinker')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Session recording' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'I agree' })).toBeInTheDocument();
   });
 
   it('should send an anonymous visitor to the login page', async () => {
@@ -70,7 +71,7 @@ describe('ConsentLayout', () => {
 
     await waitFor(() => expect(screen.getByText('Orders page')).toBeInTheDocument());
     expect(refresh).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText('Consent gate')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Session recording' })).not.toBeInTheDocument();
   });
 
   it('should fall back to the app root when no next path was carried', async () => {

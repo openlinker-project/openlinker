@@ -18,6 +18,7 @@ import {
   sampleConnection,
 } from '../../../test/test-utils';
 import { ErliCredentialsPanel } from './erli-credentials-panel';
+import { getMessages } from '../../../shared/i18n';
 
 const erliConnection = { ...sampleConnection, platformType: 'erli' };
 const erliConnectionWithAllegroAccess = {
@@ -258,7 +259,7 @@ describe('ErliCredentialsPanel', () => {
       expect(updateCredentials).toHaveBeenCalledTimes(1);
     });
     expect(update).not.toHaveBeenCalled();
-    expect(await screen.findByText('Invalid Allegro credentials')).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status.other)).toBeInTheDocument();
     // Panel stays open with the entered fields intact so a retry can resend them.
     expect(screen.getByPlaceholderText('Allegro Client ID')).toHaveValue('client-123');
   });
@@ -288,7 +289,7 @@ describe('ErliCredentialsPanel', () => {
     // Panel stays open (flag write failed, so it never got a chance to reflect the
     // new value anywhere the operator can see) and the fields aren't discarded.
     expect(screen.getByPlaceholderText('Allegro Client ID')).toHaveValue('client-123');
-    expect(screen.queryByText('Credentials saved')).not.toBeInTheDocument();
+    expect(screen.queryByText('Credentials saved', { selector: '.toast__title' })).not.toBeInTheDocument();
   });
 
   describe('reuse an existing Allegro connection (#1387)', () => {

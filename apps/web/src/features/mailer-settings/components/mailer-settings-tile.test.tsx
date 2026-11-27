@@ -15,6 +15,7 @@ import {
   createMockApiClient,
   renderWithProviders,
 } from '../../../test/test-utils';
+import { getMessages } from '../../../shared/i18n';
 import type { MailerSettingsView } from '../api/mailer-settings.types';
 import { MailerSettingsTile } from './mailer-settings-tile';
 
@@ -72,7 +73,9 @@ describe('MailerSettingsTile', () => {
     renderWithProviders(<MailerSettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
 
     expect(
-      await screen.findByText(/Could not load mailer settings: Network down/),
+      await screen.findByText(
+        `${getMessages('mailer-settings').mailerSettingsTile.loadError} ${getMessages('errors').status.other}`,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -87,17 +90,18 @@ describe('MailerSettingsTile', () => {
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
   });
 
-  it('shows the smtp host/port/from/password summary when configured', async () => {
+  it('shows the smtp server and warns only when the password is missing', async () => {
     const apiClient = createMockApiClient({
       mailerSettings: { get: vi.fn().mockResolvedValue(smtpView) },
     });
     renderWithProviders(<MailerSettingsTile />, { sessionAdapter: adminSessionAdapter, apiClient });
 
     expect(await screen.findByText('SMTP')).toBeInTheDocument();
-    expect(screen.getByText('smtp.example.com')).toBeInTheDocument();
-    expect(screen.getByText('587')).toBeInTheDocument();
-    expect(screen.getByText('orders@example.com')).toBeInTheDocument();
-    expect(screen.getByText('Configured')).toBeInTheDocument();
+    expect(screen.getByText('smtp.example.com:587')).toBeInTheDocument();
+    // The sender address lives in the edit dialog; the row keeps to the server.
+    expect(screen.queryByText('orders@example.com')).not.toBeInTheDocument();
+    // A configured password is the normal state, so only a missing one is said.
+    expect(screen.queryByText(/SMTP password/)).not.toBeInTheDocument();
   });
 
   it('opens the edit dialog when Edit is clicked', async () => {

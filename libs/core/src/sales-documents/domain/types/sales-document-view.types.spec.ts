@@ -143,8 +143,10 @@ describe('SalesDocumentView', () => {
         blockReason: 'unresolved-routing',
         unresolvedReason: 'no-configuration-for-country',
         blockDetail: null,
+        blockParams: null,
         otherRecords: [],
         matchedRule: null,
+        afterIssueAttention: null,
       };
 
       expect(view.documentKind).toBeNull();
@@ -160,8 +162,10 @@ describe('SalesDocumentView', () => {
         blockReason: 'trigger-model-manual',
         unresolvedReason: null,
         blockDetail: null,
+        blockParams: null,
         otherRecords: [],
         matchedRule: null,
+        afterIssueAttention: null,
       };
 
       expect(view.documentKind).toBe('fiscal-receipt');
@@ -187,6 +191,7 @@ describe('SalesDocumentView', () => {
         blockReason: null,
         unresolvedReason: null,
         blockDetail: null,
+        blockParams: null,
         otherRecords: [
           {
             recordId: 'inv-2',
@@ -196,6 +201,7 @@ describe('SalesDocumentView', () => {
           },
         ],
         matchedRule: null,
+        afterIssueAttention: null,
       };
 
       expect(view.otherRecords).toHaveLength(1);

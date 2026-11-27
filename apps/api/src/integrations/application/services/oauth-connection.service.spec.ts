@@ -114,6 +114,20 @@ describe('OAuthConnectionService', () => {
       });
     });
 
+    it('keeps the order sync start in the stored state so the callback can use it (#4228)', async () => {
+      await service.generateAuthorizationUrl({
+        adapterKey: ADAPTER_KEY,
+        platformType: 'allegro',
+        clientId: 'c',
+        clientSecret: 's',
+        redirectUri: 'https://ol.test/cb',
+        orderSyncStart: { mode: 'all' },
+      });
+
+      const [, , payload] = redisClient.setEx.mock.calls[0] as [string, number, string];
+      expect((JSON.parse(payload) as OAuthStateData).orderSyncStart).toEqual({ mode: 'all' });
+    });
+
     it('honours a caller-supplied state', async () => {
       const result = await service.generateAuthorizationUrl({
         adapterKey: ADAPTER_KEY,
@@ -199,6 +213,51 @@ describe('OAuthConnectionService', () => {
       expect(createArg.adapterKey).toBe(ADAPTER_KEY);
       expect(createArg.credentialsRef).toBe(`db:${credCreateArg.ref}`);
       expect(createArg.config).toEqual({ environment: 'sandbox', oauthAccountId: 'acct-1' });
+    });
+
+    it('hands the order sync start chosen at connect time to the created connection (#4228)', async () => {
+      connectionService.create.mockResolvedValue({ id: 'c', name: 'n' } as unknown as Connection);
+
+      await service.completeAuthorization(
+        'auth-code',
+        makeState({ orderSyncStart: { mode: 'all' } })
+      );
+
+      const createArg = firstCallArgs(connectionService.create)[0] as {
+        orderSyncStart?: unknown;
+        config: Record<string, unknown>;
+      };
+      expect(createArg.orderSyncStart).toEqual({ mode: 'all' });
+      expect(createArg.config).not.toHaveProperty('orderSyncStart');
+    });
+
+    it('creates without a start choice when none was made', async () => {
+      connectionService.create.mockResolvedValue({ id: 'c', name: 'n' } as unknown as Connection);
+
+      await service.completeAuthorization('auth-code', makeState());
+
+      expect(firstCallArgs(connectionService.create)[0]).not.toHaveProperty('orderSyncStart');
+    });
+
+    it('creates the connection with the capability set chosen at connect time', async () => {
+      connectionService.create.mockResolvedValue({ id: 'c', name: 'n' } as unknown as Connection);
+
+      await service.completeAuthorization(
+        'auth-code',
+        makeState({ enabledCapabilities: ['ProductPublisher'] }),
+      );
+
+      expect(firstCallArgs(connectionService.create)[0]).toMatchObject({
+        enabledCapabilities: ['ProductPublisher'],
+      });
+    });
+
+    it('leaves the capability set to the manifest default when none was chosen', async () => {
+      connectionService.create.mockResolvedValue({ id: 'c', name: 'n' } as unknown as Connection);
+
+      await service.completeAuthorization('auth-code', makeState());
+
+      expect('enabledCapabilities' in (firstCallArgs(connectionService.create)[0] as object)).toBe(false);
     });
 
     it('omits oauthAccountId when the platform reports no identity (optional-identity)', async () => {

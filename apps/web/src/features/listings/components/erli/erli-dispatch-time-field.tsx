@@ -18,7 +18,7 @@ import { useId, useState, type ReactElement } from 'react';
 
 import { Input } from '../../../../shared/ui/input';
 import { Select } from '../../../../shared/ui/select';
-import { useTranslation } from '../../../../shared/i18n';
+import { interpolate, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import {
   ERLI_DISPATCH_PERIOD_PRESETS,
   ErliDispatchUnitValues,
@@ -32,26 +32,25 @@ interface ErliDispatchTimeFieldProps {
   onChange: (next: ErliDispatchTimeParam) => void;
   /** Connection default — drives the "connection default" badge + the offer count copy. */
   connectionDefault: ErliDispatchTimeParam;
+  /** The marketplace's display name, so copy can say whose account to check. */
+  platformName: string;
   /** Number of offers this dispatch applies to (bulk) — omit/1 for single. */
   appliesToCount?: number;
   /** Soft error message rendered below the control (host validation). */
   error?: string;
 }
 
-const UNIT_LABELS: Record<ErliDispatchUnit, string> = {
-  hour: 'hours',
-  day: 'working days',
-  month: 'months',
-};
-
 export function ErliDispatchTimeField({
   value,
   onChange,
   connectionDefault,
+  platformName,
   appliesToCount,
   error,
 }: ErliDispatchTimeFieldProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useMessages('listings').erliDispatchTimeField;
+  const plural = usePlural();
+  const format = useFormat();
   const periodInputId = useId();
   // Transient draft so clearing the input doesn't snap to 0 (`Number('') === 0`).
   // While the draft holds a partial/empty entry the committed `value.period` is
@@ -71,29 +70,24 @@ export function ErliDispatchTimeField({
     ? ERLI_DISPATCH_PERIOD_PRESETS
     : [...ERLI_DISPATCH_PERIOD_PRESETS, value.period].sort((a, b) => a - b);
 
+  const dispatch = formatDispatch(value);
   const readout =
     appliesToCount && appliesToCount > 1
-      ? t(
-          'listings.erli.dispatch.readoutBatch',
-          `Applied to all ${appliesToCount.toLocaleString()} offers — buyers see "ships in ${formatDispatch(value)}".`,
-        )
-      : t(
-          'listings.erli.dispatch.readout',
-          `Buyers see "ships in ${formatDispatch(value)}".`,
-        );
+      ? plural(appliesToCount, copy.readoutBatch, { dispatch })
+      : interpolate(copy.readout, { dispatch });
 
   return (
     <div className="erli-dispatch">
       <div className="erli-dispatch__top">
         <span className="erli-dispatch__label" id={`${periodInputId}-label`}>
-          {t('listings.erli.dispatch.label', 'Dispatch time')}{' '}
+          {copy.label}{' '}
           <span className="erli-dispatch__req">
-            {t('listings.erli.dispatch.required', '· required by Erli')}
+            {interpolate(copy.required, { platform: platformName })}
           </span>
         </span>
         {isFromDefault ? (
           <span className="erli-dispatch__from-default">
-            {t('listings.erli.dispatch.fromDefault', 'connection default')}
+            {copy.fromDefault}
           </span>
         ) : null}
       </div>
@@ -112,7 +106,7 @@ export function ErliDispatchTimeField({
               aria-pressed={value.period === preset}
               onClick={() => commitPeriod(preset)}
             >
-              {preset}
+              {format.number(preset)}
             </button>
           ))}
         </span>
@@ -123,7 +117,7 @@ export function ErliDispatchTimeField({
           min={0}
           className="erli-dispatch__period-input"
           value={periodDisplay}
-          aria-label={t('listings.erli.dispatch.periodLabel', 'Dispatch period')}
+          aria-label={copy.periodLabel}
           aria-invalid={Boolean(error)}
           onChange={(e) => {
             const raw = e.target.value;
@@ -141,12 +135,12 @@ export function ErliDispatchTimeField({
         <Select
           className="erli-dispatch__unit"
           value={value.unit}
-          aria-label={t('listings.erli.dispatch.unitLabel', 'Dispatch unit')}
+          aria-label={copy.unitLabel}
           onChange={(e) => onChange({ ...value, unit: e.target.value as ErliDispatchUnit })}
         >
           {ErliDispatchUnitValues.map((unit) => (
             <option key={unit} value={unit}>
-              {UNIT_LABELS[unit]}
+              {copy.units[unit]}
             </option>
           ))}
         </Select>

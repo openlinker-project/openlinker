@@ -1,3 +1,7 @@
+import type { CatalogueMode } from '../../connections';
+import type { DeliveryOnDocumentsConfig } from '../../delivery-on-documents';
+import type { OrderSyncStart } from '../../connections';
+
 export interface StartAllegroOAuthInput {
   clientId: string;
   clientSecret: string;
@@ -5,12 +9,18 @@ export interface StartAllegroOAuthInput {
   environment?: 'sandbox' | 'production';
   connectionName?: string;
   masterCatalogConnectionId?: string;
+  /** `none` declares a marketplace-only connection with no product catalogue; seeded into the new connection (#4281). */
+  catalogueMode?: Extract<CatalogueMode, 'none'>;
   /**
    * UUID of an existing Allegro connection to re-authenticate in place. When
    * set, the callback rotates that connection's credentials and clears its
    * needs_reauth flag instead of creating a new connection (#819).
    */
   connectionId?: string;
+  /** How delivery appears on receipts and invoices; seeded into the new connection (#3911). */
+  deliveryOnDocuments?: DeliveryOnDocumentsConfig;
+  /** Where order sync starts for the new connection; absent means only new orders (#4228). */
+  orderSyncStart?: OrderSyncStart;
 }
 
 export interface StartAllegroOAuthResponse {

@@ -88,6 +88,14 @@ export const FulfillmentBlockReasonValues = [
    * only. Re-routed by `fulfillment.work.rerouteSweep`.
    */
   'routing-failed',
+  /**
+   * #4033 — the order is not paid yet (`awaiting` or `refunded`), so it is not
+   * routed: it does not reach the pack bench and the master's stock is not
+   * lowered. Its advisory hold stays, so the units are still promised. Clears
+   * on the re-ingestion that reports the payment; not swept, because only the
+   * source can report a payment.
+   */
+  'routing-awaiting-payment',
 ] as const;
 
 export type FulfillmentBlockReason = (typeof FulfillmentBlockReasonValues)[number];
@@ -104,6 +112,29 @@ export const REROUTABLE_FULFILLMENT_BLOCK_REASONS = [
   'routing-refused',
   'routing-failed',
 ] as const satisfies readonly FulfillmentBlockReason[];
+
+/**
+ * The held states an operator reads as "waiting in OpenLinker" (#3482): the order
+ * is held because of a fact about the order or the stock, not because of a
+ * transient guard.
+ *
+ * Not the same set as {@link REROUTABLE_FULFILLMENT_BLOCK_REASONS}: a missing
+ * shipping address is waiting (the operator should see it) but is not re-routed
+ * by the sweep (only a source update can supply an address). The three #2396
+ * states are absent - they are guards that resolve on their own, not something
+ * waiting on anyone.
+ *
+ * One member per line: `scripts/check-handled-in-openlinker-mirror.mjs` reads this array
+ * textually and holds the frontend copy table to it.
+ */
+export const WaitingFulfillmentBlockReasonValues = [
+  'routing-refused',
+  'routing-no-shipping-address',
+  'routing-failed',
+  'routing-awaiting-payment',
+] as const satisfies readonly FulfillmentBlockReason[];
+
+export type WaitingFulfillmentBlockReason = (typeof WaitingFulfillmentBlockReasonValues)[number];
 
 /**
  * Read-side coercion, mirroring `isHoldReason` / `isSalesDocumentGateBlockReason`.

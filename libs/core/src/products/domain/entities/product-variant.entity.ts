@@ -42,6 +42,16 @@ export interface ProductVariant {
   /** Master-derived, not persisted on the variants table. */
   weight?: number;
   /**
+   * Pictures the master dedicates to THIS variant, in the master's order
+   * (absolute URLs) - e.g. the red cup's photo on a product sold in four
+   * colours. Master-derived and persisted on the variants table, refreshed by
+   * every master sync. `null`/absent means the master names no picture of the
+   * variant's own, so the product gallery applies; it never means "no images".
+   * Not the variant's listing image list - that is resolved from this, its
+   * siblings and the product gallery by `resolveVariantDefaultImages`.
+   */
+  images?: string[] | null;
+  /**
    * Operator-authored PHYSICAL master data (#3403, mockup-parity epic
    * #3401), PERSISTED on `product_variants` — distinct from `weight` above,
    * which is master-derived and read fresh per publish call rather than
@@ -55,6 +65,17 @@ export interface ProductVariant {
   lengthMm?: number | null;
   widthMm?: number | null;
   heightMm?: number | null;
+  /**
+   * Operator-authored NET (VAT-exclusive) unit cost (#3588, D27). Written only
+   * by `recordCost` / `fillCostIfAbsent`; a master sync never carries it.
+   * `netUnitCost` is a decimal STRING (numeric(12,4) round-trips as text, so no
+   * float drift); `null`/absent means "not recorded", never zero - `"0.0000"`
+   * is a real cost. `costCurrency` is set exactly when `netUnitCost` is.
+   */
+  netUnitCost?: string | null;
+  costCurrency?: string | null;
+  costUpdatedAt?: Date | null;
+  costUpdatedByUserId?: string | null;
   /**
    * Soft-mark set when the variant is deleted at the master — absent from the
    * master's `getProductVariants` response, or the product itself 404s (#1599).

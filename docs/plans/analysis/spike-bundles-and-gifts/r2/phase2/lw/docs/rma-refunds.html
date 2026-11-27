@@ -1,0 +1,168 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/rma-refunds"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Refunds</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Refunds';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1__1487321791" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+
+Processed Orders: Refunds
+<a href="/articles/documentation/rma-refunds/a/h1__1487321791" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rma-refunds/a/h1__1487321791&#39;,this);"></a></h1>
+<p style="text-align: justify;">
+  Refunds in Linnworks allow users to record partial or full amounts paid by a buyer for a specified (processed) order returned to the buyer. This ensures that reporting is accurate and records for later reference and other purposes such as taxation.
+</p>
+<div class="alert-danger">
+  <span style="font-weight: normal;"><b><span class="fa fa-info-circle icon-background-red"></span>
+    Important:&nbsp;</b></span>Refunding an order in Linnworks does not automatically refund that order on the channel. <a href="/articles/documentation/compare-channel-integrations" onclick="return n(&#39;!documentation/compare-channel-integrations&#39;,this);">Check here</a> for a list of channels that support refunds via Linnworks. For other channels, refunds need to be created externally for Linnworks.
+</div>
+<h2 style="text-align: justify;" id="h2_1172460508" data-has-heading-anchor="true">
+  <span>Creating a refund</span>
+<a href="/articles/documentation/rma-refunds/a/h2_1172460508" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rma-refunds/a/h2_1172460508&#39;,this);"></a></h2>
+<p>
+  To issue a full or partial refund for an order through Linnworks, follow the steps below:
+</p>
+<ol>
+  <li style="text-align: justify;">
+    <span>Go to <i>Orders &gt; <a href="/articles/documentation/processed-orders" onclick="return n(&#39;!documentation/processed-orders&#39;,this);">Processed Orders</a></i> and search for the order for which you need to issue a refund.</span>
+  </li>
+  <li style="text-align: justify;">
+    <span></span><span>Right-click the order and</span>
+    select <i>Action &gt;&nbsp;Refunds</i>.&nbsp;&nbsp;
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund.png" alt="Processed Orders - Action - Refunds" class="size-75" loading="lazy"/>
+  </li>
+  <li style="text-align: justify;">
+    <b>Full refund:</b> To refund the entire order, click the <span class="btn-gray"><span class="fa fa-dollar"></span>&nbsp;Full refund</span> button. Then, continue with the next steps, starting from step 5.
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-FullRefund.png" alt="Action - Refund - Full Refund" class="size-75" loading="lazy"/>
+  </li>
+  <li style="text-align: justify;">
+    <b>Partial refund:</b> To issue a partial refund for a specific item(s), click the <span class="btn-gray"><span class="fa fa-plus"></span>&nbsp;Add</span> button in the corresponding item's row.&nbsp;Then, continue with the next steps, starting from step 6.&nbsp;&nbsp;
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-PartialRefund.png" alt="Action - Refund - Partial Refund" class="size-75" loading="lazy"/>
+  </li>
+  <li style="text-align: justify;">
+    After clicking <span class="btn-gray"><span class="fa fa-dollar"></span>&nbsp;Full refund</span>, a pop-up window will appear where you can specify the following details:
+    <br/>
+    <img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-FullRefund-Reason.png" alt="Action - Refund - Full Refund - Reason" class="size-75" loading="lazy"/>
+    <ul>
+      <li style="text-align: justify;">
+        <b>Internal reason category: </b>This drop-down menu lets you select a refund reason, such as "damaged in transit," "incorrect fit," or "unusable item." The list is customizable, so you can create reasons that make sense for your business. To edit it, click the <i>edit</i> icon to open the <i>Edit Categories</i> pop-up window.
+        <br/>
+        <img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-Reason-AddNew-Edit.png" alt="Actions - Refund - Edit internal reason category " class="size-75" loading="lazy"/>
+        <ul>
+          <li style="text-align: justify;">
+            <b>Add new:</b> To add a new refund reason category, enter the reason name in the field at the top of the pop-up and click <span class="btn-gray"><span class="fa fa-plus"></span>&nbsp;Add new</span>.</li>
+          <li style="text-align: justify;">
+            <b>Delete:</b> To delete a reason category, click the <i>delete</i> icon next to it.
+            <br/>
+            <img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-Reason-AddNew.png" alt="Actions - Refund Reason - Add New or Delete" class="size-75" loading="lazy"/>
+          </li>
+        </ul>
+      </li>
+      <li style="text-align: justify;">
+        <b>Internal reason (<i>additional notes</i>):</b> This field can be used to specify any additional details.&nbsp;
+      </li>
+    </ul>
+  </li>
+  <li style="text-align: justify;">
+    After clicking <span class="btn-gray"><span class="fa fa-plus"></span>&nbsp;Add</span> in the item's row to create a partial refund, you must specify&nbsp;<u>the amount to be refunded,</u>&nbsp;because this is a partial refund, and&nbsp;the internal reason category (as explained above). <br/>
+    <img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-PartialRefund-Amount.png" alt="Actions - Partial Refund - Amount" class="size-75" loading="lazy"/>
+  </li>
+  <li style="text-align: justify;">You can always edit the refund details before booking or actioning the refund (<a href="/articles/documentation/rma-refunds/a/h2__1993075644" target="_blank" onclick="return n(&#39;!documentation/rma-refunds/a/h2__1993075644&#39;,this);">see below</a>&nbsp;for the difference between the two).<br/><img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-Edit.png" alt="Actions - Refund - Edit " class="size-75" loading="lazy"/></li>
+  <li style="text-align: justify;">You can use the <span class="btn-gray"><span class="fa fa-plus"></span>&nbsp;Additional refund</span> button if you need to add a refund that is not tied to a specific item or if you want to refund more than the buyer has paid. This will add a new line item that you can treat as a refundable item, and there is no limit to the amount you can refund on this row.
+  <br/><img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-AdditionalRefund.png" alt="Action - Refund - Additional Refund" class="size-75" loading="lazy"/></li>
+  <li style="text-align: justify;">Now you can book or action the refund. <a href="/articles/documentation/rma-refunds/a/h2__1993075644" onclick="return n(&#39;!documentation/rma-refunds/a/h2__1993075644&#39;,this);">See the explanation below</a> for the difference between the two.
+  <br/><img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-Action-Book.png" alt="Actions - Refund - Book or Action" class="size-75" loading="lazy"/></li>
+</ol>
+<p>
+  
+</p>
+<div class="alert-warning">
+  <span style="font-weight: normal;"><b><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:&nbsp;</b></span>You cannot refund more than what the buyer paid for a single item. If you need to refund an amount that exceeds the buyer’s payment, you can use the <span class="btn-gray"><span class="fa fa-plus"></span>&nbsp;Additional refund</span> button to process the extra refund.&nbsp;</div>
+<h4 style="" id="h4__1790404757" data-has-heading-anchor="true">Refund reasons - Helpful tip<a href="/articles/documentation/rma-refunds/a/h4__1790404757" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rma-refunds/a/h4__1790404757&#39;,this);"></a></h4><p>When you begin tagging your refunds with reasons, you can&nbsp;<span style="box-sizing:border-box;margin:0;padding:0;text-align:left"><span style="box-sizing: border-box; margin: 0px; padding: 0px;">use the&nbsp;<a href="/articles/documentation/query-data-rmas" target="_blank" onclick="return n(&#39;!documentation/query-data-rmas&#39;,this);"><em>Order Item Return, Resend, Refund</em></a></span><a href="/articles/documentation/query-data-rmas" target="_blank" onclick="return n(&#39;!documentation/query-data-rmas&#39;,this);"><em>—Details</em></a>&nbsp;report from the&nbsp;<em><a href="/articles/documentation/query-data" onclick="return n(&#39;!documentation/query-data&#39;,this);">Query Data</a></em>&nbsp;to analyze why items are being refunded and take appropriate action</span>&nbsp;if necessary.</p><p>Note that the refund reasons you specify via the <i>Internal Reason Category</i> drop-down (see <b>step 5</b> above), as the name suggests, are <u>internal</u> and not visible to your buyers when issuing the refund.</p><p style="text-align: justify;">
+</p>
+<h2 style="text-align: justify;" id="h2__1993075644" data-has-heading-anchor="true">
+  Book or Action refunds
+<a href="/articles/documentation/rma-refunds/a/h2__1993075644" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rma-refunds/a/h2__1993075644&#39;,this);"></a></h2>
+<h4 style="text-align: justify;" id="h4__526418844" data-has-heading-anchor="true">
+  Booking a refund
+<a href="/articles/documentation/rma-refunds/a/h4__526418844" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rma-refunds/a/h4__526418844&#39;,this);"></a></h4>
+<p style="text-align: justify;">
+  Select this option if you are not ready to pay the refund yet.</p>
+<p style=""><img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-Book.png" alt="Actions - Refunds - Book" class="size-75" loading="lazy"/></p>
+<p style="text-align: justify;">
+  Booking a refund&nbsp;will add a refund to the order but not activate it. You will have a record of it in <em>Orders &gt; <a href="/articles/documentation/returns-refunds/a/h3__1904019951" onclick="return n(&#39;!documentation/returns-refunds/a/h3__1904019951&#39;,this);">Returns &amp; Refunds &gt; </a><b><a href="/articles/documentation/returns-refunds/a/h3__1904019951" onclick="return n(&#39;!documentation/returns-refunds/a/h3__1904019951&#39;,this);">Actionable Refunds</a></b></em>. There, you can find your refund by one of the parameters (<i>Refund Header ID</i>, <i>Order ID</i>, <i>Refund reference</i>, <i>Order reference</i>, <i>Order tracking number</i>, <i>SKU</i>, <i>Customer info</i>) and:&nbsp; &nbsp;&nbsp;
+</p>
+<ul style="text-align: justify;">
+  <li>
+    View refund details
+  </li>
+  <li>
+    Edit refund details
+  </li>
+  <li>
+    Delete the refund
+  </li>
+  <li>
+    Action the refund
+  </li>
+</ul>
+<p style="text-align: justify;">
+  Once a refund is actioned, it will move from the <em>Actionable Refunds</em> tab to the <em>History</em> tab.&nbsp;
+</p>
+<h4 style="text-align: justify;" id="h4__947493839" data-has-heading-anchor="true">
+  Actioning a refund
+<a href="/articles/documentation/rma-refunds/a/h4__947493839" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rma-refunds/a/h4__947493839&#39;,this);"></a></h4>
+<p style="text-align: justify;">
+  Select this option if you are ready to pay the refund straight away.</p>
+<p style=""><img src="/resources/Storage/documentation/Screenshots/ProcessedOrders/Action-Refund-Action.png" alt="Actions - Refund - Action" class="size-75" loading="lazy"/></p>
+<p style="text-align: justify;">
+  Actioning a refund&nbsp;will add the refund to the order and mark it as actioned. A record of the refund will be found in the&nbsp;<b><em><a href="/articles/documentation/returns-refunds/a/h3_271951546" onclick="return n(&#39;!documentation/returns-refunds/a/h3_271951546&#39;,this);">History</a></em></b> tab.&nbsp;</p>
+<h3 style="" id="h3_107008172" data-has-heading-anchor="true">
+  <span class="fa fa-video icon-background-purple"></span>&nbsp;Video tutorials<a href="/articles/documentation/rma-refunds/a/h3_107008172" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rma-refunds/a/h3_107008172&#39;,this);"></a></h3>
+
+<p>
+  If you prefer a visual explanation,<font> this</font> video tutorial&nbsp;walks you through the <i>Refund Reasons&nbsp;</i>&nbsp;<font>feature</font>. It can help clarify how the <font>feature&nbsp;</font>works and answer any additional questions.
+</p>
+<ul>
+  <li><a href="https://www.youtube.com/watch?v=u2C9XHwiAss" target="_blank">Video 1 - How to tag refunds in Linnworks with the reason why the item(s) was refunded</a></li>
+
+  
+  <li><a href="https://linnlearn.com/#/online-courses/c3bef262-6872-4217-92c1-0b08ceaa8a17" target="_blank">Video 2 -&nbsp;Refunds, Returns, Resends, and Exchanges</a>&nbsp;<br/></li>
+
+  </ul>
+<p><font color="#ff0000"></font></p><h4 style="text-align: justify;" id="h4__412630584" data-has-heading-anchor="true">
+  See more:
+<a href="/articles/documentation/rma-refunds/a/h4__412630584" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/rma-refunds/a/h4__412630584&#39;,this);"></a></h4>
+<ul>
+  <li>
+    <a href="/articles/documentation/channels-order-refunds" onclick="return n(&#39;!documentation/channels-order-refunds&#39;,this);">Channels - Order Refunds</a>
+  </li>
+</ul><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

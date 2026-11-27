@@ -27,6 +27,56 @@ export { ProductVariant } from './domain/entities/product-variant.entity';
 
 // Domain Exceptions
 export { MasterProductNotFoundError } from './domain/exceptions/master-product-not-found.error';
+export { ProductVariantNotFoundError } from './domain/exceptions/product-variant-not-found.error';
+export { InvalidVariantCostError } from './domain/exceptions/invalid-variant-cost.error';
+
+// Bundle definitions and the pure component expansion (#3607, ADR-083)
+export type {
+  BundleComponent,
+  BundleDefinition,
+  BundleDefinitionVersion,
+  MultipackConfirmation,
+  ExpandableLine,
+  ComponentLineRef,
+  PhysicalLine,
+  LineExpansion,
+  BundleGiftDocumentForm,
+} from './domain/types/bundle.types';
+export {
+  COMPONENT_LINE_ID_SEPARATOR,
+  EMPTY_LINE_EXPANSION,
+  buildComponentLineId,
+  buildPackLineDefinitions,
+  componentLineIdsFor,
+  componentRefsFor,
+  expandBundleLines,
+  readLineExpansion,
+  BundleGiftDocumentFormValues,
+  BundleGiftSlotFormValues,
+  isBundleGiftDocumentForm,
+} from './domain/types/bundle.types';
+export type { BundleDefinitionRepositoryPort } from './domain/ports/bundle-definition-repository.port';
+export type {
+  IBundleMasterSyncService,
+  BundleReadingMaster,
+  MasterBundleComposition,
+  MasterBundleComponentPreview,
+} from './application/services/bundle-master-sync.service.interface';
+export type {
+  IBundleDefinitionService,
+  BundleComponentInput,
+} from './application/services/bundle-definition.service.interface';
+export {
+  BundleNestingError,
+  BundleNestingReasonValues,
+  BundleDefinitionNotFoundError,
+  BundleDefinitionInvalidError,
+  BundleDefinitionAlreadyExistsError,
+  BundleDefinitionConcurrentWriteError,
+  BundleMasterSyncRefusedError,
+  BundleMasterSyncRefusalReasonValues,
+} from './domain/exceptions/bundle-definition.errors';
+export type { BundleNestingReason } from './domain/exceptions/bundle-definition.errors';
 
 // Master-deletion event contract (#1599)
 export {
@@ -40,6 +90,7 @@ export {
 // Domain Utils
 export { normalizeBarcode, normalizeToEan13 } from './domain/utils/barcode-normalization';
 export { coverImageUrl } from './domain/utils/product-cover-image';
+export { resolveVariantDefaultImages } from './domain/utils/variant-images';
 
 // Application Services
 export { IProductsService } from './application/services/products.service.interface';
@@ -67,6 +118,8 @@ export {
   ProductUpdate,
   ProductVariantCreate,
   VariantPhysicalDimensionsFill,
+  VariantCost,
+  VariantCostFillResult,
   ProductListFilters,
   ProductVariantListFilters,
   ProductPagination,
@@ -74,6 +127,8 @@ export {
   PaginatedProductVariants,
   ProductStockFilter,
   ProductStockFilterValues,
+  ProductBundleFilter,
+  ProductBundleFilterValues,
   ProductListSortField,
   ProductListSortFieldValues,
   ProductListSortDirection,
@@ -92,6 +147,12 @@ export type {
 } from './domain/ports/capabilities/modified-product-lister.capability';
 export { isModifiedProductLister } from './domain/ports/capabilities/modified-product-lister.capability';
 export type { BulkProductReader } from './domain/ports/capabilities/bulk-product-reader.capability';
+export type {
+  BundleReader,
+  ExternalBundleComposition,
+  ExternalBundleComponent,
+} from './domain/ports/capabilities/bundle-reader.capability';
+export { isBundleReader } from './domain/ports/capabilities/bundle-reader.capability';
 export { isBulkProductReader } from './domain/ports/capabilities/bulk-product-reader.capability';
 
 // Neutral per-line tax rate (#2054, ADR-063). The vocabulary a ProductMaster
@@ -123,6 +184,16 @@ export type {
 } from './domain/ports/capabilities/product-tax-rate-reader.capability';
 export { isProductTaxRateReader } from './domain/ports/capabilities/product-tax-rate-reader.capability';
 
+// Neutral GPSR data a ProductMaster states about a product (EU 2023/988):
+// parties by value, never by platform id.
+export type {
+  GpsrAddress,
+  GpsrParty,
+  GpsrSafetyInformation,
+  ProductGpsr,
+} from './domain/types/product-gpsr.types';
+export { readProductGpsr } from './domain/types/product-gpsr.types';
+
 // Catalogue tax-rate coverage counts (#2054 / #2256) - named because they are
 // the return shape of two `IProductsService` methods a consumer must be able to
 // annotate.
@@ -153,3 +224,20 @@ export type { ITaxRateJournalService } from './application/services/tax-rate-jou
 
 
 
+
+// Bundle product creation at a master (#3935).
+export type {
+  IBundleProductCreationService,
+  BundleCreationTarget,
+  CreateBundleProductInput,
+  CreatedBundleProduct,
+} from './application/services/bundle-product-creation.service.interface';
+export type {
+  ProductCreator,
+  ProductCreationMode,
+} from './domain/ports/capabilities/product-creator.capability';
+export {
+  isProductCreator,
+  ProductCreationModeValues,
+} from './domain/ports/capabilities/product-creator.capability';
+export { BundleProductCreationRefusedError } from './domain/exceptions/bundle-definition.errors';

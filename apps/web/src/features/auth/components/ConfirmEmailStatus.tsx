@@ -26,21 +26,21 @@
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useConfirmEmail } from '../hooks/use-confirm-email';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { useMessages } from '../../../shared/i18n';
 
 interface ConfirmEmailStatusProps {
   token: string;
 }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
-}
-
 export function ConfirmEmailStatus({ token }: ConfirmEmailStatusProps): ReactElement {
   const { state, retry } = useConfirmEmail(token);
+  const auth = useMessages('auth');
+  const copy = auth.confirmEmail;
 
   if (state.status === 'success') {
     return (
@@ -48,13 +48,11 @@ export function ConfirmEmailStatus({ token }: ConfirmEmailStatusProps): ReactEle
         <span className="confirm-email__seal confirm-email__seal--success" aria-hidden="true">
           ✓
         </span>
-        <h2 className="confirm-email__heading">You&apos;re all set</h2>
-        <p className="confirm-email__message">
-          Your email is confirmed and your account is now active.
-        </p>
+        <h2 className="confirm-email__heading">{copy.successTitle}</h2>
+        <p className="confirm-email__message">{copy.successMessage}</p>
         <div className="confirm-email__actions">
           <Link className="button" to="/login">
-            Continue to sign in
+            {copy.continue}
           </Link>
         </div>
       </div>
@@ -67,14 +65,14 @@ export function ConfirmEmailStatus({ token }: ConfirmEmailStatusProps): ReactEle
         <span className="confirm-email__seal confirm-email__seal--error" aria-hidden="true">
           ✕
         </span>
-        <h2 className="confirm-email__heading">We couldn&apos;t confirm this link</h2>
-        <Alert tone="error">{getErrorMessage(state.error)}</Alert>
+        <h2 className="confirm-email__heading">{copy.failed}</h2>
+        <Alert tone="error">{describeApiError(state.error, 'auth')}</Alert>
         <div className="confirm-email__actions">
           <Link className="button" to="/login">
-            Back to sign in
+            {auth.common.backToSignIn}
           </Link>
           <Button type="button" tone="ghost" onClick={retry}>
-            Try again
+            {auth.common.tryAgain}
           </Button>
         </div>
       </div>
@@ -84,9 +82,9 @@ export function ConfirmEmailStatus({ token }: ConfirmEmailStatusProps): ReactEle
   return (
     <div className="confirm-email confirm-email--pending" aria-live="polite">
       <StatusBadge tone="info" pulse>
-        Confirming
+        {copy.confirming}
       </StatusBadge>
-      <p className="confirm-email__message">Confirming your email — this only takes a moment.</p>
+      <p className="confirm-email__message">{copy.confirmingMessage}</p>
     </div>
   );
 }

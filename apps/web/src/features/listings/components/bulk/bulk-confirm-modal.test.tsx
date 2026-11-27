@@ -48,6 +48,15 @@ function renderModal(props: Partial<Parameters<typeof BulkConfirmModal>[0]> = {}
 describe('BulkConfirmModal', () => {
   afterEach(cleanup);
 
+  it('should state the stock rule and consequence of sets right under the summary', () => {
+    renderModal({ bundleSummary: { sets: 2, packs: 1 }, alreadyListedCount: 1, alreadyListedBundleCount: 1 });
+    const alert = screen.getByTestId('bundle-confirm-summary');
+    expect(alert).toHaveTextContent('2 sets');
+    expect(alert).toHaveTextContent('whole sets can be assembled');
+    expect(alert).toHaveTextContent('reduces the stock of its components');
+    expect(screen.getByText(/including 1 set/)).toBeInTheDocument();
+  });
+
   it('disables the Create offers submit for a demo read-only viewer', () => {
     const { onConfirm } = renderModal({ demoReadOnly: true });
 
@@ -116,6 +125,36 @@ describe('BulkConfirmModal', () => {
   it('omits the not-listed clause when nothing is skipped', () => {
     renderModal({ excludedCount: 0, blockedCount: 0, alreadyListedCount: 0 });
     expect(screen.queryByText(/not listed:/i)).not.toBeInTheDocument();
+  });
+
+  // #3851: every selected variant already on the destination used to read
+  // "List 0 of 1 selected variants?" with a live Create button that did nothing.
+  it('should refuse and say why when every selected variant is already listed', () => {
+    const { onConfirm } = renderModal({ offerCount: 0, productCount: 0, alreadyListedCount: 1 });
+
+    expect(
+      screen.getByRole('heading', { name: 'No offers to create on My Allegro' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /list 0 of/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/the selected variant cannot be listed: 1 already on my allegro\./i),
+    ).toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: /create offers/i });
+    expect(submit).toBeDisabled();
+    fireEvent.click(submit);
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.queryByText('Publish immediately')).not.toBeInTheDocument();
+    expect(screen.queryByText(/idempotency protected/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+  });
+
+  it('should name every reason when no variant can be listed', () => {
+    renderModal({ offerCount: 0, productCount: 0, excludedCount: 2, blockedCount: 1 });
+
+    expect(
+      screen.getByText(/none of the 3 selected variants can be listed/i),
+    ).toHaveTextContent('1 still needs attention and 2 switched off');
+    expect(screen.getByRole('button', { name: /create offers/i })).toBeDisabled();
   });
 
   it('shows the mixed-publish warning when a listing has publish + draft variants', () => {

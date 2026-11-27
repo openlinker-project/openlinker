@@ -61,6 +61,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Navigate, useNavigate } from 'react-router-dom';
 
 import { useSession } from '../../shared/auth/use-session';
+import { useMessages } from '../../shared/i18n';
 import { useDensity } from '../../shared/ui/density-toggle';
 import { useToast } from '../../shared/ui/toast-provider';
 import { ShellTopbar } from '../app-shell';
@@ -72,6 +73,7 @@ export function BenchAppLayout({ children }: PropsWithChildren): ReactElement {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const copy = useMessages('app');
   useDensity();
 
   const handleLogout = useCallback((): void => {
@@ -81,10 +83,10 @@ export function BenchAppLayout({ children }: PropsWithChildren): ReactElement {
       } finally {
         queryClient.clear();
         void navigate('/login', { replace: true });
-        showToast({ tone: 'info', description: 'You have been logged out.' });
+        showToast({ tone: 'info', description: copy.shell.loggedOut });
       }
     })();
-  }, [clearSession, navigate, queryClient, showToast]);
+  }, [clearSession, navigate, queryClient, showToast, copy]);
 
   // A signed-in account still owing its one-time-password change (#3456) must
   // not mount the bench: the API refuses every bench read with 403

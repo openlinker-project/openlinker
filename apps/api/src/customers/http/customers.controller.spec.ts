@@ -47,6 +47,7 @@ describe('CustomersController', () => {
   beforeEach(async () => {
     const mockRepository: jest.Mocked<CustomerProjectionRepositoryPort> = {
       findById: jest.fn(),
+      findByIds: jest.fn(),
       findByEmailHash: jest.fn(),
       findMany: jest.fn(),
       findManyRows: jest.fn(),
@@ -56,6 +57,8 @@ describe('CustomersController', () => {
       upsertAddress: jest.fn(),
       findDestinationAddressMapping: jest.fn(),
       upsertDestinationAddressMapping: jest.fn(),
+      clearPersonalData: jest.fn(),
+      redactPersonalDataLastSeenBefore: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -132,6 +135,19 @@ describe('CustomersController', () => {
 
       await expect(controller.getCustomer('nonexistent')).rejects.toThrow(NotFoundException);
     });
+
+    it('should send CUSTOMER_NOT_FOUND with the customer id (#3865)', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      const error = (await controller
+        .getCustomer('nonexistent')
+        .catch((e: unknown) => e)) as NotFoundException;
+
+      expect(error.getResponse()).toMatchObject({
+        code: 'CUSTOMER_NOT_FOUND',
+        params: { customerId: 'nonexistent' },
+      });
+    });
   });
 
   describe('the two-stage read (#2944)', () => {
@@ -178,5 +194,4 @@ describe('CustomersController', () => {
       expect(counted).toEqual({ total: 42 });
     });
   });
-
 });

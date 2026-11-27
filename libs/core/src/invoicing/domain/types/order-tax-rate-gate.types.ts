@@ -14,6 +14,7 @@
  * @module libs/core/src/invoicing/domain/types
  */
 import { splitShippingAcrossRates } from '@openlinker/core/sales-documents';
+import type { SalesDocumentBlockParams } from '@openlinker/core/sales-documents';
 
 /** The two fields the gate reads off an order line. */
 export interface TaxRateGateLine {
@@ -93,6 +94,23 @@ export interface TaxRateGateBasketLine extends TaxRateGateLine {
   gross: number;
 }
 
+/** Optional knobs of {@link findOrderTaxRateGap}. */
+export interface FindOrderTaxRateGapOptions {
+  /**
+   * The order currency's minor-unit exponent, so the gate rounds the split the
+   * way the composer will (#3905). Absent keeps the default of two decimals.
+   */
+  minorUnitExponent?: number;
+  /** True when the resolved delivery line needs no rate split (`fixed` / `spread`). */
+  skipShippingSplit?: boolean;
+  /**
+   * The delivery rate the source reported (`order.totals.shippingTaxRate`). When
+   * set, the shipping charge has a rate to sit at even if the basket cannot
+   * state one, so the split is not a reason to hold the document.
+   */
+  sourceShippingTaxRate?: string;
+}
+
 /**
  * The ORDER-level gate: can a document state what tax was charged, for every
  * line it will actually compose?
@@ -113,14 +131,24 @@ export interface TaxRateGateBasketLine extends TaxRateGateLine {
  */
 export function findOrderTaxRateGap(
   lines: readonly TaxRateGateBasketLine[],
-  shipping: number
+  shipping: number,
+  options: FindOrderTaxRateGapOptions = {}
 ): MissingTaxRateFinding | null {
   const missing = findMissingTaxRate(lines);
   if (missing) return missing;
 
+  // A `fixed` or `spread` delivery (ADR-082 decision 6) never asks the basket
+  // which rate the shipping sits at, so the split cannot be the reason to hold
+  // the document. The item rates above are still checked.
+  if (options.skipShippingSplit === true) return null;
+  if (options.sourceShippingTaxRate !== undefined && options.sourceShippingTaxRate.trim() !== '') {
+    return null;
+  }
+
   const parts = splitShippingAcrossRates(
     shipping,
-    lines.map((line) => ({ taxRate: line.taxRate?.trim() ?? null, gross: line.gross }))
+    lines.map((line) => ({ taxRate: line.taxRate?.trim() ?? null, gross: line.gross })),
+    options.minorUnitExponent
   );
   if (parts !== null) return null;
 
@@ -140,6 +168,20 @@ export function findOrderTaxRateGap(
  * PII-free block detail. Ids and counts only - it reaches an operator screen
  * verbatim and is logged beside a PII-safe envelope.
  */
+/**
+ * The finding as `SalesDocumentBlockParams` (#3866): the values
+ * {@link describeMissingTaxRate} states, for the frontend to phrase in the
+ * operator's language.
+ */
+export function missingTaxRateParams(finding: MissingTaxRateFinding): SalesDocumentBlockParams {
+  return {
+    taxRateScope: finding.scope ?? 'lines',
+    lineCount: finding.lineCount,
+    totalLines: finding.totalLines,
+    ...(finding.firstLineRef ? { firstLineRef: finding.firstLineRef } : {}),
+  };
+}
+
 export function describeMissingTaxRate(finding: MissingTaxRateFinding): string {
   if (finding.scope === 'shipping') {
     // No product to name: every product line has a rate. What is missing is a

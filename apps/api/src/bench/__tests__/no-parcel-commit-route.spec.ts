@@ -59,18 +59,28 @@ const BENCH_HTTP_ROOT = resolve(__dirname, '..', 'http');
  * clearing `completedAt` alone while every scan and `parcelClosedAt` stand,
  * and it exists because a completion was otherwise a one-way door whose only
  * exit was `reopen` - which unpacks a box that was packed correctly.
+ * `buyer-note/acknowledge` (#3538, D12) records who read the buyer's note at
+ * the bench, per parcel. It is a fact about a note and never about the box:
+ * it touches no scan and no `parcelClosedAt`, and nothing waits on it.
  * `label/replace` (#3654) is a shipping write, not a packing one: it voids the
  * label already on the box and buys one for the new parcel size, and never
- * touches `parcelClosedAt` or any scan. All listed as deliberate writes rather
- * than silently exempted from the guard this file exists to be.
+ * touches `parcelClosedAt` or any scan. `source-change/taken-out` (#3961) is the
+ * packer confirming they took out units the shop no longer wants: it voids
+ * that line's surplus scans and re-runs the source-change reconcile. When that
+ * leaves the box exactly full the box closes, as a CONSEQUENCE of the count
+ * matching, the same way the last scan closes it - never because a control
+ * asked it to. All listed as deliberate writes rather than silently exempted
+ * from the guard this file exists to be.
  */
 const EXPECTED_BENCH_WRITES = [
+  'POST bench/work/:workId/buyer-note/acknowledge',
   'POST bench/work/:workId/claim',
   'POST bench/work/:workId/complete',
   'POST bench/work/:workId/complete/undo',
   'POST bench/work/:workId/label/replace',
   'POST bench/work/:workId/presence',
   'POST bench/work/:workId/reopen',
+  'POST bench/work/:workId/source-change/taken-out',
   'POST bench/work/:workId/verifications',
   'POST bench/work/:workId/verifications/undo',
   'POST bench/work/claim-next',

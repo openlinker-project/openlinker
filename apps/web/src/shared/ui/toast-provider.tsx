@@ -7,13 +7,18 @@ import {
   useRef,
   useState,
   type PropsWithChildren,
+  type ReactNode,
   type ReactElement,
 } from 'react';
 import type { AlertTone } from './alert';
+import { useMessages } from '../i18n/use-messages';
+import { interpolate } from '../i18n/interpolate';
 
 export interface ToastAction {
   label: string;
   onClick: () => void;
+  /** A small icon drawn before the label. Decorative: the label names the action. */
+  icon?: ReactNode;
 }
 
 interface Toast {
@@ -21,17 +26,29 @@ interface Toast {
   description: string;
   durationMs: number;
   id: number;
+  testId?: string;
   title?: string;
   tone: AlertTone;
+  variant?: ToastVariant;
 }
+
+/**
+ * `inverse` is a dark pill that drops in under the topbar and carries no
+ * dismiss button: the release center's confirmation toast (ADR-086). Every
+ * other caller keeps the default tone-accented card in the corner.
+ */
+export type ToastVariant = 'inverse';
 
 interface ShowToastOptions {
   /** An inline action (e.g. "Undo") rendered alongside the dismiss button (#3148). */
   action?: ToastAction;
   description: string;
   durationMs?: number;
+  /** Test-introspection hook: lands on the toast root as `data-testid`. */
+  testId?: string;
   title?: string;
   tone?: AlertTone;
+  variant?: ToastVariant;
 }
 
 interface ToastContextValue {
@@ -51,6 +68,7 @@ const IS_TEST_ENV = import.meta.env.MODE === 'test';
 const TEST_ENV_DURATION_MS = 2_147_483_647;
 
 export function ToastProvider({ children }: PropsWithChildren): ReactElement {
+  const copy = useMessages('ui').toast;
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextIdRef = useRef(0);
 
@@ -59,12 +77,12 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
   }, []);
 
   const showToast = useCallback(
-    ({ action, description, durationMs = 4000, title, tone = 'info' }: ShowToastOptions) => {
+    ({ action, description, durationMs = 4000, testId, title, tone = 'info', variant }: ShowToastOptions) => {
       const id = nextIdRef.current++;
       const effectiveDurationMs = IS_TEST_ENV ? TEST_ENV_DURATION_MS : durationMs;
       setToasts((current) => [
         ...current,
-        { action, description, durationMs: effectiveDurationMs, id, title, tone },
+        { action, description, durationMs: effectiveDurationMs, id, testId, title, tone, variant },
       ]);
     },
     [],
@@ -80,7 +98,8 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
         {toasts.map((toast) => (
           <RadixToast.Root
             key={toast.id}
-            className={`toast toast--${toast.tone}`}
+            className={`toast toast--${toast.tone}${toast.variant ? ` toast--${toast.variant}` : ''}`}
+            data-testid={toast.testId}
             duration={toast.durationMs}
             onOpenChange={(open) => {
               if (!open) removeToast(toast.id);
@@ -94,26 +113,34 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
                 {toast.description}
               </RadixToast.Description>
             </div>
-            {toast.action ? (
-              <RadixToast.Action asChild altText={toast.action.label}>
-                <button
-                  type="button"
-                  className="toast__action"
-                  onClick={() => {
-                    toast.action?.onClick();
-                    removeToast(toast.id);
-                  }}
+            <div className="toast__controls">
+              {toast.action ? (
+                <RadixToast.Action asChild altText={toast.action.label}>
+                  <button
+                    type="button"
+                    className="toast__action"
+                    onClick={() => {
+                      toast.action?.onClick();
+                      removeToast(toast.id);
+                    }}
+                  >
+                    {toast.action.icon ? <>{toast.action.icon} </> : null}
+                    {toast.action.label}
+                  </button>
+                </RadixToast.Action>
+              ) : null}
+              {toast.variant === 'inverse' ? null : (
+                <RadixToast.Close
+                  aria-label={interpolate(copy.dismissNamed, {
+                    title: toast.title ?? copy.notification,
+                  })}
+                  className="toast__dismiss"
                 >
-                  {toast.action.label}
-                </button>
-              </RadixToast.Action>
-            ) : null}
-            <RadixToast.Close
-              aria-label={`Dismiss ${toast.title ?? 'notification'}`}
-              className="toast__dismiss"
-            >
-              Dismiss
-            </RadixToast.Close>
+                  <span aria-hidden="true">&times;</span>
+                  <span className="sr-only">{copy.dismiss}</span>
+                </RadixToast.Close>
+              )}
+            </div>
           </RadixToast.Root>
         ))}
         <RadixToast.Viewport className="toast-region" />

@@ -20,6 +20,10 @@
  * @module apps/api/test/integration/orders
  */
 import {
+  FULFILLMENT_ROUTING_SERVICE_TOKEN,
+  type IFulfillmentRoutingService,
+} from '@openlinker/core/mappings';
+import {
   ORDER_RECORD_SERVICE_TOKEN,
   type IOrderRecordService,
   type Order,
@@ -146,6 +150,47 @@ describe('Order packed fact (#2287)', () => {
       .delete('/v1/orders/ol_order_does_not_exist/packed')
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
+  });
+
+  // #2072 — packing is orthogonal to fulfilment routing. `FulfillmentProcessorKind`
+  // says who generates the label, not whose warehouse packs the box, and
+  // `omp_fulfilled` (the default: the destination shop ships with its own
+  // carrier) is the COMMON case — a merchant packing in their own warehouse
+  // while PrestaShop brokers the label.
+  it('marks and clears an order packed identically when its routing is omp_fulfilled', async () => {
+    const sourceId = await seedOrder();
+    const routing = harness
+      .getApp()
+      .get<IFulfillmentRoutingService>(FULFILLMENT_ROUTING_SERVICE_TOKEN);
+    const query = { sourceConnectionId: sourceId, sourceDeliveryMethodId: null };
+
+    // No rule is configured, so this is the default topology, not a rule hit.
+    const before = await routing.resolve(query);
+    expect(before.processorKind).toBe('omp_fulfilled');
+    expect(before.source).toBe('default');
+
+    const http = harness.getHttp();
+    const token = await loginAsAdmin(http, harness.getDataSource());
+
+    const marked = await http
+      .post(`/v1/orders/${ORDER_ID}/packed`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(marked.body.packedAt).toEqual(expect.any(String));
+    expect(marked.body.packedByUserId).toEqual(expect.any(String));
+
+    // Packing did not move the routing decision: it is a fact beside it.
+    await expect(routing.resolve(query)).resolves.toMatchObject({
+      processorKind: 'omp_fulfilled',
+      source: 'default',
+    });
+
+    const cleared = await http
+      .delete(`/v1/orders/${ORDER_ID}/packed`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(cleared.body.packedAt).toBeNull();
+    expect(cleared.body.packedByUserId).toBeNull();
   });
 
   it('preserves the packed fact across a re-ingestion (toOrm exclusion)', async () => {

@@ -12,6 +12,7 @@
  *
  * @module libs/core/src/inventory/application/services
  */
+import type { ComponentLineRef } from '@openlinker/core/products';
 import type {
   InventorySaleDecrementReason,
   InventorySaleDecrementStatus,
@@ -29,6 +30,49 @@ export interface SaleReversalLineOutcome {
 
 export interface ReverseSaleForOrderResult {
   readonly lines: readonly SaleReversalLineOutcome[];
+}
+
+/** One line's partial give-back for an operator order edit (#3542). */
+export interface ReverseLineQuantityInput {
+  readonly internalOrderId: string;
+  readonly orderLineId: string;
+  /** Units the line was lowered by; the call gives back at most what was decremented. */
+  readonly units: number;
+  /**
+   * The line's components when it is a bundle line (#3607): the decrements sit
+   * on the component lines, so each is given back `units * perUnit`.
+   */
+  readonly components?: readonly ComponentLineRef[];
+  /** The order change that made the edit; the idempotency identity of the act. */
+  readonly changeId: string;
+}
+
+/**
+ * Give back whatever a line's decrements took beyond `targetUnits` (#3961).
+ *
+ * Unlike {@link ReverseLineQuantityInput} it carries no unit delta: the amount
+ * is read from the ledger (decremented, less everything already given back,
+ * less the target), so a second call for a line an operator edit already
+ * lowered gives back nothing. That is what makes it safe to run on every
+ * ingestion of an order the source changed.
+ */
+export interface ReverseLineToTargetInput {
+  readonly internalOrderId: string;
+  readonly orderLineId: string;
+  /** Units the line should end at in the master's ledger. */
+  readonly targetUnits: number;
+}
+
+export interface ReverseLineQuantityResult {
+  /**
+   * `restored` - the master was raised (or a replay found it already was);
+   * `not-applicable` - nothing was ever decremented for the line (OMS off, not
+   * routed, storefront order), so there is nothing to give back;
+   * `failed` - a decrement exists but the master did not take the give-back.
+   */
+  readonly status: 'restored' | 'not-applicable' | 'failed';
+  readonly units: number;
+  readonly detail: string | null;
 }
 
 export interface IInventorySaleReversalService {
@@ -49,4 +93,18 @@ export interface IInventorySaleReversalService {
    * reversal row and never raises the master's stock twice.
    */
   reverseForOrder(internalOrderId: string): Promise<ReverseSaleForOrderResult>;
+
+  /**
+   * Give back part of ONE line's sale decrement (#3542): the units an operator
+   * lowered the line by, in the product master that owns it.
+   *
+   * Reverses only units actually decremented for the line, never more, and never
+   * units a whole-order reversal or an earlier edit already returned. Keyed
+   * `edit:{changeId}:{orderLineId}`, so a retry is a no-op. A later whole-order
+   * cancel reverses only what remains.
+   */
+  reverseLineQuantity(input: ReverseLineQuantityInput): Promise<ReverseLineQuantityResult>;
+
+  /** See {@link ReverseLineToTargetInput}. Same statuses as {@link reverseLineQuantity}. */
+  reverseLineToTarget(input: ReverseLineToTargetInput): Promise<ReverseLineQuantityResult>;
 }

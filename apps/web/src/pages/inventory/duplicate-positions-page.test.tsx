@@ -8,6 +8,8 @@ import {
   createAuthenticatedSessionAdapter,
 } from '../../test/test-utils';
 import { DuplicatePositionsPage } from './duplicate-positions-page';
+import { ApiError } from '../../shared/api/api-error';
+import { getMessages, interpolate } from '../../shared/i18n';
 import type {
   DuplicatePositionGroup,
   DuplicatePositionsReport,
@@ -83,7 +85,7 @@ describe('DuplicatePositionsPage', () => {
   it('should show an error state with retry when the report fails to load', async () => {
     const apiClient = createMockApiClient({
       inventory: {
-        getDuplicatePositions: vi.fn().mockRejectedValue(new Error('Network error')),
+        getDuplicatePositions: vi.fn().mockRejectedValue(new ApiError('Network error', 0, {})),
         getProvenanceBackfillStatus: vi.fn().mockResolvedValue(buildProvenanceStatus()),
       },
     });
@@ -96,14 +98,14 @@ describe('DuplicatePositionsPage', () => {
     expect(
       await screen.findByText('Unable to load the duplicate-position report')
     ).toBeInTheDocument();
-    expect(screen.getByText('Network error')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.network)).toBeInTheDocument();
   });
 
   it('should show an error state when the provenance-backfill-status read fails', async () => {
     const apiClient = createMockApiClient({
       inventory: {
         getDuplicatePositions: vi.fn().mockResolvedValue(buildReport()),
-        getProvenanceBackfillStatus: vi.fn().mockRejectedValue(new Error('Forbidden')),
+        getProvenanceBackfillStatus: vi.fn().mockRejectedValue(new ApiError('Forbidden', 403, {})),
       },
     });
 
@@ -115,7 +117,7 @@ describe('DuplicatePositionsPage', () => {
     expect(
       await screen.findByText('Unable to load the duplicate-position report')
     ).toBeInTheDocument();
-    expect(screen.getByText('Forbidden')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status['403'])).toBeInTheDocument();
   });
 
   it('should retry BOTH reads when Retry is clicked', async () => {
@@ -282,7 +284,7 @@ describe('DuplicatePositionsPage', () => {
     expect(await screen.findByText('Stuck')).toBeInTheDocument();
     expect(screen.queryByText('Pending')).not.toBeInTheDocument();
     expect(
-      screen.getByText(/has stopped running\. It will not resume on its own — ask an engineer/)
+      screen.getByText(/has stopped running\. It will not resume on its own - ask an engineer/)
     ).toBeInTheDocument();
   });
 
@@ -290,7 +292,7 @@ describe('DuplicatePositionsPage', () => {
     const getDuplicatePositions = vi
       .fn()
       .mockResolvedValueOnce(buildReport())
-      .mockRejectedValueOnce(new Error('Refresh network error'));
+      .mockRejectedValueOnce(new ApiError('Refresh network error', 0, {}));
     const getProvenanceBackfillStatus = vi.fn().mockResolvedValue(buildProvenanceStatus());
     const apiClient = createMockApiClient({
       inventory: { getDuplicatePositions, getProvenanceBackfillStatus },
@@ -314,7 +316,11 @@ describe('DuplicatePositionsPage', () => {
     // an untested distinction).
     expect(await screen.findByText('Refresh failed')).toBeInTheDocument();
     expect(
-      screen.getByText(/Refresh network error — showing the last successful scan below\./)
+      screen.getByText(
+        interpolate(getMessages('inventory').duplicatePositionsPage.refreshFailedBody, {
+          error: getMessages('errors').status.network,
+        })
+      )
     ).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.queryByText('Unable to load the duplicate-position report')).not.toBeInTheDocument();
@@ -733,7 +739,7 @@ describe('DuplicatePositionsPage', () => {
     await userEvent.click(toggle);
 
     expect(
-      screen.getByText(/Reservation risk — do not blindly follow the survivor badge/)
+      screen.getByText(/Reservation risk - do not blindly follow the survivor badge/)
     ).toBeInTheDocument();
     // The badge's icon is wrapped in its own aria-hidden span (a11y — the
     // glyph must not be read aloud literally by a screen reader), so the
@@ -820,7 +826,7 @@ describe('DuplicatePositionsPage', () => {
     // asserting the neutral note, not the "Currently distorting
     // available-to-promise" alert a naive `liveRowCount > 0` gate would show
     // for this exact shape.
-    expect(screen.getByText('One live row — no oversell risk today.')).toBeInTheDocument();
+    expect(screen.getByText('One live row - no oversell risk today.')).toBeInTheDocument();
     expect(screen.queryByText('Currently distorting available-to-promise.')).not.toBeInTheDocument();
     // The table's own badge must agree with the detail panel.
     expect(screen.getByText('1 live')).toBeInTheDocument();

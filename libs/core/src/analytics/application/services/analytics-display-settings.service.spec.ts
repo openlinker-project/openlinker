@@ -40,6 +40,7 @@ describe('AnalyticsDisplaySettingsService', () => {
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: false,
         netGrossBasis: 'gross',
+        trackMargin: true,
         updatedAt: null,
         updatedByUserId: null,
       });
@@ -48,7 +49,7 @@ describe('AnalyticsDisplaySettingsService', () => {
     it('returns the persisted row verbatim', async () => {
       const updatedAt = new Date('2026-08-20T10:00:00Z');
       repository.findSettings.mockResolvedValue(
-        new AnalyticsDisplaySettings('EUR', 'order-date', true, 'net', updatedAt, 'user-9')
+        new AnalyticsDisplaySettings('EUR', 'order-date', true, 'net', false, updatedAt, 'user-9')
       );
 
       const view = await service.getSettings();
@@ -58,6 +59,7 @@ describe('AnalyticsDisplaySettingsService', () => {
         rateBasis: 'order-date',
         includeBackfilledTaxRatesInNetSales: true,
         netGrossBasis: 'net',
+        trackMargin: false,
         updatedAt,
         updatedByUserId: 'user-9',
       });
@@ -67,7 +69,7 @@ describe('AnalyticsDisplaySettingsService', () => {
   describe('updateSettings', () => {
     it('delegates to the repository with the resolved actor', async () => {
       repository.upsertSettings.mockResolvedValue(
-        new AnalyticsDisplaySettings('PLN', 'current', false, 'gross', new Date(), 'user-1')
+        new AnalyticsDisplaySettings('PLN', 'current', false, 'gross', true, new Date(), 'user-1')
       );
 
       await service.updateSettings(
@@ -93,7 +95,7 @@ describe('AnalyticsDisplaySettingsService', () => {
 
     it('passes a null actor for a system-driven write', async () => {
       repository.upsertSettings.mockResolvedValue(
-        new AnalyticsDisplaySettings(null, 'current', false, 'gross', new Date(), null)
+        new AnalyticsDisplaySettings(null, 'current', false, 'gross', true, new Date(), null)
       );
 
       await service.updateSettings({

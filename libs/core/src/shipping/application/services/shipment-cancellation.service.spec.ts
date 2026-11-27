@@ -67,6 +67,8 @@ describe('ShipmentCancellationService', () => {
     repository = {
       create: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
+      listConnectionIds: jest.fn(),
       findById: jest.fn(),
       findByOrderId: jest.fn(),
       findActiveByOrderId: jest.fn(),
@@ -99,6 +101,7 @@ describe('ShipmentCancellationService', () => {
     };
     service = new ShipmentCancellationService(repository, integrations, {
       recompute: jest.fn(),
+      announceShippedWithoutTracking: jest.fn(),
     });
   });
 

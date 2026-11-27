@@ -44,6 +44,11 @@ export const tokens = {
   // ── Layout heights (#2227) ──────────────────────────────────────
   // The two pinned strips at the top of the shell.
   'shell-topbar-height': 'var(--shell-topbar-height)',
+  'ui-zoom': 'var(--ui-zoom)',
+  'ui-vh': 'var(--ui-vh)',
+  'ui-vw': 'var(--ui-vw)',
+  'ui-dvh': 'var(--ui-dvh)',
+  'layout-max-width': 'var(--layout-max-width)',
   'demo-banner-height': 'var(--demo-banner-height)',
 
   // ── Radii ───────────────────────────────────────────────────────
@@ -72,6 +77,7 @@ export const tokens = {
   'ease-out': 'var(--ease-out)',
   'ease-standard': 'var(--ease-standard)',
   'ease-in-out': 'var(--ease-in-out)',
+  'ease-spring': 'var(--ease-spring)',
 
   // ── Tracking (letter-spacing) ───────────────────────────────────
   'tracking-tight': 'var(--tracking-tight)',
@@ -180,6 +186,10 @@ export const tokens = {
   'status-disabled-soft': 'var(--status-disabled-soft)',
   'status-disabled-border': 'var(--status-disabled-border)',
   'status-disabled-fg': 'var(--status-disabled-fg)',
+
+  // ── Login stage (#4029) ─────────────────────────────────────────
+  'login-brand-word': 'var(--login-brand-word)',
+  'login-backdrop-opacity': 'var(--login-backdrop-opacity)',
 } as const satisfies Record<string, `var(--${string})`>;
 
 /**

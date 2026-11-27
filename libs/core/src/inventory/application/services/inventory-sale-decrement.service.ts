@@ -68,6 +68,7 @@ import {
 } from '@openlinker/core/integrations';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
+import { isRequestNotSentError } from '@openlinker/shared/http';
 import { Logger } from '@openlinker/shared/logging';
 
 import { InventoryItem } from '../../domain/entities/inventory-item.entity';
@@ -83,6 +84,7 @@ import {
   type SaleDecrementSettlement,
 } from '../../domain/ports/inventory-sale-decrement-repository.port';
 import type { InventoryOwnerPosition } from '../../domain/types/inventory.types';
+import type { InventoryMovementAttribution } from '../../domain/types/inventory-movement.types';
 import {
   buildSaleDecrementIdempotencyKey,
   buildUnresolvedSaleDecrementKey,
@@ -108,9 +110,7 @@ import type {
 } from './inventory-sale-decrement.service.interface';
 
 /** An owner's adapter, or the reason it could not be built. */
-type AdapterResolution =
-  | { readonly adapter: InventoryMasterPort }
-  | { readonly error: string };
+type AdapterResolution = { readonly adapter: InventoryMasterPort } | { readonly error: string };
 
 @Injectable()
 export class InventorySaleDecrementService implements IInventorySaleDecrementService {
@@ -301,9 +301,25 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
         if (!(await this.consumeHold(input.orderId, line.orderLineId))) {
           holdCloseFailedLineIds.push(line.orderLineId);
         }
-        await this.mirrorResult(resolution.position, owner, settlement.resultingQuantity, line);
+        await this.mirrorResult(
+          resolution.position,
+          owner,
+          settlement.resultingQuantity,
+          line,
+          input.orderId
+        );
       } else if (settlement.status === 'in_doubt') {
         await this.refreshFromMaster(adapter.adapter, resolution.position, owner, line);
+      }
+
+      if (settlement.status === 'retryable' && settlement.reason === 'request-not-sent') {
+        // A persistently wrong host keeps landing here until the job attempts
+        // run out, so make each occurrence visible to an operator.
+        this.logger.warn(
+          `Sale decrement request never left the process, will retry: orderId=${input.orderId} ` +
+            `workId=${input.workId} line=${line.orderLineId} owner=${owner} ` +
+            `connection=${owner} reason=request-not-sent`
+        );
       }
 
       if (settlement.status !== 'applied' && settlement.status !== 'deduplicated') {
@@ -357,6 +373,13 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
         // so this is a refusal, not an unknown.
         return this.failed('blocked', 'master-product-not-found', detail);
       }
+      if (isRequestNotSentError(error)) {
+        // The adapter's HTTP client proved the request never left (DNS failure,
+        // connection refused), so the master applied nothing and the line is
+        // safe to claim again - the one `in_doubt` exception (#4041). The mark
+        // is set only when EVERY attempt the client made was provably unsent.
+        return this.failed('retryable', 'request-not-sent', detail);
+      }
       return this.failed('in_doubt', 'master-error', detail);
     }
 
@@ -409,7 +432,7 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
   }
 
   private failed(
-    status: 'blocked' | 'in_doubt',
+    status: 'blocked' | 'in_doubt' | 'retryable',
     reason: SaleDecrementSettlement['reason'],
     detail: string
   ): SaleDecrementSettlement {
@@ -474,7 +497,8 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     position: InventoryOwnerPosition,
     owner: string,
     resultingQuantity: number | null,
-    line: SaleDecrementLineInput
+    line: SaleDecrementLineInput,
+    orderId: string
   ): Promise<void> {
     if (resultingQuantity === null) {
       this.logger.warn(
@@ -489,7 +513,15 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     // one stale number. Bounded: #2321 never subtracts `reservedQuantity`
     // from ATP, so the consequence is display-only, unlike `refreshFromMaster`
     // below (used on the `in_doubt` path), which re-reads both from one call.
-    await this.writeMirror(position, owner, resultingQuantity, position.reservedQuantity, line);
+    // The one write where OpenLinker itself lowers the master's stock, so it is
+    // the `sale` ledger row (#3565, G-1). The re-read in `refreshFromMaster`
+    // stays an unattributed `master_sync`: it records what the master says, not
+    // what this decrement did.
+    await this.writeMirror(position, owner, resultingQuantity, position.reservedQuantity, line, {
+      reason: line.movementReason ?? 'sale',
+      sourceKind: 'order',
+      sourceRef: orderId,
+    });
   }
 
   /**
@@ -528,7 +560,8 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     owner: string,
     availableQuantity: number,
     reservedQuantity: number,
-    line: SaleDecrementLineInput
+    line: SaleDecrementLineInput,
+    movement?: InventoryMovementAttribution
   ): Promise<void> {
     try {
       await this.inventoryService.setInventory(
@@ -543,7 +576,8 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
           false,
           owner
         ),
-        owner
+        owner,
+        movement
       );
     } catch (error) {
       // The master is already lowered; only the mirror and its propagation are

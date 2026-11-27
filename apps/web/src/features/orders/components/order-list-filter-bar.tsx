@@ -1,47 +1,36 @@
 /**
- * Orders list filter bar (#3507, mockup m4b-orders-filters)
+ * Orders list filter bar (#3507, redesigned #4026)
  *
- * The search + filter surface above the orders table, replacing the
- * eight-control toolbar and its three chip rows:
+ * The toolbar above the orders table:
  *
- *   [⌕ Search …  /] [Filters (n) ▾]                               69 results
- *   Source Allegro ×   Tag ● VIP ×   Clear all          ← only when narrowed
- *   NEEDS A LOOK [Ship-by ≤ 24h] [Sales docs blocked 30] … │ PHASE [Ready 183] …
+ *   [⌕ Search …  /] [Stage ⌄|Source ⌄|Ship-by ⌄|≡ More (n) F]   69 results  Sort: Newest first ▼
+ *   Source Allegro ×   Tag ● VIP ×   Clear all          ← whenever anything is applied
  *
- * "Filters" discloses an accordion `FilterPanel` (four groups) on a desktop and
- * a bottom `FilterSheet` with `<details>` sections on a phone. Nothing here
- * owns filter state: every control writes the URL through
- * `useOrderListFilters` immediately, exactly as the old toolbar did — the panel
- * is a better ORGANISATION of the same controls, so the URL contract, the
- * export "current view" and every URL-based test are unchanged.
+ * Stage, Source and Ship-by are pinned single-choice filters with counts. "More"
+ * opens every filter in a `SidePanel` (a side sheet on a desktop, a bottom
+ * sheet on a phone) grouped into the same sections the old panel had. The
+ * applied-filter pills stay visible whatever is open. Nothing here owns filter
+ * state: every control writes the URL through `useOrderListFilters`, so the URL
+ * contract, the export "current view" and URL-based tests are unchanged.
  *
- * Keyboard: `/` focuses search, `F` toggles the panel (both ignored while
- * typing in a field, the guard the page's `R` shortcut uses).
+ * Keyboard: `/` focuses search, `F` toggles the filter panel (both ignored
+ * while typing in a field, the guard the page's `R` shortcut uses).
  *
  * @module apps/web/src/features/orders/components
  */
-import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useId, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { ActiveFilterChips, type ActiveFilterChip } from '../../../shared/ui/active-filter-chips';
 import { Button } from '../../../shared/ui/button';
-import { Chip, type ChipTone } from '../../../shared/ui/chip';
 import { FilterCheck, FilterChecks } from '../../../shared/ui/filter-check';
-import {
-  FilterField,
-  FilterGroup,
-  FilterPanel,
-  FilterPanelFooter,
-  FilterRange,
-} from '../../../shared/ui/filter-panel';
-import { FilterSection, FilterSheet } from '../../../shared/ui/filter-sheet';
-import { FilterToggleButton } from '../../../shared/ui/filter-toggle-button';
+import { FilterField, FilterRange } from '../../../shared/ui/filter-panel';
+import { FilterSection } from '../../../shared/ui/filter-sheet';
 import { Input } from '../../../shared/ui/input';
-import { QuickFilters, QuickFiltersLabel, QuickFiltersSeparator } from '../../../shared/ui/quick-filters';
+import { FilterDropdown, FilterGroup, type FilterOptionDot } from '../../../shared/ui/filter-dropdown';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
-import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
-import { useMediaQuery } from '../../../shared/ui/use-media-query';
-import { oldestAgeSuffix } from '../../../shared/lib/oldest-age-suffix';
+import { SidePanel } from '../../../shared/ui/side-panel';
+import { SortMenu } from '../../../shared/ui/sort-menu';
+import type { StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type {
   OrderHealthSummary,
   OrderLifecyclePhaseSummary,
@@ -49,28 +38,30 @@ import type {
   OrderTag,
   SlaStateValue,
 } from '../api/orders.types';
-import type { UseOrderListFiltersResult } from '../hooks/use-order-list-filters';
+import {
+  DEFAULT_ORDER_SORT,
+  DEFAULT_ORDER_SORT_DIR,
+  type UseOrderListFiltersResult,
+} from '../hooks/use-order-list-filters';
 import {
   ORDER_FILTER_DESCRIPTORS,
+  ORDER_TOOLBAR_PINNED_FILTER_KEYS,
+  FULFILLMENT_FILTER_VALUES,
+  SLA_FILTER_VALUES,
   buildOrderFilterChips,
   type OrderFilterChipContext,
   type OrderFilterGroup,
 } from '../lib/order-filter-descriptors';
-import { HOLD_REASON_COPY, HoldReasonValues } from '../lib/order-hold.types';
-import { ORDER_LIFECYCLE_PHASE_META, OrderLifecyclePhaseValues } from '../lib/order-lifecycle-phase';
+import { HoldReasonValues, holdReasonLabel } from '../lib/order-hold.types';
+import { ORDER_LIFECYCLE_PHASE_TONE, OrderLifecyclePhaseValues } from '../lib/order-lifecycle-phase';
 import type { OrderLifecyclePhaseValue } from '../lib/order-lifecycle-phase.types';
-import {
-  FULFILLMENT_FILTER_OPTIONS,
-  ORDERS_LIST_FILTERS_COPY as COPY,
-  SLA_FILTER_OPTIONS,
-} from '../lib/orders-list-filters.copy';
+import { useMessages, usePlural } from '../../../shared/i18n';
+import { ORDER_SORT_KEYS } from '../lib/orders.list-config';
 import { OrderTagChip } from './order-tag-chip';
 
-/** Per-browser memory of the panel being open — a view preference, not a filter, so never in the URL. */
-const PANEL_OPEN_STORAGE_KEY = 'ol.orders-list.filters-open.v1';
 /** Above this many tags the Tags group gets its own find box. */
 const TAG_FIND_THRESHOLD = 8;
-const MOBILE_QUERY = '(max-width: 767.98px)';
+
 
 /**
  * Phase → `OrderLifecyclePhaseSummary` field (#2310). The summary is camelCase
@@ -92,37 +83,14 @@ const PHASE_SUMMARY_KEY: Record<
   ready: 'ready',
 };
 
-/**
- * `StatusBadgeTone` → `ChipTone` (#2310). Exhaustive: a tone added to the badge
- * family is a compile error here instead of silently widening the chip.
- */
-const CHIP_TONE_FOR_PHASE_TONE: Record<StatusBadgeTone, ChipTone> = {
-  conflict: 'warning',
-  error: 'error',
-  info: 'info',
-  neutral: 'neutral',
-  review: 'neutral',
-  success: 'success',
-  warning: 'warning',
+const SLA_SUMMARY_KEY: Record<SlaStateValue, keyof OrderSlaSummary> = {
+  overdue: 'overdue',
+  at_risk: 'atRisk',
+  on_track: 'onTrack',
+  none: 'none',
 };
 
 type SlaChoice = SlaStateValue | 'any';
-
-function readPanelOpen(): boolean {
-  try {
-    return window.localStorage.getItem(PANEL_OPEN_STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function writePanelOpen(open: boolean): void {
-  try {
-    window.localStorage.setItem(PANEL_OPEN_STORAGE_KEY, open ? '1' : '0');
-  } catch {
-    // Storage blocked (private window): the panel just forgets, which is fine.
-  }
-}
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -134,6 +102,11 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
+function phaseDotTone(tone: StatusBadgeTone): FilterOptionDot {
+  if (tone === 'conflict') return 'warning';
+  return tone === 'neutral' || tone === 'review' ? 'neutral' : tone;
+}
+
 export interface OrderListFilterBarProps {
   filtersApi: UseOrderListFiltersResult;
   sources: readonly { id: string; name: string }[];
@@ -142,11 +115,16 @@ export interface OrderListFilterBarProps {
   summary: OrderHealthSummary | undefined;
   slaSummary: OrderSlaSummary | undefined;
   lifecycleSummary: OrderLifecyclePhaseSummary | undefined;
-  /** Already formatted ("69", "100+"); `null` while unknown — never shown as 0. */
-  resultCount: string | null;
+  /**
+   * How many orders match: the exact total, or a floor ("100+") while the total
+   * is still being counted. `null` while unknown - never shown as 0.
+   */
+  resultCount: { value: number; atLeast: boolean } | null;
   /** `false` only when the install is known not to store buyer data (G03-14). */
   storesPersonalData: boolean | undefined;
   formatDay: (ymd: string) => string;
+  /** Extra control at the end of the filter row, before the result count (the saved-views Columns panel). */
+  trailing?: ReactNode;
 }
 
 export function OrderListFilterBar({
@@ -160,44 +138,56 @@ export function OrderListFilterBar({
   resultCount,
   storesPersonalData,
   formatDay,
+  trailing,
 }: OrderListFilterBarProps): ReactElement {
   const { state } = filtersApi;
-  const isMobile = useMediaQuery(MOBILE_QUERY);
+  const giftCopy = useMessages('gifts');
+  const orders = useMessages('orders');
+  const COPY = orders.listFilters;
+  const paymentCopy = orders.paymentWriteback;
+  const plural = usePlural();
+  const sortOptions = useMemo(
+    () => ORDER_SORT_KEYS.map((key) => ({ key, label: COPY.sortOptions[key], dir: DEFAULT_ORDER_SORT_DIR[key] })),
+    [COPY],
+  );
   const panelId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  const [panelOpen, setPanelOpenState] = useState<boolean>(readPanelOpen);
+  const moreRef = useRef<HTMLButtonElement>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [tagFind, setTagFind] = useState('');
-
-  const setPanelOpen = (open: boolean): void => {
-    setPanelOpenState(open);
-    writePanelOpen(open);
-  };
 
   const chipCtx: OrderFilterChipContext = useMemo(
     () => ({
       connectionName: (id) => sources.find((s) => s.id === id)?.name,
       tagById,
       formatDay,
+      copy: orders,
     }),
-    [sources, tagById, formatDay],
+    [sources, tagById, formatDay, orders],
   );
-  const chipSpecs = useMemo(() => buildOrderFilterChips(state, chipCtx), [state, chipCtx]);
-  const activeCount = chipSpecs.length;
+  // Every applied value is a pill — search and stage included — except the
+  // status tab, which is the selected tab and needs no second rendering.
+  const chipSpecs = useMemo(
+    () =>
+      buildOrderFilterChips(state, chipCtx, { includeUncounted: true }).filter(
+        (spec) => spec.key !== 'health',
+      ),
+    [state, chipCtx],
+  );
+  const moreCount = chipSpecs.filter((spec) => !ORDER_TOOLBAR_PINNED_FILTER_KEYS.has(spec.key)).length;
 
   const activeChips: ActiveFilterChip[] = chipSpecs.map((spec) => ({
     key: spec.key,
     label: spec.label,
     valueText: spec.valueText,
     value: spec.tag ? <OrderTagChip tag={spec.tag} small /> : spec.valueText,
-    onRemove: () => filtersApi.clear(spec.clears),
+    onRemove: () => {
+      filtersApi.clear(spec.clears);
+    },
   }));
 
   const groupSummary = (group: OrderFilterGroup): { text: string; active: boolean } => {
-    const specs = buildOrderFilterChips(state, chipCtx, { includeUncounted: true }).filter(
-      (spec) => ORDER_FILTER_DESCRIPTORS[spec.key].group === group,
-    );
+    const specs = chipSpecs.filter((spec) => ORDER_FILTER_DESCRIPTORS[spec.key].group === group);
     return specs.length === 0
       ? { text: group === 'exceptions' ? COPY.sectionNone : COPY.sectionAny, active: false }
       : { text: specs.map((s) => s.valueText).join(', '), active: true };
@@ -212,23 +202,19 @@ export function OrderListFilterBar({
         searchRef.current?.focus();
       } else if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
-        if (isMobile) setSheetOpen((open) => !open);
-        else setPanelOpenState((open) => {
-          writePanelOpen(!open);
-          return !open;
-        });
+        setSheetOpen((open) => !open);
       }
     }
     document.addEventListener('keydown', onKeydown);
     return () => {
       document.removeEventListener('keydown', onKeydown);
     };
-  }, [isMobile]);
+  }, []);
 
   const slaValue: SlaChoice = state.slaState ?? 'any';
   const slaOptions: { value: SlaChoice; label: string }[] = [
     { value: 'any', label: COPY.anySla },
-    ...SLA_FILTER_OPTIONS,
+    ...SLA_FILTER_VALUES.map((value) => ({ value, label: COPY.slaOptions[value] })),
   ];
   const packingValue = state.packed === undefined ? '' : String(state.packed);
   const tagRadioValue = state.untagged ? '__untagged__' : (state.tag ?? '');
@@ -237,180 +223,301 @@ export function OrderListFilterBar({
       ? tags.filter((t) => t.name.toLowerCase().includes(tagFind.trim().toLowerCase()))
       : tags;
 
-  // ── Controls, shared verbatim by the desktop panel and the mobile sheet ──
-  const sourceField = (
-    <FilterField label={COPY.fieldSource}>
-      <Select
-        aria-label={COPY.fieldSource}
-        value={state.sourceConnectionId ?? ''}
-        onChange={(e) => {
-          filtersApi.setFilter('sourceConnectionId', e.target.value);
-        }}
-      >
-        <option value="">{COPY.allSources}</option>
-        {sources.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </Select>
-    </FilterField>
+  // ── The "More" panel's controls (the old panel's, unchanged) ──
+  const sourceBody = (
+    <>
+      <FilterField label={COPY.fields.source}>
+        <Select
+          aria-label={COPY.fields.source}
+          value={state.sourceConnectionId ?? ''}
+          onChange={(e) => {
+            filtersApi.setFilter('sourceConnectionId', e.target.value);
+          }}
+        >
+          <option value="">{COPY.allSources}</option>
+          {sources.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
+      </FilterField>
+      <FilterField label={COPY.fields.created} as="div">
+        <FilterRange
+          rows={[
+            {
+              label: COPY.fields.createdFrom,
+              control: (
+                <input
+                  type="date"
+                  className="control"
+                  aria-label={COPY.fields.createdFromAria}
+                  value={state.createdFrom ?? ''}
+                  onChange={(e) => {
+                    filtersApi.setFilter('createdFrom', e.target.value);
+                  }}
+                />
+              ),
+            },
+            {
+              label: COPY.fields.createdTo,
+              control: (
+                <input
+                  type="date"
+                  className="control"
+                  aria-label={COPY.fields.createdToAria}
+                  value={state.createdTo ?? ''}
+                  onChange={(e) => {
+                    filtersApi.setFilter('createdTo', e.target.value);
+                  }}
+                />
+              ),
+            },
+          ]}
+        />
+      </FilterField>
+    </>
   );
-  const createdField = (
-    <FilterField label={COPY.fieldCreated} as="div">
-      <FilterRange
-        rows={[
-          {
-            label: COPY.createdFrom,
-            control: (
-              <input
-                type="date"
-                className="control"
-                aria-label={COPY.createdFromAria}
-                value={state.createdFrom ?? ''}
-                onChange={(e) => {
-                  filtersApi.setFilter('createdFrom', e.target.value);
-                }}
-              />
-            ),
-          },
-          {
-            label: COPY.createdTo,
-            control: (
-              <input
-                type="date"
-                className="control"
-                aria-label={COPY.createdToAria}
-                value={state.createdTo ?? ''}
-                onChange={(e) => {
-                  filtersApi.setFilter('createdTo', e.target.value);
-                }}
-              />
-            ),
-          },
-        ]}
-      />
-    </FilterField>
+  const shipmentBody = (
+    <>
+      <FilterField label={COPY.fields.fulfilment}>
+        <Select
+          aria-label={COPY.fields.fulfilment}
+          value={state.fulfillmentState ?? ''}
+          onChange={(e) => {
+            filtersApi.setFilter('fulfillmentState', e.target.value);
+          }}
+        >
+          <option value="">{COPY.anyFulfilment}</option>
+          {FULFILLMENT_FILTER_VALUES.map((value) => (
+            <option key={value} value={value}>
+              {COPY.fulfilmentOptions[value]}
+            </option>
+          ))}
+        </Select>
+      </FilterField>
+      <FilterField label={COPY.fields.shipBy} as="div">
+        <SegmentedControl<SlaChoice>
+          aria-label={COPY.fields.shipBy}
+          options={slaOptions}
+          value={slaValue}
+          onChange={(next) => {
+            filtersApi.setFilter('slaState', next === 'any' ? null : next);
+          }}
+        />
+        <FilterChecks>
+          <FilterCheck
+            label={COPY.quick.breaching}
+            checked={state.breaching}
+            count={summary?.dueWithin24h}
+            onChange={() => {
+              filtersApi.toggle('dueBefore');
+            }}
+          />
+        </FilterChecks>
+      </FilterField>
+      <FilterField label={COPY.fields.packing}>
+        <Select
+          aria-label={COPY.fields.packing}
+          value={packingValue}
+          onChange={(e) => {
+            filtersApi.setFilter('packed', e.target.value);
+          }}
+        >
+          <option value="">{COPY.anyPacking}</option>
+          <option value="true">{COPY.packedYes}</option>
+          <option value="false">{COPY.packedNo}</option>
+        </Select>
+      </FilterField>
+      <FilterChecks>
+        <FilterCheck
+          label={COPY.checks.packBench}
+          checked={state.onPackBench}
+          count={summary?.onPackBench}
+          onChange={() => {
+            filtersApi.toggle('onPackBench');
+          }}
+        />
+      </FilterChecks>
+    </>
   );
-  const fulfillmentField = (
-    <FilterField label={COPY.fieldFulfillment}>
-      <Select
-        aria-label={COPY.fieldFulfillment}
-        value={state.fulfillmentState ?? ''}
-        onChange={(e) => {
-          filtersApi.setFilter('fulfillmentState', e.target.value);
-        }}
-      >
-        <option value="">{COPY.anyFulfillment}</option>
-        {FULFILLMENT_FILTER_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </Select>
-    </FilterField>
-  );
-  const shipByField = (
-    <FilterField label={COPY.fieldShipBy} as="div">
-      <SegmentedControl<SlaChoice>
-        aria-label={COPY.fieldShipBy}
-        options={slaOptions}
-        value={slaValue}
-        onChange={(next) => {
-          filtersApi.setFilter('slaState', next === 'any' ? null : next);
-        }}
-      />
-    </FilterField>
-  );
-  const packingField = (
-    <FilterField label={COPY.fieldPacking}>
-      <Select
-        aria-label={COPY.fieldPacking}
-        value={packingValue}
-        onChange={(e) => {
-          filtersApi.setFilter('packed', e.target.value);
-        }}
-      >
-        <option value="">{COPY.anyPacking}</option>
-        <option value="true">{COPY.packedYes}</option>
-        <option value="false">{COPY.packedNo}</option>
-      </Select>
-    </FilterField>
-  );
-  const holdField = (
-    <FilterField label={COPY.fieldHold}>
-      <Select
-        aria-label={COPY.fieldHold}
-        value={state.holdReason ?? ''}
-        onChange={(e) => {
-          filtersApi.setFilter('holdReason', e.target.value);
-        }}
-      >
-        <option value="">{COPY.anyHold}</option>
-        {HoldReasonValues.map((value) => (
-          <option key={value} value={value}>
-            {HOLD_REASON_COPY[value].label}
-          </option>
-        ))}
-      </Select>
-    </FilterField>
-  );
-  const exceptionChecks = (
-    <FilterChecks>
-      <FilterCheck
-        label={COPY.checkSalesDocsBlocked}
-        tone="error"
-        checked={state.invoicingBlocked}
-        count={summary?.salesDocumentBlocked}
-        onChange={() => {
-          filtersApi.toggle('salesDocumentBlocked');
-        }}
-      />
-      <FilterCheck
-        label={COPY.checkOmsStopped}
-        tone="error"
-        checked={state.omsAttention}
-        count={summary?.omsAttention}
-        onChange={() => {
-          filtersApi.toggle('attention');
-        }}
-      />
-      <FilterCheck
-        label={COPY.checkRateConflict}
-        checked={state.rateConflict}
-        count={summary?.taxRateConflict}
-        onChange={() => {
-          filtersApi.toggle('taxRateConflict');
-        }}
-      />
-      <FilterCheck
-        label={COPY.checkOpenReturn}
-        checked={state.openReturn}
-        onChange={() => {
-          filtersApi.toggle('openReturn');
-        }}
-      />
-    </FilterChecks>
+  const exceptionsBody = (
+    <>
+      <FilterField label={COPY.fields.hold}>
+        <Select
+          aria-label={COPY.fields.hold}
+          value={state.holdReason ?? ''}
+          onChange={(e) => {
+            filtersApi.setFilter('holdReason', e.target.value);
+          }}
+        >
+          <option value="">{COPY.anyHold}</option>
+          {HoldReasonValues.map((value) => (
+            <option key={value} value={value}>
+              {holdReasonLabel(value)}
+            </option>
+          ))}
+        </Select>
+      </FilterField>
+      <FilterChecks>
+        <FilterCheck
+          label={COPY.checks.salesDocsBlocked}
+          tone="error"
+          checked={state.invoicingBlocked}
+          count={summary?.salesDocumentBlocked}
+          onChange={() => {
+            filtersApi.toggle('salesDocumentBlocked');
+          }}
+        />
+        <FilterCheck
+          label={COPY.checks.omsStopped}
+          tone="error"
+          checked={state.omsAttention}
+          count={summary?.omsAttention}
+          onChange={() => {
+            filtersApi.toggle('attention');
+          }}
+        />
+        {/* #3961 - no count: the summary aggregate does not split reasons. */}
+        <FilterCheck
+          label={COPY.checks.shopChanged}
+          tone="warning"
+          checked={state.shopChanged}
+          onChange={() => {
+            filtersApi.toggle('attentionReason');
+          }}
+        />
+        <FilterCheck
+          label={paymentCopy.filterCheck}
+          tone="warning"
+          checked={state.paymentNotSent}
+          count={summary?.paymentNotSent}
+          onChange={() => {
+            filtersApi.toggle('paymentNotSent');
+          }}
+        />
+        <FilterCheck
+          label={COPY.checks.shopChanged}
+          tone="warning"
+          checked={state.shopChanged}
+          onChange={() => {
+            filtersApi.toggle('attentionReason');
+          }}
+        />
+        <FilterCheck
+          label={paymentCopy.filterCheck}
+          tone="warning"
+          checked={state.paymentNotSent}
+          count={summary?.paymentNotSent}
+          onChange={() => {
+            filtersApi.toggle('paymentNotSent');
+          }}
+        />
+        <FilterCheck
+          label={COPY.checks.waiting}
+          tone="warning"
+          checked={state.waitingInOpenLinker}
+          count={summary?.waitingInOpenLinker}
+          onChange={() => {
+            filtersApi.toggle('waitingInOpenLinker');
+          }}
+        />
+        <FilterCheck
+          label={COPY.checks.routingBlocked}
+          tone="error"
+          checked={state.routingBlocked}
+          count={summary?.destinationRoutingBlocked}
+          onChange={() => {
+            filtersApi.toggle('destinationRoutingBlocked');
+          }}
+        />
+        <FilterCheck
+          label={COPY.checks.rateConflict}
+          checked={state.rateConflict}
+          count={summary?.taxRateConflict}
+          onChange={() => {
+            filtersApi.toggle('taxRateConflict');
+          }}
+        />
+        <FilterCheck
+          label={COPY.checks.openReturn}
+          checked={state.openReturn}
+          count={summary?.openReturn}
+          onChange={() => {
+            filtersApi.toggle('openReturn');
+          }}
+        />
+        <FilterCheck
+          label={giftCopy.filter.check}
+          checked={state.withGift}
+          count={summary?.withGift}
+          onChange={() => {
+            filtersApi.toggle('withGift');
+          }}
+        />
+        <FilterCheck
+          label={giftCopy.filter.bundleCheck}
+          checked={state.withBundle}
+          count={summary?.withBundle}
+          onChange={() => {
+            filtersApi.toggle('withBundle');
+          }}
+        />
+        <FilterCheck
+          label={giftCopy.filter.notAddedCheck}
+          checked={state.giftNotAdded}
+          count={summary?.giftNotAdded}
+          onChange={() => {
+            filtersApi.toggle('giftNotAdded');
+          }}
+        />
+        <FilterCheck
+          label={giftCopy.filter.shopRejectedCheck}
+          checked={state.giftShopRejected}
+          count={summary?.giftShopRejected}
+          onChange={() => {
+            filtersApi.toggle('giftShopRejected');
+          }}
+        />
+        <FilterCheck
+          data-testid="orders-filter-buyer-note"
+          label={COPY.checks.buyerNote}
+          checked={state.hasBuyerNote}
+          count={summary?.hasBuyerNote}
+          onChange={() => {
+            filtersApi.toggle('hasBuyerNote');
+          }}
+        />
+        <FilterCheck
+          data-testid="orders-filter-hidden"
+          label={COPY.checks.hidden}
+          checked={state.hidden}
+          onChange={() => {
+            filtersApi.toggle('hidden');
+          }}
+        />
+      </FilterChecks>
+    </>
   );
   const tagRadioName = `${panelId}-tag`;
-  const tagList = (
+  const tagsBody = (
     <>
       {tags.length > TAG_FIND_THRESHOLD ? (
         <Input
           type="search"
-          aria-label={COPY.findTag}
-          placeholder={COPY.findTag}
+          aria-label={COPY.tags.find}
+          placeholder={COPY.tags.find}
           value={tagFind}
           onChange={(e) => {
             setTagFind(e.target.value);
           }}
         />
       ) : null}
-      <FilterChecks role="radiogroup" aria-label={COPY.tagGroupAria} scroll>
+      <FilterChecks role="radiogroup" aria-label={COPY.tags.groupAria} scroll>
         <FilterCheck
           type="radio"
           name={tagRadioName}
-          label={COPY.anyTag}
+          label={COPY.tags.any}
           checked={tagRadioValue === ''}
           onChange={() => {
             filtersApi.setTagFilter(null);
@@ -433,7 +540,7 @@ export function OrderListFilterBar({
         <FilterCheck
           type="radio"
           name={tagRadioName}
-          label={COPY.noTags}
+          label={COPY.tags.none}
           mutedLabel
           checked={tagRadioValue === '__untagged__'}
           onChange={() => {
@@ -441,82 +548,20 @@ export function OrderListFilterBar({
           }}
         />
       </FilterChecks>
-      {tags.length === 0 ? <span className="filter-panel__hint">{COPY.noTagsYet}</span> : null}
+      {tags.length === 0 ? <span className="filter-panel__hint">{COPY.tags.noneYet}</span> : null}
     </>
   );
-
-  // ── Quick filters row ──
-  const salesDocsBlocked = summary?.salesDocumentBlocked;
-  const phaseChips = OrderLifecyclePhaseValues.map((value) => {
+  const phaseOptions = OrderLifecyclePhaseValues.flatMap((value) => {
     const count = lifecycleSummary?.[PHASE_SUMMARY_KEY[value]];
-    const active = state.phase === value;
-    // Mount on `active || count`: a zero-count chip is noise, but the ACTIVE
-    // chip must stay or the only way to clear an applied `?phase=` vanishes
-    // the moment its last order moves on (#2310 / #2100).
-    if (!active && !count) return null;
-    const meta = ORDER_LIFECYCLE_PHASE_META[value];
-    return (
-      <Chip
-        key={value}
-        tone={CHIP_TONE_FOR_PHASE_TONE[meta.tone]}
-        active={active}
-        onClick={() => {
-          filtersApi.togglePhase(value);
-        }}
-      >
-        {meta.label}
-        {count === undefined ? null : <span className="chip__count">{count}</span>}
-      </Chip>
-    );
+    // A zero-count stage is noise, but the ACTIVE one must stay or the only
+    // way to clear an applied `?phase=` vanishes with its last order (#2310).
+    if (state.phase !== value && !count) return [];
+    return [
+      { value, label: orders.lifecyclePhase.labels[value], count, dot: phaseDotTone(ORDER_LIFECYCLE_PHASE_TONE[value]) },
+    ];
   });
-  const atRiskAny = slaSummary !== undefined && (slaSummary.overdue > 0 || slaSummary.atRisk > 0);
-  const quickEnd = (
-    <>
-      {slaSummary && slaSummary.overdue > 0 ? (
-        <StatusBadge tone="error" withDot compact>
-          {COPY.overdue(slaSummary.overdue)}
-        </StatusBadge>
-      ) : null}
-      {slaSummary && slaSummary.atRisk > 0 ? (
-        <StatusBadge tone="warning" withDot compact>
-          {COPY.atRisk(slaSummary.atRisk)}
-        </StatusBadge>
-      ) : null}
-      {/* Unconditional (#2441 review I3): the risk page's most useful states
-          are the ones reachable when nothing is breaching. */}
-      <Link className="nav-link" to="/orders/dispatch-risk">
-        {atRiskAny ? COPY.reviewDispatchRisk : COPY.dispatchRiskOverview}
-      </Link>
-    </>
-  );
-
-  const placeholder =
-    storesPersonalData === false ? COPY.searchPlaceholderNoPii : COPY.searchPlaceholderWithPii;
-
-  // The phone sheet's sections — the same controls as the desktop panel, plus
-  // the lifecycle stage (on a desktop it is the quick-filter row). Bodies are
-  // declared first so the section table below holds no JSX.
-  const sourceBody = (
-    <>
-      {sourceField}
-      {createdField}
-    </>
-  );
-  const shipmentBody = (
-    <>
-      {fulfillmentField}
-      {shipByField}
-      {packingField}
-    </>
-  );
-  const exceptionsBody = (
-    <>
-      {holdField}
-      {exceptionChecks}
-    </>
-  );
   const stageBody = (
-    <FilterChecks role="radiogroup" aria-label={COPY.groupPhase}>
+    <FilterChecks role="radiogroup" aria-label={COPY.groups.phase}>
       <FilterCheck
         type="radio"
         name={`${panelId}-phase`}
@@ -526,226 +571,214 @@ export function OrderListFilterBar({
           if (state.phase) filtersApi.togglePhase(state.phase);
         }}
       />
-      {OrderLifecyclePhaseValues.map((value) => {
-        const count = lifecycleSummary?.[PHASE_SUMMARY_KEY[value]];
-        if (state.phase !== value && !count) return null;
-        return (
-          <FilterCheck
-            key={value}
-            type="radio"
-            name={`${panelId}-phase`}
-            label={ORDER_LIFECYCLE_PHASE_META[value].label}
-            count={count}
-            checked={state.phase === value}
-            onChange={() => {
-              filtersApi.togglePhase(value);
-            }}
-          />
-        );
-      })}
+      {phaseOptions.map((o) => (
+        <FilterCheck
+          key={o.value}
+          type="radio"
+          name={`${panelId}-phase`}
+          label={o.label}
+          count={o.count}
+          checked={state.phase === o.value}
+          onChange={() => {
+            filtersApi.togglePhase(o.value);
+          }}
+        />
+      ))}
     </FilterChecks>
   );
-  const sheetSections: ReadonlyArray<readonly [OrderFilterGroup, string, ReactElement]> = [
-    ['source', COPY.groupSource, sourceBody],
-    ['shipment', COPY.groupShipment, shipmentBody],
-    ['exceptions', COPY.groupExceptions, exceptionsBody],
-    ['tags', COPY.groupTags, tagList],
-    ['phase', COPY.groupPhase, stageBody],
+  // Objects, not tuples: the UI-vocabulary scan reads generic angle brackets
+  // as JSX, so a group key between them would count as visible text.
+  const sheetSections: readonly { group: OrderFilterGroup; title: string; body: ReactElement }[] = [
+    { group: ORDER_FILTER_DESCRIPTORS.sourceConnectionId.group, title: COPY.groups.source, body: sourceBody },
+    { group: ORDER_FILTER_DESCRIPTORS.fulfillmentState.group, title: COPY.groups.shipment, body: shipmentBody },
+    { group: ORDER_FILTER_DESCRIPTORS.holdReason.group, title: COPY.groups.exceptions, body: exceptionsBody },
+    { group: ORDER_FILTER_DESCRIPTORS.tag.group, title: COPY.groups.tags, body: tagsBody },
+    { group: ORDER_FILTER_DESCRIPTORS.phase.group, title: COPY.groups.phase, body: stageBody },
   ];
-  const firstActiveSection = sheetSections.findIndex(([g]) => groupSummary(g).active);
 
-  const panelVisible = panelOpen && !isMobile;
+  const placeholder =
+    storesPersonalData === false ? COPY.search.placeholderNoPii : COPY.search.placeholderWithPii;
 
   return (
     <div className="orders-filters">
-      <div className="orders-filterbar">
-        <div className="orders-filterbar__search">
-          <span className="orders-filterbar__search-glyph" aria-hidden="true">
+      <div className="list-toolbar">
+        <div className="list-search">
+          <span className="list-search__glyph" aria-hidden="true">
             ⌕
           </span>
           <Input
             ref={searchRef}
             type="search"
-            aria-label={COPY.searchLabel}
+            aria-label={COPY.search.label}
             placeholder={placeholder}
             value={filtersApi.searchInput}
             onChange={(e) => {
               filtersApi.setSearch(e.target.value);
             }}
           />
-          <span className="button__shortcut orders-filterbar__kbd" aria-hidden="true">
-            {COPY.searchShortcut}
+          <span className="button__shortcut list-search__kbd" aria-hidden="true">
+            /
           </span>
         </div>
-        <FilterToggleButton
-          ref={toggleRef}
-          data-testid="orders-filter-toggle"
-          expanded={isMobile ? sheetOpen : panelOpen}
-          controls={isMobile ? undefined : panelId}
-          aria-haspopup={isMobile ? 'dialog' : undefined}
-          count={activeCount}
-          title={COPY.toggleTitle}
+        <FilterGroup aria-label={COPY.filterGroupAria}>
+          <FilterDropdown
+            label={COPY.quick.phase}
+            anyLabel={COPY.anyPhase}
+            value={state.phase ?? null}
+            options={phaseOptions}
+            onChange={(next) => {
+              if (next === null) {
+                if (state.phase) filtersApi.togglePhase(state.phase);
+              } else if (next !== state.phase) {
+                filtersApi.togglePhase(next);
+              }
+            }}
+          />
+          <FilterDropdown
+            label={COPY.fields.source}
+            anyLabel={COPY.allSources}
+            value={state.sourceConnectionId ?? null}
+            options={sources.map((c) => ({
+              value: c.id,
+              label: c.name,
+              count: summary?.bySource?.[c.id],
+            }))}
+            onChange={(next) => {
+              filtersApi.setFilter('sourceConnectionId', next);
+            }}
+          />
+          <FilterDropdown
+            label={COPY.fields.shipBy}
+            anyLabel={COPY.anySla}
+            value={state.slaState ?? null}
+            options={SLA_FILTER_VALUES.map((value) => ({
+              value,
+              label: COPY.slaOptions[value],
+              count: slaSummary?.[SLA_SUMMARY_KEY[value]],
+            }))}
+            onChange={(next) => {
+              filtersApi.setFilter('slaState', next);
+            }}
+          />
+          <button
+            ref={moreRef}
+            type="button"
+            className={['joined-filters__btn', moreCount > 0 ? 'joined-filters__btn--on' : '']
+              .filter(Boolean)
+              .join(' ')}
+            data-testid="orders-filter-toggle"
+            aria-haspopup="dialog"
+            aria-expanded={sheetOpen}
+            title={COPY.moreFiltersTitle}
+            onClick={() => {
+              setSheetOpen(true);
+            }}
+          >
+            <span aria-hidden="true">{'≡'}</span>
+            {COPY.moreFilters}
+            {moreCount > 0 ? <span className="button__count">{moreCount}</span> : null}
+            <span className="button__shortcut" aria-hidden="true">
+              F
+            </span>
+          </button>
+        </FilterGroup>
+        <button
+          type="button"
+          className={['gift-quick-filter', state.withGift ? 'gift-quick-filter--on' : '']
+            .filter(Boolean)
+            .join(' ')}
+          aria-pressed={state.withGift}
+          data-testid="orders-gift-quick-filter"
           onClick={() => {
-            if (isMobile) setSheetOpen(true);
-            else setPanelOpen(!panelOpen);
+            filtersApi.toggle('withGift');
           }}
-        />
-        <span className="text-muted mono tabular orders-filterbar__count" aria-live="polite">
-          {resultCount === null ? null : COPY.results(resultCount)}
+        >
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="2" y="6" width="12" height="8" rx="1" />
+            <path d="M1.5 4h13v2h-13zM8 4v10M8 4C6 4 4.5 3 5.5 2s2.5 1 2.5 2zM8 4c2 0 3.5-1 2.5-2S8 3 8 4z" />
+          </svg>
+          {giftCopy.filter.quick}
+          {summary?.withGift !== undefined ? (
+            <span className="gift-quick-filter__count">{summary.withGift}</span>
+          ) : null}
+        </button>
+        <button
+          type="button"
+          className={['gift-quick-filter', state.withBundle ? 'gift-quick-filter--on' : '']
+            .filter(Boolean)
+            .join(' ')}
+          aria-pressed={state.withBundle}
+          data-testid="orders-bundle-quick-filter"
+          onClick={() => {
+            filtersApi.toggle('withBundle');
+          }}
+        >
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M8 1.5 14 4.5v7L8 14.5 2 11.5v-7zM2 4.5l6 3 6-3M8 7.5v7" />
+          </svg>
+          {giftCopy.filter.quickBundle}
+          {summary?.withBundle !== undefined ? (
+            <span className="gift-quick-filter__count">{summary.withBundle}</span>
+          ) : null}
+        </button>
+        {trailing}
+        <span className="list-toolbar__spacer" />
+        <span className="text-muted mono tabular list-results" aria-live="polite">
+          {resultCount === null
+            ? null
+            : plural(resultCount.value, resultCount.atLeast ? COPY.resultsAtLeast : COPY.results)}
         </span>
+        <SortMenu
+          options={sortOptions}
+          value={filtersApi.sort}
+          dir={filtersApi.dir}
+          defaultKey={DEFAULT_ORDER_SORT}
+          onChange={(key, dir) => {
+            filtersApi.setSort(key, dir);
+          }}
+          aria-label={COPY.sortMenuAria}
+        />
       </div>
 
-      {/* The open panel shows the same values as the chips, so the chip row
-          steps aside while it is open rather than saying everything twice. */}
-      {panelVisible ? null : (
-        <ActiveFilterChips
-          chips={activeChips}
-          onClearAll={filtersApi.clearAll}
-          onEmptyFocus={() => toggleRef.current?.focus()}
-          clearAllLabel={COPY.clearAll}
-        />
-      )}
+      <ActiveFilterChips
+        chips={activeChips}
+        onClearAll={filtersApi.clearAll}
+        onEmptyFocus={() => moreRef.current?.focus()}
+        clearAllLabel={COPY.clearAll}
+      />
 
-      {panelVisible ? (
-        <FilterPanel
-          id={panelId}
-          footer={
-            <FilterPanelFooter
-              hint={COPY.panelHint}
-              actions={
-                <>
-                  {activeCount > 0 ? (
-                    <Button tone="ghost" className="button--sm" onClick={filtersApi.clearAll}>
-                      {COPY.clearAll}
-                    </Button>
-                  ) : null}
-                  <Button
-                    tone="ghost"
-                    className="button--sm"
-                    onClick={() => {
-                      setPanelOpen(false);
-                      toggleRef.current?.focus();
-                    }}
-                  >
-                    {COPY.hideFilters}
-                  </Button>
-                </>
-              }
-            />
-          }
-        >
-          <FilterGroup legend={COPY.groupSource}>
-            {sourceField}
-            {createdField}
-          </FilterGroup>
-          <FilterGroup legend={COPY.groupShipment}>
-            {fulfillmentField}
-            {shipByField}
-            {packingField}
-          </FilterGroup>
-          <FilterGroup legend={COPY.groupExceptions}>
-            {holdField}
-            {exceptionChecks}
-          </FilterGroup>
-          <FilterGroup legend={COPY.groupTags}>{tagList}</FilterGroup>
-        </FilterPanel>
-      ) : null}
-
-      <QuickFilters aria-label={COPY.quickFiltersAria} end={quickEnd}>
-        <QuickFiltersLabel>{COPY.quickNeedsLook}</QuickFiltersLabel>
-        <Chip
-          tone="warning"
-          active={state.breaching}
-          onClick={() => {
-            filtersApi.toggle('dueBefore');
-          }}
-        >
-          {COPY.quickBreaching}
-        </Chip>
-        {state.invoicingBlocked || salesDocsBlocked ? (
-          <Chip
-            tone="error"
-            active={state.invoicingBlocked}
-            title={
-              summary?.salesDocumentIssuedOnRequest
-                ? COPY.quickSalesDocsTitle(summary.salesDocumentIssuedOnRequest)
-                : undefined
-            }
-            onClick={() => {
-              filtersApi.toggle('salesDocumentBlocked');
-            }}
-          >
-            {COPY.quickSalesDocs}
-            {salesDocsBlocked === undefined ? null : (
-              <span className="chip__count">
-                {`${salesDocsBlocked}${oldestAgeSuffix(summary?.salesDocumentBlockedOldestAt)}`}
-              </span>
-            )}
-          </Chip>
-        ) : null}
-        {state.rateConflict || summary?.taxRateConflict ? (
-          <Chip
-            active={state.rateConflict}
-            onClick={() => {
-              filtersApi.toggle('taxRateConflict');
-            }}
-          >
-            {COPY.quickRateConflict}
-            {summary?.taxRateConflict === undefined ? null : (
-              <span className="chip__count">{summary.taxRateConflict}</span>
-            )}
-          </Chip>
-        ) : null}
-        {state.omsAttention || summary?.omsAttention ? (
-          <Chip
-            tone="error"
-            active={state.omsAttention}
-            onClick={() => {
-              filtersApi.toggle('attention');
-            }}
-          >
-            {COPY.quickOmsStopped}
-            {summary?.omsAttention === undefined ? null : (
-              <span className="chip__count">{summary.omsAttention}</span>
-            )}
-          </Chip>
-        ) : null}
-        <Chip
-          active={state.openReturn}
-          onClick={() => {
-            filtersApi.toggle('openReturn');
-          }}
-        >
-          {COPY.quickOpenReturn}
-        </Chip>
-        <QuickFiltersSeparator />
-        <QuickFiltersLabel>{COPY.quickPhase}</QuickFiltersLabel>
-        {phaseChips}
-      </QuickFilters>
-
-      {isMobile ? (
-        <FilterSheet
-          open={sheetOpen}
-          onOpenChange={setSheetOpen}
-          title={COPY.sheetTitle}
-          description={COPY.panelHint}
-          footer={
-            <>
-              <Button tone="secondary" onClick={filtersApi.clearAll}>
-                {COPY.clearAll}
-              </Button>
-              <Button
-                tone="primary"
-                onClick={() => {
-                  setSheetOpen(false);
-                }}
-              >
-                {COPY.showOrders(resultCount)}
-              </Button>
-            </>
-          }
-        >
-          {sheetSections.map(([group, title, body], index) => {
+      <SidePanel
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        title={COPY.allFiltersTitle}
+        description={COPY.panelHint}
+        width={420}
+        className="filters-panel"
+        closeIcon
+        closeLabel={COPY.closeFilters}
+        footer={
+          <>
+            <Button tone="secondary" onClick={filtersApi.clearAll}>
+              {COPY.clearAll}
+            </Button>
+            <Button
+              tone="primary"
+              onClick={() => {
+                setSheetOpen(false);
+              }}
+            >
+              {resultCount === null
+                ? COPY.showOrdersUnknown
+                : plural(
+                    resultCount.value,
+                    resultCount.atLeast ? COPY.showOrdersAtLeast : COPY.showOrders,
+                  )}
+            </Button>
+          </>
+        }
+      >
+        <div className="filter-sections">
+          {sheetSections.map(({ group, title, body }, index) => {
             const s = groupSummary(group);
             return (
               <FilterSection
@@ -753,14 +786,14 @@ export function OrderListFilterBar({
                 title={title}
                 summary={s.text}
                 active={s.active}
-                defaultOpen={firstActiveSection === -1 ? index === 0 : index === firstActiveSection}
+                defaultOpen={index === 0 || s.active}
               >
                 {body}
               </FilterSection>
             );
           })}
-        </FilterSheet>
-      ) : null}
+        </div>
+      </SidePanel>
     </div>
   );
 }

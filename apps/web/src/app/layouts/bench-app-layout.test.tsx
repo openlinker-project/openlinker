@@ -25,7 +25,7 @@ import { LocaleProvider } from '../../shared/i18n';
 import type { RouteCrumbHandle } from '../nav-registry.types';
 import { createAuthenticatedSessionAdapter, createMockApiClient } from '../../test/test-utils';
 
-const benchCrumb: RouteCrumbHandle = { crumb: { group: 'Operations', title: 'Pack bench' } };
+const benchCrumb: RouteCrumbHandle = { crumb: { group: 'operations', page: 'packBench' } };
 
 const PACKER: SessionUser = {
   id: 'user_packer',
@@ -58,7 +58,7 @@ function renderBench(adapter: SessionAdapter): ReturnType<typeof render> {
 
   return render(
     <ThemeProvider>
-      <LocaleProvider>
+      <LocaleProvider locale="en">
         <SessionProvider adapter={adapter}>
           <ToastProvider>
             <ApiClientProvider client={createMockApiClient()}>

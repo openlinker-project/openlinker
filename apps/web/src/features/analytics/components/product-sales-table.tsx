@@ -6,9 +6,8 @@
  * net sales or units via a `SegmentedControl`; both figures stay visible in
  * both states, because an operator comparing "sells most money" against
  * "sells most items" needs the pair, not one swapped for the other. The
- * sort choice is local UI state (not URL state) — a per-section toggle
- * isn't, by itself, worth a shareable search param (see the plan's own
- * judgment-call note).
+ * sort choice is URL state (`productSort`) since #3590: the CSV export must
+ * rank exactly as the screen does, and a shared link should too.
  *
  * Product/variant identity, never SKU: `TopProductRow.productId` is the
  * cross-channel join key (#1988 already groups by `productId`) — Allegro
@@ -96,14 +95,23 @@
  *
  * @module features/analytics/components
  */
-import { type ReactElement, useMemo, useState } from 'react';
+import { type ReactElement, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { Button } from '../../../shared/ui/button';
 import { EmptyValue } from '../../../shared/ui/empty-value';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
-import { formatAmount } from '../../../shared/format/format-amount';
+import {
+  getMessages,
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Formatters,
+} from '../../../shared/i18n';
 import { useNumberFormat } from '../../../shared/i18n/use-number-format';
 import { useConnectionsQuery, type Connection } from '../../connections';
 import {
@@ -113,6 +121,7 @@ import {
   type Product,
 } from '../../products';
 import { useDemoMode } from '../../system';
+import { ExportCsvButton } from './export-csv-button';
 import { useTopProductsQuery } from '../hooks/use-top-products-query';
 import { useSalesAnalyticsQuery } from '../hooks/use-sales-analytics-query';
 import { useCoverageCrossReferenceQuery } from '../hooks/use-coverage-cross-reference-query';
@@ -174,30 +183,31 @@ function renderNovCell(
   row: TopProductRow,
   currencyRecalculating: boolean,
   reportingConverter: ReportingCurrencyConverter,
-  netGrossBasis: NetGrossBasis
+  netGrossBasis: NetGrossBasis,
+  format: Formatters
 ): ReactElement {
   if (currencyRecalculating) {
     return <RecalculatingValue />;
   }
+  const messages = getMessages('analytics');
   const amount = netGrossBasis === 'net' ? row.netRevenue : row.revenue;
-  const label = netGrossBasis === 'net' ? 'Net sales' : 'GMV';
+  const label = netGrossBasis === 'net' ? messages.common.netSales : messages.common.gmv;
   if (row.currency) {
     return (
       <>
-        {formatAmount(
+        {format.money(
           reportingConverter.convertToDisplay(amount, row.currency),
           reportingConverter.displayCurrencyFor(row.currency)
         )}
       </>
     );
   }
-  return <EmptyValue label={`No ${label} figure for this product in range`} />;
+  return (
+    <EmptyValue
+      label={interpolate(messages.productSalesTable.noRevenue, { revenue: label })}
+    />
+  );
 }
-
-const SORT_OPTIONS = [
-  { value: 'revenue' as const, label: 'By net sales' },
-  { value: 'units' as const, label: 'By units' },
-];
 
 interface ProductSalesTableProps {
   filters: SalesAnalyticsFilters;
@@ -250,6 +260,16 @@ function ProductExclusionNotes({
   );
 }
 
+/**
+ * What a row is called. An unmatched marketplace offer (#4280) has no catalogue
+ * name and a synthetic `productId` that must never reach the operator, so it is
+ * named for what it is and the offer id (its `sku`) sits in the SKU column.
+ */
+function productRowLabel(row: TopProductRow, unmatchedName: string): string {
+  if (row.unmatchedOfferId) return unmatchedName;
+  return row.name ?? row.productId;
+}
+
 function ProductCell({
   row,
   product,
@@ -261,11 +281,13 @@ function ProductCell({
   exclusions: ProductExclusionMap;
   onOpenCategory?: (category: CoverageCategory) => void;
 }): ReactElement {
+  const copy = useMessages('analytics').productSalesTable;
+  const label = productRowLabel(row, copy.unmatchedName);
   return (
     <span className="product-row">
-      <ProductThumbnail src={product?.images?.[0]} name={row.name ?? row.productId} />
+      <ProductThumbnail src={product?.images?.[0]} name={label} />
       <span className="data-table__stack">
-        <span>{row.name ?? row.productId}</span>
+        <span>{label}</span>
         <ProductExclusionNotes row={row} exclusions={exclusions} onOpenCategory={onOpenCategory} />
       </span>
     </span>
@@ -285,6 +307,7 @@ function ChannelCell({
   demoMode: boolean;
   coverageGapAvailable: boolean;
 }): ReactElement {
+  const notListedLabel = useMessages('analytics').common.notListed;
   const channel = channelCellFor(row, connectionId);
   if (channel) {
     return <>{intFormat.format(channel.units)}</>;
@@ -301,13 +324,15 @@ function ChannelCell({
   // `missingFromConnectionIds` is an unreliable `[]` on EVERY row, not
   // evidence of being listed everywhere, so trusting it would render "Not
   // listed" as a false claim (#2172 review, IMPORTANT 1).
-  if (!coverageGapAvailable || !isMissingFrom(row, connectionId)) {
+  // An unmatched marketplace offer (#4280) is not a catalogue product, so there
+  // is nothing to publish to another channel: it never offers "Not listed".
+  if (row.unmatchedOfferId || !coverageGapAvailable || !isMissingFrom(row, connectionId)) {
     return <>{intFormat.format(0)}</>;
   }
 
   return (
     <span className="cell-not-listed">
-      <span className="cell-not-listed__label">Not listed</span>
+      <span className="cell-not-listed__label">{notListedLabel}</span>
       <ChannelPublishAction
         productId={row.productId}
         productName={row.name ?? row.productId}
@@ -379,6 +404,12 @@ function resolveNotListedConnectionIds(
   return coverageGapAvailable ? row.missingFromConnectionIds : [];
 }
 
+export const PRODUCT_SORT_PARAM = 'productSort';
+
+function parseProductSort(value: string | null): TopProductsSortBy {
+  return value === 'units' ? 'units' : 'revenue';
+}
+
 export function ProductSalesTable({
   filters,
   coverage,
@@ -387,10 +418,25 @@ export function ProductSalesTable({
   netGrossBasis = 'gross',
 }: ProductSalesTableProps): ReactElement {
   const currencyRecalculating = isCurrencyRecalculating(coverage);
-  const [sortBy, setSortBy] = useState<TopProductsSortBy>('revenue');
+  // The ranking lives in the URL so the CSV export and the screen share it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sortBy = parseProductSort(searchParams.get(PRODUCT_SORT_PARAM));
+  function setSortBy(next: TopProductsSortBy): void {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set(PRODUCT_SORT_PARAM, next);
+    setSearchParams(nextParams);
+  }
   const query = useTopProductsQuery({ ...filters, sortBy, limit: DEFAULT_LIMIT, offset: 0 });
   const connectionsQuery = useConnectionsQuery();
+  const messages = useMessages('analytics');
+  const copy = messages.productSalesTable;
+  const format = useFormat();
+  const plural = usePlural();
   const intFormat = useNumberFormat();
+  const sortOptions = [
+    { value: 'revenue' as const, label: copy.sort.revenue },
+    { value: 'units' as const, label: copy.sort.units },
+  ];
   const demoMode = useDemoMode();
 
   // Shares the exact cache entry AnalyticsKpiStrip/ChannelSalesTable read
@@ -449,7 +495,9 @@ export function ProductSalesTable({
   });
 
   const items = query.data?.items ?? [];
-  const productIds = items.map((item) => item.productId);
+  // An unmatched offer's synthetic id is not a catalogue product: asking the
+  // catalogue about it would only produce a 404 per row.
+  const productIds = items.filter((item) => !item.unmatchedOfferId).map((item) => item.productId);
   const productQueries = useProductsBatchQuery(productIds, { enabled: productIds.length > 0 });
   const productsById = new Map(productIds.map((id, index) => [id, productQueries[index]?.data]));
   const connectionsById = new Map((connectionsQuery.data ?? []).map((c: Connection) => [c.id, c]));
@@ -457,9 +505,9 @@ export function ProductSalesTable({
   if (query.isLoading) {
     return (
       <LoadingState
-        eyebrow="Loading"
-        title="Loading top products"
-        message="Fetching net sales and units per product, split by channel…"
+        eyebrow={copy.loading.eyebrow}
+        title={copy.loading.title}
+        message={copy.loading.message}
       />
     );
   }
@@ -467,9 +515,9 @@ export function ProductSalesTable({
   if (query.error) {
     return (
       <ErrorState
-        title="Unable to load top products"
-        message={query.error.message}
-        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
+        title={copy.error.title}
+        message={describeApiError(query.error, 'analytics')}
+        action={<Button onClick={() => void query.refetch()}>{copy.error.retry}</Button>}
       />
     );
   }
@@ -477,11 +525,12 @@ export function ProductSalesTable({
   const channelColumns = deriveChannelColumns(items);
   const coverageGapAvailable = query.data?.coverageGapAvailable ?? true;
   const unresolvedProductCount = query.data?.unresolvedProductCount ?? 0;
+  const unmatchedOfferCount = query.data?.unmatchedOfferCount ?? 0;
 
   const columns: DataTableColumn<TopProductRow>[] = [
     {
       id: 'product',
-      header: 'Product',
+      header: copy.columns.product,
       cell: (row) => (
         <ProductCell
           row={row}
@@ -493,23 +542,26 @@ export function ProductSalesTable({
     },
     {
       id: 'sku',
-      header: 'SKU',
+      header: copy.columns.sku,
       hideBelow: 768,
       cell: (row) =>
-        row.sku ? <span className="mono-text">{row.sku}</span> : <EmptyValue label="No SKU" />,
+        row.sku ? <span className="mono-text">{row.sku}</span> : <EmptyValue label={copy.noSku} />,
     },
     {
       id: 'revenue',
       header: (function revenueHeader(): string {
-        const label = netGrossBasis === 'net' ? 'Net sales' : 'GMV';
-        return sortBy === 'revenue' ? `${label} ↓` : label;
+        const label = netGrossBasis === 'net' ? messages.common.netSales : messages.common.gmv;
+        return sortBy === 'revenue' ? interpolate(copy.columns.sorted, { column: label }) : label;
       })(),
       align: 'right',
-      cell: (row) => renderNovCell(row, currencyRecalculating, reportingConverter, netGrossBasis),
+      cell: (row) => renderNovCell(row, currencyRecalculating, reportingConverter, netGrossBasis, format),
     },
     {
       id: 'units',
-      header: sortBy === 'units' ? 'Units ↓' : 'Units',
+      header:
+        sortBy === 'units'
+          ? interpolate(copy.columns.sorted, { column: copy.columns.units })
+          : copy.columns.units,
       align: 'right',
       // The server-ranked figure, not a re-sum of `row.channels[]` — that
       // breakdown is a separate read (#2172) and could in principle be
@@ -538,69 +590,101 @@ export function ProductSalesTable({
   return (
     <article className="panel panel--dense">
       <div className="panel__header">
-        <h3 className="section-title">Top products</h3>
-        <SegmentedControl
-          options={SORT_OPTIONS}
-          value={sortBy}
-          onChange={setSortBy}
-          aria-label="Rank products by"
-        />
+        <h3 className="section-title">{copy.title}</h3>
+        <div className="analytics-export-row">
+          <SegmentedControl
+            options={sortOptions}
+            value={sortBy}
+            onChange={setSortBy}
+            aria-label={copy.sort.aria}
+          />
+          <ExportCsvButton
+            testId="export-csv-top-products"
+            reportLabel={copy.title}
+            request={{
+              report: 'top-products',
+              filters: {
+                from: filters.from,
+                to: filters.to,
+                sourceConnectionId: filters.sourceConnectionId,
+              },
+              basis: netGrossBasis,
+              sortBy,
+            }}
+            displayCurrency={filters.displayCurrency}
+            reportingCurrency={headline?.currency ?? null}
+          />
+        </div>
       </div>
       <DataTable
-        caption="Top products with per-channel split"
+        caption={copy.caption}
         rows={items}
         columns={columns}
         rowKey={(row) => row.productId}
         expandable={{
-          renderDetail: (row) => (
-            <ProductSalesRowDetail
-              row={row}
-              product={productsById.get(row.productId)}
-              filters={filters}
-              channelColumns={channelColumns}
-              connectionsById={connectionsById}
-              notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
-              demoMode={demoMode}
-            />
-          ),
+          renderDetail: (row) =>
+            row.unmatchedOfferId ? (
+              <p className="data-table__footnote">{copy.unmatchedDetail}</p>
+            ) : (
+              <ProductSalesRowDetail
+                row={row}
+                product={productsById.get(row.productId)}
+                filters={filters}
+                channelColumns={channelColumns}
+                connectionsById={connectionsById}
+                notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
+                demoMode={demoMode}
+              />
+            ),
           toggleLabel: (row, expanded) =>
-            `${expanded ? 'Collapse' : 'Expand'} details for ${row.name ?? row.productId}`,
+            interpolate(expanded ? copy.collapse : copy.expand, {
+              product: productRowLabel(row, copy.unmatchedName),
+            }),
         }}
         stickyLeftColumns={1}
         cardView={{
-          title: (row) => row.name ?? row.productId,
+          title: (row) => productRowLabel(row, copy.unmatchedName),
           subtitle: (row) => row.sku ?? undefined,
           summary: (row) => (
             <>
-              {renderNovCell(row, currencyRecalculating, reportingConverter, netGrossBasis)}
+              {renderNovCell(row, currencyRecalculating, reportingConverter, netGrossBasis, format)}
               {' · '}
-              {intFormat.format(row.units)} units
+              {plural(row.units, copy.cardUnits)}
             </>
           ),
-          detail: (row) => (
-            <VariantChannelMatrix
-              productId={row.productId}
-              productName={row.name ?? row.productId}
-              filters={filters}
-              channelColumns={channelColumns}
-              connectionsById={connectionsById}
-              notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
-              demoMode={demoMode}
-            />
-          ),
+          // Same rule as the desktop detail above: an unmatched offer has no
+          // variants to ask for, and its synthetic id must never be shown.
+          detail: (row) =>
+            row.unmatchedOfferId ? (
+              <p className="data-table__footnote">{copy.unmatchedDetail}</p>
+            ) : (
+              <VariantChannelMatrix
+                productId={row.productId}
+                productName={productRowLabel(row, copy.unmatchedName)}
+                filters={filters}
+                channelColumns={channelColumns}
+                connectionsById={connectionsById}
+                notListedConnectionIds={resolveNotListedConnectionIds(row, coverageGapAvailable)}
+                demoMode={demoMode}
+              />
+            ),
           collapsibleDetail: true,
         }}
-        emptyState={<EmptyValue label="No orders in this range" />}
+        emptyState={<EmptyValue label={copy.empty} />}
       />
       {!coverageGapAvailable ? (
         <p className="data-table__footnote">
-          Listing-coverage check unavailable — channel columns show sales only, never "Not listed".
+          {copy.coverageUnavailable}
         </p>
       ) : null}
       {unresolvedProductCount > 0 ? (
         <p className="data-table__footnote">
-          {unresolvedProductCount} product{unresolvedProductCount === 1 ? '' : 's'} on this page
-          could not be resolved to a catalogue entry.
+          {plural(unresolvedProductCount, copy.unresolved)}
+        </p>
+      ) : null}
+      {unmatchedOfferCount > 0 ? (
+        <p className="data-table__footnote">
+          {plural(unmatchedOfferCount, copy.unmatchedFootnote)}
         </p>
       ) : null}
     </article>

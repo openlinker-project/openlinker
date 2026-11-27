@@ -29,6 +29,11 @@ export interface CustomerProjectionRepositoryPort {
   findById(internalCustomerId: string): Promise<CustomerProjection | null>;
 
   /**
+   * Find projections for many internal ids in one read; ids with no projection are absent.
+   */
+  findByIds(internalCustomerIds: readonly string[]): Promise<CustomerProjection[]>;
+
+  /**
    * Find customer projections by email hash
    * Returns array to support collision detection (0, 1, or >1 matches)
    */
@@ -95,6 +100,21 @@ export interface CustomerProjectionRepositoryPort {
   upsert(projection: CustomerProjection): Promise<CustomerProjection>;
 
   /**
+   * Remove the personal data of customers last seen through `sourceConnectionId`
+   * before `lastSeenBefore` (#4178, a source's buyer-data retention period):
+   * clears the email and names, and the street, city and postcode of their
+   * address projections. Hashes and countries stay, so identity resolution and
+   * address reuse keep working. At most `limit` customers per call, oldest
+   * first; returns how many were cleared. A customer seen again later is
+   * cleared again once that sighting is past the period too.
+   */
+  redactPersonalDataLastSeenBefore(input: {
+    readonly sourceConnectionId: string;
+    readonly lastSeenBefore: Date;
+    readonly limit: number;
+  }): Promise<number>;
+
+  /**
    * Find all address projections for a customer
    */
   findAddressesByCustomerId(internalCustomerId: string): Promise<CustomerAddressProjection[]>;
@@ -123,4 +143,13 @@ export interface CustomerProjectionRepositoryPort {
   upsertDestinationAddressMapping(
     mapping: DestinationAddressMapping
   ): Promise<DestinationAddressMapping>;
+
+  /**
+   * Null the personal fields of these customers' projections (#4289): the
+   * normalized email, the names and the address lines. The email HASH and the
+   * country are kept - the hash is what links a returning buyer's next order to
+   * a customer id, and neither identifies a person on its own. Returns how many
+   * customer projections were cleared.
+   */
+  clearPersonalData(internalCustomerIds: readonly string[]): Promise<number>;
 }

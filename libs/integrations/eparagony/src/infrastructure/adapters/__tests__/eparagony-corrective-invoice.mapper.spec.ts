@@ -333,6 +333,34 @@ describe('composeCorrectiveInvoiceDocument - refusals happen before the boundary
     ).toThrow(EparagonyConfigException);
   });
 
+  it('should declare a missing seller tax number, name or address a connection-setup refusal (#3772)', () => {
+    for (const config of [
+      makeConfig({ merchantTIN: undefined }),
+      makeConfig({ merchantName: undefined }),
+      makeConfig({ merchantAddress: undefined }),
+    ]) {
+      let caught: unknown;
+      try {
+        compose(makeCommand(), config);
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(EparagonyConfigException);
+      expect((caught as EparagonyConfigException).failureCause).toBe('connection-setup');
+    }
+  });
+
+  it('should leave a refusal about the original document undeclared (#3772)', () => {
+    let caught: unknown;
+    try {
+      compose(makeCommand({ originalDocument: makeOriginalDocument({ documentNumber: '  ' }) }));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(EparagonyConfigException);
+    expect((caught as EparagonyConfigException).failureCause).toBeUndefined();
+  });
+
   it('should refuse when the original document carries no legal number to reference', () => {
     expect(() =>
       compose(makeCommand({ originalDocument: makeOriginalDocument({ documentNumber: '  ' }) })),

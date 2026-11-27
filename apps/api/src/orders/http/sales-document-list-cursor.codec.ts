@@ -15,8 +15,13 @@
  *
  * @module apps/api/src/orders/http
  */
-import { BadRequestException } from '@nestjs/common';
+import { HttpStatus, type HttpException } from '@nestjs/common';
 import type { SalesDocumentListCursor } from '@openlinker/core/orders';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
+
+function malformedCursor(): HttpException {
+  return codedHttpError(HttpStatus.BAD_REQUEST, 'CURSOR_MALFORMED', 'Malformed cursor');
+}
 
 export function encodeSalesDocumentListCursor(
   cursor: SalesDocumentListCursor,
@@ -34,10 +39,10 @@ export function decodeSalesDocumentListCursor(
   try {
     parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
   } catch {
-    throw new BadRequestException('Malformed cursor');
+    throw malformedCursor();
   }
   if (typeof parsed !== 'object' || parsed === null) {
-    throw new BadRequestException('Malformed cursor');
+    throw malformedCursor();
   }
   const record = parsed as Record<string, unknown>;
   return {
@@ -55,11 +60,11 @@ function revive(value: unknown): { createdAt: Date; id: string } | null | undefi
     typeof (value as { createdAt?: unknown }).createdAt !== 'string' ||
     typeof (value as { id?: unknown }).id !== 'string'
   ) {
-    throw new BadRequestException('Malformed cursor');
+    throw malformedCursor();
   }
   const createdAt = new Date((value as { createdAt: string }).createdAt);
   if (Number.isNaN(createdAt.getTime())) {
-    throw new BadRequestException('Malformed cursor');
+    throw malformedCursor();
   }
   return { createdAt, id: (value as { id: string }).id };
 }

@@ -3,8 +3,10 @@
  *
  * The non-render half of Shoper's structured connection-config editing: the
  * three fallback ids `config.defaults.{shippingId,paymentId,statusId}` a Shoper
- * order needs when no operator mapping resolves one. Before this they were
- * reachable only by hand-editing the raw Config JSON.
+ * order needs when no operator mapping resolves one, plus the three ids the
+ * lifecycle writeback uses (`parcelShippingId`, `cancelledStatusId`,
+ * `inProgressStatusId`). Before this they were reachable only by hand-editing
+ * the raw Config JSON.
  *
  *   - `schemaShape` - a positive-integer string, or `''` for "not set". No
  *     stricter than `ShoperConnectionConfigShapeValidatorAdapter`, which
@@ -26,6 +28,7 @@
 import { z } from 'zod';
 import type { ConnectionConfigContribution } from '../../shared/plugins';
 import { readConfigString, readOptionalConfigString } from '../../shared/plugins';
+import { getShoperMessages } from './messages';
 
 declare module '../../shared/plugins/plugin.types' {
   interface PluginEditConnectionFields {
@@ -35,21 +38,34 @@ declare module '../../shared/plugins/plugin.types' {
     shoperPaymentId?: string;
     /** `config.defaults.statusId`. */
     shoperStatusId?: string;
+    /** `config.defaults.parcelShippingId`. */
+    shoperParcelShippingId?: string;
+    /** `config.defaults.cancelledStatusId`. */
+    shoperCancelledStatusId?: string;
+    /** `config.defaults.inProgressStatusId`. */
+    shoperInProgressStatusId?: string;
   }
 }
 
 /** Form field -> `config.defaults` key. One table so read, write and schema cannot drift. */
 export const SHOPER_DEFAULT_FIELDS = [
-  { field: 'shoperShippingId', key: 'shippingId', label: 'delivery method' },
-  { field: 'shoperPaymentId', key: 'paymentId', label: 'payment method' },
-  { field: 'shoperStatusId', key: 'statusId', label: 'order status' },
+  { field: 'shoperShippingId', key: 'shippingId' },
+  { field: 'shoperPaymentId', key: 'paymentId' },
+  { field: 'shoperStatusId', key: 'statusId' },
+  { field: 'shoperParcelShippingId', key: 'parcelShippingId' },
+  { field: 'shoperCancelledStatusId', key: 'cancelledStatusId' },
+  { field: 'shoperInProgressStatusId', key: 'inProgressStatusId' },
 ] as const;
 
-function positiveIntegerField(label: string): z.ZodTypeAny {
+type ShoperDefaultField = (typeof SHOPER_DEFAULT_FIELDS)[number]['field'];
+
+function positiveIntegerField(field: ShoperDefaultField): z.ZodTypeAny {
   return z
     .union([
+      // The message is looked up when a value is validated, so it follows
+      // the active language instead of freezing at module load.
       z.string().refine((value) => value === '' || /^[1-9]\d*$/.test(value.trim()), {
-        message: `The ${label} must be a positive whole number.`,
+        error: () => getShoperMessages().shoperConnectionConfig.positiveInteger[field],
       }),
       z.literal(''),
     ])
@@ -58,9 +74,12 @@ function positiveIntegerField(label: string): z.ZodTypeAny {
 
 // Annotated so TS keeps the excess-property check live (the KSeF precedent).
 const shoperSchemaShape: ConnectionConfigContribution['schemaShape'] = {
-  shoperShippingId: positiveIntegerField('delivery method id'),
-  shoperPaymentId: positiveIntegerField('payment method id'),
-  shoperStatusId: positiveIntegerField('order status id'),
+  shoperShippingId: positiveIntegerField('shoperShippingId'),
+  shoperPaymentId: positiveIntegerField('shoperPaymentId'),
+  shoperStatusId: positiveIntegerField('shoperStatusId'),
+  shoperParcelShippingId: positiveIntegerField('shoperParcelShippingId'),
+  shoperCancelledStatusId: positiveIntegerField('shoperCancelledStatusId'),
+  shoperInProgressStatusId: positiveIntegerField('shoperInProgressStatusId'),
 };
 
 function readDefaultsBag(config: Record<string, unknown>): Record<string, unknown> {
@@ -102,11 +121,7 @@ export const shoperConnectionConfig: ConnectionConfigContribution = {
         ? String(value)
         : readConfigString(defaults, key);
     };
-    return {
-      shoperShippingId: read('shippingId'),
-      shoperPaymentId: read('paymentId'),
-      shoperStatusId: read('statusId'),
-    };
+    return Object.fromEntries(SHOPER_DEFAULT_FIELDS.map(({ field, key }) => [field, read(key)]));
   },
   applyToConfig: applyShoperConfig,
 };

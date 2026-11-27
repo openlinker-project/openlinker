@@ -17,12 +17,10 @@ import {
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
   Put,
@@ -42,6 +40,7 @@ import { CreateOrderNoteDto } from './dto/create-order-note.dto';
 import { UpdateOrderNoteDto } from './dto/update-order-note.dto';
 import { OrderNoteResponseDto } from './dto/order-note-response.dto';
 import { OrderNoteTimelineEntryResponseDto } from './dto/order-note-timeline-response.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -193,10 +192,17 @@ export class OrderNotesController {
 
   private mapError(error: unknown, noteId: string): Error {
     if (error instanceof OrderNoteNotFoundError) {
-      return new NotFoundException(`Order note not found: ${noteId}`);
+      return codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_NOTE_NOT_FOUND', `Order note not found: ${noteId}`, {
+        noteId,
+      });
     }
     if (error instanceof OrderNoteNotAuthoredError) {
-      return new ForbiddenException('Only the note\'s author (or an admin, for delete) may do this.');
+      return codedHttpError(
+        HttpStatus.FORBIDDEN,
+        'ORDER_NOTE_NOT_AUTHOR',
+        'Only the note\'s author (or an admin, for delete) may do this.',
+        { noteId }
+      );
     }
     return error as Error;
   }

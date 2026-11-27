@@ -2,8 +2,8 @@
  * Shoper Category Reader (#3713)
  *
  * The one place the shop's category directory is read: the STRUCTURE from
- * `GET /categories-tree` (ids only) and the TEXT from the paged
- * `GET /categories`. Joining the two into neutral categories is
+ * `GET /categories-tree` (ids only, also readable alone via `readTree`) and the
+ * TEXT from the paged `GET /categories`. Joining the two into neutral categories is
  * `joinShoperCategories`; this class only fetches.
  *
  * Shared by the ProductMaster adapter (which memoises the join for a sweep) and
@@ -26,17 +26,23 @@ export class ShoperCategoryReader {
   constructor(private readonly client: ShoperHttpClient) {}
 
   async read(): Promise<ShoperCategoryRead> {
-    const [tree, list] = await Promise.all([
-      this.client.get<ShoperCategoryTreeNode[]>('/categories-tree'),
-      this.fetchAll(),
-    ]);
+    const [tree, list] = await Promise.all([this.readTree(), this.fetchAll()]);
+    return { list, tree };
+  }
+
+  /**
+   * The structure alone (ids only, one request), for a caller that needs where
+   * a category sits but not the names of the whole directory.
+   */
+  async readTree(): Promise<ShoperCategoryTreeNode[]> {
+    const tree = await this.client.get<ShoperCategoryTreeNode[]>('/categories-tree');
     // A legitimately empty tree is `[]`. Anything else that is not an array is
     // an unreadable answer, and reading it as "no structure" would return every
     // category as an unplaced root, dressed up as the real directory.
     if (!Array.isArray(tree.data)) {
       throw new ShoperNetworkError('Shoper returned an unreadable category tree');
     }
-    return { list, tree: tree.data };
+    return tree.data;
   }
 
   private async fetchAll(): Promise<ShoperCategory[]> {

@@ -1,0 +1,12 @@
+{
+  "erliConnectionActions.configure": 24,
+  "erliConnectionActions.configuring": 24,
+  "erliConnectionActions.reconfigure": 30,
+  "erliCredentialsPanel.apiKey.rotate": 24,
+  "erliCredentialsPanel.cancel": 12,
+  "erliCredentialsPanel.manual.hide": 8,
+  "erliCredentialsPanel.manual.show": 8,
+  "erliCredentialsPanel.save": 24,
+  "erliCredentialsPanel.saving": 24,
+  "plugin.setupCard.badge": 18
+}

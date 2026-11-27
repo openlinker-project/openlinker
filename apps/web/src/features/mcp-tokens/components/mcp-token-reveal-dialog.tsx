@@ -15,6 +15,7 @@
  * @module apps/web/src/features/mcp-tokens/components
  */
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { interpolate, renderRich, useMessages } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import {
@@ -24,6 +25,9 @@ import {
   DialogFooter,
   DialogTitle,
 } from '../../../shared/ui/dialog';
+
+/** The literal header an MCP client sends - a protocol value, not copy. */
+const AUTHORIZATION_HEADER_EXAMPLE = 'Authorization: Bearer <token>';
 
 interface McpTokenRevealDialogProps {
   open: boolean;
@@ -38,6 +42,7 @@ export function McpTokenRevealDialog({
   rawToken,
   onDismiss,
 }: McpTokenRevealDialogProps): ReactElement {
+  const copy = useMessages('mcp-tokens').mcpTokenRevealDialog;
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
 
@@ -68,17 +73,14 @@ export function McpTokenRevealDialog({
       }}
     >
       <DialogContent>
-        <DialogTitle>Token created — {tokenName}</DialogTitle>
-        <DialogDescription>Copy this token now. It cannot be shown again.</DialogDescription>
+        <DialogTitle>{interpolate(copy.title, { name: tokenName })}</DialogTitle>
+        <DialogDescription>{copy.description}</DialogDescription>
 
-        <Alert tone="warning">
-          This is the only time this value is displayed. OpenLinker stores only a hash of it — if you
-          lose it, revoke the token and create a new one.
-        </Alert>
+        <Alert tone="warning">{copy.warning}</Alert>
 
         <div className="mcp-token-reveal">
           <span className="mcp-token-reveal__label" id="mcp-token-raw-label">
-            Token
+            {copy.tokenLabel}
           </span>
           <div className="mcp-token-reveal__row">
             <code
@@ -89,23 +91,26 @@ export function McpTokenRevealDialog({
               {rawToken}
             </code>
             <Button type="button" tone="primary" onClick={handleCopy}>
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? copy.copied : copy.copy}
             </Button>
           </div>
           {copyFailed ? (
             <p className="mcp-token-reveal__hint" role="alert">
-              Copying failed — select the value above and copy it manually before closing.
+              {copy.copyFailed}
             </p>
           ) : null}
           <p className="mcp-token-reveal__hint">
-            Paste it into your MCP client&apos;s configuration as an{' '}
-            <code className="mono-text">Authorization: Bearer &lt;token&gt;</code> header.
+            {renderRich(
+              copy.pasteHint,
+              { code: (chunk) => <code className="mono-text">{chunk}</code> },
+              { header: AUTHORIZATION_HEADER_EXAMPLE },
+            )}
           </p>
         </div>
 
         <DialogFooter>
           <Button type="button" tone="secondary" onClick={onDismiss}>
-            Done
+            {copy.done}
           </Button>
         </DialogFooter>
       </DialogContent>

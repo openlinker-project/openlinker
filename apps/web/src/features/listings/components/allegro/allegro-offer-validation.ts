@@ -34,9 +34,29 @@
  * The neutral price/stock/category blockers stay host-owned — only the
  * Allegro-specific ones live here.
  *
+ * Every label and message reads the `listings.allegroOfferValidation` copy when
+ * it is read (blocker labels are getters), never at module load, so the words
+ * follow the active language.
+ *
  * @module features/listings/components/allegro
  */
-import type { OfferValidationContribution } from '../../../../shared/plugins';
+import {
+  formatPlural,
+  getBcp47Locale,
+  getLocale,
+  getMessages,
+  interpolate,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../../shared/i18n';
+import type {
+  CategoryParameterLike,
+  OfferBlockerCopy,
+  OfferBlockerDescribeContext,
+  OfferRowBundleInput,
+  OfferRowValidationInput,
+  OfferValidationContribution,
+} from '../../../../shared/plugins';
 import { isRestrictedCirculationGtin } from '../../lib/gtin-classification';
 import { checkRowParameterRestrictions } from '../../lib/parameter-restrictions';
 import { isAllegroTitleTooLong, isAllegroTitleTooShort } from './allegro-title';
@@ -49,7 +69,40 @@ export const ALLEGRO_NO_PHOTO_BLOCKER = 'allegro:no-photo';
 export const ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER = 'allegro:siblings-without-card';
 export const ALLEGRO_EAN_UNVERIFIED_BLOCKER = 'allegro:ean-unverified';
 export const ALLEGRO_IN_STORE_BARCODE_BLOCKER = 'allegro:in-store-barcode';
+export const ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER = 'allegro:needs-offer-parameters';
+export const ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER = 'allegro:bundle-component-missing';
+export const ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER =
+  'allegro:bundle-component-gpsr-missing';
+export const ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER = 'allegro:bundle-category-mismatch';
+/**
+ * The refusal codes the adapter's product-set planning raises per component
+ * (`planProductSet`, #3520), as the bundle preview reports them. Mirrored here
+ * because the browser cannot import the adapter.
+ */
+export const ALLEGRO_PRODUCT_SET_UNPUBLISHABLE_CODE = 'PRODUCT_SET_COMPONENT_UNPUBLISHABLE';
+export const ALLEGRO_PRODUCT_SET_GPSR_MISSING_CODE = 'PRODUCT_SET_COMPONENT_GPSR_MISSING';
 export const ALLEGRO_MISSING_SELLER_DEFAULTS_ISSUE = 'allegro:missing-seller-details';
+
+/**
+ * Codes with which Allegro refuses an offer because of the SELLER ACCOUNT, not
+ * the offer (#4004) - seen in the #3928 spike on a sandbox account under a sales
+ * blockade. No edit to an offer changes the answer, so the batch page reports
+ * them once instead of offering a per-row fix.
+ */
+export const ALLEGRO_ACCOUNT_LEVEL_ERROR_CODES = [
+  'OfferAccessDeniedException',
+  'SellerAccountWithSellBlockadeException',
+] as const;
+
+/** Allegro's Sales Center, where a seller sees and resolves an account block. */
+function allegroSalesCenterUrl(connectionConfig: Record<string, unknown>): string | null {
+  // An absent or unreadable environment is NOT sandbox: sending a production
+  // seller to the sandbox panel to fix a real block is worse than no link.
+  const environment = connectionConfig['environment'];
+  if (environment === 'sandbox') return 'https://salescenter.allegro.com.allegrosandbox.pl';
+  if (environment === 'production' || environment === undefined) return 'https://salescenter.allegro.com';
+  return null;
+}
 
 /**
  * Every `sellerDefaults` path Allegro's own create-time gate can report as
@@ -142,19 +195,130 @@ export function missingAllegroSellerDetails(config: Record<string, unknown>): st
   const location = asRecord(defaults?.['location']);
   const locationComplete =
     location !== undefined && SELLER_LOCATION_FIELDS.every((field) => isFilled(location[field]));
-  if (!locationComplete) missing.push('a ship-from location');
-  if (!isFilled(defaults?.['responsibleProducerId'])) missing.push('a responsible producer');
+  const items = getMessages('listings').allegroOfferValidation.missingSellerDetails.items;
+  if (!locationComplete) missing.push(items.shipFromLocation);
+  if (!isFilled(defaults?.['responsibleProducerId'])) missing.push(items.responsibleProducer);
   if (!isSafetyInformationComplete(defaults?.['safetyInformation'])) {
-    missing.push('safety information');
+    missing.push(items.safetyInformation);
   }
 
   return missing;
 }
 
-/** "a, b and c" - a plain list, no Oxford comma, no trailing punctuation. */
+/** "a, b and c" - a plain list in the active language, no trailing punctuation. */
 function joinPlainly(parts: readonly string[]): string {
-  if (parts.length <= 1) return parts[0] ?? '';
-  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return new Intl.ListFormat(getBcp47Locale(getLocale()), { type: 'conjunction' }).format(parts);
+}
+
+/** The blocker chip labels, read when a chip renders. */
+function blockerLabels(): ResolvedCopy<Messages['listings']>['allegroOfferValidation']['blockers'] {
+  return getMessages('listings').allegroOfferValidation.blockers;
+}
+
+/**
+ * A bundle publishes as one product-set offer, so the checks about a single
+ * product (its own barcode, its own catalogue card, offer-level product
+ * parameters, sibling grouping) do not apply to it and are skipped rather than
+ * reported falsely. What can stop it is each component, and the category: Allegro
+ * requires the offer's category to equal that of the FIRST component's card.
+ */
+/** Allegro's "Stan" parameter: the adapter sends "new" when it is empty, so it never blocks. */
+const ALLEGRO_CONDITION_PARAMETER_ID = '11323';
+
+type SectionedParameter = CategoryParameterLike & { section?: string; dependsOn?: unknown };
+
+/**
+ * A set publishes only its OWN (offer-section) parameters - the product-section
+ * ones come from the components' cards - so those are the only ones a set row
+ * can be missing. The schema reaches here with `section`/`dependsOn` even though
+ * the neutral `CategoryParameterLike` does not declare them.
+ */
+function hasMissingRequiredOfferParameter(input: OfferRowValidationInput): boolean {
+  const schema = input.categoryParameters as readonly SectionedParameter[] | undefined;
+  if (!schema) return false;
+  const supplied = input.suppliedParameters ?? [];
+  const hasValue = (id: string): boolean =>
+    supplied.some(
+      (p) =>
+        p.id === id &&
+        ((p.values ?? []).some((v) => v.trim() !== '') ||
+          (p.valuesIds ?? []).length > 0 ||
+          p.rangeValue !== undefined),
+    );
+  return schema.some(
+    (p) =>
+      p.required &&
+      p.section === 'offer' &&
+      !p.dependsOn &&
+      p.id !== ALLEGRO_CONDITION_PARAMETER_ID &&
+      !hasValue(p.id),
+  );
+}
+
+function validateBundleRow(
+  input: OfferRowValidationInput,
+  bundle: OfferRowBundleInput,
+): string[] {
+  const blockers: string[] = [];
+  if (isAllegroTitleTooLong(input.title)) {
+    blockers.push(ALLEGRO_TITLE_TOO_LONG_BLOCKER);
+  } else if (isAllegroTitleTooShort(input.title)) {
+    blockers.push(ALLEGRO_TITLE_TOO_SHORT_BLOCKER);
+  }
+  if (input.imageCount === 0) blockers.push(ALLEGRO_NO_PHOTO_BLOCKER);
+
+  const hasProblem = (code: string): boolean =>
+    bundle.components.some((component) =>
+      component.problems.some((problem) => problem.code === code),
+    );
+  if (hasProblem(ALLEGRO_PRODUCT_SET_UNPUBLISHABLE_CODE)) {
+    blockers.push(ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER);
+  }
+  if (hasProblem(ALLEGRO_PRODUCT_SET_GPSR_MISSING_CODE)) {
+    blockers.push(ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER);
+  }
+  if (
+    bundle.suggestedCategoryId !== null &&
+    bundle.chosenCategoryId !== null &&
+    bundle.suggestedCategoryId !== bundle.chosenCategoryId
+  ) {
+    blockers.push(ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER);
+  }
+  if (hasMissingRequiredOfferParameter(input)) {
+    blockers.push(ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER);
+  }
+  return blockers;
+}
+
+/** The copy for every Allegro blocker sentence (#4003), in the active language. */
+function allegroCopy(): ReturnType<typeof getMessages<'listings'>>['bulkBlockers']['allegro'] {
+  return getMessages('listings').bulkBlockers.allegro;
+}
+
+/** A sentence pair with no list - most Allegro blockers. */
+function plainCopy(entry: { title: string; detail: string }): OfferBlockerCopy {
+  return { title: entry.title, detail: entry.detail };
+}
+
+/**
+ * The missing-product-parameter sentence (#4003). Each of the three states of
+ * `missingParameterNames` gets its own words: a list nobody computed, a list
+ * that could not be loaded, and an actual list must never read alike - an
+ * empty list in particular is only "nothing missing" when it was checked.
+ */
+export function describeNeedsProductParameters(
+  context: OfferBlockerDescribeContext,
+): OfferBlockerCopy {
+  const copy = allegroCopy().needsProductParameters;
+  const names = context.missingParameterNames;
+  if (names === undefined) return { title: copy.notCheckedTitle, detail: copy.notCheckedDetail };
+  if (names === null) return { title: copy.notLoadedTitle, detail: copy.notLoadedDetail };
+  if (names.length === 0) return { title: copy.allFilledTitle, detail: copy.allFilledDetail };
+  return {
+    title: formatPlural(names.length, copy.listTitle, getLocale()),
+    detail: copy.listDetail,
+    items: names,
+  };
 }
 
 export const allegroOfferValidation: OfferValidationContribution = {
@@ -163,55 +327,129 @@ export const allegroOfferValidation: OfferValidationContribution = {
       id: ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER,
       field: 'parameters',
       tone: 'warning',
-      label: 'add product params',
+      get label(): string {
+        return blockerLabels().addProductParams;
+      },
+      describe: describeNeedsProductParameters,
     },
     {
       id: ALLEGRO_TITLE_TOO_LONG_BLOCKER,
       field: 'title',
       tone: 'error',
-      label: 'title too long',
+      get label(): string {
+        return blockerLabels().titleTooLong;
+      },
+      describe: () => plainCopy(allegroCopy().titleTooLong),
     },
     {
       id: ALLEGRO_TITLE_TOO_SHORT_BLOCKER,
       field: 'title',
       tone: 'error',
-      label: 'title too short',
+      get label(): string {
+        return blockerLabels().titleTooShort;
+      },
+      describe: () => plainCopy(allegroCopy().titleTooShort),
     },
     {
       id: ALLEGRO_PARAM_VALUE_INVALID_BLOCKER,
       field: 'parameters',
       tone: 'error',
-      label: 'parameter value rejected',
+      get label(): string {
+        return blockerLabels().paramValueRejected;
+      },
+      describe: () => plainCopy(allegroCopy().paramValueInvalid),
     },
     {
       id: ALLEGRO_NO_PHOTO_BLOCKER,
       field: 'images',
       tone: 'error',
-      label: 'no photo',
+      get label(): string {
+        return blockerLabels().noPhoto;
+      },
+      describe: () => plainCopy(allegroCopy().noPhoto),
     },
     {
       id: ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER,
       field: 'ean',
       tone: 'error',
-      label: 'siblings share one card',
+      get label(): string {
+        return blockerLabels().siblingsShareOneCard;
+      },
+      describe: () => plainCopy(allegroCopy().siblingsWithoutCard),
+    },
+    {
+      id: ALLEGRO_NEEDS_OFFER_PARAMETERS_BLOCKER,
+      field: 'parameters',
+      tone: 'error',
+      get label(): string {
+        return blockerLabels().needsOfferParameters;
+      },
+      describe: () => plainCopy(allegroCopy().needsOfferParameters),
+    },
+    {
+      id: ALLEGRO_BUNDLE_COMPONENT_MISSING_BLOCKER,
+      field: 'bundle',
+      tone: 'error',
+      get label(): string {
+        return blockerLabels().bundleComponentMissing;
+      },
+    },
+    {
+      id: ALLEGRO_BUNDLE_COMPONENT_GPSR_MISSING_BLOCKER,
+      field: 'bundle',
+      tone: 'error',
+      get label(): string {
+        return blockerLabels().bundleComponentGpsrMissing;
+      },
+    },
+    {
+      id: ALLEGRO_BUNDLE_CATEGORY_MISMATCH_BLOCKER,
+      field: 'bundle',
+      tone: 'error',
+      get label(): string {
+        return blockerLabels().bundleCategoryMismatch;
+      },
     },
     {
       id: ALLEGRO_EAN_UNVERIFIED_BLOCKER,
       field: 'ean',
       tone: 'warning',
-      label: 'EAN not in catalogue',
+      get label(): string {
+        return blockerLabels().eanNotInCatalogue;
+      },
+      describe: () => plainCopy(allegroCopy().eanUnverified),
       advisory: true,
     },
     {
       id: ALLEGRO_IN_STORE_BARCODE_BLOCKER,
       field: 'ean',
       tone: 'warning',
-      label: 'in-store barcode',
+      get label(): string {
+        return blockerLabels().inStoreBarcode;
+      },
+      describe: () => plainCopy(allegroCopy().inStoreBarcode),
       advisory: true,
     },
   ],
+  accountLevelRefusal: {
+    errorCodes: ALLEGRO_ACCOUNT_LEVEL_ERROR_CODES,
+    describe: ({ affected, total, connectionConfig }) => {
+      const copy = getMessages('listings').bulkBatch.allegro.accountRefused;
+      const salesCenterUrl = allegroSalesCenterUrl(connectionConfig);
+      return {
+        title: copy.title,
+        detail: interpolate(formatPlural(affected, copy.detail, getLocale()), {
+          total: total.toLocaleString(getBcp47Locale(getLocale())),
+        }),
+        ...(salesCenterUrl ? { action: { label: copy.action, href: salesCenterUrl } } : {}),
+      };
+    },
+  },
   validateRow: (input) => {
     const blockers: string[] = [];
+    if (input.bundle) {
+      return validateBundleRow(input, input.bundle);
+    }
     if (input.needsProductParameters && !input.willLinkProductCard) {
       blockers.push(ALLEGRO_NEEDS_PRODUCT_PARAMETERS_BLOCKER);
     }
@@ -256,6 +494,9 @@ export const allegroOfferValidation: OfferValidationContribution = {
       } else if (
         input.catalogueConsulted === true &&
         !input.willLinkProductCard &&
+        // A card WAS found, only set aside for the operator's mapping (#3994) -
+        // "not in the catalogue" would be false.
+        input.barcodeMatchedCatalogue !== true &&
         !blockers.includes(ALLEGRO_SIBLINGS_WITHOUT_CARD_BLOCKER)
       ) {
         // Only meaningful when a lookup actually ran, and silent when the
@@ -269,12 +510,12 @@ export const allegroOfferValidation: OfferValidationContribution = {
   validateBatch: (input) => {
     const missing = missingAllegroSellerDetails(input.connectionConfig);
     if (missing.length === 0) return [];
+    const copy = getMessages('listings').allegroOfferValidation.missingSellerDetails;
     return [
       {
         id: ALLEGRO_MISSING_SELLER_DEFAULTS_ISSUE,
-        title: `This connection is missing ${joinPlainly(missing)}.`,
-        detail:
-          'Allegro requires them on every offer, so every offer in this batch would be rejected. Add them in the connection settings, then come back - the submit stays locked until they are set.',
+        title: interpolate(copy.title, { items: joinPlainly(missing) }),
+        detail: copy.detail,
       },
     ];
   },

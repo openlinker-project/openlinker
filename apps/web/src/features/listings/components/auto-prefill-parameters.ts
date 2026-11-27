@@ -7,17 +7,20 @@
  * hard-coded pattern list).
  *
  * Covers EAN-class fields, the `Stan` (condition) default, brand (Marka),
- * and producer code (Kod producenta). Each rule only fires on
+ * producer code (Kod producenta), and - for the bulk editor's per-variant
+ * scope - a parameter named after a variant attribute (#3851). Each rule only fires on
  * high-confidence matches — wrong auto-fills are worse than no auto-fill
  * (silently broken listings, hard to debug).
  *
  * @module apps/web/src/features/listings/components
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type { CatalogProduct, CategoryParameter, OfferParameter } from '../api/listings.types';
 import type {
   CategoryParameterFormValues,
   FormParameterValue,
 } from './category-parameter-form.types';
+import { dictionaryEntryFormValue } from './category-parameters-to-offer-parameters';
 
 /**
  * Known fragility — these matchers are case-insensitive *exact* string
@@ -161,6 +164,7 @@ export function collectUnmatchedBrandHints(
   const target = variant.brand.toLowerCase().trim();
   if (!target) return {};
 
+  const copy = getMessages('listings').autoPrefillParameters;
   const hints: Record<string, string> = {};
   for (const param of parameters) {
     if (filled[param.id] !== undefined) continue;
@@ -168,8 +172,7 @@ export function collectUnmatchedBrandHints(
     if (!BRAND_NAME_PATTERNS.includes(nameLower)) continue;
     if (param.type !== 'dictionary') continue;
     if (param.restrictions.multipleChoices) continue;
-    hints[param.id] =
-      `Variant brand "${variant.brand}" — no exact match in Allegro brand list; pick manually.`;
+    hints[param.id] = interpolate(copy.unmatchedBrand, { brand: variant.brand });
   }
   return hints;
 }
@@ -196,7 +199,7 @@ function prefillOne(
     const newOption = param.dictionary?.find((entry) =>
       NEW_VALUE_PATTERNS.includes(entry.value.toLowerCase().trim())
     );
-    if (newOption) return newOption.id;
+    if (newOption) return dictionaryEntryFormValue(param, newOption);
   }
 
   // Marka (brand) — exact case-insensitive match against the dictionary.
@@ -213,7 +216,7 @@ function prefillOne(
       const matches = (param.dictionary ?? []).filter(
         (entry) => entry.value.toLowerCase().trim() === target
       );
-      if (matches.length === 1) return matches[0].id;
+      if (matches.length === 1) return dictionaryEntryFormValue(param, matches[0]);
       // 0 or >1 matches → leave blank, hint surfaces elsewhere.
     }
   }
@@ -235,6 +238,81 @@ function prefillOne(
   }
 
   return undefined;
+}
+
+/**
+ * Prefill from a variant's distinguishing attributes (#3851).
+ *
+ * A master that models variants as attribute bags (Shoper's `{ "Kolor":
+ * "czerwony" }`) already carries the value an operator would otherwise pick by
+ * hand for every sibling. A category parameter is filled when:
+ *
+ *   - its name equals an attribute key (case-insensitive, trimmed) - exactly
+ *     one key, or several that agree on the value; and
+ *   - for a dictionary: the attribute value equals exactly ONE entry's value
+ *     (case-insensitive, trimmed) -> that entry, in the form value shape the
+ *     field stores (an id, an id array for multi-choice, the entry's text for a
+ *     custom-values field);
+ *   - for a free-text `string` parameter: the trimmed value, verbatim.
+ *
+ * Everything else stays empty, same as the rules above: no substring or fuzzy
+ * match (`granatowy` never becomes `niebieski`), no numeric or ranged parameter
+ * (an attribute bag is text, and a unit mismatch would pass silently), and the
+ * EAN slot is never touched - it has its own single source (`injectEanParameter`).
+ *
+ * Returns only the parameters it could fill; the caller decides which of those
+ * it may write (never over an operator's value, never at a shared base).
+ */
+export function prefillFromVariantAttributes(
+  parameters: readonly CategoryParameter[],
+  attributes: Readonly<Record<string, string>> | null | undefined,
+): CategoryParameterFormValues {
+  const out: CategoryParameterFormValues = {};
+  if (!attributes) return out;
+  const valuesByName = new Map<string, Set<string>>();
+  for (const [key, raw] of Object.entries(attributes)) {
+    if (typeof raw !== 'string') continue;
+    const value = raw.trim();
+    if (value === '') continue;
+    const name = key.trim().toLowerCase();
+    const seen = valuesByName.get(name) ?? new Set<string>();
+    seen.add(value);
+    valuesByName.set(name, seen);
+  }
+
+  for (const param of parameters) {
+    if (isEanParameterName(param.name)) continue;
+    const candidates = valuesByName.get(param.name.trim().toLowerCase());
+    // Two keys that differ only in case/whitespace and disagree on the value
+    // cannot be resolved without guessing.
+    if (!candidates || candidates.size !== 1) continue;
+    const [value] = candidates;
+
+    if (param.type === 'dictionary') {
+      const target = value.toLowerCase();
+      const matches = (param.dictionary ?? []).filter(
+        (entry) => entry.value.toLowerCase().trim() === target,
+      );
+      if (matches.length !== 1) continue;
+      const [entry] = matches;
+      if (param.restrictions.multipleChoices) {
+        out[param.id] = [entry.id];
+      } else if (param.restrictions.customValuesEnabled) {
+        // A custom-values field stores TEXT and resolves it to an entry at submit
+        // (`categoryParametersToOfferParameters`); the entry's own spelling keeps
+        // that resolution exact.
+        out[param.id] = entry.value;
+      } else {
+        out[param.id] = entry.id;
+      }
+      continue;
+    }
+
+    if (param.type === 'string') {
+      out[param.id] = value;
+    }
+  }
+  return out;
 }
 
 /**
@@ -295,7 +373,9 @@ function mapCatalogValueToFormValue(
   if (target.type === 'dictionary') {
     const ids = catalogParam.valueIds ?? [];
     if (ids.length === 0) return undefined;
-    return target.restrictions.multipleChoices ? ids : ids[0];
+    if (target.restrictions.multipleChoices) return ids;
+    const entry = target.dictionary?.find((e) => e.id === ids[0]);
+    return entry ? dictionaryEntryFormValue(target, entry) : ids[0];
   }
   // string / integer / float (non-range). Range types aren't surfaced by
   // the catalog endpoint today; skip rather than guess.

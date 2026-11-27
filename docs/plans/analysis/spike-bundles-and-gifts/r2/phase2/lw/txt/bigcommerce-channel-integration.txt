@@ -1,0 +1,35 @@
+=== bigcommerce-channel-integration | BigCommerce channel integration
+ 
+ BigCommerce channel integration 
+BigCommerce Channel Integration
+ BigCommerce integration allows you to connect to your BigCommerce seller account via API. 
+  BigCommerce channel integration is a Linnworks Direct  integration - developed, maintained, and supported by Linnworks.
+ Supported features
+ Inventory Updates 
+ Linnworks can automatically send changes in stock levels to the channel. 
+ Order Download 
+ Channel orders can be automatically downloaded into Linnworks.
+ Channel Tax 
+ Tax information and settings displayed on orders in Linnworks are provided by the channel during order download. 
+ Inventory Mapping 
+ Channel listings can be linked to Linnworks inventory items for stock level and price updates.
+ Listing Creation 
+ New listings on the channel can be created via Linnworks. A full guide on the BigCommerce listing tool is here . 
+ Location Mapping 
+ Orders can be downloaded and inventory updates sent from specific locations.
+ Order Cancellation 
+ Orders can be canceled on the channel via Linnworks.
+ Order Dispatch 
+ Orders on the channel can be marked as shipped and provided with the tracking number and shipping service name via Linnworks.
+ Order Refunds 
+ Orders can be refunded on the channel via Linnworks
+ Payment Mapping 
+ Channel payment methods can be linked to Linnworks payment methods for the orders in Linnworks to display methods based on the selection on the channel.
+ Price Change 
+ Prices on channel listings can be automatically updated via Linnworks.
+ Shipping Mapping 
+ Channel shipping methods can be linked to Linnworks postal services for the orders in Linnworks to display the services based on the selection on the channel.
+ Next steps: 
+ Add New 
+ Configure 
+ 

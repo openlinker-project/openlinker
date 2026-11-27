@@ -203,6 +203,28 @@ export interface InventoryAdjustment {
 }
 
 /**
+ * One variant's COMPLETE set of reported locations, for
+ * `markUnreportedLocationsStaleForSource`.
+ */
+export interface ReportedLocationSet {
+  /** The variant key; `null` for a product-level position. */
+  readonly variantKey: string | null;
+  /** Every OL location the master reported this variant at in this pull. */
+  readonly locationIds: readonly string[];
+}
+
+/**
+ * One variant's COMPLETE set of reported locations, for
+ * `markUnreportedLocationsStaleForSource`.
+ */
+export interface ReportedLocationSet {
+  /** The variant key; `null` for a product-level position. */
+  readonly variantKey: string | null;
+  /** Every OL location the master reported this variant at in this pull. */
+  readonly locationIds: readonly string[];
+}
+
+/**
  * Inventory filters for list queries
  */
 export interface InventoryFilters {
@@ -296,7 +318,14 @@ export interface PaginatedInventoryItems {
 export interface VariantStockRow {
   productVariantId: string;
   totalAvailable: number;
+  /** Distinct NON-NULL locations. A pooled position (locationId NULL) counts 0, so 0 does NOT mean "no rows". */
   locationCount: number;
+  /**
+   * Number of live (non-stale) inventory rows for the variant, pooled ones
+   * included (#3851). `positionCount === 0` is what means "no position / stock
+   * never synced"; `locationCount` cannot say that.
+   */
+  positionCount: number;
   /**
    * `MAX(updatedAt)` across the variant's live positions (#2321) — when the
    * stock facts behind `totalAvailable` were last written.

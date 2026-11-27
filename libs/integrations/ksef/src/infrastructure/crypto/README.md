@@ -44,13 +44,60 @@ live KSeF test vectors land.
   (`KsefTokenEncryption` vs `SymmetricKeyEncryption` — required to avoid
   key-confusion), pick the latest valid cert. The selected `publicKeyId` is the
   spec selector stamped onto the init-token / encrypted-symmetric-key payloads.
-- `validateMfPublicKeyCertificate` enforces the validity window + usage before
-  the cert is trusted. (Root-of-trust pinning + OCSP/CRL is a tracked follow-up;
-  KSeF serves these over TLS and C3 validates the window + usage.)
+- `validateMfPublicKeyCertificate` enforces, in order: usage, the validity
+  window, chain-of-trust (against pinned MF trust anchors), and revocation (via an
+  injected checker). The cache service supplies the trust anchors + revocation
+  checker on every validate call. See **Chain-of-trust & revocation** below.
 - Cache key is `ksef:mf-public-key:{connectionId}:{usage}` — per-connection,
   per-usage. TTL is derived from `validTo - now - 5m` (never hardcoded), so a
   rotated cert can't be served past its lifetime. A cert cached but rotated early
   is detected as stale on read and refetched.
+
+## Chain-of-trust & revocation (#1589)
+
+Beyond the validity window + usage checks, `validateMfPublicKeyCertificate`
+verifies that a presented MF public-key cert chains to a **pinned MF trust
+anchor** and is not revoked. Both steps run only when the inputs are supplied
+(`MfPublicKeyCacheService` supplies them on the live fetch path); the pure
+window/usage unit tests pass none and are unaffected.
+
+### Root-CA pinning (`mf-trust-anchors.ts`)
+
+Trust anchors are loaded, memoized per process, from:
+
+1. `OL_KSEF_MF_ROOT_CA_PATH` env var - an absolute path to a PEM file that may
+   concatenate the MF root CA **and any intermediates** that sign the leaf
+   encryption certs. Every cert in the bundle is treated as a pinned issuer, so a
+   leaf directly issued by (and signature-verifying against) any of them is
+   trusted. Chain verification uses Node's built-in `crypto.X509Certificate` -
+   **no `node-forge` / `pkijs` dependency was added.**
+2. `BUNDLED_MF_ROOT_CA_PEMS` - an in-tree fallback bundle.
+
+> **OPERATOR ACTION REQUIRED FOR PRODUCTION.** The real Ministerstwo Finansow KSeF
+> PKI root CA is **NOT** bundled - `BUNDLED_MF_ROOT_CA_PEMS` ships **empty**, on
+> purpose: we do not ship a guessed/fabricated CA. Until the authoritative MF root
+> CA is supplied (set `OL_KSEF_MF_ROOT_CA_PATH`, or vendor the PEM into
+> `BUNDLED_MF_ROOT_CA_PEMS`), the chain-of-trust check has **no anchors and is
+> SKIPPED** with a loud one-time boot warning - trust falls back to TLS transport
+> security only. Obtain the current MF root/intermediate CA(s) from the MF/KSeF PKI
+> publication and configure it before enabling `prod`.
+
+Rejections surface as `KsefSessionCryptoException` with `errorCode`
+`CERT_UNTRUSTED_ROOT` (does not chain) or `CERT_PARSE_FAILED` (unparseable PEM).
+
+### Revocation (`mf-certificate-revocation.ts`) - DOCUMENTED LIMITATION
+
+Revocation is a pluggable synchronous seam (`CertificateRevocationChecker`). The
+default production implementation (`NullRevocationChecker`) performs **no network
+I/O** and returns `unknown` (non-fatal, logged). **Live OCSP-first / CRL-fallback
+revocation over the network is DEFERRED** for this MVP: a correct OCSP client
+(ASN.1 request signing, nonce handling, responder-cert validation) or CRL fetch +
+signature-verify + delta handling is disproportionate to the current risk (MF
+certs are short-lived and TLS-served). The seam is the single, tested extension
+point - a future issue can drop in a real checker with **no change to the
+validator or its call sites**. A checker that returns `revoked` causes the cert to
+be rejected with `errorCode` `CERT_REVOKED` (proven by unit tests). Production
+hardening may additionally choose to treat `unknown` as a rejection (fail-closed).
 
 ## Reusability note
 

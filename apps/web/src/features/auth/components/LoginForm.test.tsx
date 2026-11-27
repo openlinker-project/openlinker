@@ -1,6 +1,8 @@
 import { fireEvent, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { LoginForm } from './LoginForm';
+import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 
 describe('LoginForm', () => {
@@ -50,7 +52,7 @@ describe('LoginForm', () => {
     const apiClient = createMockApiClient({
       auth: {
         login: async () => {
-          throw new Error('Invalid credentials');
+          throw new ApiError('Invalid credentials', 401, { code: 'AUTH_INVALID_CREDENTIALS' });
         },
       },
     });
@@ -66,7 +68,7 @@ describe('LoginForm', () => {
     fireEvent.click(container.getAllByRole('button', { name: 'Sign in' })[0]);
 
     expect(await container.findByText('Login failed')).toBeInTheDocument();
-    expect(container.getByText('Invalid credentials')).toBeInTheDocument();
+    expect(container.getByText(getMessages('errors').codes.AUTH_INVALID_CREDENTIALS)).toBeInTheDocument();
   });
 
   it('should show pending state while login is in progress', async () => {
@@ -120,6 +122,32 @@ describe('LoginForm', () => {
 
       expect(
         container.queryByRole('link', { name: /create a free demo account/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it('should link back to the project site, docs and GitHub when demoMode is true', () => {
+      const view = renderWithProviders(<LoginForm demoMode />);
+      const nav = within(within(view.container).getByRole('navigation', { name: /openlinker project/i }));
+
+      expect(nav.getByRole('link', { name: 'openlinker.io' })).toHaveAttribute(
+        'href',
+        'https://openlinker.io/en/'
+      );
+      expect(nav.getByRole('link', { name: 'Docs' })).toHaveAttribute(
+        'href',
+        'https://docs.openlinker.io/'
+      );
+      expect(nav.getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+        'href',
+        'https://github.com/openlinker-project/openlinker'
+      );
+    });
+
+    it('should not render the project links when demoMode is false', () => {
+      const view = renderWithProviders(<LoginForm demoMode={false} />);
+
+      expect(
+        within(view.container).queryByRole('navigation', { name: /openlinker project/i })
       ).not.toBeInTheDocument();
     });
   });

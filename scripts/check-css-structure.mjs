@@ -3,8 +3,8 @@
  * Stylesheet Structure Guard (#2674)
  *
  * Fails `pnpm lint` if any stylesheet in the working tree is structurally
- * damaged: an unclosed block, a stray `}`, an unclosed comment, or an
- * unterminated string.
+ * damaged: an unclosed block, a stray `}`, an unclosed `(`, a stray `)`, an
+ * unclosed comment, or an unterminated string.
  *
  * Why this exists: nothing in the pipeline parses `apps/web/src/index.css`.
  * ESLint does not look at CSS, Vitest does not evaluate it, and `tsc` has no
@@ -42,16 +42,20 @@
  * failure exits non-zero naming the file, and the success line reports files
  * *actually parsed*, asserted equal to the corpus size before it is printed.
  *
- * ## Deliberately NOT checked: parenthesis balance
+ * ## Parenthesis balance (#2677)
  *
  * A dropped `)` in `@media (min-width: 700px {` survives a merge resolution,
  * leaves braces perfectly balanced, and silently kills the block - structurally
- * the same defect class this guard exists to catch. It is omitted because it is
- * outside #2674's three stated criteria and because a guard that grows a second
- * detector during implementation is harder to review than the one that was
- * scoped. Considered and deferred, not overlooked - tracked as #2677; both
- * stylesheets are paren-balanced today, so it can be added there red-first with
- * no live false positive.
+ * the same defect class as the dropped `}`. Parentheses are tracked on their own
+ * stack, through the same comment/string precedence, and every unclosed `(` is
+ * reported at its opener, outermost first, like an unclosed block.
+ *
+ * Two kinds of `(` are not syntax and must not count, or the check would fire
+ * on correct files: a paren inside a string (handled by the string state), and
+ * a paren inside an UNQUOTED `url(...)`, which CSS reads as one token up to the
+ * first `)` - so that state also stops `/*` and `//` inside a data URI being
+ * read as comments. Code-level escapes (`.w-\(10\)`, `.a\{`) are skipped for
+ * the same reason; before #2677 an escaped brace was miscounted as a block.
  *
  * Run with `--self-check` to exercise the pure scanner against synthetic
  * sources, so a refactor of the detection itself cannot silently pass.
@@ -86,12 +90,11 @@ const STYLESHEET_EXTENSIONS = new Set(['.css', '.scss', '.sass', '.less']);
  * precisely why the hazard would land silently - the day someone adds a Google
  * Font URL to `.design-sync/fonts.css`.
  *
- * The mirror hazard exists on the SCSS side and is left standing: an *unquoted*
- * `url(data:image/png;base64,...)` can contain `//`, since `/` is in the base64
- * alphabet, so in a `.scss`/`.less` file it would comment out the rest of that
- * line and can swallow a `}`. Quoting the URL avoids it (string state wins), and
- * no data URI exists in the corpus today. If a phantom `unclosed-block` ever
- * appears in a preprocessor file, look here first.
+ * The mirror hazard on the SCSS side - an *unquoted*
+ * `url(data:image/png;base64,...)` containing `//`, since `/` is in the base64
+ * alphabet - is closed by the url-token state (#2677): the contents of an
+ * unquoted `url(...)` are consumed as one token before any comment rule runs,
+ * exactly as CSS tokenises them.
  */
 function allowsLineComments(ext) {
   return ext !== '.css' && STYLESHEET_EXTENSIONS.has(ext);
@@ -144,35 +147,80 @@ const DEFECT_DETAIL = Object.freeze({
   'unexpected-close': 'stray `}` with no matching open block.',
   'unclosed-comment': 'comment opened here is never closed, swallowing the rest of the file.',
   'unterminated-string': 'string opened here is never closed on its line.',
+  'unclosed-paren':
+    '`(` opened here is never closed. Braces can still balance, so the stylesheet parses and the ' +
+    'enclosing rule (e.g. a whole `@media` block) silently stops applying.',
+  'unexpected-paren-close': 'stray `)` with no matching `(`.',
 });
 
 /**
- * Every structural defect in a stylesheet source, plus the number of blocks
- * seen - both from ONE pass.
+ * Whether `char` can be part of a CSS identifier, i.e. whether a `url` ending
+ * just before it is really the tail of a longer name (`my-url(`) rather than
+ * the `url(` token. Escapes and non-ASCII are identifier characters in CSS.
+ */
+function isIdentChar(char) {
+  return char !== undefined && (/[A-Za-z0-9_\-\\]/.test(char) || char >= '\u0080');
+}
+
+/**
+ * Whether the `(` at `index` opens an UNQUOTED url token.
+ *
+ * Only the unquoted form needs special treatment. In `url('a(1).png')` the
+ * argument is an ordinary string, so the string state already hides its parens
+ * and the `(`/`)` pair around it balances like any function call. In
+ * `url(a(1.png)` there is no string: CSS tokenises everything up to the first
+ * `)` as one url token, in which `(`, quotes and `/*` are all plain content.
+ * Reading that `(` as syntax would report a phantom unclosed paren, and reading
+ * the `/*` as a comment would swallow the rest of the file.
+ */
+function opensUnquotedUrl(source, index) {
+  if (source.slice(index - 3, index).toLowerCase() !== 'url') return false;
+  if (isIdentChar(source[index - 4])) return false;
+  let j = index + 1;
+  while (j < source.length && /[ \t\n\r\f]/.test(source[j])) j += 1;
+  return source[j] !== '"' && source[j] !== "'";
+}
+
+/**
+ * Every structural defect in a stylesheet source, plus the number of blocks and
+ * parenthesised groups seen - all from ONE pass.
  *
  * Pure - the whole detection lives here so `--self-check` can exercise it
  * without touching the filesystem. One single pass, holding exactly one state:
- * code / comment / line comment / single- or double-quoted string.
+ * code / comment / line comment / single- or double-quoted string / unquoted
+ * url token.
  *
- * The block count rides along deliberately. A separate counter would have to
+ * Braces and parentheses are tracked on two independent stacks. They are not
+ * cross-checked against each other (`@media (x { }` is reported as the
+ * unclosed `(`, not as a brace inside a paren), because the opener of the
+ * unclosed one is the location that names the defect either way.
+ *
+ * The counts ride along deliberately. A separate counter would have to
  * re-implement this same comment/string/escape precedence to know which `{`
- * are real, i.e. a second copy of the one rule this file exists to get right,
- * kept in step by nothing. Since the count is already in hand here, returning
- * it costs nothing and removes the possibility of drift rather than warning
- * against it.
+ * and `(` are real, i.e. a second copy of the one rule this file exists to get
+ * right, kept in step by nothing. Since the counts are already in hand here,
+ * returning them costs nothing and removes the possibility of drift rather than
+ * warning against it.
  *
  * @param {string} source
  * @param {{ allowLineComments?: boolean }} [options]
- * @returns {{ defects: { kind: string, line: number, column: number }[], blockCount: number }}
+ * @returns {{
+ *   defects: { kind: string, line: number, column: number }[],
+ *   blockCount: number,
+ *   parenCount: number,
+ * }}
  */
 export function scan(source, options = {}) {
   const allowLineComments = options.allowLineComments === true;
   const defects = [];
   /** Open braces awaiting a match, outermost first. */
   const openBlocks = [];
+  /** Open parentheses awaiting a match, outermost first. */
+  const openParens = [];
   let blockCount = 0;
+  let parenCount = 0;
 
-  let state = 'code'; // 'code' | 'comment' | 'lineComment' | 'string'
+  let state = 'code'; // 'code' | 'comment' | 'lineComment' | 'string' | 'url'
   let quote = '';
   let openedAt = null; // where the current comment/string began
   let line = 1;
@@ -244,7 +292,42 @@ export function scan(source, options = {}) {
       continue;
     }
 
+    if (state === 'url') {
+      if (char === '\\' && i + 1 < source.length) {
+        advance(char);
+        advance(next);
+        i += 2;
+        continue;
+      }
+      if (char === ')') {
+        state = 'code';
+        openedAt = null;
+        advance(char);
+        i += 1;
+        continue;
+      }
+      if (char === '\n') {
+        // An unquoted url token cannot span lines in practice. Report at the
+        // `url(` and recover at the line break, the unterminated-string rule,
+        // rather than consuming up to some unrelated `)` many lines below.
+        defects.push({ kind: 'unclosed-paren', ...(openedAt ?? { line, column }) });
+        state = 'code';
+        openedAt = null;
+      }
+      advance(char);
+      i += 1;
+      continue;
+    }
+
     // state === 'code'
+    // An escape makes the next character part of an identifier, so `.w-\(10\)`
+    // and `.a\{` contain no syntax at all.
+    if (char === '\\' && i + 1 < source.length) {
+      advance(char);
+      advance(next);
+      i += 2;
+      continue;
+    }
     if (char === '/' && next === '*') {
       state = 'comment';
       openedAt = { line, column };
@@ -286,11 +369,33 @@ export function scan(source, options = {}) {
       i += 1;
       continue;
     }
+    if (char === '(') {
+      parenCount += 1;
+      if (opensUnquotedUrl(source, i)) {
+        state = 'url';
+        openedAt = { line, column };
+      } else {
+        openParens.push({ line, column });
+      }
+      advance(char);
+      i += 1;
+      continue;
+    }
+    if (char === ')') {
+      if (openParens.length === 0) {
+        defects.push({ kind: 'unexpected-paren-close', line, column });
+      } else {
+        openParens.pop();
+      }
+      advance(char);
+      i += 1;
+      continue;
+    }
     advance(char);
     i += 1;
   }
 
-  // `openedAt` is set on every transition into `comment`/`string` and cleared on
+  // `openedAt` is set on every transition into `comment`/`string`/`url` and cleared on
   // every exit, so it is non-null here by construction. The fallback is not
   // defensive noise: without it, a future path into either state that forgot the
   // assignment would report `path:undefined:undefined` - a location worse than
@@ -307,8 +412,16 @@ export function scan(source, options = {}) {
   for (const open of openBlocks) {
     defects.push({ kind: 'unclosed-block', ...open });
   }
+  for (const open of openParens) {
+    defects.push({ kind: 'unclosed-paren', ...open });
+  }
+  // A url token is entered only from code, so every paren still on the stack
+  // opened before it: it is the innermost and goes last.
+  if (state === 'url') {
+    defects.push({ kind: 'unclosed-paren', ...(openedAt ?? { line, column }) });
+  }
 
-  return { defects, blockCount };
+  return { defects, blockCount, parenCount };
 }
 
 /**
@@ -426,6 +539,7 @@ async function main() {
   const unreadable = [];
   let parsed = 0;
   let blocks = 0;
+  let parens = 0;
 
   for (let start = 0; start < files.length; start += READ_CONCURRENCY) {
     const batch = files.slice(start, start + READ_CONCURRENCY);
@@ -442,9 +556,10 @@ async function main() {
           return;
         }
         const options = { allowLineComments: allowsLineComments(extname(file).toLowerCase()) };
-        const { defects, blockCount } = scan(source, options);
+        const { defects, blockCount, parenCount } = scan(source, options);
         parsed += 1;
         blocks += blockCount;
+        parens += parenCount;
         if (defects.length > 0) violations.push({ file, defects });
       })
     );
@@ -469,6 +584,17 @@ async function main() {
     ]);
   }
 
+  // The counters are floored for the same reason `files.length` is: REQUIRED_STYLESHEETS
+  // guarantees index.css is in the corpus, and it carries thousands of blocks and
+  // var(...) groups, so a zero here means a detector matched nothing (e.g. an
+  // over-eager url() token swallowing every `(`), not a healthy tree.
+  if (blocks === 0 || parens === 0) {
+    fail([
+      `scanned ${blocks} blocks and ${parens} parenthesised groups - a detector matched nothing.`,
+      '  A healthy tree has both in the thousands. Fix the scanner, do not lower this floor.',
+    ]);
+  }
+
   if (violations.length > 0) {
     console.error('✗ check-css-structure: structurally damaged stylesheet(s).\n');
     for (const { file, defects } of violations.sort((a, b) => a.file.localeCompare(b.file))) {
@@ -487,7 +613,8 @@ async function main() {
   }
 
   console.log(
-    `✓ check-css-structure: ${parsed} stylesheet(s) parse cleanly (${blocks} blocks balanced).`
+    `✓ check-css-structure: ${parsed} stylesheet(s) parse cleanly ` +
+      `(${blocks} blocks, ${parens} parenthesised groups balanced).`
   );
 }
 
@@ -543,24 +670,74 @@ function selfCheck() {
   expect('single-quoted string → no defects', ".a { content: '}'; }", []);
   expect('backslash line continuation keeps the string open', '.a { content: "a\\\nb"; }', []);
 
-  // `//` is NOT a comment in CSS. Both directions asserted, because the gating
-  // is what stops `url(https://…)` swallowing a following `}`.
+  // `//` is NOT a comment in CSS. Both directions asserted on a `//` outside any
+  // url token, so the gate itself is what is being tested.
+  expect('bare // in .css → no defects', '.a { x: a//b; }', [], { allowLineComments: false });
+  expect(
+    'same source read as SCSS → the // swallows the closing brace',
+    '.a { x: a//b; }',
+    ['unclosed-block@1:4'],
+    { allowLineComments: true }
+  );
   expect(
     'protocol URL in .css → no defects',
     '.a { background: url(https://x/y.png); }',
     [],
     { allowLineComments: false }
   );
+  // Before #2677 this read the `//` as a comment and reported a phantom
+  // unclosed block; the unquoted url token now wins, as in real CSS tokenising.
   expect(
-    'same source read as SCSS → the // swallows the closing braces',
+    'protocol URL read as SCSS → the url token wins over //',
     '.a { background: url(https://x/y.png); }',
-    ['unclosed-block@1:4'],
+    [],
     { allowLineComments: true }
   );
   expect('scss line comment → no defects', '// note {\n.a { }\n', [], { allowLineComments: true });
 
   // Multi-line location accuracy.
   expect('defect on line 3 → line 3', '.a { }\n.b { }\n.c {\n', ['unclosed-block@3:4']);
+
+  // Parenthesis balance (#2677). The motivating shape: braces balance, the file
+  // parses, and the whole @media block is silently dead.
+  expect(
+    'dropped ) in @media → unclosed-paren at the opener, braces still balanced',
+    '@media (min-width: 700px {\n  .thing { color: red; }\n}\n',
+    ['unclosed-paren@1:8']
+  );
+  expect('balanced nested parens → no defects', '.a { width: calc((1px + 2px) * 3); }', []);
+  expect('stray ) → unexpected-paren-close', '.a { width: calc(1px + 2px)); }', [
+    'unexpected-paren-close@1:28',
+  ]);
+  expect('two unclosed parens → both, outermost first', '.a:is(.b:not(.c { }', [
+    'unclosed-paren@1:6',
+    'unclosed-paren@1:13',
+  ]);
+  expect('dropped ) on line 2 → line 2', '.a { }\n@media (x {\n.b { }\n}\n', [
+    'unclosed-paren@2:8',
+  ]);
+
+  // Parentheses that are not syntax must not count.
+  expect('paren inside a string → no defects', '.a { content: "("; }', []);
+  expect('close paren inside a string → no defects', ".a { content: ')'; }", []);
+  expect('paren inside a comment → no defects', '/* ( */ .a { }', []);
+  expect('quoted url with parens → no defects', ".a { background: url('a(1).png'); }", []);
+  expect('unquoted url with a paren → no defects', '.a { background: url(a(1.png); }', []);
+  expect(
+    'unquoted url containing /* → not a comment',
+    '.a { background: url(data:x/*y); }',
+    []
+  );
+  expect('URL() is case-insensitive', '.a { background: URL(a(b.png); }', []);
+  expect(
+    'unquoted url never closed on its line → unclosed-paren at url(, then recovery',
+    '.a { background: url(a.png;\n}\n',
+    ['unclosed-paren@1:21']
+  );
+  // `url(` inside an identifier is not the url token.
+  expect('my-url( is an ordinary function', '.a { x: my-url((1)); }', []);
+  expect('escaped paren in a selector → no defects', '.w-\\(10\\) { }', []);
+  expect('escaped brace in a selector → no defects', '.a\\{ { }', []);
 
   // Report ordering: the cap must never truncate away a whole defect class.
   // 25 stray closes then one unclosed block is the duplicated-chunk merge shape.
@@ -599,6 +776,13 @@ function selfCheck() {
   if (scan('.a { content: "{ {"; }', {}).blockCount !== 1) {
     failures.push('  blockCount: braces in strings must not be counted');
   }
+  if (scan('@media (x) { .a:not(.b) { width: calc((1px)); } }', {}).parenCount !== 4) {
+    failures.push('  parenCount: expected 4 parenthesised groups');
+  }
+  // The url token counts as ONE group; the `(` inside it does not count at all.
+  if (scan('.a { content: "(("; background: url(a(b.png); }', {}).parenCount !== 1) {
+    failures.push('  parenCount: parens in strings and unquoted url() must not be counted');
+  }
 
   // The extension gate itself.
   if (allowsLineComments('.css') !== false) failures.push('  .css must not allow // comments');
@@ -611,7 +795,9 @@ function selfCheck() {
     console.error('');
     process.exit(1);
   }
-  console.log('✓ check-css-structure --self-check: scanner, locator + comment/string precedence behave.');
+  console.log(
+    '✓ check-css-structure --self-check: scanner, locator, paren balance + comment/string/url precedence behave.'
+  );
   process.exit(0);
 }
 

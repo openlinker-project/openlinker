@@ -17,6 +17,9 @@
  */
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../api/connections.types';
+import { schemaMessage } from '../lib/schema-message';
+
+const msg = schemaMessage('dpdSetupSchema');
 
 export const DPD_ADAPTER_KEY = 'dpd.polska.rest.v1';
 
@@ -24,33 +27,33 @@ const PL_POSTAL = /^\d{2}-\d{3}$/;
 const NUMERIC = /^\d+$/;
 
 export const dpdSetupSchema = z.object({
-  name: z.string().trim().min(1, 'Connection name is required'),
+  name: z.string().trim().min(1, msg('nameRequired')),
   // Credentials (Basic auth) — both required.
-  login: z.string().trim().min(1, 'Login is required'),
-  password: z.string().min(1, 'Password is required'),
+  login: z.string().trim().min(1, msg('loginRequired')),
+  password: z.string().min(1, msg('passwordRequired')),
   // Account config.
   environment: z.enum(['sandbox', 'production']),
   payerFid: z
     .string()
     .trim()
-    .regex(NUMERIC, 'Payer FID must be a numeric id'),
+    .regex(NUMERIC, msg('payerFidNumeric')),
   masterFid: z
-    .union([z.string().trim().regex(NUMERIC, 'Master FID must be a numeric id'), z.literal('')])
+    .union([z.string().trim().regex(NUMERIC, msg('masterFidNumeric')), z.literal('')])
     .optional(),
   // Sender address (printed on every label).
   senderCompany: z.string().trim().max(100).optional(),
   senderName: z.string().trim().max(100).optional(),
-  senderAddress: z.string().trim().min(1, 'Sender address is required').max(100),
-  senderCity: z.string().trim().min(1, 'Sender city is required').max(50),
-  senderPostalCode: z.string().trim().regex(PL_POSTAL, 'Postal code must use the PL format NN-NNN'),
+  senderAddress: z.string().trim().min(1, msg('addressRequired')).max(100),
+  senderCity: z.string().trim().min(1, msg('cityRequired')).max(50),
+  senderPostalCode: z.string().trim().regex(PL_POSTAL, msg('postalCodeFormat')),
   senderCountryCode: z
     .string()
     .trim()
     .transform((v) => v.toUpperCase())
-    .pipe(z.string().regex(/^[A-Z]{2}$/, 'Country must be an ISO 3166-1 alpha-2 code (e.g. PL)')),
+    .pipe(z.string().regex(/^[A-Z]{2}$/, msg('countryFormat'))),
   senderPhone: z.string().trim().max(100).optional(),
   senderEmail: z
-    .union([z.string().trim().email('Enter a valid email'), z.literal('')])
+    .union([z.string().trim().email(msg('emailInvalid')), z.literal('')])
     .optional(),
 });
 

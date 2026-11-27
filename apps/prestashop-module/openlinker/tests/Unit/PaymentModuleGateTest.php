@@ -15,7 +15,7 @@ class PaymentModuleGateTest extends TestCase
     public static function setUpBeforeClass(): void
     {
         if (!class_exists('PaymentModule')) {
-            eval('class PaymentModule { public $active = 0; }');
+            eval('class PaymentModule { public $active = 0; public $displayName = ""; }');
         }
     }
 
@@ -48,5 +48,33 @@ class PaymentModuleGateTest extends TestCase
         $module->active = 1;
 
         self::assertNull(PaymentModuleGate::reasonUnusable($module));
+    }
+
+    public function testNormalizeAcceptsModuleTechnicalNames(): void
+    {
+        self::assertSame('ps_wirepayment', PaymentModuleGate::normalizeRequestedModule(' ps_wirepayment '));
+        self::assertSame('tpay', PaymentModuleGate::normalizeRequestedModule('tpay'));
+    }
+
+    public function testNormalizeRejectsLabelsAndNonStrings(): void
+    {
+        self::assertNull(PaymentModuleGate::normalizeRequestedModule('Check payment'));
+        self::assertNull(PaymentModuleGate::normalizeRequestedModule('../evil'));
+        self::assertNull(PaymentModuleGate::normalizeRequestedModule(''));
+        self::assertNull(PaymentModuleGate::normalizeRequestedModule(null));
+        self::assertNull(PaymentModuleGate::normalizeRequestedModule(['ps_wirepayment']));
+    }
+
+    public function testDisplayLabelPrefersModuleDisplayName(): void
+    {
+        $module = new PaymentModule();
+        $module->displayName = 'Bank transfer';
+
+        self::assertSame('Bank transfer', PaymentModuleGate::displayLabel($module, 'fallback'));
+    }
+
+    public function testDisplayLabelFallsBackWhenNoDisplayName(): void
+    {
+        self::assertSame('fallback', PaymentModuleGate::displayLabel(new PaymentModule(), 'fallback'));
     }
 }

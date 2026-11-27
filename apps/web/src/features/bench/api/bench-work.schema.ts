@@ -44,6 +44,7 @@ export const benchWorkSchema = z.object({
     )
     .nullish()
     .transform((value) => value ?? []),
+  giftUnits: z.number().optional(),
   unitsToVerify: z.number(),
   // See the types module: never `z.enum`.
   state: z.string(),
@@ -60,6 +61,13 @@ export const benchWorkSchema = z.object({
   assignmentState: z.string(),
   claimable: z.boolean(),
   completedAt: nullableString,
+  // #3539. Defaulted: an API that predates the buyer note reads "no note" and
+  // the row still renders.
+  hasBuyerNote: z
+    .boolean()
+    .nullish()
+    .transform((value) => value ?? false),
+  buyerNoteAcknowledgedAt: nullableString,
 });
 
 export const benchRoutingReadinessSchema = z.object({

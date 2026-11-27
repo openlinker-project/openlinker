@@ -369,6 +369,14 @@ function actionHint(action) { return FULFILLMENT_ACTION_COPY[action]?.hint ?? nu
 // `undefined`, for the identical reason the action lookups do.
 function statusLabel(status) { return STATUS_COPY[status] ?? humanise(status); }
 function requestStatusLabel(requestStatus) { return REQUEST_STATUS_COPY[requestStatus] ?? humanise(requestStatus); }
+// #3763: the raw request status is no longer rendered. The headline is the status alone (plus a
+// cancellation, when one is negotiated); acceptance is told by the sentence under it, and a task
+// packers cannot see gets a reason under "Why it's stuck" like a hold. This mockup does not model
+// that clock-driven state; the shipped page and the PR #3768 preview artifact do.
+function stateLine(task) {
+  if (task.requestStatus.startsWith('cancellation_')) return `${statusLabel(task.status)} · ${requestStatusLabel(task.requestStatus).toLowerCase()}`;
+  return statusLabel(task.status);
+}
 
 const FULFILLMENT_ACTION_MODE_COPY = {
   hold: { title:'Put this fulfilment task on hold', desc:'The task stops moving until someone releases the hold. The rest of the order is unaffected.', confirm:'Put on hold' },
@@ -397,7 +405,7 @@ const CONFLICT_COPY = {
 // nothing here can silently diverge from what the shipped page says.
 const WORKLIST_COPY = {
   row: {
-    taskLabel: 'Fulfilment task', stateLabel: 'State', handshakeLabel: 'Handshake',
+    taskLabel: 'Fulfilment task', stateLabel: 'State',
     linesLabel: 'Lines', actionsLabel: 'Actions',
     lineCount: (f, t) => `${f} of ${t}`, noLines: 'No lines',
     countersCaveat: 'Picked counts are reported by whoever is working the task and can be a little behind.',
@@ -606,7 +614,8 @@ function renderHoldList(task) {
   return `<ul class="task-card__holds">${task.activeHolds.map((h) => `<li>${HOLD_REASON_LABEL[h.reason] || h.reason} · since ${fmtRelative(h.placedAt)}${h.note ? ' — ' + escapeHtml(h.note) : ''}</li>`).join('')}</ul>`;
 }
 function renderFactsRows(task) {
-  const rows = [['State', statusLabel(task.status)], ['Handshake', requestStatusLabel(task.requestStatus)]];
+  // #3763: no State row - the hero headline already states it.
+  const rows = [];
   if (task.locationId) rows.push(['Location', LOCATION_LABEL[task.locationId] || task.locationId]);
   if (task.deliveryMethod) rows.push(['Delivery', task.deliveryMethod]);
   if (task.externalWorkId) rows.push(['External reference', task.externalWorkId]);
@@ -642,7 +651,7 @@ function taskRowHtml(task) {
   return `<div class="wrow" data-work-id="${task.id}" data-state="${slug}" data-testid="task-row-${task.id}" onclick="location.hash = '#/works/${task.id}'">
     <div class="wrow__main">
       <div class="wrow__identity"><span class="wrow__id">${task.id}</span><span class="wrow__order">${task.orderId}</span></div>
-      <div class="wrow__state">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge">⚡ Moved</span>` : ''}<span class="wrow__substate">${statusLabel(task.status)} · ${requestStatusLabel(task.requestStatus)}</span></div>
+      <div class="wrow__state">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge">⚡ Moved</span>` : ''}<span class="wrow__substate">${stateLine(task)}</span></div>
       <div class="wrow__lines">${task.lines.length > 0 ? WORKLIST_COPY.row.lineCount(fulfilled, total) : WORKLIST_COPY.row.noLines}</div>
     </div>
     ${task.supportedActions.length ? `<div class="wrow__actions">${renderActions(task)}</div>` : ''}
@@ -747,7 +756,7 @@ function renderDetailView(taskId) {
   document.getElementById('detailHero').innerHTML = `
     <div class="detail-hero__sub">${task.id} · ${task.locationId ? escapeHtml(LOCATION_LABEL[task.locationId] || task.locationId) : 'No location yet'}</div>
     <div class="detail-hero__row">
-      <span class="detail-hero__status">${statusLabel(task.status)} · ${requestStatusLabel(task.requestStatus)}</span>
+      <span class="detail-hero__status">${stateLine(task)}</span>
       ${task.expeditedAt ? `<span class="expedite-badge" data-testid="expedited-badge">⚡ Moved to the front · ${fmtTime(task.expeditedAt)}</span>` : ''}
     </div>
     <p class="detail-hero__detail">${escapeHtml(task.detail)}</p>

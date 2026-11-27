@@ -12,9 +12,9 @@
 import {
   ATTENTION_REASON_COPY,
   ATTENTION_UNKNOWN_COPY,
-} from './attention-reason.copy';
+} from './attention-reason-text';
 import { isAuthorityAttentionReason } from './attention-reason';
-import { ANSWER_COPY, WHY_CODE_COPY, WHY_CODE_FALLBACK } from './who-decides.copy';
+import { ANSWER_COPY, WHY_CODE_COPY, WHO_DECIDES_LABELS } from './who-decides-text';
 import type {
   AuthorityAnswerRow,
   AuthorityAttention,
@@ -154,7 +154,7 @@ export function resolveWhyLine(row: AuthorityAnswerRow, attention: AuthorityAtte
     return ATTENTION_UNKNOWN_COPY.body;
   }
 
-  return WHY_CODE_COPY[row.why.code] ?? WHY_CODE_FALLBACK;
+  return WHY_CODE_COPY[row.why.code] ?? WHO_DECIDES_LABELS.whyCodeFallback;
 }
 
 /** The connections an ambiguous row names, so the page can point at them. */

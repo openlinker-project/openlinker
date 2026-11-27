@@ -13,6 +13,8 @@
  *
  * @module libs/core/src/fiscalization/domain/types
  */
+import type { FiscalProviderFailureDetails } from './fiscal-provider-failure-details.types';
+
 
 /**
  * Lifecycle of one registration attempt against one connection.
@@ -574,6 +576,10 @@ export interface CreateFiscalRegistrationRecordInput {
   /** Never null - the exactly-once guarantee has no keyless mode. */
   idempotencyKey: string;
   status: FiscalRegistrationStatus;
+  /** 0-based attempt number (#3960). Omitted means a first attempt. */
+  attempt?: number;
+  /** The refused attempt this one follows (#3960). Omitted means none. */
+  previousAttemptId?: string | null;
 }
 
 /** Partial update applied to a record once an attempt terminates. */
@@ -591,6 +597,8 @@ export interface FiscalRegistrationOutcomePatch {
   failureReason?: string | null;
   /** INTERNAL-ONLY bounded diagnostic. Never exposed to API callers. */
   errorMessage?: string | null;
+  /** PII-free identifiers of the provider's refusal (#3843). Safe to expose. */
+  providerFailureDetails?: FiscalProviderFailureDetails | null;
   leaseExpiresAt?: Date | null;
 }
 

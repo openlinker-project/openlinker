@@ -25,6 +25,9 @@ export const SHIPMENT_DISPATCH_NOTIFICATION_SERVICE_TOKEN = Symbol(
 );
 export const SHIPMENT_STATUS_SYNC_SERVICE_TOKEN = Symbol('IShipmentStatusSyncService');
 export const FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN = Symbol('IFulfillmentStatusSyncService');
+export const SOURCE_FULFILLMENT_STATUS_SYNC_SERVICE_TOKEN = Symbol(
+  'ISourceFulfillmentStatusSyncService',
+);
 export const SHIPMENT_LABEL_SERVICE_TOKEN = Symbol('IShipmentLabelService');
 export const SHIPMENT_RESERVATION_CONSUME_SERVICE_TOKEN = Symbol(
   'IShipmentReservationConsumeService'

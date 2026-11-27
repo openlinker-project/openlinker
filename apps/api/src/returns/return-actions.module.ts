@@ -19,8 +19,10 @@
  */
 import { Module } from '@nestjs/common';
 import { OrdersModule } from '@openlinker/core/orders';
+import { ProductsModule } from '@openlinker/core/products';
 import { ReturnsModule } from '@openlinker/core/returns';
 import { ReturnActionsController } from './http/return-actions.controller';
+import { ReturnGiftsController } from './http/return-gifts.controller';
 import { ReturnWritesController } from './http/return-writes.controller';
 
 @Module({
@@ -36,7 +38,9 @@ import { ReturnWritesController } from './http/return-writes.controller';
     // forbids `OrdersModule` in **`ReturnsModule.imports`**, and `apps/api` sits
     // above both.
     OrdersModule,
+    // #3943: the gift's standalone price for the deduct hint.
+    ProductsModule,
   ],
-  controllers: [ReturnActionsController, ReturnWritesController],
+  controllers: [ReturnActionsController, ReturnWritesController, ReturnGiftsController],
 })
 export class ReturnActionsApiModule {}

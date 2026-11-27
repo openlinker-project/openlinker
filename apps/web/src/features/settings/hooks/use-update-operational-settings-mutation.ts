@@ -10,6 +10,8 @@
  */
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { inventoryQueryKeys } from '../../inventory';
+import { releaseStateQueryKeys } from '../../release-center';
 import { operationalSettingsQueryKeys } from '../api/operational-settings.query-keys';
 import type { UpdateOperationalSettingsInput } from '../api/operational-settings.types';
 
@@ -23,8 +25,17 @@ export function useUpdateOperationalSettingsMutation(): UseMutationResult<
 
   return useMutation({
     mutationFn: (input: UpdateOperationalSettingsInput) => apiClient.operationalSettings.update(input),
-    onSuccess: async () => {
+    onSuccess: async (_data, input) => {
       await queryClient.invalidateQueries({ queryKey: operationalSettingsQueryKeys.all });
+      // Flipping the update switch must show at once: the bell and the guides read it through the release state.
+      if (input.releaseCenterEnabled !== undefined) {
+        await queryClient.invalidateQueries({ queryKey: releaseStateQueryKeys.all });
+      }
+      // The stock view flags a figure stale against this threshold, so a changed
+      // threshold must not wait out the view's cache to show up on a product.
+      if (input.stockStaleSyncThresholdHours !== undefined) {
+        await queryClient.invalidateQueries({ queryKey: inventoryQueryKeys.stockViewAll() });
+      }
     },
   });
 }

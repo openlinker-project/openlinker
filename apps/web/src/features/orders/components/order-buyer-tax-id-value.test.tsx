@@ -29,7 +29,7 @@ describe('OrderBuyerTaxIdValue (#3180)', () => {
   it('should render a distinct pill for the asserted-none state (null), never the present state', () => {
     renderWithProviders(<OrderBuyerTaxIdValue buyerTaxId={null} />);
 
-    expect(screen.getByTestId('order-buyer-tax-id-none')).toHaveTextContent('None — asserted');
+    expect(screen.getByTestId('order-buyer-tax-id-none')).toHaveTextContent('None - asserted');
     expect(screen.queryByTestId('order-buyer-tax-id')).not.toBeInTheDocument();
     expect(screen.queryByTestId('order-buyer-tax-id-unknown')).not.toBeInTheDocument();
   });
@@ -50,9 +50,9 @@ describe('OrderBuyerTaxIdValue (#3180)', () => {
     await user.hover(screen.getByTestId('order-buyer-tax-id-unknown'));
 
     const tooltip = await screen.findByRole('tooltip');
-    expect(tooltip).toHaveTextContent(/OL_STORE_PII=false/);
+    expect(tooltip).toHaveTextContent(/does not store personal data/);
     // The mechanism alone reads as cosmetic. The consequence is what makes the
     // caveat actionable: on that deployment a whole document type is unreachable.
-    expect(tooltip).toHaveTextContent(/simplified invoice can never issue/);
+    expect(tooltip).toHaveTextContent(/simplified invoice can never be issued/);
   });
 });

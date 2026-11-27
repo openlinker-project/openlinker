@@ -17,17 +17,18 @@
  */
 import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
+import { giftRulesLegacyRedirects } from './promotions.route';
 
 const automationsIndexCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Automations' },
+  crumb: { group: 'operations', page: 'automations' },
 };
 
 const automationActivityCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Run log' },
+  crumb: { group: 'operations', page: 'runLog' },
 };
 
 const automationTriggerCrumb: RouteCrumbHandle = {
-  crumb: { group: 'Operations', title: 'Automation rules' },
+  crumb: { group: 'operations', page: 'automationRules' },
 };
 
 export const automationsRoute: RouteObject = {
@@ -51,6 +52,8 @@ export const automationsRoute: RouteObject = {
         return { Component: AutomationActivityPage };
       },
     },
+    // Gift rules moved to Promotions (#3935); the old addresses redirect.
+    ...giftRulesLegacyRedirects,
     {
       path: ':trigger',
       handle: automationTriggerCrumb,

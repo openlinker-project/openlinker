@@ -25,6 +25,10 @@ describe('prestashop order-feed cursor', () => {
   });
 
   describe('parseOrderFeedCursor', () => {
+    it('should reject a cursor whose id part is not numeric', () => {
+      expect(parseOrderFeedCursor('2024-05-01 08:00:00|abc')).toBeNull();
+    });
+
     it('should round-trip a keyset cursor', () => {
       expect(parseOrderFeedCursor('2024-01-01 10:00:00|42')).toEqual({
         updatedAt: '2024-01-01 10:00:00',
@@ -54,6 +58,13 @@ describe('prestashop order-feed cursor', () => {
   });
 
   describe('normalizeWallClock', () => {
+    it.each(['2026-13-45 99:99:99', '2026-02-30 10:00:00', '2026-05-01 24:00:00', '2026-05-01 10:60:00'])(
+      'should reject %s as not a real wall clock',
+      (value) => {
+        expect(normalizeWallClock(value)).toBeNull();
+      }
+    );
+
     it('should keep the shop digits exactly as they arrived', () => {
       expect(normalizeWallClock('2024-06-01 23:59:59')).toBe('2024-06-01 23:59:59');
     });

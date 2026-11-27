@@ -13,10 +13,14 @@
  *
  * @module apps/web/src/features/listings/components/bulk
  */
+import { displayConnectionName } from '../../../../shared/lib/display-connection-name';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
-import type { StatusBadgeTone } from '../../../../shared/ui';
+import { GuideButton } from '../../../../shared/ui/guide-drawer';
+import { BundleGuide } from '../../../bundles/components/bundle-guide';
+import { useBundleProbeQuery } from '../../../bundles/hooks/use-bundle-queries';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import {
   usePlatforms,
@@ -31,9 +35,18 @@ import { captureDemoEvent } from '../../../demo';
 import { useBulkSubmitMutation } from '../../hooks/use-bulk-submit-mutation';
 import { useBulkShopPublishMutation } from '../../hooks/use-bulk-shop-publish-mutation';
 import { useBulkRequiredProductParams } from '../../hooks/use-bulk-required-product-params';
+import { useAttributeProjectionPreview } from '../../hooks/use-attribute-projection-preview';
+import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
+import { useBundleOfferPreview } from '../../hooks/use-bundle-offer-preview';
+import type {
+  AttributeProjectionPreviewItem,
+  BundleOfferPreviewItem,
+  OfferParameter,
+} from '../../api/listings.types';
 import { usePublishedVariantsQuery } from '../../hooks/use-published-variants-query';
 import { publishDestinationKind } from '../../lib/publish-destinations';
 import { DuplicateGuardModal } from '../duplicate-guard-modal';
+import type { RecoveryPrefillEntry } from '../../lib/batch-recovery';
 import type {
   BulkOfferCreateRequest,
   BulkPerProductOverride,
@@ -54,7 +67,9 @@ import {
 } from './bulk-shop-review-step';
 import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
-import { NEUTRAL_BLOCKER_CHIPS, gatingBlockers, type ChipDescriptor } from './bulk-blockers';
+import { bundleKindOf } from './bundle-kind';
+import { BulkWizardLeaveGuard } from './bulk-wizard-leave-guard';
+import { gatingBlockers, resolveBlockerChips, type ChipDescriptor } from './bulk-blockers';
 import { describeBulkSubmitOutcome } from './bulk-submit-summary';
 import {
   computeResolvedPrice,
@@ -62,7 +77,12 @@ import {
   effectivePricingPolicy,
   effectiveStockPolicy,
   effectiveVariantEan,
+  hasExplicitNoBarcode,
+  variantProductCardIdOf,
   productCategoryIdOf,
+  submitCategoryIdOf,
+  nonDerivedCategoryIdOf,
+  bundleStock,
   recomputeVariantBlockers,
   type PreflightContext,
 } from './bulk-policy';
@@ -75,6 +95,7 @@ import type {
   PricingPolicy,
   StockPolicy,
 } from './bulk-wizard.types';
+import { describeApiError } from '../../../../shared/api/describe-api-error';
 
 interface BulkWizardProps {
   /** Selected products from the Products page (already hydrated with variants). */
@@ -100,24 +121,29 @@ interface BulkWizardProps {
    * informational - nothing in the submit path consumes it.
    */
   resumedFromBatchId?: string;
+  /**
+   * The failed variants' saved requests, keyed by variant id (#4037). Seeds the
+   * resumed wizard with the title, category, parameters and EAN choices the
+   * operator had already entered, instead of the auto-resolved defaults.
+   */
+  recoveryPrefill?: ReadonlyMap<string, RecoveryPrefillEntry>;
 }
 
-const WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
-  { id: 'config', label: 'Config' },
-  { id: 'resolve', label: 'Resolving' },
-  { id: 'review', label: 'Review' },
-  { id: 'confirm', label: 'Confirm' },
+const WIZARD_STEPS: { id: BulkWizardStep }[] = [
+  { id: 'config' },
+  { id: 'resolve' },
+  { id: 'review' },
+  { id: 'confirm' },
 ];
 
 // Shops (#1829) skip the marketplace Resolve step (no category/EAN matching)
 // and publish straight from Review: Config -> Review.
-const SHOP_WIZARD_STEPS: { id: BulkWizardStep; label: string }[] = [
-  { id: 'config', label: 'Config' },
-  { id: 'review', label: 'Review' },
-];
+const SHOP_WIZARD_STEPS: { id: BulkWizardStep }[] = [{ id: 'config' }, { id: 'review' }];
 
 /** Stable empty list so a param-schema opt-out platform keeps a constant deps identity. */
 const EMPTY_CATEGORY_IDS: readonly string[] = [];
+const EMPTY_PROJECTION_ITEMS: AttributeProjectionPreviewItem[] = [];
+const EMPTY_BUNDLE_ITEMS: BundleOfferPreviewItem[] = [];
 
 /** Stable empty set so a render without published-variant data keeps a constant ref. */
 const EMPTY_ALREADY_LISTED: ReadonlySet<string> = new Set<string>();
@@ -128,23 +154,40 @@ export function BulkWizard({
   preselectedConnectionId,
   preSelectedVariantIds,
   resumedFromBatchId,
+  recoveryPrefill,
 }: BulkWizardProps): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const copy = useMessages('listings').bulkWizard;
+  const plural = usePlural();
+  const format = useFormat();
   const mutation = useBulkSubmitMutation();
   const shopMutation = useBulkShopPublishMutation();
   const platforms = usePlatforms();
   const connectionsQuery = useConnectionsQuery();
 
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID());
+  // Synchronous in-flight latch for the marketplace submit. `mutation.isPending`
+  // cannot do this job: it disables the confirm button only after a re-render,
+  // and a double click delivers its second click before that render, so both
+  // clicks reached `handleSubmit`, each minted its own key, and the backend got
+  // two distinct submissions (two batches, two offers per variant).
+  const submitInFlightRef = useRef(false);
+  // Flipped by a successful marketplace submit just before it navigates to the
+  // batch page, so the leave guard lets that navigation through (#3851).
+  const leaveGuardReleasedRef = useRef(false);
 
   const demoMode = useDemoMode();
   const write = useWriteAccess('listings:write', demoMode);
   const canGenerateDescription = write.canWrite;
   const [step, setStep] = useState<BulkWizardStep>('config');
   const [config, setConfig] = useState<BulkWizardConfig | null>(null);
-  const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products, preSelectedVariantIds));
+  const [rows, setRows] = useState<BulkWizardRow[]>(() => seedRows(products, preSelectedVariantIds, recoveryPrefill));
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Whether the operator changed anything the wizard would lose on leaving
+  // (#3851). Set by the three row-editing callbacks rather than diffed against
+  // the seed: a resolve alone is recomputable and must not trap the operator.
+  const [hasEdits, setHasEdits] = useState(false);
   // Live-selected connection id (before config is committed) so the stepper +
   // flow can branch by destination capability from the start (#1829). Seeded
   // from the picker/URL preselect; updated by the Config step's selector.
@@ -171,11 +214,13 @@ export function BulkWizard({
   useEffect(() => {
     if (!activeConnection) return;
     const previousTitle = document.title;
-    document.title = `${isShop ? 'Bulk publish' : 'Bulk offers'} · ${activeConnection.name}`;
+    document.title = interpolate(isShop ? copy.documentTitle.shop : copy.documentTitle.marketplace, {
+      connection: displayConnectionName(activeConnection.name),
+    });
     return () => {
       document.title = previousTitle;
     };
-  }, [activeConnection, isShop]);
+  }, [activeConnection, isShop, copy]);
 
   // #1837 duplicate guard: soft-warn when included variants are already
   // published on the destination (a duplicate offer on a marketplace, an
@@ -203,9 +248,9 @@ export function BulkWizard({
   useEffect(() => {
     setRows((prev) => {
       const byId = new Map(prev.map((r) => [r.productId, r]));
-      return dedupedProducts.map((p) => byId.get(p.id) ?? seedRow(p, preSelectedVariantIds));
+      return dedupedProducts.map((p) => byId.get(p.id) ?? seedRow(p, preSelectedVariantIds, recoveryPrefill));
     });
-  }, [productsSignature, dedupedProducts, preSelectedVariantIds]);
+  }, [productsSignature, dedupedProducts, preSelectedVariantIds, recoveryPrefill]);
 
   // Distinct submit categories of every INCLUDED variant (#810 / #1741 / #2243).
   // This used to be card-LESS rows only, because the schema was read for one
@@ -252,6 +297,68 @@ export function BulkWizard({
     isResolving: paramsResolving,
   } = useBulkRequiredProductParams(config?.connectionId, categoryIdsForParamSchema);
 
+  // What the connection's attribute mappings and rules will fill (#3995). Asked
+  // for every included variant that has a submit category, under that category
+  // and its EAN override - the same inputs the publish projects with. Only on
+  // Review: earlier steps have no settled category to ask about.
+  const projectionItems = useMemo<AttributeProjectionPreviewItem[]>(() => {
+    if (step !== 'review' || isShop || !batchPlatform?.offerValidation?.needsCategoryParameterSchema) {
+      return EMPTY_PROJECTION_ITEMS;
+    }
+    const items: AttributeProjectionPreviewItem[] = [];
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (!variant.included) continue;
+        const categoryId = submitCategoryIdOf(row, variant);
+        if (!categoryId) continue;
+        const ean = variant.override.overrides?.ean?.trim();
+        items.push({ variantId: variant.variantId, categoryId, ...(ean ? { ean } : {}) });
+      }
+    }
+    return items;
+  }, [rows, step, isShop, batchPlatform]);
+  const projectionPreview = useAttributeProjectionPreview(config?.connectionId, projectionItems);
+  const projectedByVariant = useMemo(() => {
+    const map = new Map<string, { categoryId: string; parameters: readonly OfferParameter[] }>();
+    for (const [variantId, entry] of projectionPreview.byVariant) {
+      if (entry.status === 'ok') {
+        map.set(variantId, { categoryId: entry.categoryId, parameters: entry.parameters });
+      }
+    }
+    return map;
+  }, [projectionPreview.byVariant]);
+
+  // Which included variants are bundles, and how each would publish as a
+  // product-set offer (#3520). Asked on Review for every included variant of a
+  // marketplace batch: the answer says which ones ARE bundles. The category is
+  // sent only when the operator chose one - a category the wizard derived from
+  // the preview itself must not feed back into the question it answers.
+  const bundleItems = useMemo<BundleOfferPreviewItem[]>(() => {
+    if (step !== 'review' || isShop) return EMPTY_BUNDLE_ITEMS;
+    const items: BundleOfferPreviewItem[] = [];
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (!variant.included) continue;
+        const operatorCategory = nonDerivedCategoryIdOf(row, variant);
+        items.push({ variantId: variant.variantId, ...(operatorCategory ? { categoryId: operatorCategory } : {}) });
+      }
+    }
+    return items;
+  }, [rows, step, isShop]);
+  const bundlePreview = useBundleOfferPreview(config?.connectionId, bundleItems);
+  const bundleGuideCopy = useMessages('bundles');
+  const hasBundles = bundlePreview.bundles.size > 0;
+  // Step 1 is before the composition check runs, so the header would call a set
+  // "1 product - 1 variant" and the operator cannot tell the handoff carried one.
+  // A lookup by variant id answers which of the chosen variants are bundles.
+  const includedVariantIds = useMemo(
+    () => rows.flatMap((row) => row.variants.filter((v) => v.included).map((v) => v.variantId)),
+    [rows],
+  );
+  const setProbe = useBundleProbeQuery(isShop ? [] : includedVariantIds);
+  const setCount = setProbe.data?.length ?? 0;
+
+
   const platformValidate = useMemo<
     ((input: OfferRowValidationInput) => string[]) | undefined
   >(() => batchPlatform?.offerValidation?.validateRow, [batchPlatform]);
@@ -269,18 +376,10 @@ export function BulkWizard({
   // Same merge the Review step builds (#1741 review #11's "never drift" rule) -
   // readiness here must agree with the banner's readiness, or a row the banner
   // calls ready gets excluded at submit for an advisory-only chip (#2243/#3492).
-  const blockerChips = useMemo<Record<string, ChipDescriptor>>(() => {
-    const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
-    for (const chip of platformBlockerChips) {
-      merged[chip.id] = {
-        tone: chip.tone as StatusBadgeTone,
-        label: chip.label,
-        fixable: true,
-        advisory: chip.advisory === true,
-      };
-    }
-    return merged;
-  }, [platformBlockerChips]);
+  const blockerChips = useMemo<Record<string, ChipDescriptor>>(
+    () => resolveBlockerChips(platformBlockerChips),
+    [platformBlockerChips],
+  );
 
   const destinationBrowsesCategories =
     (batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false) ||
@@ -322,9 +421,38 @@ export function BulkWizard({
       schemaByCategory,
       failedCategoryIds,
       catalogueConsulted: catalogueLookupPerformed === true,
+      projectedByVariant,
+      bundleByVariant: bundlePreview.bundles,
     }),
-    [schemaByCategory, failedCategoryIds, catalogueLookupPerformed],
+    [
+      schemaByCategory,
+      failedCategoryIds,
+      catalogueLookupPerformed,
+      projectedByVariant,
+      bundlePreview.bundles,
+    ],
   );
+
+  // A bundle lists at the whole sets it can make and, with no category chosen,
+  // under the first component's card category - the one Allegro requires the
+  // offer to match. Both are written into the rows so every consumer (the grid,
+  // the editor, the submit) reads one value instead of re-deriving it.
+  useEffect(() => {
+    if (!config || step !== 'review' || isShop || bundlePreview.bundles.size === 0) return;
+    setRows((prev) =>
+      reblockRows(
+        prev,
+        config,
+        requiredByCategory,
+        platformValidate,
+        destinationResolvesCategoryAtSubmit,
+        preflightContext,
+        (row) => applyBundlePreview(row, bundlePreview.bundles),
+      ),
+    );
+    // Only a new preview should re-run this: re-running on every blocker input
+    // would loop with the recompute effect above.
+  }, [bundlePreview.bundles, step, isShop]);
 
   // Reconcile per-variant `needs-product-parameters` (and any policy-derived)
   // blockers whenever a category's schema resolves. Gated to Review so only
@@ -409,6 +537,7 @@ export function BulkWizard({
   const setVariantIncluded = useCallback(
     (productId: string, variantId: string, included: boolean) => {
       if (!config) return;
+      setHasEdits(true);
       setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) =>
         row.productId !== productId
           ? row
@@ -427,6 +556,7 @@ export function BulkWizard({
   const setProductIncluded = useCallback(
     (productId: string, included: boolean) => {
       if (!config) return;
+      setHasEdits(true);
       setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) =>
         row.productId !== productId
           ? row
@@ -447,6 +577,7 @@ export function BulkWizard({
       editFormValues: Record<string, unknown>,
     ) => {
       if (!config) return;
+      setHasEdits(true);
       setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) => {
         if (row.productId !== productId) return row;
         // A simple product has no per-variant scope: its offer-level fields
@@ -474,15 +605,88 @@ export function BulkWizard({
     [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
   );
 
+  // #3994 - the operator chose the catalogue card the resolver set aside in
+  // favour of their mapping. Only offered for a single-variant product: a
+  // multi-variant family shares ONE category (the server strips a per-variant
+  // one), so a sibling's card cannot be adopted on its own. The card and its
+  // category travel together - a card is only linkable in its own category.
+  const handleUseCardCategory = useCallback(
+    (productId: string) => {
+      if (!config) return;
+      setHasEdits(true);
+      setRows((prev) => reblockRows(prev, config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext, (row) => {
+        if (row.productId !== productId || row.variants.length !== 1) return row;
+        const card = row.variants[0].overriddenCard;
+        if (!card) return row;
+        const override: BulkPerProductOverride = {
+          ...row.override,
+          overrides: {
+            ...(row.override.overrides ?? {}),
+            categoryId: card.allegroCategoryId,
+            productCardId: card.productCardId,
+          },
+        };
+        return {
+          ...row,
+          override,
+          variants: row.variants.map((v) => ({
+            ...v,
+            override: {
+              ...v.override,
+              overrides: { ...(v.override.overrides ?? {}), ...override.overrides },
+            },
+          })),
+        };
+      }));
+    },
+    [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit],
+  );
+
+  // One-click fix for a bundle under a different category than its first
+  // component's card: Allegro requires the two to match (#3520).
+  const handleUseBundleCategory = useCallback(
+    (productId: string, categoryId: string) => {
+      if (!config) return;
+      setHasEdits(true);
+      setRows((prev) =>
+        reblockRows(
+          prev,
+          config,
+          requiredByCategory,
+          platformValidate,
+          destinationResolvesCategoryAtSubmit,
+          preflightContext,
+          (row) => {
+            if (row.productId !== productId) return row;
+            const overrides = { ...(row.override.overrides ?? {}), categoryId };
+            return {
+              ...row,
+              override: { ...row.override, overrides },
+              variants: row.variants.map((v) => ({
+                ...v,
+                override: {
+                  ...v.override,
+                  overrides: { ...(v.override.overrides ?? {}), categoryId },
+                },
+              })),
+            };
+          },
+        ),
+      );
+    },
+    [config, requiredByCategory, platformValidate, destinationResolvesCategoryAtSubmit, preflightContext],
+  );
+
   const handleSubmit = useCallback(
     async (publishImmediately: boolean) => {
       if (!config) return;
+      if (submitInFlightRef.current) return;
 
-      // Fresh idempotency key per confirm-click (#1741 review). A retry after a
-      // partial/failed submit must be a distinct request, otherwise the batch
-      // dedup gate would return the earlier partial batch instead of re-running.
-      // The confirm button is disabled while a submit is in flight, so this can
-      // never split a single deliberate click into two batches.
+      // Fresh idempotency key per deliberate confirm-click (#1741 review). A
+      // retry after a partial/failed submit must be a distinct request,
+      // otherwise the batch dedup gate would return the earlier partial batch
+      // instead of re-running. A second click while a submit is in flight never
+      // gets here (the latch above), so one double click cannot mint two keys.
       idempotencyKeyRef.current = crypto.randomUUID();
 
       // productIds = one primary/seed variant id per product that has >=1
@@ -520,7 +724,13 @@ export function BulkWizard({
             excludedVariantIds.push(v.variantId);
             continue;
           }
-          perVariantOverrides[v.variantId] = buildVariantOverride(v, config, rowPricingPolicy, rowStockPolicy);
+          perVariantOverrides[v.variantId] = buildVariantOverride(
+            v,
+            config,
+            rowPricingPolicy,
+            rowStockPolicy,
+            row.variants.length === 1,
+          );
         }
         if (includedReady.length === 0) continue;
         const primaryId = (row.primaryVariant ?? row.variants[0].variant).id;
@@ -555,7 +765,7 @@ export function BulkWizard({
       if (productIds.length === 0) {
         showToast({
           tone: 'error',
-          description: 'No variants are ready to submit. Resolve the flagged variants first.',
+          description: copy.toast.nothingReady,
         });
         return;
       }
@@ -582,6 +792,7 @@ export function BulkWizard({
         excludedVariantIds,
       };
 
+      submitInFlightRef.current = true;
       try {
         const result = await mutation.mutateAsync({
           idempotencyKey: idempotencyKeyRef.current,
@@ -590,12 +801,18 @@ export function BulkWizard({
         const selectedCount = Object.keys(perVariantOverrides).length;
         showToast({
           tone: 'success',
-          title: 'Batch submitted',
+          title: copy.toast.batchSubmitted,
           description: describeBulkSubmitOutcome(selectedCount, result),
         });
-        void navigate(`/listings/bulk-batches/${result.batchId}`);
+        leaveGuardReleasedRef.current = true;
+        // The skip counts live only in the toast otherwise; the progress page repeats them.
+        void navigate(`/listings/bulk-batches/${result.batchId}`, {
+          state: { skippedAlreadyListedCount: result.skippedAlreadyListedCount },
+        });
       } catch {
         // Surfaced via mutation.error in the modal.
+      } finally {
+        submitInFlightRef.current = false;
       }
     },
     [config, rows, mutation, navigate, showToast, canGenerateDescription],
@@ -622,8 +839,8 @@ export function BulkWizard({
         });
         showToast({
           tone: 'success',
-          title: 'Bulk publish started',
-          description: `${items.length.toLocaleString()} product ${items.length === 1 ? 'listing' : 'listings'} queued.`,
+          title: copy.toast.publishStarted,
+          description: plural(items.length, copy.toast.listingsQueued),
         });
         setShopBatchId(result.batchId);
       } catch {
@@ -640,7 +857,7 @@ export function BulkWizard({
   // word (#2088).
   const marketplaceName = batchConnection
     ? resolvePlatformLabel(platforms, batchConnection)
-    : 'marketplace';
+    : copy.marketplaceFallback;
 
   // Every seeded variant id, checked against the destination in one call.
   const allSeededVariantIds = useMemo(() => {
@@ -690,8 +907,38 @@ export function BulkWizard({
     return n;
   }, [rows, alreadyListedSet, isShop, blockerChips]);
 
+  // The sets among them, so the confirmation can name what it skips rather than
+  // saying only "N already on the marketplace" (#3520).
+  const alreadyListedBundleCount = useMemo(() => {
+    if (alreadyListedSet.size === 0 || isShop) return 0;
+    let n = 0;
+    for (const row of rows) {
+      for (const variant of row.variants) {
+        if (
+          variant.included &&
+          alreadyListedSet.has(variant.variantId) &&
+          bundlePreview.bundles.has(variant.variantId)
+        ) {
+          n += 1;
+        }
+      }
+    }
+    return n;
+  }, [rows, alreadyListedSet, isShop, bundlePreview.bundles]);
+
+  // What the confirmation describes: only rows that will really be created.
+  // Excluded, blocked and already-listed rows are skipped at submit, so counting
+  // them made a one-offer batch read as "3 products, including 2 sets".
+  const willCreate = useMemo(
+    () =>
+      countWillCreate(rows, blockerChips, alreadyListedSet, bundlePreview.bundles, isShop),
+    [rows, blockerChips, alreadyListedSet, bundlePreview.bundles, isShop],
+  );
+
   const dupGuardKind = isShop ? 'shop' : 'marketplace';
-  const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
+  const dupGuardDestinationName = activeConnection
+    ? displayConnectionName(activeConnection.name)
+    : marketplaceName;
 
   // Marketplace publish gate: a duplicate opens the soft confirm first, which on
   // confirm hands off to the existing submit-confirm modal.
@@ -739,23 +986,54 @@ export function BulkWizard({
   // destination is still being chosen, and the picker itself carries the name.
   // The action verb matches the step's primary button ("Create offers" /
   // "Publish"), so the flow keeps one vocabulary.
-  const baseTitle = isShop ? 'Bulk shop product publishing' : 'Bulk marketplace offer creation';
+  const baseTitle = isShop ? copy.title.shop : copy.title.marketplace;
   const pageTitle =
     step !== 'config' && activeConnection !== null
-      ? `${isShop ? 'Publish products to' : 'Create offers on'} ${activeConnection.name}`
+      ? interpolate(isShop ? copy.title.shopTo : copy.title.marketplaceOn, {
+          connection: displayConnectionName(activeConnection.name),
+        })
       : baseTitle;
+  const productCount = plural(rows.length, copy.description.productCount);
+  const variantCount = plural(counts.totalVariants, copy.description.variantCount);
 
-  return (
+  const page = (
     <PageLayout
-      eyebrow="Operations · Listings"
+      eyebrow={copy.eyebrow}
       title={pageTitle}
+      actions={
+        hasBundles ? (
+          <GuideButton label={bundleGuideCopy.guide.trigger} />
+        ) : undefined
+      }
       description={
-        isShop
-          ? `Publishing ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants to a shop.`
-          : `Creating offers for ${rows.length} ${rows.length === 1 ? 'product' : 'products'} · ${counts.totalVariants} variants.`
+        setCount > 0 && setCount === counts.totalVariants
+          ? interpolate(copy.description.marketplaceSets, {
+              sets: plural(setCount, copy.description.setCount),
+            })
+          : interpolate(isShop ? copy.description.shop : copy.description.marketplace, {
+              products: productCount,
+              variants: variantCount,
+            }) +
+            (setCount > 0
+              ? ` ${interpolate(copy.description.includingSets, {
+                  sets: plural(setCount, copy.description.setCount),
+                })}`
+              : '')
       }
     >
       <div className="bulk-wizard">
+        <BulkWizardLeaveGuard
+          active={hasEdits && shopBatchId === null}
+          released={leaveGuardReleasedRef}
+        />
+        <div className="bulk-wizard__stepper">
+          <SetupStepper
+            steps={wizardSteps.map((s) => copy.steps[s.id])}
+            currentStep={stepperCurrent}
+            completedSteps={new Set(Array.from({ length: stepperCurrent }, (_, i) => i))}
+          />
+        </div>
+
         {/* #2227: every step but Config, which IS the destination form. Also
             not once a shop batch has submitted - `step` still reads 'review'
             there while the body is the publish tracker, and offering
@@ -772,26 +1050,23 @@ export function BulkWizard({
           />
         ) : null}
 
-        <div className="bulk-wizard__stepper">
-          <SetupStepper
-            steps={wizardSteps.map((s) => s.label)}
-            currentStep={stepperCurrent}
-            completedSteps={new Set(Array.from({ length: stepperCurrent }, (_, i) => i))}
-          />
-        </div>
-
         {resumedFromBatchId !== undefined && resumedFromBatchId !== '' ? (
           <Alert tone="info">
-            Resuming from batch <span className="mono-text">{resumedFromBatchId.slice(0, 8)}</span>
-            {' - '}the variants that failed there are pre-selected. Offers already live
-            are not included.
+            {renderRich(
+              copy.resumed,
+              { batch: (text) => <span className="mono-text">{text}</span> },
+              { batch: resumedFromBatchId.slice(0, 8) },
+            )}{' '}
+            {copy.resumedLiveExcluded}
           </Alert>
         ) : null}
 
         {counts.noVariants > 0 ? (
           <Alert tone="warning">
-            {counts.noVariants} of {rows.length} products have no variants and cannot be listed.
-            They'll be skipped on submit.
+            {plural(counts.noVariants, copy.noVariantsWarning.title, {
+              total: format.number(rows.length),
+            })}{' '}
+            {copy.noVariantsWarning.detail}
           </Alert>
         ) : null}
 
@@ -801,12 +1076,20 @@ export function BulkWizard({
             <div className="bulk-wizard__footer">
               <div className="bulk-wizard__footer-spacer" />
               <Button tone="primary" onClick={() => { void navigate('/listings'); }}>
-                Done
+                {copy.done}
               </Button>
             </div>
           </div>
         ) : (
-          <div className={step === 'resolve' ? '' : 'bulk-wizard__body'}>
+          <div
+            className={
+              step === 'resolve'
+                ? ''
+                : step === 'review' && !isShop
+                  ? 'bulk-wizard__body bulk-wizard__body--flat'
+                  : 'bulk-wizard__body'
+            }
+          >
             {step === 'config' && (
               <BulkConfigStep
                 initial={config ?? {}}
@@ -838,7 +1121,7 @@ export function BulkWizard({
                 config={config}
                 demoReadOnly={write.demoReadOnly}
                 isSubmitting={shopMutation.isPending}
-                errorMessage={shopMutation.error ? shopMutation.error.message : null}
+                errorMessage={shopMutation.error ? describeApiError(shopMutation.error, 'listings') : null}
                 alreadyListedVariantIds={alreadyListedSet}
                 destinationName={dupGuardDestinationName}
                 onSetVariantIncluded={setVariantIncluded}
@@ -867,8 +1150,13 @@ export function BulkWizard({
                 onSetVariantIncluded={setVariantIncluded}
                 onSetProductIncluded={setProductIncluded}
                 onSaveEditor={handleSaveEditor}
+                onUseCardCategory={handleUseCardCategory}
+                bundles={bundlePreview}
+                onUseBundleCategory={handleUseBundleCategory}
+                destinationResolvesCategoryAtSubmit={destinationResolvesCategoryAtSubmit}
                 onApproveAll={handleApproveAll}
                 onBack={() => { setStep('config'); }}
+                projection={projectionItems.length > 0 ? projectionPreview : undefined}
               />
             )}
           </div>
@@ -879,17 +1167,19 @@ export function BulkWizard({
             open={confirmOpen}
             onOpenChange={setConfirmOpen}
             offerCount={counts.includedReady - readyButAlreadyListedCount}
-            productCount={counts.productsWithIncluded}
+            productCount={willCreate.products}
             excludedCount={counts.excluded}
             blockedCount={counts.includedNeedsAttention}
             alreadyListedCount={readyButAlreadyListedCount}
+            alreadyListedBundleCount={alreadyListedBundleCount}
             mixedPublishWarning={counts.mixedPublish}
+            bundleSummary={{ sets: willCreate.sets, packs: willCreate.packs }}
             connectionName={resolveConnectionName(config.connectionId)}
             marketplaceName={marketplaceName}
             initialPublishImmediately={config.publishImmediately}
             isSubmitting={mutation.isPending}
             demoReadOnly={write.demoReadOnly}
-            errorMessage={mutation.error ? mutation.error.message : null}
+            errorMessage={mutation.error ? describeApiError(mutation.error, 'listings') : null}
             onConfirm={(publishImmediately) => {
               void handleSubmit(publishImmediately);
             }}
@@ -899,14 +1189,16 @@ export function BulkWizard({
         <ConfirmDialog
           open={changeDestOpen}
           onOpenChange={setChangeDestOpen}
-          title="Change destination?"
+          title={copy.changeDestination.title}
           description={
             activeConnection
-              ? `This batch has matched categories and row edits that only apply to ${activeConnection.name}. Going back to step 1 discards them.`
-              : 'Going back to step 1 discards the matched categories and row edits for this batch.'
+              ? interpolate(copy.changeDestination.descriptionNamed, {
+                  connection: displayConnectionName(activeConnection.name),
+                })
+              : copy.changeDestination.description
           }
-          confirmLabel="Change destination"
-          cancelLabel="Keep this batch"
+          confirmLabel={copy.changeDestination.confirm}
+          cancelLabel={copy.changeDestination.cancel}
           tone="danger"
           onConfirm={() => {
             setChangeDestOpen(false);
@@ -927,6 +1219,7 @@ export function BulkWizard({
       </div>
     </PageLayout>
   );
+  return hasBundles ? <BundleGuide defaultOpen="offer">{page}</BundleGuide> : page;
 }
 
 /** Order-sensitive blocker-list equality. */
@@ -949,6 +1242,45 @@ function dedupById(products: Product[]): Product[] {
  * Apply a row transform then recompute every touched product's per-variant
  * blockers so inclusion/override edits keep the readiness gate honest.
  */
+/**
+ * Fold a bundle preview into a row (#3520): stock becomes the sets sellable now,
+ * and a missing category is filled with the first component's card category.
+ * Returns the same row when nothing changes, so reblocking skips it.
+ */
+function applyBundlePreview(
+  row: BulkWizardRow,
+  bundles: ReadonlyMap<string, BundleOfferPreviewOk>,
+): BulkWizardRow {
+  let changed = false;
+  let next: BulkWizardRow = row;
+  const variants = row.variants.map((variant) => {
+    const preview = bundles.get(variant.variantId);
+    if (!preview) return variant;
+    let updated = variant;
+    const stock = bundleStock(preview, variant);
+    if (stock !== variant.masterStock) updated = { ...updated, masterStock: stock };
+    if (
+      preview.suggestedCategoryId !== null &&
+      submitCategoryIdOf(next, variant) === null
+    ) {
+      next = {
+        ...next,
+        resolvedCategoryId: preview.suggestedCategoryId,
+        resolutionMethod: 'first_component',
+      };
+      updated = {
+        ...updated,
+        resolvedCategoryId: preview.suggestedCategoryId,
+        resolutionMethod: 'first_component',
+      };
+    }
+    if (updated !== variant) changed = true;
+    return updated;
+  });
+  if (!changed) return row;
+  return { ...next, variants, masterStock: variants[0]?.masterStock ?? next.masterStock };
+}
+
 function reblockRows(
   rows: BulkWizardRow[],
   config: BulkWizardConfig,
@@ -1004,11 +1336,14 @@ function toWireOverride(override: BulkPerProductOverride): BulkPerProductOverrid
   // reintroduce this class of whole-request rejection.
   const wire: BulkPerProductOverride = {};
   if (override.stock !== undefined) wire.stock = override.stock;
+  if (override.stockFromMaster === true) wire.stockFromMaster = true;
   if (override.publishImmediately !== undefined) {
     wire.publishImmediately = override.publishImmediately;
   }
   if (override.price !== undefined) wire.price = override.price;
-  if (override.overrides !== undefined) wire.overrides = override.overrides;
+  if (override.overrides !== undefined) {
+    wire.overrides = override.overrides;
+  }
   return wire;
 }
 
@@ -1017,12 +1352,24 @@ function buildVariantOverride(
   config: BulkWizardConfig,
   pricingPolicy: PricingPolicy,
   stockPolicy: StockPolicy,
+  isSingleVariant: boolean,
 ): BulkPerProductOverride {
   const price = computeResolvedPrice(pricingPolicy, variant.masterPrice, variant.override);
   const stock = computeResolvedStock(stockPolicy, variant.masterStock, variant.override);
+  // A single-variant offer lists at the `stock` sent here, so the server cannot
+  // tell a figure the wizard read from master from one the operator typed.
+  // Saying which lets it refuse the first when the variant has no stock
+  // position (#3851) - the defence behind the Review step's `stock-unknown`
+  // blocker. Multi-variant siblings always list at master stock server-side.
+  const stockFromMaster =
+    isSingleVariant &&
+    variant.override.stock === undefined &&
+    (stockPolicy.mode === 'use-master' || stockPolicy.mode === 'cap');
+  const noBarcode = hasExplicitNoBarcode(variant);
   return toWireOverride({
     ...variant.override,
     stock: stock.value ?? undefined,
+    ...(stockFromMaster ? { stockFromMaster: true } : {}),
     price:
       variant.override.price ??
       (price.value !== null ? { amount: price.value, currency: config.currency } : undefined),
@@ -1031,9 +1378,12 @@ function buildVariantOverride(
       // categoryId is grouping-determining + product-level; the BE strips it
       // from the per-variant map. Keep the resolved card so a self-linking
       // sibling still points at its own catalog product (#824).
-      productCardId:
-        variant.override.overrides?.productCardId ?? variant.resolvedProductCardId ?? undefined,
-      ...(effectiveVariantEan(variant) ? { ean: effectiveVariantEan(variant)! } : {}),
+      productCardId: variantProductCardIdOf(variant) ?? undefined,
+      ...(noBarcode
+        ? { ean: '' }
+        : effectiveVariantEan(variant)
+          ? { ean: effectiveVariantEan(variant)! }
+          : {}),
     },
   });
 }
@@ -1046,6 +1396,37 @@ interface BatchCounts {
   noVariants: number;
   productsWithIncluded: number;
   mixedPublish: boolean;
+}
+
+/**
+ * The products, sets and multipacks that a submit would actually create offers
+ * for: included, free of gating blockers and not already listed on the target.
+ */
+export function countWillCreate(
+  rows: readonly BulkWizardRow[],
+  chips: Record<string, ChipDescriptor>,
+  alreadyListed: ReadonlySet<string>,
+  bundles: ReadonlyMap<string, BundleOfferPreviewOk>,
+  isShop = false,
+): { products: number; sets: number; packs: number } {
+  let products = 0;
+  let sets = 0;
+  let packs = 0;
+  for (const row of rows) {
+    let any = false;
+    for (const v of row.variants) {
+      if (!v.included || gatingBlockers(v.blockers, chips).length > 0) continue;
+      if (!isShop && alreadyListed.has(v.variantId)) continue;
+      any = true;
+      const bundle = bundles.get(v.variantId);
+      if (bundle) {
+        if (bundleKindOf(bundle) === 'pack') packs += 1;
+        else sets += 1;
+      }
+    }
+    if (any) products += 1;
+  }
+  return { products, sets, packs };
 }
 
 function countBatch(rows: BulkWizardRow[], chips: Record<string, ChipDescriptor>): BatchCounts {
@@ -1126,6 +1507,8 @@ export function mergeResolveOutcomes(
           resolvedCategoryId: vo.resolvedCategoryId,
           resolvedProductCardId: vo.resolvedProductCardId,
           resolutionMethod: vo.resolutionMethod,
+          overriddenCard: vo.overriddenCard,
+          mappingAgrees: vo.mappingAgrees,
           masterStock: vo.masterStock,
           masterPrice: vo.masterPrice,
           masterCurrency: vo.masterCurrency,
@@ -1140,8 +1523,11 @@ export function mergeResolveOutcomes(
 export function seedRows(
   products: Product[],
   preSelectedVariantIds?: ReadonlySet<string>,
+  recoveryPrefill?: ReadonlyMap<string, RecoveryPrefillEntry>,
 ): BulkWizardRow[] {
-  return dedupById(products).map((product) => seedRow(product, preSelectedVariantIds));
+  return dedupById(products).map((product) =>
+    seedRow(product, preSelectedVariantIds, recoveryPrefill),
+  );
 }
 
 function seedVariantRow(
@@ -1163,13 +1549,44 @@ function seedVariantRow(
     resolvedCategoryId: null,
     resolvedProductCardId: null,
     resolutionMethod: null,
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
   };
 }
 
-function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>): BulkWizardRow {
-  const variants = product.variants ?? [];
+/**
+ * The product-tier override a recovered product opens with. A simple product has
+ * no per-variant scope - its barcode, card and images live on the base - so it
+ * takes the whole saved request; a family takes only the shared fields.
+ */
+function recoveredBaseOverride(
+  base: RecoveryPrefillEntry,
+  isSimpleProduct: boolean,
+): BulkPerProductOverride {
+  const o = base.overrides;
+  if (isSimpleProduct) return { overrides: { ...o } };
+  return {
+    overrides: {
+      ...(o.title !== undefined ? { title: o.title } : {}),
+      ...(o.description !== undefined ? { description: o.description } : {}),
+      ...(o.categoryId ? { categoryId: o.categoryId } : {}),
+      ...(o.parameters ? { parameters: o.parameters } : {}),
+      ...(o.platformParams ? { platformParams: o.platformParams } : {}),
+    },
+  };
+}
+
+function seedRow(
+  product: Product,
+  preSelectedVariantIds?: ReadonlySet<string>,
+  recoveryPrefill?: ReadonlyMap<string, RecoveryPrefillEntry>,
+): BulkWizardRow {
+  // A variant deleted at the master (#1599 `isStale`) is never listed - the
+  // submit drops it too - so seeding it would count it, block the batch on it
+  // and show it in the editor as a variant the operator cannot list.
+  const variants = (product.variants ?? []).filter((v) => !v.isStale);
   // A product is "variant-scoped" only when the picker checked SOME of its
   // variants (#1754). Whole-product picks (and the /products entry point) leave
   // the set empty for this product, so every variant seeds included.
@@ -1186,11 +1603,22 @@ function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>):
   // first INCLUDED variant so a variant-scoped product represents a checked one.
   const primaryVariant: ProductVariant | null =
     variants.find(isIncluded) ?? variants[0] ?? null;
+  const seededVariants = variants.map((v) => {
+    const seeded = seedVariantRow(v, product, isIncluded(v));
+    const prefill = recoveryPrefill?.get(v.id);
+    return prefill ? { ...seeded, override: { overrides: prefill.overrides } } : seeded;
+  });
+  // The product-tier override carries what the editor shows as the shared
+  // base (title, category, parameters); the first recovered variant speaks for
+  // the product, since a family shares one category (#4037).
+  const base = variants
+    .map((v) => recoveryPrefill?.get(v.id))
+    .find((entry): entry is RecoveryPrefillEntry => entry !== undefined);
   return {
     productId: product.id,
     product,
     primaryVariant,
-    variants: variants.map((v) => seedVariantRow(v, product, isIncluded(v))),
+    variants: seededVariants,
     blockers: primaryVariant ? [] : ['no-variant'],
     resolvedCategoryId: null,
     resolvedProductCardId: null,
@@ -1199,6 +1627,7 @@ function seedRow(product: Product, preSelectedVariantIds?: ReadonlySet<string>):
     masterStock: null,
     masterCurrency: null,
     categoryCandidates: [],
-    override: {},
+    override: base ? recoveredBaseOverride(base, variants.length === 1) : {},
+    ...(base ? { editFormValues: { parameters: base.formParameters } } : {}),
   };
 }

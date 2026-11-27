@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import { AllegroSellerDefaultsSection } from './allegro-seller-defaults-section';
 import type { EditConnectionFormValues } from './edit-connection.schema';
+import { getMessages } from '../../../shared/i18n';
 
 interface HarnessAttachment {
   id: string;
@@ -110,7 +111,7 @@ describe('AllegroSellerDefaultsSection', () => {
     expect(
       await screen.findByText(/could not load responsible producers/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/network kaboom/i)).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('shows empty-state Alert when the registry returns no entries', async () => {
@@ -193,7 +194,7 @@ describe('AllegroSellerDefaultsSection', () => {
     const newFile = new File([blob], 'second.pdf', { type: 'application/pdf' });
     fireEvent.change(fileInput, { target: { files: [newFile] } });
 
-    expect(await screen.findByText(/upload service down/i)).toBeInTheDocument();
+    expect(await screen.findByText(getMessages('errors').status.other)).toBeInTheDocument();
 
     // Removing the *existing* attachment must clear the stale error — without
     // the explicit mutation.reset() in removeAt, TanStack Query keeps
@@ -201,7 +202,7 @@ describe('AllegroSellerDefaultsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /^remove first\.pdf$/i }));
 
     await waitFor(() => {
-      expect(screen.queryByText(/upload service down/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(getMessages('errors').status.other)).not.toBeInTheDocument();
     });
   });
 });

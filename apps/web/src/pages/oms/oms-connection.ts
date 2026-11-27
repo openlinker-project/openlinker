@@ -11,6 +11,7 @@
  */
 import type { Connection } from '../../features/connections';
 import { readSourcingClaim } from '../../features/oms-onboarding';
+import { getMessages } from '../../shared/i18n';
 import type { StatusBadgeTone } from '../../shared/ui/status-badge';
 
 /** The discriminator `createOmsFulfillmentRouterResolver` uses (ADR-055). */
@@ -32,16 +33,19 @@ export interface ConnectionStatusView {
  * true about it: what decides whether orders are packed is the sourcing claim
  * its Stop / Start writes. An OMS connection that is `active` therefore reads
  * On / Off from that claim; any other status (`disabled`, `error`) still
- * shows as itself, and every other platform keeps its plain status.
+ * shows as itself, and every other platform keeps its plain status, named in
+ * the operator's language.
  */
 export function describeConnectionStatus(
   connection: Connection,
   fallbackTone: StatusBadgeTone
 ): ConnectionStatusView {
   if (connection.platformType !== OMS_PLATFORM_TYPE || connection.status !== 'active') {
-    return { label: connection.status, tone: fallbackTone };
+    const labels = getMessages('connections').connectionsListPage.statusOptions;
+    return { label: labels[connection.status] ?? connection.status, tone: fallbackTone };
   }
+  const copy = getMessages('oms-core').omsConnection;
   return readSourcingClaim(connection.config) === 'on'
-    ? { label: 'On', tone: 'success' }
-    : { label: 'Off', tone: 'neutral' };
+    ? { label: copy.on, tone: 'success' }
+    : { label: copy.off, tone: 'neutral' };
 }

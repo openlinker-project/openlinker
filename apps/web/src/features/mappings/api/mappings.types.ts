@@ -7,6 +7,8 @@
  * @module apps/web/src/features/mappings/api
  */
 
+import { getMessages } from '../../../shared/i18n';
+
 export interface StatusMapping {
   id: string;
   connectionId: string;
@@ -118,14 +120,22 @@ export interface UpsertOrderStateMappingsPayload {
  * OL→destination order-state mapping panel. Mirrors the BE `OrderStatusValues`
  * union; hand-kept in sync under the FE-001 hand-written-contract strategy.
  */
-export const OL_ORDER_STATUS_OPTIONS: MappingOption[] = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'processing', label: 'Processing' },
-  { value: 'shipped', label: 'Shipped' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'refunded', label: 'Refunded' },
-];
+const OL_ORDER_STATUS_VALUES = [
+  'pending',
+  'processing',
+  'shipped',
+  'delivered',
+  'cancelled',
+  'refunded',
+] as const;
+
+/** Labels are getters, read at access time, so they follow the active language. */
+export const OL_ORDER_STATUS_OPTIONS: MappingOption[] = OL_ORDER_STATUS_VALUES.map((value) => ({
+  value,
+  get label(): string {
+    return getMessages('mappings').orderStatuses[value];
+  },
+}));
 
 // ── Category mapping types ────────────────────────────────────────────────
 
@@ -172,6 +182,8 @@ export interface PrestashopCategory {
 export interface CategoryMapping {
   id: string;
   connectionId: string;
+  /** Master connection; `null` on a source-agnostic historical row. */
+  sourceConnectionId: string | null;
   prestashopCategoryId: string;
   allegroCategoryId: string;
   allegroCategoryName: string;
@@ -179,9 +191,18 @@ export interface CategoryMapping {
 }
 
 export interface UpsertCategoryMappingPayload {
+  /** The master connection that owns the source category (#3993). */
+  sourceConnectionId: string;
   allegroCategoryId: string;
   allegroCategoryName: string;
   allegroCategoryPath?: string;
+}
+
+/** Result of moving category mappings onto a marketplace (#3993). */
+export interface CategoryMappingReassignResult {
+  moved: number;
+  /** Source categories that already had a mapping there and kept it. */
+  keptSourceCategoryIds: string[];
 }
 
 // ── Attribute mapping rules (#1841) ────────────────────────────────────────

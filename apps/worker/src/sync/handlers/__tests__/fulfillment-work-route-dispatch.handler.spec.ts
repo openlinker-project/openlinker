@@ -116,7 +116,7 @@ describe('FulfillmentWorkRouteHandler — dispatching routed work (#2955)', () =
   it.each<RoutingCommitOutcome>([
     { status: 'contended' },
     { status: 'skipped', reason: 'already-routed' },
-    { status: 'refused', decisionId: 'dec-1', reason: 'plan-carries-holds' },
+    { status: 'refused', decisionId: 'dec-1', reason: 'plan-carries-holds', unfulfillableReasons: [] },
     { status: 'in-doubt', decisionId: 'dec-1', cause: 'timeout' },
   ])('should enqueue nothing when the outcome is $status', async (outcome) => {
     await dispatch(outcome);

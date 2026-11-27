@@ -20,6 +20,7 @@ import type {
   CarrierMappingInput,
   PaymentMappingInput,
   CategoryMappingInput,
+  CategoryMappingReassignResult,
   OrderStateMappingInput,
   AttributeMappingInput,
 } from '../../domain/types/mapping.types';
@@ -92,12 +93,38 @@ export interface IMappingConfigService {
    */
   resolveOrderStateMapping(connectionId: string, olStatus: OrderStatus): Promise<string | null>;
 
-  getCategoryMappings(destinationConnectionId: string): Promise<CategoryMapping[]>;
+  /**
+   * Category mappings authored for a destination connection; with
+   * `sourceConnectionId`, only those that apply to that source store (#3993).
+   *
+   * `deleteCategoryMapping` with a source removes that source's own row only.
+   * A source-agnostic (`NULL`) row is the fallback for every other source, so
+   * it is never removed as a side effect of clearing one source's mapping.
+   */
+  getCategoryMappings(
+    destinationConnectionId: string,
+    sourceConnectionId?: string
+  ): Promise<CategoryMapping[]>;
   upsertCategoryMapping(
     destinationConnectionId: string,
     input: CategoryMappingInput
   ): Promise<CategoryMapping>;
-  deleteCategoryMapping(destinationConnectionId: string, sourceCategoryId: string): Promise<void>;
+  deleteCategoryMapping(
+    destinationConnectionId: string,
+    sourceCategoryId: string,
+    sourceConnectionId?: string
+  ): Promise<void>;
+  /**
+   * Move the category mappings keyed by one connection onto another (#3993).
+   * Used to adopt the rows the Category Mappings page once saved under the
+   * master's own id, which no offer ever read. Rejects with
+   * `CategoryMappingReassignSameConnectionException` when both ids are the
+   * same, since every row would clash with itself and be dropped.
+   */
+  reassignCategoryMappings(
+    fromDestinationConnectionId: string,
+    toDestinationConnectionId: string
+  ): Promise<CategoryMappingReassignResult>;
 
   /**
    * Resolve the configured destination category ID for a given source category.
@@ -106,7 +133,8 @@ export interface IMappingConfigService {
    * connection wins); when none and `opts.borrowedTaxonomy` is set, falls back to
    * an owner-authored row under that provenance (#1045) so a `borrows` destination
    * (ERLI) reuses an Allegro mapping with zero re-authoring. `opts.sourceConnectionId`
-   * scopes the fallback to the right source store. Returns null when nothing matches.
+   * scopes both steps to the right source store: a row authored for a different
+   * source never applies (#3993). Returns null when nothing matches.
    */
   resolveDestinationCategory(
     destinationConnectionId: string,

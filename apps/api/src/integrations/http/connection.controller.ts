@@ -13,7 +13,6 @@
  * `admin,operator,viewer`). Behaviourally identical for every role today.
  */
 import {
-  BadRequestException,
   Controller,
   Get,
   Post,
@@ -32,6 +31,7 @@ import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagg
 import { Logger } from '@openlinker/shared/logging';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { RotateWebhookSecretResponseDto } from './dto/rotate-webhook-secret-response.dto';
 import { InstallWebhooksResponseDto } from './dto/install-webhooks-response.dto';
 import { SetWebhookSecretDto } from './dto/set-webhook-secret.dto';
@@ -51,6 +51,13 @@ import {
   RATE_LIMIT_STATUS_SERVICE_TOKEN,
 } from '../application/interfaces/rate-limit-status.service.interface';
 import { CreateConnectionDto } from './dto/create-connection.dto';
+import { OrderSyncStartDto, toOrderSyncStart } from './dto/order-sync-start.dto';
+import {
+  OrderImportDto,
+  OrderImportResponseDto,
+  OrderSyncRestartResponseDto,
+} from './dto/order-import.dto';
+import type { OrderSyncStart } from '@openlinker/core/sync';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
 import { ConnectionFiltersDto } from './dto/connection-filters.dto';
@@ -58,9 +65,9 @@ import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { ConnectionTestResultDto } from './dto/connection-test-result.dto';
 import { ConnectionService } from '../application/services/connection.service';
+import type { ConnectionUpdateInput } from '../application/interfaces/connection.service.types';
 import type {
   Connection,
-  ConnectionUpdate,
   ConnectionFilters,
   ConnectionRateLimit,
 } from '@openlinker/core/identifier-mapping';
@@ -106,7 +113,8 @@ export class ConnectionController {
 
   private async toResponse(
     connection: Connection,
-    user?: AuthenticatedUser
+    user?: AuthenticatedUser,
+    warnings?: string[]
   ): Promise<ConnectionResponseDto> {
     let supported: string[] = [];
     let variantGrouping: VariantGroupingModel = resolveVariantGroupingModel(undefined);
@@ -115,6 +123,7 @@ export class ConnectionController {
     // resolveRequiresCredentials itself.
     let requiresCredentials = true;
     let archivable = true;
+    let publicConfigKeys: readonly string[] = [];
     try {
       const metadata = await this.integrationsService.resolveAdapterMetadata({
         platformType: connection.platformType,
@@ -125,6 +134,7 @@ export class ConnectionController {
       defaultRateLimit = metadata.defaultRateLimit ?? null;
       requiresCredentials = resolveRequiresCredentials(metadata);
       archivable = resolveArchivable(metadata);
+      publicConfigKeys = metadata.publicConfigKeys ?? [];
     } catch (error) {
       // Unknown adapter (e.g., legacy row with unmapped platformType). Leave
       // supportedCapabilities empty (and variantGrouping/defaultRateLimit at
@@ -144,7 +154,9 @@ export class ConnectionController {
       user?.role,
       this.demoModeService.isDemoModeEnabled(),
       requiresCredentials,
-      archivable
+      archivable,
+      warnings,
+      publicConfigKeys
     );
   }
 
@@ -163,8 +175,14 @@ export class ConnectionController {
     @Body() dto: CreateConnectionDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConnectionResponseDto> {
-    const connection = await this.connectionService.create(dto);
-    return this.toResponse(connection, user);
+    const { orderSyncStart, ...rest } = dto;
+    const start = toOrderSyncStart(orderSyncStart);
+    const connection = await this.connectionService.create({
+      ...rest,
+      ...(start ? { orderSyncStart: start } : {}),
+    });
+    const warnings = await this.connectionService.findSharedRateLimitBucketWarnings(connection);
+    return this.toResponse(connection, user, warnings);
   }
 
   @Roles('admin', 'operator', 'viewer')
@@ -219,7 +237,9 @@ export class ConnectionController {
     @Body() dto: UpdateConnectionDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<ConnectionResponseDto> {
-    const patch: ConnectionUpdate = {
+    const orderSyncStart = toOrderSyncStart(dto.orderSyncStart);
+    const patch: ConnectionUpdateInput = {
+      ...(orderSyncStart ? { orderSyncStart } : {}),
       ...(dto.name !== undefined && { name: dto.name }),
       ...(dto.status !== undefined && { status: dto.status }),
       ...(dto.config !== undefined && { config: dto.config }),
@@ -229,7 +249,8 @@ export class ConnectionController {
       }),
     };
     const connection = await this.connectionService.update(id, patch);
-    return this.toResponse(connection, user);
+    const warnings = await this.connectionService.findSharedRateLimitBucketWarnings(connection);
+    return this.toResponse(connection, user, warnings);
   }
 
   @Roles('admin', 'operator', 'viewer')
@@ -349,7 +370,12 @@ export class ConnectionController {
       // secret for platforms that mint one themselves (inFakt) - every other
       // connection's secret is server-rotated only. Map to 400, not 500.
       if (error instanceof CallerSuppliedWebhookSecretNotSupportedException) {
-        throw new BadRequestException(error.message);
+        throw codedHttpError(
+          HttpStatus.BAD_REQUEST,
+          'WEBHOOK_SECRET_NOT_CALLER_SUPPLIED',
+          error.message,
+          { platformType: error.platformType }
+        );
       }
       throw error;
     }
@@ -424,6 +450,64 @@ export class ConnectionController {
   ): Promise<InstallWebhooksResponseDto> {
     const result = await this.connectionService.installWebhooks(id, user?.id);
     return InstallWebhooksResponseDto.fromDomain(result);
+  }
+
+  /**
+   * Restart the order sync from a new start (#4228): only new orders, orders
+   * since a date, or the whole history. Replaces the old cursor; see
+   * `ConnectionService.restartOrderSync`.
+   */
+  @Roles('admin')
+  @Post(':id/order-sync/restart')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Restart the order sync from a new start (#4228)' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'applied: true when the next poll starts from the new start; applied: false with reason ' +
+      '"already-following-feed" when "now" was asked of a feed that already imports new orders',
+    type: OrderSyncRestartResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Mode not supported by the adapter, or invalid date' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'ORDER_SYNC_BUSY: an order poll is running; retry shortly',
+  })
+  async restartOrderSync(
+    @Param('id') id: string,
+    @Body() dto: OrderSyncStartDto
+  ): Promise<OrderSyncRestartResponseDto> {
+    return this.connectionService.restartOrderSync(id, toOrderSyncStart(dto) as OrderSyncStart);
+  }
+
+  /**
+   * Import the orders of a chosen range (#4228): enqueues the first page of an
+   * import chain the worker walks. See `ConnectionService.startOrderImport`.
+   */
+  @Roles('admin')
+  @Post(':id/order-import')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Import orders for a chosen date range (#4228)' })
+  @ApiResponse({ status: 202, description: 'The import was queued', type: OrderImportResponseDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid range, the connection does not import orders, or the adapter cannot import by date or order',
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'The connection is not active' })
+  async startOrderImport(
+    @Param('id') id: string,
+    @Body() dto: OrderImportDto
+  ): Promise<OrderImportResponseDto> {
+    return this.connectionService.startOrderImport(id, {
+      ...(dto.from !== undefined ? { from: dto.from } : {}),
+      ...(dto.to !== undefined ? { to: dto.to } : {}),
+      direction: dto.direction,
+    });
   }
 
   @Roles('admin')

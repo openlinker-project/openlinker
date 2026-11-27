@@ -82,3 +82,14 @@ export const EPARAGONY_REGISTER_DEADLINE_MS = 110_000;
  * because core exports them from service modules, not from its barrel.
  */
 export const EPARAGONY_ISSUE_DEADLINE_MS = 110_000;
+
+/**
+ * How many characters of a receipt line name the fiscal printer behind
+ * eparagony.pl compares (Dz.U. 2024 poz. 1654, § 2 pkt 1 and § 40 ust. 1: the
+ * device binds a name to one VAT rate and keys it on its first 40 characters).
+ *
+ * Declared to core through `ReceiptLineNameBudget` so the delivery-line editor
+ * can keep a name plus its rate suffix inside it; core itself holds no regime
+ * number (ADR-026, ADR-046 shape). Also the cut the printer-name key applies.
+ */
+export const EPARAGONY_RECEIPT_LINE_NAME_MAX_LENGTH = 40;

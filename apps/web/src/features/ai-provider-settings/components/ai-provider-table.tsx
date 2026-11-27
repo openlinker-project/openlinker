@@ -8,13 +8,15 @@
  * configured (the BE rejects activation in that case with 422; gating in
  * the UI saves the round-trip and hints the operator at the fix).
  *
- * The fake provider is shown read-only — no key field, no clear, but
+ * The fake provider is shown read-only - no key field, no clear, but
  * still activatable so operators can flip into deterministic mode for
  * diagnostic offline work.
  *
  * @module apps/web/src/features/ai-provider-settings/components
  */
 import { useState, type ReactElement } from 'react';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
@@ -39,18 +41,6 @@ interface AiProviderTableProps {
   view: AiProviderSettingsView;
 }
 
-const PROVIDER_LABEL: Record<AiProvider, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
-  fake: 'Fake (offline stub)',
-};
-
-const PROVIDER_HINT: Record<AiProvider, string> = {
-  anthropic: 'Claude — Vercel AI SDK',
-  openai: 'GPT — Vercel AI SDK',
-  fake: 'Deterministic — no network',
-};
-
 const PROVIDERS_REQUIRING_KEY = new Set<AiProvider>(['anthropic', 'openai']);
 
 const SOURCE_TONE: Record<AiProviderKeySource, StatusBadgeTone> = {
@@ -59,27 +49,9 @@ const SOURCE_TONE: Record<AiProviderKeySource, StatusBadgeTone> = {
   none: 'neutral',
 };
 
-const SOURCE_LABEL: Record<AiProviderKeySource, string> = {
-  db: 'Stored encrypted',
-  env: 'Env fallback',
-  none: 'None',
-};
-
-const formatRelative = (iso: string | null): string => {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  const diffMs = Date.now() - date.getTime();
-  const minutes = Math.round(diffMs / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-};
-
 export function AiProviderTable({ view }: AiProviderTableProps): ReactElement {
+  const copy = useMessages('ai-provider-settings').aiProviderTable;
+  const providerLabel = (provider: AiProvider): string => copy.providers[provider].label;
   const { showToast } = useToast();
   const clearMutation = useClearAiProviderSettingsMutation();
   const setActiveMutation = useSetActiveAiProviderMutation();
@@ -94,15 +66,17 @@ export function AiProviderTable({ view }: AiProviderTableProps): ReactElement {
       await clearMutation.mutateAsync({ provider: clearProvider });
       showToast({
         tone: 'success',
-        title: 'API key cleared',
-        description: `Server falls back to env or none for ${PROVIDER_LABEL[clearProvider]}.`,
+        title: copy.clearedToastTitle,
+        description: interpolate(copy.clearedToastDescription, {
+          provider: providerLabel(clearProvider),
+        }),
       });
       setClearProvider(null);
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Could not clear the key',
-        description: error instanceof Error ? error.message : 'Unknown error',
+        title: copy.clearErrorTitle,
+        description: describeApiError(error, 'ai-provider-settings'),
       });
     }
   };
@@ -113,61 +87,40 @@ export function AiProviderTable({ view }: AiProviderTableProps): ReactElement {
       await setActiveMutation.mutateAsync({ provider: activateProvider });
       showToast({
         tone: 'success',
-        title: 'Active provider switched',
-        description: `Subsequent AI requests route to ${PROVIDER_LABEL[activateProvider]}.`,
+        title: copy.switchedToastTitle,
+        description: interpolate(copy.switchedToastDescription, {
+          provider: providerLabel(activateProvider),
+        }),
       });
       setActivateProvider(null);
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Could not switch provider',
-        description: error instanceof Error ? error.message : 'Unknown error',
+        title: copy.switchErrorTitle,
+        description: describeApiError(error, 'ai-provider-settings'),
       });
     }
   };
 
   return (
     <TooltipProvider>
-    <section
-      className="ai-provider-table-section"
-      aria-labelledby="ai-providers-heading"
-    >
-      <div className="ai-provider-table-section__head">
-        <h2 id="ai-providers-heading" className="section-title">
-          Providers
-        </h2>
-        <p className="ai-provider-table-section__caption">
-          Keys are stored encrypted at rest. The active provider is read on every request — switches
-          take effect on the next AI call.
-        </p>
-      </div>
+    <section className="ai-provider-table-section">
+      <p className="ai-provider-table-section__caption">{copy.caption}</p>
 
-      <table className="ai-provider-table">
-        <thead>
-          <tr>
-            <th scope="col">Provider</th>
-            <th scope="col">Active</th>
-            <th scope="col">Key</th>
-            <th scope="col">Source</th>
-            <th scope="col">Updated</th>
-            <th scope="col" className="ai-provider-table__th--actions" aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {view.providers.map((row) => (
-            <ProviderRow
-              key={row.provider}
-              row={row}
-              isActive={row.provider === view.activeProvider}
-              activeUpdatedAt={row.provider === view.activeProvider ? view.activeUpdatedAt : null}
-              activeUpdatedBy={row.provider === view.activeProvider ? view.activeUpdatedBy : null}
-              onSetKey={() => setKeyDialogProvider(row.provider)}
-              onClearKey={() => setClearProvider(row.provider)}
-              onMakeActive={() => setActivateProvider(row.provider)}
-            />
-          ))}
-        </tbody>
-      </table>
+      <ul className="ai-provider-list">
+        {view.providers.map((row) => (
+          <ProviderRow
+            key={row.provider}
+            row={row}
+            isActive={row.provider === view.activeProvider}
+            activeUpdatedAt={row.provider === view.activeProvider ? view.activeUpdatedAt : null}
+            activeUpdatedBy={row.provider === view.activeProvider ? view.activeUpdatedBy : null}
+            onSetKey={() => setKeyDialogProvider(row.provider)}
+            onClearKey={() => setClearProvider(row.provider)}
+            onMakeActive={() => setActivateProvider(row.provider)}
+          />
+        ))}
+      </ul>
 
       <AiProviderKeyDialog
         provider={keyDialogProvider}
@@ -181,12 +134,12 @@ export function AiProviderTable({ view }: AiProviderTableProps): ReactElement {
         }}
         title={
           clearProvider
-            ? `Clear ${PROVIDER_LABEL[clearProvider]} API key?`
-            : 'Clear API key?'
+            ? interpolate(copy.clearConfirmTitle, { provider: providerLabel(clearProvider) })
+            : copy.clearConfirmTitleGeneric
         }
-        description="The server falls back to the env variable (if set) or reports no key configured. AI requests using this provider will fail until a new key is saved."
-        confirmLabel="Clear key"
-        cancelLabel="Cancel"
+        description={copy.clearConfirmDescription}
+        confirmLabel={copy.clearConfirmLabel}
+        cancelLabel={copy.cancel}
         tone="danger"
         isConfirming={clearMutation.isPending}
         onConfirm={() => {
@@ -201,16 +154,19 @@ export function AiProviderTable({ view }: AiProviderTableProps): ReactElement {
         }}
         title={
           activateProvider
-            ? `Switch active provider to ${PROVIDER_LABEL[activateProvider]}?`
-            : 'Switch active provider?'
+            ? interpolate(copy.switchConfirmTitle, { provider: providerLabel(activateProvider) })
+            : copy.switchConfirmTitleGeneric
         }
         description={
           activateProvider
-            ? `Future AI requests will route through ${PROVIDER_LABEL[activateProvider]}. In-flight requests already dispatched to ${PROVIDER_LABEL[view.activeProvider]} continue with that provider.`
+            ? interpolate(copy.switchConfirmDescription, {
+                provider: providerLabel(activateProvider),
+                current: providerLabel(view.activeProvider),
+              })
             : ''
         }
-        confirmLabel="Switch provider"
-        cancelLabel="Cancel"
+        confirmLabel={copy.switchConfirmLabel}
+        cancelLabel={copy.cancel}
         isConfirming={setActiveMutation.isPending}
         onConfirm={() => {
           void handleActivateConfirm();
@@ -240,63 +196,67 @@ function ProviderRow({
   onClearKey,
   onMakeActive,
 }: ProviderRowProps): ReactElement {
+  const copy = useMessages('ai-provider-settings').aiProviderTable;
+  const format = useFormat();
   const requiresKey = PROVIDERS_REQUIRING_KEY.has(row.provider);
   const canActivate = !isActive && (!requiresKey || row.configured);
-  const activateDisabledReason = !canActivate && !isActive ? 'Add a key first' : '';
+  const activateDisabledReason = !canActivate && !isActive ? copy.addKeyFirst : '';
 
-  const trClass = ['ai-provider-table__row', isActive ? 'ai-provider-table__row--active' : '']
-    .filter(Boolean)
-    .join(' ');
+  const updated =
+    isActive && activeUpdatedAt !== null && !Number.isNaN(Date.parse(activeUpdatedAt))
+      ? format.relativeTime(activeUpdatedAt)
+      : null;
 
   return (
-    <tr className={trClass}>
-      <td>
-        <div className="ai-provider-table__name">{PROVIDER_LABEL[row.provider]}</div>
-        <div className="ai-provider-table__hint mono-text">{PROVIDER_HINT[row.provider]}</div>
-      </td>
-      <td>
-        {isActive ? (
-          <StatusBadge tone="success" withDot>
-            Active
-          </StatusBadge>
-        ) : null}
-      </td>
-      <td>
+    <li className="ai-provider" data-active={isActive || undefined}>
+      <div className="ai-provider__id">
+        <div className="ai-provider__name">
+          <span>{copy.providers[row.provider].label}</span>
+          {isActive ? (
+            <StatusBadge tone="success" withDot>
+              {copy.activeBadge}
+            </StatusBadge>
+          ) : null}
+        </div>
+        <div className="ai-provider__hint mono-text">{copy.providers[row.provider].hint}</div>
+      </div>
+      <div className="ai-provider__key">
         {requiresKey ? (
-          row.configured ? (
-            'Yes'
-          ) : (
-            <span className="text-muted">No</span>
-          )
+          <>
+            <span className={row.configured ? undefined : 'text-muted'}>
+              {row.configured ? copy.keySaved : copy.keyMissing}
+            </span>
+            {row.configured ? (
+              <StatusBadge tone={SOURCE_TONE[row.source]} compact>
+                {copy.sources[row.source]}
+              </StatusBadge>
+            ) : null}
+          </>
         ) : (
-          <span className="text-muted">n/a</span>
+          <span className="text-muted">{copy.notApplicable}</span>
         )}
-      </td>
-      <td>
-        {requiresKey ? (
-          <StatusBadge tone={SOURCE_TONE[row.source]} compact>
-            {SOURCE_LABEL[row.source]}
-          </StatusBadge>
-        ) : null}
-      </td>
-      <td className="mono-text">
-        {isActive ? (
-          <span title={activeUpdatedBy ? `by ${activeUpdatedBy}` : 'env fallback'}>
-            {formatRelative(activeUpdatedAt)}
+        {updated ? (
+          <span
+            className="ai-provider__updated"
+            title={
+              activeUpdatedBy
+                ? interpolate(copy.updatedBy, { user: activeUpdatedBy })
+                : copy.serverFallback
+            }
+          >
+            {updated}
           </span>
-        ) : (
-          '—'
-        )}
-      </td>
-      <td className="ai-provider-table__actions">
+        ) : null}
+      </div>
+      <div className="ai-provider__actions">
         {requiresKey ? (
           <Button tone="secondary" className="button--sm" onClick={onSetKey}>
-            {row.configured ? 'Rotate' : 'Set key'}
+            {row.configured ? copy.rotate : copy.setKey}
           </Button>
         ) : null}
         {requiresKey && row.source === 'db' ? (
           <Button tone="danger" className="button--sm" onClick={onClearKey}>
-            Clear
+            {copy.clear}
           </Button>
         ) : null}
         {!isActive ? (
@@ -305,7 +265,7 @@ function ProviderRow({
               <TooltipTrigger asChild>
                 <span>
                   <Button tone="primary" className="button--sm" disabled>
-                    Make active
+                    {copy.makeActive}
                   </Button>
                 </span>
               </TooltipTrigger>
@@ -313,11 +273,12 @@ function ProviderRow({
             </Tooltip>
           ) : (
             <Button tone="primary" className="button--sm" onClick={onMakeActive}>
-              Make active
+              {copy.makeActive}
             </Button>
           )
         ) : null}
-      </td>
-    </tr>
+      </div>
+    </li>
   );
 }
+

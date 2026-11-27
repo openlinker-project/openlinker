@@ -6,7 +6,12 @@ import {
   sampleConnection,
   createAuthenticatedSessionAdapter,
 } from '../../../test/test-utils';
+import { useEffect, type ReactElement } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { act } from '@testing-library/react';
 import { ConnectionActionsPanel } from './ConnectionActionsPanel';
+import { announceGuidedLanded } from '../lib/guided-jump';
+import { getMessages } from '../../../shared/i18n';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../demo', () => ({
@@ -143,7 +148,7 @@ describe('ConnectionActionsPanel', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Enable' }));
 
     expect(await screen.findByText('Unable to enable connection')).toBeInTheDocument();
-    expect(screen.getByText('Connection is locked by another job')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
     expect(screen.queryByText('Connection enabled')).not.toBeInTheDocument();
   });
 
@@ -175,7 +180,7 @@ describe('ConnectionActionsPanel', () => {
   });
 
   it('renders no plugin-specific actions for an unregistered platformType', async () => {
-    const unknownConnection = { ...sampleConnection, platformType: 'shopify' };
+    const unknownConnection = { ...sampleConnection, platformType: 'unregistered-platform' };
     renderWithProviders(<ConnectionActionsPanel connection={unknownConnection} />, adminSession);
     expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /configure webhooks/i })).not.toBeInTheDocument();
@@ -191,6 +196,168 @@ describe('ConnectionActionsPanel', () => {
     expect(screen.getByRole('combobox', { name: /job type/i })).toBeInTheDocument();
 
     expect(captureDemoEvent).toHaveBeenCalledWith('demo_connection_sync_dialog_opened', {});
+  });
+
+  it('opens the Trigger sync dialog on Sync orders when sent here with ?sync=orders', async () => {
+    renderWithProviders(<ConnectionActionsPanel connection={sampleConnection} />, {
+      ...adminSession,
+      route: `/connections/${sampleConnection.id}?tab=actions&sync=orders`,
+    });
+
+    expect(await screen.findByRole('combobox', { name: /job type/i })).toHaveValue(
+      'marketplace.orders.poll',
+    );
+  });
+
+  describe('period sync deep link (#4228)', () => {
+    const windowAdapter = (orderWindowImport: boolean) => ({
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          {
+            adapterKey: sampleConnection.adapterKey,
+            platformType: sampleConnection.platformType,
+            isDefault: true,
+            orderWindowImport,
+          },
+        ]),
+      },
+    });
+    const orderSource = {
+      ...sampleConnection,
+      supportedCapabilities: [...sampleConnection.supportedCapabilities, 'OrderSource' as const],
+    };
+
+    it('opens Sync orders with the period option chosen for ?sync=orders&scope=range', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={orderSource} />, {
+        ...adminSession,
+        apiClient: createMockApiClient(windowAdapter(true)),
+        route: `/connections/${sampleConnection.id}?tab=actions&sync=orders&scope=range`,
+      });
+
+      expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('range');
+    });
+
+    it('keeps "new" when no scope is given', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={orderSource} />, {
+        ...adminSession,
+        apiClient: createMockApiClient(windowAdapter(true)),
+        route: `/connections/${sampleConnection.id}?tab=actions&sync=orders`,
+      });
+
+      expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('new');
+    });
+
+    it('ignores the period when the shop cannot read a window', async () => {
+      renderWithProviders(<ConnectionActionsPanel connection={orderSource} />, {
+        ...adminSession,
+        apiClient: createMockApiClient(windowAdapter(false)),
+        route: `/connections/${sampleConnection.id}?tab=actions&sync=orders&scope=range`,
+      });
+
+      expect(await screen.findByRole('combobox', { name: /job type/i })).toHaveValue(
+        'marketplace.orders.poll',
+      );
+      expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('guided arrival chaining (#4228)', () => {
+    const orderSource = {
+      ...sampleConnection,
+      supportedCapabilities: [...sampleConnection.supportedCapabilities, 'OrderSource' as const],
+    };
+    const api = () =>
+      createMockApiClient({
+        adapters: {
+          list: vi.fn().mockResolvedValue([
+            {
+              adapterKey: sampleConnection.adapterKey,
+              platformType: sampleConnection.platformType,
+              isDefault: true,
+              orderWindowImport: true,
+            },
+          ]),
+        },
+      });
+
+    // Arrives the way the Sync tab sends the operator: a navigation carrying the guided flag.
+    function GuidedArrival(): ReactElement | null {
+      const navigate = useNavigate();
+      const location = useLocation();
+      useEffect(() => {
+        void navigate('/c?tab=actions&sync=orders&scope=range', { state: { guided: true } });
+      }, [navigate]);
+      return location.state ? <ConnectionActionsPanel connection={orderSource} /> : null;
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
+    it('opens at once, without waiting, when motion is not allowed', async () => {
+      renderWithProviders(<GuidedArrival />, { ...adminSession, apiClient: api() });
+
+      expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('range');
+    });
+
+    it('should drop the sync params and keep the guided flag for the page to clear', async () => {
+      function Probe(): ReactElement {
+        const location = useLocation();
+        return (
+          <>
+            <div data-testid="search">{location.search}</div>
+            <div data-testid="guided">{JSON.stringify(location.state)}</div>
+          </>
+        );
+      }
+      renderWithProviders(
+        <>
+          <GuidedArrival />
+          <Probe />
+        </>,
+        { ...adminSession, apiClient: api() }
+      );
+
+      await screen.findByRole('combobox', { name: /what to sync/i });
+      expect(screen.getByTestId('search').textContent).toBe('?tab=actions');
+      expect(screen.getByTestId('guided').textContent).toBe('{"guided":true}');
+    });
+
+    it('opens when the tab underline lands, not before', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      renderWithProviders(<GuidedArrival />, { ...adminSession, apiClient: api() });
+      await screen.findByRole('button', { name: /trigger sync/i });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
+      await act(async () => {
+        announceGuidedLanded();
+      });
+      expect(await screen.findByRole('combobox', { name: /what to sync/i })).toHaveValue('range');
+    });
+
+    it('opens after the fallback when no landing signal ever comes', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      renderWithProviders(<GuidedArrival />, { ...adminSession, apiClient: api() });
+      await screen.findByRole('button', { name: /trigger sync/i });
+
+      expect(await screen.findByRole('combobox', { name: /what to sync/i }, { timeout: 2500 })).toHaveValue(
+        'range'
+      );
+    });
+
+    it('does not open after the panel unmounts mid-sequence', async () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }));
+      const view = renderWithProviders(<GuidedArrival />, { ...adminSession, apiClient: api() });
+      await screen.findByRole('button', { name: /trigger sync/i });
+      view.unmount();
+      await act(async () => {
+        announceGuidedLanded();
+      });
+
+      expect(screen.queryByRole('combobox', { name: /what to sync/i })).not.toBeInTheDocument();
+    });
   });
 
   describe('demo read-only viewer (#1615)', () => {

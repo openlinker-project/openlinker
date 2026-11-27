@@ -10,7 +10,7 @@
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-import type { OfferCreationError } from '@openlinker/core/listings';
+import type { OfferCreationError, OfferCreationRequestSnapshot } from '@openlinker/core/listings';
 import { BulkBatchStatusValues, OfferCreationStatusValues } from '@openlinker/core/listings';
 
 import { OfferCreationErrorDto } from './offer-creation-status-response.dto';
@@ -43,6 +43,12 @@ export class BulkOfferCreateResponseDto {
       'Count of expanded jobs dropped because the effective EAN failed the GS1 check digit and the operator did not confirm it as correct (#3492). Zero when nothing was skipped.',
   })
   skippedInvalidEanCount!: number;
+
+  @ApiProperty({
+    description:
+      'True when the request carried an `x-idempotency-key` that already named a batch on this connection: `batchId` is that earlier batch and this request created and enqueued nothing, so `jobIds` is empty and the skipped counts are zero (they describe work this request did). Read the batch by `batchId` for its real state.',
+  })
+  deduplicated!: boolean;
 }
 
 export class BulkBatchRecordSummaryDto {
@@ -80,6 +86,14 @@ export class BulkBatchRecordSummaryDto {
       'OL product id owning this record\'s variant (#2234). Lets the operator reopen the bulk wizard on a failed batch\'s variants. Null when the variant no longer resolves.',
   })
   productId!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Object,
+    description:
+      'Snapshot of the create-offer request this record was submitted with (#4037): title, category, parameters and EAN choices. Lets "Fix and resubmit" reopen the wizard with the operator\'s edits. Null for records created before snapshots were persisted.',
+  })
+  request?: OfferCreationRequestSnapshot | null;
 }
 
 export class BulkBatchSummaryDto {

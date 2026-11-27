@@ -8,7 +8,8 @@
  * drift between the read endpoint and `IntegrationsContentPublisher`
  * (which applies the same eligibility rules when publishing).
  *
- * Failure semantics: read failures from the ProductMaster adapter
+ * Variant ids come from OpenLinker's own catalogue, not from a live master
+ * (#4068). Failure semantics: read failures from the channel adapters
  * propagate — `getState` is operator-facing, and silently dropping
  * channels on an adapter outage would mask a real problem.
  *
@@ -24,7 +25,7 @@ import {
   type IOfferMappingsService,
   type OfferManagerPort,
 } from '@openlinker/core/listings';
-import type { ProductMasterPort } from '@openlinker/core/products';
+import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import { PRODUCT_CONTENT_FIELD_REPOSITORY_TOKEN } from '../../content.tokens';
 import type { ProductContentField } from '../../domain/entities/product-content-field.entity';
 import { ProductContentFieldRepositoryPort } from '../../domain/ports/product-content-field-repository.port';
@@ -46,7 +47,9 @@ export class ContentStateReaderService implements IContentStateReaderService {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
     @Inject(OFFER_MAPPINGS_SERVICE_TOKEN)
-    private readonly offerMappings: IOfferMappingsService
+    private readonly offerMappings: IOfferMappingsService,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly products: IProductsService
   ) {}
 
   async readState(productId: string): Promise<ContentState> {
@@ -99,13 +102,15 @@ export class ContentStateReaderService implements IContentStateReaderService {
     };
   }
 
+  /**
+   * The product's variant ids, from OpenLinker's own catalogue (#4068). The
+   * editor only needs them to count offer mappings per channel, which is
+   * OpenLinker data too - asking the live master meant asking the FIRST master,
+   * so with two (PrestaShop + Shoper) a Shoper product was looked up in
+   * PrestaShop and the whole read failed.
+   */
   private async loadVariantIds(productId: string): Promise<string[]> {
-    const masters = await this.integrations.listCapabilityAdapters<ProductMasterPort>({
-      capability: 'ProductMaster',
-    });
-    if (masters.length === 0) return [];
-    const { adapter } = masters[0];
-    const variants = await adapter.getProductVariants(productId);
+    const variants = await this.products.getVariantsByProductId(productId);
     return variants.map((v) => v.id);
   }
 }

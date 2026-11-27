@@ -59,6 +59,12 @@ export interface FulfillmentHoldView {
   readonly reason: HoldReason;
   readonly note: string | null;
   readonly placedAt: Date;
+  /**
+   * The hold was placed because the order source changed a line after routing
+   * (#3961), not by a person. Derived from the withheld actor so a surface can
+   * name it without learning service identifiers.
+   */
+  readonly fromSourceChange: boolean;
 }
 
 /** A work object as an operator surface sees it. */
@@ -147,6 +153,10 @@ export interface FulfillmentWorkView {
    * resolving a name is the consumer's, and this view holds no PII.
    */
   readonly completedByUserId: string | null;
+  /** When this parcel's buyer note was first acknowledged (#3538), or `null`. */
+  readonly buyerNoteAcknowledgedAt: Date | null;
+  /** Who acknowledged it - a USER ID, like `completedByUserId`. */
+  readonly buyerNoteAcknowledgedByUserId: string | null;
   /**
    * When the dispatch fact for this parcel was settled with its sales channel
    * (#3096, G02-3), or `null` while it is not.

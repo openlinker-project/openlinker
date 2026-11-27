@@ -41,6 +41,7 @@
  */
 import type { OpenLinkerPlugin } from '../shared/plugins';
 import { allegroPlugin } from './allegro';
+import { amazonPlugin } from './amazon';
 import { assertUniquePluginInvariants } from './assert-unique-plugin-invariants';
 import { dpdPlugin } from './dpd';
 import { eparagonyPlugin } from './eparagony';
@@ -51,6 +52,7 @@ import { ksefPlugin } from './ksef';
 import { omsPlugin } from './oms';
 import { prestashopPlugin } from './prestashop';
 import { shoperPlugin } from './shoper';
+import { shopifyPlugin } from './shopify';
 import { subiektPlugin } from './subiekt-gt';
 // Two SEPARATE InsERT products, two bridges, two wire contracts - never joined.
 import { subiektNexoPlugin } from './subiekt-nexo';
@@ -63,12 +65,14 @@ export const plugins: readonly OpenLinkerPlugin[] = [
   inpostPlugin,
   woocommercePlugin,
   erliPlugin,
+  amazonPlugin,
   subiektPlugin,
   subiektNexoPlugin,
   ksefPlugin,
   infaktPlugin,
   eparagonyPlugin,
   shoperPlugin,
+  shopifyPlugin,
   omsPlugin,
 ];
 

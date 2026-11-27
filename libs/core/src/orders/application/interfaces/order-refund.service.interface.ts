@@ -9,10 +9,50 @@
  * @module application/interfaces
  */
 import type { RefundRecord } from '../../domain/entities/refund-record.entity';
+import type { RefundCeilingVerdict } from '../../domain/types/refund-ceiling.types';
 import type { CreateRefundRecordInput, RefundSummary } from '../../domain/types/refund-record.types';
 
+export interface RecordRefundOptions {
+  /**
+   * The caller already holds the per-order refund lock (via
+   * {@link IOrderRefundService.runUnderOrderRefundLock}), so `recordRefund` must
+   * not acquire it again - the lock is not re-entrant.
+   */
+  orderLockHeld?: boolean;
+  /**
+   * Receives the ceiling verdict the write was decided on, including an
+   * `unknown` one that let the refund through unchecked (#3289). A callback
+   * rather than a wider return type so every existing caller of `recordRefund`
+   * keeps its `RefundRecord`.
+   */
+  onCeilingVerdict?: (verdict: RefundCeilingVerdict) => void;
+}
+
+export interface RunUnderOrderRefundLockOptions {
+  /**
+   * How long the lock must survive (ms) when `work` spans more than a DB write -
+   * the returns confirm flow holds it across the refund executor call. Never
+   * shortens the lock below its default; the lock has no heartbeat, so a TTL
+   * shorter than `work` lets a second refund of the order through mid-flight.
+   */
+  lockTtlMs?: number;
+}
+
 export interface IOrderRefundService {
-  recordRefund(input: CreateRefundRecordInput): Promise<RefundRecord>;
+  recordRefund(input: CreateRefundRecordInput, options?: RecordRefundOptions): Promise<RefundRecord>;
+
+  /**
+   * Run `work` while holding the per-order refund lock (#3289, B-1). For callers
+   * whose ceiling check and its matching record write are separated by money
+   * moving (the returns confirm flow): holding the lock across both is what
+   * makes "two concurrent refunds of one order cannot both pass" true.
+   * Throws `RefundRecordContendedException` when the lock is taken.
+   */
+  runUnderOrderRefundLock<T>(
+    internalOrderId: string,
+    work: () => Promise<T>,
+    options?: RunUnderOrderRefundLockOptions
+  ): Promise<T>;
   getRefundsForOrder(internalOrderId: string): Promise<RefundRecord[]>;
 
   /**

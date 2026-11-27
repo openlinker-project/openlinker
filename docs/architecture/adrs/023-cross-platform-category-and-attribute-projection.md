@@ -211,6 +211,27 @@ No `destination_section` column (from `CategoryParameter.section`). No destinati
 
 **Deferred (not designed here):** AI category/param suggestion; mapping-editor completeness-worklist UX (the competitor pattern); caching of projection results; soft-delete/audit on mapping rows; a pivot taxonomy.
 
+## Amendment (#3994, 2026-11-05): an explicit mapping wins over a disagreeing barcode match
+
+§1 ordered the chain barcode before mapping and called the barcode step "highest-leverage". The order was inherited from the first implementation (#143), where the mapping was only a fallback for products with no catalogue match; it was never weighed against an operator's explicit mapping. #3994 reproduced the cost: a T-shirt whose barcode matched an Allegro catalogue card in *Elektronika > Powerbanki* was listed there, although T-shirts were mapped to *T-shirty*, and the bulk wizard showed no category at all, so nothing was noticed.
+
+**Decision.** Steps 2 and 3 are no longer a plain fallback. When a barcode match and the operator's mapping both answer:
+
+| Situation | Category used | Catalogue card |
+|---|---|---|
+| Card, no mapping for the product | card's category | linked |
+| Card and mapping name the same category | that category | linked (`mappingAgrees`) |
+| Card and mapping disagree (any different leaf) | **the mapping** | not linked; reported as `overriddenCard` |
+| Operator picked a category in the wizard | operator's pick | as before (the editor drops a card on a category change) |
+
+**Why the mapping wins.** A mapping is an explicit operator statement; a barcode match is an inference from data that may be wrong or reused. That is the rule #2243 already applies to blockers: a statement decides, an inference advises.
+
+**Why the card is not kept alongside the mapping.** A card is only linkable in its own category - smart-link searches by `(ean, categoryId)` and the editor already clears `productCardId` whenever the category changes - so there is no partial agreement to preserve. Any different leaf therefore counts as a disagreement; the same-branch versus different-branch distinction is only wording in the UI.
+
+**What is kept.** The card's product data (#808 - inherited parameters, no inline-product 422 on categories with required product parameters) still applies wherever the card and the mapping agree, and wherever there is no mapping. A disagreeing card is never discarded silently: the batch and stream results carry it as `overriddenCard`, the bulk wizard shows an advisory `card-category-differs` chip, and the operator can adopt the card deliberately on a single-variant product. A multi-variant family lists under one shared category, so a sibling's card cannot be adopted on its own.
+
+**Cost.** One extra mapping lookup per barcode-matched item (an indexed read), on both the single resolve the offer build runs and the batch/stream resolve the wizard runs - the two must agree. `multi-match` is unchanged; the operator already has to choose there.
+
 ## Related
 
 - Supersedes the `adr-015-product-sync-mapping` draft (#1005 / PR #1007).

@@ -46,6 +46,7 @@ describe('LocationService', () => {
       update: jest.fn().mockResolvedValue(sample),
       findById: jest.fn().mockResolvedValue(sample),
       findByIds: jest.fn().mockResolvedValue([sample]),
+      findByOwnerAndExternalRef: jest.fn().mockResolvedValue(null),
       list: jest.fn(),
       delete: jest.fn().mockResolvedValue(true),
       countPositionsAtLocation: jest.fn().mockResolvedValue(0),
@@ -270,6 +271,43 @@ describe('LocationService', () => {
       repository.create.mockRejectedValue(new Error('connection terminated'));
 
       await expect(service.bootstrapDefaultLocations()).rejects.toThrow('connection terminated');
+    });
+  });
+
+  describe('resolveMasterLocation', () => {
+    const input = { connectionId: 'c1234567-aaaa', platformType: 'shopify', externalRef: '42', name: 'Warsaw' };
+
+    it('should return the connection-owned location without writing', async () => {
+      repository.findByOwnerAndExternalRef.mockResolvedValue(sample);
+
+      await expect(service.resolveMasterLocation(input)).resolves.toBe(sample);
+      expect(repository.create).not.toHaveBeenCalled();
+    });
+
+    it('should provision an owned warehouse named by the master on first sight', async () => {
+      await service.resolveMasterLocation(input);
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'SHOPIFY-42',
+          name: 'Warsaw',
+          kind: 'warehouse',
+          ownerConnectionId: 'c1234567-aaaa',
+          externalRef: '42',
+        })
+      );
+    });
+
+    it('should fall back to a connection-qualified code when the plain one is taken', async () => {
+      repository.create
+        .mockRejectedValueOnce(new DuplicateLocationCodeError('SHOPIFY-42'))
+        .mockResolvedValueOnce(sample);
+
+      await service.resolveMasterLocation(input);
+
+      expect(repository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ code: 'SHOPIFY-42-C1234567' })
+      );
     });
   });
 });

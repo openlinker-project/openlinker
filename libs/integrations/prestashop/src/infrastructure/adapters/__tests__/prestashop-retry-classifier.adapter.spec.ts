@@ -163,6 +163,78 @@ describe('PrestashopRetryClassifierAdapter', () => {
     });
   });
 
+  describe('getRetryDeferral through a re-wrapped cause (#3984)', () => {
+    const wrap = (cause: Error): PrestashopApiException =>
+      new PrestashopApiException(
+        `Failed to create PrestaShop order: ${cause.message}`,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        cause
+      );
+
+    it('should defer a 503 carried as the cause of a re-wrapped error', () => {
+      const deferral = classifier.getRetryDeferral(
+        wrap(new PrestashopApiException('unavailable', 503))
+      );
+
+      expect(deferral).toEqual({ delaySeconds: 300, reason: 'shop unavailable (503)' });
+    });
+
+    it('should defer a 429 behind two levels of wrapping and honour its Retry-After', () => {
+      const inner = new PrestashopApiException('slow down', 429, undefined, undefined, 120);
+
+      expect(classifier.getRetryDeferral(wrap(wrap(inner)))).toEqual({
+        delaySeconds: 120,
+        reason: 'shop rate-limited the request (429)',
+      });
+    });
+
+    it('should defer a module 429 behind a wrapper', () => {
+      const deferral = classifier.getRetryDeferral(
+        wrap(new PrestashopOlModuleException('conn', 1, 429, 'http-429'))
+      );
+
+      expect(deferral?.reason).toBe('shop rate-limited the request (429)');
+    });
+
+    it('should look at most four errors deep into a cause chain', () => {
+      const inner = new PrestashopApiException('unavailable', 503);
+
+      // inner sits at position 4 (outer + 2 wrappers + inner): inspected.
+      expect(classifier.getRetryDeferral(wrap(wrap(wrap(inner))))).not.toBeNull();
+      // one more wrapper pushes it to position 5: not inspected.
+      expect(classifier.getRetryDeferral(wrap(wrap(wrap(wrap(inner)))))).toBeNull();
+    });
+
+    it('should not defer a module 503, which may have committed the order', () => {
+      expect(
+        classifier.getRetryDeferral(
+          wrap(new PrestashopOlModuleException('conn', 1, 503, 'http-503'))
+        )
+      ).toBeNull();
+    });
+
+    it('should not defer when an ambiguous write sits anywhere in the chain', () => {
+      const ambiguous = new PrestashopAmbiguousWriteException('boom', 'POST', 'importorder', 503);
+
+      expect(classifier.getRetryDeferral(wrap(ambiguous))).toBeNull();
+      expect(classifier.getRetryDeferral(ambiguous)).toBeNull();
+    });
+
+    it('should not defer a wrapped 500 or a wrapped plain error', () => {
+      expect(classifier.getRetryDeferral(wrap(new PrestashopApiException('boom', 500)))).toBeNull();
+      expect(classifier.getRetryDeferral(wrap(new Error('validation failed')))).toBeNull();
+    });
+
+    it('should stay retryable rather than terminal for a wrapped 503', () => {
+      expect(classifier.isNonRetryable(wrap(new PrestashopApiException('unavailable', 503)))).toBe(
+        false
+      );
+    });
+  });
+
   describe('PrestashopAmbiguousWriteException (#3469 IMPORTANT-1 review)', () => {
     it('should classify an ambiguous 5xx write as non-retryable', () => {
       expect(

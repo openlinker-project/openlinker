@@ -191,6 +191,7 @@ export class ShoperIntegrationModule implements OnModuleInit {
         this.webhookSecretService,
         this.credentialsResolver,
         this.http,
+        plugin.manifest.defaultRateLimit,
       ),
     );
 

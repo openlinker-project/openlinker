@@ -17,7 +17,7 @@
  * @module apps/api/src/auth
  * @implements {IRefreshTokenService}
  */
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import {
   RefreshToken,
@@ -25,6 +25,7 @@ import {
   REFRESH_TOKEN_REPOSITORY_TOKEN,
 } from '@openlinker/core/users';
 import { RefreshTokenRepositoryPort } from '@openlinker/core/users';
+import { unauthorized } from './auth-errors';
 import type { IRefreshTokenService } from './refresh-token.service.interface';
 import {
   REFRESH_TOKEN_TTL_MS,
@@ -50,14 +51,14 @@ export class RefreshTokenService implements IRefreshTokenService {
   async rotate(rawToken: string): Promise<RotatedRefreshToken> {
     const presented = await this.repository.findByHash(hashToken(rawToken));
     if (!presented) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw unauthorized('AUTH_REFRESH_TOKEN_INVALID', 'Invalid refresh token');
     }
     if (presented.isRevoked()) {
       await this.repository.revokeChain(presented.id, 'reuse_detected');
       throw new RefreshTokenReuseDetectedException();
     }
     if (!presented.isActive()) {
-      throw new UnauthorizedException('Refresh token expired');
+      throw unauthorized('AUTH_REFRESH_TOKEN_EXPIRED', 'Refresh token expired');
     }
 
     await this.repository.revoke(presented.id, 'rotated');

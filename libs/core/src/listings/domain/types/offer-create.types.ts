@@ -10,6 +10,7 @@
  * @module libs/core/src/listings/domain/types
  */
 
+import type { ProductGpsr } from '@openlinker/core/products';
 import type { OfferParameter } from './offer-parameter.types';
 import type { OfferPublicationStatus } from './offer-status-read.types';
 import type { OfferValidationScope } from './offer-validation-problem.types';
@@ -94,6 +95,9 @@ export interface CreateOfferOverrides {
    * (catalog self-link/GTIN parameter AND category-resolution-by-barcode).
    * GS1-checksum validity and batch-wide effective-identifier uniqueness are
    * to be enforced in `BulkListingSubmitService` (#1741 AC D; pending), not here.
+   *
+   * An empty string is the explicit "list without a barcode" choice (#4036): the
+   * builder then uses no barcode at all instead of falling back to the master's.
    */
   ean?: string;
   /**
@@ -173,6 +177,42 @@ export interface OfferVariantGroup {
 }
 
 /**
+ * One component of a bundle published as a product-set offer (#3520, ADR-083).
+ *
+ * A bundle is one sellable item on the channel that contains several different
+ * products. Everything an adapter needs to reference each product - by a
+ * catalogue card found through its barcode, or as an inline product - travels
+ * here, because the adapter must not re-read the catalogue and the command's
+ * own `variantBarcode` / `overrides.imageUrls` describe the BUNDLE, not its
+ * parts. Platform-neutral: no channel vocabulary.
+ */
+export interface OfferProductSetComponent {
+  variantId: string;
+  productId: string;
+  /** Units of this product contained in ONE sold unit of the offer. */
+  quantity: number;
+  /** The component is the free gift of the set; carried, not interpreted here. */
+  giftSlot?: boolean;
+  name: string;
+  /** Barcode (EAN ?? GTIN); `null` when the component has none. */
+  barcode: string | null;
+  /** The component's own pictures; empty when the master names none. */
+  imageUrls: string[];
+  /** The component product's own GPSR declaration, when the catalogue states one. */
+  gpsr?: ProductGpsr;
+  /**
+   * External offer id of the component's OWN live offer on the target
+   * connection, when it has one. Its product card already exists there, so an
+   * adapter can reference that card instead of re-describing the product.
+   */
+  existingOfferExternalId?: string;
+  /** Destination category of the component itself (inline products need one). */
+  categoryId?: string;
+  /** Product-section parameters projected for the component's own category. */
+  parameters?: OfferParameter[];
+}
+
+/**
  * Command to create a new marketplace offer.
  *
  * Marketplace-neutral contract. Allegro, eBay, WooCommerce, Shopify adapters
@@ -237,6 +277,15 @@ export interface CreateOfferCommand {
    */
   variantGroup?: OfferVariantGroup;
   /**
+   * The components of a bundle (#3520), in definition order. Present only when
+   * the variant has a live bundle definition; the destination then publishes
+   * ONE offer holding one entry per component (a "product set"), each with its
+   * own quantity, instead of a single-product offer. Absent for every ordinary
+   * variant, whose command is unchanged. An adapter that cannot express a set
+   * must refuse rather than publish the bundle as one of its parts.
+   */
+  productSet?: OfferProductSetComponent[];
+  /**
    * Marketplace-neutral item condition (#1500). Defaulted to `'new'` by
    * `OfferBuilderService` when the operator supplies none, so every core-built
    * command carries a condition and non-UI / borrows paths no longer silently
@@ -288,6 +337,19 @@ export interface CreateOfferCommand {
    * buyer's country; OSS is out of scope (ADR-063 § 7).
    */
   taxRateCountry?: string;
+  /**
+   * What the product's master stated under the EU General Product Safety
+   * Regulation, by value (producer, responsible person, importer, safety
+   * information). Threaded by `OfferBuilderService` from the master product.
+   *
+   * A product-level declaration is more specific than any connection-level
+   * default an adapter holds, so an adapter that can express it SHOULD prefer
+   * it - but it maps the neutral value onto its own registry itself (Allegro
+   * matches the producer by name against the seller's responsible producers)
+   * and MUST NOT create a record on the marketplace to make a match happen.
+   * Absent means the master stated nothing; the adapter keeps its defaults.
+   */
+  gpsr?: ProductGpsr;
 }
 
 /**

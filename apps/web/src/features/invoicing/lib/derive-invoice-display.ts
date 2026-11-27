@@ -18,10 +18,15 @@
  *
  * @module apps/web/src/features/invoicing/lib
  */
-import type { FailureCode, InvoiceRecord, RegulatoryStatus } from '../api/invoicing.types';
+import { getMessages } from '../../../shared/i18n';
+import {
+  FailureCodeValues,
+  type FailureCode,
+  type InvoiceRecord,
+  type RegulatoryStatus,
+} from '../api/invoicing.types';
 import type { InvoiceDisplayStatus } from '../components/invoice-status-badge';
 
-type Translate = (key: string, fallback: string) => string;
 
 export type RegCardTone = 'reg-card--info' | 'reg-card--success' | 'reg-card--error' | '';
 
@@ -65,33 +70,44 @@ export function canRetryInvoice(invoice: InvoiceRecord | null): boolean {
   return invoice?.status === 'failed' && invoice.failureMode === 'rejected';
 }
 
-const FAILURE_CODE_FALLBACK: Record<FailureCode, string> = {
-  'buyer-tax-id-invalid':
-    'The provider rejected the buyer’s tax ID. Check the tax ID on the order’s customer, then retry. Nothing was issued.',
-  'invalid-currency':
-    'The document’s settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the source order, then retry. Nothing was issued.',
-  'sale-classification-required':
-    'This connection needs a sale classification (goods vs. services) configured before it can issue invoices. Set it in the connection’s configuration, then retry. Nothing was issued.',
-  'provider-rejected':
-    'The provider rejected the document. Check the order’s data, then retry. Nothing was issued.',
-  'transport-timeout':
-    'The request to the provider timed out, so a document may already exist there. Check the provider before re-issuing — a blind retry could create a duplicate.',
-  'provider-error':
-    'The provider returned an error. Check the order’s data, then retry. Nothing was issued.',
-};
+/**
+ * True for the two codes whose fix is on the CONNECTION, not the order: a
+ * setting the adapter found missing before sending, or one the provider
+ * refused. Both render the stored reason and a link to the connection.
+ */
+export function isConnectionSettingFailureCode(code: FailureCode | null | undefined): boolean {
+  return code === 'connection-setup-incomplete' || code === 'connection-setting-rejected';
+}
 
 /**
  * Resolves a PII-free `failureCode` to localized operator copy. Falls back to a
  * generic in-doubt-safe message when the code is absent / unknown (the row is
  * then treated as in-doubt by `deriveInvoiceDisplayStatus`).
  */
-export function resolveFailureCopy(invoice: InvoiceRecord, t: Translate): string {
+export function resolveFailureCopy(invoice: InvoiceRecord): string {
+  const copy = getMessages('invoicing').invoice.failureCode;
   const code = invoice.failureCode;
-  if (code && code in FAILURE_CODE_FALLBACK) {
-    return t(`invoice.failureCode.${code}`, FAILURE_CODE_FALLBACK[code]);
+  // The codes whose stored reason is the adapter's own sentence naming the
+  // setting to fix (#3772) - it says more than any fixed copy can, and it is
+  // PII-free by the adapter's opt-in. Other codes keep their fixed copy.
+  if (isConnectionSettingFailureCode(code) && invoice.failureReason) {
+    return invoice.failureReason;
   }
-  return t(
-    'invoice.failureCode.unknown',
-    'We couldn’t confirm whether this invoice was issued. Check the provider before re-issuing — a blind retry could create a duplicate.',
-  );
+  const known = failureCodeCopy(code);
+  if (known !== null) {
+    return known;
+  }
+  return copy.unknown;
+}
+
+/**
+ * The fixed operator copy for a known `failureCode`, or `null` for an absent or
+ * unknown one. Shared by the stored record and the issue response (#3863), so a
+ * rejection reads the same in the toast and in the panel.
+ */
+export function failureCodeCopy(code: string | null | undefined): string | null {
+  if (!code || !(FailureCodeValues as readonly string[]).includes(code)) {
+    return null;
+  }
+  return getMessages('invoicing').invoice.failureCode[code as FailureCode];
 }

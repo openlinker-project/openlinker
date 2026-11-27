@@ -25,6 +25,8 @@ export type {
   WebhookSignatureState,
   RateLimitStatus,
   CreateConnectionInput,
+  OrderSyncStart,
+  OrderSyncStartMode,
   UpdateConnectionInput,
   PlatformType,
   CoreCapability,
@@ -45,6 +47,21 @@ export { connectionsQueryKeys } from './api/connections.query-keys';
 export { useConnectionsQuery } from './hooks/use-connections-query';
 export { useConnectionQuery } from './hooks/use-connection-query';
 export { useCreateConnectionMutation } from './hooks/use-create-connection-mutation';
+// #4228 - the order-history choice, shared with the Allegro wizard (its flow leaves for OAuth).
+export { OrderSyncStartField } from './components/order-sync-start-field';
+export { OrderSyncStartSection } from './components/order-sync-start-section';
+export { collectFormErrorMessages } from './lib/collect-form-error-messages';
+export {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  describeOrderSyncStart,
+  addOrderSyncStartIssues,
+  orderSyncStartSchema,
+  orderSyncStartShape,
+  readsOrders,
+  toOrderSyncStart,
+  type OrderSyncStartValue,
+} from './lib/order-sync-start';
 export { useProductMasterConnections } from './hooks/use-product-master-connections';
 export { useConfigureWebhooksMutation } from './hooks/use-configure-webhooks-mutation';
 export { useRotateWebhookSecretMutation } from './hooks/use-rotate-webhook-secret-mutation';
@@ -54,7 +71,12 @@ export { useRateLimitStatusQuery } from './hooks/use-rate-limit-status-query';
 // #2118 - which connections the operator declared as packing and shipping by themselves.
 export { readFulfilmentOwnedByDestination } from './lib/fulfilment-ownership';
 export { useUpdateConnectionCredentialsMutation } from './hooks/use-update-connection-credentials-mutation';
-export { useUpdateConnectionMutation } from './hooks/use-update-connection-mutation';
+export {
+  useUpdateConnectionMutation,
+  UPDATE_CONNECTION_MUTATION_KEY,
+} from './hooks/use-update-connection-mutation';
+export { useTestConnectionMutation } from './hooks/use-test-connection-mutation';
+export { describeConnectionTestFailure } from './lib/describe-connection-test-failure';
 export { useBankAccountsQuery } from './hooks/use-bank-accounts-query';
 export { useSetDefaultBankAccountMutation } from './hooks/use-set-default-bank-account-mutation';
 export { usePickBankAccount } from './hooks/use-pick-bank-account';
@@ -66,6 +88,14 @@ export {
   INVOICE_TRIGGER_MODEL_LABELS,
 } from './types/invoice-trigger-model.types';
 export type { InvoiceTriggerModel } from './types/invoice-trigger-model.types';
+export {
+  resolveTriggerModelForKind,
+  writeTriggerModelForKind,
+} from './lib/resolve-trigger-model-for-kind';
+export type {
+  ResolvedTriggerModel,
+  TriggerModelSource,
+} from './lib/resolve-trigger-model-for-kind';
 
 // Edit-connection schema seam (#1330) — composed by the host with a platform's
 // `ConnectionConfigContribution`; exported so plugin-local tests can exercise
@@ -92,13 +122,6 @@ export {
 } from './components/subiekt-setup.schema';
 export type { SubiektProductIdentity } from './components/subiekt-setup.schema';
 
-export {
-  InfaktWebhookConfig,
-  InfaktWebhookConfigDialog,
-  activationLabel as infaktWebhookActivationLabel,
-  signatureLabel as infaktWebhookSignatureLabel,
-} from './components/infakt-webhook-config';
-
 export { ConnectionEntityLabel } from './components/ConnectionEntityLabel';
 export { ConnectionCell } from './components/ConnectionCell';
 export { ConnectionFold } from './components/ConnectionFold';
@@ -111,9 +134,18 @@ export type { ConnectionCellProps, ConnectionCellFacts } from './components/Conn
 export { PrestashopRateLimitReadout } from './components/prestashop-rate-limit-readout';
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
+// #4281 - the setup wizards of marketplace plugins ask the same catalogue question as the edit page.
+export { CatalogueModeFieldset } from './components/catalogue-mode-fieldset';
+export { CatalogueModeValues } from './lib/catalogue-mode';
+export type { CatalogueMode } from './lib/catalogue-mode';
 export type { CapabilityTogglesSectionProps } from './components/CapabilityTogglesSection';
 export {
   hasPricingSyncPage,
   isPricingDestination,
   PRICING_DESTINATION_CAPABILITIES,
 } from './lib/pricing-destination';
+
+// #3567 - the stock correction dialog previews what each channel will publish
+// with the same browser-side mirror of the publish policy the connection form
+// uses, rather than keeping a second copy of the arithmetic.
+export { applyStockSafetyBuffer } from './lib/stock-and-pricing-preview';

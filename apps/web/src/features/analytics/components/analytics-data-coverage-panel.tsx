@@ -28,11 +28,13 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { getMessages, interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert, Button, ErrorState, LoadingState, StatusBadge, TimeDisplay } from '../../../shared/ui';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { ApiError } from '../../../shared/api/api-error';
 import { useDemoMode } from '../../system';
 import { useConnectionsQuery } from '../../connections';
@@ -53,7 +55,7 @@ import {
   DATA_COVERAGE_CHECK_COUNT,
   deriveCoverageRowCopy,
   describeMatchingRecordStatus,
-} from '../lib/data-coverage-copy.lib';
+} from '../lib/data-coverage.lib';
 import type { AnalyticsCoverageFilters, CoverageCategory, CoverageCategoryRow } from '../api/analytics-coverage.types';
 import type { CurrencyMismatchOrder } from '../api/analytics-remediation.types';
 import type {
@@ -83,6 +85,12 @@ interface AnalyticsDataCoveragePanelProps {
    */
   openCategory?: CoverageCategory | null;
   onOpenCategoryChange?: (category: CoverageCategory | null) => void;
+  /**
+   * The `no-cost` row has no detail dialog: its drill-down is the Margin
+   * panel's own coverage note, which already lists the reasons. Called
+   * instead of opening a dialog for that row.
+   */
+  onOpenMarginCoverage?: () => void;
 }
 
 function isTaxCategory(category: CoverageCategory): category is TaxCoverageCategory {
@@ -94,7 +102,10 @@ export function AnalyticsDataCoveragePanel({
   onOpenSettings,
   openCategory: controlledOpenCategory,
   onOpenCategoryChange,
+  onOpenMarginCoverage,
 }: AnalyticsDataCoveragePanelProps): ReactElement {
+  const copy = useMessages('analytics').analyticsDataCoveragePanel;
+  const plural = usePlural();
   const { showToast } = useToast();
   const demoMode = useDemoMode();
   const write = useWriteAccess('analytics:write', demoMode);
@@ -113,6 +124,10 @@ export function AnalyticsDataCoveragePanel({
   const [offset, setOffset] = useState(0);
 
   function openDetail(category: CoverageCategory): void {
+    if (category === 'no-cost') {
+      onOpenMarginCoverage?.();
+      return;
+    }
     setOffset(0);
     setOpenCategory(category);
   }
@@ -190,7 +205,7 @@ export function AnalyticsDataCoveragePanel({
           setOpenCategory(null);
           return;
         }
-        showToast({ tone: 'error', description: error.message });
+        showToast({ tone: 'error', description: describeApiError(error, 'analytics') });
       },
     });
   }
@@ -201,11 +216,11 @@ export function AnalyticsDataCoveragePanel({
         setStuckRunConflict(false);
         showToast({
           tone: 'success',
-          description: 'Stuck recalculation cancelled - you can try again.',
+          description: copy.stuckRun.cancelled,
         });
       },
       onError: (error) => {
-        showToast({ tone: 'error', description: error.message });
+        showToast({ tone: 'error', description: describeApiError(error, 'analytics') });
       },
     });
   }
@@ -254,12 +269,14 @@ export function AnalyticsDataCoveragePanel({
         onSuccess: (result) => {
           showToast({
             tone: 'success',
-            title: 'Catalog sync ran',
-            description: `${result.updated} of ${result.scanned} rate-less line(s) resolved.`,
+            title: copy.catalogueSynced.title,
+            description: plural(result.scanned, copy.catalogueSynced.description, {
+              updated: result.updated,
+            }),
           });
         },
         onError: (error) => {
-          showToast({ tone: 'error', description: error.message });
+          showToast({ tone: 'error', description: describeApiError(error, 'analytics') });
         },
       }
     );
@@ -269,9 +286,9 @@ export function AnalyticsDataCoveragePanel({
     return (
       <article className="panel panel--dense">
         <div className="panel__header">
-          <h3 className="section-title">Data coverage</h3>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
-        <LoadingState title="Checking data coverage" message="Looking at currency, tax rates, product matching…" />
+        <LoadingState title={copy.loading.title} message={copy.loading.message} />
       </article>
     );
   }
@@ -280,14 +297,14 @@ export function AnalyticsDataCoveragePanel({
     return (
       <article className="panel panel--dense">
         <div className="panel__header">
-          <h3 className="section-title">Data coverage</h3>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
         <ErrorState
-          title="Unable to check data coverage"
-          message={coverageQuery.error.message}
+          title={copy.error.title}
+          message={describeApiError(coverageQuery.error, 'analytics')}
           action={
             <Button type="button" onClick={() => void coverageQuery.refetch()}>
-              Retry
+              {copy.error.retry}
             </Button>
           }
         />
@@ -313,7 +330,7 @@ export function AnalyticsDataCoveragePanel({
   return (
     <article className="panel panel--dense">
       <div className="panel__header">
-        <h3 className="section-title">Data coverage</h3>
+        <h3 className="section-title">{copy.title}</h3>
       </div>
 
       {alertRun && (
@@ -323,24 +340,22 @@ export function AnalyticsDataCoveragePanel({
       {stuckRunConflict && (
         <Alert
           tone="error"
-          title="Recalculation didn't start"
+          title={copy.stuckRun.title}
           action={
             write.visible ? (
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   type="button"
                   disabled={cancelStuckRun.isPending || write.demoReadOnly}
                   onClick={handleCancelStuckRun}
                 >
-                  {cancelStuckRun.isPending ? 'Cancelling…' : 'Cancel stuck run'}
+                  {cancelStuckRun.isPending ? copy.stuckRun.cancelling : copy.stuckRun.cancel}
                 </Button>
               </ReadOnlyLock>
             ) : undefined
           }
         >
-          A currency recalculation is already marked as in progress for this range, but nothing is
-          moving it forward - most likely a previous attempt never finished. Cancel it below, then try
-          again.
+          {copy.stuckRun.body}
         </Alert>
       )}
 
@@ -348,12 +363,12 @@ export function AnalyticsDataCoveragePanel({
         {openRows.length === 0 ? (
           <li className="attention-list__item attention-list__item--resolved">
             <StatusBadge tone="success" withDot>
-              Clear
+              {copy.clear.badge}
             </StatusBadge>
             <div className="attention-list__body">
-              <span className="attention-list__headline">Nothing to do</span>
+              <span className="attention-list__headline">{copy.clear.headline}</span>
               <span className="attention-list__sub">
-                {DATA_COVERAGE_CHECK_COUNT} checks · currency, tax rates, product matching
+                {interpolate(copy.clear.sub, { n: DATA_COVERAGE_CHECK_COUNT })}
               </span>
             </div>
           </li>
@@ -389,15 +404,15 @@ export function AnalyticsDataCoveragePanel({
         )}
         footerAction={
           write.visible ? (
-            <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
               <Button
                 type="button"
                 disabled={recalculate.isPending || write.demoReadOnly}
                 onClick={handleRecalculate}
               >
                 {recalculate.isPending
-                  ? 'Starting…'
-                  : `Recalculate all ${currencyOrdersQuery.data?.total ?? 0} now`}
+                  ? copy.starting
+                  : interpolate(copy.recalculateAll, { n: currencyOrdersQuery.data?.total ?? 0 })}
               </Button>
             </ReadOnlyLock>
           ) : undefined
@@ -434,10 +449,10 @@ export function AnalyticsDataCoveragePanel({
                   onOpenSettings();
                 }}
               >
-                Turn on this setting ›
+                {copy.turnOnSetting}
               </Button>
             ) : openCategory === 'tax-c' && write.visible ? (
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   type="button"
                   disabled={
@@ -448,8 +463,8 @@ export function AnalyticsDataCoveragePanel({
                   onClick={() => handleSyncCatalog(taxOrdersQuery.data?.items ?? [])}
                 >
                   {rerunBackfill.isPending
-                    ? 'Syncing…'
-                    : `Sync the catalog for these ${taxOrdersQuery.data?.items.length ?? 0} now`}
+                    ? copy.syncing
+                    : plural(taxOrdersQuery.data?.items.length ?? 0, copy.syncCatalogue)}
                 </Button>
               </ReadOnlyLock>
             ) : undefined
@@ -496,6 +511,7 @@ interface DataCoverageRowProps {
 }
 
 function DataCoverageRow({ row, currencyPhase, currencyFailedDetail, onOpenDetail }: DataCoverageRowProps): ReactElement {
+  const phases = useMessages('analytics').analyticsDataCoveragePanel.phases;
   const copy = deriveCoverageRowCopy(row);
 
   let badgeTone = copy.tone;
@@ -505,24 +521,24 @@ function DataCoverageRow({ row, currencyPhase, currencyFailedDetail, onOpenDetai
 
   if (currencyPhase === 'in-progress') {
     badgeTone = 'info';
-    badgeLabel = 'In progress';
-    sub = 'Recalculating in the background — this can take a minute. Safe to navigate away.';
-    actionLabel = 'Recalculating…';
+    badgeLabel = phases.inProgress.badge;
+    sub = phases.inProgress.sub;
+    actionLabel = phases.inProgress.action;
   } else if (currencyPhase === 'resolved') {
     badgeTone = 'success';
-    badgeLabel = 'Fixed';
-    sub = 'Recalculated and saved — closing…';
-    actionLabel = 'Fixed';
+    badgeLabel = phases.resolved.badge;
+    sub = phases.resolved.sub;
+    actionLabel = phases.resolved.action;
   } else if (currencyPhase === 'failed') {
     badgeTone = 'error';
-    badgeLabel = 'Failed';
-    sub = currencyFailedDetail ?? 'The recalculation could not complete — see Jobs & Logs for detail.';
-    actionLabel = 'Try again';
+    badgeLabel = phases.failed.badge;
+    sub = currencyFailedDetail ?? phases.failed.sub;
+    actionLabel = phases.failed.action;
   } else if (currencyPhase === 'unknown') {
     badgeTone = 'error';
-    badgeLabel = 'Status unknown';
-    sub = "Couldn't check the recalculation's status — see Jobs & Logs, or try again.";
-    actionLabel = 'Try again';
+    badgeLabel = phases.unknown.badge;
+    sub = phases.unknown.sub;
+    actionLabel = phases.unknown.action;
   }
 
   return (
@@ -548,6 +564,7 @@ function CurrencyOrderRow({
   item: CurrencyMismatchOrder;
   connectionName: string;
 }): ReactElement {
+  const copy = useMessages('analytics').analyticsDataCoveragePanel.currencyRow;
   return (
     <>
       <span className="coverage-detail-row__body">
@@ -563,7 +580,9 @@ function CurrencyOrderRow({
         </span>
       </span>
       <span className="coverage-detail-row__trail">
-        <span className="coverage-detail-row__tag">{item.stampedCurrency ?? 'not yet stamped'} · old</span>
+        <span className="coverage-detail-row__tag">
+          {interpolate(copy.oldCurrency, { currency: item.stampedCurrency ?? copy.notConverted })}
+        </span>
       </span>
     </>
   );
@@ -577,13 +596,14 @@ function CurrencyOrderRow({
  * phrased for a one-line title attribute rather than a caption sentence.
  */
 function describeLineRateUnknownReason(reason: TaxCoverageLineRateUnknownReason): string {
+  const copy = getMessages('analytics').analyticsDataCoveragePanel.lineRateReason;
   switch (reason) {
     case 'ambiguous':
-      return 'Catalogue reports several candidate rates — resolve which one is right in the shop.';
+      return copy.ambiguous;
     case 'unreadable':
-      return 'The catalogue read did not state a tax status.';
+      return copy.unreadable;
     case 'not-configured':
-      return 'Shop has no tax configuration for this product.';
+      return copy.notConfigured;
   }
 }
 
@@ -602,27 +622,28 @@ function describeLineRateUnknownReason(reason: TaxCoverageLineRateUnknownReason)
  * operator's own catalogue.
  */
 function describeLineRate(observation: TaxCoverageLineRate): { label: string; title?: string } {
+  const copy = getMessages('analytics').analyticsDataCoveragePanel.lineRate;
   switch (observation.state) {
     case 'known':
       if (observation.rateCode === null) {
-        return { label: 'unknown' };
+        return { label: copy.unknown };
       }
       return {
         label: /^\d+(\.\d+)?$/.test(observation.rateCode.trim())
-          ? `${observation.rateCode}%`
+          ? interpolate(copy.percent, { rate: observation.rateCode })
           : observation.rateCode,
       };
     case 'no-rate':
       return {
-        label: 'no rate',
+        label: copy.noRate,
         title: observation.unknownReason
           ? describeLineRateUnknownReason(observation.unknownReason)
           : undefined,
       };
     case 'not-checked':
-      return { label: 'not checked yet' };
+      return { label: copy.notChecked };
     default:
-      return { label: 'unknown' };
+      return { label: copy.unknown };
   }
 }
 

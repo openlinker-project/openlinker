@@ -16,6 +16,10 @@
 import { ApiError } from './api-error';
 import type {
   SourceFulfillmentView,
+  AutomationRuleView,
+  AutomationRuleWriteInput,
+  BuyerEmailDeliveryView,
+  DocumentEmailDeliveryView,
   AnalyticsCoverageView,
   AnalyticsRangeQuery,
   AnalyticsRemediationRun,
@@ -40,6 +44,7 @@ import type {
   Connection,
   ConnectionFilters,
   CreateConnectionInput,
+  ConnectionSyncStatus,
   UpdateConnectionInput,
   InstallWebhooksResult,
   DispatchResult,
@@ -60,6 +65,7 @@ import type {
   ListListingsQuery,
   ListOrdersQuery,
   ListProductsQuery,
+  ListStockMovementsQuery,
   ListUsersQuery,
   LoginResponse,
   MarkInvoicePaidInput,
@@ -68,6 +74,12 @@ import type {
   OfferCreationStatus,
   OfferMapping,
   OrderHealthSummary,
+  StockCorrectionInput,
+  StockCorrectionOutcome,
+  StockCorrectionResult,
+  StockCorrectionConflict,
+  StockCorrectionTarget,
+  StockMovement,
   OrderRecord,
   Paginated,
   Product,
@@ -83,6 +95,7 @@ import type {
   SalesDocumentMarketsResponse,
   SalesDocumentRule,
   AcceptedFiscalRegistration,
+  FiscalRegistrationProgressView,
   FiscalRegistrationRecordSummary,
   SendInvoiceEmailInput,
   SendInvoiceEmailResult,
@@ -93,6 +106,10 @@ import type {
   SystemConfig,
   UserListResponse,
   WebhookDeliverySummary,
+  SalesDocumentBatchOverview,
+  SalesDocumentBatchRun,
+  SalesDocumentBatchRunDetail,
+  OrderSyncStartInput,
 } from './api.types';
 
 const API_VERSION_PREFIX = '/v1';
@@ -463,6 +480,34 @@ export class ApiClient {
       this.request<{ works: unknown[] }>('/bench/work'),
   };
 
+  // ── Automations + buyer emails (#3554) ──────────────────────────────────
+  automations = {
+    /** `GET /automations?trigger=` — the rules on one trigger. */
+    listByTrigger: (trigger: string): Promise<AutomationRuleView[]> =>
+      this.request<AutomationRuleView[]>(`/automations?trigger=${encodeURIComponent(trigger)}`),
+    /** `GET /automations/:id` — one rule, its full definition included. */
+    getById: (ruleId: string): Promise<AutomationRuleView> =>
+      this.request<AutomationRuleView>(`/automations/${ruleId}`),
+    /** `PUT /automations/:id` — a full replace; used to arm or disarm a rule. */
+    replace: (ruleId: string, body: AutomationRuleWriteInput): Promise<AutomationRuleView> =>
+      this.request<AutomationRuleView>(`/automations/${ruleId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }),
+  };
+
+  buyerEmails = {
+    /** `GET /orders/:id/document-emails` — the order's manual sales-document emails (#3550). */
+    documentEmailsForOrder: (internalOrderId: string): Promise<DocumentEmailDeliveryView[]> =>
+      this.request<DocumentEmailDeliveryView[]>(`/orders/${internalOrderId}/document-emails`),
+    /** `GET /invoices/:id/attachment` — what can be attached for the document (#3548). */
+    invoiceAttachment: (invoiceId: string): Promise<{ state: string }> =>
+      this.request<{ state: string }>(`/invoices/${invoiceId}/attachment`),
+    /** `GET /orders/:id/buyer-emails` — the order's automatic buyer emails, newest first. */
+    forOrder: (internalOrderId: string): Promise<BuyerEmailDeliveryView[]> =>
+      this.request<BuyerEmailDeliveryView[]>(`/orders/${internalOrderId}/buyer-emails`),
+  };
+
   // ── AI provider settings (admin only) ─────────────────────────────────────
   aiProviderSettings = {
     /** Admin-only read; the E2E specs assert only on the resolved/failed status. */
@@ -489,6 +534,18 @@ export class ApiClient {
         method: 'PATCH',
         body: JSON.stringify(input),
       }),
+    /** `GET /connections/:id/sync-status` - queue health plus `orderSyncStartedAt` (#4228). */
+    getSyncStatus: (connectionId: string): Promise<ConnectionSyncStatus> =>
+      this.request<ConnectionSyncStatus>(`/connections/${connectionId}/sync-status`),
+    /** `POST /connections/:id/order-sync/restart` - restart the order sync from a new start (#4228). */
+    restartOrderSync: (connectionId: string, start: OrderSyncStartInput): Promise<unknown> =>
+      this.request<unknown>(`/connections/${connectionId}/order-sync/restart`, {
+        method: 'POST',
+        body: JSON.stringify(start),
+      }),
+    /** Soft-delete a DISABLED connection (`PATCH /connections/:id/archive`); idempotent. */
+    archive: (connectionId: string): Promise<unknown> =>
+      this.request<unknown>(`/connections/${connectionId}/archive`, { method: 'PATCH' }),
     /**
      * Rotate the connection's webhook secret (admin). Returns the new plaintext
      * secret ONCE — the E2E webhook spec uses it to compute the OL-HMAC
@@ -541,6 +598,39 @@ export class ApiClient {
       this.request<InventoryAvailabilityResponse>(
         `/inventory/availability${buildQuery({ productVariantIds: variantIds.join(',') })}`,
       ).then((response) => response.items),
+    correctionTarget: (variantId: string): Promise<StockCorrectionTarget> =>
+      this.request<StockCorrectionTarget>(`/inventory/${variantId}/correction-target`),
+    /**
+     * Correct one variant's stock in its product master. A refusal decided
+     * BEFORE the master (409: insufficient-stock, confirmation-required, ...)
+     * is returned as a `conflict` rather than thrown, because specs assert on
+     * those bodies; every other failure still throws `ApiError`.
+     */
+    correct: async (
+      variantId: string,
+      input: StockCorrectionInput,
+    ): Promise<StockCorrectionOutcome> => {
+      try {
+        const result = await this.request<StockCorrectionResult>(
+          `/inventory/${variantId}/adjust`,
+          { method: 'POST', body: JSON.stringify(input) },
+        );
+        return { kind: 'result', result };
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409) {
+          return { kind: 'conflict', conflict: error.body as StockCorrectionConflict };
+        }
+        throw error;
+      }
+    },
+    movements: (query?: ListStockMovementsQuery): Promise<Paginated<StockMovement>> =>
+      this.request<Paginated<StockMovement>>(
+        `/inventory/movements${buildQuery({
+          productVariantId: query?.productVariantId,
+          kind: query?.kind,
+          limit: query?.limit,
+        })}`,
+      ),
   };
 
   // ── Listings (offers) ───────────────────────────────────────────────────
@@ -720,6 +810,15 @@ export class ApiClient {
       ),
     getById: (internalOrderId: string): Promise<OrderRecord> =>
       this.request<OrderRecord>(`/orders/${internalOrderId}`),
+    /** Record a refund against an order (#2036); used to drive the DEF-26 gate. */
+    recordRefund: (
+      internalOrderId: string,
+      input: { amount: string; currency: string; reason: string; note?: string; idempotencyKey?: string },
+    ): Promise<{ id: string }> =>
+      this.request<{ id: string }>(`/orders/${internalOrderId}/refunds`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
     /**
      * Per-health-bucket counts plus the orthogonal sales-document block count
      * (#929/#2100). Deliberately un-scoped here: the endpoint is not
@@ -764,6 +863,35 @@ export class ApiClient {
       this.request<SalesDocumentRule[]>(`/sales-documents/rules${buildQuery({ country })}`),
     deleteRule: (ruleId: string): Promise<void> =>
       this.request<void>(`/sales-documents/rules/${ruleId}`, { method: 'DELETE' }),
+    /** POST /sales-documents/rules - create a routing rule (#3585 golden path). */
+    createRule: (input: {
+      country: string;
+      conditions: unknown[];
+      documentKind: string;
+      connectionId: string;
+      effectiveFrom: string;
+    }): Promise<SalesDocumentRule> =>
+      this.request<SalesDocumentRule>('/sales-documents/rules', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+  };
+
+  // ── Batched sales-document issuing (#3583/#3585) ─────────────────────────
+  salesDocumentBatches = {
+    /** GET /sales-documents/batches/:connectionId - schedules, queue counts, running run. */
+    overview: (connectionId: string): Promise<SalesDocumentBatchOverview> =>
+      this.request<SalesDocumentBatchOverview>(`/sales-documents/batches/${connectionId}`),
+    /** GET .../runs - newest first. */
+    runs: (connectionId: string): Promise<{ runs: SalesDocumentBatchRun[]; total: number }> =>
+      this.request<{ runs: SalesDocumentBatchRun[]; total: number }>(
+        `/sales-documents/batches/${connectionId}/runs`,
+      ),
+    /** GET .../runs/:runId - each order's result and outcome. */
+    run: (connectionId: string, runId: string): Promise<SalesDocumentBatchRunDetail> =>
+      this.request<SalesDocumentBatchRunDetail>(
+        `/sales-documents/batches/${connectionId}/runs/${runId}`,
+      ),
   };
 
   // ── Fiscal registrations (#1908, ADR-042) ────────────────────────────────
@@ -783,6 +911,16 @@ export class ApiClient {
         method: 'POST',
         body: JSON.stringify(input),
       }),
+    /**
+     * GET /orders/:orderId/fiscal-registration - the poll target for a registration
+     * that outlives the request that asked for it. A pure read: `progress` is
+     * `registered` only once the provider accepted the sale, and `record` is null
+     * while the job is still queued.
+     */
+    progress: (orderId: string, connectionId: string): Promise<FiscalRegistrationProgressView> =>
+      this.request<FiscalRegistrationProgressView>(
+        `/orders/${orderId}/fiscal-registration${buildQuery({ connectionId })}`,
+      ),
     /** Every fiscal-registration record an order holds, newest first, across connections. */
     listForOrder: (orderId: string): Promise<FiscalRegistrationRecordSummary[]> =>
       this.request<FiscalRegistrationRecordSummary[]>(
@@ -849,6 +987,9 @@ export class ApiClient {
         method: 'POST',
         body: JSON.stringify(input),
       }),
+    /** The authority's public verification link (KSeF KOD I), built server-side (DEF-02/03). */
+    verificationLink: (invoiceId: string): Promise<{ url: string | null }> =>
+      this.request<{ url: string | null }>(`/invoices/${invoiceId}/verification-link`),
     /** Re-send a rejected document to the tax authority (#1121). */
     resendToKsef: (invoiceId: string): Promise<InvoiceRecord> =>
       this.request<InvoiceRecord>(`/invoices/${invoiceId}/resend-to-ksef`, { method: 'POST' }),

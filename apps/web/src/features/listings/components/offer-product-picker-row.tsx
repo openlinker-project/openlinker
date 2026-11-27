@@ -11,11 +11,12 @@
  */
 import { useEffect, useMemo, type ReactElement } from 'react';
 
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { CheckboxCell } from '../../../shared/ui/checkbox-cell';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
-import { useProductQuery } from '../../products';
+import { useProductQuery, VariantThumbnail } from '../../products';
 import type { Product, ProductVariant } from '../../products';
 import {
   firstImage,
@@ -24,6 +25,7 @@ import {
   variantShortLabel,
 } from '../lib/offer-product-picker-selectors';
 import { OFFER_PICKER_PRODUCT_CAP, type SelectionEntry } from './offer-product-picker.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface OfferProductPickerRowProps {
   product: Product;
@@ -48,6 +50,8 @@ export function OfferProductPickerRow({
   onToggleVariant,
   onVariantsLoaded,
 }: OfferProductPickerRowProps): ReactElement {
+  const copy = useMessages('listings').offerProductPickerRow;
+  const plural = usePlural();
   const detailQuery = useProductQuery(isExpanded ? product.id : '');
   const loadedVariants = useMemo(
     () => detailQuery.data?.variants ?? [],
@@ -81,6 +85,15 @@ export function OfferProductPickerRow({
   };
 
   const variantCount = product.variantCount;
+  const bundle = product.bundle ?? null;
+  // The list payload carries no pack size, so a one-component bundle is the
+  // only case that can be named a multipack without another call.
+  const bundleLabel =
+    bundle === null
+      ? null
+      : bundle.componentCount === 1
+        ? copy.bundlePack
+        : plural(bundle.componentCount, copy.bundleSet);
   const isSimple = typeof variantCount === 'number' && variantCount <= 1;
   const rowClasses = [
     'offer-product-picker__prow',
@@ -101,10 +114,10 @@ export function OfferProductPickerRow({
             state={checkboxState}
             onToggle={handleToggleProduct}
             disabled={capBlocked}
-            ariaLabel={`Select ${product.name}`}
+            ariaLabel={interpolate(copy.selectAria, { name: product.name })}
             tooltip={
               capBlocked
-                ? `Maximum ${OFFER_PICKER_PRODUCT_CAP} products per batch reached`
+                ? interpolate(copy.capReached, { max: OFFER_PICKER_PRODUCT_CAP })
                 : undefined
             }
           />
@@ -114,20 +127,35 @@ export function OfferProductPickerRow({
           className="offer-product-picker__prow-toggle"
           onClick={onToggleExpand}
           aria-expanded={isExpanded}
-          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${product.name}`}
+          aria-label={interpolate(isExpanded ? copy.collapseAria : copy.expandAria, {
+            name: product.name,
+          })}
         >
           <ProductThumbnail name={product.name} src={firstImage(product.images)} size="md" />
           <span className="offer-product-picker__pname">
             <b>{product.name}</b>
             <small className="mono-text">{product.sku ?? '—'}</small>
           </span>
-          {typeof variantCount === 'number' ? (
+          {bundleLabel !== null ? (
+            <span
+              className={`offer-product-picker__bundle${
+                bundle?.componentCount === 1 ? ' offer-product-picker__bundle--pack' : ''
+              }`}
+              title={copy.bundleTitle}
+              data-testid="picker-bundle-chip"
+            >
+              <svg className="offer-product-picker__bundle-ico" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" />
+              </svg>
+              {bundleLabel}
+            </span>
+          ) : typeof variantCount === 'number' ? (
             <span
               className={`offer-product-picker__vcount${
                 isSimple ? ' offer-product-picker__vcount--simple' : ''
               }`}
             >
-              {variantCount} {variantCount === 1 ? 'variant' : 'variants'}
+              {plural(variantCount, copy.variantCount)}
             </span>
           ) : null}
           <span className="offer-product-picker__chev" aria-hidden="true">
@@ -139,27 +167,27 @@ export function OfferProductPickerRow({
       {isExpanded ? (
         <ul className="offer-product-picker__vrows">
           {detailQuery.isLoading ? (
-            <li className="muted-text">Loading variants…</li>
+            <li className="muted-text">{copy.loadingVariants}</li>
           ) : detailQuery.error ? (
             <li>
               <Alert
                 tone="error"
-                title="Unable to load variants"
+                title={copy.loadError}
                 action={
                   <Button
                     tone="secondary"
                     type="button"
                     onClick={() => void detailQuery.refetch()}
                   >
-                    Retry
+                    {copy.retry}
                   </Button>
                 }
               >
-                {detailQuery.error.message}
+                {describeApiError(detailQuery.error, 'listings')}
               </Alert>
             </li>
           ) : loadedVariants.length === 0 ? (
-            <li className="muted-text">No variants on this product.</li>
+            <li className="muted-text">{copy.noVariants}</li>
           ) : (
             loadedVariants.map((variant) => {
               const picked = entry === 'ALL' || (selectedVariantIds?.has(variant.id) ?? false);
@@ -175,15 +203,23 @@ export function OfferProductPickerRow({
                       disabled={capBlocked}
                       onChange={() => onToggleVariant(variant.id, loadedVariantIds)}
                     />
-                    <ProductThumbnail
+                    <VariantThumbnail
                       name={variantShortLabel(variant)}
-                      src={null}
+                      src={variant.imageUrls?.[0]}
                       size="sm"
+                      dimmed={variant.imagesFromProduct === true}
                     />
                     <span className="offer-product-picker__vname">
                       <b>{variantLabel(detailQuery.data ?? product, variant)}</b>
-                      <small className={`mono-text${hasBarcode ? '' : ' offer-product-picker__vname-bad'}`}>
-                        SKU {variant.sku ?? '—'} · {hasBarcode ? `EAN ${variant.ean ?? variant.gtin ?? '—'}` : 'no EAN'}
+                      <small
+                        className={`mono-text${hasBarcode || bundle ? '' : ' offer-product-picker__vname-bad'}`}
+                      >
+                        {interpolate(copy.variantSku, { sku: variant.sku ?? '—' })} ·{' '}
+                        {bundle
+                          ? copy.bundleVariantNote
+                          : hasBarcode
+                            ? interpolate(copy.variantEan, { ean: variant.ean ?? variant.gtin ?? '—' })
+                            : copy.variantNoEan}
                       </small>
                     </span>
                   </label>

@@ -26,7 +26,10 @@ import {
   OperationalSettings,
 } from '../../../domain/entities/operational-settings.entity';
 import type { OperationalSettingsRepositoryPort } from '../../../domain/ports/operational-settings-repository.port';
-import type { OperationalSettingsInput } from '../../../domain/types/operational-settings.types';
+import {
+  isBuyerDataEraseMode,
+  type OperationalSettingsInput,
+} from '../../../domain/types/operational-settings.types';
 import { OperationalSettingsOrmEntity } from '../entities/operational-settings.orm-entity';
 
 @Injectable()
@@ -73,8 +76,31 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
     if (input.syncJobDeadRetentionDays !== undefined) {
       payload.syncJobDeadRetentionDays = input.syncJobDeadRetentionDays;
     }
+    if (input.inventoryMovementRetentionDays !== undefined) {
+      payload.inventoryMovementRetentionDays = input.inventoryMovementRetentionDays;
+    }
+    if (input.stockStaleSyncThresholdHours !== undefined) {
+      payload.stockStaleSyncThresholdHours = input.stockStaleSyncThresholdHours;
+    }
     if (input.deletionAuditCadence !== undefined) {
       payload.deletionAuditCadence = input.deletionAuditCadence;
+    }
+
+    if (input.buyerDataRetentionEnabled !== undefined) {
+      payload.buyerDataRetentionEnabled = input.buyerDataRetentionEnabled;
+    }
+    if (input.buyerDataHideAfterDays !== undefined) {
+      payload.buyerDataHideAfterDays = input.buyerDataHideAfterDays;
+    }
+    if (input.buyerDataEraseAfterDays !== undefined) {
+      payload.buyerDataEraseAfterDays = input.buyerDataEraseAfterDays;
+    }
+    if (input.buyerDataEraseMode !== undefined) {
+      payload.buyerDataEraseMode = input.buyerDataEraseMode;
+    }
+
+    if (input.releaseCenterEnabled !== undefined) {
+      payload.releaseCenterEnabled = input.releaseCenterEnabled;
     }
 
     await this.ormRepository.upsert(payload, { conflictPaths: ['id'] });
@@ -100,9 +126,17 @@ export class OperationalSettingsRepository implements OperationalSettingsReposit
       entity.deletionAuditBudget,
       entity.syncJobRetentionDays,
       entity.syncJobDeadRetentionDays,
+      entity.inventoryMovementRetentionDays,
+      entity.stockStaleSyncThresholdHours,
       entity.deletionAuditCadence,
+      entity.releaseCenterEnabled,
       entity.updatedAt,
-      entity.updatedBy
+      entity.updatedBy,
+      entity.buyerDataRetentionEnabled,
+      entity.buyerDataHideAfterDays,
+      entity.buyerDataEraseAfterDays,
+      // Coerced, never cast: a mode this build does not know reads as "not set".
+      isBuyerDataEraseMode(entity.buyerDataEraseMode) ? entity.buyerDataEraseMode : null
     );
   }
 }

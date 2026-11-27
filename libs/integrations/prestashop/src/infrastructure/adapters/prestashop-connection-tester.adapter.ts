@@ -45,6 +45,7 @@ export class PrestashopConnectionTesterAdapter implements ConnectionTesterPort {
       if (typeof baseUrl !== 'string' || baseUrl.length === 0) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'Connection config is missing baseUrl',
           latencyMs: Date.now() - startedAt,
         };

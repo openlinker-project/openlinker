@@ -1,0 +1,26 @@
+=== export-composites | Export: Inventory Composition
+ 
+ Export: Inventory Composition 
+ Inventory Composition Export
+ The Inventory Composition  export allows you to export a list of Composite Parent items and the associated Composite Child SKUs set up in Linnworks inventory. For more information on composite items, see here .
+ Available columns
+ See below for the information on all available columns that can be exported from Linnworks using this export type.
+ Legend
+ Key
+ Description
+ This field supports filtering
+ Columns - SKU Details
+ Key
+ Column
+ Description
+ Parent SKU
+ The SKU / Item Number for a composite item
+ Parent Title
+ The title for the composite parent item
+ Child SKU
+ The SKU / Item Number for a child item of the Parent SKU
+ Child Title
+ The title of the Child SKU
+ Quantity
+ The quantity of the Child SKU that makes up the composite
+ 

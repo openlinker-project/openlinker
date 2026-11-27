@@ -16,15 +16,19 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryFailedError } from 'typeorm';
+import type { SelectQueryBuilder } from 'typeorm';
 import { ConnectionCursorOrmEntity } from '../entities/connection-cursor.orm-entity';
 import type { ConnectionCursorRepositoryPort } from '../../../domain/ports/connection-cursor-repository.port';
 import type {
   ConnectionCursor,
   ConnectionCursorFilters,
   ConnectionCursorPagination,
+  ConnectionCursorPrefixSummary,
   PaginatedConnectionCursors,
 } from '../../../domain/types/connection-cursor.types';
 import { Logger } from '@openlinker/shared/logging';
+import { ORDER_SYNC_START_CURSOR_KEY } from '../../../domain/types/order-sync-start.types';
+import { ORDER_FEED_SEEDED_AT_SUFFIX } from '../../../domain/types/order-feed-seed-cursor.types';
 
 @Injectable()
 export class ConnectionCursorRepository implements ConnectionCursorRepositoryPort {
@@ -153,20 +157,17 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
     filters?: ConnectionCursorFilters,
     pagination?: ConnectionCursorPagination
   ): Promise<PaginatedConnectionCursors> {
-    const where: Record<string, string> = {};
-    if (filters?.connectionId) {
-      where.connectionId = filters.connectionId;
-    }
-
     const limit = pagination?.limit ?? 20;
     const offset = pagination?.offset ?? 0;
 
-    const [entities, total] = await this.repository.findAndCount({
-      where,
-      order: { updatedAt: 'DESC' },
-      take: limit,
-      skip: offset,
-    });
+    const qb = this.repository.createQueryBuilder('c');
+    this.applyFilters(qb, filters);
+    const [entities, total] = await qb
+      .orderBy('c.updatedAt', 'DESC')
+      .addOrderBy('c.cursorKey', 'ASC')
+      .take(limit)
+      .skip(offset)
+      .getManyAndCount();
 
     this.logger.debug(
       `Found ${total} cursors (limit=${limit}, offset=${offset}, connectionId=${filters?.connectionId ?? 'all'})`
@@ -178,13 +179,75 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
     };
   }
 
+  async summarizeByKeyPrefix(keyPrefix: string): Promise<ConnectionCursorPrefixSummary[]> {
+    const rows = await this.repository
+      .createQueryBuilder('c')
+      .select('c.connectionId', 'connectionId')
+      .addSelect('COUNT(*)', 'count')
+      .addSelect('MIN(c.value)', 'oldestValue')
+      .addSelect('MAX(c.value)', 'newestValue')
+      .addSelect('MAX(c.updatedAt)', 'lastUpdatedAt')
+      .where("c.cursorKey LIKE :prefix ESCAPE '\\'", { prefix: `${escapeLike(keyPrefix)}%` })
+      .groupBy('c.connectionId')
+      .getRawMany<{
+        connectionId: string;
+        count: string;
+        oldestValue: string;
+        newestValue: string;
+        lastUpdatedAt: Date | string;
+      }>();
+    return rows.map((r) => ({
+      connectionId: r.connectionId,
+      count: Number(r.count),
+      oldestValue: r.oldestValue,
+      newestValue: r.newestValue,
+      lastUpdatedAt: r.lastUpdatedAt instanceof Date ? r.lastUpdatedAt : new Date(r.lastUpdatedAt),
+    }));
+  }
+
+  private applyFilters(
+    qb: SelectQueryBuilder<ConnectionCursorOrmEntity>,
+    filters?: ConnectionCursorFilters
+  ): void {
+    if (filters?.connectionId) {
+      qb.andWhere('c.connectionId = :connectionId', { connectionId: filters.connectionId });
+    }
+    // Prefixes are matched literally: a key holds `.` and `:` but may also hold
+    // `_` (e.g. `inventory.reservation_shortfall`), which LIKE would read as a wildcard.
+    if (filters?.keyPrefix) {
+      qb.andWhere("c.cursorKey LIKE :keyPrefix ESCAPE '\\'", {
+        keyPrefix: `${escapeLike(filters.keyPrefix)}%`,
+      });
+    }
+    if (filters?.excludeKeyPrefix) {
+      qb.andWhere("c.cursorKey NOT LIKE :excludeKeyPrefix ESCAPE '\\'", {
+        excludeKeyPrefix: `${escapeLike(filters.excludeKeyPrefix)}%`,
+      });
+    }
+    if (filters?.keySuffix) {
+      qb.andWhere("c.cursorKey LIKE :keySuffix ESCAPE '\\'", {
+        keySuffix: `%${escapeLike(filters.keySuffix)}`,
+      });
+    }
+  }
+
   async findMostRecentUpdate(connectionId: string): Promise<Date | null> {
-    const entity = await this.repository.findOne({
-      where: { connectionId },
-      order: { updatedAt: 'DESC' },
-      select: { updatedAt: true },
-    });
-    return entity?.updatedAt ?? null;
+    // The #4228 start intent and the `.seededAt` marker are written at create /
+    // seed time, not by feed progress, so counting them would make a connection
+    // that never ingested anything look recently active.
+    const entity = await this.repository
+      .createQueryBuilder('c')
+      .select('c.updatedAt', 'updatedAt')
+      .where('c.connectionId = :connectionId', { connectionId })
+      .andWhere('c.cursorKey <> :syncStartKey', { syncStartKey: ORDER_SYNC_START_CURSOR_KEY })
+      .andWhere("c.cursorKey NOT LIKE :seededSuffix ESCAPE '\\'", {
+        seededSuffix: `%${escapeLike(ORDER_FEED_SEEDED_AT_SUFFIX)}`,
+      })
+      .orderBy('c.updatedAt', 'DESC')
+      .limit(1)
+      .getRawOne<{ updatedAt: Date | string }>();
+    if (!entity) return null;
+    return entity.updatedAt instanceof Date ? entity.updatedAt : new Date(entity.updatedAt);
   }
 
   async findOne(connectionId: string, cursorKey: string): Promise<ConnectionCursor | null> {
@@ -213,4 +276,8 @@ export class ConnectionCursorRepository implements ConnectionCursorRepositoryPor
       updatedAt: entity.updatedAt,
     };
   }
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }

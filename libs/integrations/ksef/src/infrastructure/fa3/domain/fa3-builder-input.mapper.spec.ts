@@ -14,6 +14,8 @@ import {
   UnsupportedCountryCodeException,
 } from '../../../domain/exceptions/fa3-builder.exception';
 import { mapToFa3BuilderInput, type Fa3MappingContext } from './fa3-builder-input.mapper';
+import { buildFa3Xml } from '../builders/fa3-xml.builder';
+import { validateFa3Xml } from '../validators/fa3-xsd.validator';
 import type { SellerProfile } from './fa3-xml.types';
 
 const SELLER: SellerProfile = {
@@ -160,6 +162,58 @@ describe('mapToFa3BuilderInput — payment (#1311)', () => {
   });
 });
 
+describe('mapToFa3BuilderInput - order payment method (#3294)', () => {
+  it.each([
+    ['cash_on_delivery', '1'],
+    ['bank_transfer', '6'],
+  ] as const)('should set FormaPlatnosci for %s, keeping the rest of the connection payment', (paymentMethod, forma) => {
+    const context: Fa3MappingContext = {
+      ...CONTEXT,
+      payment: { formaPlatnosci: '2', paymentTermDays: 14 },
+    };
+    const result = mapToFa3BuilderInput({ ...baseCommand('23'), paymentMethod }, context);
+    expect(result.payment).toEqual({ formaPlatnosci: forma, paymentTermDays: 14 });
+  });
+
+  it('should not print the connection bank account on a cash invoice', () => {
+    const context: Fa3MappingContext = {
+      ...CONTEXT,
+      payment: {
+        paymentTermDays: 7,
+        bankAccount: { nrRb: '61109010140000071219812874' },
+      },
+    };
+    const cash = mapToFa3BuilderInput(
+      { ...baseCommand('23'), paymentMethod: 'cash_on_delivery' },
+      context,
+    );
+    expect(cash.payment).toEqual({ paymentTermDays: 7, formaPlatnosci: '1' });
+
+    const transfer = mapToFa3BuilderInput(
+      { ...baseCommand('23'), paymentMethod: 'bank_transfer' },
+      context,
+    );
+    expect(transfer.payment?.bankAccount).toBeDefined();
+  });
+
+  it('should emit a payment block from the order method even when the connection has none', () => {
+    const result = mapToFa3BuilderInput(
+      { ...baseCommand('23'), paymentMethod: 'bank_transfer' },
+      CONTEXT,
+    );
+    expect(result.payment).toEqual({ formaPlatnosci: '6' });
+  });
+
+  it.each(['online', undefined] as const)(
+    'should keep the connection default for the method %s',
+    (paymentMethod) => {
+      const context: Fa3MappingContext = { ...CONTEXT, payment: { formaPlatnosci: '2' } };
+      const result = mapToFa3BuilderInput({ ...baseCommand('23'), paymentMethod }, context);
+      expect(result.payment).toEqual({ formaPlatnosci: '2' });
+    },
+  );
+});
+
 describe('mapToFa3BuilderInput - sale date P_6 (#1525)', () => {
   it('should pass the neutral saleDate through to the builder input', () => {
     const result = mapToFa3BuilderInput({ ...baseCommand('23'), saleDate: '2026-06-20' }, CONTEXT);
@@ -210,5 +264,112 @@ describe('mapToFa3BuilderInput - line unit P_8A precedence (#1525)', () => {
     };
     const result = mapToFa3BuilderInput(cmd, { ...CONTEXT, defaultLineUnit: 'szt.' });
     expect(result.correction?.correctedLines[0].unit).toBe('szt.');
+  });
+});
+
+describe('mapToFa3BuilderInput - per-line GTU / Procedura (#1586)', () => {
+  it('should forward gtuCode and procedureCode onto the mapped line', () => {
+    const cmd = baseCommand('23');
+    cmd.lines = [
+      { name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '23', gtuCode: 'GTU_01', procedureCode: 'SW' },
+    ];
+    const result = mapToFa3BuilderInput(cmd, CONTEXT);
+    expect(result.lines[0].gtuCode).toBe('GTU_01');
+    expect(result.lines[0].procedureCode).toBe('SW');
+  });
+
+  it('should omit both when the neutral line carries neither', () => {
+    const result = mapToFa3BuilderInput(baseCommand('23'), CONTEXT);
+    expect('gtuCode' in result.lines[0]).toBe(false);
+    expect('procedureCode' in result.lines[0]).toBe(false);
+  });
+
+  it('should treat empty/whitespace codes as absent (no connection default)', () => {
+    const cmd = baseCommand('23');
+    cmd.lines = [
+      { name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '23', gtuCode: '  ', procedureCode: '' },
+    ];
+    const result = mapToFa3BuilderInput(cmd, CONTEXT);
+    expect('gtuCode' in result.lines[0]).toBe(false);
+    expect('procedureCode' in result.lines[0]).toBe(false);
+  });
+
+  it('should forward the codes onto correction lines too', () => {
+    const cmd = baseCommand('23');
+    cmd.correction = {
+      originalClearanceReference: null,
+      originalDocumentNumber: 'FA/2026/06/0001',
+      originalIssueDate: '2026-06-01',
+      reason: 'Return',
+      correctedLines: [
+        { name: 'Widget', quantity: 1, unitPriceGross: 90, taxRate: '23', gtuCode: 'GTU_07' },
+      ],
+    };
+    const result = mapToFa3BuilderInput(cmd, CONTEXT);
+    expect(result.correction?.correctedLines[0].gtuCode).toBe('GTU_07');
+  });
+});
+
+describe('mixed-rate order -> correctly-split FA(3) band breakdown (#1586 acceptance)', () => {
+  it('should flow distinct per-line neutral rates through to the P_13/P_14 band split', () => {
+    const cmd = baseCommand('23');
+    // Two lines at different genuine per-line rates (23% + 8%) - the exact
+    // mixed-rate case that a single flat connection default would mis-tax.
+    cmd.lines = [
+      { name: 'Standard-rate good', quantity: 1, unitPriceGross: 123, taxRate: '23' },
+      { name: 'Reduced-rate good', quantity: 1, unitPriceGross: 108, taxRate: '8' },
+    ];
+    const mapped = mapToFa3BuilderInput(cmd, CONTEXT);
+    // Mapping seam: each line resolves to its OWN P_12, not the connection default.
+    expect(mapped.lines.map((l) => l.p12)).toEqual(['23', '8']);
+
+    const xml = buildFa3Xml(mapped);
+    // 23% line: net 100.00 -> P_13_1, VAT 23.00 -> P_14_1.
+    expect(xml).toContain('<P_13_1>100.00</P_13_1>');
+    expect(xml).toContain('<P_14_1>23.00</P_14_1>');
+    // 8% line: net 100.00 -> P_13_2, VAT 8.00 -> P_14_2.
+    expect(xml).toContain('<P_13_2>100.00</P_13_2>');
+    expect(xml).toContain('<P_14_2>8.00</P_14_2>');
+    expect(() => validateFa3Xml(xml)).not.toThrow();
+  });
+});
+
+describe('mapToFa3BuilderInput — annotations and parties (DEF-20 / DEF-30 / DEF-34)', () => {
+  it('should drop empty exemption grounds instead of emitting an empty element', () => {
+    const input = mapToFa3BuilderInput(
+      {
+        ...baseCommand('zw'),
+        annotations: { exemptionLegalBasis: '   ', exemptionBasis: { kind: 'statute', text: ' ' } },
+      },
+      CONTEXT,
+    );
+
+    expect(input.exemptionLegalBasis).toBeUndefined();
+    expect(input.exemptionBasis).toBeUndefined();
+  });
+
+  it('should map the neutral margin kind to its FA(3) sub-element', () => {
+    const input = mapToFa3BuilderInput(
+      { ...baseCommand('23'), annotations: { marginScheme: true, marginKind: 'works-of-art' } },
+      CONTEXT,
+    );
+
+    expect(input.marginKind).toBe('3_2');
+  });
+
+  it('should map additional parties with their identity and role', () => {
+    const input = mapToFa3BuilderInput(
+      {
+        ...baseCommand('23'),
+        additionalParties: [
+          { role: '10', name: 'Członek grupy', taxId: { scheme: 'pl-nip', value: '1189981779' } },
+        ],
+      },
+      CONTEXT,
+    );
+
+    expect(input.additionalParties).toEqual([
+      { identity: { kind: 'nip', nip: '1189981779' }, name: 'Członek grupy', role: '10' },
+    ]);
   });
 });

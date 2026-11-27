@@ -20,7 +20,7 @@
  *
  * @module apps/api/src/analytics/http
  */
-import { BadRequestException, Controller, Get, Inject, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService } from '@openlinker/core/orders';
@@ -29,6 +29,7 @@ import {
   ProductMatchingOrderDto,
   ProductMatchingOrdersResponseDto,
 } from './dto/product-matching-orders-response.dto';
+import { analyticsRangeInvalid, analyticsRangeTooWide } from './analytics-errors';
 
 const DEFAULT_ORDERS_PAGE_SIZE = 25;
 
@@ -79,13 +80,11 @@ export class AnalyticsMatchingCoverageController {
     const from = new Date(fromRaw);
     const to = new Date(toRaw);
     if (to.getTime() <= from.getTime()) {
-      throw new BadRequestException('to must be after from');
+      throw analyticsRangeInvalid();
     }
     const rangeDays = (to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000);
     if (rangeDays > MAX_COVERAGE_RANGE_DAYS) {
-      throw new BadRequestException(
-        `Range too wide: ${Math.ceil(rangeDays)} days exceeds the ${MAX_COVERAGE_RANGE_DAYS}-day limit`
-      );
+      throw analyticsRangeTooWide(rangeDays, MAX_COVERAGE_RANGE_DAYS);
     }
     return { from, to };
   }

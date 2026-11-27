@@ -21,6 +21,28 @@
  * carries no secret - it only has to be deterministic, collision-resistant
  * across connections, and syntactically a UUIDv4.
  *
+ * TWO KEYS, TWO JOBS (and why the second is NOT the token). The vendor dedupes
+ * on two separate things:
+ *
+ *   - the `documentToken` in the BODY: one document per token, ever. A create
+ *     under a token it already holds is refused with `errorCode: 118`, which the
+ *     adapters resolve by reading that document. THIS is the exactly-once
+ *     guarantee - one sale, one token, one document - and it stays stable per
+ *     sale across every attempt.
+ *   - the `Idempotency-Key` HEADER: a request-replay guard. Repeating a key with
+ *     the same body replays the first answer; repeating it with a DIFFERENT body
+ *     is refused with `422`. The vendor remembers the key even when the first
+ *     request was REFUSED, so a header equal to the token turned every
+ *     corrected retry after a rejection into a `422` - observed live, where
+ *     fixing a refused seller tax number could never succeed on that record.
+ *
+ * So the header is derived from the token PLUS a digest of the exact body
+ * ({@link deriveRequestIdempotencyKey}): a transport-level retry of one request
+ * replays under the same key (same body), while a corrected request is a new
+ * request under a new key and still meets the token's own guard. Nothing about
+ * exactly-once moved - it never rested on the header, which cannot see a
+ * document created by an earlier request under a different key anyway.
+ *
  * Pure - no I/O beyond `node:crypto`'s synchronous hash.
  *
  * @module libs/integrations/eparagony/src/domain/policies
@@ -35,6 +57,7 @@ import { createHash } from 'node:crypto';
  */
 const DOCUMENT_NAMESPACE = 'openlinker:eparagony:document:v1';
 const TRANSACTION_NAMESPACE = 'openlinker:eparagony:transaction:v1';
+const REQUEST_NAMESPACE = 'openlinker:eparagony:request:v1';
 
 /** Stable `documentToken` for one (connection, idempotency key) registration. */
 export function deriveDocumentToken(connectionId: string, idempotencyKey: string): string {
@@ -46,12 +69,26 @@ export function deriveTransactionToken(connectionId: string, idempotencyKey: str
   return deriveUuid(TRANSACTION_NAMESPACE, connectionId, idempotencyKey);
 }
 
-function deriveUuid(namespace: string, connectionId: string, idempotencyKey: string): string {
+/**
+ * The vendor `Idempotency-Key` header for ONE create request: the document's
+ * token plus a digest of the exact body sent. UUID-shaped, so it satisfies the
+ * vendor's `/^[0-9A-Za-z_-]+$/` header rule. See the module header for why it
+ * must differ from the token.
+ *
+ * `JSON.stringify` is the body's own serialisation and the mappers build each
+ * body in a fixed key order, so the same request always digests the same; were
+ * that ever to drift, the cost is only a fresh key, which the token still
+ * guards.
+ */
+export function deriveRequestIdempotencyKey(documentToken: string, body: unknown): string {
+  const bodyDigest = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+  return deriveUuid(REQUEST_NAMESPACE, documentToken, bodyDigest);
+}
+
+function deriveUuid(namespace: string, first: string, second: string): string {
   // A NUL byte separates the parts so no pair of inputs can be re-segmented
   // into a different pair with the same concatenation.
-  const digest = createHash('sha256')
-    .update(`${namespace}\0${connectionId}\0${idempotencyKey}`)
-    .digest();
+  const digest = createHash('sha256').update(`${namespace}\0${first}\0${second}`).digest();
 
   const bytes = Uint8Array.prototype.slice.call(digest, 0, 16);
   // RFC 4122: version 4 in the high nibble of byte 6, variant 10xx in byte 8.

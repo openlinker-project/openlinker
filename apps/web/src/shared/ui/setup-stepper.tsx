@@ -16,6 +16,8 @@
  * address a step by number.
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useMessages } from '../i18n/use-messages';
+import { interpolate } from '../i18n/interpolate';
 
 export interface SetupStepperProps {
   steps: readonly string[];
@@ -35,6 +37,20 @@ export interface SetupStepperProps {
   orientation?: 'horizontal' | 'vertical';
   /** A short line under each step's label, shown in the vertical layout. Same order as `steps`. */
   stepMeta?: readonly string[];
+  /** 0-based. A step that has just appeared gets a short colour pulse (not under reduced motion). */
+  highlightStep?: number;
+  /** Also render `stepMeta` under the labels of the horizontal layout. */
+  metaInline?: boolean;
+  /**
+   * Explains a step the operator cannot open yet. With it, a locked step stays
+   * focusable (`aria-disabled`) so the reason is reachable, and the mobile dots
+   * become buttons too.
+   */
+  lockedHint?: string;
+  /** Steps the operator passed but left incomplete; marked for attention. */
+  attentionSteps?: ReadonlySet<number>;
+  /** Accessible suffix for an attention step, e.g. "needs attention". */
+  attentionLabel?: string;
 }
 
 function testIdFor(testId: string | undefined, part: string): string | undefined {
@@ -51,19 +67,25 @@ export function SetupStepper({
   testId,
   orientation = 'horizontal',
   stepMeta,
+  highlightStep,
+  metaInline = false,
+  lockedHint,
+  attentionSteps,
+  attentionLabel,
 }: SetupStepperProps): ReactElement {
   const reached = maxReachedStep ?? currentStep;
+  const copy = useMessages('ui').setupStepper;
 
   return (
     <nav
-      aria-label="Setup progress"
+      aria-label={copy.label}
       className={['setup-stepper', orientation === 'vertical' ? 'setup-stepper--vertical' : '', className]
         .filter(Boolean)
         .join(' ')}
       data-testid={testId}
     >
       {/* Desktop / tablet: full step list */}
-      <ol className="setup-stepper__list" aria-hidden="false">
+      <ol className="setup-stepper__list">
         {steps.map((label, index) => {
           const isDone = completedSteps.has(index);
           const isCurrent = index === currentStep;
@@ -75,6 +97,8 @@ export function SetupStepper({
                 ? 'done'
                 : 'upcoming';
 
+          const locked = onSelectStep !== undefined && index > reached;
+          const needsAttention = attentionSteps?.has(index) === true && !isCurrent;
           const content: ReactNode = (
             <>
               <span className="setup-stepper__indicator" aria-hidden="true">
@@ -93,8 +117,13 @@ export function SetupStepper({
                 )}
               </span>
               <span className="setup-stepper__text">
-                <span className="setup-stepper__label">{label}</span>
-                {orientation === 'vertical' && stepMeta !== undefined ? (
+                <span className="setup-stepper__label">
+                  {label}
+                  {needsAttention && attentionLabel !== undefined ? (
+                    <span className="sr-only"> ({attentionLabel})</span>
+                  ) : null}
+                </span>
+                {(orientation === 'vertical' || metaInline) && stepMeta !== undefined ? (
                   // Always rendered, even empty, so every row is the same height.
                   <span className="setup-stepper__meta">{stepMeta[index]}</span>
                 ) : null}
@@ -105,7 +134,9 @@ export function SetupStepper({
           return (
             <li
               key={label}
-              className={`setup-stepper__step setup-stepper__step--${modifier}`}
+              className={`setup-stepper__step setup-stepper__step--${modifier}${needsAttention ? ' setup-stepper__step--attention' : ''}${
+                index === highlightStep ? ' setup-stepper__step--new' : ''
+              }`}
               aria-current={isCurrent && onSelectStep === undefined ? 'step' : undefined}
               data-testid={testIdFor(testId, `step-${index + 1}`)}
             >
@@ -115,10 +146,15 @@ export function SetupStepper({
                 <button
                   type="button"
                   className="setup-stepper__button"
-                  disabled={index > reached}
+                  disabled={locked && lockedHint === undefined}
+                  aria-disabled={locked && lockedHint !== undefined ? true : undefined}
+                  title={locked && lockedHint !== undefined ? lockedHint : undefined}
                   aria-current={isCurrent ? 'step' : undefined}
                   data-testid={testIdFor(testId, `button-${index + 1}`)}
-                  onClick={() => onSelectStep(index)}
+                  onClick={() => {
+                    if (locked) return;
+                    onSelectStep(index);
+                  }}
                 >
                   {content}
                 </button>
@@ -132,9 +168,12 @@ export function SetupStepper({
       </ol>
 
       {/* Mobile: compact "Step N of M" with dots */}
-      <div className="setup-stepper__mobile" aria-hidden="true">
+      <div
+        className="setup-stepper__mobile"
+        aria-hidden={lockedHint === undefined ? true : undefined}
+      >
         <span className="setup-stepper__mobile-label">
-          Step {currentStep + 1} of {steps.length}
+          {interpolate(copy.step, { current: currentStep + 1, total: steps.length })}
         </span>
         <span className="setup-stepper__mobile-title">{steps[currentStep]}</span>
         <ol className="setup-stepper__dots">
@@ -148,9 +187,28 @@ export function SetupStepper({
               ]
                 .filter(Boolean)
                 .join(' ')}
-            />
+            >
+              {onSelectStep !== undefined && lockedHint !== undefined ? (
+                <button
+                  type="button"
+                  className="setup-stepper__dot-button"
+                  aria-label={`${interpolate(copy.step, { current: index + 1, total: steps.length })}: ${label}`}
+                  aria-current={index === currentStep ? 'step' : undefined}
+                  aria-disabled={index > reached ? true : undefined}
+                  title={index > reached ? lockedHint : undefined}
+                  onClick={() => {
+                    if (index <= reached) onSelectStep(index);
+                  }}
+                />
+              ) : null}
+            </li>
           ))}
         </ol>
+        {lockedHint !== undefined ? (
+          <span className="setup-stepper__progress" aria-hidden="true">
+            <span style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }} />
+          </span>
+        ) : null}
       </div>
     </nav>
   );

@@ -1,0 +1,27 @@
+{
+  "dpdCredentialsPanel": {
+    "cancel": "Cancel",
+    "description": "Login + password stored securely on the server. Rotate to replace both without restarting the API.",
+    "envBacked": "Environment variable (not editable via UI)",
+    "envBackedLabel": "Credentials",
+    "label": "DPDServices credentials",
+    "newLoginPlaceholder": "New login",
+    "newPasswordPlaceholder": "New password",
+    "rotate": "Rotate credentials",
+    "rotating": "Rotating...",
+    "save": "Save credentials",
+    "toast": {
+      "description": "The new DPD login and password are now in use.",
+      "title": "Credentials rotated"
+    }
+  },
+  "dpdSetupRoute": {
+    "crumb": "Connect DPD Polska"
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "DPDServices REST",
+      "description": "Connect a DPD Polska courier account via the DPDServices REST API."
+    }
+  }
+}

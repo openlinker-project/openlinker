@@ -2,7 +2,7 @@
  * WooCommerce Order Source Adapter
  *
  * Implements OrderSourcePort for WooCommerce REST API v3.
- * Uses modified_after watermark cursor — no event journal in WC.
+ * Uses modified_after watermark cursor - no event journal in WC.
  * Cursor key: woocommerce.orders.lastModifiedAfter
  *
  * @module libs/integrations/woocommerce/src/infrastructure/adapters
@@ -21,15 +21,20 @@ import type {
   OrderFeedEventType,
   PaymentMethod,
   PaymentStatus,
+  OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
   PlatformPaymentMethodClassifier,
 } from '@openlinker/core/orders';
 import {
+  readSourceBuyerNote,
+  decodeHtmlNoteText,
   readSourceBuyerTaxId,
   PAYMENT_METHOD,
   PAYMENT_STATUS,
   readPaymentMethodMap,
   resolveSourcePaymentMethod,
   toCodToCollect,
+  OrderSyncStartUnavailableError,
 } from '@openlinker/core/orders';
 import {
   classifyWooCommerceGateway,
@@ -69,7 +74,11 @@ const COD_DEAD_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'failed', '
 const COD_SETTLED_STATUSES: ReadonlySet<string> = new Set(['completed']);
 
 export class WooCommerceOrderSourceAdapter
-  implements OrderSourcePort, PlatformPaymentMethodClassifier
+  implements
+    OrderSourcePort,
+    OrderFeedBootstrap,
+    OrderFeedDateBootstrap,
+    PlatformPaymentMethodClassifier
 {
   private readonly logger = new Logger(WooCommerceOrderSourceAdapter.name);
 
@@ -77,6 +86,83 @@ export class WooCommerceOrderSourceAdapter
     private readonly httpClient: IWooCommerceHttpClient,
     private readonly connection: Connection,
   ) {}
+
+  /**
+   * Seconds the seeded cursor is moved behind the newest order's modification
+   * time (#4228). WC treats `modified_after` as exclusive and has second
+   * granularity, so an order written in the same second as the newest one would
+   * otherwise fall behind the seed. Ingestion is idempotent, so a re-read of
+   * the last moments is free.
+   */
+  private static readonly SEED_SAFETY_MARGIN_MS = 2000;
+
+  /**
+   * Where a fresh connection's feed should start (#4228).
+   *
+   * The newest order's modification time (minus a small margin), or null for a
+   * shop with no orders. `orders.initialSyncFrom` is deliberately NOT consulted:
+   * the operator choosing "from now" asked for the head, and returning that
+   * older instant would import the very history they declined. The setting still
+   * applies to the cursor-less "all orders" read in `listOrderFeed`. Errors
+   * propagate so core retries the poll.
+   */
+  async headCursor(): Promise<string | null> {
+    const orders = await this.httpClient.get<WooCommerceOrder[]>('/wp-json/wc/v3/orders', {
+      per_page: 1,
+      orderby: 'modified',
+      order: 'desc',
+    });
+    const newest = orders[0];
+    if (!newest) {
+      return null;
+    }
+
+    const modifiedAt = new Date(normGmt(newest.date_modified_gmt, newest.date_modified));
+    if (Number.isNaN(modifiedAt.getTime()) || modifiedAt.getTime() === 0) {
+      throw new Error(
+        `Cannot seed the order cursor: newest WooCommerce order ${String(newest.id)} has no readable modification time (connection: ${this.connection.id})`
+      );
+    }
+    return new Date(
+      modifiedAt.getTime() - WooCommerceOrderSourceAdapter.SEED_SAFETY_MARGIN_MS
+    ).toISOString();
+  }
+
+  /**
+   * Cursor at the start of `date` in GMT, so a connection the operator created
+   * "from {date}" imports only orders modified since then (#4228). A bare date
+   * means 00:00:00 GMT of that day; a full instant is used as given. The value
+   * is the same `modified_after` GMT instant `listOrderFeed` resumes from.
+   *
+   * UTC, not the store's own day, on purpose: WooCommerce's REST API exposes the
+   * site's UTC offset on no cheap, reliable read (`/settings/general` carries no
+   * timezone, and the order's `date_*` fields are site-local with no offset), so
+   * converting would mean guessing. A store east of GMT therefore starts its
+   * chosen day up to a few hours late relative to its own clock.
+   *
+   * The operator's explicit choice wins over `orders.initialSyncFrom`, which
+   * only applies to the cursor-less "all orders" read.
+   *
+   * @throws OrderSyncStartUnavailableError when `date` is not a real ISO date.
+   */
+  cursorForDate(date: string): Promise<string> {
+    const value = date.trim();
+    const bareDay = /^\d{4}-\d{2}-\d{2}$/.test(value);
+    // An instant with no zone is read as UTC, never in the worker's own timezone.
+    const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+    const parsed = new Date(bareDay ? `${value}T00:00:00.000Z` : hasZone ? value : `${value.replace(' ', 'T')}Z`);
+    // V8 rolls "2026-02-30" over to March 2nd instead of rejecting it, so a bare
+    // day is checked against its own round trip.
+    const unreal = Number.isNaN(parsed.getTime()) || (bareDay && !parsed.toISOString().startsWith(value));
+    if (unreal) {
+      return Promise.reject(
+        new OrderSyncStartUnavailableError(
+          `Cannot start the order feed from "${date}": expected an ISO date (connection: ${this.connection.id})`
+        )
+      );
+    }
+    return Promise.resolve(parsed.toISOString());
+  }
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
     this.logger.debug('Listing WooCommerce order feed', {
@@ -95,7 +181,7 @@ export class WooCommerceOrderSourceAdapter
       params.modified_after = input.fromCursor;
       // The cursor is a GMT timestamp (date_modified_gmt, Z-normalized). WC
       // interprets modified_after in the SITE's local timezone unless this flag
-      // is set — so without it, orders modified in the local-offset window are
+      // is set - so without it, orders modified in the local-offset window are
       // silently skipped for shops west of GMT (the cursor has already advanced).
       params.dates_are_gmt = true;
     } else {
@@ -117,16 +203,27 @@ export class WooCommerceOrderSourceAdapter
       return { items: [], nextCursor: input.fromCursor ?? null };
     }
 
-    // Cursor computed over ALL orders before filtering — prevents cursor freeze
+    // Cursor computed over ALL orders before filtering - prevents cursor freeze
     // when every item is filtered out by eventTypes.
     // Known watermark edge: WC treats modified_after as exclusive, so an order
     // modified within the same second as the committed cursor (after the page
-    // was read) can be skipped. Second-granularity risk accepted — the §904-style
+    // was read) can be skipped. Second-granularity risk accepted - the §904-style
     // reconciliation re-pull heals it on the next change to that order.
-    const nextCursor = orders.reduce<string | null>((acc, o) => {
-      const ts = normGmt(o.date_modified_gmt, o.date_modified);
-      return !acc || ts > acc ? ts : acc;
-    }, null);
+    const stamps = orders.map((o) => normGmt(o.date_modified_gmt, o.date_modified));
+    const newest = stamps.reduce<string | null>((acc, ts) => (!acc || ts > acc ? ts : acc), null);
+    let nextCursor = newest;
+    // A full page whose tail shares the newest second may not hold every order of
+    // that second, and WC's modified_after is exclusive, so the rest would be
+    // skipped. Step the cursor one second back so they are re-read next time
+    // (ingestion dedupes by eventKey). If the whole page is one second there is
+    // nothing earlier to step back to without re-reading the same page for ever,
+    // so the cursor stays put.
+    if (newest !== null && orders.length >= input.limit) {
+      const tied = stamps.filter((ts) => ts === newest).length;
+      if (tied > 1 && tied < stamps.length) {
+        nextCursor = new Date(Date.parse(newest) - 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      }
+    }
 
     const items: OrderFeedItem[] = orders.map((o) => {
       const occurredAt = normGmt(o.date_modified_gmt, o.date_modified);
@@ -235,6 +332,11 @@ export class WooCommerceOrderSourceAdapter
       })(),
       paymentMethod,
       ...(gatewayId !== undefined && { sourcePaymentMethod: gatewayId }),
+      // Checkout note (#3538): core reports `''` for none (asserted none), and
+      // a payload without the key is unknown, never "no note".
+      ...(order.customer_note === undefined
+        ? {}
+        : { buyerNote: readSourceBuyerNote(decodeHtmlNoteText(order.customer_note)) ?? null }),
       customerExternalId: order.customer_id > 0 ? String(order.customer_id) : undefined,
       customerEmail: order.billing.email || undefined,
       items: order.line_items.map(mapLineItem),
@@ -253,16 +355,16 @@ export class WooCommerceOrderSourceAdapter
       // Ship-by / dispatch deadline (#1776): WooCommerce core orders expose no
       // dispatch / ship-by SLA (only date_created/modified/paid/completed), so
       // `dispatchTime` is intentionally unmapped and the derived ship-by stays
-      // blank by design — no fabrication. Only sources with a per-order dispatch
+      // blank by design - no fabrication. Only sources with a per-order dispatch
       // window (Allegro) populate ship-by.
       // date_created is the buyer-placement instant (checkout, admin, or REST
-      // creation all set it at the same instant) — the buyer-placed time
+      // creation all set it at the same instant) - the buyer-placed time
       // (#926), mirroring the PrestaShop adapter's date_add mapping. Unlike
       // createdAt (which falls through normGmt's epoch sentinel when both
-      // fields are absent — fine for bookkeeping timestamps), placedAt feeds
+      // fields are absent - fine for bookkeeping timestamps), placedAt feeds
       // invoicing's saleDate (P_6 on a submitted KSeF FA(3)), so it must stay
       // undefined rather than resolve to 1970-01-01 when the wire shape omits
-      // both date fields — mirrors the PrestaShop adapter's date_add guard.
+      // both date fields - mirrors the PrestaShop adapter's date_add guard.
       ...(order.date_created_gmt || order.date_created
         ? { placedAt: normGmt(order.date_created_gmt, order.date_created) }
         : {}),
@@ -277,7 +379,7 @@ export class WooCommerceOrderSourceAdapter
 function mapWooCommerceEventType(status: string, isNew: boolean): OrderFeedEventType {
   const s = status.toLowerCase();
   // WC `failed` is a recoverable *payment* failure (the order itself is not
-  // cancelled), so it maps to `updated` rather than `cancelled` — otherwise a
+  // cancelled), so it maps to `updated` rather than `cancelled` - otherwise a
   // transient payment hiccup would cancel the destination order. Only the
   // genuinely-terminal `cancelled`/`refunded` statuses map to `cancelled`.
   if (s === 'cancelled' || s === 'refunded') return 'cancelled';
@@ -459,12 +561,12 @@ function mapShippingAddress(addr: WooCommerceShippingAddress): IncomingOrderAddr
  * Best-effort VAT-number meta_data keys (#2822). WooCommerce core carries no
  * native tax-id field on an order; these are the keys the most common VAT
  * plugins write onto `meta_data`:
- * - `"VAT Number"` — Aelia "EU VAT Number"
+ * - `"VAT Number"` - Aelia "EU VAT Number"
  *   (https://github.com/aelia-co/woocommerce-eu-vat-number).
- * - `_billing_eu_vat_number`, `_vat_number` — other common WC VAT-field
+ * - `_billing_eu_vat_number`, `_vat_number` - other common WC VAT-field
  *   plugins/checkout-field builders.
  *
- * First non-blank match wins. This list is deliberately non-exhaustive — a
+ * First non-blank match wins. This list is deliberately non-exhaustive - a
  * store running an unlisted plugin reads as unknown (`undefined`), never a
  * false asserted-none. An operator has no way to extend this list today; a
  * per-connection `config` key is the obvious follow-up if this proves too
@@ -472,7 +574,7 @@ function mapShippingAddress(addr: WooCommerceShippingAddress): IncomingOrderAddr
  *
  * Exported (#3471 item 5, decided) so the order-PROCESSOR side
  * (`WooCommerceOrderProcessorAdapter.mapAddress`) can write an OL-created
- * order's buyer tax id under this list's FIRST key — one list, one place
+ * order's buyer tax id under this list's FIRST key - one list, one place
  * that decides which meta_data key means "buyer tax id" for both the read
  * and the write direction.
  */
@@ -490,7 +592,7 @@ function readBillingTaxIdFromMetaData(
   }
   for (const key of WOOCOMMERCE_VAT_META_KEY_ALLOWLIST) {
     const entry = metaData.find((m) => m.key === key);
-    // `value` is arbitrary JSON on the wire (#2824 review) — a plugin
+    // `value` is arbitrary JSON on the wire (#2824 review) - a plugin
     // writing an array/object under an allowlisted key must read as
     // unknown, never throw and fail the whole order ingestion.
     if (entry && typeof entry.value === 'string' && entry.value) {
@@ -515,7 +617,7 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
   const total = Number(order.total);
   const tax = Number(order.total_tax);
   const shipping = Number(order.shipping_total);
-  // Sum line_items[].total directly — avoids absorbing fee_lines into the
+  // Sum line_items[].total directly - avoids absorbing fee_lines into the
   // product subtotal. WC total includes fee_lines, so total−tax−shipping
   // overstates the product subtotal for fee-bearing orders.
   const subtotal = order.line_items.reduce((sum, item) => sum + Number(item.total), 0);
@@ -525,19 +627,19 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
     shipping: roundCurrency(shipping),
     total: roundCurrency(total),
     currency: order.currency,
-    // `line_items[].price` (mapped onto `OrderItem.price`) is net — WooCommerce
+    // `line_items[].price` (mapped onto `OrderItem.price`) is net - WooCommerce
     // reports `total_tax` as a separate amount rather than folding it into the
-    // line price (#2440). This governs the ADR-063 net-sales tax-rate path —
+    // line price (#2440). This governs the ADR-063 net-sales tax-rate path -
     // do NOT flip it to describe `total`, which is a different, genuinely
     // gross figure (#2836, mirroring PrestaShop's identical split, #2829).
     //
     // #2835 audit: this identically makes every WooCommerce order refused by
     // `invoicing`/`fiscalization`'s net-priced-order guard
-    // (`describeNetPricedOrderRefusal`, `@openlinker/core/sales-documents`) —
+    // (`describeNetPricedOrderRefusal`, `@openlinker/core/sales-documents`) -
     // the same permanent limitation PrestaShop's net line prices hit, for the
     // same reason (core may never compute tax to convert net to gross).
     taxTreatment: 'exclusive',
-    // `total` (above, from `order.total`) IS genuinely gross — unlike the
+    // `total` (above, from `order.total`) IS genuinely gross - unlike the
     // line prices, it is never net for a WooCommerce order. Asserted
     // independently of `taxTreatment` so an `orderTotalGross` sales-document
     // rule condition can trust it without also relabeling the (still net)
@@ -550,7 +652,7 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
     // nothing here reads a rate. Left ABSENT when `shipping_tax` is missing or
     // unreadable - an absent component must not be silently read as zero tax,
     // which would publish a net figure while claiming it was gross.
-    ...((): { shippingGross?: number } => {
+    ...(((): { shippingGross?: number } => {
       const shippingTax = Number(order.shipping_tax);
       if (order.shipping_tax === undefined || !Number.isFinite(shippingTax)) {
         return {};
@@ -558,8 +660,34 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
       return Number.isFinite(shipping)
         ? { shippingGross: roundCurrency(shipping + shippingTax) }
         : {};
-    })(),
+    })()),
+    ...(((): { shippingTaxRate?: string } => {
+      const rate = readShippingTaxRate(order);
+      return rate !== undefined ? { shippingTaxRate: rate } : {};
+    })()),
   };
+}
+
+/**
+ * The one VAT rate WooCommerce charged on delivery, as a percent code.
+ *
+ * Read from the `tax_lines` that actually carry a non-zero
+ * `shipping_tax_total`; exactly one distinct rate yields it, none or several
+ * yield `undefined` (a delivery taxed at two rates has no single code, and
+ * guessing one would state a rate the shop did not charge - ADR-063).
+ */
+export function readShippingTaxRate(order: WooCommerceOrder): string | undefined {
+  const rates = new Set<string>();
+  for (const line of order.tax_lines ?? []) {
+    const shippingTax = Number(line.shipping_tax_total);
+    if (!Number.isFinite(shippingTax) || shippingTax === 0) continue;
+    const percent = line.rate_percent;
+    if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0) {
+      return undefined;
+    }
+    rates.add(String(Number(percent.toFixed(3))));
+  }
+  return rates.size === 1 ? [...rates][0] : undefined;
 }
 
 function roundCurrency(amount: number): number {

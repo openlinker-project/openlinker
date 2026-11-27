@@ -115,6 +115,9 @@ describe('BulkListingRetryService', () => {
       incrementCounters: jest.fn().mockResolvedValue(makeBatch({ failedCount: 0 })),
       updateStatus: jest.fn().mockResolvedValue(makeBatch({ status: BULK_BATCH_STATUS.Running })),
       updateTotalCount: jest.fn(),
+      findByIdempotencyKey: jest.fn(),
+      clearIdempotencyKey: jest.fn(),
+      reclassifySucceededChildAsFailed: jest.fn(),
     };
     records = {
       create: jest.fn(),

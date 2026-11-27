@@ -72,6 +72,13 @@ export interface CreateRefundRecordInput {
    * any shipped path can produce, and the truthful one.
    */
   executedBy?: RefundExecutedBy;
+  /**
+   * Deliberately record a refund that takes the order's cumulative refunds past
+   * its total (#3289). A REQUEST-time flag: consumed by the ceiling guard, logged
+   * (`refund_ceiling_exceeded_acknowledged`) and never persisted, so a retry must
+   * repeat it and one acknowledgement never licenses a later, unrelated excess.
+   */
+  acknowledgeAboveCeiling?: boolean;
 }
 
 /**

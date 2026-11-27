@@ -20,6 +20,7 @@
  */
 import { useMemo, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { interpolate, renderRich, useFormat, useMessages, usePlural } from '../../../../shared/i18n';
 import { Button, DataTable, StatusBadge, TimeDisplay } from '../../../../shared/ui';
 import type { DataTableColumn } from '../../../../shared/ui';
 import {
@@ -32,6 +33,8 @@ import {
 } from '../../../../shared/ui/dialog';
 import type { BulkBatchRecordSummary } from '../../api/bulk-listings.types';
 import type { OfferCreationStatus } from '../../api/listings.types';
+import type { BundleOfferPreviewOk } from '../../hooks/use-bundle-offer-preview';
+import { packSizeOf } from './bundle-kind';
 
 interface BulkBatchProgressTableProps {
   records: BulkBatchRecordSummary[];
@@ -44,6 +47,17 @@ interface BulkBatchProgressTableProps {
    * cannot write.
    */
   buildFixUrl?: (record: BulkBatchRecordSummary) => string | null;
+  /** Variants of this batch that are sets or multipacks, with their composition (#3520). */
+  bundles?: ReadonlyMap<string, BundleOfferPreviewOk>;
+  /**
+   * Failed records the marketplace refused because of the seller account
+   * (#4004). Their cell points at the batch notice instead of repeating the
+   * same refusal on every row, and they get no "Fix this one": nothing in the
+   * offer can change the answer. The full error stays in Details.
+   */
+  accountLevelRecordIds?: ReadonlySet<string>;
+  /** Short pointer shown in place of the error on such a row. */
+  accountLevelRowLabel?: string;
 }
 
 /** Statuses that count as a live offer for the per-product rollup (#1741). */
@@ -61,34 +75,54 @@ export function BulkBatchProgressTable({
   records,
   buildExternalOfferUrl,
   buildFixUrl,
+  bundles,
+  accountLevelRecordIds,
+  accountLevelRowLabel,
 }: BulkBatchProgressTableProps): ReactElement {
+  const copy = useMessages('listings').bulkBatchProgressTable;
+  const bundleCopy = useMessages('listings').bundleOffer;
   const [detailRecord, setDetailRecord] = useState<BulkBatchRecordSummary | null>(null);
 
-  const groups = useMemo(() => groupByProduct(records), [records]);
+  const groups = useMemo(
+    () => groupByProduct(records, copy.productFallback),
+    [records, copy.productFallback],
+  );
   const hasFailedGroup = groups.some((g) => g.failedLabel !== null);
+  // The hint explains "Fix and resubmit", which the page withholds when every
+  // failure is account-level, so it must not point at a button that is absent.
+  const hasOfferLevelFailure = records.some(
+    (r) => r.status === 'failed' && accountLevelRecordIds?.has(r.id) !== true,
+  );
 
   const columns: DataTableColumn<BulkBatchRecordSummary>[] = useMemo(
     () => [
       {
         id: 'variant',
-        header: 'Variant',
-        cell: (record) =>
-          record.variantLabel ? (
-            <span title={record.internalVariantId}>{record.variantLabel}</span>
-          ) : (
-            <span className="mono-text" title={record.internalVariantId}>
-              {record.internalVariantId}
+        header: copy.columns.variant,
+        cell: (record) => {
+          const bundle = bundles?.get(record.internalVariantId);
+          return (
+            <span className="bulk-batch__variant">
+              {record.variantLabel ? (
+                <span title={record.internalVariantId}>{record.variantLabel}</span>
+              ) : (
+                <span className="mono-text" title={record.internalVariantId}>
+                  {record.internalVariantId}
+                </span>
+              )}
+              {bundle ? <BundleRecordInfo bundle={bundle} /> : null}
             </span>
-          ),
+          );
+        },
       },
       {
         id: 'status',
-        header: 'Status',
+        header: copy.columns.status,
         cell: (record) => <RecordStatusBadge status={record.status} />,
       },
       {
         id: 'offerOrError',
-        header: 'Offer / failure',
+        header: copy.columns.offerOrFailure,
         cell: (record) => {
           if (
             record.status === 'active' ||
@@ -108,42 +142,56 @@ export function BulkBatchProgressTable({
             );
           }
           if (record.status === 'failed') {
-            const firstMessage = record.errors?.[0]?.message;
-            const fixUrl = buildFixUrl?.(record);
+            const bundle = bundles?.get(record.internalVariantId);
+            const emptyComponent =
+              bundle && bundle.availableSets === 0
+                ? bundle.components.find(
+                    (component) => component.variantId === bundle.limitingComponentVariantId,
+                  )
+                : undefined;
+            const firstMessage = emptyComponent
+              ? interpolate(bundleCopy.failedNoStock, { name: emptyComponent.name })
+              : record.errors?.[0]?.message;
+            const accountLevel = accountLevelRecordIds?.has(record.id) === true;
+            const fixUrl = accountLevel ? null : buildFixUrl?.(record);
+            const shown = accountLevel && accountLevelRowLabel ? accountLevelRowLabel : (firstMessage ?? copy.failed);
             return (
               <span className="bulk-batch__err-cell">
-                <span className="bulk-batch__err" title={firstMessage ?? 'Failed'}>
-                  {firstMessage ?? 'Failed'}
+                <span
+                  className={`bulk-batch__err${accountLevel ? ' bulk-batch__err--account' : ''}`}
+                  title={firstMessage ?? copy.failed}
+                >
+                  {shown}
                 </span>
                 <Button
                   tone="ghost"
                   className="button--xs"
-                  aria-label={`Failure details for ${record.internalVariantId}`}
+                  aria-label={interpolate(copy.detailsAria, { id: record.internalVariantId })}
                   onClick={() => {
                     setDetailRecord(record);
                   }}
                 >
-                  Details
+                  {copy.details}
                 </Button>
                 {fixUrl !== null && fixUrl !== undefined ? (
                   <Link
                     className="button button--ghost button--xs"
                     to={fixUrl}
-                    aria-label={`Fix and resubmit ${record.internalVariantId}`}
+                    aria-label={interpolate(copy.fixAria, { id: record.internalVariantId })}
                   >
-                    Fix this one
+                    {copy.fix}
                   </Link>
                 ) : null}
               </span>
             );
           }
           if (record.status === 'pending') {
-            return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Queued</span>;
+            return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{copy.queued}</span>;
           }
           if (record.status === 'validating') {
             return (
               <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                Validating on marketplace…
+                {copy.validating}
               </span>
             );
           }
@@ -152,7 +200,7 @@ export function BulkBatchProgressTable({
       },
       {
         id: 'updatedAt',
-        header: 'Updated',
+        header: copy.columns.updated,
         align: 'right',
         cell: (record) =>
           record.status === 'pending' ? (
@@ -165,29 +213,36 @@ export function BulkBatchProgressTable({
         hideBelow: 768,
       },
     ],
-    [buildExternalOfferUrl, buildFixUrl],
+    [
+      buildExternalOfferUrl,
+      buildFixUrl,
+      bundles,
+      bundleCopy,
+      copy,
+      accountLevelRecordIds,
+      accountLevelRowLabel,
+    ],
   );
 
   return (
     <>
       {groups.length > 0 ? (
-        <section className="bulk-progress" aria-label="Per-product progress">
+        <section className="bulk-progress" aria-label={copy.perProductAria}>
           <ul className="bulk-progress__list">
             {groups.map((group) => (
               <ProductRollupRow key={group.key} group={group} />
             ))}
           </ul>
-          {hasFailedGroup ? (
+          {hasFailedGroup && hasOfferLevelFailure ? (
             <p className="dim" style={{ marginTop: 'var(--space-3)', fontSize: 12 }}>
-              Retry re-runs the saved data. Fix and resubmit opens the wizard on the
-              failed variants; already-live siblings are excluded.
+              {copy.retryHint}
             </p>
           ) : null}
         </section>
       ) : null}
 
       <DataTable<BulkBatchRecordSummary>
-        caption="Bulk batch records"
+        caption={copy.caption}
         columns={columns}
         rows={records}
         rowKey={(record) => record.id}
@@ -209,7 +264,7 @@ export function BulkBatchProgressTable({
           ) : null}
           <DialogFooter>
             <DialogClose asChild>
-              <Button tone="secondary">Close</Button>
+              <Button tone="secondary">{copy.close}</Button>
             </DialogClose>
           </DialogFooter>
         </DialogContent>
@@ -227,7 +282,10 @@ interface ProductGroup {
   failedLabel: string | null;
 }
 
-function groupByProduct(records: BulkBatchRecordSummary[]): ProductGroup[] {
+function groupByProduct(
+  records: BulkBatchRecordSummary[],
+  productFallback: string,
+): ProductGroup[] {
   const order: string[] = [];
   const byKey = new Map<string, BulkBatchRecordSummary[]>();
 
@@ -251,7 +309,7 @@ function groupByProduct(records: BulkBatchRecordSummary[]): ProductGroup[] {
       : null;
     return {
       key,
-      name: bucket[0]?.productName ?? 'Product',
+      name: bucket[0]?.productName ?? productFallback,
       live,
       total: bucket.length,
       failedLabel,
@@ -259,7 +317,33 @@ function groupByProduct(records: BulkBatchRecordSummary[]): ProductGroup[] {
   });
 }
 
+/** Kind chip, contents and the stock a bundle record was published with. */
+function BundleRecordInfo({ bundle }: { bundle: BundleOfferPreviewOk }): ReactElement {
+  const copy = useMessages('listings').bundleOffer;
+  const plural = usePlural();
+  const packSize = packSizeOf(bundle);
+  const contents = bundle.components
+    .map((component) => `${component.quantity} × ${component.name}`)
+    .join(' + ');
+  const stock =
+    bundle.availableSets === null
+      ? copy.setsUnknown
+      : interpolate(copy.stockAsSets, { sets: plural(bundle.availableSets, copy.sets) });
+  return (
+    <span className="bulk-batch__bundle" data-testid="batch-bundle-info">
+      <span className={`cx-tag bundle-row-tag${packSize !== null ? ' bundle-row-tag--pack' : ''}`}>
+        {packSize !== null
+          ? interpolate(copy.packMarker, { n: packSize })
+          : plural(bundle.components.length, copy.marker)}
+      </span>
+      <small>{interpolate(copy.batchLine, { contents, stock })}</small>
+    </span>
+  );
+}
+
 function ProductRollupRow({ group }: { group: ProductGroup }): ReactElement {
+  const copy = useMessages('listings').bulkBatchProgressTable;
+  const format = useFormat();
   const { name, live, total, failedLabel } = group;
   const incomplete = failedLabel !== null;
   const complete = !incomplete && live === total;
@@ -273,11 +357,19 @@ function ProductRollupRow({ group }: { group: ProductGroup }): ReactElement {
     .join(' ');
 
   const chipTone = incomplete ? 'warning' : complete ? 'success' : 'neutral';
-  const chipLabel = incomplete ? 'incomplete' : complete ? 'complete' : 'in progress';
+  const chipLabel = incomplete
+    ? copy.chip.incomplete
+    : complete
+      ? copy.chip.complete
+      : copy.chip.inProgress;
 
   const summary = incomplete
-    ? `${live}/${total} live · ${failedLabel} failed - listing incomplete`
-    : `${live} of ${total} live`;
+    ? interpolate(copy.summaryIncomplete, {
+        live: format.number(live),
+        total: format.number(total),
+        failed: failedLabel,
+      })
+    : interpolate(copy.summaryLive, { live: format.number(live), total: format.number(total) });
 
   return (
     <li className={rowClass}>
@@ -303,25 +395,30 @@ function RecordFailureDetail({
   record: BulkBatchRecordSummary;
   buildExternalOfferUrl?: (externalOfferId: string) => string;
 }): ReactElement {
+  const copy = useMessages('listings').bulkBatchProgressTable.detail;
   const offerUrl = record.externalOfferId
     ? buildExternalOfferUrl?.(record.externalOfferId)
     : undefined;
   return (
     <>
-      <DialogTitle>Record failure detail</DialogTitle>
+      <DialogTitle>{copy.title}</DialogTitle>
       <DialogDescription>
-        Variant <span className="mono-text">{record.internalVariantId}</span>
+        {renderRich(
+          copy.description,
+          { mono: (text) => <span className="mono-text">{text}</span> },
+          { id: record.internalVariantId },
+        )}
       </DialogDescription>
       <dl className="bulk-batch__detail">
         <div className="bulk-batch__detail-row">
-          <dt className="bulk-batch__detail-label">Status</dt>
+          <dt className="bulk-batch__detail-label">{copy.status}</dt>
           <dd>
             <RecordStatusBadge status={record.status} />
           </dd>
         </div>
         {record.externalOfferId ? (
           <div className="bulk-batch__detail-row">
-            <dt className="bulk-batch__detail-label">Offer</dt>
+            <dt className="bulk-batch__detail-label">{copy.offer}</dt>
             <dd>
               {offerUrl ? (
                 <a
@@ -339,13 +436,13 @@ function RecordFailureDetail({
           </div>
         ) : null}
         <div className="bulk-batch__detail-row">
-          <dt className="bulk-batch__detail-label">Updated</dt>
+          <dt className="bulk-batch__detail-label">{copy.updated}</dt>
           <dd className="mono-text">
             <TimeDisplay iso={record.updatedAt} format="datetime" />
           </dd>
         </div>
         <div className="bulk-batch__detail-row bulk-batch__detail-row--errors">
-          <dt className="bulk-batch__detail-label">Errors</dt>
+          <dt className="bulk-batch__detail-label">{copy.errors}</dt>
           <dd>
             {record.errors && record.errors.length > 0 ? (
               <ul className="bulk-batch__err-list">
@@ -355,12 +452,13 @@ function RecordFailureDetail({
                     {err.field ? (
                       <span className="bulk-batch__err-field mono-text">{err.field}</span>
                     ) : null}
+                    {/* eslint-disable-next-line no-restricted-syntax -- a stored per-record failure message shown beside its code; the backend stores no code-only form yet (#3866) */}
                     <span className="bulk-batch__err-msg">{err.message}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <span className="dim">No structured error detail was recorded.</span>
+              <span className="dim">{copy.noErrors}</span>
             )}
           </dd>
         </div>
@@ -370,18 +468,19 @@ function RecordFailureDetail({
 }
 
 function RecordStatusBadge({ status }: { status: OfferCreationStatus }): ReactElement {
+  const copy = useMessages('listings').bulkBatchProgressTable.statusBadge;
   switch (status) {
     case 'pending':
-      return <StatusBadge tone="neutral" withDot>pending</StatusBadge>;
+      return <StatusBadge tone="neutral" withDot>{copy.pending}</StatusBadge>;
     case 'validating':
-      return <StatusBadge tone="info" withDot pulse>running</StatusBadge>;
+      return <StatusBadge tone="info" withDot pulse>{copy.running}</StatusBadge>;
     case 'draft':
-      return <StatusBadge tone="success" withDot>draft</StatusBadge>;
+      return <StatusBadge tone="success" withDot>{copy.draft}</StatusBadge>;
     case 'active':
-      return <StatusBadge tone="success" withDot>succeeded</StatusBadge>;
+      return <StatusBadge tone="success" withDot>{copy.succeeded}</StatusBadge>;
     case 'reused':
-      return <StatusBadge tone="success" withDot>already existed</StatusBadge>;
+      return <StatusBadge tone="success" withDot>{copy.alreadyExisted}</StatusBadge>;
     case 'failed':
-      return <StatusBadge tone="error" withDot>failed</StatusBadge>;
+      return <StatusBadge tone="error" withDot>{copy.failed}</StatusBadge>;
   }
 }

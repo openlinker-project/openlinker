@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  FULFILLMENT_DELIVERY_ADDRESS_ALLOWED_KEYS,
+  buildFulfillmentDeliveryAddress,
   FULFILLMENT_REQUEST_ALLOWED_KEYS,
   FULFILLMENT_REQUEST_FORBIDDEN_KEYS,
   FULFILLMENT_REQUEST_LINE_ALLOWED_KEYS,
@@ -144,6 +146,17 @@ describe('fulfillment-execution.types', () => {
     shipTo: { mode: 'plain', countryIso2: 'PL', postalCode: '00-001', city: 'Warszawa' },
     deliveryMethod: 'courier',
     idempotencyKey: 'work:ol_work_abc:1',
+    deliveryAddress: {
+      recipientName: 'Jan Kowalski',
+      company: null,
+      addressLine1: 'Prosta 1',
+      addressLine2: null,
+      city: 'Warszawa',
+      region: null,
+      postalCode: '00-001',
+      countryIso2: 'PL',
+      phone: null,
+    },
   };
 
   /**
@@ -193,6 +206,15 @@ describe('fulfillment-execution.types', () => {
   describe('the allowlist projection', () => {
     it('should carry exactly the allowlisted top-level keys', () => {
       expect(Object.keys(request).sort()).toEqual([...FULFILLMENT_REQUEST_ALLOWED_KEYS].sort());
+    });
+
+    it('should carry exactly the allowlisted delivery address keys, never an email or tax id (#4185)', () => {
+      expect(Object.keys(request.deliveryAddress ?? {}).sort()).toEqual(
+        [...FULFILLMENT_DELIVERY_ADDRESS_ALLOWED_KEYS].sort(),
+      );
+      for (const forbidden of ['email', 'buyerEmail', 'customerEmail', 'taxId', 'buyerTaxId']) {
+        expect(FULFILLMENT_DELIVERY_ADDRESS_ALLOWED_KEYS).not.toContain(forbidden);
+      }
     });
 
     it('should carry exactly the allowlisted line keys', () => {
@@ -269,3 +291,44 @@ describe('fulfillment-execution.types', () => {
     });
   });
 });
+
+describe('buildFulfillmentDeliveryAddress (#4185)', () => {
+  const source = {
+    firstName: ' Jan ',
+    lastName: 'Kowalski',
+    company: '',
+    address1: 'Prosta 1',
+    city: 'Warszawa',
+    postalCode: '00-001',
+    country: 'pl',
+    phone: '+48 600 000 000',
+  };
+
+  it('should build the address a carrier label needs', () => {
+    expect(buildFulfillmentDeliveryAddress(source, { storePii: true })).toEqual({
+      recipientName: 'Jan Kowalski',
+      company: null,
+      addressLine1: 'Prosta 1',
+      addressLine2: null,
+      city: 'Warszawa',
+      region: null,
+      postalCode: '00-001',
+      countryIso2: 'PL',
+      phone: '+48 600 000 000',
+    });
+  });
+
+  it('should address a company when there is no person', () => {
+    expect(
+      buildFulfillmentDeliveryAddress({ ...source, firstName: '', lastName: '', company: 'ACME' }, { storePii: true })
+        ?.recipientName,
+    ).toBe('ACME');
+  });
+
+  it('should hand nothing when buyer data is not stored or the address is incomplete', () => {
+    expect(buildFulfillmentDeliveryAddress(source, { storePii: false })).toBeNull();
+    expect(buildFulfillmentDeliveryAddress({ ...source, address1: ' ' }, { storePii: true })).toBeNull();
+    expect(buildFulfillmentDeliveryAddress({ ...source, firstName: '', lastName: '' }, { storePii: true })).toBeNull();
+  });
+});
+

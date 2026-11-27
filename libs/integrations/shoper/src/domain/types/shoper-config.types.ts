@@ -18,6 +18,17 @@ export interface ShoperOrderDefaults {
   readonly shippingId?: number;
   readonly paymentId?: number;
   readonly statusId?: number;
+  /**
+   * The FALLBACK shipping method for a parcel OpenLinker writes when it records
+   * a dispatch. The order's own method is tried first; Shoper's API refuses a
+   * parcel for some carrier-integrated methods (InPost, DPD, ...), and only
+   * then is this non-integrated one used instead.
+   */
+  readonly parcelShippingId?: number;
+  /** The status a `cancelled` writeback moves the order to; else the first active cancelled-type status. */
+  readonly cancelledStatusId?: number;
+  /** The status an `in-progress` writeback moves the order to; else the first active in-progress-type status. */
+  readonly inProgressStatusId?: number;
 }
 
 export interface ShoperConnectionConfig {

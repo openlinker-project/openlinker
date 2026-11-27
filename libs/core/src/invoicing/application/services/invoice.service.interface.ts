@@ -87,7 +87,7 @@ export interface IInvoiceService {
    * Records on the REQUESTED connection are untouched by this guard; the
    * per-connection retry/replay semantics above own those.
    */
-  issueInvoice(cmd: IssueInvoiceCommand): Promise<InvoiceRecord>;
+  issueInvoice(cmd: IssueInvoiceCommand, opts?: IssueInvoiceOptions): Promise<InvoiceRecord>;
 
   /**
    * Read OL's OWN `InvoiceRecord` projection by `(orderId, connectionId)`. NEVER
@@ -274,4 +274,25 @@ export interface IInvoiceService {
    * receipt, never both.
    */
   findBlockingInvoiceForOrder(orderId: string): Promise<InvoiceRecord | null>;
+}
+
+/**
+ * Options for {@link IInvoiceService.issueInvoice} (#3960).
+ */
+export interface IssueInvoiceOptions {
+  /**
+   * The refused invoice record an operator is retrying. Starts the NEXT attempt
+   * as its own record under its own key, instead of re-sending under the
+   * refused key: a provider that keeps one document per key answers that key
+   * with the document it already refused. The new attempt takes over the
+   * refused one's invoice number, so the numbering has no gap.
+   *
+   * Honoured only for a refused (`failed` + `rejected`) record of the same
+   * connection and order. When that record already has a successor, the call
+   * resumes the successor rather than starting a third attempt. Any other
+   * record is resumed as it stands, which never re-sends it.
+   *
+   * The command's own `idempotencyKey` is ignored when this is set.
+   */
+  retryOf?: string;
 }

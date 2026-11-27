@@ -18,13 +18,15 @@ import {
 import { BrandbookSection } from './sections/brandbook-section';
 import { PrimitivesSection } from './sections/primitives-section';
 import { PatternsSection } from './sections/patterns-section';
+import { useMessages } from '../../shared/i18n';
 
 export function DevUiPage(): ReactElement {
+  const copy = useMessages('dev-ui').devUiPage;
   return (
     <PageLayout
       eyebrow="Internal · Issue #775"
       title="Design System"
-      description="Brandbook, primitives gallery, and composed pattern examples. Not surfaced in the nav — reachable only by URL."
+      description={copy.description}
     >
       <Tabs defaultValue="brandbook">
         <TabsList aria-label="Design system sections">

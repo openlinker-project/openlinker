@@ -28,8 +28,8 @@
   "peerDependencies": {
     "@nestjs/common": "^10.0.0",
     "@nestjs/testing": "^10.0.0",
-    "@testcontainers/postgresql": "^10.0.0",
-    "@testcontainers/redis": "^10.0.0",
+    "@testcontainers/postgresql": "^12.0.0",
+    "@testcontainers/redis": "^12.0.0",
     "express": "^4.0.0",
     "redis": "^4.0.0",
     "supertest": "^6.0.0",
@@ -44,8 +44,8 @@
   "devDependencies": {
     "@nestjs/common": "^10.0.0",
     "@nestjs/testing": "^10.0.0",
-    "@testcontainers/postgresql": "10.13.2",
-    "@testcontainers/redis": "10.13.2",
+    "@testcontainers/postgresql": "12.2.1",
+    "@testcontainers/redis": "12.2.1",
     "@types/express": "4.17.21",
     "@types/jest": "29.5.12",
     "@types/node": "20.11.30",

@@ -10,6 +10,7 @@
 import type { Product, ProductVariant } from '@openlinker/core/products';
 import type { Inventory } from '@openlinker/core/inventory';
 import type { Order, OrderCreate, OrderTotals } from '@openlinker/core/orders';
+import type { PrestashopGiftCartRule } from './prestashop-gift-split';
 import type { OptionValueResolver } from '../../domain/types/prestashop-product-option.types';
 
 /**
@@ -79,6 +80,13 @@ export interface PrestashopCombination {
       | {
           product_option_value?: Array<{ id: string | number }> | { id: string | number };
         };
+    // The pictures this combination is linked to (`display=full` carries them,
+    // so reading them costs no request). XML wraps entries in `{ image }`,
+    // JSON collapses to a flat array; an empty node is `''` or `{}`.
+    images?:
+      | Array<{ id: string | number }>
+      | { image?: { id: string | number } | Array<{ id: string | number }> }
+      | string;
   };
   [key: string]: unknown;
 }
@@ -146,6 +154,8 @@ export interface PrestashopOrder {
   total_shipping?: string | number;
   /** Gross shipping as PrestaShop computed it; the counterpart of `unit_price_tax_incl`. */
   total_shipping_tax_incl?: string | number;
+  /** VAT rate the carrier charged, in percent (e.g. `'23.000'`); read, never computed. */
+  carrier_tax_rate?: string | number;
   date_add?: string;
   date_upd?: string;
   associations?: {
@@ -314,12 +324,16 @@ export interface IPrestashopOrderMapper {
    *
    * @param prestashopOrder - PrestaShop order data
    * @param orderRows - PrestaShop order rows (line items)
+   * @param giftCartRules - Gift cart rules applied to the order; each one's free
+   *   unit is split out of its line (#3937)
    * @returns OpenLinker Order (without ID or currency - see
    *   {@link MappedPrestashopOrder})
    */
   mapOrder(
     prestashopOrder: PrestashopOrder,
-    orderRows: PrestashopOrderRow[]
+    orderRows: PrestashopOrderRow[],
+    giftCartRules?: readonly PrestashopGiftCartRule[],
+    minorUnitExponent?: number
   ): MappedPrestashopOrder;
 
   /**

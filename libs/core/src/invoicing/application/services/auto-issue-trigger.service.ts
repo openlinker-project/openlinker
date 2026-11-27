@@ -39,29 +39,33 @@
  *     them, and feeds whichever decision won into the SAME dispatch pipeline
  *     below regardless of which resolver produced it.)
  *  3. Validates the resolved connection actually supports the resolved
- *     `documentKind` before dispatch (decision 7): for `'invoice'`, by asking
+ *     `documentKind` before dispatch (decision 7). First structurally: the
+ *     connection must be among the active candidates from (1) and carry the
+ *     capability the kind needs. A rule's connection is a persisted value that
+ *     can point at a connection since disabled, removed or stripped of that
+ *     capability, and that is reported as `'routed-connection-unavailable'`.
+ *     Then, for `'invoice'`, by asking
  *     the resolved `InvoicingPort` adapter's `getSupportedDocumentTypes()` —
  *     the resolver's own structural check (capability enabled) already ran,
  *     this is the DEEPER, adapter-level check. `'fiscal-receipt'` has no
  *     adapter-level discovery method yet (`FiscalizationPort` carries no
  *     `getSupportedDocumentTypes()` equivalent), so the structural check is
  *     the whole story for that kind today — documented, not silently skipped.
- *  4. Reads the winning connection's `config.invoicing.triggerModel`
- *     (`parseTriggerModel`) — reused verbatim for BOTH document kinds. The key
- *     predates the two-kind split and is historically named after invoicing
- *     only; ADR-041 decision 4 fixes the shape of `isPrimary` /
- *     `salesDocument.documentKind` but says nothing about renaming
- *     `triggerModel`, so this service treats it as "this connection's
- *     document-issuance trigger model" regardless of which kind it issues.
- *     Introducing a kind-scoped trigger-model key is a separate, out-of-scope
- *     config-shape decision.
+ *  4. Reads the winning connection's trigger model FOR THE RESOLVED KIND
+ *     (#3582, `resolveTriggerModelForKind`): `config.salesDocument.triggerModels[kind]`,
+ *     falling back to the legacy kind-agnostic `config.invoicing.triggerModel`,
+ *     then `manual`. One connection can therefore batch invoices and register
+ *     receipts at once, while an install that never set a kind-scoped value
+ *     resolves the same model for both kinds, exactly as before the split.
  *  5. Evaluates the transition against that trigger model (level-evaluated,
  *     D3, via `evaluateGate` — separating "not yet" from "not without a
  *     human", #2100): `auto-on-paid` / `auto-on-shipped` `proceed` when their
  *     condition holds and `waiting` otherwise (D6 + one-time viability log,
- *     F7); `manual` is `blocked`; `batched` throws
- *     `BatchedTriggerNotImplementedError`, mapped to a `trigger-model-batched`
- *     block by the PII-safe catch.
+ *     F7); `manual` is `blocked`; `batched` (#3583) waits until paid and is
+ *     then reported as a `trigger-model-batched` block naming its connection
+ *     and kind - the order's place in that connection's batch queue - except
+ *     inside that connection's own run (`options.batchRun`), where it proceeds
+ *     through the same enqueue as `auto-on-paid`.
  *  6. Composes the job payload from the clean in-hand `Order` and enqueues
  *     the matching job type with a deterministic key: `invoicing.issue` /
  *     `invoice:{connId}:{orderId}` for `'invoice'` (unchanged from before
@@ -84,8 +88,10 @@
  *  - `none`          — job enqueued; or the `auto-on-*` condition is simply not
  *    met yet (level-evaluated, D3 — an unpaid order is waiting, not blocked); or
  *    no sales-document candidate exists at all; or a document already exists.
- *  - `indeterminate` — a compose/enqueue error, or the unreachable
- *    vanished-connection / unimplemented-aggregate branches. The caller leaves
+ *  - `indeterminate` - a compose/enqueue error, an unreadable projection or
+ *    rule set, or the unimplemented aggregate / self-routing branches. A routed
+ *    connection that cannot issue is NOT one of these: it is a persisted
+ *    `'routed-connection-unavailable'` block. The caller leaves
  *    the persisted reason ALONE: clearing on a deterministic error would erase a
  *    true reason and put nothing in its place, which is the silent decline §54
  *    forbids.
@@ -95,8 +101,7 @@
  * `sourceEventId` (when present) — never the raw error / message / payload.
  * `error.message` is added ONLY for the allow-listed deterministic, PII-clean
  * errors (`InvalidBuyerProfileError`, `UnsupportedPriceTreatmentError`,
- * `InvalidFiscalLineError`, `UnsupportedFiscalPriceTreatmentError`,
- * `BatchedTriggerNotImplementedError`).
+ * `InvalidFiscalLineError`, `UnsupportedFiscalPriceTreatmentError`).
  *
  * ONE-WAY EDGE (F3): depends on `CONNECTION_PORT_TOKEN` (identifier-mapping),
  * `SYNC_JOBS_SERVICE_TOKEN` (sync), `INVOICE_SERVICE_TOKEN` (SAME context —
@@ -122,10 +127,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import {
+  ConnectionNotFoundException,
   ConnectionPort,
   CONNECTION_PORT_TOKEN,
 } from '@openlinker/core/identifier-mapping';
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionStatus } from '@openlinker/core/identifier-mapping';
 import {
   ISyncJobsService,
   SYNC_JOBS_SERVICE_TOKEN,
@@ -147,8 +153,13 @@ import {
 } from '@openlinker/core/integrations';
 import {
   ISalesDocumentRulesService,
+  ISalesDocumentSettingsService,
+  SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN,
+  DEFAULT_GIFT_LINE_FORM,
+  REQUIRED_CAPABILITY_BY_CORE_KIND,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
   chooseSalesDocumentDecision,
+  isCoreSalesDocumentKind,
   expandSalesDocumentRoutingCandidates,
   readSalesDocumentRouting,
 } from '@openlinker/core/sales-documents';
@@ -156,16 +167,31 @@ import type {
   SalesDocumentBlock,
   SalesDocumentBlockOutcome,
   SalesDocumentDecision,
+  SalesDocumentEnqueued,
+  SalesDocumentGateBlockReason,
+  SalesDocumentKind,
   SalesDocumentRoutingCandidate,
   SalesDocumentUnresolvedReason,
+  RoutedConnectionState,
+  SalesDocumentBlockParams,
+  SalesDocumentPoolKind,
 } from '@openlinker/core/sales-documents';
 import {
   SalesDocumentUncountedUnresolvedReasonValues,
   isTaxRateEnforced,
+  readDeliveryOnDocuments,
+  readGiftDocumentSettings,
+  BundleSplitUnknownError,
+  type BundleDocumentPresentation,
+  readZeroValueLineSupport,
+  resolveDeliveryLine,
+  shippingSplitInputs,
 } from '@openlinker/core/sales-documents';
+import type { GiftDocumentSettings, ResolvedDeliveryLine } from '@openlinker/core/sales-documents';
 import { Logger } from '@openlinker/shared/logging';
 import {
   describeMissingTaxRate,
+  missingTaxRateParams,
   findOrderTaxRateGap,
 } from '../../domain/types/order-tax-rate-gate.types';
 // Type-only NAMED import (never a wildcard — see
@@ -188,17 +214,20 @@ import type {
 import type { IAutoIssueTriggerService } from './auto-issue-trigger.service.interface';
 import type { InvoicingPort } from '../../domain/ports/invoicing.port';
 import type {
+  AutoIssueBatchRunScope,
+  AutoIssueOptions,
   InvoiceTriggerModel,
   TriggerGateOutcome,
 } from '../../domain/types/invoice-trigger.types';
 import {
   BLOCK_REASON_BY_TRIGGER_MODEL,
-  parseTriggerModel,
+  isInBatchRun,
+  resolveTriggerModelForKind,
 } from '../../domain/types/invoice-trigger.types';
 import { normalizeShippingLineName } from '../../domain/types/shipping-line-label.types';
+import { invoiceIdempotencyKey } from '../../domain/types/invoice-idempotency-key.types';
 import { toIssueInvoiceCommand } from '../mappers/order-to-issue-invoice-command.mapper';
 import { toSalesDocumentOrderFacts } from '../mappers/order-to-sales-document-order-facts.mapper';
-import { BatchedTriggerNotImplementedError } from '../../domain/exceptions/batched-trigger-not-implemented.error';
 import type {
   InvoicingIssuePayloadV1,
   FiscalizationRegisterPayloadV1,
@@ -218,6 +247,64 @@ const INVOICING_CAPABILITY = 'Invoicing';
 const FISCALIZATION_CAPABILITY = 'Fiscalization';
 
 /**
+ * Operator-facing state of a connection that is not `active`, phrased to
+ * follow "which" in the `'routed-connection-unavailable'` detail. Keyed on
+ * the full status union so a new status is a compile error here, not an
+ * unexplained raw value on an operator screen.
+ */
+const CONNECTION_STATE_PHRASE: Readonly<Record<Exclude<ConnectionStatus, 'active'>, string>> = {
+  disabled: 'is disabled',
+  error: 'is in an error state',
+  needs_reauth: 'needs to be signed in again',
+  archived: 'is archived',
+};
+
+/** The same states as codes for `SalesDocumentBlockParams.connectionState` (#3866). */
+const CONNECTION_STATE_CODE: Readonly<Record<Exclude<ConnectionStatus, 'active'>, RoutedConnectionState>> = {
+  disabled: 'disabled',
+  error: 'error',
+  needs_reauth: 'needs-reauth',
+  archived: 'archived',
+};
+
+/** Why the routed connection cannot issue: a code for the frontend and the English phrase for `detail`. */
+interface RoutedConnectionStateDescription {
+  readonly code: RoutedConnectionState;
+  readonly phrase: string;
+  readonly missingCapabilities?: readonly string[];
+}
+
+/**
+ * The capability `documentKind` needs that `connection` does not have
+ * enabled, or `null` when nothing is missing. Reads the same map the fallback
+ * resolver and the rule save-time guard read, so the three cannot disagree
+ * about which capability a kind needs. An open-world kind needs one of the
+ * two sales-document capabilities, which is all `connections` was filtered on.
+ */
+function missingRequiredCapability(
+  connection: Connection,
+  documentKind: SalesDocumentKind | null,
+): readonly string[] | null {
+  if (documentKind !== null && isCoreSalesDocumentKind(documentKind)) {
+    const required = REQUIRED_CAPABILITY_BY_CORE_KIND[documentKind];
+    return connection.enabledCapabilities.includes(required) ? null : [required];
+  }
+  const canIssueAny =
+    connection.enabledCapabilities.includes(INVOICING_CAPABILITY) ||
+    connection.enabledCapabilities.includes(FISCALIZATION_CAPABILITY);
+  // Either one would do, so both are named; the detail joins them with "or".
+  return canIssueAny ? null : [INVOICING_CAPABILITY, FISCALIZATION_CAPABILITY];
+}
+
+/** The document a routing decision names, as a noun for the block detail. */
+function describeDocumentNoun(documentKind: SalesDocumentKind | null): string {
+  if (documentKind === 'invoice') return 'invoice';
+  if (documentKind === 'fiscal-receipt') return 'receipt';
+  if (documentKind === null) return 'document';
+  return `'${documentKind}' document`;
+}
+
+/**
  * Error names whose `message` is deterministic and PII-clean (each cites only
  * `order.id` / `connectionId`), so they MAY be added to the per-connection log
  * envelope. Any other error logs `error.name` only (F9/D11).
@@ -228,8 +315,18 @@ const PII_SAFE_ERROR_NAMES: ReadonlySet<string> = new Set([
   'UnsupportedPriceTreatmentError',
   'InvalidFiscalLineError',
   'UnsupportedFiscalPriceTreatmentError',
-  'BatchedTriggerNotImplementedError',
+  'BundleSplitUnknownError',
 ]);
+
+/** `none`, carrying what was enqueued (#3583) and the routing rule as before (#3186). */
+function withEnqueued(
+  matchedRuleId: string | undefined,
+  enqueued: SalesDocumentEnqueued,
+): SalesDocumentBlockOutcome {
+  return matchedRuleId !== undefined
+    ? { kind: 'none', matchedRuleId, enqueued }
+    : { kind: 'none', enqueued };
+}
 
 @Injectable()
 export class AutoIssueTriggerService implements IAutoIssueTriggerService {
@@ -299,6 +396,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // one-way edge above.
     @Inject(SALES_DOCUMENT_RULES_SERVICE_TOKEN)
     private readonly salesDocumentRules: ISalesDocumentRulesService,
+    // #3941: the OpenLinker-wide gift form, the lowest of the three levels.
+    @Inject(SALES_DOCUMENT_SETTINGS_SERVICE_TOKEN)
+    private readonly salesDocumentSettings: ISalesDocumentSettingsService,
     // Resolved lazily via `resolveFiscalRegistrationService` (review finding
     // 6) — never a constructor-typed `IFiscalRegistrationService`, which
     // would require `FiscalizationModule` and close the
@@ -390,16 +490,22 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     matchedRuleId?: string,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
+      // `alreadyDocumented` (#3583) tells a batch run WHY nothing happened, so
+      // it records "already has a document" instead of a silent skip.
       const existing = await this.invoices.getLatestInvoiceForOrder(orderId);
       if (existing !== null && existing.blocksIssuanceElsewhere) {
-        return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
+        return matchedRuleId !== undefined
+          ? { kind: 'none', matchedRuleId, alreadyDocumented: true }
+          : { kind: 'none', alreadyDocumented: true };
       }
 
       const fiscalRegistrationService = this.resolveFiscalRegistrationService();
       if (fiscalRegistrationService !== null) {
         const registrations = await fiscalRegistrationService.getByOrderId(orderId);
         if (registrations.some((record) => record.blocksFurtherRegistration)) {
-          return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
+          return matchedRuleId !== undefined
+            ? { kind: 'none', matchedRuleId, alreadyDocumented: true }
+            : { kind: 'none', alreadyDocumented: true };
         }
       }
     } catch (error) {
@@ -422,7 +528,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
+    options?: AutoIssueOptions,
   ): Promise<SalesDocumentBlockOutcome> {
+    const batchRun = options?.batchRun;
     // D8: only ACTIVE connections receive issuance jobs. The scheduler's
     // `status: 'active'` filter already excludes disabled/error/needs_reauth
     // connections. #2156: a candidate needs EITHER capability, not just
@@ -437,11 +546,20 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     );
 
     if (connections.length === 0) {
-      // NOT a block: no connection can issue a sales document at all, so there
-      // is nothing for an operator to unblock on THIS order. Reporting a
-      // reason here would badge every order on an install that simply does
-      // not do invoicing or fiscalization.
-      return { kind: 'none' };
+      // Usually NOT a block: no connection can issue a sales document at all,
+      // so there is nothing for an operator to unblock on THIS order, and
+      // reporting a reason would badge every order on an install that simply
+      // does not do invoicing or fiscalization. The one exception is a rule
+      // that still routes this order somewhere - see the method.
+      //
+      // Cost, for a profiler reader: this adds ONE rule-engine read per order
+      // transition on an install with no capable connection (four
+      // country-scoped lookups run in parallel, sized by the operator's own
+      // rule count rather than by order volume), and none for an order with
+      // no delivery country. Accepted because the rules are the only place
+      // that can say this order should still get a document, and skipping the
+      // read would bring back the silent decline ADR-041 §54 forbids.
+      return this.reportWhenNothingCanIssue(order, sourceEventId);
     }
 
     // `selfRoutesDocumentKind` is hardcoded `false`: per #2158's own doc
@@ -523,6 +641,8 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           sourceEventId,
           taxRateEra,
           buyerTaxId,
+          bundleDocument,
+          batchRun,
         );
     }
   }
@@ -622,9 +742,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // PII-free detail: a count and the neutral routing reason only. It reaches
     // an operator screen verbatim, so it must never carry buyer data.
     const detail = this.describeUnresolvedDetail(reason, eligible, candidates);
+    const params = this.describeUnresolvedParams(reason, eligible, candidates);
 
     return this.reportBlock(
-      { reason: 'unresolved-routing', unresolvedReason: reason, detail },
+      { reason: 'unresolved-routing', unresolvedReason: reason, detail, params },
       order.id,
     );
   }
@@ -664,6 +785,40 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   }
 
   /**
+   * The values {@link describeUnresolvedDetail} states, for the frontend to
+   * phrase in the operator's language (#3866). Same counts, same pool.
+   */
+  private describeUnresolvedParams(
+    reason: SalesDocumentUnresolvedReason,
+    eligible: readonly SalesDocumentRoutingCandidate[],
+    candidates: readonly SalesDocumentRoutingCandidate[],
+  ): SalesDocumentBlockParams {
+    if (reason === 'no-connection-declares-document-kind') {
+      return { candidateCount: candidates.length };
+    }
+    if (reason === 'ambiguous-connection-no-primary') {
+      return {
+        eligibleCount: eligible.length,
+        primaryCount: eligible.filter((candidate) => candidate.isPrimary).length,
+        poolKind: this.describeEligiblePoolKind(eligible),
+      };
+    }
+    return { eligibleCount: eligible.length };
+  }
+
+  /** {@link describeEligiblePoolNoun} as a code. */
+  private describeEligiblePoolKind(
+    eligible: readonly SalesDocumentRoutingCandidate[],
+  ): SalesDocumentPoolKind {
+    const kinds = new Set(eligible.map((candidate) => candidate.documentKind));
+    if (kinds.size === 1) {
+      const [kind] = kinds;
+      if (kind === 'invoice' || kind === 'fiscal-receipt') return kind;
+    }
+    return 'mixed';
+  }
+
+  /**
    * Kind-derived noun for {@link describeUnresolvedDetail}'s "N {noun}, …"
    * phrasing: `'invoicing connections'` when every eligible candidate resolves
    * `'invoice'` (unchanged from the pre-#2156 gate), `'fiscal-registration
@@ -681,8 +836,149 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   }
 
   /**
-   * Dispatch a resolved `route` decision: validate the resolved connection
-   * still exists in the candidate list, then branch on `documentKind`.
+   * The zero-candidate exit. An install with no active connection able to issue
+   * gets `none`, exactly as before - unless the rule engine still routes this
+   * order to a connection. That happens when the operator disabled (or
+   * removed, or stripped the capability from) the only connection their rules
+   * name: the rules still say these orders get a document, and none ever will,
+   * which is the silent decline ADR-041 §54 forbids. Only a `route` answer
+   * counts here; every other answer keeps the old `none`, because with nothing
+   * able to issue there is no other routing outcome an operator could act on.
+   *
+   * Costs one rule-engine read per transition on such an install, and none on
+   * an order without a delivery country (no facts, so nothing to evaluate).
+   */
+  private async reportWhenNothingCanIssue(
+    order: Order,
+    sourceEventId?: string,
+  ): Promise<SalesDocumentBlockOutcome> {
+    const orderFacts = toSalesDocumentOrderFacts(order);
+    if (orderFacts === null) {
+      return { kind: 'none' };
+    }
+
+    let ruleDecision: SalesDocumentDecision;
+    try {
+      ruleDecision = await this.salesDocumentRules.resolveRouting(orderFacts);
+    } catch (error) {
+      // Leave any persisted reason alone: a failed read cannot tell us the
+      // rule that produced it has gone, so clearing it would be a guess.
+      const name = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Could not read sales-document rules while no connection can issue; leaving the ` +
+          `persisted reason untouched: error=${name} orderId=${order.id}`,
+      );
+      return { kind: 'indeterminate' };
+    }
+
+    if (ruleDecision.kind !== 'route') {
+      return { kind: 'none' };
+    }
+    return this.reportRoutedConnectionUnavailable(ruleDecision, order, sourceEventId);
+  }
+
+  /**
+   * Report `'routed-connection-unavailable'`: routing named a connection that
+   * cannot issue the decided kind. `candidate` is the connection when it is
+   * active and capable of SOME sales document but not this one; when it is
+   * absent from the active candidates altogether it is read back so the detail
+   * can say why (disabled, gone, missing the capability).
+   *
+   * The block itself does not depend on that read: the connection is already
+   * known not to be able to issue, so a failed read only makes the detail
+   * vaguer. The detail carries ids and connection state only - it reaches an
+   * operator screen verbatim.
+   */
+  private async reportRoutedConnectionUnavailable(
+    decision: Extract<SalesDocumentDecision, { kind: 'route' }>,
+    order: Order,
+    sourceEventId?: string,
+    candidate?: Connection,
+  ): Promise<SalesDocumentBlockOutcome> {
+    const described = await this.describeRoutedConnectionState(decision, candidate);
+    const state = described.phrase;
+    const router =
+      decision.ruleId !== undefined ? `Rule ${decision.ruleId} routes` : 'Routing sends';
+    const detail =
+      `${router} this order's ${describeDocumentNoun(decision.documentKind)} to connection ` +
+      `${decision.connectionId}, which ${state}`;
+    const params: SalesDocumentBlockParams = {
+      connectionId: decision.connectionId,
+      connectionState: described.code,
+      ...(decision.ruleId !== undefined ? { ruleId: decision.ruleId } : {}),
+      ...(decision.documentKind !== null ? { documentKind: decision.documentKind } : {}),
+      ...(described.missingCapabilities ? { missingCapabilities: described.missingCapabilities } : {}),
+    };
+
+    this.logger.error(
+      `Auto-issue skipped: sales-document routing names connection ${decision.connectionId}, ` +
+        `which ${state}; issuing nothing. Enable it or point the rule at another connection. ` +
+        `orderId=${order.id} ruleId=${decision.ruleId ?? 'n/a'} ` +
+        `sourceEventId=${sourceEventId ?? 'n/a'}`,
+    );
+
+    return this.reportBlock(
+      {
+        reason: 'unresolved-routing',
+        unresolvedReason: 'routed-connection-unavailable',
+        detail,
+        params,
+      },
+      order.id,
+      decision.ruleId,
+    );
+  }
+
+  /**
+   * Why the routed connection cannot issue: a code, and the English phrase
+   * (to follow "which") that `detail` and the log carry.
+   */
+  private async describeRoutedConnectionState(
+    decision: Extract<SalesDocumentDecision, { kind: 'route' }>,
+    candidate?: Connection,
+  ): Promise<RoutedConnectionStateDescription> {
+    let connection: Connection | undefined = candidate;
+    if (connection === undefined) {
+      try {
+        connection = await this.connectionPort.get(decision.connectionId);
+      } catch (error) {
+        if (error instanceof ConnectionNotFoundException) {
+          return { code: 'not-found', phrase: 'no longer exists' };
+        }
+        return { code: 'unreadable', phrase: 'is not an active connection that can issue it' };
+      }
+    }
+
+    if (connection.status !== 'active') {
+      return {
+        code: CONNECTION_STATE_CODE[connection.status],
+        phrase: CONNECTION_STATE_PHRASE[connection.status],
+      };
+    }
+    const missing = missingRequiredCapability(connection, decision.documentKind);
+    if (missing !== null) {
+      return {
+        code: 'missing-capability',
+        phrase: `does not have ${missing.join(' or ')} enabled`,
+        missingCapabilities: missing,
+      };
+    }
+    // Active and capable on a re-read, yet absent from the list read moments
+    // earlier: the connection changed in between. The block is still the truth
+    // for this evaluation, and the next transition re-decides.
+    return { code: 'changed', phrase: 'was not available when this order was checked' };
+  }
+
+  /**
+   * Dispatch a resolved `route` decision: confirm the routed connection can
+   * issue the decided kind right now, then branch on `documentKind`.
+   *
+   * The confirmation is not defensive. The fallback resolver only ever picks
+   * from `connections`, but since #2173 the rule engine is consulted first, and
+   * a rule's (or a country default's) `connectionId` is a persisted value. It
+   * was checked against the connection when the rule was saved and is never
+   * re-checked, so a connection disabled, removed or stripped of a capability
+   * after that keeps receiving orders here.
    */
   private async dispatchRoute(
     decision: Extract<SalesDocumentDecision, { kind: 'route' }>,
@@ -693,21 +989,15 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
+    batchRun?: AutoIssueBatchRunScope,
   ): Promise<SalesDocumentBlockOutcome> {
     const connection = connections.find((candidate) => candidate.id === decision.connectionId);
-    if (connection === undefined) {
-      // Unreachable: `decision.connectionId` is always an id this method just
-      // read out of `connections`. Logged rather than returned silently
-      // because this method's whole contract is "at most one job, and never
-      // quietly none" — a silent return here would be indistinguishable from
-      // a legitimate skip while actually being a defect.
-      this.logger.error(
-        `Auto-issue skipped: selected connection ${decision.connectionId} vanished from the ` +
-          `candidate list it was chosen from. orderId=${order.id} sourceEventId=${sourceEventId ?? 'n/a'}`,
-      );
-      // NOT a block, and NOT a clear either: this is a defect, so neither naming a
-      // reason the operator cannot act on nor erasing one they can is right.
-      return { kind: 'indeterminate' };
+    if (
+      connection === undefined ||
+      missingRequiredCapability(connection, decision.documentKind) !== null
+    ) {
+      return this.reportRoutedConnectionUnavailable(decision, order, sourceEventId, connection);
     }
 
     if (decision.documentKind === null) {
@@ -735,6 +1025,8 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         decision.ruleId,
         buyerTaxId,
+        bundleDocument,
+        batchRun,
       );
     }
     if (decision.documentKind === 'fiscal-receipt') {
@@ -747,6 +1039,8 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         taxRateEra,
         decision.ruleId,
         buyerTaxId,
+        bundleDocument,
+        batchRun,
       );
     }
 
@@ -766,6 +1060,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         reason: 'unresolved-routing',
         unresolvedReason: 'unsupported-document-kind-on-connection',
         detail: `connection ${connection.id} resolved to unrecognized kind '${decision.documentKind}'`,
+        params: {
+          connectionId: connection.id,
+          ...(decision.documentKind !== null ? { documentKind: decision.documentKind } : {}),
+        },
       },
       order.id,
       decision.ruleId,
@@ -787,8 +1085,12 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     matchedRuleId?: string,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
+    batchRun?: AutoIssueBatchRunScope,
   ): Promise<SalesDocumentBlockOutcome> {
-    const supported = await this.connectionSupportsInvoiceDocumentType(connection.id);
+    const { supported, acceptsZeroValueLine } = await this.connectionSupportsInvoiceDocumentType(
+      connection.id,
+    );
     if (!supported) {
       this.logger.error(
         `Auto-issue skipped: connection ${connection.id} is routed for 'invoice' but its adapter ` +
@@ -800,6 +1102,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           reason: 'unresolved-routing',
           unresolvedReason: 'unsupported-document-kind-on-connection',
           detail: `connection ${connection.id} does not list 'invoice' in getSupportedDocumentTypes()`,
+          params: { connectionId: connection.id, documentKind: 'invoice' },
         },
         order.id,
         matchedRuleId,
@@ -811,8 +1114,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // swallows too, but defense in depth here keeps an invoicing fault from
     // surfacing as an order-ingestion failure).
     try {
-      const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
-      this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
+      // #3582: the model for THIS kind, falling back to the legacy key.
+      const triggerModel = resolveTriggerModelForKind(connection.config, 'invoice').model;
+      this.warnOnceIfManualWinnerDisablesInstall(
+        triggerModel,
+        connection.id,
+        eligibleCount,
+        'invoice',
+      );
 
       // #2248 (ADR-063 § 6): a line with no tax rate is checked BEFORE the
       // trigger-model gate, and deliberately so. On a `manual` connection both
@@ -833,20 +1142,35 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // passed an items-only scan, enqueued, composed a blank-rate shipping line
       // and then threw on every attempt with no reason persisted anywhere - the
       // silent decline ADR-041 §54 forbids.
+      // The source connection is loaded BEFORE the gate (#3905): its
+      // `deliveryOnDocuments` decides whether the shipping needs a rate split
+      // at all, and the gate must ask the question the composer will.
+      const sourceConnection = await this.loadSourceConnection(sourceConnectionId);
+      const deliveryLine = this.resolveDeliveryLineFor(order, sourceConnection, connection);
       if (isTaxRateEnforced(taxRateEra)) {
+        // GROSS inputs, the same ones both mappers split by (#3905). The gate
+        // used to weigh by net `price` and `totals.shipping`, so on a
+        // net-priced source it judged a split the issued document did not hold.
+        const splitInputs = shippingSplitInputs(order);
         const missingRate = findOrderTaxRateGap(
-          order.items.map((item) => ({
+          order.items.map((item, index) => ({
             productId: item.productId,
             taxRate: item.taxRate,
-            gross: item.price * item.quantity,
+            gross: splitInputs.lines[index].gross,
           })),
-          order.totals.shipping,
+          splitInputs.shipping,
+          {
+            minorUnitExponent: splitInputs.exponent,
+            skipShippingSplit: deliveryLine.rate !== 'goods',
+            sourceShippingTaxRate: order.totals.shippingTaxRate,
+          },
         );
         if (missingRate) {
           return await this.reportBlock(
             {
               reason: 'missing-tax-rate',
               detail: describeMissingTaxRate(missingRate),
+              params: missingTaxRateParams(missingRate),
             },
             order.id,
             matchedRuleId,
@@ -854,21 +1178,30 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         }
       }
 
-      const gate = this.evaluateGate(order, triggerModel, connection.id);
+      const gate = this.evaluateGate(
+        order,
+        triggerModel,
+        connection.id,
+        isInBatchRun(batchRun, connection.id, 'invoice'),
+      );
       if (gate.kind === 'waiting') {
         return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
       }
       if (gate.kind === 'blocked') {
-        return await this.reportBlock({ reason: gate.reason }, order.id, matchedRuleId);
+        return await this.reportBlock(
+          this.blockFromGate(gate.reason, connection.id, 'invoice'),
+          order.id,
+          matchedRuleId,
+        );
       }
 
       // F4: compose the deterministic key ONCE and thread it into BOTH the
       // job-row idempotencyKey AND payload.idempotencyKey.
-      const idempotencyKey = `invoice:${connection.id}:${order.id}`;
+      const idempotencyKey = invoiceIdempotencyKey(connection.id, order.id);
       // #1694: resolve the source connection's neutral platformType for the
       // per-source numbering axis. Best-effort — a lookup failure leaves it
       // absent (routing falls back past the source axis), never aborting issuance.
-      const sourcePlatformType = await this.resolveSourcePlatformType(sourceConnectionId);
+      const sourcePlatformType = this.platformTypeOf(sourceConnection);
       const payload = this.composeInvoicePayload(
         order,
         connection.id,
@@ -880,6 +1213,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourcePlatformType,
         taxRateEra,
         buyerTaxId,
+        deliveryLine,
+        await this.resolveGiftDocumentSettings(sourceConnection?.config),
+        acceptsZeroValueLine,
+        bundleDocument,
       );
 
       await this.syncJobs.schedule({
@@ -896,15 +1233,16 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // (#3186) rides along here too, level-triggered exactly like the block
       // reason: it is what lets "Why this kind?" name the rule that decided
       // this order's document, once one issues.
-      return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
+      return withEnqueued(matchedRuleId, {
+        connectionId: connection.id,
+        documentKind: 'invoice',
+        idempotencyKey,
+      });
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
-      if (error instanceof BatchedTriggerNotImplementedError) {
-        // The one error that IS an operator-visible block rather than a fault:
-        // OpenLinker cannot group this order into a batch yet, and no retry will
-        // change that until the feature ships or the operator picks another model.
+      if (error instanceof BundleSplitUnknownError) {
         return await this.reportBlock(
-          { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
+          { reason: 'bundle-split-unknown', detail: describeLineTotalMismatch(error) },
           order.id,
           matchedRuleId,
         );
@@ -957,13 +1295,19 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     taxRateEra?: string | null,
     matchedRuleId?: string,
     buyerTaxId?: string | null,
+    bundleDocument?: BundleDocumentPresentation,
+    batchRun?: AutoIssueBatchRunScope,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
-      // Reused verbatim from `config.invoicing.triggerModel` — see the
-      // file-level docstring point 4 for why this is deliberate, not an
-      // oversight.
-      const triggerModel = parseTriggerModel(connection.config.invoicing?.triggerModel);
-      this.warnOnceIfManualWinnerDisablesInstall(triggerModel, connection.id, eligibleCount);
+      // #3582: the receipt's own model, so a connection may batch invoices and
+      // still register receipts at once - see file-level docstring point 4.
+      const triggerModel = resolveTriggerModelForKind(connection.config, 'fiscal-receipt').model;
+      this.warnOnceIfManualWinnerDisablesInstall(
+        triggerModel,
+        connection.id,
+        eligibleCount,
+        'fiscal-receipt',
+      );
 
       // The same tax-rate gate `dispatchInvoice` runs, in the same position
       // (#2252). A receipt is not an invoice, but the reason an operator needs
@@ -972,20 +1316,35 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       // could only fail, and persisted no reason for it, which is the silent
       // decline ADR-041 §54 forbids. The persisted reason columns are
       // document-kind-agnostic, so nothing else has to change to render it.
+      // The source connection is loaded BEFORE the gate (#3905): its
+      // `deliveryOnDocuments` decides whether the shipping needs a rate split
+      // at all, and the gate must ask the question the composer will.
+      const sourceConnection = await this.loadSourceConnection(sourceConnectionId);
+      const deliveryLine = this.resolveDeliveryLineFor(order, sourceConnection, connection);
       if (isTaxRateEnforced(taxRateEra)) {
+        // GROSS inputs, the same ones both mappers split by (#3905). The gate
+        // used to weigh by net `price` and `totals.shipping`, so on a
+        // net-priced source it judged a split the issued document did not hold.
+        const splitInputs = shippingSplitInputs(order);
         const missingRate = findOrderTaxRateGap(
-          order.items.map((item) => ({
+          order.items.map((item, index) => ({
             productId: item.productId,
             taxRate: item.taxRate,
-            gross: item.price * item.quantity,
+            gross: splitInputs.lines[index].gross,
           })),
-          order.totals.shipping,
+          splitInputs.shipping,
+          {
+            minorUnitExponent: splitInputs.exponent,
+            skipShippingSplit: deliveryLine.rate !== 'goods',
+            sourceShippingTaxRate: order.totals.shippingTaxRate,
+          },
         );
         if (missingRate) {
           return await this.reportBlock(
             {
               reason: 'missing-tax-rate',
               detail: describeMissingTaxRate(missingRate),
+              params: missingTaxRateParams(missingRate),
             },
             order.id,
             matchedRuleId,
@@ -993,12 +1352,21 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         }
       }
 
-      const gate = this.evaluateGate(order, triggerModel, connection.id);
+      const gate = this.evaluateGate(
+        order,
+        triggerModel,
+        connection.id,
+        isInBatchRun(batchRun, connection.id, 'fiscal-receipt'),
+      );
       if (gate.kind === 'waiting') {
         return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
       }
       if (gate.kind === 'blocked') {
-        return await this.reportBlock({ reason: gate.reason }, order.id, matchedRuleId);
+        return await this.reportBlock(
+          this.blockFromGate(gate.reason, connection.id, 'fiscal-receipt'),
+          order.id,
+          matchedRuleId,
+        );
       }
 
       // ONE definition of the key, shared with every other caller that asks for
@@ -1015,6 +1383,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceEventId,
         taxRateEra,
         buyerTaxId,
+        deliveryLine,
+        await this.resolveGiftDocumentSettings(sourceConnection?.config),
+        await this.readFiscalZeroValueLineSupport(connection.id),
+        bundleDocument,
       );
 
       await this.syncJobs.schedule({
@@ -1026,12 +1398,16 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         runAfter: new Date(),
       });
       // Same level-triggered `matchedRuleId` (#3186) as `dispatchInvoice`.
-      return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
+      return withEnqueued(matchedRuleId, {
+        connectionId: connection.id,
+        documentKind: 'fiscal-receipt',
+        idempotencyKey,
+      });
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
-      if (error instanceof BatchedTriggerNotImplementedError) {
+      if (error instanceof BundleSplitUnknownError) {
         return await this.reportBlock(
-          { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
+          { reason: 'bundle-split-unknown', detail: describeLineTotalMismatch(error) },
           order.id,
           matchedRuleId,
         );
@@ -1056,19 +1432,48 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   }
 
   /**
+   * The Fiscalization adapter's zero-value line declaration (#3930), so a
+   * receipt is composed the way the manual route composes it. A resolution
+   * failure is logged and answers `undefined`; it never blocks the receipt.
+   */
+  private async readFiscalZeroValueLineSupport(connectionId: string): Promise<boolean | undefined> {
+    try {
+      return readZeroValueLineSupport(
+        await this.integrations.getCapabilityAdapter<unknown>(
+          connectionId,
+          FISCALIZATION_CAPABILITY,
+        ),
+      );
+    } catch (error) {
+      const name = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Could not resolve connection ${connectionId}'s Fiscalization adapter for its zero-value ` +
+          `line declaration (error=${name}); a gift is composed as if undeclared.`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
    * Decision-7 deeper check for the `'invoice'` kind: resolve the connection's
    * `InvoicingPort` adapter and ask its value-level
    * `getSupportedDocumentTypes()` whether `'invoice'` is among them. Fails
    * CLOSED (returns `false`) on any adapter-resolution error — a connection
    * this gate cannot even resolve is not one it should dispatch to.
    */
-  private async connectionSupportsInvoiceDocumentType(connectionId: string): Promise<boolean> {
+  private async connectionSupportsInvoiceDocumentType(
+    connectionId: string,
+  ): Promise<{ supported: boolean; acceptsZeroValueLine?: boolean }> {
     try {
       const adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
         connectionId,
         INVOICING_CAPABILITY,
       );
-      return adapter.getSupportedDocumentTypes().includes('invoice');
+      // The zero-line declaration rides on the adapter already in hand (#3930).
+      return {
+        supported: adapter.getSupportedDocumentTypes().includes('invoice'),
+        acceptsZeroValueLine: readZeroValueLineSupport(adapter),
+      };
     } catch (error) {
       const name = error instanceof Error ? error.name : 'UnknownError';
       this.logger.warn(
@@ -1076,7 +1481,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           `support (error=${name}); skipping this issuance rather than risk dispatching to an ` +
           `unresolvable adapter.`,
       );
-      return false;
+      return { supported: false };
     }
   }
 
@@ -1094,17 +1499,21 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     triggerModel: InvoiceTriggerModel,
     connectionId: string,
     eligibleCount: number,
+    documentKind: SalesDocumentKind,
   ): void {
     if (triggerModel !== 'manual' || eligibleCount < 2) {
       return;
     }
-    if (this.manualWinnerWarned.has(connectionId)) {
+    // Keyed per kind (#3582): a 'both' connection may be manual for one kind only.
+    const warnKey = `${connectionId}:${documentKind}`;
+    if (this.manualWinnerWarned.has(warnKey)) {
       return;
     }
-    this.manualWinnerWarned.add(connectionId);
+    this.manualWinnerWarned.add(warnKey);
     this.logger.warn(
-      `Winning sales-document connection ${connectionId} has triggerModel=manual, so NO ` +
-        `connection auto-issues on this install (${eligibleCount} candidates). Routing resolves ` +
+      `Winning sales-document connection ${connectionId} has triggerModel=manual for ` +
+        `'${documentKind}', so NO connection auto-issues that kind on this install ` +
+        `(${eligibleCount} candidates). Routing resolves ` +
         `the winner before the trigger model is read — a sibling candidate set to auto-on-paid is ` +
         `deliberately not consulted. Set the primary on the connection that should auto-issue, or ` +
         `leave this one the winner if manual issuing is intended.`,
@@ -1138,9 +1547,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
    * Decide whether the trigger model qualifies for THIS transition
    * (level-evaluated, D3), separating "not yet" from "not without a human"
    * (#2100): `auto-on-paid` / `auto-on-shipped` `proceed` when their condition
-   * holds and `waiting` otherwise; `manual` is `blocked`; `batched` throws
-   * `BatchedTriggerNotImplementedError`, which the caller's PII-safe catch maps to
-   * a `trigger-model-batched` block. For `auto-on-shipped` on a non-shipped order
+   * holds and `waiting` otherwise; `manual` is `blocked`; `batched` (#3583)
+   * waits until paid, then is `blocked` as `trigger-model-batched` (the order is
+   * queued for its connection's next run) unless this call IS that run, where it
+   * proceeds. For `auto-on-shipped` on a non-shipped order
    * it emits the F7/D6 one-time viability warning (keyed by `connectionId`) so a
    * source that never surfaces `'shipped'` is operator-diagnosable. Reused
    * verbatim for BOTH document kinds (#2156) — the trigger-model vocabulary is
@@ -1150,6 +1560,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     order: Order,
     triggerModel: InvoiceTriggerModel,
     connectionId: string,
+    inBatchRun = false,
   ): TriggerGateOutcome {
     switch (triggerModel) {
       case 'auto-on-paid': {
@@ -1214,13 +1625,36 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         // "Issue invoice" affordance rather than in place of it).
         return { kind: 'blocked', reason: BLOCK_REASON_BY_TRIGGER_MODEL.manual };
       case 'batched':
-        // Deferred to a future issue — rejected cleanly, never silently ignored.
-        // Still thrown rather than returned so the existing PII-safe catch keeps
-        // logging it; the catch maps it to `trigger-model-batched`.
-        throw new BatchedTriggerNotImplementedError(
-          `Batched trigger model is not implemented (order ${order.id})`,
-        );
+        // #3583. Batching changes WHEN a document is issued, never whether the
+        // order qualifies: it qualifies when paid, exactly as `auto-on-paid`
+        // (M15 note 11), so an unpaid order is only `waiting` and is never queued.
+        if (order.paymentStatus !== PAYMENT_STATUS.Paid) {
+          return { kind: 'waiting' };
+        }
+        // Inside this connection's own run the order goes out through the SAME
+        // enqueue and the SAME idempotency key as an auto-issued one. Anywhere
+        // else it is queued: a `blocked` carrying the batched reason, which the
+        // attention count deliberately leaves out and which the caller persists
+        // with its target so the run can find it.
+        return inBatchRun
+          ? { kind: 'proceed' }
+          : { kind: 'blocked', reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched };
     }
+  }
+
+  /**
+   * The block to report for a trigger-model gate outcome. A batched block names
+   * the connection and kind it is queued for (#3583); the other reasons stay as
+   * they were, so nothing new is persisted for them.
+   */
+  private blockFromGate(
+    reason: SalesDocumentGateBlockReason,
+    connectionId: string,
+    documentKind: SalesDocumentKind,
+  ): SalesDocumentBlock {
+    return reason === BLOCK_REASON_BY_TRIGGER_MODEL.batched
+      ? { reason, connectionId, documentKind }
+      : { reason };
   }
 
   /**
@@ -1240,6 +1674,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourcePlatformType?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    deliveryLine?: ResolvedDeliveryLine,
+    giftSettings?: GiftDocumentSettings,
+    acceptsZeroValueLine?: boolean,
+    bundleDocument?: BundleDocumentPresentation,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
@@ -1275,6 +1713,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       connectionId: invoicingConnectionId,
       idempotencyKey,
       shippingLineName,
+      deliveryLine,
+      ...giftSettings,
+      acceptsZeroValueLine,
+      bundleDocument,
       taxRateEra,
       buyerTaxId: buyerTaxNumber.length > 0 ? { value: buyerTaxNumber } : null,
     });
@@ -1293,6 +1735,12 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         address: command.buyer.address,
         type: command.buyer.type,
         email: command.buyer.email,
+        ...(command.buyer.isPublicSectorEntity !== undefined
+          ? { isPublicSectorEntity: command.buyer.isPublicSectorEntity }
+          : {}),
+        ...(command.buyer.isTaxGroupMember !== undefined
+          ? { isTaxGroupMember: command.buyer.isTaxGroupMember }
+          : {}),
       },
       sourceConnectionId,
       trigger: triggerModel,
@@ -1309,6 +1757,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // date and the auto-issued document loses its P_6 counterpart.
     if (command.saleDate !== undefined) {
       payload.saleDate = command.saleDate;
+    }
+    if (command.saleInstant !== undefined) {
+      payload.saleInstant = command.saleInstant.toISOString();
     }
     if (sourceEventId !== undefined) {
       payload.sourceEventId = sourceEventId;
@@ -1357,6 +1808,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     buyerTaxId?: string | null,
+    deliveryLine?: ResolvedDeliveryLine,
+    giftSettings?: GiftDocumentSettings,
+    acceptsZeroValueLine?: boolean,
+    bundleDocument?: BundleDocumentPresentation,
   ): FiscalizationRegisterPayloadV1 {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
     const fiscalization = require('@openlinker/core/fiscalization') as {
@@ -1369,6 +1824,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       connectionId: connection.id,
       idempotencyKey,
       shippingLineName: this.readShippingLineName(connection),
+      deliveryLine,
+      ...giftSettings,
+      acceptsZeroValueLine,
+      bundleDocument,
       taxRateEra,
       // #3187, ADR-073 decision 1 — the persisted three-state column; the
       // mapper decodes it and stamps the command only when there is a real
@@ -1407,27 +1866,70 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   }
 
   /**
-   * Resolve the source connection's neutral `platformType` for the per-source
-   * numbering axis (#1694). Best-effort: any lookup failure returns `undefined`
-   * (the source axis is simply not applied) rather than breaking issuance — the
-   * downstream numbering resolution degrades gracefully past a missing source.
+   * Load the order-source connection once (#1694, #3905). Best-effort: a lookup
+   * failure returns `null` and the callers degrade - no per-source numbering
+   * axis, and the delivery line falls back to the legacy name - rather than
+   * breaking issuance.
    */
-  private async resolveSourcePlatformType(
-    sourceConnectionId: string,
-  ): Promise<string | undefined> {
+  private async loadSourceConnection(sourceConnectionId: string): Promise<Connection | null> {
     try {
-      const connection = await this.connectionPort.get(sourceConnectionId);
-      const platformType = connection.platformType.trim();
-      return platformType.length > 0 ? platformType : undefined;
+      // A port that answers with nothing is the same as no connection, never a
+      // value to dereference.
+      return (await this.connectionPort.get(sourceConnectionId)) ?? null;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.debug(
-        `Source platformType lookup failed for connection ${sourceConnectionId}; ` +
-          `per-source numbering axis not applied: ${message}`,
+        `Source connection lookup failed for connection ${sourceConnectionId}; ` +
+          `per-source numbering axis and delivery settings not applied: ${message}`,
       );
-      return undefined;
+      return null;
     }
   }
+
+  /**
+   * The connection override plus the OpenLinker-wide default (#3941). A failed
+   * read of the default falls back to the code default: it must never break an
+   * issuance.
+   */
+  private async resolveGiftDocumentSettings(config: unknown): Promise<GiftDocumentSettings> {
+    try {
+      const { form, unitPrice } = await this.salesDocumentSettings.getGiftDocumentForm();
+      return readGiftDocumentSettings(config, form, unitPrice);
+    } catch (error) {
+      this.logger.warn(
+        `Gift default lookup failed; the code default form applies, which may differ from the ` +
+          `operator's saved setting: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return readGiftDocumentSettings(config, DEFAULT_GIFT_LINE_FORM);
+    }
+  }
+
+  /** The source connection's neutral `platformType` for the numbering axis (#1694). */
+  private platformTypeOf(sourceConnection: Connection | null): string | undefined {
+    const platformType = sourceConnection?.platformType.trim();
+    return platformType !== undefined && platformType.length > 0 ? platformType : undefined;
+  }
+
+  /**
+   * Resolve the delivery line for this order (#3905, ADR-082): the source
+   * connection's per-country settings, then the invoicing connection's legacy
+   * name, then the neutral default.
+   */
+  private resolveDeliveryLineFor(
+    order: Order,
+    sourceConnection: Connection | null,
+    invoicingConnection: Connection,
+  ): ResolvedDeliveryLine {
+    return resolveDeliveryLine(
+      sourceConnection !== null ? readDeliveryOnDocuments(sourceConnection.config) : null,
+      {
+        countryIso2: order.shippingAddress?.country,
+        methodId: order.shipping?.methodId,
+        legacyName: this.readShippingLineName(invoicingConnection),
+      },
+    );
+  }
+
 }
 
 /**

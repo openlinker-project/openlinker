@@ -43,10 +43,27 @@
  * ordinary retry ladder (`maxAttempts`, then dead) rather than staling the
  * catalogue, which is the failure this classification exists to avoid.
  *
+ * Deferred penalty-free (`getRetryDeferral`, #2613), still retryable:
+ *   - `429` - the shop throttled us. Shoper's limit is per SHOP and shared by
+ *     every integration on it, so a 429 is often somebody else's traffic, not
+ *     this job's fault; spending attempts on it moved live work to `dead`
+ *     during an unrelated burst. Shoper's 429 is an HTML page with no
+ *     `Retry-After` (measured), so the wait is ours: 60 s.
+ *   - `503` - the shop is unavailable (maintenance); 300 s, since a
+ *     maintenance window is measured in minutes.
+ *   Same delays and floor as the PrestaShop classifier. The runner bounds the
+ *   cumulative deferral (`OL_JOB_MAX_DEFERRED_WAIT_SECONDS`), after which the
+ *   job rejoins the ordinary ladder.
+ *
+ * The deferral looks through `Error.cause` (bounded depth): an adapter may
+ * wrap the transport failure in its own exception (`ShoperPartialOrderException`
+ * carries one), and the throttle is still the reason that job failed. A
+ * terminal wrapper never reaches this: the runner asks `isNonRetryable` first.
+ *
  * @module libs/integrations/shoper/src/infrastructure/adapters
  * @implements {RetryClassifierPort}
  */
-import type { RetryClassifierPort } from '@openlinker/core/sync';
+import type { RetryClassifierPort, RetryDeferral } from '@openlinker/core/sync';
 
 import { ShoperApiError } from '../../domain/exceptions/shoper-api.error';
 import { ShoperConfigException } from '../../domain/exceptions/shoper-config.exception';
@@ -60,6 +77,17 @@ import { ShoperVariantRequiredException } from '../../domain/exceptions/shoper-v
 import { ShoperWarehousesNotSupportedException } from '../../domain/exceptions/shoper-warehouses-not-supported.exception';
 
 const RETRYABLE_CLIENT_ERRORS: ReadonlySet<number> = new Set([408, 429]);
+
+const MIN_DEFERRAL_SECONDS = 30;
+
+/** Shoper's 429 names no wait of its own, so this is the whole answer. */
+const THROTTLE_DEFERRAL_SECONDS = 60;
+
+/** A maintenance window is measured in minutes, so a 503 waits longer than a throttle. */
+const UNAVAILABLE_DEFERRAL_SECONDS = 300;
+
+/** How far down an `Error.cause` chain a wrapped Shoper failure is looked for. */
+const MAX_CAUSE_DEPTH = 5;
 
 export class ShoperRetryClassifierAdapter implements RetryClassifierPort {
   isNonRetryable(cause: unknown): boolean {
@@ -93,4 +121,38 @@ export class ShoperRetryClassifierAdapter implements RetryClassifierPort {
     }
     return false;
   }
+
+  getRetryDeferral(cause: unknown): RetryDeferral | null {
+    const apiError = findShoperApiError(cause);
+    if (apiError === null) {
+      return null;
+    }
+    if (apiError.statusCode === 429) {
+      return {
+        delaySeconds: Math.max(THROTTLE_DEFERRAL_SECONDS, MIN_DEFERRAL_SECONDS),
+        reason: 'shop rate-limited the request (429)',
+      };
+    }
+    if (apiError.statusCode === 503) {
+      return {
+        delaySeconds: Math.max(UNAVAILABLE_DEFERRAL_SECONDS, MIN_DEFERRAL_SECONDS),
+        reason: 'shop unavailable (503)',
+      };
+    }
+    return null;
+  }
+}
+
+function findShoperApiError(cause: unknown): ShoperApiError | null {
+  let current: unknown = cause;
+  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
+    if (current instanceof ShoperApiError) {
+      return current;
+    }
+    if (!(current instanceof Error)) {
+      return null;
+    }
+    current = current.cause;
+  }
+  return null;
 }

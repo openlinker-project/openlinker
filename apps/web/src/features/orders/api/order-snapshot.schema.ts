@@ -13,6 +13,9 @@
 import { z } from 'zod/v4';
 import { PaymentMethodValues, type PaymentMethod } from '../../../shared/types/payment-method.types';
 
+// Re-exported so existing readers keep importing it from the snapshot schema.
+export { PaymentMethodValues, type PaymentMethod };
+
 // Optional string fields use `.nullish()` (string | null | undefined), not
 // `.optional()` (string | undefined): the persisted snapshot serialises absent
 // values as JSON `null` (e.g. the Allegro adapter emits `company: null`), and a
@@ -38,6 +41,12 @@ const orderItemSchema = z.object({
   variantId: z.string().nullish(),
   quantity: z.number(),
   price: z.number(),
+  /**
+   * Tax-inclusive unit price, present when the source priced the line net
+   * (`price` is then the net figure). The shipping-split weight uses it so the
+   * preview divides delivery by the same gross the document does (#3909).
+   */
+  unitPriceGross: z.number().nullish(),
   sku: z.string().nullish(),
   name: z.string().nullish(),
   imageUrl: z.string().nullish(),
@@ -65,6 +74,19 @@ const orderItemSchema = z.object({
   taxSource: z.enum(['shop', 'channel', 'backfill']).nullish(),
   taxRateReadAt: z.string().nullish(),
   taxRateChannel: z.string().nullish(),
+  /**
+   * Present on a gift line (#3940): who decided it was a gift. Absent means an
+   * ordinary line. A source this build does not know drops the mark rather than
+   * the line, so an unfamiliar value shows an ordinary line, never an error.
+   */
+  gift: z
+    .object({
+      source: z.enum(['channel', 'cart-rule', 'ol-rule', 'operator']),
+      ruleRef: z.string().nullish(),
+      documentForm: z.string().nullish(),
+    })
+    .nullish()
+    .catch(undefined),
 });
 
 /**
@@ -81,8 +103,12 @@ const orderTotalsSchema = z.object({
   subtotal: z.number(),
   tax: z.number(),
   shipping: z.number(),
+  /** Tax-inclusive shipping, when the source priced shipping net (#3909). */
+  shippingGross: z.number().nullish(),
   total: z.number(),
   currency: z.string(),
+  /** Whole-order discount the channel applied (absent = not reported). Optional so older snapshots still parse (E-44). */
+  discountTotal: z.number().nullish(),
   /** Whether `total` is tax-inclusive (gross) or tax-exclusive (net). Optional —
    *  absent for sources that don't report it. */
   // `.nullish()`, not `.optional()` (#939): core documents `null` as "the source

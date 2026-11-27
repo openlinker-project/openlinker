@@ -429,7 +429,7 @@ describe('InvoicesListPage', () => {
       route: '/invoices',
     });
 
-    await screen.findByText('Receipt (paragon)');
+    await screen.findAllByText('Receipt');
     const cell = container.querySelector('.invoice-document-cell') as HTMLElement;
     expect(within(cell).getByLabelText('No value')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /open invoice pdf/i })).toBeNull();
@@ -802,8 +802,37 @@ describe('InvoicesListPage', () => {
     // the banner's own text (robust to the Alert component's internal markup /
     // CSS class names) rather than the `alert__description` implementation class.
     const banner = await screen.findByText(/Bulk issue complete\./);
-    expect(banner.textContent).toContain('1 issued.');
+    expect(banner.textContent).toContain('Issued 1 of 2.');
     expect(banner.textContent).toContain('1 skipped (already issued or in progress).');
+  });
+
+  it('reports issued against the asked total and flags orders the server did not account for (DEF-21)', async () => {
+    const user = userEvent.setup();
+    const conn = makeConnection({ id: 'conn_a', name: 'Connection A' });
+    const invoiceA = makeInvoice({ id: 'inv_a', orderId: 'order_a', connectionId: 'conn_a' });
+    const invoiceB = makeInvoice({ id: 'inv_b', orderId: 'order_b', connectionId: 'conn_a' });
+    const list = vi
+      .fn()
+      .mockResolvedValue(makeEnvelope({ items: [invoiceA, invoiceB], total: 2 }));
+    const bulkIssue = vi
+      .fn()
+      .mockResolvedValueOnce({ issued: 1, skipped: 0, failed: 0, total: 2, results: [] });
+
+    renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list, [conn], bulkIssue),
+      route: '/invoices',
+    });
+
+    await screen.findByText('order_a');
+    const checkboxes = screen.getAllByRole('checkbox', { name: /select invoice/i });
+    await user.click(checkboxes[0]);
+    await user.click(checkboxes[1]);
+    await user.click(screen.getByRole('button', { name: /issue invoices/i }));
+    await user.click(screen.getByRole('button', { name: 'Issue' }));
+
+    const banner = await screen.findByText(/Bulk issue complete\./);
+    expect(banner.textContent).toContain('Issued 1 of 2.');
+    expect(banner.textContent).toContain('Some orders were not reported back');
   });
 
   it('renders the clearanceReference (KSeF number) column when present', async () => {
@@ -901,5 +930,92 @@ describe('InvoicesListPage', () => {
     const chip = await screen.findByTestId('invoices-chip-awaiting');
     expect(chip).toHaveAttribute('aria-pressed', 'true');
     expect(chip.textContent).toContain('0');
+  });
+
+  // -------------------------------------------------------------------
+  // #4241 - saved views: built-in views, columns and selection.
+  // -------------------------------------------------------------------
+  describe('saved views', () => {
+    const rows = (): PaginatedInvoices => makeEnvelope({ items: [makeInvoice()], total: 1 });
+
+    it('opens on the All invoices view', async () => {
+      const list = vi.fn().mockResolvedValue(rows());
+      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+      expect(await screen.findByRole('button', { name: 'All invoices' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+      expect(await screen.findByText('order_1')).toBeInTheDocument();
+    });
+
+    it('sends the filters of a built-in view and marks it active', async () => {
+      const user = userEvent.setup();
+      const list = vi.fn().mockResolvedValue(rows());
+      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+      await user.click(await screen.findByRole('button', { name: 'Rejected by regulator' }));
+
+      await waitFor(() => {
+        expect(list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ regulatoryStatus: 'rejected' }),
+          { limit: 20, offset: 0 },
+        );
+      });
+      expect(screen.getByRole('button', { name: 'Rejected by regulator' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+    });
+
+    it('keeps a deep link instead of applying the default view', async () => {
+      const list = vi.fn().mockResolvedValue(rows());
+      renderWithProviders(<InvoicesListPage />, {
+        apiClient: mockApi(list),
+        route: '/invoices?status=failed',
+      });
+
+      await waitFor(() => {
+        expect(list).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }), {
+          limit: 20,
+          offset: 0,
+        });
+      });
+      expect(await screen.findByRole('button', { name: 'Failed' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+    });
+
+    it('hides a column that the view drops', async () => {
+      const user = userEvent.setup();
+      const list = vi.fn().mockResolvedValue(rows());
+      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+      expect(await screen.findByRole('columnheader', { name: 'Clearance ref.' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /Columns & sort/ }));
+      await user.click(await screen.findByRole('checkbox', { name: /Clearance ref\./ }));
+      await user.click(screen.getAllByRole('button', { name: 'Done' })[0]);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('columnheader', { name: 'Clearance ref.' })).not.toBeInTheDocument();
+      });
+      expect(await screen.findByRole('columnheader', { name: 'Issued' })).toBeInTheDocument();
+    });
+
+    it('clears the row selection when another view is opened', async () => {
+      const user = userEvent.setup();
+      const list = vi.fn().mockResolvedValue(rows());
+      renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+      await user.click((await screen.findAllByRole('checkbox', { name: 'Select invoice' }))[0]);
+      expect((await screen.findAllByRole('checkbox', { name: 'Select invoice' }))[0]).toBeChecked();
+
+      await user.click(screen.getByRole('button', { name: 'Failed' }));
+
+      await waitFor(() => {
+        expect(screen.getAllByRole('checkbox', { name: 'Select invoice' })[0]).not.toBeChecked();
+      });
+    });
   });
 });

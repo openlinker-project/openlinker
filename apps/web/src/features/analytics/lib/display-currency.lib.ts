@@ -7,6 +7,7 @@
  *
  * @module features/analytics/lib
  */
+import { getMessages, interpolate } from '../../../shared/i18n';
 import type {
   AppliedRate,
   DisplayCurrencyRateBasis,
@@ -263,7 +264,13 @@ export function createReportingCurrencyConverter(
  */
 export function formatAppliedRateLine(rate: AppliedRate, formatter: Intl.NumberFormat): string {
   const formattedRate = formatter.format(Number(rate.rate));
-  return `1 ${rate.from} = ${formattedRate} ${rate.to} (${rate.source.toUpperCase()}, ${rate.rateDate})`;
+  return interpolate(getMessages('analytics').displayCurrency.rateLine, {
+    from: rate.from,
+    rate: formattedRate,
+    to: rate.to,
+    source: rate.source.toUpperCase(),
+    date: rate.rateDate,
+  });
 }
 
 /**
@@ -283,6 +290,7 @@ export function buildRateProvenanceDefinitions(
   if (appliedRates.length === 0) {
     return [];
   }
+  const copy = getMessages('analytics').displayCurrency;
 
   // The term names the mode honestly rather than repeating the backend's
   // `'order-date'` misnomer verbatim - the body already explains that ONE
@@ -291,28 +299,40 @@ export function buildRateProvenanceDefinitions(
   // that body on the same card (#2788 review).
   const modeDefinition: AnalyticsInfotipDefinition =
     rateBasis === 'order-date'
-      ? {
-          term: 'Period rate (order-date mode)',
-          text: "One current rate applied to the whole period's total — not each order's own historical rate.",
-        }
-      : {
-          term: 'Current rate',
-          text: "Today's rate applied to each order's own native currency, then summed.",
-        };
+      ? { term: copy.periodRate.term, text: copy.periodRate.text }
+      : { term: copy.currentRate.term, text: copy.currentRate.text };
 
   const rateDefinitions: AnalyticsInfotipDefinition[] = appliedRates.map((rate) => ({
-    term: `${rate.from} → ${rate.to}`,
+    term: interpolate(copy.pair, { from: rate.from, to: rate.to }),
     text: formatAppliedRateLine(rate, formatter),
     caveat:
       rate.derivation !== 'direct'
-        ? `Derived (${rate.derivation})${rate.sourceRef ? ` — ${rate.sourceRef}` : ''}`
+        ? rate.sourceRef
+          ? interpolate(copy.derivedWithReference, {
+              derivation: describeDerivation(rate.derivation),
+              reference: rate.sourceRef,
+            })
+          : interpolate(copy.derived, { derivation: describeDerivation(rate.derivation) })
         : (rate.sourceRef ?? undefined),
   }));
 
   const disclaimerDefinition: AnalyticsInfotipDefinition = {
-    term: 'Not an invoice rate',
-    text: 'This is an analytics-only conversion for viewing the dashboard — never the statutory rate used on an invoice.',
+    term: copy.notInvoiceRate.term,
+    text: copy.notInvoiceRate.text,
   };
 
   return [modeDefinition, ...rateDefinitions, disclaimerDefinition];
+}
+
+/** Operator wording for a non-direct rate derivation, with the raw value as a fallback. */
+function describeDerivation(derivation: AppliedRate['derivation']): string {
+  const labels = getMessages('analytics').displayCurrency.derivation;
+  switch (derivation) {
+    case 'inverted':
+      return labels.inverted;
+    case 'pivot':
+      return labels.pivot;
+    default:
+      return String(derivation);
+  }
 }

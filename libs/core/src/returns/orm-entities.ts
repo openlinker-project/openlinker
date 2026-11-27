@@ -10,3 +10,4 @@
 export { ReturnOrmEntity } from './infrastructure/persistence/entities/return.orm-entity';
 export { ReturnLineOrmEntity } from './infrastructure/persistence/entities/return-line.orm-entity';
 export { ReturnLineEventOrmEntity } from './infrastructure/persistence/entities/return-line-event.orm-entity';
+export { ReturnGiftDecisionOrmEntity } from './infrastructure/persistence/entities/return-gift-decision.orm-entity';

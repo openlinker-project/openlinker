@@ -11,6 +11,7 @@
  * @module apps/web/src/features/sales-documents/api
  */
 import type { ConnectionStatus } from '../../connections';
+import { getMessages } from '../../../shared/i18n';
 
 /**
  * The two capabilities that make a connection a sales-document routing
@@ -51,8 +52,13 @@ export interface SalesDocumentRow {
   documentKind: SalesDocumentKind | null;
   /** config.invoicing.isPrimary — the SAME flag for both capabilities (ADR-041 decision 4). */
   isPrimary: boolean;
-  /** config.invoicing.triggerModel, defaulted to 'manual' like the BE reader. */
-  triggerModel: string;
+  /**
+   * The EFFECTIVE trigger model per concrete kind (#3582), resolved like the
+   * BE gate: `salesDocument.triggerModels[kind]` → legacy
+   * `invoicing.triggerModel` → `'manual'`. Effective rather than raw so the
+   * table shows what will be enforced, including an inherited legacy value.
+   */
+  triggerModels: Record<ConcreteDocumentKind, string>;
 }
 
 export interface SalesDocumentIssuesOption {
@@ -69,23 +75,24 @@ export interface SalesDocumentIssuesOption {
 export function getSalesDocumentIssuesOptions(
   capability: SalesDocumentCapability,
 ): SalesDocumentIssuesOption[] {
+  const kind = getMessages('sales-documents').documentKind;
   if (capability === 'Invoicing') {
     return [
-      { value: 'invoice', label: 'Invoice' },
-      { value: '', label: 'Nothing' },
+      { value: 'invoice', label: kind.invoice },
+      { value: '', label: kind.nothing },
     ];
   }
   if (capability === 'Fiscalization') {
     return [
-      { value: 'fiscal-receipt', label: 'Fiscal receipt' },
-      { value: '', label: 'Nothing' },
+      { value: 'fiscal-receipt', label: kind.fiscalReceipt },
+      { value: '', label: kind.nothing },
     ];
   }
   return [
-    { value: 'fiscal-receipt', label: 'Receipts' },
-    { value: 'invoice', label: 'Invoices' },
-    { value: 'both', label: 'Both' },
-    { value: '', label: 'Nothing' },
+    { value: 'fiscal-receipt', label: kind.receipts },
+    { value: 'invoice', label: kind.invoices },
+    { value: 'both', label: kind.both },
+    { value: '', label: kind.nothing },
   ];
 }
 
@@ -93,5 +100,21 @@ export function getSalesDocumentIssuesOptions(
 export interface SalesDocumentConfigPatch {
   documentKind?: SalesDocumentKind | '';
   isPrimary?: boolean;
-  triggerModel?: string;
+  /** One kind's trigger model, written to `salesDocument.triggerModels[kind]` (#3582). */
+  triggerModel?: { kind: ConcreteDocumentKind; value: string };
+  /**
+   * One kind's batch schedule, written to `salesDocument.batchSchedules[kind]`
+   * (#3584); `null` removes it.
+   */
+  batchSchedule?: { kind: ConcreteDocumentKind; value: BatchScheduleConfig | null };
+}
+
+/** The stored shape `readBatchSchedule` reads (#3583). */
+export interface BatchScheduleConfig {
+  frequency: 'daily' | 'every-n-hours' | 'month-end';
+  time?: string;
+  everyHours?: number;
+  timeZone: string;
+  /** ISO instant; no slot before it runs, so a new schedule never fires a past slot. */
+  effectiveFrom: string;
 }

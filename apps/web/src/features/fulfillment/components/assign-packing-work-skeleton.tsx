@@ -14,14 +14,15 @@
  */
 import type { ReactElement } from 'react';
 
-import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
+import { useMessages } from '../../../shared/i18n';
 
 const SKELETON_LANES = [3, 2] as const;
 
 export function AssignPackingWorkSkeleton(): ReactElement {
+  const copy = useMessages('fulfillment').assignPackingWork;
   return (
     <div className="assign-packing-work-skeleton" role="status" aria-live="polite">
-      <span className="sr-only">{ASSIGN_PACKING_WORK_COPY.loading.message}</span>
+      <span className="sr-only">{copy.loading.message}</span>
       <div className="kpi-grid" aria-hidden="true">
         {[0, 1, 2].map((index) => (
           <div key={index} className="kpi-card kpi-card--compact">

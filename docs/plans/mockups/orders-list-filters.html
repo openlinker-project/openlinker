@@ -1,0 +1,1669 @@
+<title>Orders list filters</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: comparison strip, then the OpenLinker orders page rendered twice
+   from ONE shared filter state: "Today" (main @ 6 Nov 2026) and "Proposed". */
+:root {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80); --bg-surface: #ffffff;
+  --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80); --text-muted: oklch(52% 0.008 80);
+  --text-on-primary: oklch(18% 0.012 50); --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+  --status-review-soft: oklch(96% 0.04 290); --status-review-border: oklch(85% 0.08 290); --status-review-fg: oklch(42% 0.14 290);
+  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --channel-allegro: oklch(70% 0.18 35); --channel-prestashop: oklch(60% 0.18 250); --channel-erli: oklch(66% 0.17 320); --channel-woocommerce: oklch(64% 0.16 150);
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-pill: 9999px;
+  --duration-fast: 120ms; --duration-normal: 180ms; --duration-slow: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --tracking-caps: 0.08em;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-review-soft: oklch(28% 0.07 290); --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(86% 0.12 290);
+  --status-disabled-soft: oklch(24% 0.009 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(78% 0.010 270);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.5), 0 8px 16px rgb(0 0 0 / 0.3);
+} }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-review-soft: oklch(28% 0.07 290); --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(86% 0.12 290);
+  --status-disabled-soft: oklch(24% 0.009 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(78% 0.010 270);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.5), 0 8px 16px rgb(0 0 0 / 0.3);
+}
+
+* { box-sizing: border-box; }
+html, body { background: var(--bg-canvas); color: var(--text-primary); }
+body { font-family: var(--font-sans); font-size: 13px; line-height: 1.45; }
+button, input, select { font: inherit; color: inherit; }
+.mono { font-family: var(--font-mono); }
+.tabular { font-variant-numeric: tabular-nums; }
+.muted { color: var(--text-muted); }
+:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-sm); }
+a { color: var(--text-link); }
+
+/* ── Comparison chrome (not product UI) ── */
+.chrome { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); align-items: center;
+  padding-block: var(--space-2); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 31; background: var(--bg-shell); }
+.chrome__note { color: var(--text-muted); font-size: .75rem; }
+.chrome__spacer { flex: 1; }
+
+/* ── existing primitives (class names as in index.css) ── */
+.segmented-control { display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.segmented-control__option { padding: 4px var(--space-3); border: none; border-right: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); font-size: .8125rem; cursor: pointer; flex: 1; white-space: nowrap; }
+.segmented-control__option:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.segmented-control__option:last-child { border-right: none; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.segmented-control__option[aria-pressed="true"] { background: var(--accent-primary); color: var(--text-on-primary); font-weight: 500; }
+.segmented-control--soft .segmented-control__option[aria-pressed="true"] { background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+
+.page { max-width: 1440px; margin: 0 auto; padding-block: var(--space-4) var(--space-7);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: var(--space-3); }
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.page-eyebrow { font-family: var(--font-mono); font-size: .6875rem; font-weight: 500; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--accent-primary); }
+.page-title { margin: 2px 0 0; font-size: 1.375rem; font-weight: 600; letter-spacing: -0.012em; }
+.button-group { display: inline-flex; gap: var(--space-2); align-items: center; }
+
+.button { display: inline-flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-3); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md);
+  background: var(--accent-primary); color: var(--text-on-primary); font-size: .8125rem; font-weight: 500; cursor: pointer; white-space: nowrap; box-shadow: var(--shadow-xs);
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out); }
+.button:active { transform: translateY(1px); }
+.button--sm { height: 1.75rem; padding: 0 var(--space-2); font-size: .75rem; }
+.button--secondary { background: var(--bg-surface-muted); border-color: var(--border-default); color: var(--text-primary); }
+.button--ghost { background: transparent; border-color: transparent; color: var(--text-secondary); box-shadow: none; }
+.button--ghost:hover, .button--secondary:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.button--outline { background: var(--bg-surface); border-color: var(--border-default); color: var(--text-primary); }
+.button--outline:hover { background: var(--bg-surface-hover); }
+.button--outline[aria-expanded="true"] { border-color: var(--accent-primary-border); background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+.button--danger { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.button__shortcut { font-family: var(--font-mono); font-size: .625rem; color: var(--text-muted); border: 1px solid var(--border-default); border-radius: 4px; padding: 0 4px; line-height: 1.5; }
+.button__count { min-width: 1.125rem; height: 1.125rem; padding: 0 4px; border-radius: var(--radius-pill); display: inline-grid; place-items: center; font-family: var(--font-mono); font-size: .625rem; background: var(--accent-primary); color: var(--text-on-primary); }
+
+.status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 1px 6px; border: 1px solid var(--status-disabled-border); border-radius: var(--radius-sm);
+  background: var(--status-disabled-soft); color: var(--status-disabled-fg); font-family: var(--font-mono); font-size: .625rem; font-weight: 500; letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; line-height: 1.6; }
+.status-badge__dot { width: .375rem; height: .375rem; border-radius: 999px; background: currentColor; }
+.status-badge--success { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.status-badge--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.status-badge--error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.status-badge--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.status-badge--review { background: var(--status-review-soft); border-color: var(--status-review-border); color: var(--status-review-fg); }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 1.375rem; padding: 0 .5rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted); color: var(--text-secondary); font-size: .75rem; font-weight: 500; cursor: pointer; white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out); }
+.chip:hover { border-color: var(--border-default); color: var(--text-primary); }
+.chip--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.chip--error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.chip--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
+.chip--success { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.chip[aria-pressed="true"] { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--text-on-primary); }
+.chip__count { font-family: var(--font-mono); font-size: .6875rem; font-variant-numeric: tabular-nums; }
+.chip__age { font-family: var(--font-mono); font-size: .625rem; opacity: .75; }
+
+.control { height: 1.875rem; padding: 0 var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font-size: .8125rem; width: 100%; min-width: 0; }
+.control:focus-visible { border-color: var(--accent-primary); }
+.check { display: flex; align-items: center; gap: var(--space-2); padding: 3px 0; cursor: pointer; font-size: .8125rem; }
+.check input { accent-color: var(--accent-primary); margin: 0; }
+.check__count { margin-left: auto; font-family: var(--font-mono); font-size: .6875rem; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.check__count--error { color: var(--status-error-fg); }
+.check__count--warning { color: var(--status-warning-fg); }
+.eyebrow { font-family: var(--font-mono); font-size: .625rem; font-weight: 500; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field__label { font-size: .75rem; color: var(--text-secondary); font-weight: 500; }
+.range-row { display: grid; grid-template-columns: 2.5rem 1fr; gap: var(--space-2); align-items: center; }
+
+/* ── TODAY: health tiles (orders-segments) ── */
+.segments { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: var(--space-3); overflow-x: auto; }
+.segment { text-align: left; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); padding: var(--space-2) var(--space-3); cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-height: 3.25rem; }
+.segment--error { background: var(--status-error-soft); border-color: var(--status-error-border); }
+.segment--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); }
+.segment--info { background: var(--status-info-soft); border-color: var(--status-info-border); }
+.segment--success { background: var(--status-success-soft); border-color: var(--status-success-border); }
+.segment[aria-pressed="true"] { border-color: var(--accent-primary); box-shadow: 0 0 0 1px var(--accent-primary); }
+.segment__label { font-family: var(--font-mono); font-size: .625rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+.segment--error .segment__label { color: var(--status-error-fg); } .segment--warning .segment__label { color: var(--status-warning-fg); }
+.segment--info .segment__label { color: var(--status-info-fg); } .segment--success .segment__label { color: var(--status-success-fg); }
+.segment__value { font-size: 1.125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.segment--error .segment__value { color: var(--status-error-fg); } .segment--warning .segment__value { color: var(--status-warning-fg); }
+.segment--info .segment__value { color: var(--status-info-fg); } .segment--success .segment__value { color: var(--status-success-fg); }
+
+/* ── TODAY: filter bar + accordion panel ── */
+.filterbar { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.search { position: relative; flex: 0 1 420px; min-width: 200px; }
+.search input { width: 100%; height: 1.875rem; padding: 0 2rem 0 1.75rem; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); font-size: .8125rem; }
+.search input:focus-visible { border-color: var(--accent-primary); }
+.search__glyph { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: .875rem; }
+.search__kbd { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
+.results { margin-left: auto; font-family: var(--font-mono); font-size: .75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.panel { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface-muted); animation: drop var(--duration-normal) var(--ease-out); }
+.panel__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.panel__group { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.panel__group + .panel__group { border-left: 1px solid var(--border-subtle); }
+.panel__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-top: 1px solid var(--border-subtle); font-size: .75rem; color: var(--text-muted); }
+@keyframes drop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.quick__sep { width: 1px; height: 1rem; background: var(--border-default); margin: 0 4px; }
+.quick__end { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+.applied { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pill { display: inline-flex; align-items: center; gap: 4px; height: 1.5rem; padding: 0 2px 0 var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-pill); background: var(--bg-surface); font-size: .75rem; animation: pop var(--duration-normal) var(--ease-out); }
+.pill__key { color: var(--text-muted); }
+.pill button { width: 1.25rem; height: 1.25rem; border: none; background: none; border-radius: 999px; cursor: pointer; color: var(--text-muted); display: inline-grid; place-items: center; }
+.pill button:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+@keyframes pop { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: none; } }
+.linkbtn { border: none; background: none; cursor: pointer; color: var(--text-muted); font-size: .75rem; text-decoration: underline; text-underline-offset: 2px; padding: 2px 4px; }
+.linkbtn:hover { color: var(--text-primary); }
+
+/* ── PROPOSED: status tabs ── */
+.tabs-scroll { overflow-x: auto; scrollbar-width: none; }
+.tabs-scroll::-webkit-scrollbar { display: none; }
+.tabs { position: relative; display: flex; gap: 2px; border-bottom: 1px solid var(--border-subtle); min-width: max-content; }
+.tab { display: inline-flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-3) 9px; border: none; background: none; cursor: pointer; color: var(--text-secondary); font-size: .8125rem; white-space: nowrap; border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.tab:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.tab[aria-selected="true"] { color: var(--text-primary); font-weight: 600; }
+.tab__dot { width: .4375rem; height: .4375rem; border-radius: 999px; }
+.tab__count { font-family: var(--font-mono); font-size: .75rem; font-weight: 500; font-variant-numeric: tabular-nums; padding: 0 6px; border-radius: var(--radius-pill); background: var(--bg-surface-muted); color: var(--text-secondary); min-width: 1.5rem; text-align: center; }
+.tab__count--error { background: var(--status-error-soft); color: var(--status-error-fg); }
+.tab__count--warning { background: var(--status-warning-soft); color: var(--status-warning-fg); }
+.tab__count--zero { color: var(--text-muted); background: transparent; }
+.tabs__ind { position: absolute; bottom: -1px; left: 0; height: 2px; border-radius: 2px; background: var(--accent-primary); transition: transform var(--duration-slow) var(--ease-out), width var(--duration-slow) var(--ease-out); }
+
+/* PROPOSED toolbar: search, 3 pinned filters, all filters, count, sort */
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.anchor { position: relative; }
+.dd-btn { display: inline-flex; align-items: center; gap: 6px; height: 1.875rem; padding: 0 var(--space-2) 0 var(--space-3); border: 1px dashed var(--border-strong); border-radius: var(--radius-pill); background: transparent; cursor: pointer; font-size: .8125rem; color: var(--text-secondary); white-space: nowrap; }
+.dd-btn:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.dd-btn--on { border-style: solid; border-color: var(--accent-primary-border); background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+.dd-btn__val { font-weight: 500; }
+.caret { font-size: .625rem; opacity: .7; }
+.pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 25; min-width: 240px; max-width: calc(100vw - 32px); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); padding: 6px; transform-origin: top left; animation: popin var(--duration-normal) var(--ease-out); }
+.pop--right { left: auto; right: 0; transform-origin: top right; }
+@keyframes popin { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
+.opt { width: 100%; display: flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-2); border: none; background: none; border-radius: var(--radius-sm); cursor: pointer; text-align: left; font-size: .8125rem; }
+.opt:hover, .opt:focus-visible { background: var(--bg-surface-hover); }
+.opt__mark { width: 14px; height: 14px; border-radius: 999px; border: 1px solid var(--border-strong); display: inline-grid; place-items: center; flex-shrink: 0; }
+.opt[aria-checked="true"] .opt__mark { border-color: var(--accent-primary); box-shadow: inset 0 0 0 3px var(--bg-surface); background: var(--accent-primary); }
+.opt__meta { margin-left: auto; font-family: var(--font-mono); font-size: .6875rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pop__title { padding: 4px var(--space-2) 6px; font-size: .6875rem; color: var(--text-muted); }
+
+/* PROPOSED "needs a look" queue row */
+.queue { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.queue__label { font-size: .75rem; color: var(--text-muted); margin-right: 2px; }
+.qchip { display: inline-flex; align-items: center; gap: 6px; height: 1.625rem; padding: 0 var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); cursor: pointer; font-size: .75rem; white-space: nowrap; color: var(--text-primary); }
+.qchip:hover { background: var(--bg-surface-hover); }
+.qchip__n { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.qchip--error .qchip__n { color: var(--status-error-fg); } .qchip--warning .qchip__n { color: var(--status-warning-fg); }
+.qchip__age { font-family: var(--font-mono); font-size: .625rem; color: var(--text-muted); }
+.qchip__bar { width: 3px; align-self: stretch; margin: 5px 0; border-radius: 2px; }
+.qchip[aria-pressed="true"] { border-color: var(--accent-primary); background: var(--accent-primary-soft); }
+.queue__end { margin-left: auto; }
+
+/* PROPOSED side sheets (filters + peek): dimmed, blurred list behind; spring-ish slide */
+.scrim { position: fixed; inset: 0; z-index: 40; background: rgb(12 14 20 / .38); backdrop-filter: blur(3px) saturate(.85); -webkit-backdrop-filter: blur(3px) saturate(.85); animation: fade 220ms var(--ease-out); }
+.scrim--out { animation: fadeout 190ms ease-in forwards; }
+@media (prefers-reduced-transparency: reduce) { .scrim { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgb(12 14 20 / .55); } }
+.sheet { position: fixed; top: 8px; right: 8px; bottom: 8px; z-index: 41; display: flex; flex-direction: column; background: var(--bg-surface);
+  border: 1px solid var(--border-default); border-radius: 14px; box-shadow: var(--shadow-overlay); overflow: hidden;
+  margin-top: env(safe-area-inset-top, 0px); margin-bottom: env(safe-area-inset-bottom, 0px); margin-right: env(safe-area-inset-right, 0px);
+  animation: sheet-in 360ms cubic-bezier(.32,.72,0,1); }
+.sheet--out { animation: sheet-out 190ms cubic-bezier(.4,0,1,1) forwards; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeout { to { opacity: 0; } }
+@keyframes sheet-in { from { transform: translateX(calc(100% + 16px)); } to { transform: none; } }
+@keyframes sheet-out { to { transform: translateX(calc(100% + 16px)); opacity: .6; } }
+.drawer { width: min(420px, calc(100vw - 16px)); }
+.peek { width: min(560px, calc(100vw - 16px)); }
+.icon-btn { width: 2rem; height: 2rem; border: none; border-radius: var(--radius-md); background: none; color: var(--text-muted); cursor: pointer; display: inline-grid; place-items: center; font-size: .875rem; }
+.icon-btn:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.drawer__head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+.drawer__head h2 { margin: 0; font-size: .9375rem; }
+
+/* Peek */
+.peek-head { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); padding: var(--space-4) var(--space-6) var(--space-4) var(--space-5); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface-muted); }
+.peek-ref { font-family: var(--font-mono); font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.peek-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 6px; font-size: .75rem; color: var(--text-muted); }
+.peek-head__money { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.peek-total { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; white-space: nowrap; }
+.peek-close { position: absolute; top: 8px; right: 8px; }
+.peek-body { flex: 1; overflow-y: auto; padding: var(--space-4) var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); animation: peek-swap 240ms var(--ease-out); }
+@keyframes peek-swap { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.peek-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.state-card { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.state-row { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: var(--space-3); align-items: start; padding: 10px var(--space-3); }
+.state-row + .state-row { border-top: 1px solid var(--border-subtle); }
+.state-row .eyebrow { padding-top: 3px; }
+.note { border-left: 3px solid var(--accent-primary); background: var(--accent-primary-soft); border-radius: 0 var(--radius-md) var(--radius-md) 0; padding: var(--space-2) var(--space-3); }
+.note p { margin: 2px 0 0; font-size: .8125rem; }
+.note--empty { border-left-color: var(--border-strong); background: var(--bg-surface-muted); }
+.note--empty p { color: var(--text-muted); }
+.peek-h { margin: 0 0 var(--space-2); font-size: .8125rem; font-weight: 600; display: flex; gap: 6px; }
+.items { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); }
+.item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; padding: var(--space-2) var(--space-3); font-size: .8125rem; }
+.item + .item { border-top: 1px solid var(--border-subtle); }
+.item__name { display: flex; flex-direction: column; min-width: 0; }
+.kv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3) var(--space-4); }
+.kv-grid p { margin: 2px 0 0; font-size: .8125rem; overflow-wrap: anywhere; }
+.peek-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--space-5); border-top: 1px solid var(--border-subtle); font-size: .75rem; }
+
+/* Attention groups (Needs a look) */
+.attn-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.attn { display: inline-flex; align-items: center; gap: var(--space-2); height: 2rem; padding: 0 var(--space-2) 0 var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); cursor: pointer; font-size: .8125rem; white-space: nowrap;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out); }
+.attn:hover { background: var(--bg-surface-hover); }
+.attn__n { font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.attn--error .attn__n { color: var(--status-error-fg); }
+.attn--error { box-shadow: inset 3px 0 0 var(--status-error); }
+.attn--on, .attn[aria-expanded="true"] { border-color: var(--accent-primary-border); background: var(--accent-primary-soft); }
+.attn__active { font-size: .6875rem; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--accent-primary); color: var(--text-on-primary); }
+.attn-pop { width: 360px; padding: 4px; }
+.attn-item { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: var(--space-3); align-items: start; padding: 8px 10px; border: none; background: none; border-radius: var(--radius-md); cursor: pointer; text-align: left; }
+.attn-item:hover, .attn-item:focus-visible { background: var(--bg-surface-hover); }
+.attn-item__box { width: 16px; height: 16px; margin-top: 1px; border-radius: 4px; border: 1px solid var(--border-strong); display: grid; place-items: center; font-size: .625rem; color: var(--text-on-primary); }
+.attn-item[aria-checked="true"] .attn-item__box { background: var(--accent-primary); border-color: var(--accent-primary); }
+.attn-item__text { display: flex; flex-direction: column; gap: 1px; }
+.attn-item__title { font-size: .8125rem; font-weight: 500; }
+.attn-item__desc { font-size: .75rem; color: var(--text-muted); }
+.attn-item__meta { display: flex; flex-direction: column; align-items: flex-end; }
+.attn-item__n { font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.attn-item__n--error { color: var(--status-error-fg); } .attn-item__n--warning { color: var(--status-warning-fg); }
+.attn-item__age { font-family: var(--font-mono); font-size: .625rem; color: var(--text-muted); white-space: nowrap; }
+.attn-pop__foot { display: flex; justify-content: space-between; gap: var(--space-2); padding: 8px 10px 6px; margin-top: 4px; border-top: 1px solid var(--border-subtle); font-size: .75rem; }
+
+/* Proposed table: stacked headers kept, sort marks clearer */
+.th-stack { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.th-stack--right { align-items: flex-end; }
+.ptable .sortbtn { display: inline-flex; gap: 4px; align-items: center; padding: 1px 4px; margin: 0 -4px; border-radius: 4px; }
+.ptable .sortbtn:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.ptable .sortbtn__ind { color: var(--text-muted); opacity: 0; transition: opacity var(--duration-fast); }
+.ptable th:hover .sortbtn__ind { opacity: .7; }
+.ptable .sortbtn--on { color: var(--text-primary); background: var(--accent-primary-soft); }
+.ptable .sortbtn--on .sortbtn__ind { color: var(--accent-primary-soft-strong); opacity: 1; }
+.ptable tbody tr.row { cursor: pointer; }
+.ptable tbody tr.row--peek > td { background: var(--accent-primary-soft); box-shadow: inset 0 1px 0 var(--accent-primary-border), inset 0 -1px 0 var(--accent-primary-border); }
+.ptable tbody tr.row--peek > td:first-child { box-shadow: inset 3px 0 0 var(--accent-primary), inset 0 1px 0 var(--accent-primary-border), inset 0 -1px 0 var(--accent-primary-border); }
+
+.drawer__body { flex: 1; overflow-y: auto; }
+.drawer__foot { display: flex; gap: var(--space-2); justify-content: space-between; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); }
+.section { border-bottom: 1px solid var(--border-subtle); }
+.section__head { width: 100%; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: none; background: none; cursor: pointer; text-align: left; }
+.section__title { font-weight: 600; font-size: .8125rem; }
+.section__sum { margin-left: auto; font-size: .75rem; color: var(--text-muted); max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.section__sum--on { color: var(--accent-primary-soft-strong); }
+.section__body { padding: 0 var(--space-4) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.section__chev { transition: transform var(--duration-normal) var(--ease-out); color: var(--text-muted); }
+.section__head[aria-expanded="true"] .section__chev { transform: rotate(90deg); }
+
+/* ── TABLE (shared) ── */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); }
+table { width: 100%; border-collapse: collapse; min-width: 1080px; }
+th { text-align: left; vertical-align: bottom; font-family: var(--font-mono); font-size: .625rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); font-weight: 500; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-subtle); white-space: nowrap; }
+td { padding: var(--space-3); border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+tbody tr.row:hover > td { background: var(--bg-surface-hover); }
+tbody tr.row--sel > td { background: var(--accent-primary-soft); }
+.sortbtn { display: block; border: none; background: none; padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; cursor: pointer; white-space: nowrap; }
+.sortbtn--on { color: var(--text-primary); }
+.sortbtn__ind { color: var(--accent-primary); }
+.th-right { text-align: right; } .th-right .sortbtn { margin-left: auto; }
+.col-check { width: 2.25rem; } .col-exp { width: 1.75rem; }
+.stack { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.stack--right { align-items: flex-end; text-align: right; }
+.wrap { display: flex; flex-wrap: wrap; gap: 4px; }
+.idcell { display: flex; gap: var(--space-2); align-items: flex-start; }
+.thumb { width: 1.75rem; height: 1.75rem; border-radius: var(--radius-sm); background: var(--bg-surface-muted); border: 1px solid var(--border-subtle); display: grid; place-items: center; font-family: var(--font-mono); font-size: .625rem; color: var(--text-muted); flex-shrink: 0; }
+.ref { font-family: var(--font-mono); font-weight: 500; font-size: .8125rem; }
+.copy { border: none; background: none; color: var(--text-muted); font-size: .6875rem; cursor: pointer; padding: 0 2px; }
+.sub { font-size: .75rem; color: var(--text-muted); }
+.more { font-family: var(--font-mono); font-size: .625rem; padding: 0 4px; border-radius: 4px; background: var(--bg-surface-muted); color: var(--text-muted); }
+.conn { display: inline-flex; align-items: center; gap: 6px; padding: 1px 6px; border-radius: var(--radius-sm); background: var(--bg-surface-muted); font-family: var(--font-mono); font-size: .6875rem; white-space: nowrap; }
+.conn__dot { width: .375rem; height: .375rem; border-radius: 999px; }
+.money { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.packed { font-size: .75rem; color: var(--text-muted); white-space: nowrap; }
+.packed b { color: var(--text-primary); font-weight: 500; }
+.exp { width: 1.25rem; height: 1.25rem; border: none; background: none; cursor: pointer; color: var(--text-muted); border-radius: 4px; display: inline-grid; place-items: center; transition: transform var(--duration-normal) var(--ease-out); }
+.exp[aria-expanded="true"] { transform: rotate(90deg); }
+.exp:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.cb { accent-color: var(--accent-primary); margin: 2px 0 0; }
+.cta-link { font-size: .75rem; }
+.detail { background: var(--bg-surface-muted); padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+.detail__actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
+.kv dt { font-family: var(--font-mono); font-size: .625rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+.kv dd { margin: 2px 0 0; font-size: .75rem; overflow-wrap: anywhere; }
+.lineitem { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--bg-surface); font-size: .75rem; }
+.empty { padding: var(--space-7) var(--space-4); text-align: center; }
+.empty h3 { margin: 0 0 4px; font-size: .9375rem; }
+.empty p { margin: 0 auto var(--space-3); color: var(--text-muted); max-width: 52ch; }
+.pager { display: flex; justify-content: space-between; align-items: center; font-size: .75rem; color: var(--text-muted); padding: var(--space-2) 0; }
+
+/* PROPOSED table refinements: grouped header line + 2-line badge cap + peek */
+th .th-group { display: flex; gap: var(--space-3); align-items: baseline; }
+th .th-group--right { justify-content: flex-end; }
+.th-sep { color: var(--border-strong); }
+.overflow { font-family: var(--font-mono); font-size: .625rem; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 0 5px; background: none; color: var(--text-secondary); cursor: pointer; line-height: 1.6; }
+.peek-btn { align-self: flex-start; border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); font-size: .6875rem; border-radius: var(--radius-sm); padding: 0 6px; height: 1.375rem; cursor: pointer; }
+.peek-btn:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
+
+/* Bulk bar (existing BulkActionBar) */
+.bulk { position: sticky; bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px)); z-index: 20; display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-overlay); animation: drop var(--duration-normal) var(--ease-out); }
+.bulk__count { font-weight: 600; }
+.bulk__hint { color: var(--text-muted); font-size: .75rem; flex: 1; min-width: 160px; }
+
+/* Changes ledger */
+.ledger { border-top: 1px solid var(--border-subtle); padding-top: var(--space-4); display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-4) var(--space-6); }
+.ledger h3 { margin: 0 0 var(--space-2); font-size: .875rem; }
+.ledger table { min-width: 0; font-size: .75rem; }
+.ledger td { padding: 6px var(--space-2); vertical-align: top; }
+.ledger td:first-child { color: var(--text-secondary); width: 42%; }
+.ledger p { margin: 0 0 var(--space-2); color: var(--text-secondary); font-size: .8125rem; max-width: 62ch; }
+.ledger ul { margin: 0; padding-left: 1.1rem; color: var(--text-secondary); font-size: .8125rem; display: flex; flex-direction: column; gap: 4px; }
+
+@media (max-width: 900px) {
+  .panel__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .panel__group:nth-child(3) { border-left: none; }
+  .panel__group:nth-child(n+3) { border-top: 1px solid var(--border-subtle); }
+  .quick__end, .queue__end { margin-left: 0; }
+}
+@media (max-width: 560px) {
+  .panel__grid { grid-template-columns: 1fr; }
+  .panel__group + .panel__group { border-left: none; border-top: 1px solid var(--border-subtle); }
+  .search { flex-basis: 100%; }
+  .results { margin-left: 0; }
+}
+
+/* v4: calmer toolbar - status row carries "Needs a look", filters are one joined group */
+.statusbar { display: flex; align-items: flex-end; gap: var(--space-2) var(--space-4); flex-wrap: wrap; border-bottom: 1px solid var(--border-subtle); }
+.statusbar .tabs { border-bottom: 0; }
+.statusbar .tabs-scroll { flex: 1 1 auto; min-width: 0; }
+.attn-sum { display: flex; align-items: center; gap: 2px; padding-bottom: 6px; font-size: .8125rem; color: var(--text-muted); white-space: nowrap; }
+.attn-sum__label { margin-right: 6px; }
+.attn-sum__sep { color: var(--border-strong); }
+.attn-link { position: relative; display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 6px; border: none; border-radius: var(--radius-sm); background: none; cursor: pointer; color: var(--text-secondary); font-size: .8125rem;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out); }
+.attn-link:hover, .attn-link[aria-expanded="true"] { background: var(--bg-surface-hover); color: var(--text-primary); }
+.attn-link__n { font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.attn-link--error .attn-link__n { color: var(--status-error-fg); }
+.attn-link__label { text-decoration: underline dotted var(--border-strong); text-underline-offset: 3px; }
+.attn-link--on { background: var(--accent-primary-soft); color: var(--accent-primary-soft-strong); }
+.attn-link__on { width: 6px; height: 6px; border-radius: 999px; background: var(--accent-primary); align-self: center; }
+.attn-pop__head { padding: 6px 10px 4px; font-size: .75rem; font-weight: 600; color: var(--text-secondary); }
+.fgroup { display: inline-flex; align-items: stretch; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); }
+.fgroup > .anchor { display: flex; }
+.fg-btn { display: inline-flex; align-items: center; gap: 6px; height: 1.875rem; padding: 0 var(--space-3); border: none; border-right: 1px solid var(--border-subtle); background: none; cursor: pointer; font-size: .8125rem; color: var(--text-secondary); white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out); }
+.fgroup > .anchor:first-child .fg-btn { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.fgroup > .fg-btn:last-child { border-right: none; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.fg-btn:hover, .fg-btn[aria-expanded="true"] { background: var(--bg-surface-hover); color: var(--text-primary); }
+.fg-btn--on { color: var(--accent-primary-soft-strong); background: var(--accent-primary-soft); }
+.fg-btn__key { color: var(--text-muted); }
+.fg-btn__val { font-weight: 500; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
+.fg-btn .caret { font-size: .75rem; margin-top: -3px; }
+.toolbar__spacer { flex: 1; }
+.toolbar .results { margin-left: 0; }
+@media (max-width: 760px) { .attn-sum { padding: 6px 0; } .fgroup { width: 100%; overflow-x: auto; } }
+
+/* Columns + presets */
+.cols-pop { width: 300px; }
+.cols-pop__row { padding: 4px 8px; }
+.cols-pop__sep { border-top: 1px solid var(--border-subtle); margin-top: 6px; padding-top: 8px; }
+.preset { display: flex; align-items: center; gap: 2px; }
+.icon-btn--sm { width: 1.5rem; height: 1.5rem; font-size: .6875rem; }
+.preset-save { display: flex; gap: 6px; padding: 6px 8px; }
+.cols-pop__foot { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 4px 2px; border-top: 1px solid var(--border-subtle); margin-top: 4px; }
+.linkbtn:disabled { opacity: .45; cursor: default; text-decoration: none; }
+/* Export dialog */
+.dialog { position: fixed; z-index: 41; left: 50%; top: 50%; width: min(440px, calc(100vw - 32px)); transform: translate(-50%, -50%); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: 14px; box-shadow: var(--shadow-overlay);
+  padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); animation: dialog-in 260ms cubic-bezier(.32,.72,0,1); }
+.dialog--out { animation: dialog-out 170ms ease-in forwards; }
+.dialog h2 { margin: 0; font-size: 1rem; }
+.dialog__set { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.dialog__set legend { margin-bottom: 4px; }
+.dialog__foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
+@keyframes dialog-in { from { opacity: 0; transform: translate(-50%, -48%) scale(.97); } to { opacity: 1; transform: translate(-50%, -50%); } }
+@keyframes dialog-out { to { opacity: 0; transform: translate(-50%, -49%) scale(.98); } }
+/* Toasts + refresh spinner */
+.toasts { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 60; display: flex; flex-direction: column; gap: 8px; }
+.toast { padding: 10px 14px; border-radius: var(--radius-md); background: var(--text-primary); color: var(--bg-surface); font-size: .8125rem; box-shadow: var(--shadow-overlay); max-width: 360px; animation: toast-in 260ms cubic-bezier(.32,.72,0,1); }
+.toast--warn { border-left: 3px solid var(--status-warning); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.spin { display: inline-block; }
+.spin--on { animation: spin 700ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* v5: bottom sheet on phones (vaul-style) + scaled-back page */
+.app-wrap { min-height: 100dvh; background: var(--bg-canvas); transform-origin: 50% 0; transition: transform 480ms cubic-bezier(.32,.72,0,1), border-radius 480ms cubic-bezier(.32,.72,0,1); }
+.sheet__handle { display: none; }
+@media (max-width: 640px) {
+  body.sheet-open { background: rgb(6 7 10); }
+  body.sheet-open .app-wrap { transform: scale(.93) translateY(calc(env(safe-area-inset-top, 0px) + 12px)); border-radius: 14px; overflow: hidden; }
+  .sheet { top: auto; left: 0; right: 0; bottom: 0; width: 100% !important; max-height: calc(100dvh - 44px - env(safe-area-inset-top, 0px));
+    margin: 0; border-radius: 18px 18px 0 0; border-width: 1px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation: sheet-up 480ms cubic-bezier(.32,.72,0,1); }
+  .sheet--out { animation: sheet-down 220ms cubic-bezier(.32,.72,0,1) forwards; }
+  .sheet__handle { display: flex; justify-content: center; padding: 10px 0 6px; touch-action: none; cursor: grab; flex-shrink: 0; }
+  .sheet__handle span { width: 40px; height: 5px; border-radius: 999px; background: var(--border-strong); }
+  .drawer__head, .peek-head { touch-action: none; }
+  .peek-head { background: none; padding-top: 0; }
+  .peek-close { top: 0; }
+  .drawer__foot, .peek-foot { padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px)); }
+  .drawer__foot .button { flex: 1; justify-content: center; height: 2.5rem; }
+  .scrim { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgb(6 7 10 / .45); }
+}
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheet-down { to { transform: translateY(100%); } }
+
+/* v6: fixed column widths - switching tabs or filters never resizes columns */
+.ptable { table-layout: fixed; }
+.ptable td { overflow-wrap: anywhere; }
+.ptable .col-check { width: 2.5rem; }
+.ptable .listing-cell { min-width: 0; }
+.ptable .listing-cell__name { max-width: 100%; }
+.ptable .w-order { width: 22%; } .ptable .w-customer { width: 13%; } .ptable .w-channel { width: 14%; } .ptable .w-status { width: 15%; } .ptable .w-shipment { width: 17%; } .ptable .w-money { width: 16%; }
+.ptable { min-width: 1120px; }
+
+/* v7: the drawer title is the way into the full record */
+.peek-link { color: inherit; text-decoration: none; border-radius: 4px; }
+.peek-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.peek-link__arrow { font-size: .75em; color: var(--text-muted); margin-left: 4px; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useRef, useEffect, useLayoutEffect } = React;
+
+/* ═════════════════════════════════════════════════════════════
+   COPY - verbatim from main (orders-list-filters.copy.ts,
+   orders-list-page.copy.ts, order-lifecycle-phase.ts, order-hold.types.ts)
+   ═════════════════════════════════════════════════════════════ */
+const COPY = {
+  searchPlaceholderWithPii: 'Search by order number, buyer, email, SKU or tracking number…',
+  groupSource: 'Source & dates', groupShipment: 'Shipment', groupExceptions: 'Exceptions', groupTags: 'Tags', groupPhase: 'Stage',
+  fieldSource: 'Source', allSources: 'All sources', fieldCreated: 'Created', createdFrom: 'From', createdTo: 'To',
+  fieldFulfillment: 'Fulfillment', anyFulfillment: 'Any fulfillment', fieldShipBy: 'Ship-by', anySla: 'Any',
+  fieldPacking: 'Packing', anyPacking: 'Any packing', packedYes: 'Packed', packedNo: 'Not packed yet',
+  fieldHold: 'Hold reason', anyHold: 'Any hold reason',
+  checkSalesDocsBlocked: 'Sales documents blocked', checkOmsStopped: 'OpenLinker stopped', checkRateConflict: 'Rate conflict',
+  checkRoutingBlocked: 'Routing blocked', checkWaiting: 'Waiting in OpenLinker', checkPackBench: 'On pack bench',
+  checkOpenReturn: 'Open return', checkBuyerNote: 'With buyer note',
+  anyTag: 'Any tag', noTags: 'No tags', anyPhase: 'Any stage',
+  quickNeedsLook: 'Needs a look', quickPhase: 'Stage', quickBreaching: 'Ship-by ≤ 24h', quickSalesDocs: 'Sales docs blocked',
+  quickSalesDocsTitle: (n) => `${n} more are issued on request — waiting for you by configuration, not blocked.`,
+  reviewDispatchRisk: 'Review dispatch risk', dispatchRiskOverview: 'Dispatch risk',
+  panelHint: 'Filters apply as you change them and stay in the address bar.', clearAll: 'Clear all', hideFilters: 'Hide filters',
+  results: (n) => (n === 1 ? '1 result' : `${n} results`),
+  noFilterResultsTitle: 'No orders in this view', clearFilters: 'Clear filters',
+};
+const HEALTH = [
+  { key: 'source_deleted', label: 'Source deleted', tone: 'error' },
+  { key: 'needs_attention', label: 'Needs attention', tone: 'error' },
+  { key: 'awaiting_mapping', label: 'Awaiting mapping', tone: 'warning' },
+  { key: 'awaiting_dispatch', label: 'Awaiting dispatch', tone: 'info' },
+  { key: 'synced', label: 'Synced', tone: 'success' },
+];
+const PHASES = {
+  cancelled: { label: 'Cancelled', tone: 'neutral' }, vendor_authoritative: { label: 'Channel status', tone: 'info' },
+  delivered: { label: 'Delivered', tone: 'success' }, in_transit: { label: 'With carrier', tone: 'info' },
+  fulfillment_failed: { label: 'Dispatch failed', tone: 'error' }, held: { label: 'On hold', tone: 'warning' },
+  amending: { label: 'Change pending', tone: 'warning' }, blocked: { label: 'Blocked', tone: 'error' }, ready: { label: 'Ready', tone: 'neutral' },
+};
+const HOLD_REASONS = ['Payment review', 'Fraud review', 'Held by operator', 'Stock shortfall', 'Address invalid', 'Awaiting change', 'Awaiting buyer', 'Held by channel'];
+const SLA = [{ value: 'overdue', label: 'Overdue' }, { value: 'at_risk', label: 'At risk' }, { value: 'on_track', label: 'On track' }];
+const FULFILLMENT = [{ value: 'not-shipped', label: 'Not shipped' }, { value: 'dispatched', label: 'Dispatched' }, { value: 'delivered', label: 'Delivered' }, { value: 'failed', label: 'Dispatch failed' }];
+const SOURCES = [
+  { id: 'alg', name: 'Allegro sandbox', color: 'var(--channel-allegro)', short: 'A' },
+  { id: 'ps', name: 'Sklep PrestaShop', color: 'var(--channel-prestashop)', short: 'P' },
+  { id: 'erli', name: 'Erli', color: 'var(--channel-erli)', short: 'E' },
+  { id: 'wc', name: 'Sklep WooCommerce', color: 'var(--channel-woocommerce)', short: 'W' },
+];
+const TAGS = [{ id: 'vip', name: 'VIP', count: 2 }, { id: 'gift', name: 'Gift wrap', count: 1 }, { id: 'b2b', name: 'B2B', count: 2 }];
+const SORTS = [
+  { key: 'placedAt', label: 'Placed', dir: 'desc', menu: 'Newest first', isNew: true },
+  { key: 'dispatchBy', label: 'Ship-by', dir: 'asc', menu: 'Ship-by, soonest' },
+  { key: 'createdAt', label: 'Created', dir: 'desc', menu: 'Recently synced' },
+  { key: 'customer', label: 'Customer', dir: 'asc', menu: 'Customer, A to Z' },
+  { key: 'status', label: 'Status', dir: 'asc', menu: 'Status' },
+  { key: 'fulfillment', label: 'Shipment', dir: 'asc', menu: 'Shipment state' },
+  { key: 'total', label: 'Total', dir: 'desc', menu: 'Highest total' },
+  { key: 'payment', label: 'Payment', dir: 'asc', menu: 'Payment state' },
+];
+
+/* ═════════════════════════════════════════════════════════════
+   Sample data (illustrative, not real orders)
+   ═════════════════════════════════════════════════════════════ */
+const NOW = new Date('2026-11-06T17:27:00');
+const ago = (h) => new Date(NOW.getTime() - h * 3600e3);
+const ahead = (h) => new Date(NOW.getTime() + h * 3600e3);
+const O = (o) => ({ items: [], tags: [], extra: 0, hold: null, flags: {}, packedAt: null, onPackBench: false, buyerNote: null, labelled: false, invoice: null, carrier: null, dest: 'OpenLinker', ...o });
+const ORDERS = [
+  O({ ref: 'd9cdb640…2d8e3f', full: 'd9cdb640-bd65-11f1-a5f3-e32e252d8e3f', item: 'Paco Rabanne 1 Million woda toaletowa 100 ml', extra: 1, customer: 'Antonina Mazowska', city: 'Anegdotki', src: 'alg', health: 'synced', phase: 'in_transit', sla: 'overdue', shipBy: ago(35 * 24), fulfillment: 'dispatched', labelled: true, packedAt: ago(36 * 24), payment: 'paid', total: 588.95, placedAt: ago(36 * 24 + 8), createdAt: ago(36 * 24 + 8), invoice: 'At authority', carrier: 'Allegro Paczkomaty InPost', lines: [['Paco Rabanne 1 Million woda toaletowa 100 ml', '7782320551', 499.0], ['Skarpety FALKE RU Compression', '7782320549', 89.0]] }),
+  O({ ref: '4f1a77c0…91be02', item: 'Kubek emaliowany 350 ml, oliwkowy', customer: 'Bartosz Zieliński', city: 'Gdynia', src: 'alg', health: 'awaiting_dispatch', phase: 'ready', sla: 'at_risk', shipBy: ahead(5), fulfillment: 'not-shipped', payment: 'paid', total: 69.8, placedAt: ago(0.6), createdAt: ago(0.5), onPackBench: true, buyerNote: 'Proszę zapakować bez folii.', flags: { waiting: true }, waitingAge: '2 h', tags: ['vip'], carrier: 'Allegro One Box', lines: [['Kubek emaliowany 350 ml, oliwkowy', '5901234123457', 34.9], ['Kubek emaliowany 350 ml, oliwkowy', '5901234123457', 34.9]] }),
+  O({ ref: 'PS-004812', item: 'Deska do krojenia, dąb, 40 cm', customer: 'Tomasz Kędzierski', city: 'Kraków', src: 'ps', dest: 'Subiekt GT', health: 'needs_attention', phase: 'blocked', sla: 'on_track', shipBy: ahead(46), fulfillment: 'not-shipped', payment: 'pending', total: 89.0, placedAt: ago(1.4), createdAt: ago(1.3), flags: { docBlocked: true }, docAge: '11 d', carrier: 'DPD', lines: [['Deska do krojenia, dąb, 40 cm', '5907655100123', 89.0]] }),
+  O({ ref: 'ERL-91333', item: 'Koc wełniany 150×200, grafit', extra: 2, customer: 'Marta Ostrowska', city: 'Poznań', src: 'erli', health: 'awaiting_mapping', phase: 'blocked', sla: 'on_track', shipBy: ahead(30), fulfillment: 'not-shipped', payment: 'paid', total: 412.5, placedAt: ago(2.6), createdAt: ago(2.5), tags: ['b2b'], carrier: 'InPost Kurier', lines: [['Koc wełniany 150×200, grafit', 'KOC-0077', 249.0], ['Poduszka lniana 45×45', 'POD-0951', 59.0], ['Poszewka lniana 50×60', 'POS-0402', 104.5]] }),
+  O({ ref: '7c1e88a2…0f33d1', item: 'Lampka biurkowa LED, czarna', customer: 'Paweł Szymczak', city: 'Łódź', src: 'alg', health: 'awaiting_dispatch', phase: 'held', hold: 'Payment review', sla: 'overdue', shipBy: ago(2), fulfillment: 'not-shipped', payment: 'pending', total: 129.0, placedAt: ago(3.9), createdAt: ago(3.8), flags: { omsStopped: true }, carrier: 'Allegro Paczkomaty InPost', lines: [['Lampka biurkowa LED, czarna', '5900000220301', 129.0]] }),
+  O({ ref: 'WC-23107', item: 'Nóż szefa kuchni 20 cm', customer: 'Joanna Kubiak', city: 'Wrocław', src: 'wc', health: 'synced', phase: 'delivered', sla: null, shipBy: null, fulfillment: 'delivered', labelled: true, packedAt: ago(70), payment: 'paid', total: 179.0, placedAt: ago(74), createdAt: ago(74), invoice: 'Issued', carrier: 'InPost Kurier', lines: [['Nóż szefa kuchni 20 cm', 'NOZ-0310', 179.0]] }),
+  O({ ref: 'a03b6f11…77e2c9', item: 'Słuchawki bezprzewodowe ANC', customer: 'Krzysztof Lis', city: 'Lublin', src: 'alg', health: 'awaiting_dispatch', phase: 'ready', sla: 'at_risk', shipBy: ahead(7), fulfillment: 'not-shipped', payment: 'paid', total: 1249.0, placedAt: ago(7.5), createdAt: ago(7.4), flags: { rateConflict: true }, carrier: 'Allegro Kurier DPD', lines: [['Słuchawki bezprzewodowe ANC', '4548736132', 1249.0]] }),
+  O({ ref: 'PS-004809', item: 'Wazon ceramiczny 25 cm', customer: 'Ewa Pawlak', city: 'Toruń', src: 'ps', dest: 'Subiekt GT', health: 'synced', phase: 'in_transit', sla: 'on_track', shipBy: ahead(20), fulfillment: 'dispatched', labelled: true, packedAt: ago(9), payment: 'paid', total: 74.0, placedAt: ago(11), createdAt: ago(11), invoice: 'Issued', carrier: 'DPD', lines: [['Wazon ceramiczny 25 cm', 'WAZ-1402', 74.0]] }),
+  O({ ref: 'ERL-91310', item: 'Zestaw przypraw, 12 słoików', customer: 'Michał Jabłoński', city: 'Rzeszów', src: 'erli', health: 'needs_attention', phase: 'blocked', sla: 'at_risk', shipBy: ahead(14), fulfillment: 'not-shipped', payment: 'paid', total: 236.0, placedAt: ago(19), createdAt: ago(19), flags: { routingBlocked: true }, carrier: 'InPost Paczkomat', lines: [['Zestaw przypraw, 12 słoików', 'PRZ-0112', 236.0]] }),
+  O({ ref: '1188cd04…5a9e10', item: 'Skarpety FALKE RU Compression', customer: 'Natalia Górecka', city: 'Opole', src: 'alg', health: 'synced', phase: 'delivered', sla: null, shipBy: null, fulfillment: 'delivered', labelled: true, packedAt: ago(96), payment: 'paid', total: 89.0, placedAt: ago(100), createdAt: ago(100), invoice: 'At authority', flags: { openReturn: true }, carrier: 'Allegro One Box', lines: [['Skarpety FALKE RU Compression', '7782320549', 89.0]] }),
+  O({ ref: 'WC-23094', item: 'Poduszka lniana 45×45', customer: 'Karolina Dudek', city: 'Kielce', src: 'wc', health: 'source_deleted', phase: 'cancelled', sla: null, shipBy: null, fulfillment: 'not-shipped', payment: 'refunded', total: 59.0, placedAt: ago(44), createdAt: ago(44), lines: [['Poduszka lniana 45×45', 'POD-0951', 59.0]] }),
+  O({ ref: 'e5d2f310…c04b88', item: 'Plecak miejski 22 l', customer: 'Adam Wieczorek', city: 'Bydgoszcz', src: 'alg', health: 'needs_attention', phase: 'fulfillment_failed', sla: 'overdue', shipBy: ago(30), fulfillment: 'failed', payment: 'paid', total: 199.0, placedAt: ago(52), createdAt: ago(52), flags: { docBlocked: true }, docAge: '2 d', tags: ['vip'], carrier: 'Allegro Kurier DPD', lines: [['Plecak miejski 22 l', 'PLE-0220', 199.0]] }),
+  O({ ref: 'PS-004791', item: 'Filiżanka porcelanowa, zestaw 2 szt.', customer: 'Zofia Malinowska', city: 'Gliwice', src: 'ps', dest: 'Subiekt GT', health: 'awaiting_dispatch', phase: 'amending', sla: 'on_track', shipBy: ahead(40), fulfillment: 'not-shipped', payment: 'cod', total: 112.0, placedAt: ago(5.2), createdAt: ago(5.1), onPackBench: true, packedAt: ago(1), buyerNote: 'Zmiana adresu w drodze.', carrier: 'DPD Pobranie', tags: ['b2b'], lines: [['Filiżanka porcelanowa, zestaw 2 szt.', 'FIL-0021', 112.0]] }),
+  O({ ref: '9b0c1d2e…f3a4b5', item: 'Ładowarka USB-C 65 W', customer: 'Grzegorz Wojciechowski', city: 'Olsztyn', src: 'alg', health: 'synced', phase: 'vendor_authoritative', sla: 'on_track', shipBy: ahead(28), fulfillment: 'dispatched', labelled: true, packedAt: ago(3), payment: 'paid', total: 74.49, placedAt: ago(26), createdAt: ago(26), invoice: 'Issued', carrier: 'Allegro One Box', lines: [['Ładowarka USB-C 65 W', '6941487281', 74.49]] }),
+  O({ ref: 'ERL-91277', item: 'Mata do jogi 6 mm', customer: 'Agnieszka Wróblewska', city: 'Szczecin', src: 'erli', health: 'awaiting_dispatch', phase: 'ready', sla: 'on_track', shipBy: ahead(52), fulfillment: 'not-shipped', payment: 'paid', total: 129.9, placedAt: ago(0.2), createdAt: ago(0.1), flags: { waiting: true }, waitingAge: '6 min', gift: true, tags: ['gift'], carrier: 'InPost Paczkomat', lines: [['Mata do jogi 6 mm', 'MAT-0600', 129.9]] }),
+];
+
+/* ═════════════════════════════════════════════════════════════
+   Filter state - mirrors useOrderListFilters (URL state in prod)
+   ═════════════════════════════════════════════════════════════ */
+const EMPTY = {
+  search: '', health: null, source: null, createdFrom: '', createdTo: '', fulfillment: null, sla: null, packed: null,
+  onPackBench: false, hold: null, docBlocked: false, omsStopped: false, waiting: false, routingBlocked: false,
+  rateConflict: false, openReturn: false, buyerNote: false, breaching: false, tag: null, phase: null,
+};
+const FLAGS = ['docBlocked', 'omsStopped', 'waiting', 'routingBlocked', 'rateConflict', 'openReturn', 'buyerNote', 'onPackBench', 'breaching'];
+
+function matches(o, s, skip = []) {
+  const on = (k) => !skip.includes(k);
+  const q = s.search.trim().toLowerCase();
+  if (q && ![o.ref, o.full, o.customer, o.item, ...o.lines.map((l) => l[1])].some((v) => v && v.toLowerCase().includes(q))) return false;
+  if (on('health') && s.health && o.health !== s.health) return false;
+  if (on('source') && s.source && o.src !== s.source) return false;
+  if (s.createdFrom && o.createdAt < new Date(s.createdFrom)) return false;
+  if (s.createdTo && o.createdAt > new Date(s.createdTo + 'T23:59:59')) return false;
+  if (on('fulfillment') && s.fulfillment && o.fulfillment !== s.fulfillment) return false;
+  if (on('sla') && s.sla && o.sla !== s.sla) return false;
+  if (s.packed !== null && (!!o.packedAt) !== s.packed) return false;
+  if (on('hold') && s.hold && o.hold !== s.hold) return false;
+  if (on('phase') && s.phase && o.phase !== s.phase) return false;
+  if (on('tag') && s.tag) { if (s.tag === '__untagged__' ? o.tags.length : !o.tags.includes(s.tag)) return false; }
+  if (on('onPackBench') && s.onPackBench && !o.onPackBench) return false;
+  if (on('buyerNote') && s.buyerNote && !o.buyerNote) return false;
+  if (on('breaching') && s.breaching && !(o.shipBy && o.shipBy - NOW <= 24 * 3600e3 && o.fulfillment === 'not-shipped')) return false;
+  for (const f of ['docBlocked', 'omsStopped', 'waiting', 'routingBlocked', 'rateConflict', 'openReturn']) if (on(f) && s[f] && !o.flags[f]) return false;
+  return true;
+}
+const FLAG_TEST = {
+  docBlocked: (o) => !!o.flags.docBlocked, omsStopped: (o) => !!o.flags.omsStopped, waiting: (o) => !!o.flags.waiting,
+  routingBlocked: (o) => !!o.flags.routingBlocked, rateConflict: (o) => !!o.flags.rateConflict, onPackBench: (o) => o.onPackBench,
+  openReturn: (o) => !!o.flags.openReturn, buyerNote: (o) => !!o.buyerNote,
+};
+/* Counts: like the summary queries - each axis ignores itself, respects the rest. */
+function useCounts(s) {
+  return useMemo(() => {
+    const healthBase = ORDERS.filter((o) => matches(o, s, ['health']));
+    const health = { all: healthBase.length };
+    HEALTH.forEach((h) => { health[h.key] = healthBase.filter((o) => o.health === h.key).length; });
+    const flags = {};
+    Object.keys(FLAG_TEST).forEach((k) => { flags[k] = ORDERS.filter((o) => matches(o, s, [k]) && FLAG_TEST[k](o)).length; });
+    const phase = {};
+    Object.keys(PHASES).forEach((p) => { phase[p] = ORDERS.filter((o) => matches(o, s, ['phase']) && o.phase === p).length; });
+    const slaBase = ORDERS.filter((o) => matches(o, s, ['sla']));
+    const sla = { overdue: slaBase.filter((o) => o.sla === 'overdue').length, at_risk: slaBase.filter((o) => o.sla === 'at_risk').length, on_track: slaBase.filter((o) => o.sla === 'on_track').length };
+    const source = {};
+    SOURCES.forEach((c) => { source[c.id] = ORDERS.filter((o) => matches(o, s, ['source']) && o.src === c.id).length; });
+    return { health, flags, phase, sla, source, issuedOnRequest: 3 };
+  }, [s]);
+}
+const SORT_FN = {
+  placedAt: (a, b) => a.placedAt - b.placedAt, createdAt: (a, b) => a.createdAt - b.createdAt,
+  dispatchBy: (a, b) => (a.shipBy ? a.shipBy.getTime() : 9e15) - (b.shipBy ? b.shipBy.getTime() : 9e15),
+  customer: (a, b) => a.customer.localeCompare(b.customer, 'pl'), status: (a, b) => a.health.localeCompare(b.health),
+  fulfillment: (a, b) => a.fulfillment.localeCompare(b.fulfillment), total: (a, b) => a.total - b.total, payment: (a, b) => a.payment.localeCompare(b.payment),
+};
+function sortRows(rows, sort) {
+  const r = rows.slice().sort(SORT_FN[sort.key]);
+  return sort.dir === 'desc' ? r.reverse() : r;
+}
+
+/* Applied-filter chip specs - one list both versions read (buildOrderFilterChips). */
+function chipSpecs(s, { includeHealth = true } = {}) {
+  const c = [];
+  const src = (id) => SOURCES.find((x) => x.id === id)?.name;
+  if (s.search) c.push({ k: 'search', label: 'Search', value: `“${s.search}”`, clear: { search: '' } });
+  if (includeHealth && s.health) c.push({ k: 'health', label: 'Status', value: HEALTH.find((h) => h.key === s.health).label, clear: { health: null } });
+  if (s.source) c.push({ k: 'source', label: 'Source', value: src(s.source), clear: { source: null } });
+  if (s.createdFrom || s.createdTo) c.push({ k: 'created', label: 'Created', value: [s.createdFrom && `from ${s.createdFrom}`, s.createdTo && `until ${s.createdTo}`].filter(Boolean).join(' '), clear: { createdFrom: '', createdTo: '' } });
+  if (s.breaching) c.push({ k: 'breaching', label: 'Due', value: '≤ 24h or overdue', clear: { breaching: false } });
+  if (s.sla) c.push({ k: 'sla', label: 'Ship-by', value: SLA.find((x) => x.value === s.sla).label, clear: { sla: null } });
+  if (s.fulfillment) c.push({ k: 'fulfillment', label: 'Fulfillment', value: FULFILLMENT.find((x) => x.value === s.fulfillment).label, clear: { fulfillment: null } });
+  if (s.packed !== null) c.push({ k: 'packed', label: 'Packing', value: s.packed ? 'Packed' : 'Not packed yet', clear: { packed: null } });
+  if (s.onPackBench) c.push({ k: 'onPackBench', label: 'Pack bench', value: 'To pack or packing', clear: { onPackBench: false } });
+  if (s.hold) c.push({ k: 'hold', label: 'Hold', value: s.hold, clear: { hold: null } });
+  if (s.docBlocked) c.push({ k: 'docBlocked', label: 'Sales documents', value: 'Blocked', clear: { docBlocked: false } });
+  if (s.omsStopped) c.push({ k: 'omsStopped', label: 'OpenLinker', value: 'Stopped', clear: { omsStopped: false } });
+  if (s.waiting) c.push({ k: 'waiting', label: 'OpenLinker', value: 'Waiting', clear: { waiting: false } });
+  if (s.routingBlocked) c.push({ k: 'routingBlocked', label: 'Routing', value: 'Blocked', clear: { routingBlocked: false } });
+  if (s.rateConflict) c.push({ k: 'rateConflict', label: 'Tax rate', value: 'Conflict', clear: { rateConflict: false } });
+  if (s.openReturn) c.push({ k: 'openReturn', label: 'Return', value: 'Open', clear: { openReturn: false } });
+  if (s.buyerNote) c.push({ k: 'buyerNote', label: 'Buyer note', value: 'Present', clear: { buyerNote: false } });
+  if (s.tag) c.push({ k: 'tag', label: 'Tag', value: s.tag === '__untagged__' ? 'No tags' : TAGS.find((t) => t.id === s.tag)?.name, clear: { tag: null } });
+  if (s.phase) c.push({ k: 'phase', label: 'Stage', value: PHASES[s.phase].label, clear: { phase: null } });
+  return c;
+}
+
+/* ═════════════════════════════════════════════════════════════
+   Small shared pieces
+   ═════════════════════════════════════════════════════════════ */
+const plDate = (d) => d.toLocaleString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const plMoney = (n) => n.toLocaleString('pl-PL', { minimumFractionDigits: 2 }) + ' zł';
+const relDays = (d) => { const days = Math.round(Math.abs(NOW - d) / 86400e3); const h = Math.round(Math.abs(NOW - d) / 3600e3); return days >= 1 ? `${days} dni` : `${h} godz.`; };
+const cls = (...a) => a.filter(Boolean).join(' ');
+function Badge({ tone, dot = true, children, title }) {
+  return <span className={cls('status-badge', tone && tone !== 'neutral' && `status-badge--${tone}`)} title={title}>{dot ? <span className="status-badge__dot" aria-hidden="true" /> : null}{children}</span>;
+}
+function Btn({ tone, sm, className, children, ...rest }) {
+  return <button type="button" className={cls('button', tone && `button--${tone}`, sm && 'button--sm', className)} {...rest}>{children}</button>;
+}
+function Conn({ id }) {
+  const c = SOURCES.find((x) => x.id === id);
+  return <span className="conn"><span className="conn__dot" style={{ background: c.color }} aria-hidden="true" />{c.name}</span>;
+}
+function useDismiss(open, setOpen, ref) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const d = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const k = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', d); document.addEventListener('keydown', k);
+    return () => { document.removeEventListener('mousedown', d); document.removeEventListener('keydown', k); };
+  }, [open, setOpen, ref]);
+}
+function useShortcuts(map) {
+  useEffect(() => {
+    const h = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+      const fn = map[e.key.toLowerCase()]; if (fn) { e.preventDefault(); fn(); }
+    };
+    document.addEventListener('keydown', h); return () => document.removeEventListener('keydown', h);
+  });
+}
+
+/* Row cells - identical in both versions (the table is not what changes). */
+function shipByBadge(o) {
+  if (!o.shipBy) return null;
+  if (o.sla === 'overdue') return <Badge tone="error">Po terminie {relDays(o.shipBy)}</Badge>;
+  if (o.sla === 'at_risk') return <Badge tone="warning">Za {relDays(o.shipBy)}</Badge>;
+  return <Badge>Za {relDays(o.shipBy)}</Badge>;
+}
+const PAY = { paid: ['success', 'Paid'], pending: ['warning', 'Awaiting payment'], cod: ['info', 'Cash on delivery'], refunded: [null, 'Refunded'] };
+const FUL = { 'not-shipped': [null, 'Not shipped'], dispatched: ['info', 'Dispatched'], delivered: ['success', 'Delivered'], failed: ['error', 'Dispatch failed'] };
+function statusBadges(o) {
+  const h = HEALTH.find((x) => x.key === o.health);
+  const out = [<Badge key="h" tone={h.tone}>{h.label}</Badge>];
+  if (o.flags.waiting) out.push(<Badge key="w" tone="warning">Waiting in OpenLinker</Badge>);
+  else out.push(<Badge key="p" tone={PHASES[o.phase].tone}>{PHASES[o.phase].label}</Badge>);
+  if (o.flags.openReturn) out.push(<Badge key="r" tone="review">Open return</Badge>);
+  if (o.hold) out.push(<Badge key="hold" tone="warning">Hold: {o.hold}</Badge>);
+  if (o.flags.routingBlocked) out.push(<Badge key="rt" tone="error">Routing blocked</Badge>);
+  if (o.flags.omsStopped) out.push(<Badge key="oms" tone="error">OpenLinker stopped</Badge>);
+  return out;
+}
+function shipmentBadges(o) {
+  const out = [];
+  if (o.packedAt) out.push(<span key="pk" className="packed">✓ Packed <b>{relDays(o.packedAt)} temu</b></span>);
+  else if (o.onPackBench) out.push(<Badge key="pb" tone="info">On pack bench</Badge>);
+  const f = FUL[o.fulfillment]; out.push(<Badge key="f" tone={f[0]}>{f[1]}</Badge>);
+  const sb = shipByBadge(o); if (sb) out.push(React.cloneElement(sb, { key: 'sb' }));
+  if (o.labelled) out.push(<Badge key="lb" tone="success">Labelled</Badge>);
+  if (!o.labelled && o.health === 'awaiting_dispatch' && !o.hold) out.push(<a key="gl" href="#" className="cta-link" onClick={(e) => e.preventDefault()}>Generate label</a>);
+  return out;
+}
+function moneyBadges(o) {
+  const p = PAY[o.payment];
+  const out = [<Badge key="p" tone={p[0]}>{p[1]}</Badge>];
+  if (o.flags.docBlocked) out.push(<Badge key="d" tone="error">Sales docs blocked</Badge>);
+  else if (o.invoice) out.push(<span key="i" className="sub">▤ {o.invoice}</span>);
+  if (o.flags.rateConflict) out.push(<Badge key="rc" tone="warning">Rate conflict</Badge>);
+  return out;
+}
+function OrderIdentity({ o }) {
+  const src = SOURCES.find((x) => x.id === o.src);
+  return (
+    <div className="idcell">
+      <span className="thumb" aria-hidden="true">{src.short}</span>
+      <div className="stack">
+        <span><span className="ref">{o.ref}</span> <button className="copy" type="button" title="Copy order number" onClick={(e) => { e.stopPropagation(); toast(`Copied ${o.full ?? o.ref}`); }}>Kopiuj</button></span>
+        <span className="sub">{o.item} {o.extra ? <span className="more">+{o.extra}</span> : null}</span>
+        {o.tags.length ? <span className="wrap">{o.tags.map((t) => <span key={t} className="more">{TAGS.find((x) => x.id === t).name}</span>)}</span> : null}
+      </div>
+    </div>
+  );
+}
+function DetailBody({ o, compact }) {
+  return (
+    <div className="detail">
+      <div className="detail__actions">
+        <Btn tone="outline" sm>Order details</Btn>
+        <Btn tone="outline" sm>View on {SOURCES.find((s) => s.id === o.src).name.split(' ')[0]} ↗</Btn>
+      </div>
+      <div><div className="eyebrow">Buyer note</div><div style={{ fontSize: '.8125rem', marginTop: 2 }}>{o.buyerNote ?? 'The channel did not say whether the buyer left a note.'}</div></div>
+      <dl className="kv" style={{ margin: 0 }}>
+        <div><dt>Order reference</dt><dd className="mono">{o.full ?? o.ref}</dd></div>
+        <div><dt>Internal ID</dt><dd className="mono">ol_order_{o.ref.replace(/[^a-z0-9]/gi, '').slice(0, 12).toLowerCase()}</dd></div>
+        <div><dt>Placed</dt><dd>{plDate(o.placedAt)}</dd></div>
+        <div><dt>Destination</dt><dd>{o.dest}</dd></div>
+        <div><dt>Ship-by</dt><dd>{o.shipBy ? plDate(o.shipBy) : '-'}</dd></div>
+        <div><dt>Invoice</dt><dd>{o.invoice ?? '-'}</dd></div>
+      </dl>
+      <div>
+        <div className="eyebrow" style={{ marginBottom: 6 }}>Items ({o.lines.length})</div>
+        <div className="stack" style={{ alignItems: 'stretch' }}>
+          {o.lines.map((l, i) => <div key={i} className="lineitem"><span>1× {l[0]}<div className="sub mono">{l[1]}</div></span><span className="tabular">{plMoney(l[2])}</span></div>)}
+        </div>
+      </div>
+      <dl className="kv" style={{ margin: 0 }}>
+        <div><dt>Shipping address</dt><dd>{o.customer}<br />ul. Przykładowa 4 / 12<br />00-000 {o.city}</dd></div>
+        <div><dt>Billing address</dt><dd>{o.customer}<br />ul. Przykładowa 4 / 12<br />00-000 {o.city}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
+function BulkTag({ n }) {
+  const [open, setOpen] = useState(false); const ref = useRef(null); useDismiss(open, setOpen, ref);
+  return (
+    <div className="anchor" ref={ref}>
+      <Btn tone="secondary" aria-expanded={open} onClick={() => setOpen(!open)}>Tag</Btn>
+      {open ? <div className="pop" style={{ top: 'auto', bottom: 'calc(100% + 6px)' }} role="menu">{TAGS.map((tg) => <button key={tg.id} type="button" className="opt" onClick={() => { toast(`Tagged ${n} orders "${tg.name}"`); setOpen(false); }}><span className="more">{tg.name}</span></button>)}</div> : null}
+    </div>
+  );
+}
+/* Bulk action bar - unchanged between versions (BulkActionBar on main) */
+function BulkBar({ sel, clear, onExport }) {
+  if (!sel.length) return null;
+  const dispatchable = sel.filter((o) => o.fulfillment === 'not-shipped' && o.phase !== 'cancelled').length;
+  return (
+    <div className="bulk" role="region" aria-label="Bulk actions">
+      <span className="bulk__count">{sel.length} {sel.length === 1 ? 'order' : 'orders'} selected</span>
+      <span className="bulk__hint">{dispatchable < sel.length ? `${dispatchable} of ${sel.length} can be dispatched. Shipped orders are left out.` : 'Up to 50 orders per dispatch.'}</span>
+      <Btn tone="ghost" onClick={clear}>Clear</Btn>
+      <BulkTag n={sel.length} />
+      <Btn tone="secondary" onClick={() => toast(`Marked ${sel.length} buyer messages as read`)}>Mark as read</Btn>
+      <Btn tone="danger" onClick={() => toast(`Cancel ${sel.length}: the confirm dialog opens here`, 'warn')}>Cancel {sel.length}</Btn>
+      <Btn tone="secondary" onClick={onExport}>Export {sel.length}</Btn>
+      <Btn disabled={!dispatchable} onClick={() => toast(`Dispatching ${dispatchable} orders`)}>Dispatch {dispatchable}</Btn>
+    </div>
+  );
+}
+/* ─── Toasts (ToastProvider on main) ─── */
+const toast = (text, tone) => window.dispatchEvent(new CustomEvent('ol-toast', { detail: { text, tone, id: Math.random() } }));
+function Toaster() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    const h = (e) => { const t = e.detail; setItems((x) => [...x, t]); setTimeout(() => setItems((x) => x.filter((i) => i.id !== t.id)), 3200); };
+    window.addEventListener('ol-toast', h); return () => window.removeEventListener('ol-toast', h);
+  }, []);
+  return <div className="toasts" aria-live="polite">{items.map((t) => <div key={t.id} className={cls('toast', t.tone && `toast--${t.tone}`)}>{t.text}</div>)}</div>;
+}
+
+/* ─── Columns + presets (OrderColumnVisibilityControl + OrderColumnPresetManager on main) ─── */
+const COLS = [['customer', 'Customer'], ['channel', 'Channel'], ['status', 'Status'], ['shipment', 'Shipment'], ['money', 'Money']];
+const sameCols = (a, b) => a.length === b.length && a.every((c) => b.includes(c));
+function ColumnsControl({ cols, setCols, presets, setPresets }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const ref = useRef(null);
+  useDismiss(open, setOpen, ref);
+  const ws = presets.find((p) => p.scope === 'workspace');
+  const save = () => {
+    const n = name.trim(); if (!n) return;
+    setPresets([...presets, { id: `p${Date.now()}`, name: n, cols: [...cols], scope: 'mine' }]); setName(''); toast(`Preset "${n}" saved`);
+  };
+  return (
+    <div className="anchor" ref={ref}>
+      <Btn tone="ghost" sm aria-expanded={open} onClick={() => setOpen(!open)}>Columns</Btn>
+      {open ? (
+        <div className="pop pop--right cols-pop" role="dialog" aria-label="Columns">
+          <div className="pop__title">Showing now <span className="muted">· Order is always shown</span></div>
+          {COLS.map(([id, label]) => (
+            <label key={id} className="check cols-pop__row"><input type="checkbox" checked={cols.includes(id)} onChange={() => setCols(cols.includes(id) ? cols.filter((c) => c !== id) : COLS.map((c) => c[0]).filter((c) => c === id || cols.includes(c)))} />{label}</label>
+          ))}
+          <div className="pop__title cols-pop__sep">Presets</div>
+          {presets.map((p) => {
+            const active = sameCols(p.cols, cols);
+            return (
+              <div key={p.id} className="preset">
+                <button type="button" className="opt" aria-checked={active} onClick={() => { setCols([...p.cols]); toast(`Showing "${p.name}"`); }}>
+                  <span className="opt__mark" aria-hidden="true" />{p.name}<span className="opt__meta">{p.scope === 'workspace' ? 'workspace default' : 'mine'}</span>
+                </button>
+                {p.scope === 'mine' ? <button type="button" className="icon-btn icon-btn--sm" aria-label={`Delete preset ${p.name}`} onClick={() => { setPresets(presets.filter((x) => x.id !== p.id)); toast(`Preset "${p.name}" deleted`); }}>✕</button> : null}
+              </div>
+            );
+          })}
+          <form className="preset-save" onSubmit={(e) => { e.preventDefault(); save(); }}>
+            <input id="preset-name" className="control" placeholder="Name this arrangement" aria-label="Preset name" value={name} onChange={(e) => setName(e.target.value)} />
+            <Btn sm type="submit" disabled={!name.trim()}>Save</Btn>
+          </form>
+          <div className="cols-pop__foot">
+            <button type="button" className="linkbtn" disabled={!ws || sameCols(ws.cols, cols)} onClick={() => { setCols([...ws.cols]); toast('Back to the workspace default'); }}>Reset to workspace default</button>
+            <button type="button" className="linkbtn" disabled={ws && sameCols(ws.cols, cols)} onClick={() => { setPresets(presets.map((p) => (p.scope === 'workspace' ? { ...p, cols: [...cols] } : p))); toast('Workspace default updated for everyone'); }}>Make this the workspace default</button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ─── Export dialog (OrderExportDialog on main) ─── */
+function ExportDialog({ scope: initialScope, viewCount, selectedCount, onClose }) {
+  const { closing, close } = useClosable(onClose);
+  const [scope, setScope] = useState(initialScope);
+  const [fields, setFields] = useState('table');
+  const [format, setFormat] = useState('csv');
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); });
+  const n = scope === 'view' ? viewCount : selectedCount;
+  return (
+    <>
+      <div className={cls('scrim', closing && 'scrim--out')} onClick={close} aria-hidden="true" />
+      <div className={cls('dialog', closing && 'dialog--out')} role="dialog" aria-modal="true" aria-labelledby="export-title">
+        <h2 id="export-title">Export orders</h2>
+        <fieldset className="dialog__set"><legend className="field__label">Which orders</legend>
+          <label className="check"><input type="radio" name="ex-scope" checked={scope === 'view'} onChange={() => setScope('view')} />Everything in this view<span className="check__count">{viewCount}</span></label>
+          <label className={cls('check', !selectedCount && 'muted')}><input type="radio" name="ex-scope" disabled={!selectedCount} checked={scope === 'selected'} onChange={() => setScope('selected')} />Selected orders<span className="check__count">{selectedCount}</span></label>
+        </fieldset>
+        <fieldset className="dialog__set"><legend className="field__label">Columns</legend>
+          <label className="check"><input type="radio" name="ex-fields" checked={fields === 'table'} onChange={() => setFields('table')} />Same as the table</label>
+          <label className="check"><input type="radio" name="ex-fields" checked={fields === 'all'} onChange={() => setFields('all')} />All order fields, one row per item</label>
+        </fieldset>
+        <div className="field"><span className="field__label">Format</span>
+          <div className="segmented-control segmented-control--soft" role="group" aria-label="Format">
+            {[['csv', 'CSV'], ['xlsx', 'Excel']].map(([v, l]) => <button key={v} type="button" className="segmented-control__option" aria-pressed={format === v} onClick={() => setFormat(v)}>{l}</button>)}
+          </div></div>
+        <div className="dialog__foot"><Btn tone="ghost" onClick={close}>Cancel</Btn>
+          <Btn disabled={!n} onClick={() => { toast(`Exporting ${n} orders. We'll tell you when the file is ready.`); close(); }}>Export {n}</Btn></div>
+      </div>
+    </>
+  );
+}
+
+function PageHead({ head }) {
+  const { synced, refreshing, onRefresh, onExport, cols, setCols, presets, setPresets } = head;
+  return (
+    <header className="page-head">
+      <div><div className="page-eyebrow">Synced {synced}</div><h1 className="page-title">Orders</h1></div>
+      <div className="button-group">
+        <Btn tone="secondary" sm onClick={onExport}>Export</Btn>
+        <ColumnsControl cols={cols} setCols={setCols} presets={presets} setPresets={setPresets} />
+        <Btn tone="ghost" sm onClick={onRefresh} aria-busy={refreshing}><span className={cls('spin', refreshing && 'spin--on')} aria-hidden="true">↻</span>Refresh <span className="button__shortcut">R</span></Btn>
+      </div>
+    </header>
+  );
+}
+
+/* ═════════════════════════════════════════════════════════════
+   TODAY  (main, 6 Nov 2026) - faithful to the screenshot
+   ═════════════════════════════════════════════════════════════ */
+function TodayFilterPanel({ s, set, counts, onHide }) {
+  return (
+    <div className="panel" role="region" aria-label="Filters">
+      <div className="panel__grid">
+        <fieldset className="panel__group" style={{ border: 0, margin: 0 }}>
+          <legend className="eyebrow" style={{ padding: 0, marginBottom: 8 }}>{COPY.groupSource}</legend>
+          <label className="field"><span className="field__label">{COPY.fieldSource}</span>
+            <select className="control" value={s.source ?? ''} onChange={(e) => set({ source: e.target.value || null })}>
+              <option value="">{COPY.allSources}</option>{SOURCES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select></label>
+          <div className="field"><span className="field__label">{COPY.fieldCreated}</span>
+            <div className="range-row"><span className="eyebrow">{COPY.createdFrom}</span><input type="date" className="control" aria-label="Created from" value={s.createdFrom} onChange={(e) => set({ createdFrom: e.target.value })} /></div>
+            <div className="range-row"><span className="eyebrow">{COPY.createdTo}</span><input type="date" className="control" aria-label="Created to" value={s.createdTo} onChange={(e) => set({ createdTo: e.target.value })} /></div>
+          </div>
+        </fieldset>
+        <fieldset className="panel__group" style={{ border: 0, margin: 0 }}>
+          <legend className="eyebrow" style={{ padding: 0, marginBottom: 8 }}>{COPY.groupShipment}</legend>
+          <label className="field"><span className="field__label">{COPY.fieldFulfillment}</span>
+            <select className="control" value={s.fulfillment ?? ''} onChange={(e) => set({ fulfillment: e.target.value || null })}>
+              <option value="">{COPY.anyFulfillment}</option>{FULFILLMENT.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+            </select></label>
+          <div className="field"><span className="field__label">{COPY.fieldShipBy}</span>
+            <div className="segmented-control" role="group" aria-label="Ship-by">
+              {[{ value: null, label: COPY.anySla }, ...SLA].map((o) => <button key={o.label} type="button" className="segmented-control__option" aria-pressed={s.sla === o.value} onClick={() => set({ sla: o.value })}>{o.label}</button>)}
+            </div></div>
+          <label className="field"><span className="field__label">{COPY.fieldPacking}</span>
+            <select className="control" value={s.packed === null ? '' : String(s.packed)} onChange={(e) => set({ packed: e.target.value === '' ? null : e.target.value === 'true' })}>
+              <option value="">{COPY.anyPacking}</option><option value="true">{COPY.packedYes}</option><option value="false">{COPY.packedNo}</option>
+            </select></label>
+          <label className="check"><input type="checkbox" checked={s.onPackBench} onChange={() => set({ onPackBench: !s.onPackBench })} />{COPY.checkPackBench}<span className="check__count">{counts.flags.onPackBench}</span></label>
+        </fieldset>
+        <fieldset className="panel__group" style={{ border: 0, margin: 0 }}>
+          <legend className="eyebrow" style={{ padding: 0, marginBottom: 8 }}>{COPY.groupExceptions}</legend>
+          <label className="field"><span className="field__label">{COPY.fieldHold}</span>
+            <select className="control" value={s.hold ?? ''} onChange={(e) => set({ hold: e.target.value || null })}>
+              <option value="">{COPY.anyHold}</option>{HOLD_REASONS.map((h) => <option key={h}>{h}</option>)}
+            </select></label>
+          <div>
+            {[['docBlocked', COPY.checkSalesDocsBlocked, 'error'], ['omsStopped', COPY.checkOmsStopped, 'error'], ['waiting', COPY.checkWaiting, 'warning'], ['routingBlocked', COPY.checkRoutingBlocked, 'error'], ['rateConflict', COPY.checkRateConflict, null], ['openReturn', COPY.checkOpenReturn, null, true], ['buyerNote', COPY.checkBuyerNote, null, true]].map(([k, label, tone, noCount]) => (
+              <label key={k} className="check"><input type="checkbox" checked={s[k]} onChange={() => set({ [k]: !s[k] })} />{label}
+                {noCount ? null : <span className={cls('check__count', tone && `check__count--${tone}`)}>{counts.flags[k]}</span>}</label>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset className="panel__group" style={{ border: 0, margin: 0 }}>
+          <legend className="eyebrow" style={{ padding: 0, marginBottom: 8 }}>{COPY.groupTags}</legend>
+          <div role="radiogroup" aria-label="Tag">
+            <label className="check"><input type="radio" name="t-tag" checked={!s.tag} onChange={() => set({ tag: null })} />{COPY.anyTag}</label>
+            {TAGS.map((t) => <label key={t.id} className="check"><input type="radio" name="t-tag" checked={s.tag === t.id} onChange={() => set({ tag: t.id })} /><span className="more">{t.name}</span><span className="check__count">{t.count}</span></label>)}
+            <label className="check muted"><input type="radio" name="t-tag" checked={s.tag === '__untagged__'} onChange={() => set({ tag: '__untagged__' })} />{COPY.noTags}</label>
+          </div>
+        </fieldset>
+      </div>
+      <div className="panel__foot"><span>{COPY.panelHint}</span><span className="button-group">{chipSpecs(s).length ? <Btn tone="ghost" sm onClick={() => set(EMPTY)}>{COPY.clearAll}</Btn> : null}<Btn tone="ghost" sm onClick={onHide}>{COPY.hideFilters}</Btn></span></div>
+    </div>
+  );
+}
+
+function TodaySortHeader({ label, k, sort, setSort }) {
+  const on = sort.key === k;
+  return <button type="button" className={cls('sortbtn', on && 'sortbtn--on')} onClick={() => setSort(on ? { key: k, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: SORTS.find((x) => x.key === k).dir })}>
+    {label} <span className={on ? 'sortbtn__ind' : ''}>{on ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span></button>;
+}
+
+function TodayTable({ rows, sort, setSort, selected, setSelected, cols }) {
+  const show = (c) => cols.includes(c);
+  const [open, setOpen] = useState({ [rows[0]?.ref]: true });
+  const all = rows.length > 0 && rows.every((r) => selected.includes(r.ref));
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead><tr>
+          <th className="col-exp" />
+          <th className="col-check"><input className="cb" type="checkbox" aria-label="Select all visible orders" checked={all} onChange={() => setSelected(all ? [] : rows.map((r) => r.ref))} /></th>
+          <th>Order</th>
+          {show('customer') ? <th><TodaySortHeader label="Customer" k="customer" sort={sort} setSort={setSort} /></th> : null}
+          {show('channel') ? <th>Channel</th> : null}
+          {show('status') ? <th><TodaySortHeader label="Status" k="status" sort={sort} setSort={setSort} /></th> : null}
+          {show('shipment') ? <th><TodaySortHeader label="Shipment" k="fulfillment" sort={sort} setSort={setSort} /><TodaySortHeader label="Ship-by" k="dispatchBy" sort={sort} setSort={setSort} /></th> : null}
+          {show('money') ? <th className="th-right"><TodaySortHeader label="Total" k="total" sort={sort} setSort={setSort} /><TodaySortHeader label="Payment" k="payment" sort={sort} setSort={setSort} /><TodaySortHeader label="Created" k="createdAt" sort={sort} setSort={setSort} /></th> : null}
+        </tr></thead>
+        <tbody>
+          {rows.map((o) => {
+            const sel = selected.includes(o.ref);
+            return (
+              <React.Fragment key={o.ref}>
+                <tr className={cls('row', sel && 'row--sel')}>
+                  <td><button type="button" className="exp" aria-expanded={!!open[o.ref]} aria-label="Show order details" onClick={() => setOpen({ ...open, [o.ref]: !open[o.ref] })}>▸</button></td>
+                  <td><input className="cb" type="checkbox" aria-label={`Select ${o.ref}`} checked={sel} onChange={() => setSelected(sel ? selected.filter((x) => x !== o.ref) : [...selected, o.ref])} /></td>
+                  <td><OrderIdentity o={o} /></td>
+                  {show('customer') ? <td><div className="stack"><span>{o.customer}</span><span className="sub">{o.city}{o.buyerNote ? ' · ✉ note' : ''}</span></div></td> : null}
+                  {show('channel') ? <td><div className="stack"><Conn id={o.src} /><span className="sub">→ {o.dest}</span></div></td> : null}
+                  {show('status') ? <td><div className="stack">{statusBadges(o)}</div></td> : null}
+                  {show('shipment') ? <td><div className="stack">{shipmentBadges(o)}<span className="sub">{o.carrier}</span></div></td> : null}
+                  {show('money') ? <td><div className="stack stack--right"><span className="money">{plMoney(o.total)}</span>{moneyBadges(o)}<span className="sub tabular">{plDate(o.createdAt)}</span></div></td> : null}
+                </tr>
+                {open[o.ref] ? <tr><td colSpan={3 + cols.length} style={{ padding: '0 var(--space-3) var(--space-3)' }}><DetailBody o={o} /></td></tr> : null}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TodayPage({ s, set, sort, setSort, rows, counts, selected, setSelected, head }) {
+  const [panelOpen, setPanelOpen] = useState(true);
+  const searchRef = useRef(null);
+  useShortcuts({ '/': () => searchRef.current?.focus(), f: () => setPanelOpen((v) => !v), r: head.onRefresh });
+  const specs = chipSpecs(s);
+  const quick = [
+    { k: 'docBlocked', label: COPY.quickSalesDocs, tone: 'error', age: 'oldest 11 d', title: COPY.quickSalesDocsTitle(counts.issuedOnRequest) },
+    { k: 'waiting', label: 'Waiting in OpenLinker', tone: 'warning', age: 'oldest 24 d' },
+    { k: 'onPackBench', label: 'On pack bench' },
+    { k: 'routingBlocked', label: 'Routing blocked', tone: 'error' },
+    { k: 'rateConflict', label: 'Rate conflict' },
+    { k: 'omsStopped', label: 'OpenLinker stopped', tone: 'error' },
+  ];
+  return (
+    <main className="page">
+      <PageHead head={head} />
+      <div className="segments">
+        <button type="button" className="segment" aria-pressed={!s.health} onClick={() => set({ health: null })}><span className="segment__label">All orders</span><span className="segment__value">{counts.health.all}</span></button>
+        {HEALTH.map((h) => (
+          <button key={h.key} type="button" className={cls('segment', `segment--${h.tone}`)} aria-pressed={s.health === h.key} onClick={() => set({ health: h.key })}>
+            <span className="segment__label">{h.tone === 'error' ? '⊘ ' : h.tone === 'warning' ? '⚠ ' : ''}{h.label}</span><span className="segment__value">{counts.health[h.key]}</span>
+          </button>
+        ))}
+      </div>
+      <div className="filterbar">
+        <label className="search"><span className="search__glyph" aria-hidden="true">⌕</span>
+          <input ref={searchRef} id="today-search" type="search" aria-label="Search orders" placeholder={COPY.searchPlaceholderWithPii} value={s.search} onChange={(e) => set({ search: e.target.value })} />
+          <span className="button__shortcut search__kbd" aria-hidden="true">/</span></label>
+        <Btn tone="outline" sm aria-expanded={panelOpen} title="Show or hide filters (F)" onClick={() => setPanelOpen(!panelOpen)}>Filters {specs.length ? <span className="button__count">{specs.length}</span> : null} <span className="caret">{panelOpen ? '▲' : '▼'}</span></Btn>
+        <span className="results" aria-live="polite">{COPY.results(rows.length)}</span>
+      </div>
+      {!panelOpen && specs.length ? (
+        <div className="applied" aria-label="Applied filters">
+          {specs.map((c) => <span key={c.k} className="pill"><span className="pill__key">{c.label}</span>{c.value}<button type="button" aria-label={`Remove ${c.label} filter`} onClick={() => set(c.clear)}>✕</button></span>)}
+          <button type="button" className="linkbtn" onClick={() => set(EMPTY)}>{COPY.clearAll}</button>
+        </div>
+      ) : null}
+      {panelOpen ? <TodayFilterPanel s={s} set={set} counts={counts} onHide={() => setPanelOpen(false)} /> : null}
+      <div className="quick" aria-label="Quick filters">
+        <span className="eyebrow">{COPY.quickNeedsLook}</span>
+        <button type="button" className="chip chip--warning" aria-pressed={s.breaching} onClick={() => set({ breaching: !s.breaching })}>{COPY.quickBreaching}</button>
+        {quick.map((q) => (s[q.k] || counts.flags[q.k]) ? (
+          <button key={q.k} type="button" title={q.title} className={cls('chip', q.tone && `chip--${q.tone}`)} aria-pressed={s[q.k]} onClick={() => set({ [q.k]: !s[q.k] })}>
+            {q.label}<span className="chip__count">{counts.flags[q.k]}{q.age ? <span className="chip__age"> · {q.age}</span> : null}</span>
+          </button>) : null)}
+        <button type="button" className="chip" aria-pressed={s.openReturn} onClick={() => set({ openReturn: !s.openReturn })}>Open return</button>
+        <button type="button" className="chip" aria-pressed={s.buyerNote} onClick={() => set({ buyerNote: !s.buyerNote })}>With buyer note</button>
+        <span className="quick__sep" aria-hidden="true" />
+        <span className="eyebrow">{COPY.quickPhase}</span>
+        {Object.entries(PHASES).map(([k, m]) => (s.phase === k || counts.phase[k]) ? (
+          <button key={k} type="button" className={cls('chip', m.tone !== 'neutral' && `chip--${m.tone}`)} aria-pressed={s.phase === k} onClick={() => set({ phase: s.phase === k ? null : k })}>{m.label}<span className="chip__count">{counts.phase[k]}</span></button>) : null)}
+        <span className="quick__end">
+          {counts.sla.overdue ? <Badge tone="error">{counts.sla.overdue} overdue</Badge> : null}
+          {counts.sla.at_risk ? <Badge tone="warning">{counts.sla.at_risk} at risk</Badge> : null}
+          <a href="#" onClick={(e) => e.preventDefault()}>{counts.sla.overdue || counts.sla.at_risk ? COPY.reviewDispatchRisk : COPY.dispatchRiskOverview}</a>
+        </span>
+      </div>
+      {rows.length ? <TodayTable rows={rows} sort={sort} setSort={setSort} selected={selected} setSelected={setSelected} cols={head.cols} /> : <Empty onClear={() => set(EMPTY)} />}
+      <div className="pager"><span className="tabular">1-{rows.length} of {rows.length}</span><span>Page 1</span></div>
+      <BulkBar sel={ORDERS.filter((o) => selected.includes(o.ref))} clear={() => setSelected([])} onExport={() => head.onExport('selected')} />
+    </main>
+  );
+}
+function Empty({ onClear }) {
+  return <div className="table-wrap"><div className="empty"><h3>{COPY.noFilterResultsTitle}</h3><p>No orders match the current filters. Clear them to see everything.</p><Btn tone="outline" onClick={onClear}>{COPY.clearFilters}</Btn></div></div>;
+}
+
+/* ═════════════════════════════════════════════════════════════
+   PROPOSED
+   NEW shared/ui pieces are marked. Everything else reuses main.
+   ═════════════════════════════════════════════════════════════ */
+
+/* NEW · shared/ui/status-tabs.tsx - replaces the 6 MetricCard buttons. Same health partition, same counts. */
+function StatusTabs({ value, counts, onChange }) {
+  const ref = useRef(null);
+  const [ind, setInd] = useState({ x: 0, w: 0 });
+  const items = [{ key: null, label: 'All orders' }, ...HEALTH];
+  useLayoutEffect(() => { const el = ref.current?.querySelector('[aria-selected="true"]'); if (el) setInd({ x: el.offsetLeft, w: el.offsetWidth }); }, [value, counts]);
+  const onKey = (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const i = items.findIndex((t) => t.key === value);
+    onChange(items[(i + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length].key);
+    requestAnimationFrame(() => ref.current?.querySelector('[aria-selected="true"]')?.focus());
+  };
+  return (
+    <div className="tabs-scroll">
+      <div className="tabs" role="tablist" aria-label="Orders by sync health" ref={ref} onKeyDown={onKey}>
+        {items.map((t) => {
+          const n = t.key ? counts[t.key] : counts.all; const on = value === t.key;
+          return (
+            <button key={t.label} type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} className="tab" onClick={() => onChange(t.key)}>
+              {t.tone ? <span className="tab__dot" style={{ background: `var(--status-${t.tone})` }} aria-hidden="true" /> : null}
+              {t.label}
+              <span className={cls('tab__count', n === 0 ? 'tab__count--zero' : (t.tone === 'error' || t.tone === 'warning') && `tab__count--${t.tone}`)}>{n}</span>
+            </button>
+          );
+        })}
+        <span className="tabs__ind" style={{ width: ind.w, transform: `translateX(${ind.x}px)` }} aria-hidden="true" />
+      </div>
+    </div>
+  );
+}
+
+/* NEW · shared/ui/filter-dropdown.tsx - a pinned single-choice filter (Polaris "2-3 promoted filters"). */
+function FilterDropdown({ label, value, options, onChange, anyLabel, right }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useDismiss(open, setOpen, ref);
+  const cur = options.find((o) => o.value === value);
+  return (
+    <div className="anchor" ref={ref}>
+      <button type="button" className={cls('fg-btn', cur && 'fg-btn--on')} aria-expanded={open} aria-haspopup="listbox" onClick={() => setOpen(!open)}>
+        {cur ? <><span className="fg-btn__key">{label}</span><span className="fg-btn__val">{cur.label}</span></> : label}<span className="caret" aria-hidden="true">⌄</span>
+      </button>
+      {open ? (
+        <div className={cls('pop', right && 'pop--right')} role="listbox" aria-label={label}>
+          {[{ value: null, label: anyLabel }, ...options].map((o) => (
+            <button key={o.label} type="button" role="option" className="opt" aria-checked={value === o.value} aria-selected={value === o.value} onClick={() => { onChange(o.value); setOpen(false); }}>
+              <span className="opt__mark" aria-hidden="true" />
+              {o.dot ? <span className="tab__dot" style={{ background: o.dot }} aria-hidden="true" /> : null}
+              {o.label}{o.count !== undefined ? <span className="opt__meta">{o.count}</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* NEW · shared/ui/sort-menu.tsx - same sort keys as the column headers, plus Newest first. */
+function SortMenu({ sort, setSort }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useDismiss(open, setOpen, ref);
+  const cur = SORTS.find((x) => x.key === sort.key);
+  return (
+    <div className="anchor" ref={ref}>
+      <Btn tone="ghost" sm aria-expanded={open} aria-haspopup="menu" onClick={() => setOpen(!open)}>Sort: {cur.menu}{sort.dir !== cur.dir ? ' (reversed)' : ''} <span className="caret" aria-hidden="true">▼</span></Btn>
+      {open ? (
+        <div className="pop pop--right" role="menu" style={{ minWidth: 220 }}>
+          {SORTS.map((x) => (
+            <button key={x.key} type="button" role="menuitemradio" className="opt" aria-checked={sort.key === x.key} onClick={() => { setSort({ key: x.key, dir: x.dir }); setOpen(false); }}>
+              <span className="opt__mark" aria-hidden="true" />{x.menu}{x.key === 'placedAt' ? <span className="opt__meta">default</span> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* NEW · shared/ui/filter-drawer.tsx - the full panel, as a side sheet with
+   summarised sections (main's mobile FilterSheet, now on every width). */
+function Section({ title, summary, active, defaultOpen, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="section">
+      <button type="button" className="section__head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="section__chev" aria-hidden="true">▸</span><span className="section__title">{title}</span>
+        <span className={cls('section__sum', active && 'section__sum--on')}>{summary}</span>
+      </button>
+      {open ? <div className="section__body">{children}</div> : null}
+    </div>
+  );
+}
+function FilterDrawer({ s, set, counts, onClose, resultCount }) {
+  const specs = chipSpecs(s, { includeHealth: false });
+  const sum = (keys, none = 'Any') => { const v = specs.filter((c) => keys.includes(c.k)).map((c) => c.value); return [v.length ? v.join(', ') : none, v.length > 0]; };
+  const groups = {
+    source: sum(['source', 'created']), shipment: sum(['fulfillment', 'sla', 'breaching', 'packed', 'onPackBench']),
+    exceptions: sum(['hold', 'docBlocked', 'omsStopped', 'waiting', 'routingBlocked', 'rateConflict', 'openReturn', 'buyerNote'], 'None'),
+    tags: sum(['tag']), phase: sum(['phase']),
+  };
+  return (
+    <Sheet className="drawer" label="All filters" onClose={onClose}>{(close, drag) => (<>
+        <div className="drawer__head" {...drag}><h2>All filters</h2><button type="button" className="icon-btn" onClick={close} aria-label="Close filters">✕</button></div>
+        <div className="drawer__body">
+          <Section title={COPY.groupSource} summary={groups.source[0]} active={groups.source[1]} defaultOpen>
+            <label className="field"><span className="field__label">{COPY.fieldSource}</span>
+              <select className="control" value={s.source ?? ''} onChange={(e) => set({ source: e.target.value || null })}><option value="">{COPY.allSources}</option>{SOURCES.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+            <div className="field"><span className="field__label">{COPY.fieldCreated}</span>
+              <div className="range-row"><span className="eyebrow">{COPY.createdFrom}</span><input type="date" className="control" aria-label="Created from" value={s.createdFrom} onChange={(e) => set({ createdFrom: e.target.value })} /></div>
+              <div className="range-row"><span className="eyebrow">{COPY.createdTo}</span><input type="date" className="control" aria-label="Created to" value={s.createdTo} onChange={(e) => set({ createdTo: e.target.value })} /></div></div>
+          </Section>
+          <Section title={COPY.groupShipment} summary={groups.shipment[0]} active={groups.shipment[1]} defaultOpen={groups.shipment[1]}>
+            <label className="field"><span className="field__label">{COPY.fieldFulfillment}</span>
+              <select className="control" value={s.fulfillment ?? ''} onChange={(e) => set({ fulfillment: e.target.value || null })}><option value="">{COPY.anyFulfillment}</option>{FULFILLMENT.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}</select></label>
+            <div className="field"><span className="field__label">{COPY.fieldShipBy}</span>
+              <div className="segmented-control segmented-control--soft" role="group" aria-label="Ship-by">
+                {[{ value: null, label: COPY.anySla }, ...SLA].map((o) => <button key={o.label} type="button" className="segmented-control__option" aria-pressed={s.sla === o.value} onClick={() => set({ sla: o.value })}>{o.label}</button>)}</div>
+              <label className="check"><input type="checkbox" checked={s.breaching} onChange={() => set({ breaching: !s.breaching })} />Ship-by ≤ 24h or overdue</label></div>
+            <label className="field"><span className="field__label">{COPY.fieldPacking}</span>
+              <select className="control" value={s.packed === null ? '' : String(s.packed)} onChange={(e) => set({ packed: e.target.value === '' ? null : e.target.value === 'true' })}><option value="">{COPY.anyPacking}</option><option value="true">{COPY.packedYes}</option><option value="false">{COPY.packedNo}</option></select></label>
+            <label className="check"><input type="checkbox" checked={s.onPackBench} onChange={() => set({ onPackBench: !s.onPackBench })} />{COPY.checkPackBench}<span className="check__count">{counts.flags.onPackBench}</span></label>
+          </Section>
+          <Section title={COPY.groupExceptions} summary={groups.exceptions[0]} active={groups.exceptions[1]} defaultOpen={groups.exceptions[1]}>
+            <label className="field"><span className="field__label">{COPY.fieldHold}</span>
+              <select className="control" value={s.hold ?? ''} onChange={(e) => set({ hold: e.target.value || null })}><option value="">{COPY.anyHold}</option>{HOLD_REASONS.map((h) => <option key={h}>{h}</option>)}</select></label>
+            <div>{[['docBlocked', COPY.checkSalesDocsBlocked, 'error'], ['omsStopped', COPY.checkOmsStopped, 'error'], ['waiting', COPY.checkWaiting, 'warning'], ['routingBlocked', COPY.checkRoutingBlocked, 'error'], ['rateConflict', COPY.checkRateConflict], ['openReturn', COPY.checkOpenReturn, null, true], ['buyerNote', COPY.checkBuyerNote, null, true]].map(([k, label, tone, nc]) => (
+              <label key={k} className="check"><input type="checkbox" checked={s[k]} onChange={() => set({ [k]: !s[k] })} />{label}{nc ? null : <span className={cls('check__count', tone && `check__count--${tone}`)}>{counts.flags[k]}</span>}</label>))}</div>
+          </Section>
+          <Section title={COPY.groupTags} summary={groups.tags[0]} active={groups.tags[1]} defaultOpen={groups.tags[1]}>
+            <div role="radiogroup" aria-label="Tag">
+              <label className="check"><input type="radio" name="p-tag" checked={!s.tag} onChange={() => set({ tag: null })} />{COPY.anyTag}</label>
+              {TAGS.map((t) => <label key={t.id} className="check"><input type="radio" name="p-tag" checked={s.tag === t.id} onChange={() => set({ tag: t.id })} /><span className="more">{t.name}</span><span className="check__count">{t.count}</span></label>)}
+              <label className="check muted"><input type="radio" name="p-tag" checked={s.tag === '__untagged__'} onChange={() => set({ tag: '__untagged__' })} />{COPY.noTags}</label></div>
+          </Section>
+          <Section title={COPY.groupPhase} summary={groups.phase[0]} active={groups.phase[1]} defaultOpen={groups.phase[1]}>
+            <div role="radiogroup" aria-label="Stage">
+              <label className="check"><input type="radio" name="p-phase" checked={!s.phase} onChange={() => set({ phase: null })} />{COPY.anyPhase}</label>
+              {Object.entries(PHASES).map(([k, m]) => (s.phase === k || counts.phase[k]) ? <label key={k} className="check"><input type="radio" name="p-phase" checked={s.phase === k} onChange={() => set({ phase: k })} />{m.label}<span className="check__count">{counts.phase[k]}</span></label> : null)}</div>
+          </Section>
+        </div>
+        <div className="drawer__foot"><Btn tone="secondary" onClick={() => set({ ...EMPTY, health: s.health, search: s.search })}>{COPY.clearAll}</Btn><Btn onClick={close}>Show {resultCount} {resultCount === 1 ? 'order' : 'orders'}</Btn></div>
+    </>)}</Sheet>
+  );
+}
+
+/* NEW · features/orders/components/attention-groups.tsx
+   "Needs a look", rebuilt: 3 plain-language groups instead of 11 chips.
+   Each group shows ONE number (orders matching any item) and opens a
+   popover that explains every item in one line. Same filters underneath. */
+const BREACH = (o) => !!o.shipBy && o.shipBy - NOW <= 24 * 3600e3 && o.fulfillment === 'not-shipped';
+const ATTENTION = [
+  { id: 'late', label: 'Late to ship', short: 'late to ship', tone: 'error', footer: true, items: [
+    { id: 'overdue', label: 'Overdue', desc: 'The ship-by date has passed.', tone: 'error', test: (o) => o.sla === 'overdue', on: (s) => s.sla === 'overdue', toggle: (s) => ({ sla: s.sla === 'overdue' ? null : 'overdue' }), skip: 'sla' },
+    { id: 'at_risk', label: 'At risk', desc: 'The ship-by date is close.', tone: 'warning', test: (o) => o.sla === 'at_risk', on: (s) => s.sla === 'at_risk', toggle: (s) => ({ sla: s.sla === 'at_risk' ? null : 'at_risk' }), skip: 'sla' },
+    { id: 'breaching', label: 'Ships within 24 h', desc: 'Not shipped yet and due within a day, or already late.', tone: 'warning', test: BREACH, on: (s) => s.breaching, toggle: (s) => ({ breaching: !s.breaching }), skip: 'breaching' },
+  ] },
+  { id: 'stuck', label: 'Stuck', short: 'stuck', tone: 'error', items: [
+    { id: 'docBlocked', label: 'Sales document blocked', desc: 'No invoice or receipt could be issued.', age: 'oldest 11 d', tone: 'error', titleFn: (c) => COPY.quickSalesDocsTitle(c.issuedOnRequest) },
+    { id: 'omsStopped', label: 'OpenLinker stopped', desc: 'OpenLinker could not decide something and needs you.', tone: 'error' },
+    { id: 'routingBlocked', label: 'Routing blocked', desc: 'No destination could be chosen for this order.', tone: 'error' },
+    { id: 'waiting', label: 'Waiting in OpenLinker', desc: 'Held in OpenLinker before it goes on to the shop.', age: 'oldest 24 d', tone: 'warning' },
+    { id: 'rateConflict', label: 'Tax rate conflict', desc: 'The shop and the channel report different VAT rates.', tone: 'warning' },
+  ] },
+  { id: 'todo', label: 'To handle', short: 'to handle', tone: null, items: [
+    { id: 'onPackBench', label: 'On pack bench', desc: 'Waiting to be packed, or being packed.' },
+    { id: 'buyerNote', label: 'Buyer left a note', desc: 'Read it before you pack.' },
+    { id: 'openReturn', label: 'Open return', desc: 'The buyer started a return.' },
+  ] },
+];
+const itemOn = (it, s) => (it.on ? it.on(s) : s[it.id]);
+const itemToggle = (it, s) => (it.toggle ? it.toggle(s) : { [it.id]: !s[it.id] });
+const itemTest = (it) => it.test ?? FLAG_TEST[it.id];
+function attentionCounts(s) {
+  const out = {};
+  for (const g of ATTENTION) {
+    const skip = g.items.map((it) => it.skip ?? it.id);
+    out[g.id] = ORDERS.filter((o) => matches(o, s, skip) && g.items.some((it) => itemTest(it)(o))).length;
+    for (const it of g.items) out[it.id] = ORDERS.filter((o) => matches(o, s, [it.skip ?? it.id]) && itemTest(it)(o)).length;
+  }
+  return out;
+}
+function AttentionGroup({ g, s, set, n, counts, extra }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useDismiss(open, setOpen, ref);
+  const active = g.items.filter((it) => itemOn(it, s));
+  return (
+    <div className="anchor" ref={ref}>
+      <button type="button" className={cls('attn-link', n > 0 && g.tone && `attn-link--${g.tone}`, active.length && 'attn-link--on')} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}>
+        <span className="attn-link__n">{n}</span><span className="attn-link__label">{g.short}</span>
+        {active.length ? <span className="attn-link__on" title={`${active.length} filter on`} /> : null}
+      </button>
+      {open ? (
+        <div className="pop pop--right attn-pop" role="dialog" aria-label={g.label}>
+          <div className="attn-pop__head">{g.label}</div>
+          {g.items.map((it) => {
+            const on = itemOn(it, s); const c = extra[it.id];
+            return (
+              <button key={it.id} type="button" role="menuitemcheckbox" aria-checked={on} className="attn-item" title={it.titleFn ? it.titleFn(counts) : undefined} onClick={() => set(itemToggle(it, s))}>
+                <span className="attn-item__box" aria-hidden="true">{on ? '✓' : ''}</span>
+                <span className="attn-item__text"><span className="attn-item__title">{it.label}</span><span className="attn-item__desc">{it.desc}</span></span>
+                <span className="attn-item__meta">
+                  <span className={cls('attn-item__n', c > 0 && it.tone && `attn-item__n--${it.tone}`)}>{c}</span>
+                  {it.age && c > 0 ? <span className="attn-item__age">{it.age}</span> : null}
+                </span>
+              </button>
+            );
+          })}
+          {g.footer ? <div className="attn-pop__foot"><a href="#" onClick={(e) => e.preventDefault()}>{COPY.reviewDispatchRisk}</a><span className="muted">ranked by deadline</span></div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+/* Needs a look, as one quiet sentence beside the status tabs. */
+function AttentionSummary({ s, set, counts }) {
+  const extra = useMemo(() => attentionCounts(s), [s]);
+  return (
+    <div className="attn-sum" role="group" aria-label={COPY.quickNeedsLook}>
+      <span className="attn-sum__label">{COPY.quickNeedsLook}</span>
+      {ATTENTION.map((g, i) => (
+        <React.Fragment key={g.id}>
+          {i ? <span className="attn-sum__sep" aria-hidden="true">·</span> : null}
+          <AttentionGroup g={g} s={s} set={set} n={extra[g.id]} counts={counts} extra={extra} />
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+const CAP = 2;
+function Capped({ items, onMore }) {
+  if (items.length <= CAP + 1) return <>{items}</>;
+  return <>{items.slice(0, CAP)}<button type="button" className="overflow" onClick={onMore} title="Show everything in the side panel">+{items.length - CAP} more</button></>;
+}
+function ProposedSortHeader({ label, k, sort, setSort }) {
+  const on = sort.key === k;
+  return <button type="button" aria-sort={on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'} className={cls('sortbtn', on && 'sortbtn--on')} onClick={() => setSort(on ? { key: k, dir: sort.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: SORTS.find((x) => x.key === k).dir })}>
+    {label}<span className="sortbtn__ind" aria-hidden="true">{on ? (sort.dir === 'asc' ? '↑' : '↓') : '↕'}</span></button>;
+}
+/* Proposed table: same columns, same cells, same stacked (multi-line) headers
+   as main, built for narrow screens. Changes: the active sort key is marked,
+   cells over 3 badges show 2 + "+N more", and "Details" opens the side peek. */
+function ProposedTable({ rows, sort, setSort, selected, setSelected, onPeek, peeked, cols }) {
+  const show = (c) => cols.includes(c);
+  const all = rows.length > 0 && rows.every((r) => selected.includes(r.ref));
+  const H = (label, k) => <ProposedSortHeader label={label} k={k} sort={sort} setSort={setSort} />;
+  return (
+    <div className="table-wrap">
+      <table className="ptable">
+        <thead><tr>
+          <th className="col-check"><input className="cb" type="checkbox" aria-label="Select all visible orders" checked={all} onChange={() => setSelected(all ? [] : rows.map((r) => r.ref))} /></th>
+          <th className="w-order">Order</th>
+          {show('customer') ? <th className="w-customer"><span className="th-stack">{H('Customer', 'customer')}</span></th> : null}
+          {show('channel') ? <th className="w-channel">Channel</th> : null}
+          {show('status') ? <th className="w-status"><span className="th-stack">{H('Status', 'status')}</span></th> : null}
+          {show('shipment') ? <th className="w-shipment"><span className="th-stack">{H('Shipment', 'fulfillment')}{H('Ship-by', 'dispatchBy')}</span></th> : null}
+          {show('money') ? <th className="th-right w-money"><span className="th-stack th-stack--right">{H('Total', 'total')}{H('Payment', 'payment')}{H('Placed', 'placedAt')}{H('Created', 'createdAt')}</span></th> : null}
+        </tr></thead>
+        <tbody>
+          {rows.map((o) => {
+            const sel = selected.includes(o.ref);
+            return (
+              <tr key={o.ref} className={cls('row', sel && 'row--sel', peeked === o.ref && 'row--peek')} onClick={(e) => { if (!e.target.closest('button, a, input, label')) onPeek(o.ref); }}>
+                <td><input className="cb" type="checkbox" aria-label={`Select ${o.ref}`} checked={sel} onChange={() => setSelected(sel ? selected.filter((x) => x !== o.ref) : [...selected, o.ref])} /></td>
+                <td><div className="stack"><OrderIdentity o={o} /><button type="button" className="peek-btn" onClick={() => onPeek(o.ref)}>Details <span aria-hidden="true">›</span></button></div></td>
+                {show('customer') ? <td><div className="stack"><span>{o.customer}</span><span className="sub">{o.city}{o.buyerNote ? ' · ✉ note' : ''}</span></div></td> : null}
+                {show('channel') ? <td><div className="stack"><Conn id={o.src} /><span className="sub">→ {o.dest}</span></div></td> : null}
+                {show('status') ? <td><div className="stack"><Capped items={statusBadges(o)} onMore={() => onPeek(o.ref)} /></div></td> : null}
+                {show('shipment') ? <td><div className="stack"><Capped items={shipmentBadges(o)} onMore={() => onPeek(o.ref)} /><span className="sub">{o.carrier}</span></div></td> : null}
+                {show('money') ? <td><div className="stack stack--right"><span className="money">{plMoney(o.total)}</span><Capped items={moneyBadges(o)} onMore={() => onPeek(o.ref)} /><span className="sub tabular">{plDate(o.placedAt)}</span><span className="sub tabular">{plDate(o.createdAt)}</span></div></td> : null}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+/* Exit animation for side sheets: play the out keyframes, then unmount. */
+function useClosable(onClose) {
+  const [closing, setClosing] = useState(false);
+  const close = () => {
+    if (closing) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setClosing(true); setTimeout(onClose, reduce ? 0 : 190);
+  };
+  return { closing, close };
+}
+/* NEW · shared/ui/sheet.tsx
+   Desktop: side sheet. Phone (≤ 640px): bottom sheet in the vaul style -
+   handle, drag down to dismiss (distance or flick velocity), rubber-band
+   when dragged up, and the page behind scales back. Drag writes styles
+   straight to the DOM (no React state per frame). */
+const SHEET_EASE = 'cubic-bezier(.32,.72,0,1)';
+const isPhone = () => window.matchMedia('(max-width: 640px)').matches;
+function Sheet({ className, label, onClose, children }) {
+  const { closing, close } = useClosable(onClose);
+  const sheetRef = useRef(null);
+  const scrimRef = useRef(null);
+  const drag = useRef(null);
+  useEffect(() => { document.body.classList.add('sheet-open'); return () => document.body.classList.remove('sheet-open'); }, []);
+  useEffect(() => { if (closing) document.body.classList.remove('sheet-open'); }, [closing]);
+  useEffect(() => { const k = (e) => { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k); });
+  const handlers = {
+    onPointerDown: (e) => {
+      if (!isPhone() || e.button !== 0 || e.target.closest('button, a, input, select, label')) return;
+      drag.current = { y: e.clientY, t: performance.now(), dy: 0, h: sheetRef.current.offsetHeight };
+      sheetRef.current.style.transition = 'none';
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    onPointerMove: (e) => {
+      const d = drag.current; if (!d) return;
+      d.dy = e.clientY - d.y;
+      const y = d.dy > 0 ? d.dy : d.dy * 0.12;
+      sheetRef.current.style.transform = `translateY(${y}px)`;
+      if (scrimRef.current) scrimRef.current.style.opacity = String(1 - Math.min(1, Math.max(0, y) / d.h) * 0.9);
+    },
+    onPointerUp: () => {
+      const d = drag.current; if (!d) return; drag.current = null;
+      const v = d.dy / Math.max(1, performance.now() - d.t);
+      const el = sheetRef.current;
+      if (d.dy > d.h * 0.3 || (d.dy > 24 && v > 0.45)) {
+        el.style.transition = `transform 240ms ${SHEET_EASE}`; el.style.transform = 'translateY(100%)';
+        if (scrimRef.current) { scrimRef.current.style.transition = 'opacity 240ms ease-out'; scrimRef.current.style.opacity = '0'; }
+        document.body.classList.remove('sheet-open');
+        setTimeout(onClose, 240);
+      } else {
+        el.style.transition = `transform 420ms ${SHEET_EASE}`; el.style.transform = '';
+        if (scrimRef.current) { scrimRef.current.style.transition = 'opacity 300ms ease-out'; scrimRef.current.style.opacity = ''; }
+      }
+    },
+  };
+  handlers.onPointerCancel = handlers.onPointerUp;
+  return ReactDOM.createPortal(
+    <>
+      <div ref={scrimRef} className={cls('scrim', closing && 'scrim--out')} onClick={close} aria-hidden="true" />
+      <aside ref={sheetRef} className={cls('sheet', className, closing && 'sheet--out')} role="dialog" aria-modal="true" aria-label={label}>
+        <div className="sheet__handle" {...handlers} aria-hidden="true"><span /></div>
+        {children(close, handlers)}
+      </aside>
+    </>,
+    document.body,
+  );
+}
+
+/* NEW · features/orders/components/order-peek.tsx - side peek over a dimmed,
+   blurred list. ↑ / ↓ (or k / j) walk the visible rows without closing. */
+function Peek({ id, rows, onNav, onClose }) {
+  const o = ORDERS.find((x) => x.ref === id);
+  const idx = rows.findIndex((x) => x.ref === id);
+  useEffect(() => {
+    const k = (e) => {
+      if ((e.key === 'ArrowDown' || e.key === 'j') && idx < rows.length - 1) { e.preventDefault(); onNav(rows[idx + 1].ref); }
+      if ((e.key === 'ArrowUp' || e.key === 'k') && idx > 0) { e.preventDefault(); onNav(rows[idx - 1].ref); }
+    };
+    document.addEventListener('keydown', k); return () => document.removeEventListener('keydown', k);
+  });
+  const src = SOURCES.find((x) => x.id === o.src);
+  const pay = PAY[o.payment];
+  return (
+    <Sheet className="peek" label={`Order ${o.ref}`} onClose={onClose}>{(close, drag) => (<>
+        <header className="peek-head" {...drag}>
+          <div className="peek-head__id">
+            <div className="peek-ref"><a href="#" className="peek-link" onClick={(e) => { e.preventDefault(); toast(`Opens /orders/${o.ref}`); }}>{o.ref}<span className="peek-link__arrow" aria-hidden="true">↗</span></a><button className="copy" type="button" title="Copy order number" onClick={(e) => { e.stopPropagation(); toast(`Copied ${o.full ?? o.ref}`); }}>Kopiuj</button></div>
+            <div className="peek-meta"><Conn id={o.src} /><span>→ {o.dest}</span><span>placed {plDate(o.placedAt)}</span></div>
+          </div>
+          <div className="peek-head__money"><div className="peek-total">{plMoney(o.total)}</div><Badge tone={pay[0]}>{pay[1]}</Badge></div>
+          <button type="button" className="icon-btn peek-close" onClick={close} aria-label="Close details">✕</button>
+        </header>
+        <div className="peek-body" key={o.ref}>
+          <div className="peek-actions">
+            <Btn sm onClick={() => toast(`Opens /orders/${o.ref}`)}>Open order</Btn>
+            <Btn tone="outline" sm>View on {src.name.split(' ')[0]} ↗</Btn>
+            {!o.labelled && o.health === 'awaiting_dispatch' && !o.hold ? <Btn tone="outline" sm>Generate label</Btn> : null}
+          </div>
+          <section className="state-card" aria-label="Order state">
+            <div className="state-row"><span className="eyebrow">Status</span><div className="wrap">{statusBadges(o)}</div></div>
+            <div className="state-row"><span className="eyebrow">Shipment</span><div className="wrap">{shipmentBadges(o)}<span className="sub">{o.carrier}</span></div></div>
+            <div className="state-row"><span className="eyebrow">Money</span><div className="wrap">{moneyBadges(o)}</div></div>
+          </section>
+          <section className={cls('note', !o.buyerNote && 'note--empty')}>
+            <span className="eyebrow">Buyer note</span>
+            <p>{o.buyerNote ?? 'The channel did not say whether the buyer left a note.'}</p>
+          </section>
+          <section>
+            <h3 className="peek-h">Items <span className="muted tabular">{o.lines.length}</span></h3>
+            <ul className="items">
+              {o.lines.map((l, i) => (
+                <li key={i} className="item"><span className="thumb" aria-hidden="true">{src.short}</span>
+                  <span className="item__name">{l[0]}<span className="sub mono">{l[1]}</span></span>
+                  <span className="tabular">1 × {plMoney(l[2])}</span></li>
+              ))}
+            </ul>
+          </section>
+          <section className="kv-grid">
+            <div><span className="eyebrow">Customer</span><p>{o.customer}<br />ul. Przykładowa 4 / 12<br />00-000 {o.city}</p></div>
+            <div><span className="eyebrow">Billing</span><p>{o.customer}<br />ul. Przykładowa 4 / 12<br />00-000 {o.city}</p></div>
+            <div><span className="eyebrow">Ship-by</span><p>{o.shipBy ? plDate(o.shipBy) : '-'}</p></div>
+            <div><span className="eyebrow">Invoice</span><p>{o.invoice ?? '-'}</p></div>
+            <div><span className="eyebrow">Synced to OpenLinker</span><p>{plDate(o.createdAt)}</p></div>
+            <div><span className="eyebrow">Order reference</span><p className="mono">{o.full ?? o.ref}</p></div>
+          </section>
+        </div>
+        <footer className="peek-foot">
+          <span className="tabular muted">{idx + 1} of {rows.length}</span>
+          <span className="button-group">
+            <Btn tone="outline" sm disabled={idx <= 0} onClick={() => onNav(rows[idx - 1].ref)}>↑ Previous</Btn>
+            <Btn tone="outline" sm disabled={idx >= rows.length - 1} onClick={() => onNav(rows[idx + 1].ref)}>Next ↓</Btn>
+          </span>
+        </footer>
+    </>)}</Sheet>
+  );
+}
+
+function ProposedPage({ s, set, sort, setSort, rows, counts, selected, setSelected, head }) {
+  const [drawer, setDrawer] = useState(false);
+  const [peek, setPeek] = useState(null);
+  const searchRef = useRef(null);
+  useShortcuts({ '/': () => searchRef.current?.focus(), f: () => setDrawer((v) => !v), r: head.onRefresh });
+  const specs = chipSpecs(s, { includeHealth: false });
+  const drawerCount = specs.filter((c) => !['search', 'source', 'sla', 'phase'].includes(c.k)).length;
+  return (
+    <main className="page">
+      <PageHead head={head} />
+      <div className="statusbar">
+        <StatusTabs value={s.health} counts={counts.health} onChange={(v) => set({ health: v })} />
+        <AttentionSummary s={s} set={set} counts={counts} />
+      </div>
+      <div className="toolbar">
+        <label className="search"><span className="search__glyph" aria-hidden="true">⌕</span>
+          <input ref={searchRef} id="prop-search" type="search" aria-label="Search orders" placeholder={COPY.searchPlaceholderWithPii} value={s.search} onChange={(e) => set({ search: e.target.value })} />
+          <span className="button__shortcut search__kbd" aria-hidden="true">/</span></label>
+        <div className="fgroup" role="group" aria-label="Filters">
+          <FilterDropdown label="Stage" anyLabel={COPY.anyPhase} value={s.phase} onChange={(v) => set({ phase: v })}
+            options={Object.entries(PHASES).filter(([k]) => s.phase === k || counts.phase[k]).map(([k, m]) => ({ value: k, label: m.label, count: counts.phase[k], dot: m.tone === 'neutral' ? 'var(--border-strong)' : `var(--status-${m.tone})` }))} />
+          <FilterDropdown label="Source" anyLabel={COPY.allSources} value={s.source} onChange={(v) => set({ source: v })}
+            options={SOURCES.map((c) => ({ value: c.id, label: c.name, count: counts.source[c.id], dot: c.color }))} />
+          <FilterDropdown label="Ship-by" anyLabel={COPY.anySla} value={s.sla} onChange={(v) => set({ sla: v })}
+            options={SLA.map((o) => ({ ...o, count: counts.sla[o.value] }))} />
+          <button type="button" className={cls('fg-btn', drawerCount && 'fg-btn--on')} aria-expanded={drawer} title="All filters (F)" onClick={() => setDrawer(true)}>
+            <span aria-hidden="true">≡</span> More{drawerCount ? <span className="button__count">{drawerCount}</span> : null}<span className="button__shortcut">F</span>
+          </button>
+        </div>
+        <span className="toolbar__spacer" />
+        <span className="results" aria-live="polite">{COPY.results(rows.length)}</span>
+        <SortMenu sort={sort} setSort={setSort} />
+      </div>
+      {specs.length ? (
+        <div className="applied" aria-label="Applied filters">
+          {specs.map((c) => <span key={c.k} className="pill"><span className="pill__key">{c.label}</span>{c.value}<button type="button" aria-label={`Remove ${c.label} filter`} onClick={() => set(c.clear)}>✕</button></span>)}
+          <button type="button" className="linkbtn" onClick={() => set({ ...EMPTY, health: s.health })}>{COPY.clearAll}</button>
+        </div>
+      ) : null}
+      {rows.length ? <ProposedTable rows={rows} sort={sort} setSort={setSort} selected={selected} setSelected={setSelected} onPeek={setPeek} peeked={peek} cols={head.cols} /> : <Empty onClear={() => set(EMPTY)} />}
+      <div className="pager"><span className="tabular">1-{rows.length} of {rows.length}</span><span>Page 1</span></div>
+      <BulkBar sel={ORDERS.filter((o) => selected.includes(o.ref))} clear={() => setSelected([])} onExport={() => head.onExport('selected')} />
+      {drawer ? <FilterDrawer s={s} set={set} counts={counts} onClose={() => setDrawer(false)} resultCount={rows.length} /> : null}
+      {peek ? <Peek id={peek} rows={rows} onNav={setPeek} onClose={() => setPeek(null)} /> : null}
+    </main>
+  );
+}
+
+/* ═════════════════════════════════════════════════════════════
+   What moved where - every control on main has a row here.
+   ═════════════════════════════════════════════════════════════ */
+const MOVES = [
+  ['6 health tiles (All, Source deleted, Needs attention, Awaiting mapping, Awaiting dispatch, Synced)', 'Status tabs, same 6 values and counts, arrow-key nav'],
+  ['Search with / shortcut, PII-aware placeholder', 'Unchanged'],
+  ['Filters toggle (F) with count, 4-column panel open by default', 'Joined group: Stage, Source, Ship-by, More (F). More opens a side sheet; the table is no longer pushed down'],
+  ['Panel: Source, Created from/to', 'Source in the joined filter group + in the sheet; dates in the sheet'],
+  ['Panel: Fulfillment, Ship-by Any/Overdue/At risk/On track, Packing, On pack bench', 'Ship-by pinned in toolbar; rest in sheet, unchanged'],
+  ['Panel: Hold reason + 7 exception checkboxes with counts', 'Sheet "Exceptions" section, unchanged'],
+  ['Panel: Tags (find, Any, each tag + count, No tags)', 'Sheet "Tags" section, unchanged'],
+  ['Panel hint, Clear all, Hide filters', 'Sheet footer: Clear all + "Show N orders"; Esc closes'],
+  ['Applied chips row (hidden while panel open)', 'Always visible under the toolbar, each removable, Clear all'],
+  ['"Needs a look" chips: Ship-by ≤ 24h, Sales docs blocked (count, oldest age, tooltip), Waiting (count, age), Pack bench, Routing, Rate conflict, OL stopped, Open return, Buyer note', 'One line beside the status tabs: "6 late to ship · 7 stuck · 3 to handle". Each number opens a list of its filters, each with a one-line explanation, count and age'],
+  ['"Stage" chips with counts', 'Pinned "Stage" dropdown with the same counts; also in sheet'],
+  ['Overdue / at risk badges (read-only)', 'Inside "Late to ship", now clickable (set the Ship-by filter)'],
+  ['Review dispatch risk link', 'End of the row and inside "Late to ship"'],
+  ['Export (dialog), Columns (visibility + presets: save, apply, delete, workspace default), Refresh R', 'Unchanged, all working in this mockup'],
+  ['Stacked sortable headers (Shipment/Ship-by, Total/Payment/Created)', 'Kept stacked (narrow screens); active key marked with an arrow; Placed added'],
+  ['Expandable rows (inline detail)', 'Row click or "Details" opens a side peek over a dimmed list; ↑ ↓ walk orders, Esc closes'],
+  ['Row badges (all of them)', 'All kept; more than 3 in a cell shows 2 + "+N more" that opens the peek'],
+  ['Bulk bar: Clear, Tag, Mark as read, Cancel N, Export N, Dispatch N', 'Unchanged'],
+  ['Default sort: Ship-by, soonest', 'Newest first (placed). Ship-by one click away in Sort'],
+];
+
+/* ═════════════════════════════════════════════════════════════
+   App
+   ═════════════════════════════════════════════════════════════ */
+function App() {
+  const [mode, setMode] = useState('proposed');
+  const [s, setS] = useState(EMPTY);
+  const [selected, setSelected] = useState([]);
+  const [sortToday, setSortToday] = useState({ key: 'dispatchBy', dir: 'asc' });
+  const [sortProp, setSortProp] = useState({ key: 'placedAt', dir: 'desc' });
+  const set = (patch) => setS((cur) => ({ ...cur, ...patch }));
+  const counts = useCounts(s);
+  const [cols, setCols] = useState(COLS.map((c) => c[0]));
+  const [presets, setPresets] = useState([
+    { id: 'ws', name: 'Workspace default', cols: COLS.map((c) => c[0]), scope: 'workspace' },
+    { id: 'pack', name: 'Packing desk', cols: ['customer', 'status', 'shipment'], scope: 'mine' },
+  ]);
+  const [synced, setSynced] = useState('17:27');
+  const [refreshing, setRefreshing] = useState(false);
+  const [exportScope, setExportScope] = useState(null);
+  const onRefresh = () => { if (refreshing) return; setRefreshing(true); setTimeout(() => { setRefreshing(false); setSynced('17:28'); toast('Orders refreshed'); }, 700); };
+  const head = { synced, refreshing, onRefresh, onExport: (sc) => setExportScope(sc === 'selected' ? 'selected' : 'view'), cols, setCols, presets, setPresets };
+  const sort = mode === 'today' ? sortToday : sortProp;
+  const setSort = mode === 'today' ? setSortToday : setSortProp;
+  const rows = useMemo(() => sortRows(ORDERS.filter((o) => matches(o, s)), sort), [s, sort]);
+  const props = { s, set, sort, setSort, rows, counts, selected, setSelected, head };
+  return (
+    <>
+      <div className="app-wrap">
+      <div className="chrome">
+        <div className="segmented-control segmented-control--soft" role="group" aria-label="Version">
+          <button type="button" className="segmented-control__option" aria-pressed={mode === 'today'} onClick={() => setMode('today')}>Today (main, 6 Nov)</button>
+          <button type="button" className="segmented-control__option" aria-pressed={mode === 'proposed'} onClick={() => setMode('proposed')}>Proposed</button>
+        </div>
+        <span className="chrome__note">Filters are shared, so switching keeps them. Sample data, 15 orders.</span>
+        <span className="chrome__spacer" />
+        <span className="chrome__note">On a phone the panels open from the bottom; drag down to close. Keys: / search · F filters · R refresh · ↑ ↓ in details · Esc close</span>
+      </div>
+      {mode === 'today' ? <TodayPage {...props} /> : <ProposedPage {...props} />}
+      <div className="page" style={{ paddingTop: 0 }}>
+        <section className="ledger">
+          <div>
+            <h3>Every control on main, and where it went</h3>
+            <div className="table-wrap" style={{ border: 'none' }}>
+              <table><tbody>{MOVES.map(([a, b]) => <tr key={a}><td>{a}</td><td>{b}</td></tr>)}</tbody></table>
+            </div>
+          </div>
+          <div>
+            <h3>Why, from the research</h3>
+            <ul>
+              <li>Competitors show one status axis. BaseLinker and Apilo use a status list with counts, Shopify and Veeqo use tabs. None stacks tiles plus two chip rows.</li>
+              <li>Polaris: pin 2 or 3 filters, put the rest behind one button. Carbon: a hidden panel must still show what is applied.</li>
+              <li>Baymard: show every applied value as a removable pill with Clear all, always.</li>
+              <li>NN/g and Cloudscape: inline expanding rows clutter large tables; a side panel keeps the list visible.</li>
+              <li>Sellers' top complaint is busy layouts (ShipStation, Apilo). Colour now sits only on tab counts and queue counts.</li>
+              <li>Open question: research leans to a work queue default (Shopify and ShipStation open on unfulfilled). You asked for newest first, so that is the default here; Ship-by is one click away.</li>
+            </ul>
+          </div>
+        </section>
+      </div>
+      </div>
+      {exportScope ? <ExportDialog scope={exportScope} viewCount={rows.length} selectedCount={selected.length} onClose={() => setExportScope(null)} /> : null}
+      <Toaster />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>

@@ -20,15 +20,25 @@
  *
  * @module plugins/inpost/components
  */
-import { useMemo, useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { publicApiBaseUrl } from '../../../shared/config/public-api-base-url';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { CopyableId } from '../../../shared/ui/copyable-id';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { Connection } from '../../../features/connections';
 import { useRotateWebhookSecretMutation } from '../../../features/connections';
+import { interpolate, renderRich } from '../../../shared/i18n';
+import { useInpostMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 const INPOST_INTEGRATION_EMAIL = 'integration@inpost.pl';
+
+const STEP_PARTS = {
+  strong: (chunk: string): ReactNode => <strong>{chunk}</strong>,
+  em: (chunk: string): ReactNode => <em>{chunk}</em>,
+  code: (chunk: string): ReactNode => <code className="mono-text">{chunk}</code>,
+};
 
 interface InpostWebhookRunbookProps {
   connection: Connection;
@@ -37,19 +47,20 @@ interface InpostWebhookRunbookProps {
 /**
  * Resolve the public OpenLinker API base URL that serves inbound webhooks.
  * Prefers the operator-configured `openlinkerCallbackBaseUrl` (set in the InPost
- * structured-config section); falls back to `window.location.origin` only when
- * unset — correct for shared-origin deployments behind one reverse proxy, wrong
- * for split-origin dev/demo where the FE and API run on different hosts (#1473).
+ * structured-config section); falls back to the API address the web app itself
+ * calls, which is the API host on a split-origin deployment too, where the
+ * page's own origin would point at the web app (#1473).
  */
 function resolveApiBaseUrl(config: Connection['config']): string {
   const configured = config.openlinkerCallbackBaseUrl;
   if (typeof configured === 'string' && configured.trim().length > 0) {
     return configured.trim().replace(/\/+$/, '');
   }
-  return window.location.origin;
+  return publicApiBaseUrl();
 }
 
 export function InpostWebhookRunbook({ connection }: InpostWebhookRunbookProps): ReactElement {
+  const copy = useInpostMessages().inpostWebhookRunbook;
   const { showToast } = useToast();
   const rotateSecret = useRotateWebhookSecretMutation();
   const [revealedSecret, setRevealedSecret] = useState<string | null>(null);
@@ -59,20 +70,11 @@ export function InpostWebhookRunbook({ connection }: InpostWebhookRunbookProps):
     [connection.config, connection.id],
   );
 
+  // A message to InPost, not UI copy: its wording is kept as written and is
+  // never translated with the operator's language.
   const emailTemplate = useMemo(
-    () =>
-      [
-        'Hello InPost Integration Team,',
-        '',
-        'Please enable shipment-tracking webhooks for our account, delivered to:',
-        '',
-        webhookUrl,
-        '',
-        'Topic: Shipment.Tracking',
-        '',
-        'Thank you.',
-      ].join('\n'),
-    [webhookUrl],
+    () => interpolate(copy.emailTemplate, { webhookUrl }),
+    [copy.emailTemplate, webhookUrl],
   );
 
   async function handleCopyEmail(): Promise<void> {
@@ -80,14 +82,16 @@ export function InpostWebhookRunbook({ connection }: InpostWebhookRunbookProps):
       await navigator.clipboard?.writeText(emailTemplate);
       showToast({
         tone: 'success',
-        title: 'Email template copied',
-        description: `Send it to ${INPOST_INTEGRATION_EMAIL} if you can't self-register in the InPost Manager dashboard.`,
+        title: copy.toast.copied.title,
+        description: interpolate(copy.toast.copied.description, {
+          email: INPOST_INTEGRATION_EMAIL,
+        }),
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Copy failed',
-        description: (error as Error).message,
+        title: copy.toast.copyFailed,
+        description: describeApiError(error, 'inpost'),
       });
     }
   }
@@ -98,14 +102,14 @@ export function InpostWebhookRunbook({ connection }: InpostWebhookRunbookProps):
       setRevealedSecret(result.secret);
       showToast({
         tone: 'success',
-        title: 'Webhook secret generated',
-        description: 'Copy it now — it is shown only once. Configure the same value in InPost.',
+        title: copy.toast.generated.title,
+        description: copy.toast.generated.description,
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Could not generate webhook secret',
-        description: (error as Error).message,
+        title: copy.toast.generateFailed,
+        description: describeApiError(error, 'inpost'),
       });
     }
   }
@@ -113,38 +117,23 @@ export function InpostWebhookRunbook({ connection }: InpostWebhookRunbookProps):
   return (
     <div className="action-list__item">
       <div>
-        <strong>Webhook setup (runbook)</strong>
-        <p className="muted-text">
-          The ShipX API has no webhook-provisioning endpoint, so OpenLinker can&apos;t register the
-          webhook for you. Register it yourself:
-        </p>
+        <strong>{copy.title}</strong>
+        <p className="muted-text">{copy.intro}</p>
         <ol className="muted-text">
+          <li>{renderRich(copy.steps.primary, STEP_PARTS)}</li>
           <li>
-            <strong>Primary — InPost Manager dashboard.</strong> In Organization settings open{' '}
-            <em>Adresy webhook</em> → <em>Dodaj do API</em> and add the endpoint below (InPost runs
-            a ping-pong verification against it).
+            {renderRich(copy.steps.fallback, STEP_PARTS, { email: INPOST_INTEGRATION_EMAIL })}
           </li>
-          <li>
-            <strong>Fallback — email the integration team.</strong> If your account has no dashboard
-            access, use the template button to email{' '}
-            <code className="mono-text">{INPOST_INTEGRATION_EMAIL}</code> the same endpoint.
-          </li>
-          <li>
-            <strong>Generate the HMAC secret.</strong> Click <em>Generate webhook secret</em> below
-            and configure the revealed value in InPost so deliveries are signed with it. OpenLinker
-            verifies every delivery by HMAC-SHA256 (ADR-021); a missing or mismatched secret is
-            rejected with <code className="mono-text">401 Invalid webhook signature</code>.
-          </li>
+          <li>{renderRich(copy.steps.hmac, STEP_PARTS)}</li>
         </ol>
         <CopyableId id={webhookUrl} />
         {revealedSecret ? (
           <Alert
             tone="warning"
-            title="Webhook secret (shown once)"
+            title={copy.secretAlert.title}
             className="inpost-webhook-runbook__secret"
           >
-            Store this now — it can&apos;t be retrieved again. Configure it as the webhook signing
-            secret in InPost, then it must match what OpenLinker holds.
+            {copy.secretAlert.body}
             <CopyableId id={revealedSecret} />
           </Alert>
         ) : null}
@@ -156,13 +145,13 @@ export function InpostWebhookRunbook({ connection }: InpostWebhookRunbookProps):
           disabled={rotateSecret.isPending}
         >
           {rotateSecret.isPending
-            ? 'Generating...'
+            ? copy.generating
             : revealedSecret
-              ? 'Rotate webhook secret'
-              : 'Generate webhook secret'}
+              ? copy.rotate
+              : copy.generate}
         </Button>
         <Button tone="secondary" onClick={() => void handleCopyEmail()}>
-          Copy email template
+          {copy.copyEmail}
         </Button>
       </div>
     </div>

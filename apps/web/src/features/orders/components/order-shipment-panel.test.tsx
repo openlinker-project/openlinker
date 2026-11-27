@@ -226,6 +226,47 @@ describe('OrderShipmentPanel — empty state', () => {
     expect(screen.queryByRole('button', { name: /Generate label/i })).not.toBeInTheDocument();
   });
 
+  it('should offer Choose a carrier in the shop-ships-it state and open the routing dialog for the source (#3958)', async () => {
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          makeConnection(),
+          makeConnection({
+            id: 'conn-allegro',
+            platformType: 'allegro',
+            name: 'Allegro',
+            supportedCapabilities: ['OrderSource'],
+            enabledCapabilities: ['OrderSource'],
+          }),
+        ]),
+      },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+    const order = makeOrder({
+      sourceDeliveryMethodName: 'Kurier DPD',
+      deliveryResolution: {
+        source: 'default',
+        processorKind: 'omp_fulfilled',
+        processorConnectionId: null,
+        processorAvailable: true,
+        parcelProfile: null,
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={order} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByText('Shipped by the shop')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose a carrier' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(screen.getByText('Who ships Allegro orders')).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(/delivery method this order uses is first and marked/);
+  });
+
   it('should suppress the Generate-label CTA and point to Delivery for a disabled-carrier route (#1799)', async () => {
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
@@ -553,7 +594,7 @@ describe('OrderShipmentPanel — action button matrix (§3.4)', () => {
     await screen.findByRole('button', { name: /^Cancel$/i });
     expect(screen.getByRole('button', { name: /^Cancel$/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /Mark dispatched/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /shipments:write permission/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /permission to manage shipments/i })).toBeDisabled();
     // Read-only actions stay available — `generated` + a labelPdfRef.
     expect(screen.getByRole('button', { name: /Download shipping label/i })).toBeEnabled();
   });
@@ -767,6 +808,54 @@ describe('OrderShipmentPanel — persisted rejection (#1800)', () => {
     await screen.findByText('Shipment');
     expect(screen.queryByText('previous transient error')).toBeNull();
     expect(container.querySelector('.order-shipment-panel__error')).toBeNull();
+  });
+});
+
+describe('OrderShipmentPanel — default-open form on the Shipping tab (#4286)', () => {
+  function emptyShipmentsClient(): ReturnType<typeof createMockApiClient> {
+    return createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([makeConnection()]) },
+      shipments: {
+        list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+      },
+    });
+  }
+
+  it('should open the label form by itself when nothing is shipped and dispatch is allowed', async () => {
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} defaultFormOpen />, {
+      apiClient: emptyShipmentsClient(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Generate label', level: 4 })).toBeInTheDocument();
+  });
+
+  it('should not open the form by itself on a payment-blocked order, the Generate button refuses it too (#928)', async () => {
+    const order = makeOrder({
+      orderSnapshot: {
+        ...(makeOrder().orderSnapshot as Record<string, unknown>),
+        paymentStatus: 'awaiting',
+      },
+    });
+
+    renderWithProviders(<OrderShipmentPanel order={order} defaultFormOpen />, {
+      apiClient: emptyShipmentsClient(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    // The empty state renders (the shipments read finished) and the form stays closed.
+    await screen.findByText('No shipment yet');
+    expect(screen.queryByRole('heading', { name: 'Generate label', level: 4 })).toBeNull();
+  });
+
+  it('should not open the form by itself when the caller withholds it (a held order)', async () => {
+    renderWithProviders(<OrderShipmentPanel order={makeOrder()} defaultFormOpen={false} />, {
+      apiClient: emptyShipmentsClient(),
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('No shipment yet');
+    expect(screen.queryByRole('heading', { name: 'Generate label', level: 4 })).toBeNull();
   });
 });
 

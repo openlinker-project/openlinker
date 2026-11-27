@@ -391,8 +391,12 @@ test.describe('sales documents: routing full path (#3196)', () => {
     expect(refusal, 'issuing a second document kind must be refused').toBeInstanceOf(ApiError);
     expect((refusal as ApiError).status).toBe(409);
 
+    // #3766 - the filled receipt slot no longer repeats the refusal as a
+    // "This order already has a document" warning: it simply offers no
+    // invoice action, which is what makes the refusal unreachable from here.
     const panel = await gotoOrder(page, ROUTING_SEED_ORDER_IDS.receiptIssued);
-    await expect(panel.getByTestId('one-document-guard')).toBeVisible();
+    await expect(panel.getByTestId('one-document-guard')).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: 'Issue invoice' })).toHaveCount(0);
     await shot(page, '14-cross-kind-refusal-invoice-blocked');
   });
 
@@ -633,6 +637,9 @@ test.describe('sales documents: routing full path (#3196)', () => {
     await lineNumberInput.fill('1');
     const priceInput = dialog.getByLabel(/New gross, line 1/i);
     await priceInput.fill('80.00');
+    // DEF-13: a correction states why it was issued. The field is recommended
+    // rather than required, so it is filled here the way an operator would.
+    await dialog.getByLabel(/Reason for correction/i).fill('Price reduced after a complaint');
 
     const submitButton = dialog.getByRole('button', { name: 'Issue correction' });
     await expect(submitButton).toBeEnabled();

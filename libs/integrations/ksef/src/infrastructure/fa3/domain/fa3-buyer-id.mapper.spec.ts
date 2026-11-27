@@ -8,7 +8,7 @@
  */
 import type { TaxIdentifier } from '@openlinker/core/invoicing';
 import { InvalidBuyerIdentificationException } from '../../../domain/exceptions/fa3-builder.exception';
-import { resolveBuyerIdentity } from './fa3-buyer-id.mapper';
+import { resolveBuyerIdentity, resolveBuyerIdSchemeTag } from './fa3-buyer-id.mapper';
 
 describe('resolveBuyerIdentity', () => {
   it('should resolve null taxId (B2C) to { kind: "none" }', () => {
@@ -91,5 +91,29 @@ describe('resolveBuyerIdentity', () => {
   it('should throw on a foreign identifier missing its country prefix', () => {
     const taxId: TaxIdentifier = { scheme: 'us-ein', value: '123456' };
     expect(() => resolveBuyerIdentity(taxId)).toThrow(InvalidBuyerIdentificationException);
+  });
+});
+
+describe('buyer NIP normalisation (DEF-11 / DEF-39)', () => {
+  it('should emit a dashed pl-nip as ten digits', () => {
+    expect(resolveBuyerIdentity({ scheme: 'pl-nip', value: '526-000-12-46' })).toEqual({
+      kind: 'nip',
+      nip: '5260001246',
+    });
+  });
+
+  it('should treat a padded, upper-case scheme as pl-nip, not as a foreign id', () => {
+    expect(resolveBuyerIdentity({ scheme: ' PL-NIP ', value: '5260001246' })).toEqual({
+      kind: 'nip',
+      nip: '5260001246',
+    });
+    expect(resolveBuyerIdSchemeTag({ scheme: ' pl-nip ', value: '5260001246' })).toBe('pl-nip');
+  });
+
+  it('should infer pl-nip for an untagged dashed NIP', () => {
+    expect(resolveBuyerIdentity({ value: '526 000 12 46' } as TaxIdentifier)).toEqual({
+      kind: 'nip',
+      nip: '5260001246',
+    });
   });
 });

@@ -37,14 +37,12 @@
  */
 import {
   Body,
-  ConflictException,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -59,6 +57,7 @@ import {
 } from '@openlinker/oms';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import {
   SOURCING_RULE_ADMIN_SERVICE_TOKEN,
   type ISourcingRuleAdminService,
@@ -278,20 +277,33 @@ export class OmsSourcingRulesController {
    */
   private toHttpException(error: unknown): Error {
     if (error instanceof RoutingRuleNotFoundError) {
-      return new NotFoundException(error.message);
+      return codedHttpError(HttpStatus.NOT_FOUND, 'SOURCING_RULE_NOT_FOUND', error.message, {
+        connectionId: error.connectionId,
+        ruleId: error.ruleId,
+      });
     }
     if (error instanceof DuplicateLiveRoutingRuleError) {
-      return new ConflictException(error.message);
+      return codedHttpError(HttpStatus.CONFLICT, 'SOURCING_RULE_DUPLICATE', error.message, {
+        connectionId: error.connectionId,
+        kind: error.kind,
+        name: error.ruleName,
+      });
     }
     if (error instanceof RoutingRuleReorderMismatchError) {
       // Both id sets are emitted as FIELDS, not folded into the message: they
       // are what an operator's client needs to correct the list, and a client
       // parsing them out of prose breaks on the first reword.
-      return new ConflictException({
-        message: error.message,
-        missingRuleIds: error.missingRuleIds,
-        unknownRuleIds: error.unknownRuleIds,
-      });
+      return codedHttpError(
+        HttpStatus.CONFLICT,
+        'SOURCING_RULE_REORDER_MISMATCH',
+        error.message,
+        {
+          connectionId: error.connectionId,
+          missingRuleIds: error.missingRuleIds.join(', '),
+          unknownRuleIds: error.unknownRuleIds.join(', '),
+        },
+        { missingRuleIds: error.missingRuleIds, unknownRuleIds: error.unknownRuleIds }
+      );
     }
     // Everything else passes through unchanged — `BadRequestException` from the
     // service, `ConnectionNotFoundException` for the global filter to map. The

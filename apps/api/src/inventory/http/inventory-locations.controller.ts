@@ -48,7 +48,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -67,6 +66,7 @@ import { LocationResponseDto } from './dto/location-response.dto';
 import { PaginatedLocationsResponseDto } from './dto/paginated-locations-response.dto';
 import { LocationBootstrapResponseDto } from './dto/location-bootstrap-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('inventory')
@@ -120,7 +120,12 @@ export class InventoryLocationsController {
   async get(@Param('id') id: string): Promise<LocationResponseDto> {
     const location = await this.locations.getLocation(id);
     if (!location) {
-      throw new NotFoundException(`Inventory location not found: ${id}`);
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'INVENTORY_LOCATION_NOT_FOUND',
+        `Inventory location not found: ${id}`,
+        { locationId: id }
+      );
     }
     return this.toDto(location);
   }

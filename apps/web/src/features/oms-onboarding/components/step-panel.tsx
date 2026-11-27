@@ -12,7 +12,8 @@
 import { useEffect, useRef, type ReactElement, type ReactNode } from 'react';
 
 import { Button } from '../../../shared/ui/button';
-import { omsOnboardingCopy as COPY } from '../lib/oms-onboarding.copy';
+import { useWizardSteps } from '../hooks/use-wizard-steps';
+import { useOmsOnboardingCopy } from '../hooks/use-oms-onboarding-copy';
 import { TOTAL_STEPS } from '../lib/onboarding-state';
 
 export interface StepPanelProps {
@@ -24,7 +25,9 @@ export interface StepPanelProps {
 }
 
 export function StepPanel({ step, why, children, next, onBack }: StepPanelProps): ReactElement {
+  const COPY = useOmsOnboardingCopy();
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const wizardSteps = useWizardSteps();
 
   useEffect(() => {
     titleRef.current?.focus({ preventScroll: true });
@@ -40,7 +43,7 @@ export function StepPanel({ step, why, children, next, onBack }: StepPanelProps)
       <header className="oms-onboarding__panel-head">
         <p className="oms-onboarding__eyebrow">{COPY.stepOf(step, TOTAL_STEPS)}</p>
         <h2 className="oms-onboarding__panel-title" id="oms-onboarding-step-title" tabIndex={-1} ref={titleRef}>
-          {COPY.steps[step - 1].title}
+          {wizardSteps[step - 1]?.title}
         </h2>
         <p className="oms-onboarding__why">{why}</p>
       </header>

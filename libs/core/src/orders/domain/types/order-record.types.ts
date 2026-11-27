@@ -10,6 +10,7 @@ import type { OrderRecord } from '../entities/order-record.entity';
 import type { SlaState } from './order-sla.types';
 import type { FulfillmentRollupState } from './order-fulfillment.types';
 import type { HoldReason, OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
+import type { AuthorityAttentionReason } from '@openlinker/core/fulfillment-authority';
 
 /**
  * Per-destination sync status values (#2284).
@@ -78,9 +79,13 @@ export type OrderRecordStatus = (typeof OrderRecordStatusValues)[number];
  *                            its master, #1689)
  *   2. `awaiting_mapping`  — `recordStatus = 'awaiting_mapping'` (can't sync yet)
  *   3. `needs_attention`   — not awaiting_mapping/source_deleted AND any destination `failed`
- *   4. `synced`            — not awaiting_mapping/source_deleted, no failed, AND any `synced`
+ *   4. `synced`            — not awaiting_mapping/source_deleted, no failed, AND
+ *                            (any `synced`, OR - #3482 - OpenLinker handles the
+ *                            order itself (a live pack-bench work) and it has
+ *                            shipped: `fulfillmentState` dispatched / delivered)
  *   5. `awaiting_dispatch` — the residual: everything else (no failed, no
- *                            synced: empty `syncStatus[]` / pending / syncing)
+ *                            synced: empty `syncStatus[]` / pending / syncing,
+ *                            and a handled order still on the bench)
  *
  * Buckets 3–5 gate on `NOT awaiting_mapping AND NOT source_deleted` (not
  * `recordStatus = 'ready'`) so the five remain a complete partition for ANY
@@ -124,6 +129,32 @@ export interface OrderHealthSummary {
    * failure behind an invoicing one.
    */
   salesDocumentBlocked: number;
+
+  /**
+   * #2703 / #2704 - orders whose routing decision narrowed the destination
+   * fan-out in a way that needs attention. ORTHOGONAL to the five health
+   * buckets and NOT part of the partition, exactly like `salesDocumentBlocked`
+   * above: such an order is also counted in one of them, so this number must
+   * never be added to their sum.
+   *
+   * Counts the ATTENTION-WORTHY subset only - a deliberate
+   * `'routed-to-no-destination'` decision is rendered as a neutral per-order
+   * badge and never aggregated here.
+   */
+  destinationRoutingBlocked: number;
+  /**
+   * #3482 - orders OpenLinker holds because of a fact about the order or the
+   * stock (`WaitingFulfillmentBlockReasonValues`: out of stock, no address,
+   * routing error). ORTHOGONAL to the health partition, like its neighbours.
+   */
+  waitingInOpenLinker: number;
+  /** When the oldest of those orders started waiting, or `null` when none waits. */
+  waitingInOpenLinkerOldestAt: Date | null;
+  /**
+   * #3482 - orders with a live pack-bench work whose box is not shut yet
+   * (To pack or Packing). ORTHOGONAL to the health partition.
+   */
+  onPackBench: number;
   /**
    * Orders where the shop and the channel named DIFFERENT tax rates (#2254).
    *
@@ -149,6 +180,12 @@ export interface OrderHealthSummary {
    */
   omsAttention: number;
   /**
+   * Orders where a shop still shows the order unpaid and OpenLinker gave up
+   * sending the payment (#3963). Its own axis, never a health bucket - the
+   * same shape as `salesDocumentBlocked`.
+   */
+  paymentNotSent: number;
+  /**
    * When the OLDEST still-held order was held (#2254), or `null` when nothing
    * is held. Lets the blocked chip carry an age inside its label rather than
    * adding a third dotted badge to a row that already has two SLA badges.
@@ -165,6 +202,54 @@ export interface OrderHealthSummary {
    * queue without reading it as a problem.
    */
   salesDocumentIssuedOnRequest: number;
+  /**
+   * #4025 - orders with an open return. Built from the SAME id list the
+   * `hasOpenReturn` list filter uses (`OrderHealthSummaryFilters.openReturnOrderIds`,
+   * resolved by the caller because `orders` may not import `returns`), so the
+   * count and the rows it reveals cannot disagree. 0 when no list was supplied.
+   */
+  openReturn: number;
+  /** #4025 - orders with a buyer note an operator can act on (the `hasBuyerNote` filter's predicate). */
+  hasBuyerNote: number;
+  /** #3935 - orders carrying a gift line (the `withGift` filter's predicate). Orthogonal to the health partition. */
+  withGift: number;
+  /** #3935 - orders carrying a bundle (the `withBundle` filter's predicate). Orthogonal to the health partition. */
+  withBundle: number;
+  /** #3935 - orders whose promotion gift was not added (ids resolved by the caller). 0 when no list was supplied. */
+  giftNotAdded: number;
+  /** #3935 - orders with a gift line that the shop refused (a failed destination sync). */
+  giftShopRejected: number;
+  /**
+   * #4025 - orders with a ship-by deadline inside the next 24 hours or already
+   * past (the `dueBefore` list filter's predicate, evaluated at now + 24 h).
+   */
+  dueWithin24h: number;
+  /**
+   * #4025 - order count per source connection id. Counted with every summary
+   * scope applied EXCEPT `sourceConnectionId` itself, so the Source filter can
+   * show a number beside each option while one of them is selected.
+   * Connections with no orders in scope are absent, never `0`.
+   */
+  bySource: Record<string, number>;
+  /** #4025 - the three "Needs a look" group totals. */
+  attention: OrderAttentionSummary;
+}
+
+/**
+ * The three "Needs a look" group totals on the orders list (#4025, #4026).
+ *
+ * Each is the number of DISTINCT orders matching ANY filter in its group - a
+ * union, which is why it lives here and not in the browser: summing the
+ * per-filter counts would count an order that is both overdue and due within
+ * 24 h twice. Every member predicate is the one its own list filter uses.
+ */
+export interface OrderAttentionSummary {
+  /** SLA overdue OR SLA at risk OR ship-by within 24 h (`dueBefore`). */
+  lateToShip: number;
+  /** Sales document blocked OR OpenLinker stopped OR routing blocked OR waiting in OpenLinker OR tax rate conflict. */
+  stuck: number;
+  /** On pack bench OR buyer note OR open return. */
+  toHandle: number;
 }
 
 /**
@@ -190,6 +275,8 @@ export interface FailedSyncValueSummary {
  * contradiction (counting all buckets while filtering to one).
  */
 export interface OrderHealthSummaryFilters {
+  /** #4289: same default as the list - hidden orders are excluded unless `true`. */
+  hidden?: boolean;
   sourceConnectionId?: string;
   customerId?: string;
   createdFrom?: Date;
@@ -207,6 +294,20 @@ export interface OrderHealthSummaryFilters {
    * silently re-scoping it would move numbers on surfaces not in scope here.
    */
   cancelled?: boolean;
+  /**
+   * #4025 - internal ids of orders with an open return, resolved by the caller
+   * from the `returns` context exactly as for `OrderRecordFilters.openReturnOrderIds`.
+   * NOT a scope: it only feeds `countByHealth`'s `openReturn` and
+   * `attention.toHandle` counts, so omitting it reports both without the open
+   * returns rather than narrowing anything.
+   */
+  openReturnOrderIds?: string[];
+  /**
+   * #3935 - internal ids of orders whose gift was not added and nobody handled
+   * it, resolved by the caller from the promotions context. Feeds only the
+   * `giftNotAdded` count; omitted means the count is unknown and is left out.
+   */
+  giftNotAddedOrderIds?: string[];
 }
 
 /**
@@ -318,6 +419,32 @@ export interface OrderRecordFilters {
    */
   salesDocumentBlocked?: boolean;
   /**
+   * #2703 / #2704 - orders whose destination fan-out a routing decision narrowed
+   * in a way that needs attention. An INDEPENDENT axis, ANDed with `health`
+   * rather than folded into it: such an order is usually also `needs_attention`
+   * (its sync failed), so folding would hide one behind the other.
+   *
+   * `true` keeps only orders carrying an attention-worthy reason, `false` only
+   * the rest, omitted does not filter. Attention-worthy EXCLUDES
+   * `'routed-to-no-destination'` - a working router deciding an order goes
+   * nowhere is a decision rather than a fault - so `true` does not return those
+   * and `false` does. Same subset the `destinationRoutingBlocked` count reports,
+   * so the chip's number and its rows always agree.
+   */
+  destinationRoutingBlocked?: boolean;
+  /**
+   * #3482 - orders OpenLinker holds as waiting (the same subset the
+   * `waitingInOpenLinker` count reports). `true` keeps them, `false` the rest,
+   * omitted does not filter. ANDed with every other axis, never folded into
+   * `health`.
+   */
+  waitingInOpenLinker?: boolean;
+  /**
+   * #3482 - orders with a live pack-bench work whose box is not shut yet (the
+   * `onPackBench` count). Not `packed` (#2997), which reads `packedAt`.
+   */
+  onPackBench?: boolean;
+  /**
    * Derived lifecycle-phase filter (#2309, ADR-059). Translated to a SQL
    * predicate by `OrderRecordRepository.applyLifecyclePhaseFilter`, which tests
    * the ONE `CASE` expression the phase count also tests — so the chip's number
@@ -359,6 +486,33 @@ export interface OrderRecordFilters {
    */
   omsAttention?: boolean;
   /**
+   * "With a gift" filter (#3940). `true` keeps orders that carry at least one gift
+   * line: one the channel or the shop sent (`gift` on a channel line) or one an
+   * OpenLinker rule or an operator added (`orderEdits.addedLines`, gifts only).
+   * `false` keeps the rest, absent does not filter. A plain jsonb test over the
+   * two columns, ANDed with every other axis; not a health bucket.
+   */
+  withGift?: boolean;
+  /** "With a bundle" filter (#3935): orders that froze a bundle definition at ingestion. */
+  withBundle?: boolean;
+  /** "Gift not added" filter (#3935): ids of such orders resolved by the caller; `true` keeps only them. */
+  giftNotAdded?: boolean;
+  giftNotAddedOrderIds?: string[];
+  /** "Shop rejected the gift" filter (#3935): an order with a gift line whose destination sync failed. */
+  giftShopRejected?: boolean;
+  /**
+   * Restrict to orders carrying an attention entry with exactly this reason
+   * (#3961 - the "Changed by the shop" filter). Composes with `omsAttention`;
+   * `undefined` means "don't filter".
+   */
+  omsAttentionReason?: AuthorityAttentionReason;
+  /**
+   * Restrict to orders where a shop still shows the order unpaid and
+   * OpenLinker gave up sending the payment (#3963). ANDed with `health`, never
+   * folded into it. Reads the denormalised `paymentWritebackProblem` flag.
+   */
+  paymentNotSent?: boolean;
+  /**
    * Restrict to orders whose OPEN hold carries this reason (#2342).
    * `undefined` means "don't filter".
    *
@@ -383,6 +537,19 @@ export interface OrderRecordFilters {
    * `salesDocumentBlocked` and `taxRateConflict` already follow.
    */
   packed?: boolean;
+  /**
+   * "Has a buyer note" filter (#3538). `true` -> `hasBuyerNote = true` AND
+   * `recordStatus = 'ready'` (N-20), `false` -> `hasBuyerNote = false`, absent -> no arm. A plain indexed boolean test
+   * over a denormalized column; ANDed with every other axis.
+   */
+  hasBuyerNote?: boolean;
+  /**
+   * Buyer data retention (#4289). Absent or `false` -> only orders that are NOT
+   * hidden (the default list); `true` -> only hidden ones. A hidden order is
+   * out of lists and search but is never deleted, and a direct read by id still
+   * returns it.
+   */
+  hidden?: boolean;
   /**
    * Free-text search (#3527). Matches order number, buyer name, buyer email
    * and any line SKU via the denormalized, diacritic-folded `searchText`
@@ -457,12 +624,19 @@ export interface OrderRecordFilters {
  * Sort fields for order-record list queries (#927, extended #944).
  *
  * - `createdAt` / `dispatchBy` — top-level timestamp columns.
+ * - `placedAt` (#4025) — when the BUYER placed the order, as the source reports
+ *   it. Distinct from `createdAt`, which is when OpenLinker first stored the
+ *   record: after an import of older orders the two differ by days, so "newest
+ *   first" by `createdAt` puts the import on top. A source that reports no
+ *   placement time (WooCommerce) leaves it NULL, and NULLs sort LAST in both
+ *   directions so an unknown date never jumps to the top of the list.
  * - `customer` / `items` / `status` / `total` / `payment` — derived from
  *   `orderSnapshot` JSONB (and the health `CASE` for `status`); back the
  *   sortable table columns.
  */
 export const OrderRecordSortValues = [
   'createdAt',
+  'placedAt',
   'dispatchBy',
   'customer',
   'items',

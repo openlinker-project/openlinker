@@ -23,8 +23,10 @@ import { z } from 'zod';
 
 import type {
   BenchActivityEntry,
+  BenchBuyerNoteAcknowledgementResult,
   BenchClaimNextResult,
   BenchClaimResult,
+  BenchSourceChangeTakenOutResult,
   BenchCompleteResult,
   BenchDocuments,
   BenchMetrics,
@@ -57,6 +59,11 @@ const nullableAttributes = z
 
 export const benchParcelLineSchema = z.object({
   workLineId: z.string(),
+  bundle: z
+    .object({ lineId: z.string(), name: nullableString, giftSlot: z.boolean().optional() })
+    .nullish()
+    .transform((value) => value ?? null),
+  gift: z.boolean().optional().default(false),
   productVariantId: z.string(),
   name: nullableString,
   sku: nullableString,
@@ -80,6 +87,24 @@ export const benchPackerNoteSchema = z.object({
   createdAt: z.string(),
 });
 
+/**
+ * #3958. `.nullish()` as a whole, so an API that predates the field reads as
+ * "route not known" instead of failing the parse and hiding the box.
+ */
+const benchParcelRouteSchema = z
+  .object({
+    processorKind: z.string(),
+    processorName: nullableString,
+    fromRule: z.boolean(),
+    processorAvailable: z
+      .boolean()
+      .nullish()
+      .transform((value) => value ?? true),
+    methodLabel: nullableString,
+  })
+  .nullish()
+  .transform((value) => value ?? null);
+
 export const benchParcelSchema = z.object({
   workId: z.string(),
   version: z.number(),
@@ -88,12 +113,21 @@ export const benchParcelSchema = z.object({
   totalAmount: nullableNumber,
   currency: nullableString,
   carrierName: nullableString,
+  route: benchParcelRouteSchema,
   dispatchByAt: nullableString,
   parcelIndex: z.number(),
   parcelTotal: z.number(),
   // See the types module: never `z.enum` on a server-owned vocabulary.
   refusal: nullableString,
   holdReason: nullableString,
+  // #3961 - defaulted to null so an API that predates the field reads as
+  // "not held for a source change" rather than failing the parse.
+  sourceChange: z
+    .object({
+      takeOut: z.array(z.object({ workLineId: z.string(), units: z.number() })),
+    })
+    .nullish()
+    .transform((value) => value ?? null),
   closedAt: nullableString,
   packedByUserId: nullableString,
   assignedToUserId: nullableString,
@@ -105,6 +139,27 @@ export const benchParcelSchema = z.object({
   // "no notes", and failing the parse would hide the whole box from the packer.
   packerNotes: z
     .array(benchPackerNoteSchema)
+    .nullish()
+    .transform((value) => value ?? []),
+  // #3539. All defaulted, for the same reason: an API that predates the buyer
+  // note, or sends null, means "no note", and failing the parse would hide the
+  // whole box from the packer who is holding it.
+  buyerNote: nullableString,
+  hasBuyerNote: z
+    .boolean()
+    .nullish()
+    .transform((value) => value ?? false),
+  buyerNoteAcknowledgedAt: nullableString,
+  buyerNoteAcknowledgedByUserId: nullableString,
+  otherParcelBuyerNoteAcknowledgements: z
+    .array(
+      z.object({
+        workId: z.string(),
+        parcelIndex: z.number(),
+        acknowledgedAt: z.string(),
+        acknowledgedByUserId: nullableString,
+      })
+    )
     .nullish()
     .transform((value) => value ?? []),
 });
@@ -298,6 +353,28 @@ export const benchUndoResultSchema = z.object({
 
 export function parseBenchUndoResult(payload: unknown): BenchUndoResult {
   return benchUndoResultSchema.parse(payload);
+}
+
+export const benchBuyerNoteAcknowledgementResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchBuyerNoteAcknowledgementResult(
+  payload: unknown
+): BenchBuyerNoteAcknowledgementResult {
+  return benchBuyerNoteAcknowledgementResultSchema.parse(payload);
+}
+
+export const benchSourceChangeTakenOutResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchSourceChangeTakenOutResult(payload: unknown): BenchSourceChangeTakenOutResult {
+  return benchSourceChangeTakenOutResultSchema.parse(payload);
 }
 
 export const benchClaimResultSchema = z.object({

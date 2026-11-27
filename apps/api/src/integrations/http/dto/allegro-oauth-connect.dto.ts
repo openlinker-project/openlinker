@@ -6,7 +6,18 @@
  *
  * @module apps/api/src/integrations/http/dto
  */
-import { IsString, IsNotEmpty, IsOptional, IsUrl, IsUUID } from 'class-validator';
+import {
+  IsIn,
+  IsString,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsUrl,
+  IsUUID,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { OrderSyncStartDto } from './order-sync-start.dto';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -83,5 +94,42 @@ export class AllegroOAuthConnectDto {
   @IsUUID()
   @IsOptional()
   connectionId?: string;
-}
 
+  @ApiPropertyOptional({
+    description:
+      'How delivery appears on receipts and invoices, seeded into the new connection config ' +
+      'as `deliveryOnDocuments` (#3911, ADR-082). Validated when the connection is created. ' +
+      'Ignored when re-authenticating an existing connection.',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsObject()
+  @IsOptional()
+  deliveryOnDocuments?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether this connection expects its order lines to resolve to catalogue products, seeded ' +
+      'into the new connection config as `catalogueMode` (#4280). `none` lets a marketplace-only ' +
+      'install ingest orders without any catalogue; `linked` (or omitted) is today’s behaviour. ' +
+      'Ignored when re-authenticating an existing connection.',
+    enum: ['linked', 'none'],
+  })
+  @IsIn(['linked', 'none'])
+  @IsOptional()
+  catalogueMode?: 'linked' | 'none';
+
+  @ApiPropertyOptional({
+    description:
+      'Where order sync starts for the new connection (#4228): `now` (default, only orders from ' +
+      'now on) or `all` (the whole history). Allegro has no date lookup, so `from` is refused. ' +
+      'Carried through the OAuth round trip and stored when the connection is created. Ignored ' +
+      'when re-authenticating an existing connection.',
+    type: OrderSyncStartDto,
+    example: { mode: 'all' },
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => OrderSyncStartDto)
+  orderSyncStart?: OrderSyncStartDto;
+}

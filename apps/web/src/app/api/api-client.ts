@@ -19,11 +19,24 @@
  * @see apps/web/src/shared/plugins/plugin.types.ts — the OpenLinkerPlugin contract (#702)
  */
 import { withApiVersion } from '../../shared/config/api-version';
+import { getBcp47Locale, getLocale, getMessages } from '../../shared/i18n';
 import { createAdaptersApi, type AdaptersApi } from '../../features/adapters/api/adapters.api';
 import {
   createAiProviderSettingsApi,
   type AiProviderSettingsApi,
 } from '../../features/ai-provider-settings/api/ai-provider-settings.api';
+import { parseContentDispositionFilename } from '../../shared/api/content-disposition';
+import {
+  createMarginAnalyticsApi,
+  type MarginAnalyticsApi,
+} from '../../features/analytics/api/margin-analytics.api';
+import {
+  createAnalyticsExportApi,
+  type AnalyticsExportApi,
+} from '../../features/analytics/api/analytics-export.api';
+import { createGiftReportApi, type GiftReportApi } from '../../features/gift-report/api/gift-report.api';
+import { createReleaseStateApi, type ReleaseStateApi } from '../../features/release-center/api/release-state.api';
+import { createReturnGiftsApi, type ReturnGiftsApi } from '../../features/returns/api/return-gifts.api';
 import { createAnalyticsApi, type AnalyticsApi } from '../../features/analytics/api/sales-analytics.api';
 import {
   createAnalyticsCoverageApi,
@@ -82,6 +95,10 @@ import {
   type SalesDocumentListApi,
 } from '../../features/sales-documents/api/sales-document-list.api';
 import {
+  createSalesDocumentBatchApi,
+  type SalesDocumentBatchApi,
+} from '../../features/sales-documents/api/sales-document-batch.api';
+import {
   createPricingSyncApi,
   type PricingSyncApi,
 } from '../../features/price-changes/api/pricing-sync.api';
@@ -90,6 +107,7 @@ import {
   type MailerSettingsApi,
 } from '../../features/mailer-settings/api/mailer-settings.api';
 import { createMcpTokensApi, type McpTokensApi } from '../../features/mcp-tokens';
+import { createSavedViewsApi, type SavedViewsApi } from '../../features/saved-views';
 import { createOrdersApi, type OrdersApi } from '../../features/orders/api/orders.api';
 import {
   createOperationalSettingsApi,
@@ -100,9 +118,21 @@ import {
   type SalesDocumentRulesApi,
 } from '../../features/sales-documents/api/sales-document-rules.api';
 import {
+  createDeliveryOnDocumentsApi,
+  type DeliveryOnDocumentsApi,
+} from '../../features/delivery-on-documents/api/delivery-on-documents.api';
+import {
+  createGiftDocumentsApi,
+  type GiftDocumentsApi,
+} from '../../features/gift-documents/api/gift-documents.api';
+import {
   createSourcingRulesApi,
   type SourcingRulesApi,
 } from '../../features/oms/api/sourcing-rules.api';
+import {
+  createRoutingDryRunApi,
+  type RoutingDryRunApi,
+} from '../../features/oms/api/routing-dry-run.api';
 import {
   createFulfillmentAuthorityApi,
   type FulfillmentAuthorityApi,
@@ -119,8 +149,13 @@ import {
   createPosthogSettingsApi,
   type PosthogSettingsApi,
 } from '../../features/posthog-settings/api/posthog-settings.api';
+import { createBundlesApi, type BundlesApi } from '../../features/bundles/api/bundles.api';
+import { createGiftsApi, type GiftsApi } from '../../features/gifts/api/gifts.api';
+import { createPromotionsApi, type PromotionsApi } from '../../features/promotions/api/promotions.api';
 import { createProductsApi, type ProductsApi } from '../../features/products/api/products.api';
 import { createAutomationsApi, type AutomationsApi } from '../../features/automation';
+import { createBuyerDataApi, type BuyerDataApi } from '../../features/buyer-data/api/buyer-data.api';
+import { createBuyerEmailsApi, type BuyerEmailsApi } from '../../features/buyer-emails/api/buyer-emails.api';
 import { createReturnsApi, type ReturnsApi } from '../../features/returns';
 import { createShipmentsApi, type ShipmentsApi } from '../../features/shipments/api/shipments.api';
 import {
@@ -139,6 +174,10 @@ import {
 } from '../../features/webhook-deliveries/api/webhook-deliveries.api';
 import { createUsersApi, type UsersApi } from '../../features/users/api/users.api';
 import { createSystemApi, type SystemApi } from '../../features/system/api/system.api';
+import {
+  createLoginPageSettingsApi,
+  type LoginPageSettingsApi,
+} from '../../features/login-page-settings/api/login-page-settings.api';
 import { plugins } from '../../plugins';
 import { ApiError } from '../../shared/api/api-error';
 import type { SessionAdapter } from '../../shared/auth/session-adapter';
@@ -166,6 +205,19 @@ export type ApiRequest = <T>(path: string, init?: RequestInit) => Promise<T>;
  * still normalize to `ApiError`.
  */
 export type ApiBlobRequest = (path: string, init?: RequestInit) => Promise<Blob>;
+
+/**
+ * A downloaded file together with the name the server chose for it
+ * (`Content-Disposition`, exposed to the browser by the API's CORS config).
+ * `filename` is `null` when the response named none.
+ */
+export interface ApiFileResponse {
+  blob: Blob;
+  filename: string | null;
+}
+
+/** {@link ApiBlobRequest} that also reports the server-chosen filename (CSV exports, #3590). */
+export type ApiFileRequest = (path: string, init?: RequestInit) => Promise<ApiFileResponse>;
 
 /**
  * Streaming variant of {@link ApiRequest}. Same auth-header injection,
@@ -220,8 +272,12 @@ export interface CoreApiClient {
     AnalyticsCoverageApi &
     AnalyticsRemediationApi &
     AnalyticsTaxCoverageApi &
-    AnalyticsMatchingCoverageApi;
+    AnalyticsMatchingCoverageApi &
+    MarginAnalyticsApi &
+    AnalyticsExportApi;
   analyticsSettings: AnalyticsSettingsApi;
+  giftReport: GiftReportApi;
+  releaseState: ReleaseStateApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
   connections: ConnectionsApi;
@@ -238,20 +294,32 @@ export interface CoreApiClient {
   pricingSync: PricingSyncApi;
   mailerSettings: MailerSettingsApi;
   automations: AutomationsApi;
+  buyerData: BuyerDataApi;
+  buyerEmails: BuyerEmailsApi;
   mcpTokens: McpTokensApi;
+  savedViews: SavedViewsApi;
   operationalSettings: OperationalSettingsApi;
   orders: OrdersApi;
   posthogSettings: PosthogSettingsApi;
   products: ProductsApi;
+  bundles: BundlesApi;
+  gifts: GiftsApi;
+  promotions: PromotionsApi;
   promptTemplates: PromptTemplatesApi;
   mappings: MappingsApi;
   request: ApiRequest;
   requestBlob: ApiBlobRequest;
+  requestFile: ApiFileRequest;
   requestStream: ApiStreamRequest;
   returns: ReturnsApi;
+  returnGifts: ReturnGiftsApi;
   salesDocumentList: SalesDocumentListApi;
+  salesDocumentBatch: SalesDocumentBatchApi;
   salesDocumentRules: SalesDocumentRulesApi;
+  deliveryOnDocuments: DeliveryOnDocumentsApi;
+  giftDocuments: GiftDocumentsApi;
   sourcingRules: SourcingRulesApi;
+  routingDryRun: RoutingDryRunApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
   fulfillment: FulfillmentApi;
   bench: BenchApi;
@@ -259,6 +327,7 @@ export interface CoreApiClient {
   syncJobs: SyncJobsApi;
   streamDeadLetters: StreamDeadLettersApi;
   system: SystemApi;
+  loginPageSettings: LoginPageSettingsApi;
   users: UsersApi;
   webhookDeliveries: WebhookDeliveriesApi;
 }
@@ -307,6 +376,11 @@ export function createApiClient({
     }
     if (accessToken !== null) {
       headers.set('Authorization', `Bearer ${accessToken}`);
+    }
+    // The API ignores it today; it lets server-side features (e-mails, PDFs)
+    // follow the operator's language later without a frontend change.
+    if (!headers.has('Accept-Language')) {
+      headers.set('Accept-Language', getBcp47Locale(getLocale()));
     }
     return headers;
   }
@@ -407,6 +481,17 @@ export function createApiClient({
     return response.blob();
   };
 
+  const requestFile: ApiFileRequest = async (
+    path: string,
+    init: RequestInit = {},
+  ): Promise<ApiFileResponse> => {
+    const response = await execute(path, init);
+    return {
+      blob: await response.blob(),
+      filename: parseContentDispositionFilename(response.headers.get('Content-Disposition')),
+    };
+  };
+
   const requestStream: ApiStreamRequest = async (
     path: string,
     init: RequestInit = {},
@@ -444,7 +529,7 @@ export function createApiClient({
       // A 2xx with no body is not a stream the caller can read; surfacing it as
       // an `ApiError` keeps every failure on the one type callers already
       // branch on rather than adding a second null-shaped outcome.
-      throw new ApiError(`Response carried no readable body: ${path}`, response.status, null);
+      throw new ApiError(getMessages('ui').apiError.noReadableBody, response.status, { path });
     }
     return response.body;
   };
@@ -459,8 +544,12 @@ export function createApiClient({
       ...createAnalyticsRemediationApi(request),
       ...createAnalyticsTaxCoverageApi(request),
       ...createAnalyticsMatchingCoverageApi(request),
+      ...createMarginAnalyticsApi(request),
+      ...createAnalyticsExportApi(requestFile),
     },
     analyticsSettings: createAnalyticsSettingsApi(request),
+    giftReport: createGiftReportApi(request),
+    releaseState: createReleaseStateApi(request),
     analyticsTrust: createAnalyticsTrustApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),
@@ -477,27 +566,40 @@ export function createApiClient({
     pricingSync: createPricingSyncApi(request),
     mailerSettings: createMailerSettingsApi(request),
     mcpTokens: createMcpTokensApi(request),
+    savedViews: createSavedViewsApi(request),
     mappings: createMappingsApi(request),
     operationalSettings: createOperationalSettingsApi(request),
     orders: createOrdersApi(request, requestBlob),
     posthogSettings: createPosthogSettingsApi(request),
     products: createProductsApi(request),
+    bundles: createBundlesApi(request),
+    gifts: createGiftsApi(request),
+    promotions: createPromotionsApi(request),
     promptTemplates: createPromptTemplatesApi(request),
     request,
     requestBlob,
+    requestFile,
     requestStream,
     salesDocumentList: createSalesDocumentListApi(request),
+    salesDocumentBatch: createSalesDocumentBatchApi(request),
     salesDocumentRules: createSalesDocumentRulesApi(request),
+    deliveryOnDocuments: createDeliveryOnDocumentsApi(request),
+    giftDocuments: createGiftDocumentsApi(request),
     sourcingRules: createSourcingRulesApi(request),
+    routingDryRun: createRoutingDryRunApi(request),
     automations: createAutomationsApi(request),
+    buyerData: createBuyerDataApi(request),
+    buyerEmails: createBuyerEmailsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),
     bench: createBenchApi(request, requestBlob),
     returns: createReturnsApi(request),
+    returnGifts: createReturnGiftsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),
     streamDeadLetters: createStreamDeadLettersApi(request),
     system: createSystemApi(request),
+    loginPageSettings: createLoginPageSettingsApi(request),
     users: createUsersApi(request),
     webhookDeliveries: createWebhookDeliveriesApi(request),
   };

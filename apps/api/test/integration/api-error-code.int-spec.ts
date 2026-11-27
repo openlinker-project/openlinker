@@ -1,0 +1,144 @@
+/**
+ * API error code integration test (#3860)
+ *
+ * Through the real global filter roster (`buildGlobalExceptionFilters`, shared
+ * with `main.ts`): every error response carries a `code`, and the fields it
+ * carried before are still there. Covers the three paths the code can come
+ * from - a Nest exception the catch-all answers, a guard refusal, and a domain
+ * error a domain filter answers - plus the body parser's own client errors,
+ * which must keep their 4xx status rather than become a 500.
+ */
+import { randomUUID } from 'node:crypto';
+import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
+import type { IntegrationTestHarness } from './setup';
+import { loginAsAdmin } from './helpers/test-auth.helper';
+
+describe('API error code (integration)', () => {
+  let harness: IntegrationTestHarness;
+
+  beforeAll(async () => {
+    harness = await getTestHarness();
+  });
+
+  afterEach(async () => {
+    await resetTestHarness();
+  });
+
+  afterAll(async () => {
+    await teardownTestHarness();
+  });
+
+  it('should add the status-family code to an unknown route and keep Nest fields', async () => {
+    const res = await harness.getHttp().get('/v1/no-such-route').expect(404);
+
+    const body = res.body as Record<string, unknown>;
+    expect(body).toMatchObject({ statusCode: 404, error: 'Not Found', code: 'HTTP_404' });
+    expect(typeof body.message).toBe('string');
+  });
+
+  it('should add a code to a guard refusal', async () => {
+    const res = await harness.getHttp().get('/v1/connections').expect(401);
+
+    expect(res.body).toMatchObject({ statusCode: 401, code: 'HTTP_401' });
+  });
+
+  it('should send the service\'s own code for an unknown connection (#3864)', async () => {
+    const http = harness.getHttp();
+    const token = await loginAsAdmin(http, harness.getDataSource());
+
+    const res = await http
+      .get(`/v1/connections/${randomUUID()}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+
+    expect(res.body).toMatchObject({
+      statusCode: 404,
+      code: 'CONNECTION_NOT_FOUND',
+      params: { connectionId: expect.any(String) as unknown },
+    });
+  });
+
+  it('should send the domain filter\'s own code and keep its exception name (#3863)', async () => {
+    // `getCapabilityAdapter` throws ConnectionNotFoundException for an unknown
+    // connection; ConnectionExceptionFilter answers it (#1087), not the catch-all.
+    const http = harness.getHttp();
+    const token = await loginAsAdmin(http, harness.getDataSource());
+
+    const res = await http
+      .post('/v1/listings/bulk-create')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        connectionId: randomUUID(),
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 5, publishImmediately: false },
+      })
+      .expect(404);
+
+    expect(res.body).toMatchObject({
+      statusCode: 404,
+      error: 'ConnectionNotFoundException',
+      code: 'CONNECTION_NOT_FOUND',
+    });
+  });
+
+  it('should keep 400 for malformed JSON', async () => {
+    const http = harness.getHttp();
+    const token = await loginAsAdmin(http, harness.getDataSource());
+
+    const res = await http
+      .post('/v1/listings/bulk-create')
+      .set('Authorization', `Bearer ${token}`)
+      .set('Content-Type', 'application/json')
+      .send('{"connectionId":')
+      .expect(400);
+
+    expect(res.body).toMatchObject({ statusCode: 400, code: 'HTTP_400' });
+  });
+
+  it('should keep 413 for a body over the size limit instead of a 500', async () => {
+    const http = harness.getHttp();
+    const token = await loginAsAdmin(http, harness.getDataSource());
+
+    const res = await http
+      .post('/v1/listings/bulk-create')
+      .set('Authorization', `Bearer ${token}`)
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ padding: 'x'.repeat(1024 * 1024 + 1) }))
+      .expect(413);
+
+    expect(res.body).toEqual({
+      statusCode: 413,
+      message: 'request entity too large',
+      code: 'HTTP_413',
+    });
+  });
+
+  describe('validation failures (#3861)', () => {
+    it("should name each failed field with its constraint and keep Nest's messages", async () => {
+      const http = harness.getHttp();
+      const token = await loginAsAdmin(http, harness.getDataSource());
+
+      const res = await http
+        .post('/v1/connections')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: '', unexpected: true })
+        .expect(400);
+
+      const body = res.body as {
+        code?: string;
+        error?: string;
+        message?: unknown;
+        fields?: { path: string; code: string }[];
+      };
+      expect(body.code).toBe('VALIDATION_FAILED');
+      expect(body.error).toBe('Bad Request');
+      expect(Array.isArray(body.message)).toBe(true);
+      expect(body.fields).toEqual(
+        expect.arrayContaining([
+          { path: 'name', code: 'isNotEmpty' },
+          { path: 'unexpected', code: 'whitelistValidation' },
+        ])
+      );
+    });
+  });
+});

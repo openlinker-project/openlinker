@@ -43,6 +43,10 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
         quantity: payload.quantity,
         idempotencyKey: payload.idempotencyKey,
         observedAt: payload.observedAt,
+        productVariantId: payload.productVariantId,
+        ...(typeof payload.externalParentId === 'string' && payload.externalParentId !== ''
+          ? { externalParentId: payload.externalParentId }
+          : {}),
       });
 
       if (result.failed.length > 0) {
@@ -62,7 +66,11 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
           job.id,
           job.jobType,
           job.connectionId,
-          allContended ? new ContendedWriteError(message, failure.offerId) : undefined
+          allContended
+            ? new ContendedWriteError(message, failure.offerId)
+            : // Preserved so the platform retry classifier can recognise a
+              // deterministic refusal and end the job instead of retrying it.
+              failure.cause
         );
       }
 
@@ -132,6 +140,14 @@ export class MarketplaceOfferQuantityUpdateHandler implements SyncJobHandler {
       // Also the ordering token for the write-order guard (#2617). A legacy job
       // queued across the deploy carries none and writes unguarded, as before.
       observedAt,
+      ...(typeof payload.productVariantId === 'string' && payload.productVariantId !== ''
+        ? { productVariantId: payload.productVariantId }
+        : {}),
+      // #3962 - the variation's parent. Dropping it here sends a variation write
+      // to the simple-product path, which 404s and deletes a live mapping.
+      ...(typeof payload.externalParentId === 'string' && payload.externalParentId !== ''
+        ? { externalParentId: payload.externalParentId }
+        : {}),
     };
   }
 }

@@ -74,11 +74,7 @@ export {
   sourcingAfterActionLabel,
   sourcingRuleNameHint,
   sourcingRuleNameLabel,
-  SOURCING_RULES_TABLE_COPY,
-  SOURCING_RULES_STATE_COPY,
-  SOURCING_RULES_TILE_COPY,
-  SOURCING_RULES_PAGE_COPY,
-} from './lib/sourcing-rule.copy';
+} from './lib/sourcing-rule-labels';
 export {
   AFTER_ACTION_PERMISSIVENESS,
   mostRestrictiveAfterAction,
@@ -105,3 +101,13 @@ export type {
   SourcingRuleFilters,
   UpdateSourcingRuleRequest,
 } from './api/sourcing-rules.types';
+
+// #2954 - the dry-run test panel.
+export { SourcingRulesTestPanel } from './components/sourcing-rules-test-panel';
+export type { SourcingRulesTestPanelProps } from './components/sourcing-rules-test-panel';
+export { useRoutingDryRunMutation } from './hooks/use-routing-dry-run-mutation';
+export type {
+  DraftRule,
+  RoutingDryRunRequest,
+  RoutingDryRunResult,
+} from './api/routing-dry-run.types';

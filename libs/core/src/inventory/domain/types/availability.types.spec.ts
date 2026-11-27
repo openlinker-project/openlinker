@@ -10,6 +10,7 @@
  */
 import {
   applyScopedLedgerSubtraction,
+  computeBundleUnits,
   toPromisableQuantity,
   unknownPromisableQuantity,
 } from './availability.types';
@@ -150,5 +151,16 @@ describe('unknownPromisableQuantity (#2345 widening)', () => {
       stalenessMs: null,
       olHeldNotReflected: null,
     });
+  });
+});
+
+describe('computeBundleUnits - one variant listed twice (#3520)', () => {
+  it('should pool the quantities of a repeated component variant instead of dividing each slot against the whole stock', () => {
+    // 10 units of one component, two slots of 3 each: 10 / 6 = 1, not min(3, 3) = 3.
+    const units = computeBundleUnits([
+      { variantId: 'v-a', quantity: 3, availableToPromise: 10, isStale: false },
+      { variantId: 'v-a', quantity: 3, availableToPromise: 10, isStale: false },
+    ]);
+    expect(units).toBe(1);
   });
 });

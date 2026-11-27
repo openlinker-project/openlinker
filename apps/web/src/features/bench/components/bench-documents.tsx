@@ -54,14 +54,19 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { ApiError } from '../../../shared/api/api-error';
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { useSession } from '../../../shared/auth/use-session';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
 import { usePlatform } from '../../../shared/plugins';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { StatusBadge } from '../../../shared/ui/status-badge';
+import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
+import { getMessages, interpolate, useMessages, usePlural, type Messages, type ResolvedCopy } from '../../../shared/i18n';
 import { useDemoMode } from '../../system';
-import type { BenchLabel, BenchLabelReplaceResult } from '../api/bench-parcel.types';
+import type {
+  BenchLabel,
+  BenchLabelReplaceResult,
+  BenchParcelRoute,
+} from '../api/bench-parcel.types';
 import {
   useBenchDocumentsQuery,
   useBenchReceiptLinkQuery,
@@ -71,7 +76,12 @@ import {
   describeInvoiceAbsenceAudience,
   describeInvoiceBlock,
 } from '../lib/bench-parcel-presentation';
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import {
+  describeBenchLabelRoute,
+  isCarrierAccountable,
+  labelCarrierName,
+  type BenchLabelRouteCase,
+} from '../lib/bench-label-route';
 import { printBlob } from '../lib/bench-print';
 import { describeBenchDocumentCard, type BenchDocumentCard } from '../lib/bench-sales-document';
 import { BenchChangeParcelDialog } from './bench-change-parcel-dialog';
@@ -82,14 +92,21 @@ import { BenchChangeParcelDialog } from './bench-change-parcel-dialog';
  * silently-unreachable branch — the bug this whole seam exists to fix was a
  * message that rendered where it did not apply.
  */
-const AUDIENCE_COPY: Record<
-  ReturnType<typeof describeInvoiceAbsenceAudience>,
-  { readonly title: string; readonly body: string }
-> = {
-  'on-office-list': benchParcelCopy.documents.audience.onOfficeList,
-  'issued-on-request': benchParcelCopy.documents.audience.issuedOnRequest,
-  'nobody-told': benchParcelCopy.documents.audience.nobodyTold,
-};
+function audienceCopy(
+  audience: ReturnType<typeof describeInvoiceAbsenceAudience>
+): { readonly title: string; readonly body: string } {
+  const copy = getMessages('bench').parcel.documents.audience;
+  const byAudience: Record<
+    ReturnType<typeof describeInvoiceAbsenceAudience>,
+    { readonly title: string; readonly body: string }
+  > = {
+    'on-office-list': copy.onOfficeList,
+    'issued-on-request': copy.issuedOnRequest,
+    'waiting-for-batch': copy.waitingForBatch,
+    'nobody-told': copy.nobodyTold,
+  };
+  return byAudience[audience];
+}
 
 export interface BenchDocumentsPanelProps {
   readonly workId: string;
@@ -102,6 +119,12 @@ export interface BenchDocumentsPanelProps {
    * instead (G03-6 found the block on a parcel at "0 of 1").
    */
   readonly closed: boolean;
+  /**
+   * Who ships this box (#3958), from the parcel read. Optional so a caller that
+   * has no parcel to hand renders exactly as before; absent and `null` both
+   * mean "route not known", and the card then says only what the shipment says.
+   */
+  readonly route?: BenchParcelRoute | null;
 }
 
 /**
@@ -116,22 +139,27 @@ export interface BenchDocumentsPanelProps {
  * false, which is worse than saying less.
  */
 function describeCarrierRefusal(label: BenchLabel): string {
+  const copy = getMessages('bench').parcel.unlabelled;
   if (label.carrierMessage !== null && label.carrierMessage.trim().length > 0) {
-    return benchParcelCopy.unlabelled.carrierQuote(label.carrierMessage);
+    return interpolate(copy.carrierQuote, { message: label.carrierMessage });
   }
   if (label.providerCode !== null && label.providerCode.trim().length > 0) {
-    return benchParcelCopy.unlabelled.carrierCode(label.providerCode);
+    return interpolate(copy.carrierCode, { code: label.providerCode });
   }
   return label.carrierMessageRedacted
-    ? benchParcelCopy.unlabelled.carrierHidden
-    : benchParcelCopy.unlabelled.carrierUnknown;
+    ? copy.carrierHidden
+    : copy.carrierUnknown;
 }
 
 export function BenchDocumentsPanel({
   workId,
   unitsPacked,
   closed,
+  route = null,
 }: BenchDocumentsPanelProps): ReactElement | null {
+  const benchMessages = useMessages('bench');
+  const copy = benchMessages.parcel;
+  const plural = usePlural();
   const apiClient = useApiClient();
   const documents = useBenchDocumentsQuery(workId);
   const [printError, setPrintError] = useState<string | null>(null);
@@ -147,10 +175,10 @@ export function BenchDocumentsPanel({
   const voidNotice =
     replaceOutcome?.outcome === 'cancelled-not-replaced'
       ? replaceOutcome.voidState === 'confirmed'
-        ? { title: benchParcelCopy.changeSize.voidTitle, body: benchParcelCopy.changeSize.voidBody }
+        ? { title: copy.changeSize.voidTitle, body: copy.changeSize.voidBody }
         : {
-            title: benchParcelCopy.changeSize.voidDoubtTitle,
-            body: benchParcelCopy.changeSize.voidDoubtBody,
+            title: copy.changeSize.voidDoubtTitle,
+            body: copy.changeSize.voidDoubtBody,
           }
       : null;
   // #3404 — the signed-in PACKER's own binding, never the order's. `?? null`
@@ -161,10 +189,15 @@ export function BenchDocumentsPanel({
 
   const data = documents.data;
   const labelUnavailable = data?.label.state === 'unavailable';
+  // #3958 - a failed shipment is the carrier's to explain only on a route that
+  // buys a label. On a box the shop ships, or whose method nobody routed, no
+  // carrier was asked, so the route card below says what is true instead.
+  const routeCase = describeBenchLabelRoute(route);
+  const carrierAccountable = isCarrierAccountable(routeCase);
   // F3/F4 is a fact about a FINISHED box. An open box with no label yet gets
   // the neutral pending card below, never "this box cannot go out".
-  const unlabelled = labelUnavailable && closed;
-  const labelPending = labelUnavailable && !closed;
+  const unlabelled = labelUnavailable && closed && carrierAccountable;
+  const labelPending = labelUnavailable && !closed && carrierAccountable;
   // Only asked for while this bench is actually looking at an unlabelled box.
   const others = useBenchUnlabelledQuery({ enabled: unlabelled });
 
@@ -181,15 +214,23 @@ export function BenchDocumentsPanel({
   if (data === undefined || card === null) return null;
 
   const label = data.label;
+  // No label to print, and the route has something true to say about why. The
+  // one route case it leaves to the blocks above is a label route whose label
+  // FAILED: that is the carrier's refusal, and F3/F4 already says so.
+  const showRouteCard =
+    label.state !== 'ready' &&
+    voidNotice === null &&
+    routeCase.kind !== 'unknown' &&
+    !(routeCase.kind === 'buys-label' && labelUnavailable);
 
   const print = (
     download: (id: string) => Promise<Blob>,
-    onConflict: string = benchParcelCopy.documents.printFailed
+    onConflict: string = copy.documents.printFailed
   ): void => {
     setPrintError(null);
     void download(workId)
       .then((blob) => {
-        if (!printBlob(blob)) setPrintError(benchParcelCopy.documents.printFailed);
+        if (!printBlob(blob)) setPrintError(copy.documents.printFailed);
       })
       .catch((error: unknown) => {
         // A 409 is the provider saying it has nothing to print - a statement
@@ -197,14 +238,14 @@ export function BenchDocumentsPanel({
         setPrintError(
           error instanceof ApiError && error.isConflict()
             ? onConflict
-            : benchParcelCopy.documents.printFailed
+            : copy.documents.printFailed
         );
       });
   };
   const printInvoice = (): void => {
     print(
       (id) => apiClient.bench.downloadInvoice(id),
-      benchParcelCopy.documents.printNotAvailable
+      copy.documents.printNotAvailable
     );
   };
   const printReceipt = (): void => {
@@ -218,7 +259,7 @@ export function BenchDocumentsPanel({
   const printLabel = (onFailure?: () => void): void => {
     setPrintError(null);
     if (label.shipmentId === null) {
-      setPrintError(benchParcelCopy.documents.printFailed);
+      setPrintError(copy.documents.printFailed);
       return;
     }
     // Through the WORK, never the shipment id — this is the route that
@@ -227,11 +268,11 @@ export function BenchDocumentsPanel({
     void apiClient.bench
       .downloadLabel(workId)
       .then((blob) => {
-        if (!printBlob(blob)) setPrintError(benchParcelCopy.documents.printFailed);
+        if (!printBlob(blob)) setPrintError(copy.documents.printFailed);
       })
       .catch(() => {
         if (onFailure) onFailure();
-        else setPrintError(benchParcelCopy.documents.printFailed);
+        else setPrintError(copy.documents.printFailed);
       });
   };
 
@@ -251,42 +292,42 @@ export function BenchDocumentsPanel({
               setReplaceOutcome(null);
             }}
           >
-            {benchParcelCopy.changeSize.voidDismiss}
+            {copy.changeSize.voidDismiss}
           </Button>
         </Alert>
       )}
       {replaceOutcome?.outcome === 'replaced' ? (
         <Alert tone="success" data-testid="bench-label-replaced">
           {replaceOutcome.keptTemplate === null
-            ? benchParcelCopy.changeSize.replacedNotice
-            : benchParcelCopy.changeSize.replacedKeptSizeNotice(replaceOutcome.keptTemplate)}
+            ? copy.changeSize.replacedNotice
+            : interpolate(copy.changeSize.replacedKeptSizeNotice, { template: replaceOutcome.keptTemplate })}
         </Alert>
       ) : null}
 
       {/* F1, said before either control: neither paper is made here. */}
       {bothPrint ? (
         <div className="bench-documents__intro">
-          <h3>{benchParcelCopy.documents.readyTitle}</h3>
-          <p>{benchParcelCopy.documents.readyBody}</p>
+          <h3>{copy.documents.readyTitle}</h3>
+          <p>{copy.documents.readyBody}</p>
         </div>
       ) : null}
 
       {/* ── F3/F4 — packed, and it cannot go out. ─────────────────────────── */}
       {unlabelled ? (
         <div className="bench-documents__unlabelled" data-testid="bench-documents-unlabelled">
-          <p className="eyebrow">{benchParcelCopy.unlabelled.eyebrow}</p>
-          <h3 className="bench-documents__title">{benchParcelCopy.unlabelled.title}</h3>
+          <p className="eyebrow">{copy.unlabelled.eyebrow}</p>
+          <h3 className="bench-documents__title">{copy.unlabelled.title}</h3>
           <StatusBadge tone="error" withDot>
-            {benchParcelCopy.unlabelled.badge}
+            {copy.unlabelled.badge}
           </StatusBadge>
           {/* "Do not open it and do not check it again" — the box is correct;
               only the label is outstanding. */}
-          <p>{benchParcelCopy.unlabelled.body(unitsPacked)}</p>
+          <p>{plural(unitsPacked, copy.unlabelled.body)}</p>
 
           <div className="bench-documents__carrier">
-            <h4>{benchParcelCopy.unlabelled.carrierHeading}</h4>
+            <h4>{copy.unlabelled.carrierHeading}</h4>
             <p className="bench-documents__carrier-said">{describeCarrierRefusal(label)}</p>
-            <p>{benchParcelCopy.unlabelled.carrierReassurance}</p>
+            <p>{copy.unlabelled.carrierReassurance}</p>
           </div>
 
           {/* No "try again" control here, and its absence is the decision.
@@ -298,18 +339,18 @@ export function BenchDocumentsPanel({
               screen. A control wired to something that cannot succeed is worse
               than none, so the panel names the owner instead. */}
           <p className="bench-documents__not-retryable">
-            {benchParcelCopy.unlabelled.notRetryable}
+            {copy.unlabelled.notRetryable}
           </p>
 
           <div className="bench-documents__dispatch">
-            <h4>{benchParcelCopy.unlabelled.dispatchTitle}</h4>
-            <p>{benchParcelCopy.unlabelled.dispatchBody}</p>
+            <h4>{copy.unlabelled.dispatchTitle}</h4>
+            <p>{copy.unlabelled.dispatchBody}</p>
             {/* One read, two audiences — which is what stops the bench and
                 dispatch disagreeing about a box on a floor. `here` is this box;
                 the rest of the list is what dispatch is looking at. */}
             {others.data === undefined ? null : (
               <StatusBadge tone="neutral">
-                {benchParcelCopy.unlabelled.counts({
+                {interpolate(copy.unlabelled.counts, {
                   here: 1,
                   inDispatch: Math.max(0, others.data.total - 1),
                 })}
@@ -373,16 +414,16 @@ export function BenchDocumentsPanel({
           data-testid="bench-documents-label"
         >
           <StatusBadge tone="success" withDot>
-            {benchParcelCopy.documents.readyBadge}
+            {copy.documents.readyBadge}
           </StatusBadge>
-          <span className="bench-documents__slot">{benchParcelCopy.documents.onLabel}</span>
-          <h3>{benchParcelCopy.documents.labelTitle()}</h3>
+          <span className="bench-documents__slot">{copy.documents.onLabel}</span>
+          <h3>{labelCardTitle(labelCarrierName(routeCase), benchMessages.documents.labelReady, copy.documents.labelTitle)}</h3>
           {label.trackingNumber === null ? null : (
             <p className="bench-documents__tracking">
-              {benchParcelCopy.documents.trackingLabel}: {label.trackingNumber}
+              {copy.documents.trackingLabel}: {label.trackingNumber}
             </p>
           )}
-          <p>{benchParcelCopy.documents.labelHint}</p>
+          <p>{copy.documents.labelHint}</p>
           <div className="bench-documents__actions">
             <Button
               tone="primary"
@@ -391,10 +432,10 @@ export function BenchDocumentsPanel({
                 printLabel();
               }}
             >
-              {benchParcelCopy.documents.printLabelAction}
+              {copy.documents.printLabelAction}
             </Button>
             {label.shipmentId !== null && write.visible ? (
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+              <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
                 <Button
                   tone="secondary"
                   className="bench-documents__touch"
@@ -403,7 +444,7 @@ export function BenchDocumentsPanel({
                     setChangeSizeOpen(true);
                   }}
                 >
-                  {benchParcelCopy.documents.changeSizeAction}
+                  {copy.documents.changeSizeAction}
                 </Button>
               </ReadOnlyLock>
             ) : null}
@@ -415,12 +456,14 @@ export function BenchDocumentsPanel({
           data-testid="bench-documents-label-pending"
         >
           <StatusBadge tone="neutral" withDot>
-            {benchParcelCopy.documents.labelPendingBadge}
+            {copy.documents.labelPendingBadge}
           </StatusBadge>
-          <span className="bench-documents__slot">{benchParcelCopy.documents.onLabel}</span>
-          <h3>{benchParcelCopy.documents.labelPendingTitle}</h3>
-          <p>{benchParcelCopy.documents.labelPendingBody}</p>
+          <span className="bench-documents__slot">{copy.documents.onLabel}</span>
+          <h3>{copy.documents.labelPendingTitle}</h3>
+          <p>{copy.documents.labelPendingBody}</p>
         </div>
+      ) : showRouteCard ? (
+        renderRouteCard(routeCase, closed, benchMessages.labelRoute, copy.documents.onLabel)
       ) : null}
       </div>
 
@@ -431,7 +474,7 @@ export function BenchDocumentsPanel({
       {stationLabel === null ? null : (
         <p className="bench-documents__printer" data-testid="bench-documents-printer">
           <span className="bench-documents__printer-dot" aria-hidden="true" />
-          {benchParcelCopy.documents.printingTo(stationLabel)}
+          {interpolate(copy.documents.printingTo, { label: stationLabel })}
         </p>
       )}
 
@@ -448,11 +491,133 @@ export function BenchDocumentsPanel({
 
       {unlabelled && card.kind === 'invoice-ready' ? (
         <p className="bench-documents__invoice-still-fine">
-          {benchParcelCopy.unlabelled.invoiceStillFine}
+          {copy.unlabelled.invoiceStillFine}
         </p>
       ) : null}
     </section>
   );
+}
+
+/**
+ * The label card when there is no label to print, in the words of its route
+ * (#3958). No action on any arm: a packer cannot change routing, so the card
+ * says what to do with the box and names the fix as an admin's.
+ */
+function renderRouteCard(
+  routeCase: BenchLabelRouteCase,
+  closed: boolean,
+  copy: LabelRouteMessages,
+  onLabel: string
+): ReactNode {
+  const view = describeRouteCard(routeCase, closed, copy);
+  if (view === null) return null;
+  return (
+    <div
+      className="bench-documents__card bench-documents__label"
+      data-testid="bench-documents-label-route"
+      data-route={routeCase.kind}
+    >
+      <StatusBadge tone={view.tone} withDot>
+        {view.badge}
+      </StatusBadge>
+      <span className="bench-documents__slot">{onLabel}</span>
+      <h3>{view.title}</h3>
+      <p>{view.body}</p>
+    </div>
+  );
+}
+
+type LabelRouteMessages = ResolvedCopy<Messages['bench']>['labelRoute'];
+
+interface RouteCardView {
+  readonly tone: StatusBadgeTone;
+  readonly badge: string;
+  readonly title: string;
+  readonly body: string;
+}
+
+/**
+ * An exhaustive switch rather than a lookup, so a fifth route case added to
+ * `BenchLabelRouteCase` is a compile error here instead of a silent blank card.
+ */
+function describeRouteCard(
+  routeCase: BenchLabelRouteCase,
+  closed: boolean,
+  copy: LabelRouteMessages
+): RouteCardView | null {
+  const method = (label: string | null): string => label ?? copy.methodFallback;
+
+  switch (routeCase.kind) {
+    case 'buys-label': {
+      const name = method(routeCase.methodLabel);
+      const carrier = routeCase.carrierName;
+      // A route whose carrier name could not be read still buys a label; the
+      // sentence then names OpenLinker as the buyer instead of a blank carrier.
+      const body = closed
+        ? carrier === null
+          ? interpolate(copy.buysLabelClosedBodyNoCarrier, { method: name })
+          : interpolate(copy.buysLabelClosedBody, { method: name, carrier })
+        : carrier === null
+          ? interpolate(copy.buysLabelBodyNoCarrier, { method: name })
+          : interpolate(copy.buysLabelBody, { method: name, carrier });
+      return {
+        tone: 'info',
+        badge: copy.buysLabelBadge,
+        title: closed ? copy.buysLabelClosedTitle : copy.buysLabelTitle,
+        body,
+      };
+    }
+    case 'carrier-off':
+      return {
+        tone: 'warning',
+        badge: copy.carrierOffBadge,
+        title:
+          routeCase.carrierName === null
+            ? copy.carrierOffTitleNoCarrier
+            : interpolate(copy.carrierOffTitle, { carrier: routeCase.carrierName }),
+        body: copy.carrierOffBody,
+      };
+    case 'shop-ships': {
+      const name = method(routeCase.methodLabel);
+      return {
+        tone: 'neutral',
+        badge: copy.shopShipsBadge,
+        title:
+          routeCase.shopName === null
+            ? interpolate(copy.shopShipsTitleNoShop, { method: name })
+            : interpolate(copy.shopShipsTitle, { shop: routeCase.shopName, method: name }),
+        body: copy.shopShipsBody,
+      };
+    }
+    case 'no-carrier':
+      return {
+        tone: 'warning',
+        badge: copy.noCarrierBadge,
+        title: interpolate(copy.noCarrierTitle, { method: method(routeCase.methodLabel) }),
+        body: copy.noCarrierBody,
+      };
+    case 'unknown':
+      return null;
+  }
+}
+
+/**
+ * The ready label's heading. The routed connection's name is operator-typed
+ * ("InPost"), so it can name whose label it is; without one the neutral
+ * title stays, never the adapter key `Shipment.carrier` holds.
+ */
+function labelCardTitle(carrierName: string | null, labelReady: string, fallback: string): string {
+  return carrierName === null
+    ? fallback
+    : interpolate(labelReady, { carrier: carrierName });
+}
+
+/** A document's title: its number when it has one, the generic name when not. */
+function invoiceTitle(
+  forms: { readonly numbered: string; readonly unnumbered: string },
+  number: string | null
+): string {
+  return number === null ? forms.unnumbered : interpolate(forms.numbered, { number, reference: number });
 }
 
 function isReceiptCard(card: BenchDocumentCard): boolean {
@@ -496,7 +661,7 @@ function CardFrame({
 }
 
 function renderDocumentCard(card: BenchDocumentCard, actions: DocumentCardActions): ReactNode {
-  const copy = benchParcelCopy.documents;
+  const copy = getMessages('bench').parcel.documents;
   const stillGoes = copy.doesNotStop;
   const tellOffice = `${copy.doesNotStop} ${copy.mentionOffice}`;
 
@@ -507,7 +672,7 @@ function renderDocumentCard(card: BenchDocumentCard, actions: DocumentCardAction
           tone="success"
           badge={copy.readyBadge}
           slot={copy.insideLabel}
-          title={copy.invoiceTitle(card.documentNumber)}
+          title={invoiceTitle(copy.invoiceTitle, card.documentNumber)}
         >
           <p>{copy.invoiceHint}</p>
           <Button tone="secondary" onClick={actions.printInvoice}>
@@ -521,7 +686,7 @@ function renderDocumentCard(card: BenchDocumentCard, actions: DocumentCardAction
           tone="neutral"
           badge={copy.notPrintableBadge}
           slot={copy.insideLabel}
-          title={copy.notPrintableTitle(card.documentNumber)}
+          title={invoiceTitle(copy.notPrintableTitle, card.documentNumber)}
         >
           <p>{copy.notPrintableBody}</p>
         </CardFrame>
@@ -532,7 +697,7 @@ function renderDocumentCard(card: BenchDocumentCard, actions: DocumentCardAction
           tone="info"
           badge={copy.link.badge}
           slot={copy.insideLabel}
-          title={copy.invoiceTitle(card.documentNumber)}
+          title={invoiceTitle(copy.invoiceTitle, card.documentNumber)}
         >
           <p>{copy.link.body}</p>
           <a
@@ -595,7 +760,7 @@ function renderDocumentCard(card: BenchDocumentCard, actions: DocumentCardAction
           tone="success"
           badge={copy.receipt.madeBadge}
           slot={copy.receipt.slot}
-          title={copy.receipt.title(card.documentReference)}
+          title={invoiceTitle(copy.receipt.title, card.documentReference)}
         >
           {actions.ReceiptSection === null
             ? actions.defaultReceiptBody
@@ -626,7 +791,7 @@ function renderDocumentCard(card: BenchDocumentCard, actions: DocumentCardAction
       );
     case 'missing': {
       const invoiceBlock = describeInvoiceBlock(card.blockReason, card.unresolvedReason);
-      const invoiceAudience = AUDIENCE_COPY[describeInvoiceAbsenceAudience(card.blockReason)];
+      const invoiceAudience = audienceCopy(describeInvoiceAbsenceAudience(card.blockReason));
       return (
         <CardFrame
           tone="warning"
@@ -680,7 +845,7 @@ function renderDefaultReceiptBody(
     readonly retryLink: () => void;
   }
 ): ReactNode {
-  const copy = benchParcelCopy.documents.receipt;
+  const copy = getMessages('bench').parcel.documents.receipt;
 
   if (card.handover === 'document') {
     return (

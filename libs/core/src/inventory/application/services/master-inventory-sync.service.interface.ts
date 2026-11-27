@@ -63,6 +63,14 @@ export interface MasterInventorySyncResult {
    * `master.*.stale` event: re-pooling is not a deletion.
    */
   locatedPositionsStaled?: number;
+  /**
+   * Set when the sync ended without reading or writing anything because the
+   * master's `InventoryEventTargetResolver` said the event concerns nothing
+   * this connection tracks (another location, an item that is gone). The
+   * numeric fields are then zero and `internalProductId` is empty. Not a
+   * failure: the handler reports `ok`.
+   */
+  skipped?: 'event-not-applicable';
 }
 
 /** One product the batch could not sync, and why (#2648). */
@@ -87,10 +95,23 @@ export interface MasterInventoryBatchSyncResult {
   prefetched: boolean;
 }
 
+/**
+ * Optional context for a master inventory sync (#4062).
+ *
+ * `syncRunId` names the run that produced the stock changes - a sweep cycle id
+ * or a single-product job id - and is written onto every movement row the sync
+ * records, so the history can group one run exactly. Omitting it records the
+ * rows as before.
+ */
+export interface MasterInventorySyncOptions {
+  syncRunId?: string;
+}
+
 export interface IMasterInventorySyncService {
   syncFromMasterByExternalId(
     connectionId: string,
     externalId: string,
+    options?: MasterInventorySyncOptions,
   ): Promise<MasterInventorySyncResult>;
 
   /**
@@ -111,6 +132,7 @@ export interface IMasterInventorySyncService {
   syncFromMasterByExternalIds(
     connectionId: string,
     externalIds: readonly string[],
+    options?: MasterInventorySyncOptions,
   ): Promise<MasterInventoryBatchSyncResult>;
 }
 

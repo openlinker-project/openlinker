@@ -15,11 +15,13 @@ export const ORDER_RECORD_REPOSITORY_TOKEN = Symbol('OrderRecordRepositoryPort')
 export const ORDER_RECORD_SERVICE_TOKEN = Symbol('IOrderRecordService');
 export const ORDER_DESTINATION_RETRY_SERVICE_TOKEN = Symbol('IOrderDestinationRetryService');
 // Re-enqueues the source-side provisioning run a released hold had suppressed (#2341).
-export const ORDER_PROVISIONING_RESUME_SERVICE_TOKEN = Symbol(
-  'IOrderProvisioningResumeService'
-);
+export const ORDER_PROVISIONING_RESUME_SERVICE_TOKEN = Symbol('IOrderProvisioningResumeService');
+// Re-routes a held order on an operator retry or a stock change (#3558).
+export const ORDER_ROUTING_RETRY_SERVICE_TOKEN = Symbol('IOrderRoutingRetryService');
 export const ORDER_ITEM_REF_RESOLVER_SERVICE_TOKEN = Symbol('IOrderItemRefResolverService');
 export const ORDER_LIFECYCLE_RELAY_SERVICE_TOKEN = Symbol('IOrderLifecycleRelayService');
+// Mirrors a late payment onto destination shops (#3963).
+export const PAYMENT_WRITEBACK_SERVICE_TOKEN = Symbol('IPaymentWritebackService');
 // Per-order reporting-currency stamp (#2125, ADR-040).
 export const ORDER_FX_STAMP_SERVICE_TOKEN = Symbol('IOrderFxStampService');
 export const ORDER_FX_RESTATEMENT_SERVICE_TOKEN = Symbol('IOrderFxRestatementService');
@@ -28,6 +30,8 @@ export const ORDER_FX_READ_SERVICE_TOKEN = Symbol('IOrderFxReadService');
 // Refund record capture (#2036).
 export const ORDER_REFUND_RECORD_REPOSITORY_TOKEN = Symbol('RefundRecordRepositoryPort');
 export const ORDER_REFUND_SERVICE_TOKEN = Symbol('IOrderRefundService');
+export const ORDER_REFUND_OBSERVATION_SERVICE_TOKEN = Symbol('IOrderRefundObservationService');
+export const ORDER_REFUND_RELAY_SERVICE_TOKEN = Symbol('IOrderRefundRelayService');
 export const ORDER_LINE_ITEM_REPOSITORY_TOKEN = Symbol('OrderLineItemRepositoryPort');
 // Tax-rate backfill sweep for pre-#2245 lines (#2440).
 export const TAX_RATE_BACKFILL_SERVICE_TOKEN = Symbol('ITaxRateBackfillService');
@@ -53,6 +57,8 @@ export const ORDER_EXPORT_REPOSITORY_TOKEN = Symbol('OrderExportRepositoryPort')
 export const ORDER_EXPORT_SERVICE_TOKEN = Symbol('IOrderExportService');
 // `order_records.searchText` re-derivation under the current PII mode (#3507 G03-14).
 export const ORDER_SEARCH_TEXT_REINDEX_SERVICE_TOKEN = Symbol('IOrderSearchTextReindexService');
+export const BUYER_DATA_RETENTION_SERVICE_TOKEN = Symbol('IBuyerDataRetentionService');
+export const ORDER_BUYER_DATA_RETENTION_SERVICE_TOKEN = Symbol('IOrderBuyerDataRetentionService');
 
 
 
@@ -74,22 +80,70 @@ export const ORDER_HOLD_REPOSITORY_TOKEN = Symbol('OrderHoldRepositoryPort');
 export const ORDER_HOLD_SERVICE_TOKEN = Symbol('IOrderHoldService');
 
 /** #2340 — the `order_records.activeHoldReason` cache's only write statement. */
-export const ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN = Symbol(
-  'OrderHoldProjectionRepositoryPort'
-);
+export const ORDER_HOLD_PROJECTION_REPOSITORY_TOKEN = Symbol('OrderHoldProjectionRepositoryPort');
 
 /** #2340 — the bounded `orders.holds.reconcile` repair pass. */
 export const ORDER_HOLD_PROJECTION_RECONCILE_SERVICE_TOKEN = Symbol(
   'IOrderHoldProjectionReconcileService'
 );
 
+/** Cleanup a cancelled order owes, shared by the operator and observed paths (#3540). */
+export const ORDER_CANCELLATION_EFFECTS_SERVICE_TOKEN = Symbol('IOrderCancellationEffectsService');
+export const ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN = Symbol(
+  'IOrderSourceAmendmentEffectsService'
+);
+
+/**
+ * Voids a cancelled order's bought labels (#3540, 4a). Bound by `ShippingModule`
+ * and resolved lazily by the effects service - never injected, because shipping
+ * imports orders and a constructor dependency would close the module cycle.
+ */
+export const ORDER_LABEL_VOIDER_TOKEN = Symbol('OrderLabelVoiderPort');
+
 /** Fulfilment dispatch relay (#2401). `FulfillmentDispatchRelayService` binds here. */
 export const FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN = Symbol('IFulfillmentDispatchRelayService');
 // One per-order sales-document read (#2516, ADR-065).
 export const SALES_DOCUMENT_VIEW_SERVICE_TOKEN = Symbol('ISalesDocumentViewService');
+// Batch issuing (#3583): run records + queue read, and the service that runs a queue.
+export const SALES_DOCUMENT_BATCH_RUN_REPOSITORY_TOKEN = Symbol(
+  'SalesDocumentBatchRunRepositoryPort'
+);
+export const SALES_DOCUMENT_BATCH_SERVICE_TOKEN = Symbol('ISalesDocumentBatchService');
 // Data Coverage tax A/B/C detector (#2465).
 export const TAX_COVERAGE_DETECTION_SERVICE_TOKEN = Symbol('ITaxCoverageDetectionService');
+// Margin reads on net revenue + the no-cost coverage count (#3588, D27).
+export const MARGIN_ANALYTICS_SERVICE_TOKEN = Symbol('IMarginAnalyticsService');
+// Cost coverage + the missing-cost work list (#3588, mockup M30).
+export const COST_COVERAGE_SERVICE_TOKEN = Symbol('ICostCoverageService');
+export const ORDER_LINE_COST_SERVICE_TOKEN = Symbol('IOrderLineCostService');
+// Bundle components for documents and the gift slot cost read (#3934).
+export const ORDER_BUNDLE_DOCUMENT_SERVICE_TOKEN = Symbol('IOrderBundleDocumentService');
+export const ORDER_GIFT_REPORT_READER_TOKEN = Symbol('OrderGiftReportReaderPort');
+export const GIFT_REPORT_SERVICE_TOKEN = Symbol('IGiftReportService');
 // Analytics display-currency conversion read model (#2458, ADR-064).
 export const DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN = Symbol(
   'IDisplayCurrencyConversionService'
 );
+
+/**
+ * Binding token for the {@link InvoiceMarketplaceUploadRepositoryPort} (#3549):
+ * the per-(invoice, target connection) state of attaching an issued document to
+ * the marketplace order it was issued for. Lives in `orders`, not `invoicing`:
+ * the service that writes it needs the order record, and `InvoicingModule` must
+ * never import an orders token (the one-way edge the auto-issue trigger's F3
+ * boot spec guards).
+ */
+export const INVOICE_MARKETPLACE_UPLOAD_REPOSITORY_TOKEN = Symbol(
+  'InvoiceMarketplaceUploadRepositoryPort'
+);
+
+/** Binding token for the {@link IInvoiceMarketplaceUploadService} (#3549). */
+export const INVOICE_MARKETPLACE_UPLOAD_SERVICE_TOKEN = Symbol('IInvoiceMarketplaceUploadService');
+/** Manual "send this sales document to the buyer" for every provider (#3550). */
+export const ORDER_DOCUMENT_EMAIL_SERVICE_TOKEN = Symbol('IOrderDocumentEmailService');
+/** Automatic buyer emails, opt-in per connection (#3554). */
+export const BUYER_EMAIL_DELIVERY_REPOSITORY_TOKEN = Symbol('BuyerEmailDeliveryRepositoryPort');
+export const BUYER_EMAIL_NOTIFICATION_SERVICE_TOKEN = Symbol('IBuyerEmailNotificationService');
+
+// OpenLinker gift rules applied at ingestion (#3938).
+export const ORDER_GIFT_SERVICE_TOKEN = Symbol('IOrderGiftService');

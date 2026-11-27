@@ -68,11 +68,18 @@ export class FakeOperationalSettingsService implements IOperationalSettingsServi
     deletionAuditBudget: defaultNumber('deletionAuditBudget'),
     syncJobRetentionDays: defaultNumber('syncJobRetentionDays'),
     syncJobDeadRetentionDays: defaultNumber('syncJobDeadRetentionDays'),
+    inventoryMovementRetentionDays: defaultNumber('inventoryMovementRetentionDays'),
+    stockStaleSyncThresholdHours: defaultNumber('stockStaleSyncThresholdHours'),
+    releaseCenterEnabled: { value: true, source: 'default', workerMayDiffer: true },
     deletionAuditCadence: {
       value: DELETION_AUDIT_CADENCE_DEFAULT,
       source: 'default',
       workerMayDiffer: true,
     },
+    buyerDataRetentionEnabled: { value: false, source: 'default', workerMayDiffer: false },
+    buyerDataHideAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
+    buyerDataEraseAfterDays: { value: 0, source: 'default', workerMayDiffer: false },
+    buyerDataEraseMode: { value: 'personal-data', source: 'default', workerMayDiffer: false },
     catalogueSweepCadence: {
       value: CATALOGUE_SWEEP_CADENCE_DEFAULT,
       source: 'default',

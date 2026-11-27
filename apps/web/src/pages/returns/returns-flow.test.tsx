@@ -34,19 +34,18 @@ import {
   renderWithProviders,
 } from '../../test/test-utils';
 import { createNoopSessionAdapter } from '../../shared/auth/noop-session-adapter';
-import {
-  AUTHORIZE_RETURN_DIALOG_COPY,
-  MATCH_RETURN_DIALOG_COPY,
-  ORPHAN_RETURNS_WORKLIST_COPY,
-  RECORD_RETURN_DIALOG_COPY,
-  RETURN_ORPHAN_BANNER_COPY,
-  type ReturnDetail,
-  type ReturnListItem,
-} from '../../features/returns';
+import { getMessages } from '../../shared/i18n';
+import type { ReturnDetail, ReturnListItem } from '../../features/returns';
 import type { OrderRecord } from '../../features/orders';
 import type { Connection } from '../../features/connections/api/connections.types';
 import { ReturnsListPage } from './returns-list-page';
 import { ReturnDetailPage } from './return-detail-page';
+
+const AUTHORIZE_RETURN_DIALOG_COPY = getMessages('returns').authorizeReturnDialog;
+const MATCH_RETURN_DIALOG_COPY = getMessages('returns').matchReturnDialog;
+const ORPHAN_RETURNS_WORKLIST_COPY = getMessages('returns').orphanWorklist;
+const RECORD_RETURN_DIALOG_COPY = getMessages('returns').recordReturnDialog;
+const RETURN_ORPHAN_BANNER_COPY = getMessages('returns').detail.orphanBanner;
 
 function connection(overrides: Partial<Connection> = {}): Connection {
   return {

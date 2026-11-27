@@ -26,6 +26,7 @@
  */
 import type { ReactElement } from 'react';
 
+import { interpolate, useMessages } from '../../../shared/i18n';
 import { usePlatform } from '../../../shared/plugins';
 import { KeyValueList, type KeyValueItem } from '../../../shared/ui/key-value-list';
 import type {
@@ -33,12 +34,15 @@ import type {
   ParsedOrderPickupPoint,
   ParsedOrderShipping,
 } from '../api/order-snapshot.schema';
-import type { OrderDeliveryRider } from '../api/orders.types';
+import { useShippingRouteCopy } from '../../mappings';
+import type { OrderDeliveryResolution, OrderDeliveryRider } from '../api/orders.types';
+import type { OrderEditsView } from '../api/order-edit.types';
 import type { DeliveryOutcome } from '../lib/delivery-outcome';
 import type { DeliveryOwner } from '../lib/delivery-owner';
 import { ConnectionDot } from './connection-dot';
 import { DeliveryOutcomeChip, DeliveryRiderBanner } from './delivery-chip';
 import { DeliveryRiderAction } from './delivery-rider-action';
+import { ShippingRouteAction } from './shipping-route-action';
 
 interface OrderDeliveryPanelProps {
   shippingAddress?: ParsedAddress;
@@ -70,10 +74,17 @@ interface OrderDeliveryPanelProps {
   /**
    * Resolved delivery owner (#1776) — the carrier or destination shop that owns
    * fulfilment, resolved by the caller via `resolveDeliveryOwner`. Renders a
-   * "Shipped by" row (connection mini-badge + name + a muted routing note) as
+   * "Shipped by" row (connection mini-badge + the route in plain words) as
    * the panel's first field. Absent → no Shipped-by row (older payloads).
    */
   deliveryOwner?: DeliveryOwner;
+  /**
+   * How routing resolved for the delivery method (#3958). Words the "Shipped
+   * by" row as a route ("OpenLinker buys the label from InPost") and says
+   * whether an operator set it or it is the default. Absent (older payloads)
+   * -> the route is inferred from `deliveryOwner` and no origin is stated.
+   */
+  deliveryResolution?: OrderDeliveryResolution | null;
   /**
    * Actionable delivery rider (#1793/#1792). When actionable
    * (`unmapped` / `not-connected`) an inline banner + fix-it deep-link button
@@ -89,6 +100,14 @@ interface OrderDeliveryPanelProps {
   sourceDeliveryMethodId?: string | null;
   /** Source delivery-method label (#1791) — Add-mapping pre-focus copy. */
   sourceDeliveryMethodName?: string | null;
+  /**
+   * The order beside the channel's record (#3544). Present only on an edited
+   * order; the panel then says what the channel still shows next to the edited
+   * address and method. `shippingAddress` / `shipping` are already the edited ones.
+   */
+  edits?: OrderEditsView | null;
+  /** Display name of the source connection, for "<channel> shows ...". */
+  channelName?: string | null;
 }
 
 function addressLines(address: ParsedAddress): ReactElement {
@@ -131,41 +150,102 @@ export function OrderDeliveryPanel({
   methodFallback,
   deliveryOutcome,
   deliveryOwner,
+  deliveryResolution,
   deliveryRider,
   sourceConnectionId,
   sourceDeliveryMethodId,
   sourceDeliveryMethodName,
+  edits,
+  channelName,
 }: OrderDeliveryPanelProps): ReactElement {
   // Resolved unconditionally (never inside a branch) — see #893.
   const sourcePlatform = usePlatform(sourcePlatformType ?? undefined);
+  const routeCopy = useShippingRouteCopy();
+  const routeOrigin = useMessages('orders').shippingRouteOrigin;
+  const copy = useMessages('orders').orderDeliveryPanel;
+  const channel = channelName ?? copy.edited.theChannel;
 
   const items: KeyValueItem[] = [];
-  // "Shipped by" (#1776) — the first field: who owns fulfilment. A carrier
-  // route reassures "OpenLinker generates the label"; a shop route (named or
-  // the generic destination shop) reads "its own carrier".
+  const methodLabel =
+    shipping?.methodName ?? sourceDeliveryMethodName ?? shipping?.methodId ?? sourceDeliveryMethodId ?? null;
+  // "Shipped by" (#1776) - the first field: who owns fulfilment, worded as a
+  // route with the shared mappings vocabulary (#3958), plus where that route
+  // comes from and the action that changes it. The kind comes from the backend
+  // resolution; only an older payload without one falls back to the owner.
   if (deliveryOwner) {
-    const shippedByName =
-      deliveryOwner.name ?? (deliveryOwner.variant === 'carrier' ? 'a carrier' : 'The destination shop');
-    const shippedByNote =
-      deliveryOwner.variant === 'carrier' ? '· OpenLinker generates the label' : '· its own carrier';
+    const routeKind =
+      deliveryResolution?.processorKind ??
+      (deliveryOwner.variant === 'carrier' ? 'ol_managed_carrier' : 'omp_fulfilled');
+    const ownerName =
+      deliveryOwner.name ??
+      (deliveryOwner.variant === 'carrier'
+        ? routeOrigin.aCarrier
+        : routeOrigin.yourShop);
+    const route = routeCopy.describe(routeKind, ownerName);
+    // A rule to a switched-off connection still matches (#1799); say so rather
+    // than present a dead route as the one that will ship the order.
+    const routeText =
+      deliveryResolution?.processorAvailable === false ? routeCopy.unavailable(route) : route;
+    const fromRule = deliveryResolution?.source === 'rule';
     items.push({
       id: 'shipped-by',
-      label: 'Shipped by',
+      label: copy.shippedBy.label,
       value: (
-        <span className="order-delivery__shipped-by">
-          <ConnectionDot
-            name={deliveryOwner.name}
-            platformType={deliveryOwner.platformType}
-            variant={deliveryOwner.variant}
-          />
-          <span>{shippedByName}</span>
-          <span className="text-muted">{shippedByNote}</span>
-        </span>
+        <>
+          <span className="order-delivery__shipped-by">
+            <ConnectionDot
+              name={deliveryOwner.name}
+              platformType={deliveryOwner.platformType}
+              variant={deliveryOwner.variant}
+            />
+            <span>{routeText}</span>
+          </span>
+          {deliveryResolution ? (
+            <span className="order-delivery__route-origin" data-testid="order-delivery-route-origin">
+              <span className="text-muted">
+                {fromRule
+                  ? channelName
+                    ? interpolate(routeOrigin.rule, { source: channelName })
+                    : routeOrigin.ruleNoSource
+                  : routeOrigin.default}
+              </span>
+              {/* An unmapped rider below already offers this same dialog; one button per action. */}
+              {sourceConnectionId && deliveryRider?.rider !== 'unmapped' ? (
+                <ShippingRouteAction
+                  sourceConnectionId={sourceConnectionId}
+                  sourceName={channelName}
+                  methodLabel={methodLabel}
+                  methodId={shipping?.methodId ?? sourceDeliveryMethodId ?? null}
+                  label={fromRule ? routeOrigin.changeAction : routeOrigin.chooseAction}
+                />
+              ) : null}
+            </span>
+          ) : null}
+        </>
       ),
     });
   }
   if (shippingAddress) {
-    items.push({ id: 'ship-to', label: 'Ship to', value: addressLines(shippingAddress) });
+    const originalAddress = edits?.address?.original ?? null;
+    items.push({
+      id: 'ship-to',
+      label: copy.shipTo,
+      value: (
+        <>
+          {addressLines(shippingAddress)}
+          {edits?.address ? (
+            <span className="order-edit-edited" data-testid="order-edit-address-original">
+              {interpolate(copy.edited.address, {
+                channel,
+                address: originalAddress
+                  ? [originalAddress.address1, originalAddress.address2].filter(Boolean).join(', ')
+                  : copy.edited.differentAddress,
+              })}
+            </span>
+          ) : null}
+        </>
+      ),
+    });
   }
   // Always rendered (#1776) — the delivery-method label is a core "where it's
   // going" fact, so it must not blank out when the source order carried no
@@ -174,9 +254,23 @@ export function OrderDeliveryPanel({
   // name (#1793) → "-".
   items.push({
     id: 'method',
-    label: 'Method',
-    value:
-      shipping?.methodName ?? shipping?.methodId ?? methodFallback ?? pickupPoint?.name ?? '-',
+    label: copy.method,
+    value: (
+      <>
+        {shipping?.methodName ?? shipping?.methodId ?? methodFallback ?? pickupPoint?.name ?? '-'}
+        {edits?.deliveryMethod ? (
+          <span className="order-edit-edited" data-testid="order-edit-method-original">
+            {interpolate(copy.edited.method, {
+              channel,
+              method:
+                edits.deliveryMethod.original.name ??
+                edits.deliveryMethod.original.id ??
+                copy.edited.noMethod,
+            })}
+          </span>
+        ) : null}
+      </>
+    ),
   });
   // Always rendered (unlike the fields above) — "-" fallback per #1617 so the
   // operator can tell "no carrier resolved" apart from "field doesn't exist".
@@ -188,7 +282,7 @@ export function OrderDeliveryPanel({
   // (#1793) sits alongside the carrier name when the caller derived one.
   items.push({
     id: 'carrier',
-    label: 'Carrier',
+    label: copy.carrier,
     value: deliveryOutcome ? (
       <span className="order-delivery__carrier">
         <span>{carrier ?? '-'}</span>
@@ -201,8 +295,8 @@ export function OrderDeliveryPanel({
 
   const pickupCaption =
     sourcePlatform?.pickupPointResolvesAsync === true
-      ? `buyer-selected via ${sourcePlatform.displayName}`
-      : 'operator-selected';
+      ? interpolate(copy.pickup.buyerSelectedVia, { provider: sourcePlatform.displayName })
+      : copy.pickup.operatorSelected;
 
   // Point-kind label (#1433) — Paczkomat (apm) vs PaczkoPunkt (pop). Absent
   // pointType falls back to no kind label (pre-#1433 behaviour).
@@ -214,8 +308,8 @@ export function OrderDeliveryPanel({
         : undefined;
 
   return (
-    <section className="detail-section order-delivery" aria-label="Delivery">
-      <h3 className="detail-section__title">Delivery</h3>
+    <section className="detail-section order-delivery" aria-label={copy.title}>
+      <h3 className="detail-section__title">{copy.title}</h3>
       <div className="order-delivery__card">
         <KeyValueList items={items} />
         {deliveryRider ? (

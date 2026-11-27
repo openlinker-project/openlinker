@@ -26,8 +26,18 @@ import {
 } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMediaQuery } from './use-media-query';
+import { useMessages } from '../i18n/use-messages';
+import { SortArrow } from './sort-field';
+import { interpolate } from '../i18n/interpolate';
 
-export type DataTableHideBreakpoint = 480 | 768 | 1024;
+/** A cell's width in layout pixels, so it stays right under the text size zoom. */
+function layoutWidth(el: HTMLElement): number {
+  const rect = el.getBoundingClientRect().width;
+  const zoom = rect / el.offsetWidth;
+  return Number.isFinite(zoom) && zoom > 0 ? rect / zoom : rect;
+}
+
+export type DataTableHideBreakpoint = 480 | 768 | 1024 | 1280;
 
 export interface DataTableColumn<Row> {
   align?: 'left' | 'right';
@@ -43,12 +53,23 @@ export interface DataTableColumn<Row> {
   accessor?: (row: Row) => string | number | boolean | null | undefined;
   sortable?: boolean;
   /**
+   * `aria-sort` for a column that draws its own sort controls in `header` and
+   * so is not `sortable` here (saved views, #4241). Ignored when `sortable`.
+   */
+  ariaSort?: 'ascending' | 'descending';
+  /**
    * How many text lines this column's cell renders at its tallest (#2538).
    * Read only by `DataTableSkeleton`, so a two-line identity cell reserves its
    * real height and the table does not grow on load. Defaults to 1; declare it
    * on the column that SETS the row's height, not on every column.
    */
   lines?: number;
+  /**
+   * Fixed column width (any CSS length, e.g. `'22%'`), applied to the header
+   * cell. Set it on every column together with a `table-layout: fixed` table
+   * class so switching a filter or a page never resizes a column (#4026).
+   */
+  width?: string;
 }
 
 export interface DataTableCardView<Row> {
@@ -92,6 +113,17 @@ export interface DataTableCardView<Row> {
    * and its detail.
    */
   actions?: (row: Row) => ReactNode;
+  /**
+   * Stable test hook for the card list root, the mobile counterpart of
+   * `tableTestId` (#3568). Opt-in.
+   */
+  listTestId?: string;
+  /**
+   * Per-card attribute hook, the mobile counterpart of `rowAttributes`
+   * (#3568), spread onto the card's `<li>`. `className` and `onClick` are
+   * owned by the primitive and are not applied.
+   */
+  attributes?: (row: Row) => Record<string, string>;
 }
 
 /**
@@ -153,6 +185,12 @@ interface DataTableProps<Row> {
   manualSorting?: boolean;
   onSortChange?: OnChangeFn<SortingState>;
   rowHref?: (row: Row) => string;
+  /**
+   * Row activation without navigation (#4026): a click on the row (desktop)
+   * or the card (mobile) that does not land on a control. Wins over
+   * `expandable` and `rowHref` for the row-level click.
+   */
+  onRowClick?: (row: Row) => void;
   /**
    * Per-row class hook (#3237). The result is APPENDED to the primitive's own
    * computed `data-table__row …` class list, never replacing it — a caller
@@ -237,6 +275,13 @@ interface DataTableProps<Row> {
    */
   stickyLeftColumns?: number;
   /**
+   * Freeze the trailing N data columns to the right edge (#4026), the mirror
+   * of `stickyLeftColumns`: a row action column stays reachable while the
+   * middle columns scroll. Desktop table only; the card view ignores it. Its
+   * boundary appears only while content is hidden beneath it.
+   */
+  stickyRightColumns?: number;
+  /**
    * When true, the table body renders only rows visible inside a fixed-height
    * scroll container. Use for lists that commonly exceed ~200 rows.
    *
@@ -309,6 +354,7 @@ export function DataTable<Row>({
   estimateRowHeight = 36,
   manualSorting = false,
   onSortChange,
+  onRowClick,
   rowHref,
   rowAttributes,
   rowClassName,
@@ -319,8 +365,10 @@ export function DataTable<Row>({
   rowTestId,
   sort,
   stickyLeftColumns = 0,
+  stickyRightColumns = 0,
   virtualize = false,
 }: DataTableProps<Row>): ReactElement {
+  const copy = useMessages('ui').dataTable;
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -364,14 +412,21 @@ export function DataTable<Row>({
   // measured from the header row because column widths are content-driven.
   const leadCellCount = expandable ? 1 : 0;
   const stickyCount = Math.min(Math.max(stickyLeftColumns, 0), columns.length);
-  const stickyActive = stickyCount > 0 && !renderCards;
-  const frozenCellCount = stickyActive ? leadCellCount + stickyCount : 0;
+  const stickyLeftActive = stickyCount > 0 && !renderCards;
+  const frozenCellCount = stickyLeftActive ? leadCellCount + stickyCount : 0;
+  const rightCount = Math.min(Math.max(stickyRightColumns, 0), columns.length - stickyCount);
+  const stickyRightActive = rightCount > 0 && !renderCards;
+  const frozenRightCount = stickyRightActive ? rightCount : 0;
+  const stickyActive = stickyLeftActive || stickyRightActive;
   const [stickyOffsets, setStickyOffsets] = useState<number[]>([]);
+  const [stickyRightOffsets, setStickyRightOffsets] = useState<number[]>([]);
   const [stickyScrolled, setStickyScrolled] = useState(false);
+  const [stickyRightHidden, setStickyRightHidden] = useState(false);
 
   useLayoutEffect(() => {
     if (!stickyActive) {
       setStickyOffsets((prev) => (prev.length === 0 ? prev : []));
+      setStickyRightOffsets((prev) => (prev.length === 0 ? prev : []));
       return;
     }
     const tableEl = tableRef.current;
@@ -384,11 +439,28 @@ export function DataTable<Row>({
       let acc = 0;
       for (let i = 0; i < frozenCellCount && i < cells.length; i += 1) {
         offsets.push(acc);
-        acc += cells[i].getBoundingClientRect().width;
+        acc += layoutWidth(cells[i]);
       }
       setStickyOffsets((prev) =>
         prev.length === offsets.length && prev.every((v, i) => v === offsets[i]) ? prev : offsets,
       );
+      // Right offsets, indexed from the row's end: the last cell sits at 0.
+      const right: number[] = [];
+      let accRight = 0;
+      for (let i = 0; i < frozenRightCount && i < cells.length; i += 1) {
+        right.push(accRight);
+        accRight += layoutWidth(cells[cells.length - 1 - i]);
+      }
+      setStickyRightOffsets((prev) =>
+        prev.length === right.length && prev.every((v, i) => v === right[i]) ? prev : right,
+      );
+      const container = tableEl.parentElement;
+      if (container) {
+        const hidden =
+          frozenRightCount > 0 &&
+          container.scrollLeft + container.clientWidth < container.scrollWidth - 1;
+        setStickyRightHidden((prev) => (prev === hidden ? prev : hidden));
+      }
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -396,22 +468,35 @@ export function DataTable<Row>({
     return () => {
       observer.disconnect();
     };
-  }, [stickyActive, frozenCellCount, columns, rows]);
+  }, [stickyActive, frozenCellCount, frozenRightCount, columns, rows]);
 
   const handleStickyScroll = useCallback(
     (event: UIEvent<HTMLDivElement>): void => {
       if (!stickyActive) return;
-      const next = event.currentTarget.scrollLeft > 0;
+      const el = event.currentTarget;
+      const next = el.scrollLeft > 0;
       setStickyScrolled((prev) => (prev === next ? prev : next));
+      const hidden = frozenRightCount > 0 && el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      setStickyRightHidden((prev) => (prev === hidden ? prev : hidden));
     },
-    [stickyActive],
+    [stickyActive, frozenRightCount],
   );
 
   // `cellIndex` is the cell's position in the rendered row, counting the
   // leading expander cell (when present) as index 0.
   const stickyCellProps = useCallback(
     (cellIndex: number): { className: string; style?: CSSProperties } => {
-      if (!stickyActive || cellIndex >= frozenCellCount) return { className: '' };
+      const fromEnd = columnCount - 1 - cellIndex;
+      if (fromEnd < frozenRightCount) {
+        const isFirstRight = fromEnd === frozenRightCount - 1;
+        return {
+          className: isFirstRight
+            ? 'data-table__sticky-col data-table__sticky-col--right data-table__sticky-col--first-right'
+            : 'data-table__sticky-col data-table__sticky-col--right',
+          style: { right: stickyRightOffsets[fromEnd] ?? 0 },
+        };
+      }
+      if (!stickyLeftActive || cellIndex >= frozenCellCount) return { className: '' };
       const isLast = cellIndex === frozenCellCount - 1;
       return {
         className: isLast
@@ -420,7 +505,14 @@ export function DataTable<Row>({
         style: { left: stickyOffsets[cellIndex] ?? 0 },
       };
     },
-    [stickyActive, frozenCellCount, stickyOffsets],
+    [
+      stickyLeftActive,
+      frozenCellCount,
+      stickyOffsets,
+      frozenRightCount,
+      stickyRightOffsets,
+      columnCount,
+    ],
   );
 
   const table = useReactTable<Row>({
@@ -485,13 +577,15 @@ export function DataTable<Row>({
         return;
       }
       rail.style.visibility = 'visible';
+      // Rects are screen pixels; the rail is styled inside the zoomed subtree.
+      const zoom = box.width / wrap.offsetWidth || 1;
       const barHeight = rail.offsetHeight;
-      const bottomAnchored = window.innerHeight - barHeight - GAP;
+      const bottomAnchored = window.innerHeight / zoom - barHeight - GAP;
       // Clamp between the table's top edge and bottom edge.
-      const top = Math.min(Math.max(bottomAnchored, box.top), box.bottom - barHeight);
+      const top = Math.min(Math.max(bottomAnchored, box.top / zoom), box.bottom / zoom - barHeight);
       rail.style.top = `${Math.round(top)}px`;
-      rail.style.left = `${Math.round(box.left)}px`;
-      rail.style.width = `${Math.round(box.width)}px`;
+      rail.style.left = `${Math.round(box.left / zoom)}px`;
+      rail.style.width = `${Math.round(box.width / zoom)}px`;
     };
 
     update();
@@ -530,8 +624,8 @@ export function DataTable<Row>({
 
   const emptyNode = emptyState ?? (
     <div className="empty-state">
-      <h2>No records to display</h2>
-      <p>There is no data available for this table yet.</p>
+      <h2>{copy.emptyTitle}</h2>
+      <p>{copy.emptyMessage}</p>
     </div>
   );
 
@@ -542,6 +636,15 @@ export function DataTable<Row>({
         void navigate(href);
       },
     [navigate],
+  );
+
+  const makeRowActivateHandler = useCallback(
+    (row: Row) =>
+      (event: MouseEvent<HTMLTableRowElement | HTMLLIElement>): void => {
+        if (shouldIgnoreRowClick(event)) return;
+        onRowClick?.(row);
+      },
+    [onRowClick],
   );
 
   const makeRowExpandHandler = useCallback(
@@ -575,17 +678,25 @@ export function DataTable<Row>({
     const detailId = `${detailIdBase}-${String(key)}`;
     const rowClasses = [
       'data-table__row',
-      expandable ? 'data-table__row--expandable' : href ? 'data-table__row--linked' : '',
+      onRowClick
+        ? 'data-table__row--activatable'
+        : expandable
+          ? 'data-table__row--expandable'
+          : href
+            ? 'data-table__row--linked'
+            : '',
       expanded ? 'data-table__row--expanded' : '',
       rowClassName?.(row) ?? '',
     ]
       .filter(Boolean)
       .join(' ');
-    const onClick = expandable
-      ? makeRowExpandHandler(key)
-      : href
-        ? makeRowClickHandler(href)
-        : undefined;
+    const onClick = onRowClick
+      ? makeRowActivateHandler(row)
+      : expandable
+        ? makeRowExpandHandler(key)
+        : href
+          ? makeRowClickHandler(href)
+          : undefined;
     const extraRowAttributes = sanitizeRowAttributes(rowAttributes?.(row));
 
     const bodyRow = (
@@ -611,7 +722,7 @@ export function DataTable<Row>({
               aria-controls={detailId}
               aria-label={
                 expandable.toggleLabel?.(row, expanded) ??
-                (expanded ? 'Collapse row details' : 'Expand row details')
+                (expanded ? copy.collapseRow : copy.expandRow)
               }
               onClick={(event) => {
                 event.stopPropagation();
@@ -683,7 +794,11 @@ export function DataTable<Row>({
     <table
       ref={tableRef}
       data-testid={tableTestId}
-      className={['data-table', stickyScrolled ? 'data-table--sticky-scrolled' : '']
+      className={[
+        'data-table',
+        stickyScrolled ? 'data-table--sticky-scrolled' : '',
+        stickyRightHidden ? 'data-table--sticky-right-hidden' : '',
+      ]
         .filter(Boolean)
         .join(' ')}
     >
@@ -699,7 +814,7 @@ export function DataTable<Row>({
                   .join(' ')}
                 style={expanderSticky.style}
               >
-                <span className="sr-only">Expand row</span>
+                <span className="sr-only">{copy.expandRowShort}</span>
               </th>
             ) : null}
             {headerGroup.headers.map((header, headerIndex) => {
@@ -721,7 +836,7 @@ export function DataTable<Row>({
                   key={header.id}
                   scope="col"
                   className={classes || undefined}
-                  style={sticky.style}
+                  style={column?.width ? { ...sticky.style, width: column.width } : sticky.style}
                   aria-sort={
                     canSort
                       ? sortDir === 'asc'
@@ -729,7 +844,7 @@ export function DataTable<Row>({
                         : sortDir === 'desc'
                           ? 'descending'
                           : 'none'
-                      : undefined
+                      : column?.ariaSort
                   }
                 >
                   {canSort ? (
@@ -739,9 +854,7 @@ export function DataTable<Row>({
                       onClick={header.column.getToggleSortingHandler()}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
-                      <span className="data-table__sort-indicator" aria-hidden="true">
-                        {sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : '↕'}
-                      </span>
+                      <SortArrow active={sortDir !== false} dir={sortDir === 'desc' ? 'desc' : 'asc'} />
                     </button>
                   ) : (
                     flexRender(header.column.columnDef.header, header.getContext())
@@ -813,8 +926,8 @@ export function DataTable<Row>({
       aria-label={
         plainScrollable
           ? typeof caption === 'string'
-            ? `${caption} (scrollable)`
-            : 'Scrollable table'
+            ? interpolate(copy.scrollableNamed, { caption })
+            : copy.scrollable
           : undefined
       }
     >
@@ -827,7 +940,11 @@ export function DataTable<Row>({
             style={{ height: containerHeight }}
             tabIndex={0}
             role="region"
-            aria-label={typeof caption === 'string' ? `${caption} (scrollable)` : 'Scrollable table'}
+            aria-label={
+              typeof caption === 'string'
+                ? interpolate(copy.scrollableNamed, { caption })
+                : copy.scrollable
+            }
           >
             {renderTable()}
           </div>
@@ -837,7 +954,7 @@ export function DataTable<Row>({
       ) : null}
 
       {renderCards && cardView ? (
-        <ul className="data-table__cards">
+        <ul className="data-table__cards" data-testid={cardView.listTestId}>
           {isEmpty ? (
             <li className="data-table__cards-empty">{emptyNode}</li>
           ) : (
@@ -850,7 +967,13 @@ export function DataTable<Row>({
                   row={row}
                   cardView={cardView}
                   href={href}
-                  onClick={href ? makeRowClickHandler(href) : undefined}
+                  onClick={
+                    onRowClick
+                      ? makeRowActivateHandler(row)
+                      : href
+                        ? makeRowClickHandler(href)
+                        : undefined
+                  }
                 />
               );
             })
@@ -881,6 +1004,12 @@ export function DataTable<Row>({
   return scrollRegion;
 }
 
+function sanitizeCardAttributes(attributes: Record<string, string> | undefined): Record<string, string> {
+  if (!attributes) return {};
+  const reserved = new Set(['className', 'onClick', 'style', 'key']);
+  return Object.fromEntries(Object.entries(attributes).filter(([name]) => !reserved.has(name)));
+}
+
 interface DataTableCardProps<Row> {
   row: Row;
   cardView: DataTableCardView<Row>;
@@ -901,6 +1030,7 @@ function DataTableCard<Row>({
   href,
   onClick,
 }: DataTableCardProps<Row>): ReactElement {
+  const copy = useMessages('ui').dataTable;
   const [detailOpen, setDetailOpen] = useState(false);
   const detailId = useId();
   const detail = cardView.detail;
@@ -918,6 +1048,7 @@ function DataTableCard<Row>({
 
   return (
     <li
+      {...sanitizeCardAttributes(cardView.attributes?.(row))}
       className={href ? 'data-table__card data-table__card--linked' : 'data-table__card'}
       onClick={onClick}
     >
@@ -954,7 +1085,7 @@ function DataTableCard<Row>({
           <span className="data-table__card-disclosure-chev" aria-hidden="true">
             {detailOpen ? '⌄' : '›'}
           </span>
-          {detailOpen ? 'Hide details' : 'View full details'}
+          {detailOpen ? copy.hideDetails : copy.viewDetails}
         </button>
       ) : null}
       {showDetail && detail ? (

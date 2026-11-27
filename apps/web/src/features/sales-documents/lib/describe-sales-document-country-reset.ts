@@ -9,6 +9,8 @@
  *
  * @module apps/web/src/features/sales-documents/lib
  */
+import { formatPlural, getBcp47Locale, getLocale, getMessages, interpolate } from '../../../shared/i18n';
+
 export interface SalesDocumentCountryResetSummary {
   ruleCount: number;
   hasInvoiceDefault: boolean;
@@ -16,36 +18,35 @@ export interface SalesDocumentCountryResetSummary {
   acknowledged: boolean;
 }
 
-function pluralize(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
-}
 
-function joinClauses(clauses: string[]): string {
-  if (clauses.length === 0) return 'nothing';
-  if (clauses.length === 1) return clauses[0];
-  if (clauses.length === 2) return `${clauses[0]} and ${clauses[1]}`;
-  return `${clauses.slice(0, -1).join(', ')}, and ${clauses[clauses.length - 1]}`;
+function joinClauses(clauses: string[], nothing: string): string {
+  if (clauses.length === 0) return nothing;
+  return new Intl.ListFormat(getBcp47Locale(getLocale()), { type: 'conjunction' }).format(clauses);
 }
 
 export function describeSalesDocumentCountryReset(
   displayName: string,
   summary: SalesDocumentCountryResetSummary,
 ): string {
+  const copy = getMessages('sales-documents').countryReset;
   const clauses: string[] = [];
 
   if (summary.ruleCount > 0) {
-    clauses.push(pluralize(summary.ruleCount, 'rule'));
+    clauses.push(formatPlural(summary.ruleCount, copy.rules, getLocale()));
   }
   if (summary.hasInvoiceDefault && summary.hasReceiptDefault) {
-    clauses.push('both country defaults');
+    clauses.push(copy.bothDefaults);
   } else if (summary.hasInvoiceDefault) {
-    clauses.push('the Invoice default');
+    clauses.push(copy.invoiceDefault);
   } else if (summary.hasReceiptDefault) {
-    clauses.push('the Receipt default');
+    clauses.push(copy.receiptDefault);
   }
   if (summary.acknowledged) {
-    clauses.push('the no-document acknowledgment');
+    clauses.push(copy.acknowledgment);
   }
 
-  return `This deletes ${joinClauses(clauses)} for ${displayName}. This can't be undone.`;
+  return interpolate(copy.sentence, {
+    items: joinClauses(clauses, copy.nothing),
+    country: displayName,
+  });
 }

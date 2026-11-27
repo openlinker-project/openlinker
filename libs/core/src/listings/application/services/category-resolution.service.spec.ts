@@ -130,6 +130,7 @@ describe('CategoryResolutionService', () => {
         provenance: 'borrows',
         method: 'category_mapping',
       });
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(CONNECTION_ID, 'src-1');
     });
 
     it('should leave provenance null on the mapping path when no barcode is supplied', async () => {
@@ -177,6 +178,190 @@ describe('CategoryResolutionService', () => {
       expect(result.method).toBe('auto_detect');
       expect(result.method).not.toBe('provision');
     });
+
+    describe('mapping precedence over a barcode match (#3994)', () => {
+      const barcodeAdapter = (categoryId: string | null): Record<string, jest.Mock> => ({
+        updateOfferQuantity: jest.fn(),
+        matchCategoryByBarcode: jest.fn().mockResolvedValue(categoryId),
+      });
+
+      it('should resolve via auto_detect when the barcode matches and no mapping exists', async () => {
+        const adapter = barcodeAdapter('allegro-cat-123');
+        integrationsService.getCapabilityAdapter.mockResolvedValue(adapter);
+        mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
+
+        const result = await service.resolveCategory({
+          connectionId: CONNECTION_ID,
+          barcode: '5901234123457',
+          sourceCategoryIds: ['ps-cat-1'],
+        });
+
+        expect(result).toEqual({
+          destinationCategoryId: 'allegro-cat-123',
+          provenance: 'borrows',
+          method: 'auto_detect',
+        });
+        expect(adapter.matchCategoryByBarcode).toHaveBeenCalledWith('5901234123457');
+      });
+
+      it('should keep auto_detect when the barcode category equals the mapped category', async () => {
+        integrationsService.getCapabilityAdapter.mockResolvedValue(
+          barcodeAdapter('allegro-cat-123')
+        );
+        mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-123');
+
+        const result = await service.resolveCategory({
+          connectionId: CONNECTION_ID,
+          barcode: '5901234123457',
+          sourceCategoryIds: ['ps-cat-1'],
+        });
+
+        expect(result.method).toBe('auto_detect');
+        expect(result.destinationCategoryId).toBe('allegro-cat-123');
+      });
+
+      it('should resolve via category_mapping when the barcode category disagrees with the mapping', async () => {
+        // An explicit mapping beats a barcode inference.
+        integrationsService.getCapabilityAdapter.mockResolvedValue(
+          barcodeAdapter('allegro-powerbanki')
+        );
+        mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-t-shirty');
+
+        const result = await service.resolveCategory({
+          connectionId: CONNECTION_ID,
+          barcode: '5901234000017',
+          sourceCategoryIds: ['ps-tshirts'],
+        });
+
+        expect(result).toEqual({
+          destinationCategoryId: 'allegro-t-shirty',
+          provenance: 'borrows',
+          method: 'category_mapping',
+        });
+      });
+    });
+
+    describe('borrowed taxonomy (#1045)', () => {
+      it('should reuse a borrowed-taxonomy mapping and bear borrows provenance on the mapping path (#1045)', async () => {
+        mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-258066');
+
+        const result = await service.resolveCategory({
+          connectionId: 'erli-conn',
+          sourceCategoryIds: ['ps-cat-1'],
+          borrowedTaxonomy: 'allegro',
+          sourceConnectionId: 'ps-master',
+        });
+
+        expect(result).toEqual({
+          destinationCategoryId: 'allegro-cat-258066',
+          provenance: 'borrows',
+          method: 'category_mapping',
+        });
+        // Borrowed taxonomy + source store threaded into the mapping lookup.
+        expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledWith(
+          'erli-conn',
+          'ps-cat-1',
+          {
+            borrowedTaxonomy: 'allegro',
+            sourceConnectionId: 'ps-master',
+          }
+        );
+        // No adapter resolution on the mapping path (no extra I/O).
+        expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+      });
+
+      it('should report borrows provenance even when a borrowed mapping is unresolved (#1045)', async () => {
+        mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
+
+        const result = await service.resolveCategory({
+          connectionId: 'erli-conn',
+          sourceCategoryIds: ['ps-cat-1'],
+          borrowedTaxonomy: 'allegro',
+          sourceConnectionId: 'ps-master',
+        });
+
+        expect(result).toEqual({
+          destinationCategoryId: null,
+          provenance: 'borrows',
+          method: 'manual',
+        });
+      });
+    });
+
+    it('should try multiple source categories in order until one resolves', async () => {
+      mappingConfig.resolveDestinationCategory
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('allegro-cat-deep');
+
+      const result = await service.resolveCategory({
+        connectionId: CONNECTION_ID,
+        sourceCategoryIds: ['ps-cat-shallow', 'ps-cat-deep'],
+      });
+
+      expect(result).toEqual({
+        destinationCategoryId: 'allegro-cat-deep',
+        provenance: null,
+        method: 'category_mapping',
+      });
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenCalledTimes(2);
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenNthCalledWith(
+        1,
+        CONNECTION_ID,
+        'ps-cat-shallow'
+      );
+      expect(mappingConfig.resolveDestinationCategory).toHaveBeenNthCalledWith(
+        2,
+        CONNECTION_ID,
+        'ps-cat-deep'
+      );
+    });
+
+    it('should return manual when there is neither a barcode nor a source category', async () => {
+      const result = await service.resolveCategory({ connectionId: CONNECTION_ID });
+
+      expect(result).toEqual({ destinationCategoryId: null, provenance: null, method: 'manual' });
+      expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+    });
+
+    describe('when the barcode step cannot answer', () => {
+      it('should fall back to the mapping when adapter resolution fails during auto-detect', async () => {
+        integrationsService.getCapabilityAdapter.mockRejectedValue(
+          new Error('adapter unavailable')
+        );
+        mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-fallback');
+
+        const result = await service.resolveCategory({
+          connectionId: CONNECTION_ID,
+          barcode: '5901234123457',
+          sourceCategoryIds: ['ps-cat-1'],
+        });
+
+        expect(result).toEqual({
+          destinationCategoryId: 'allegro-cat-fallback',
+          provenance: null,
+          method: 'category_mapping',
+        });
+      });
+
+      it('should fall back to the mapping when the adapter cannot match barcodes', async () => {
+        integrationsService.getCapabilityAdapter.mockResolvedValue({
+          updateOfferQuantity: jest.fn(),
+        });
+        mappingConfig.resolveDestinationCategory.mockResolvedValue('allegro-cat-mapped');
+
+        const result = await service.resolveCategory({
+          connectionId: CONNECTION_ID,
+          barcode: '5901234123457',
+          sourceCategoryIds: ['ps-cat-1'],
+        });
+
+        expect(result).toEqual({
+          destinationCategoryId: 'allegro-cat-mapped',
+          provenance: 'borrows',
+          method: 'category_mapping',
+        });
+      });
+    });
   });
 
   describe('resolveCategoriesBatch', () => {
@@ -205,7 +390,7 @@ describe('CategoryResolutionService', () => {
         'OfferManager'
       );
       // The adapter receives only the EAN-only shape (`sourceCategoryIds` is a
-      // core-owned fallback input, never forwarded to the adapter).
+      // core-owned input, never forwarded to the adapter).
       expect(resolveCategoriesForBatchByEan).toHaveBeenCalledWith({
         items: [
           { variantId: 'v1', ean: '590111' },
@@ -223,7 +408,7 @@ describe('CategoryResolutionService', () => {
       expect(result.size).toBe(2);
     });
 
-    it('should keep the EAN catalogue match when the EAN hits, ignoring the mapping', async () => {
+    it('should keep the EAN catalogue match when no source-category mapping exists', async () => {
       const resolveCategoriesForBatchByEan = jest.fn().mockResolvedValue(
         new Map<string, EanMatchResult>([
           ['v1', { kind: 'matched', allegroCategoryId: 'cat-ean', productCardId: 'card-1' }],
@@ -233,6 +418,7 @@ describe('CategoryResolutionService', () => {
         updateOfferQuantity: jest.fn(),
         resolveCategoriesForBatchByEan,
       });
+      mappingConfig.resolveDestinationCategory.mockResolvedValue(null);
 
       const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
         items: [{ variantId: 'v1', ean: '590111', sourceCategoryIds: ['src-1'] }],
@@ -243,7 +429,80 @@ describe('CategoryResolutionService', () => {
         allegroCategoryId: 'cat-ean',
         productCardId: 'card-1',
       });
-      // EAN won — the mapping was never consulted.
+    });
+
+    it('should keep the card and mark mappingAgrees when the card sits in the mapped category', async () => {
+      const resolveCategoriesForBatchByEan = jest.fn().mockResolvedValue(
+        new Map<string, EanMatchResult>([
+          ['v1', { kind: 'matched', allegroCategoryId: 'cat-87913', productCardId: 'card-1' }],
+        ])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        resolveCategoriesForBatchByEan,
+      });
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('cat-87913');
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '590111', sourceCategoryIds: ['src-1'] }],
+      });
+
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'cat-87913',
+        productCardId: 'card-1',
+        mappingAgrees: true,
+      });
+    });
+
+    it('should resolve via the mapping and report the card when the card sits in another category', async () => {
+      // #3994: a T-shirt barcode matched a Powerbanki card while T-shirts map to T-shirty.
+      const resolveCategoriesForBatchByEan = jest.fn().mockResolvedValue(
+        new Map<string, EanMatchResult>([
+          ['v1', { kind: 'matched', allegroCategoryId: 'cat-252023', productCardId: 'card-power' }],
+        ])
+      );
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        resolveCategoriesForBatchByEan,
+      });
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('cat-87913');
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '5901234000017', sourceCategoryIds: ['src-tshirts'] }],
+      });
+
+      expect(result.get('v1')).toEqual({
+        kind: 'matched',
+        allegroCategoryId: 'cat-87913',
+        productCardId: '',
+        method: 'category_mapping',
+        overriddenCard: { allegroCategoryId: 'cat-252023', productCardId: 'card-power' },
+      });
+    });
+
+    it('should leave a multi-match untouched even when a mapping exists', async () => {
+      const multi: EanMatchResult = {
+        kind: 'multi-match',
+        candidates: [
+          { allegroCategoryId: 'cat-a', productCardId: 'card-a' },
+          { allegroCategoryId: 'cat-b', productCardId: 'card-b' },
+        ],
+      };
+      const resolveCategoriesForBatchByEan = jest
+        .fn()
+        .mockResolvedValue(new Map<string, EanMatchResult>([['v1', multi]]));
+      integrationsService.getCapabilityAdapter.mockResolvedValue({
+        updateOfferQuantity: jest.fn(),
+        resolveCategoriesForBatchByEan,
+      });
+      mappingConfig.resolveDestinationCategory.mockResolvedValue('cat-a');
+
+      const result = await service.resolveCategoriesBatch(CONNECTION_ID, {
+        items: [{ variantId: 'v1', ean: '590111', sourceCategoryIds: ['src-1'] }],
+      });
+
+      expect(result.get('v1')).toEqual(multi);
       expect(mappingConfig.resolveDestinationCategory).not.toHaveBeenCalled();
     });
 

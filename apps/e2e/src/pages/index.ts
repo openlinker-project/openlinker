@@ -23,6 +23,16 @@ import { BenchPage } from './bench.page';
 import { PackBenchMockupPage } from './pack-bench-mockup.page';
 import { AssignPackingWorkPage } from './assign-packing-work.page';
 import { AssignPackingWorkMockupPage } from './assign-packing-work-mockup.page';
+import {
+  BuyerDataConnectionSection,
+  BuyerDataSettingsPage,
+  BuyerDataWizardStepView,
+} from './buyer-data.page';
+import {
+  AllegroWizardPage,
+  DeliveryOnDocumentsTab,
+  ErliWizardPage,
+} from './delivery-on-documents.page';
 
 export interface PageObjects {
   login: LoginPage;
@@ -42,6 +52,12 @@ export interface PageObjects {
   packBenchMockup: PackBenchMockupPage;
   assignPackingWork: AssignPackingWorkPage;
   assignPackingWorkMockup: AssignPackingWorkMockupPage;
+  deliveryOnDocuments: DeliveryOnDocumentsTab;
+  allegroWizard: AllegroWizardPage;
+  erliWizard: ErliWizardPage;
+  buyerDataSettings: BuyerDataSettingsPage;
+  buyerDataSection: BuyerDataConnectionSection;
+  buyerDataWizardStep: BuyerDataWizardStepView;
 }
 
 export function createPageObjects(page: Page): PageObjects {
@@ -63,6 +79,12 @@ export function createPageObjects(page: Page): PageObjects {
     packBenchMockup: new PackBenchMockupPage(page),
     assignPackingWork: new AssignPackingWorkPage(page),
     assignPackingWorkMockup: new AssignPackingWorkMockupPage(page),
+    deliveryOnDocuments: new DeliveryOnDocumentsTab(page),
+    allegroWizard: new AllegroWizardPage(page),
+    erliWizard: new ErliWizardPage(page),
+    buyerDataSettings: new BuyerDataSettingsPage(page),
+    buyerDataSection: new BuyerDataConnectionSection(page),
+    buyerDataWizardStep: new BuyerDataWizardStepView(page),
   };
 }
 
@@ -82,3 +104,4 @@ export * from './bench.page';
 export * from './pack-bench-mockup.page';
 export * from './assign-packing-work.page';
 export * from './assign-packing-work-mockup.page';
+export * from './buyer-data.page';

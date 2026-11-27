@@ -116,6 +116,37 @@ describe('Sales analytics daily aggregates (integration, #1987)', () => {
     expect(rows[0].revenue).toBe(100);
   });
 
+  it('leaves an order hidden by buyer-data retention out of every sales figure (#4289)', async () => {
+    const day = new Date('2026-08-04T10:00:00.000Z');
+    const visibleId = await seedStampedOrder({
+      placedAt: day,
+      totalAmount: 50,
+      reportingCurrency: 'EUR',
+      reportingTotalAmount: 50,
+    });
+    await seedLineItem({ orderRecordId: visibleId, unitPrice: 50, quantity: 1, placedAt: day });
+    const hiddenId = await seedStampedOrder({
+      placedAt: day,
+      totalAmount: 777,
+      currency: 'PLN',
+      reportingCurrency: null,
+      reportingTotalAmount: null,
+      hiddenAt: new Date('2026-08-05T00:00:00.000Z'),
+    });
+    await seedLineItem({ orderRecordId: hiddenId, unitPrice: 777, quantity: 1, placedAt: day });
+
+    const rows = await repository.getDailyOrderAggregates(
+      { from: new Date('2026-08-01T00:00:00.000Z'), to: new Date('2026-08-08T00:00:00.000Z') },
+      'EUR'
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].orderCount).toBe(1);
+    expect(rows[0].revenue).toBe(50);
+    expect(rows[0].unconvertedCount).toBe(0);
+    expect(rows[0].unconvertedValue).toBe(0);
+  });
+
   it('folds a prior-era stamp into the unconverted bucket rather than mixing it into revenue (#1987 review notes, ported from #2172)', async () => {
     const day = new Date('2026-08-03T10:00:00.000Z');
     // Current-era stamp — the system reporting currency is EUR at read time.

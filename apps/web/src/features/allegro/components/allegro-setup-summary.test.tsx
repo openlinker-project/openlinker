@@ -47,7 +47,7 @@ describe('AllegroSetupSummary', () => {
     expect(screen.getByText('Main PrestaShop store')).toBeInTheDocument();
   });
 
-  it('falls back to "— not linked —" when no catalog is selected on step 2', () => {
+  it('falls back to "- not linked -" when no catalog is selected on step 2', () => {
     render(
       <AllegroSetupSummary
         values={ALLEGRO_SETUP_DEFAULT_VALUES}
@@ -55,6 +55,32 @@ describe('AllegroSetupSummary', () => {
         selectedCatalogName={null}
       />
     );
-    expect(screen.getByText('— not linked —')).toBeInTheDocument();
+    expect(screen.getByText('- not linked -')).toBeInTheDocument();
+  });
+
+  it('shows what delivery on documents will save from the sales documents step', () => {
+    render(
+      <AllegroSetupSummary
+        values={ALLEGRO_SETUP_DEFAULT_VALUES}
+        stepIndex={3}
+        selectedCatalogName={null}
+        suggestions={[]}
+      />
+    );
+    expect(screen.getByText('Delivery on documents')).toBeInTheDocument();
+    expect(screen.getByText('All other countries')).toBeInTheDocument();
+    expect(screen.getByText('Shipping, same as the products')).toBeInTheDocument();
+  });
+
+  it('hides the delivery section on re-authentication', () => {
+    render(
+      <AllegroSetupSummary
+        values={ALLEGRO_SETUP_DEFAULT_VALUES}
+        stepIndex={4}
+        selectedCatalogName={null}
+        showDelivery={false}
+      />
+    );
+    expect(screen.queryByText('Delivery on documents')).toBeNull();
   });
 });

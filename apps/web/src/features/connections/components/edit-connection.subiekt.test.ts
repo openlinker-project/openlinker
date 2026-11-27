@@ -31,31 +31,52 @@ describe('mergeStructuredIntoConfig — Subiekt (#759)', () => {
     });
   });
 
-  describe('trigger model (nested seam)', () => {
-    it('writes the trigger model to config.invoicing.triggerModel, NOT a flat key', () => {
+  // #3582: the form writes the kind-scoped `invoice` key the BE gate reads
+  // first, and drops the legacy key it would otherwise be shadowed by.
+  describe('trigger model (kind-scoped seam, #3582)', () => {
+    it('writes the trigger model to config.salesDocument.triggerModels.invoice, NOT a flat key', () => {
       const out = mergeStructuredIntoConfig({}, { subiektTriggerModel: 'auto-on-paid' });
-      expect(out.invoicing).toEqual({ triggerModel: 'auto-on-paid' });
+      expect(out.salesDocument).toEqual({ triggerModels: { invoice: 'auto-on-paid' } });
+      expect('invoicing' in out).toBe(false);
       expect('subiektTriggerModel' in out).toBe(false);
       expect('triggerModel' in out).toBe(false);
     });
 
-    it('preserves sibling config.invoicing keys', () => {
+    it('drops the legacy key and preserves sibling config.invoicing keys and documentKind', () => {
       const out = mergeStructuredIntoConfig(
-        { invoicing: { numbering: 'FV/{yyyy}', triggerModel: 'manual' } },
+        {
+          invoicing: { numbering: 'FV/{yyyy}', triggerModel: 'manual' },
+          salesDocument: { documentKind: 'invoice' },
+        },
         { subiektTriggerModel: 'batched' },
       );
-      expect(out.invoicing).toEqual({ numbering: 'FV/{yyyy}', triggerModel: 'batched' });
+      expect(out.invoicing).toEqual({ numbering: 'FV/{yyyy}' });
+      expect(out.salesDocument).toEqual({
+        documentKind: 'invoice',
+        triggerModels: { invoice: 'batched' },
+      });
     });
 
-    it('drops an emptied config.invoicing object when triggerModel is cleared', () => {
+    it('overrides a kind-scoped value the sales-documents table already set', () => {
       const out = mergeStructuredIntoConfig(
-        { invoicing: { triggerModel: 'manual' } },
+        { salesDocument: { triggerModels: { invoice: 'manual', 'fiscal-receipt': 'auto-on-paid' } } },
+        { subiektTriggerModel: 'auto-on-shipped' },
+      );
+      expect(out.salesDocument).toEqual({
+        triggerModels: { invoice: 'auto-on-shipped', 'fiscal-receipt': 'auto-on-paid' },
+      });
+    });
+
+    it('drops emptied objects when the trigger model is cleared', () => {
+      const out = mergeStructuredIntoConfig(
+        { invoicing: { triggerModel: 'manual' }, salesDocument: { triggerModels: { invoice: 'manual' } } },
         { subiektTriggerModel: '' },
       );
       expect('invoicing' in out).toBe(false);
+      expect('salesDocument' in out).toBe(false);
     });
 
-    it('keeps config.invoicing when clearing triggerModel leaves a sibling', () => {
+    it('keeps config.invoicing when clearing the trigger model leaves a sibling', () => {
       const out = mergeStructuredIntoConfig(
         { invoicing: { numbering: 'FV/{yyyy}', triggerModel: 'manual' } },
         { subiektTriggerModel: '' },

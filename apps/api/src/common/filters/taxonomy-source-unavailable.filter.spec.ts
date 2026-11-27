@@ -26,12 +26,14 @@ describe('TaxonomySourceUnavailableFilter', () => {
 
     filter.catch(
       new TaxonomySourceUnavailableException('conn-1', 'no CategoryBrowser capability'),
-      host,
+      host
     );
 
     expect(status).toHaveBeenCalledWith(HttpStatus.UNPROCESSABLE_ENTITY);
     expect(json).toHaveBeenCalledWith({
       statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+      code: 'TAXONOMY_SOURCE_UNAVAILABLE',
+      params: { connectionId: 'conn-1' },
       error: 'TaxonomySourceUnavailableException',
       message: expect.stringContaining('no CategoryBrowser capability'),
     });
@@ -47,15 +49,15 @@ describe('TaxonomySourceUnavailableFilter', () => {
     filter.catch(
       new TaxonomySourceUnavailableException(
         'conn-1',
-        'the connection browses a marketplace taxonomy but declares no taxonomy identity — implement TaxonomyIdentityProvider on its adapter',
+        'the connection browses a marketplace taxonomy but declares no taxonomy identity — implement TaxonomyIdentityProvider on its adapter'
       ),
-      host,
+      host
     );
 
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringContaining('implement TaxonomyIdentityProvider'),
-      }),
+      })
     );
   });
 });

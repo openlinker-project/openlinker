@@ -9,6 +9,7 @@ import {
 import { Routes, Route } from 'react-router-dom';
 import { BulkBatchProgressPage } from './bulk-batch-progress-page';
 import type { BulkBatchSummary } from '../../features/listings/api/bulk-listings.types';
+import { getMessages } from '../../shared/i18n';
 
 const BATCH_ID = 'b1d05bc3-9a6e-4c8d-9ff0-12cd0acddc7a';
 
@@ -126,6 +127,106 @@ describe('BulkBatchProgressPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('should show an account-level refusal once and offer no per-row fix for it (#4004)', async () => {
+    const refusal = {
+      code: 'SellerAccountWithSellBlockadeException',
+      message: 'Nie masz wymaganych uprawnien (sprzedaz zablokowana).',
+    };
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn_1',
+            name: 'Allegro sandbox',
+            platformType: 'allegro',
+            status: 'active',
+            config: { environment: 'sandbox' },
+            credentialsBacked: true,
+            adapterKey: 'allegro.publicapi.v1',
+            enabledCapabilities: ['OfferManager'],
+            supportedCapabilities: ['OfferManager'],
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+          },
+        ]),
+      },
+      listings: {
+        getBulkBatch: vi.fn().mockResolvedValue(
+          makeBatch({
+            status: 'failed',
+            totalCount: 2,
+            succeededCount: 0,
+            failedCount: 2,
+            records: [
+              failedRecord({ id: 'rec_a', internalVariantId: 'ol_variant_a', errors: [refusal] }),
+              failedRecord({ id: 'rec_b', internalVariantId: 'ol_variant_b', errors: [refusal] }),
+            ],
+          }),
+        ),
+      },
+    });
+
+    renderPage(apiClient);
+
+    expect(
+      await screen.findByText(
+        'Allegro refused these offers because the seller account cannot sell.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/2 of 2 variants failed for this reason/)).toBeInTheDocument();
+    expect(screen.getByText(/^Allegro said:/)).toBeInTheDocument();
+    expect(screen.getAllByText('Account cannot sell - see above')).toHaveLength(2);
+    expect(screen.queryByText('Fix this one')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Fix and resubmit/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Fix and resubmit/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Retry re-runs the saved data/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry unchanged \(2\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Open Allegro Sales Center/ })).toHaveAttribute(
+      'href',
+      'https://salescenter.allegro.com.allegrosandbox.pl',
+    );
+  });
+
+  it('should not claim nothing went live while the batch is still running (#4004)', async () => {
+    const refusal = { code: 'SellerAccountWithSellBlockadeException', message: 'Konto zablokowane.' };
+    const apiClient = createMockApiClient({
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'conn_1',
+            name: 'Allegro sandbox',
+            platformType: 'allegro',
+            status: 'active',
+            config: { environment: 'sandbox' },
+            credentialsBacked: true,
+            adapterKey: 'allegro.publicapi.v1',
+            enabledCapabilities: ['OfferManager'],
+            supportedCapabilities: ['OfferManager'],
+            createdAt: '2026-01-01T00:00:00Z',
+            updatedAt: '2026-01-01T00:00:00Z',
+          },
+        ]),
+      },
+      listings: {
+        getBulkBatch: vi.fn().mockResolvedValue(
+          makeBatch({
+            status: 'running',
+            totalCount: 3,
+            succeededCount: 0,
+            failedCount: 1,
+            records: [failedRecord({ id: 'rec_a', errors: [refusal] })],
+          }),
+        ),
+      },
+    });
+
+    renderPage(apiClient);
+
+    expect(await screen.findByText('1 variant has failed so far.')).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing went live/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retry unchanged/ })).not.toBeInTheDocument();
+  });
+
   it('does not show the recovery bar when batch is still running', async () => {
     const apiClient = createMockApiClient({
       listings: {
@@ -182,7 +283,7 @@ describe('BulkBatchProgressPage', () => {
 
     renderPage(apiClient);
 
-    const link = await screen.findByRole('link', { name: /Fix and resubmit \(1\) →/ });
+    const link = await screen.findByRole('link', { name: /Fix and resubmit \(1\)/ });
     const href = link.getAttribute('href') ?? '';
     const query = new URLSearchParams(href.slice(href.indexOf('?')));
     expect(href.startsWith('/listings/bulk-create/wizard?')).toBe(true);
@@ -250,7 +351,7 @@ describe('BulkBatchProgressPage', () => {
     renderPage(apiClient);
 
     expect(await screen.findByText('Could not load batch')).toBeInTheDocument();
-    expect(screen.getByText('Network is down')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('renders one record row per record', async () => {

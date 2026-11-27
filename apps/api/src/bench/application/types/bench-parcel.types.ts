@@ -48,6 +48,7 @@ import {
   type ParcelUndoRefusal,
   ParcelVerificationRefusalValues,
 } from '@openlinker/core/fulfillment';
+import type { FulfillmentProcessorKind } from '@openlinker/core/mappings';
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type {
   FiscalArtefactSummary,
@@ -78,6 +79,24 @@ export type BenchParcelRefusal = (typeof BenchParcelRefusalValues)[number];
 /** One line of the box, and how much of it is verified in. */
 export interface BenchParcelLineView {
   readonly workLineId: string;
+  /**
+   * The bundle this line is a component of (#3624): the commercial line id and
+   * the name the buyer saw. `null` for an ordinary line. Components of one
+   * bundle share `lineId`, which is how the surface groups them under a
+   * "Bundle X of Y" header and refuses to treat the bundle as done while one is
+   * missing - the parcel's close rule already counts every component line.
+   */
+  readonly bundle: {
+    readonly lineId: string;
+    readonly name: string | null;
+    /** This component is the free gift of the set (#3934). Read from the frozen expansion. */
+    readonly giftSlot: boolean;
+  } | null;
+  /**
+   * The line is itself a gift (#3935): a promotion's, the channel's or an
+   * operator's. Marks the line for the packer; carries no price or cost.
+   */
+  readonly gift: boolean;
   readonly productVariantId: string;
   /**
    * What a packer reads on the shelf label — the PRODUCT's name.
@@ -129,6 +148,48 @@ export interface BenchParcelLineView {
   readonly heightMm: number | null;
 }
 
+/**
+ * Who ships this box, as the order's delivery method is routed (#3958).
+ *
+ * The label card needs it to say WHICH of four situations a box is in: the
+ * label exists, OpenLinker will buy one, the shop ships it, or nobody chose.
+ * Without it a box with no shipment rendered nothing, and a branch-1 shipment
+ * the marketplace reported (no label of OpenLinker's) read as "the carrier
+ * would not give us a label", blaming a carrier nobody asked.
+ *
+ * Resolved through the SAME `IFulfillmentRoutingService.resolve` the
+ * auto-dispatch handler uses, from the order's source connection and delivery
+ * method, so the bench and the job that buys the label cannot disagree about
+ * the route.
+ *
+ * Deliberately no connection id: a packer has no edit action and cannot read
+ * `GET /connections`, so an id would be a handle to nothing. A connection's
+ * NAME is operator-authored ("InPost", "My shop") and carries no buyer data.
+ */
+export interface BenchParcelRouteView {
+  readonly processorKind: FulfillmentProcessorKind;
+  /**
+   * The routed connection's operator-given name. `null` for the default
+   * route, which names no connection, and when the connection could not be
+   * read.
+   */
+  readonly processorName: string | null;
+  /**
+   * `true` when an operator saved a rule for this delivery method; `false` for
+   * the `omp_fulfilled` fallback. This is what separates "the shop ships it"
+   * (a choice) from "nobody has chosen" (an unfinished setup).
+   */
+  readonly fromRule: boolean;
+  /**
+   * `false` when the rule names a connection that is no longer active. A
+   * route that buys a label through a switched-off carrier buys nothing, and
+   * promising a label on close there would be false.
+   */
+  readonly processorAvailable: boolean;
+  /** The source's own delivery-method label, as `carrierName` carries it. */
+  readonly methodLabel: string | null;
+}
+
 /** One parcel at the bench. */
 export interface BenchParcelView {
   readonly workId: string;
@@ -160,12 +221,27 @@ export interface BenchParcelView {
    * reports none. Not every source reports a carrier name.
    */
   readonly carrierName: string | null;
+  /**
+   * The resolved route for this box (#3958), or `null` when it could not be
+   * resolved (no order record, or the routing read failed). `null` is not
+   * "the shop ships it": the label card then falls back to what the shipment
+   * alone says, rather than stating a route nobody read.
+   */
+  readonly route: BenchParcelRouteView | null;
   /** The order's dispatch deadline, mirroring the same field on `BenchWorkView`. */
   readonly dispatchByAt: string | null;
   /** `null` when the parcel may be packed. See `BenchParcelRefusal`. */
   readonly refusal: BenchParcelRefusal | null;
   /** Why it is held, when it is held. `null` otherwise. */
   readonly holdReason: HoldReason | null;
+  /**
+   * Set only while the box is held because the order source lowered a line
+   * after packing started (#3961). `takeOut` names, per line, how many units are
+   * in the box beyond what the order now asks for - what the packer must take
+   * back out. Empty when the hold is for another reason in that change (an added
+   * unit, a closed box). `null` for every other parcel.
+   */
+  readonly sourceChange: BenchParcelSourceChangeView | null;
   /** When the last verification shut the box (D18), or `null` while it is open. */
   readonly closedAt: string | null;
   /** The last verifier (D13). `null` while the box is open. */
@@ -203,6 +279,46 @@ export interface BenchParcelView {
    * no flagged note exists for this order, which is the ordinary case.
    */
   readonly packerNotes: readonly BenchPackerNoteView[];
+  /**
+   * The buyer's checkout note, verbatim (#3538, D12) - READ ONLY, and a
+   * deliberate new disclosure to the packer role: packers act on "no receipt in
+   * the box" style instructions. `null` for every state with no text to show:
+   * the buyer left none, the source could not say, or the deployment runs with
+   * `OL_STORE_PII=false` and stores no note text. The bench does not tell those
+   * apart - a packer can only act on words they can read.
+   *
+   * It is the ORDER's note, so it shows on every parcel of a split order.
+   */
+  readonly buyerNote: string | null;
+  /**
+   * Whether the order has a buyer note at all, independent of whether its text
+   * is stored (B-12). Not PII: it lets the bench say a note exists when
+   * `OL_STORE_PII=false` leaves `buyerNote` null, and still offer the reading.
+   */
+  readonly hasBuyerNote: boolean;
+  /**
+   * When THIS parcel's buyer note was first acknowledged at the bench, or
+   * `null` (#3538). Per parcel: a split order's second parcel is acknowledged
+   * separately. Never blocks scanning and is not a parcel close (ADR-071).
+   */
+  readonly buyerNoteAcknowledgedAt: string | null;
+  /** Who acknowledged it - a raw user id, like `packedByUserId`. */
+  readonly buyerNoteAcknowledgedByUserId: string | null;
+  /**
+   * The acknowledgements of the order's OTHER parcels (#3538), for the `multi`
+   * state: a packer opening parcel 2 can see parcel 1's note was already read.
+   * Only acknowledged siblings appear; this parcel is never in the list.
+   */
+  readonly otherParcelBuyerNoteAcknowledgements: readonly BenchSiblingBuyerNoteAcknowledgementView[];
+}
+
+/** One sibling parcel's buyer-note acknowledgement (#3538). */
+export interface BenchSiblingBuyerNoteAcknowledgementView {
+  readonly workId: string;
+  /** 1-based, in the same order `parcelIndex` uses. */
+  readonly parcelIndex: number;
+  readonly acknowledgedAt: string;
+  readonly acknowledgedByUserId: string | null;
 }
 
 /** One note flagged "Show to packer" (D12) — text, author, time, nothing else. */
@@ -550,6 +666,53 @@ export const BenchClaimRefusalValues = [
 ] as const;
 export type BenchClaimRefusal = (typeof BenchClaimRefusalValues)[number];
 
+/**
+ * Why acknowledging the buyer note was refused (#3538). `'not-claimable-by-viewer'`
+ * is the same ADR-074 lock every other bench write checks; `'no-buyer-note'`
+ * means there is nothing on this order to acknowledge.
+ */
+export const BenchBuyerNoteAcknowledgementRefusalValues = [
+  'not-claimable-by-viewer',
+  'no-buyer-note',
+  /**
+   * The parcel's work was cancelled (N-41): nobody packs it, so signing off its
+   * note would record a read for a box that will never ship. A CLOSED work is
+   * still allowed - a packer may acknowledge after finishing.
+   */
+  'work-cancelled',
+] as const;
+
+export type BenchBuyerNoteAcknowledgementRefusal =
+  (typeof BenchBuyerNoteAcknowledgementRefusalValues)[number];
+
+/** What acknowledging one parcel's buyer note answers (#3538). */
+export interface BenchBuyerNoteAcknowledgementResultView {
+  /** `already-acknowledged` is an ordinary replay, never an error. */
+  readonly outcome: 'acknowledged' | 'already-acknowledged' | 'refused';
+  readonly reason: BenchBuyerNoteAcknowledgementRefusal | null;
+  readonly parcel: BenchParcelView;
+}
+
+/**
+ * Why "Done, I took it out" (#3961) recorded nothing. `not-held-for-source-change`
+ * covers a box whose shop-change hold was already settled - typically a second
+ * tap, or the office deciding first - so the packer reads the box as it stands.
+ */
+export const BenchSourceChangeTakenOutRefusalValues = [
+  'not-claimable-by-viewer',
+  'not-held-for-source-change',
+  'no-such-line',
+] as const;
+
+export type BenchSourceChangeTakenOutRefusal = (typeof BenchSourceChangeTakenOutRefusalValues)[number];
+
+/** What confirming the extra units are out of the box answers (#3961). */
+export interface BenchSourceChangeTakenOutResultView {
+  readonly outcome: 'taken-out' | 'refused';
+  readonly reason: BenchSourceChangeTakenOutRefusal | null;
+  readonly parcel: BenchParcelView;
+}
+
 /** What claiming ONE chosen parcel answers (#3412). */
 export interface BenchClaimResultView {
   readonly outcome: 'claimed' | 'refused';
@@ -658,4 +821,9 @@ export interface BenchUnlabelledParcelListView {
    * is a box nobody looks for.
    */
   readonly truncated: boolean;
+}
+
+/** See `BenchParcelView.sourceChange` (#3961). */
+export interface BenchParcelSourceChangeView {
+  readonly takeOut: ReadonlyArray<{ readonly workLineId: string; readonly units: number }>;
 }

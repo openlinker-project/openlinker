@@ -117,6 +117,9 @@ export const allegroAdapterManifest: AdapterMetadata = {
     // That is also why both returns scheduler tasks require `OrderSource`, not
     // this name — the two facts are complementary, not contradictory.
     'ReturnSourceReader',
+    // `RefundSourceReader` (#4126): seller-side payment refunds, observed only.
+    // Same advertised-without-dispatch rule as `ReturnSourceReader`.
+    'RefundSourceReader',
     // `ReturnDecliner` (#2333) — the ONE customer-returns WRITE, and a capability
     // of its own rather than a method on the read-only `ReturnSourceReader`
     // above (see that capability's docblock). Same advertised-without-dispatch
@@ -124,6 +127,10 @@ export const allegroAdapterManifest: AdapterMetadata = {
     // dispatched `OrderSource` adapter with `isReturnDecliner`.
     'ReturnDecliner',
   ],
+  // The event journal has no date lookup, so a start date is not offered (#4228).
+  orderSyncStartModes: ['now', 'all'],
+  // Window reads use the checkout-forms list, not the journal (#4228).
+  orderWindowImport: true,
   displayName: 'Allegro Public API v1',
   version: '1.0.0',
   isDefault: true,

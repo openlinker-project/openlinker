@@ -1,0 +1,477 @@
+##### Nowy moduł zwrotów zamówień | https://sellasist.pl/pomoc/nowy-modul-zwrotow-zamowien/ | modified 2024-08-06
+Moduł zwrotów zamówień został stworzony, aby ułatwić zarządzanie procesem zwrotów w Twoim systemie sprzedaży. Dzięki niemu możesz w prosty sposób rejestrować, śledzić i zarządzać zwrotami, a także komunikować się z klientami i automatyzować niektóre czynności związane z obsługą zwrotów. Poniżej znajdziesz szczegółowy opis wszystkich funkcji i opcji dostępnych w nowym module zwrotów zamówień.
+Korzyści z nowego modułu zwrotów
+- Łatwiejsza obsługa zwrotów: Umożliwia obsługę zwrotów nie tylko z Allegro, ale z różnych źródeł. Klienci mogą uzupełnić formularz zwrotu online, co przyspiesza proces.
+- Obsługa skanera: Skanowanie kodów listów przewozowych lub produktów w WMS automatycznie identyfikuje zwrot, co usprawnia procesy logistyczne.
+- Automatyzacja procesów: Umożliwia automatyczne tworzenie korekt, co eliminuje potrzebę ręcznego przetwarzania.
+- Nagrywanie filmów: Funkcja nagrywania filmów podczas pakowania i przyjmowania zwrotów zapewnia rzetelny dowód stanu produktów.
+- Prosta obsługa: Intuicyjny interfejs ułatwia zarządzanie zwrotami.
+- Czytelność: Kolorowe oznaczenia statusów i informacji zwiększają przejrzystość i ułatwiają nawigację.
+- Zaawansowana wyszukiwarka dla Sellasist WMS:Umożliwia wyszukiwanie zamówień poprzez wyszukiwarkę, ułatwiając odnalezienie konkretnych zwrotów lub reklamacji. Możliwość wyszukiwania zwrotów po różnych parametrach, takich jak numer dokumentu, imię i nazwisko, e-mail, telefon, EAN produktu oraz numer RMA.
+- Zarządzanie statusami zwrotów: Możliwość ustawienia statusu dla przyjmowanego produktu, co ułatwia śledzenie jego statusu w procesie zwrotu lub reklamacji.
+ #### 
+ Zwroty zamówień w Sellasist 
+ W Sellasist, zwroty zamówień są zarządzane poprzez dedykowaną sekcję. Aby uzyskać dostęp do tej funkcji musisz ją aktywować. 
+1. Przejdź do Administracja -> Funkcje eksperymentalne.
+2. Znajdź funkcję „Moduł zwrotów zamówień” i kliknij znajdujący się przy niej przycisk Włącz.
+3. Następnie przejdź do Zamówienia-> Zwroty zamówień. 
+Znajdziesz tu 4 sekcjie: „Zwroty zamówień”, „Statusy”, „Rodzaje zwrotów”, oraz „Źródła”.
+ #### 
+ Sekcja 1: Zwroty Zamówień 
+ Widok Listy zwrotów
+Po wybraniu Zamówienia -> Zwroty zamówień, zobaczysz widok listy zwrotów. Ten widok zawiera różne elementy, które pozwalają na efektywne zarządzanie zwrotami.
+Główne elementy widoku:
+1. Górny Pasek:
+- Zawiera filtry umożliwiające wyszukiwanie konkretnych zwrotów.
+- Dostępne filtry:
+            ▪ Szukaj: Wprowadź słowa kluczowe, aby znaleźć zwrot.
+            ▪ Dodana od – do: Wybierz zakres dat, w których zwroty zostały dodane.
+            ▪ Status: Wybierz status zwrotu z listy.
+            ▪ Źródło: Wybierz źródło zwrotu z listy.
+2. Tabela zwrotów:
+- Zwroty są wyświetlane w formie tabeli
+- Kolumny tabeli obejmują:
+            ▪ Data: Data zgłoszenia zwrotu.
+            ▪ Numer zwrotu: Unikalny numer identyfikacyjny zwrotu.
+            ▪ Numer zamówienia: Numer zamówienia, do którego odnosi się zwrot.
+            ▪ Imię i nazwisko: Imię i nazwisko klienta.
+            ▪ Wysyłka: Informacje o wysyłce zwrotu.
+            ▪ Status: Aktualny status zwrotu.
+            ▪ Źródło: Źródło zwrotu (np. Allegro, sklep internetowy). Źródło powinno być pobrane automatycznie z zamówienia.
+            ▪ Termin: Termin realizacji zwrotu.
+            ▪ Przyjęto: Data przyjęcia zwrotu.
+            ▪ Zamknięto: Data zamknięcia zwrotu.
+            ▪ Opis: Dodatkowe informacje o zwrocie.
+            ▪ Akcje: Dostępne akcje dla danego zwrotu.
+3. ??
+4. Akcje masowe:
+- Możesz zaznaczyć odpowiednie numery zwrotów i wybrać akcję z menu akcji masowych.
+- Dostępne przykładowe akcje:
+            ▪ Np. Zmień status na: przyjmij zwrot
+            ▪ Np. Zmień status na: odeślij zwrot
+            ▪ Zmień źródło zwrotu.
+            ▪ Zmień dostawcę.
+            ▪ Pobierz zestawienie zwrotów.
+- Po wybraniu akcji, kliknij Wykonaj, aby zastosować wybraną akcję do zaznaczonych zwrotów.
+ #### 
+ Jak dodać nowy zwrot? 
+ Aby dodać nowy zwrot:
+1. Kliknij Dodaj zwrot (Zamówienia -> Zwroty zamówień -> Dodaj zwrot).
+2. Pojawi się okno popup Ustawienia zwrotu.
+3. Wpisz numer zamówienia w odpowiednie pole.
+4. Kliknij przycisk Dodaj zwrot.
+5. Jeśli numer zamówienia jest niepoprawny, wyświetli się komunikat Proszę podać poprawny numer zamówienia.
+Po dodaniu zwrotu przechodzisz do edycji zamówienia, gdzie można dokładnie określić, które produkty są zwracane i w jakim stanie.
+ #### 
+ Edycja zwrotu zamówienia 
+ 1. Informacja o zwrocie prowizji:
+- Na górze nad listą produktów znajdujących się w zamówieniu wyświetla się informacja dotycząca zwrotu prowizji: „„Wniosek o zwrot prowizji zostanie dołączony do zwrotu płatności wyłącznie, jeżeli płatność za produkt jest zwracana w trybie ilościowym (cena nie była edytowana). Wniosek o zwrot prowizji można również złożyć w zwrotach prowizji. Po zaznaczeniu Dodaj wniosek o zwrot prowizji przy zwracanych produktach, we wniosku zostanie podana ilość zatwierdzonych produktów w zwrocie. Allegro może automatycznie złożyć wniosek o zwrot prowizji, jeżeli zostaną spełnione odpowiednie warunki”.”
+Pamiętaj! Zwrot prowizji będzie dołączony do zwrotu płatności, jeśli płatność za produkt jest zwracana ilościowo (cena nie była edytowana.
+Można również złożyć wniosek o zwrot prowizji w sekcji Zwrot Prowizji.
+2. Wybór produktów do zwrotu:
+- W sekcji produktów znajdują się przyciski akcji, które pozwalają na:
+            ▪ Zaznaczenie Przyjmij wszystko lub Odrzuć wszystko z danego zamówienia.
+            ▪ Dla każdego produktu dostępne są opcje:
+                • Dodaj do zwrotu: Dodaje produkt do zwrotu.
+- Gdy już dodasz wybrane produkty do zwrotu, przy każdym produkcie masz możliwość wyboru ……….
+                • Przyjmij wszystko: Przyjmuje wszystkie sztuki produktu.
+                • Odrzuć wszystko: Odrzuca wszystkie sztuki produktu.
+                • Przyjmij lub odrzuć częściowo: Umożliwia przyjęcie lub odrzucenie części zamówionych sztuk produktu.
+3. Status zwrotu:
+- Po wybraniu odpowiedniej opcji pojawi się okno popup z możliwością wyboru statusu (np. Uznanie żądania reklamacyjnego).
+- W zależności od wybranego statusu, nad nazwą produktu pojawi się kolorowy pasek informacyjny:
+            ▪ Czerwony pasek: Zgłoszenie odrzucone z powodu błędnych lub niewystarczających danych.
+            ▪ Zielony pasek: Uznanie żądania reklamacyjnego.
+            ▪ ciemnozielony pasek: Częściowo przyjęte.
+4. Sekcja Podsumowanie zwrotu
+W tej sekcji znajdziesz szczegółowe informacje dotyczące konkretnego zwrotu. Poniżej znajduje się opis poszczególnych elementów tej sekcji:
+1. Źródło zwrotu:
+- Informuje o źródle, z którego pochodzi zwrot, na przykład Allegro, sklep internetowy itp.
+- Pomaga zidentyfikować, skąd pochodzi zwrot i w razie potrzeby skontaktować się z odpowiednim partnerem.
+- Źródło jest w systemie pobrane automatycznie z zamówienia.
+2. Data przyjęcia zwrotu:
+- Data, w której zwrot został formalnie przyjęty do systemu.
+- Ważne dla śledzenia czasu realizacji i zarządzania terminami.
+ #### 
+ 3 Termin realizacji zwrotu: 
+- Termin, do którego zwrot powinien zostać zrealizowany.
+- Umożliwia śledzenie, czy proces zwrotu odbywa się w ustalonym czasie.
+4. Numer Listu/Kuriera:
+Jest możliwość przypisania numeru listu przewozowego do zwrotu lub reklamacji poprzez skanowanie lub ręczne wprowadzenie.
+- Numer listu przewozowego lub kuriera, który obsługuje zwrot.
+- Ułatwia śledzenie przesyłki i jej lokalizacji.
+5.  Korekta Faktury/Paragonu:
+- Opcja +wystaw korektę pozwala na wystawienie korekty do faktury lub paragonu.
+- Jeśli dany zwrot nie ma wystawionej faktury/paragonu, pojawi się komunikat na czerwonym tle: Wybrana pozycja zwrotu nie ma wystawionej faktury ani paragonu. Nie można wystawić korekty.
+6. Koszt wysyłki:
+- Opcjonalne uwzględnienie kosztu wysyłki w procesie zwrotu.
+- Po zaznaczeniu checkboxa, koszt wysyłki zostanie uwzględniony w ostatecznej kwocie zwrotu.
+ #### 
+ 7 Kwota zwrotu: 
+- Kwota zwrotu jest przeliczana automatycznie na podstawie ilości zaakceptowanych zwrotów.
+- Ułatwia dokładne obliczenie wartości zwracanych produktów.
+8. Przycisk zwróć kwotę:
+- Kliknięcie tego przycisku umożliwia zwrot środków do klienta.
+- Pojawia się okno popup Zwrot środków za zamówienie, gdzie można zobaczyć szczegóły dotyczące produktów do zwrotu.
+- Po zatwierdzeniu zwrotu pojawi się komunikat o przetwarzaniu płatności. W panelu pojawi się komunikat: Przynajmniej jedna płatność jest w trakcie przetwarzania. Informacje o zwróconych produktach oraz dostępnych kwotach do zwrotu zostaną zaktualizowane dopiero po zakończeniu przetwarzania płatności.
+- Status płatności
+Obsługa statusów płatności zwrotu : Informacje o tym, czy środki zostały zwrócone lub nie.
+Obsługa statusów zwrotów – jak jest zaakceptowany to ok zostaje, a co jak nie jest i jak wyglądają kolejne kroki odsyłania zwrotu
+Integracja z Systemami Płatności: Zwroty środków są realizowane za pośrednictwem zintegrowanych systemów płatności (np. Tpay).
+ #### 
+ Sekcja KORESPONDENCJA: 
+- Zawiera dodatkowe sekcje umożliwiające przeglądanie całej korespondencji dotyczącej danego zamówienia, którego dotyczy zwrot:
+            Wszystko: Cała korespondencja związana ze zwrotem.
+            Dyskusje Allegro: Specyficzne dyskusje prowadzone na platformie Allegro.
+            Korespondencja: Ogólna korespondencja dotycząca zwrotu.
+            E-mail: Wymiana e-maili związana ze zwrotem.
+            SMS: Wymiana wiadomości SMS związana ze zwrotem.
+ #### 
+ Wideo WMS 
+ Nagrywanie filmików:
+- Sekcja Wideo WMS oferuje możliwość nagrywania filmików dokumentujących proces zwrotu zamówienia. Jest to szczególnie przydatne w celu udokumentowania stanu zwracanego produktu w momencie jego odbioru.
+- Jeśli istnieje potrzeba obejrzenia filmu z pakowania, to również jest taka możliwość, o ile takie nagranie zostało zarejestrowane w systemie Sellasist. Osoba, która przyjmuje zwrot, może przeglądać te nagrania, aby zweryfikować stan produktu podczas jego pakowania.
+ #### 
+ Proces nagrywania: 
+     • Nagrywanie filmików odbywa się w systemie Sellasist WMS w trybie zwrotów i reklamacji. System poprosi o zgodę na używanie kamery, którą należy potwierdzić.
+    • Po przejściu do Zamówienia -> Zwroty w edycji konkretnego zwrotu, w sekcji Wideo WMS, filmik ze zwrotu będzie już dostępny do przeglądania.
+Kolumny w Sekcji Wideo WMS:
+    • Data i godzina nagrania: Informacje o czasie, kiedy nagranie zostało zarejestrowane.
+    • Autor: Osoba (administrator), która dokonała nagrania.
+    • Wygasa: Data, do której film będzie dostępny w systemie. Po tej dacie film zostanie usunięty z systemu.
+        ◦ Jest dostępny przycisk Przedłuż o 30 dni, który pozwala na przedłużenie terminu ważności nagrania o dodatkowe 30 dni (domyślnie ustawiony na 30 dni).
+    • Typ nagrania: Określa, czy nagranie dotyczy zwrotu czy pakowania.
+    • Otwórz: Ikonka kamery umożliwiająca obejrzenie nagrania.
+    • Link: Odnośnik do nagrania, z możliwością skopiowania linka przyciskiem Kopiuj
+Dane do Przelewu i Dane do odesłania
+    1. Sekcja z danymi do przelewu oraz danymi do odesłania niezaakceptowanego zwrotu:
+        ◦ Zawiera szczegółowe informacje potrzebne do przetworzenia przelewu oraz dane do odesłania niezaakceptowanego zwrotu.
+        ◦ Możliwość eksportu tych danych do pliku CSV, który jest dostosowany do wymagań konkretnych banków.
+        ◦ Umożliwia łatwe przygotowanie plików do importu do systemu bankowego.
+ #### 
+ Logi Czynności 
+     1. Logi:
+        ◦ Wszystkie logi czynności związane ze zwrotem są zapisywane na dole strony edycji zwrotu.
+        ◦ Logi zawierają szczegółowe informacje o każdej czynności wykonanej w ramach zwrotu, co pozwala na pełną kontrolę i audyt procesów zwrotu.
+ #### 
+ Sekcja 2: Statusy 
+ W tej zakładce znajdziesz tabelę, która pozwala na zarządzanie różnymi statusami zwrotów. Statusy pomagają śledzić i organizować proces zwrotu od momentu jego zgłoszenia aż do zakończenia. Możesz tutaj dostosować statusy do specyficznych potrzeb Twojej firmy.
+Główne elementy tabeli statusów:
+ 
+
+##### Jak dodać zwrot zamówienia? | https://sellasist.pl/pomoc/jak-dodac-zwrot-zamowienia/ | modified 2026-03-03
+Klient dokonujący zakupu przez Internet ma prawo do zwrotu zamówionych produktów. Zwroty zamówień możesz obsłużyć bezpośrednio w panelu Sellasist, dzięki czemu w prosty sposób wystawisz dokumenty zwrotu, zaktualizujesz stany magazynowe o zwrócone produkty i przeprowadzisz inne potrzebne procedury.
+Uwaga: Moduł zwrotów służy wyłącznie do zarządzania zwrotami. Reklamacje obsłużysz w module reklamacji.
+ #### 
+ Tworzenie nowego zwrotu 
+ 1. Przejdź do Zamówienia → Zwroty zamówień i kliknij przycisk z ikoną plusa.
+[IMG:]
+2. Wpisz numer zamówienia, dla którego chcesz utworzyć nowy zwrot i kliknij przycisk Dodaj zwrot.
+[IMG:]
+3. Na ekranie zobaczysz kartę nowego zwrotu uzupełnioną o wszystkie informacje pobrane z zamówienia głównego.
+Z tego miejsca możesz przyjąć lub odrzucić poszczególne produkty ze zwrotu, wystawić korektę dokumentu sprzedaży, zwrócić środki czy też — w razie potrzeby — skontaktować się bezpośrednio z kupującym.
+[IMG:]
+4. Aby przyjąć dany produkt do zwrotu, kliknij znajdujący się przy nim przycisk Dodaj do zwrotu.
+[IMG:]
+Wskazówka: Jeśli kupujący zwraca wiele produktów na raz, możesz także przyjąć lub odrzucić wszystkie produkty jednocześnie.
+[IMG:]
+5. Po kliknięciu przycisku Dodaj do zwrotu, przy danej pozycji zobaczysz przycisk z listą opcji.
+Tutaj możesz:
+- przyjąć wszystkie produkty z konkretnej pozycji;
+- odrzucić wszystkie produkty z konkretnej pozycji;
+- przyjąć lub odrzucić częściowo (jeśli np. z jakiegoś powodu nie możesz przyjąć zwrotu któregoś z produktów):
+[IMG:]
+- zmienić ilość produktów (jeśli np. kupujący odesłał inną liczbę produktów niż zadeklarowano w zwrocie);
+- edytować pozycję zwrotu;
+- wydrukować kody kreskowe danych produktów.
+[IMG:]
+6. Po wybraniu opcji przyjęcia albo odrzucenia produktu/produktów, zostaniesz poproszony o uzasadnienie swojej decyzji.
+[IMG:]
+[IMG:]
+7. Po zatwierdzeniu wyboru, przy danej pozycji zobaczysz status zwrotu. W zależności od wyboru, możesz w dowolny sposób procesować dalsze etapy zwrotu — np. automatycznie wystawić korektę, zwrócić środki czy wysłać e-mail do kupującego z informacją o przyjęciu zwrotu albo uzasadnieniem jego odrzucenia.
+[IMG:]
+ #### 
+ Przywrócenie produktów na stan magazynowy 
+ Jeśli w ustawieniach podstawowych (Administracja → Ustawienia podstawowe → Gospodarka magazynowa) nie wybrałeś opcji zarządzania stanami tylko za pomocą dokumentów, wszystkie zaakceptowane przez Ciebie produkty zostaną automatycznie przywrócone na stan magazynowy.
+Jeśli w ustawieniach podstawowych wybrałeś opcję zarządzania stanami tylko za pomocą dokumentów, zaakceptowane przez Ciebie produkty przywrócisz na stan magazynowy poprzez PZ zbiorcze. Więcej na temat dokumentów magazynowych znajdziesz w tym artykule [link].
+[IMG:]
+ #### 
+ Wystawianie korekty z okna zwrotu 
+ Aby wystawić korektę bezpośrednio z okna zwrotu, kliknij przycisk z ikoną plusa znajdujący się w sekcji Podsumowanie. Automatycznie wystawiona korekta natychmiast pojawi się tuż obok.
+[IMG:]
+ #### 
+ Powiązane artykuły 
+ Jak skonfigurować kartę zwrotów zamówień?
+ZMIEŃ STATUS ZWROTU — efekt automatyzacji dla zamówień
+Jak dokonać zwrotu płatności i produktów w zamówieniach z Allegro?
+Czym jest i jak działa Moduł Reklamacji RMA w Sellasist?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Automatyczne wystawianie Korekt paragonów w Sellasist | https://sellasist.pl/pomoc/automatyczne-wystawianie-korekt-paragonow-w-sellasist/ | modified 2025-11-27
+#### 
+ Przeglądanie i Eksport Korekt paragonów 
+ 1. Kliknij Dokumenty [Nowe] -> Dokumenty korygujące.
+Tutaj możesz przeszukiwać, przeglądać i eksportować korekty paragonów, a także przejść do ich ustawień.
+[IMG:]
+- Aby wyeksportować korekty z określonego okresu, wybierz odpowiedni zakres dat, zaznacz odpowiednie paragony i kliknij Eksportuj. 
+- Wykorzystaj opcję zaznaczania wielu korekt, by masowo wysyłać paragony, eksportować dane do Excela lub generować pliki PDF.
+- Aby przeszukać korekty z konkretnego miesiąca, wybierz odpowiedni miesiąc. Dla bardziej szczegółowego wyszukiwania, użyj Pokaż filtry.
+ #### 
+ Automatyczne wysyłanie korekt paragonów 
+ Sellasist może automatycznie sam wysyłać korekty paragonów do klientów. Automatyczne wysyłanie ustawisz, dodając odpowiednią akcję w automatyzacji. W ten sposób korekta będzie wysyłana od razu po tym jak zostaną spełnione warunki. Sam ustawiasz, jakie to mają być warunki. Możesz na przykład ustawić akcję, która spowoduje automatyczne wysyłanie korekty od razu po jej wystawieniu.
+1. Kliknij Administracja -> Automatyzacja -> Akcje dla zamówień.
+lub przejdź do Zamówienia -> Akcje automatyczne
+Tutaj masz możliwość skonfigurowania automatycznego wystawiania korekt faktur. Aby dodać nową akcję, kliknij Dodaj akcję automatyczną.
+[IMG:]
+2. Najpierw w lewej kolumnie dodaj warunki, które muszą być spełnione, aby korekta paragonu została wysłana. Możesz dodać wiele warunków. korekta będzie wysłana, dopiero kiedy zostaną spełnione wszystkie warunki. Na przykład, kiedy dokument ma być wysłany po wystawieniu.
+Kliknij DODAJ WARUNEK.
+3. Z rozwijanej listy wybierz Status dokumentu sprzedaży, a następnie kliknij OK. 
+[IMG:]
+4. Wybierz typ dokumentu Korekta paragonu i status dokumentu Został wystawiony.
+[IMG:]
+5. Po ustawieniu warunków, pora na dodanie efektu. Kliknij DODAJ EFEKT, aby wybrać co się stanie, kiedy warunki zostaną spełnione. Wybierz Wyślij powiadomienie z rozwijanej listy, a następnie kliknij OK.
+[IMG:]
+6. Po dodaniu efektu wybierz z listy powiadomienie typu Korekta paragonu. 
+[IMG:]
+Jeśli nie masz takiego powiadomienia dodaj je w Administracja -> Powiadomienia. Pamiętaj, aby wybrać typ.
+[IMG:]
+7. Na koniec kliknij Zapisz.
+Czytaj też:
+Jak utworzyć korektę paragonu?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Podział zamówienia ze względu na stan magazynowy | https://sellasist.pl/pomoc/podzial-zamowienia-ze-wzgledu-na-stan-magazynowy/ | modified 2025-05-23
+Jeśli w zamówieniu znajdują się produkty, które nie są dostępne na magazynie, nasza akcja automatyczna – Skopiuj zamówienie – podzieli je na dwa oddzielne zamówienia. Produkty, które mają stan magazynowy mniejszy lub równy zeru, zostaną przeniesione do osobnego zamówienia, a Ty będziesz mieć pełną kontrolę nad tym, które produkty są realizowane natychmiast, a które są oczekujące. Dodatkowo, łatwo sprawdzisz wartość każdego zamówienia i stan magazynowy poszczególnych produktów.
+ #### 
+ Jak skonfigurować akcję automatyczną? 
+ 1. Przejdź do zakładki Zamówienia -> Akcje automatyczne.
+2. W zakładce Akcje dla zamówień kliknij Dodaj akcję automatyczną i skonfiguruj ustawienia.
+[IMG:]
+3. Po spełnieniu określonego warunku w efekcie Skopiuj zamówienie wybierz parametr Podziel zamówienie według stanu magazynowego.
+[IMG:]
+Operator – ustal kiedy mają być dzielone zamówienia na podstawie ich stanu magazynowego, dostępne opcje to: „Większe niż”, „Większe lub równe”, „Mniejsze niż”, „Mniejsze lub równe”, „Równe”, „Różne od”.
+Wartość stanu magazynowego – wpisz wartość stanu magazynowego, po której ma zostać podzielone zamówienie.
+Wybierz typ kopiowania statusu – możesz zostawić aktualną opcję kopiowania statusu lub ręcznie wybrać odpowiedni status, zamówienia, które ma zostać skopiowane, po spełnieniu warunku.
+5. Zapisz akcję automatyczną.
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Obsługa braków magazynowych podczas zbierania w Sellasist WMS | https://sellasist.pl/pomoc/obsluga-brakow-magazynowych-podczas-zbierania-w-sellasist-wms/ | modified 2026-10-27
+Obsługa braków magazynowych w Sellasist WMS pozwala oznaczać brakujące produkty podczas zbierania i przekazywać informacje o brakach do dalszej obsługi zamówienia. Informacje o zgłoszonych brakach są widoczne w panelu Sellasist i ułatwiają dalszą obsługę zamówienia.
+### Zanim przejdziesz dalej
+Instrukcja opisuje dotychczasową i nową wersję modułu obsługi braków magazynowych. Nowa, rozbudowana wersja jest udostępniana stopniowo, dlatego część kont nadal korzysta z wersji dotychczasowej.
+Wersję rozpoznasz po sposobie zgłaszania braku produktu: w dotychczasowej wersji służy do tego przycisk z ikoną wózka sklepowego, a w nowej wersji — menu otwierane przyciskiem z ikoną trzech kropek.
+Poniżej znajduje się opis dotychczasowej wersji, a następnie nowej wersji. Korzystaj z części, której opis i zrzuty ekranu odpowiadają wyglądowi funkcji na Twoim koncie.
+ #### 
+ Obsługa braków magazynowych — nowa wersja 
+ Nawet w dobrze zorganizowanym magazynie może się zdarzyć, że pracownik nie znajdzie produktu we wskazanej lokalizacji albo znajdzie mniej sztuk, niż powinien zebrać. Przyczyną może być między innymi pomyłka w stanie magazynowym, odłożenie produktu w niewłaściwe miejsce lub jego uszkodzenie. Standardowo taki brak wymusza przerwanie zbierania, zgłoszenie problemu i oczekiwanie na decyzję dotyczącą zamówienia.
+Sellasist WMS porządkuje cały proces: magazynier zgłasza brak i kontynuuje pracę, a zamówienie trafia do osobnej kolejki, w której może zostać obsłużone np. przez Biuro Obsługi Klienta.
+W zależności od decyzji klienta, system kieruje zamówienie do dalszego zbierania, pakowania albo zwrotnego rozlokowania wcześniej zebranych produktów. Dzięki temu każda osoba wie, jakie działanie powinna wykonać, a obsługa braku nie blokuje pozostałych procesów magazynowych.
+Przykład: Pracownik zbiera kilka zamówień wózkiem z koszykami. W jednym z nich powinny znaleźć się dwie sztuki konkretnej koszulki, ale w lokalizacji jest tylko jedna. Zgłasza brak jednej sztuki, przypisuje go do właściwego koszyka i kontynuuje zbieranie pozostałych produktów. Zamówienie zostaje odłożone na półkę z brakami, a BOK kontaktuje się z klientem i ustala, czy wysłać jedną sztukę, zamienić produkt, czy anulować zamówienie.
+Uwaga: Obsługa braków jest dostępna zarówno w pełnym WMS, jak i w trybach zbierania oraz pakowania. Sposób zwracania produktów do lokalizacji zależy od używanego trybu.
+ #### 
+ Jak działa obsługa braków? 
+ Proces obejmuje trzy główne etapy:
+1. Magazynie zgłasza brak podczas zbierania.
+2. Zależnie od konfiguracji, zamówienie trafia do zakładki Braki w zamówieniach (na kartę Zamówienia z brakami) dopiero po zakończeniu zbierania albo od razu po zaznaczeniu pierwszego braku i oczekuje tam na decyzję dotyczącą dalszej realizacji.
+3. System kieruje zamówienie do pakowania, ponownego zbierania albo rozlokowania produktów — zależnie od zmian wprowadzonych w zamówieniu.
+Informacja o braku jest widoczna zarówno na liście zamówień, jak i w szczegółach konkretnego zamówienia. Dzięki temu magazyn i BOK pracują na tych samych danych.
+[IMG:]
+[IMG:]
+ #### 
+ Moment zmiany statusu zamówienia z brakami 
+ Możesz określić, kiedy zamówienie ze zgłoszonym brakiem ma otrzymać status Braki i trafić do zakładki Braki w zamówieniach, gdzie BOK będzie mógł podjąć decyzję dotyczącą dalszej realizacji.
+W tym celu przejdź do Magazyn → Ustawienia WMS i znajdź ustawienie Moment zmiany statusu zamówienia z brakami.
+[IMG:]
+- Po zakończeniu zbierania: Zgłoszenie braku nie przerywa kompletacji zamówienia. Magazynier kontynuuje zbieranie pozostałych produktów, a zamówienie trafia do statusu Braki dopiero po zakończeniu zbierania i oznaczeniu brakujących pozycji.
+- Po pierwszym oznaczeniu braku: Zamówienie trafia do statusu Braki natychmiast po zgłoszeniu pierwszego braku. Kompletacja zostaje przerwana, a magazynier przechodzi do kolejnego zamówienia.
+Uwaga: Ustawienie ma charakter globalny i obowiązuje dla wszystkich zamówień.
+Przykład
+Zamówienie zawiera 3 produkty: A, B, C. Podczas kompletacji okazuje się, że produkt B jest niedostępny.
+- Opcja Po zakończeniu zbierania: Magazynier zbiera produkt A, następnie oznacza brak produktu B i kontynuuje kompletację, zbierając produkt C. Dopiero po zakończeniu zbierania zamówienie zmienia status i trafia do zakładki Braki w zamówieniach. Ostatecznie zebrane zostają produkty A i C.
+- Opcja Po pierwszym oznaczeniu braku: Magazynier zbiera produkt A, a następnie oznacza brak produktu B. W tym momencie zamówienie zmienia status i trafia do zakładki Braki w zamówieniach, a kompletacja zostaje przerwana. Produkt C nie jest już zbierany, dlatego jedynym skompletowanym produktem pozostaje A.
+ #### 
+ Zgłaszanie braku podczas zbierania 
+ Jeśli podczas zbierania nie znajdziesz produktu lub znajdziesz tylko część wymaganej ilości:
+1. Oznacz produkt jako brak.
+[IMG:]
+[IMG:]
+2. Podaj liczbę brakujących sztuk.
+Przykładowo, jeśli zamówienie obejmuje 2 sztuki produktu, a w lokalizacji znajduje się tylko jedna, zgłoś brak jednej sztuki.
+[IMG:]
+Jeśli korzystasz z wózka z koszykami, przypisz brak do koszyka odpowiadającego danemu zamówieniu.
+[IMG:]
+3. Postępuj zgodnie z konfiguracją obsługi braków:
+- Opcja Po zakończeniu zbierania: Kontynuuj zbieranie pozostałych produktów zamówienia.
+- Opcja Po pierwszym oznaczeniu braków: Zbieranie tego zamówienia kończy się po zgłoszeniu pierwszego braku. Przejdź do kolejnego zamówienia.
+[IMG:]
+ #### 
+ Zakończenie zbierania wózkiem 
+ Po obsłużeniu wszystkich produktów, system wyświetli informację, że w zebranych zamówieniach wystąpiły braki. Zobaczysz, których zamówień dotyczy problem i zdecydujesz, czy chcesz kontynuować pracę, czy zamknąć wózek.
+[IMG:]
+Moment przeniesienia zamówienia do zakładki Braki w zamówieniach zależy od wybranej konfiguracji. Zamówienie trafia tam po zakończeniu zbierania albo od razu po oznaczeniu pierwszego braku.
+[IMG:]
+ #### 
+ Etykieta zamówienia z brakami 
+ Po zakończeniu zbierania zamówienia z brakami, możesz wydrukować etykietę zawierającą między innymi:
+- numer zamówienia;
+- listę zebranych produktów;
+- listę brakujących produktów;
+- kod kreskowy zamówienia.
+[IMG:]
+Etykietę możesz dołączyć do koszyka i odłożyć go na wyznaczoną półkę z brakami. Po podjęciu decyzji przez BOK, pracownik skanuje kod zamówienia i od razu przechodzi do właściwego procesu — na przykład pakowania lub dalszego zbierania.
+Przykład: Magazyn posiada osobny regał na zamówienia oczekujące na decyzję klienta. Po zamknięciu wózka drukuje się etykieta. Pracownik umieszcza ją w koszyku, odkłada zamówienie na regał i rozpoczyna kolejne zbieranie.
+ #### 
+ Braki w strefie sortującej 
+ Jeśli zebrane produkty mają trafić do strefy sortującej, po zakończeniu zbierania system kieruje pracownika do ich rozłożenia. Nie wyświetla wtedy osobnego podsumowania zamówień z brakami ani brakujących pozycji.
+Informacje o brakach zobaczysz:
+1. W podglądzie strefy sortującej.
+[IMG:]
+2. W szczegółach zamówienia.
+[IMG:]
+3. W zakładce Braki w zamówieniach.
+[IMG:]
+Zebrane produkty pozostają w odpowiednich lokalizacjach strefy do czasu podjęcia decyzji dotyczącej zamówienia.
+[IMG:]
+ #### 
+ Zakładka Braki w zamówieniach (karta Zamówienia z brakami) 
+ Zakładka Braki w zamówieniach zawiera wszystkie zamówienia, w których podczas zbierania zgłoszono brak.
+[IMG:]
+Możesz w niej między innymi:
+- filtrować zamówienia według statusu;
+- sprawdzać szczegóły braku;
+- przejść do ponownego zbierania;
+- rozpocząć pakowanie zamówienia, jeśli problem braku został już rozwiązany;
+- przekazać niepotrzebne produkty do rozlokowania;
+- sprawdzić aktywny dokument rozlokowania.
+ #### 
+ Typy statusu dla zamówień z brakami 
+ Typ statusu braku informuje, jaką czynność należy wykonać po decyzji BOK.
+[IMG:]
+- Oczekujące: Brak został zgłoszony, ale nie podjęto jeszcze decyzji dotyczącej zamówienia.
+- Do zebrania: Do zamówienia dodano nowy produkt albo nadal trzeba zebrać część zamówienia.
+- Do rozlokowania: Zebrane produkty nie są już potrzebne i należy odnieść je do lokalizacji magazynowych.
+- Do częściowego rozlokowania: Tylko część zebranych produktów trzeba odnieść. Pozostała część nadal należy do realizowanego zamówienia.
+System aktualizuje sposób dalszej obsługi na podstawie zmian wprowadzonych w zamówieniu.
+ #### 
+ Możliwe sposoby rozwiązania braku 
+ Po zgłoszeniu braku, BOK może skontaktować się z klientem  i ustalić sposób dalszej realizacji. Najczęściej występuje jeden z poniższych wariantów.
+ #### 
+ Anulowanie całego zamówienia 
+ Jeśli klient anuluje całe zamówienie, wszystkie zebrane wcześniej produkty należy zwrócić na magazyn.
+Po anulowaniu zamówienia, system informuje pracownika, które produkty trzeba rozlokować. Sposób ich rozlokowania zależy od używanego trybu WMS i został opisany w sekcji Rozlokowanie produktów z zamówień z brakami.
+Przykład: W zamówieniu zebrano kawę, filtry i kubek termiczny, ale zabrakło młynka. Klient rezygnuje z całego zakupu. Po anulowaniu zamówienia, wszystkie trzy zebrane produkty zostają skierowane do odniesienia na magazyn.
+ #### 
+ Wysłanie zamówienia bez brakującego produktu 
+ Jeżeli klient chce otrzymać pozostałe towary, BOK usuwa brakujący produkt z zamówienia albo zmniejsza jego liczbę. Gdy wszystkie pozostałe pozycje są już zebrane, zamówienie kwalifikuje się do pakowania.
+[IMG:]
+Przejdź do pakowania z karty zamówienia z brakami albo zeskanuj kod kreskowy z etykiety odłożonego koszyka. Sellasist otworzy zamówienie w trybie pakowania, w którym można zweryfikować zawartość i zakończyć realizację.
+[IMG:]
+Przykład 1 — Usunięcie brakującego produktu: Klient zamówił żel pod prysznic i krem do twarzy. Krem został zebrany, ale żelu zabrakło. Klient zgadza się na wysłanie zamówienia bez żelu. Po usunięciu brakującego produktu, zamówienie otrzymuje status Do spakowania, ponieważ wszystkie produkty, które w nim pozostały, zostały już zebrane. Pracownik skanuje kod kreskowy z etykiety koszyka i przechodzi bezpośrednio do pakowania. Proces kończy się spakowaniem kremu, a ponowne zbieranie ani rozlokowanie produktów nie jest potrzebne.
+Przykład 2 — Zmniejszenie liczby zamówionych sztuk: Klient zamówił dwa opakowania karmy i zabawkę dla psa. Pracownik zebrał jedno opakowanie karmy oraz zabawkę, natomiast drugiego opakowania zabrakło. Klient zgadza się na wysłanie mniejszej liczby. Po zmniejszeniu liczby opakowań karmy z dwóch do jednego, zamówienie otrzymuje status Do spakowania. Wszystkie produkty wymagane po zmianie zostały już zebrane, dlatego pracownik może od razu przejść do pakowania. Proces kończy się spakowaniem jednego opakowania karmy i zabawki, a ponowne zbieranie nie jest potrzebne.
+Przykład 3 — Rozlokowanie niepotrzebnego produktu: Klient zamówił tablicę suchościeralną i dwa markery. Pracownik zebrał tablicę oraz jeden marker, natomiast drugiego markera zabrakło. Klient rezygnuje z obu markerów. Po usunięciu markerów z zamówienia, otrzymuje ono status Do częściowego rozlokowania, ponieważ jeden z usuniętych produktów został już zebrany. Pracownik odkłada zebrany marker na właściwą lokalizację magazynową i potwierdza jego rozlokowanie. Następnie zamówienie otrzymuje status Do spakowania, a pracownik może spakować pozostałą w nim tablicę.
+ #### 
+ Zamiana brakującego produktu 
+ Klient może zdecydować się na zamiennik. BOK usuwa wtedy brakującą pozycję i dodaje uzgodniony produkt. Zamówienie otrzymuje status Do zebrania, ponieważ nowy towar trzeba pobrać z magazynu.
+Po uruchomieniu zbierania, produkty zebrane przed zgłoszeniem braku nadal są oznaczone jako zebrane. Pracownik pobiera wyłącznie nową pozycję, a po jej zebraniu zamówienie może przejść do pakowania.
+Przykład: W zamówieniu zabrakło odżywki białkowej o smaku truskawkowym. Klient zgadza się na smak czekoladowy. BOK usuwa wariant truskawkowy i dodaje czekoladowy. Magazynier zbiera tylko nowy wariant, a pozostałe produkty z koszyka zachowują wcześniejsze oznaczenia.
+ #### 
+ Jednoczesne rozlokowanie i ponowne zbieranie 
+ Zmiana zamówienia może wymagać wykonania dwóch operacji jednocześnie:
+- odniesienia produktu, 
+
+##### Obsługa braków w Sellasist WMS – jak oznaczyć brakujące produkty w zamówieniu? | https://sellasist.pl/pomoc/obsluga-brakow-w-sellasist-wms-jak-oznaczyc-brakujace-produkty-w-zamowieniu/ | modified 2025-05-30
+#### 
+ Braki zamówień – zaznacz brak produktu i zbieraj dalej! 
+ We wcześniejszej funkcji zaznaczenie braku produktu w zamówieniu sprawiało, że całe zamówienie zmieniało status. Teraz możemy zaznaczyć brak i dalej komplementować zamówienie. Na liście zamówień oraz w edycji zamówienia pojawi się odpowiednie oznaczenie o braku konkretnych produktów.
+ #### 
+ Jak oznaczyć brakujący produkt w trybie zbierania? 
+ Jeżeli podczas zbierania chcesz zaznaczyć, że produkt jest niedostępny na magazynie, należy kliknąć ikonkę koszyka: 
+[IMG:]
+W panelu pojawi się komunikat „Produkt oznaczony jako BRAK” i ikona podświetli się na kolor czerwony: 
+[IMG:]
+Następnie należy przejść do widoku zamówienia i zapisać ustawienia: 
+[IMG:]
+Pojawi się komunikat: 
+[IMG:]
+Kliknij OK, pojawi się komunikat: 
+[IMG:]
+Pamiętaj! Jeżeli oznaczysz dany produkt jako braki i klikniesz „Zebrane„, w panelu pojawi się komunikat „Nie można zaznaczyć wszystkich produktów jako zebrane, ponieważ część z nich oznaczona jest jako brak. Odznacz produkty, które zaznaczono jako brak i spróbuj ponownie„.  
+[IMG:]
+W panelu Sellasist zamówienie zostanie oznaczone jako „Braki„
+Widok listy zamówień: 
+[IMG:]
+Widok edycji zamówienia: 
+[IMG:]
+POWIĄZANE ARTYKUŁY:
+Konfigurator trybu zbierania – Optymalizacja pracy magazynu z Sellasist WMS
+Czym jest Sellasist WMS? Jak skonfigurować Sellasist WMS?
+ Gospodarka magazynowa. Jak stworzyć magazyn w Sellasist WMS?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+
+##### Jak dokonać zwrotu płatności i produktów w zamówieniach z Allegro? | https://sellasist.pl/pomoc/jak-dokonac-zwrotu-produktow-i-platnosci-w-zamowieniach-z-allegro/ | modified 2026-01-15
+Klient dokonujący zakupu przez Internet ma prawo do zwrotu zamówionych produktów. Reklamacje i zwroty zamówień pochodzących z Allegro możesz obsłużyć bezpośrednio w panelu Sellasist, dzięki czemu w prosty sposób wystawisz dokumenty zwrotu, zaktualizujesz stany magazynowe o zwrócone produkty i przeprowadzisz inne potrzebne procedury.
+ #### 
+ Moduł reklamacji zwrotów 
+ Reklamacje i zwroty towarów pochodzących z Allegro obsłużysz w module reklamacji. Aby z niego skorzystać, włącz funkcję eksperymentalną, przechodząc do Administracja → Funkcje eksperymentalne → Moduł reklamacji RMA i zwroty Allegro. Więcej na temat funkcji eksperymentalnych znajdziesz tutaj.
+[IMG:]
+Po aktywacji modułu przejdź do Zamówienia → Reklamacje. W tym miejscu znajdziesz wszystkie zgłoszenia reklamacyjne i zwroty powiązane z zamówieniami. Jeśli reklamacja jest połączona z konkretnym zamówieniem, po jej otwarciu możesz dokonać zwrotu płatności lub odmowy zwrotu.
+ #### 
+ Zwrot płatności 
+ Aby zwrócić płatność, na karcie konkretnej reklamacji kliknij przycisk Zwrot płatności. Na ekranie zobaczysz listę produktów z zamówienia. Zaznacz produkty, których zwrot przyjmujesz i kliknij przycisk Zwróć wpłatę, aby zatwierdzić operację.
+Po dokonaniu zwrotu system automatycznie uzupełni stany magazynowe o zwrócone produkty.
+[IMG:]
+[IMG:]
+ #### 
+ Odmowa zwrotu płatności 
+ Jeśli z jakiegoś powodu musisz odmówić przyjęcia zwrotu, na karcie konkretnej reklamacji kliknij przycisk Odmowa zwrotu. Na ekranie zobaczysz okno tekstowe. Wpisz uzasadnienie swojej decyzji i kliknij przycisk Zapisz.
+[IMG:]
+[IMG:]
+ #### 
+ Obsługa reklamacji z poziomu dyskusji Allegro 
+ Proces reklamacji konkretnego zamówienia obsłużysz także na karcie dyskusji Allegro, przechodząc do Poczta → Dyskusje Allegro.
+Na liście dyskusji znajdziesz kolumnę Typ zgłoszenia, po której możesz filtrować i przeglądać wybrane pozycje. Każda pozycja reklamacyjna zawiera także informację na temat terminu na zaplanowanie odbioru i terminu decyzji w sprawie reklamacji.
+Wskazówka: Zaplanowany odbiór i podjęta decyzja reklamacyjna będą oznaczone zielonym checkiem, natomiast niewykonane działania po terminie będą oznaczone czerwonym kolorem tekstu (patrz: ostatnia pozycja na poniższym screenie).
+[IMG:]
+Kliknij w wybraną pozycję typu Reklamacja, aby zobaczyć kartę danego zgłoszenia.
+[IMG:]
+[IMG:]
+Na karcie zgłoszenia reklamacyjnego znajdziesz wszystkie kluczowe informacje na temat zamówienia, w tym:
+- linki do zamówienia w systemie Sellasist i Allegro;
+- status zgłoszenia (w toku, zaakceptowana, odrzucona, rozwiązana lub nierozwiązana), typ zgłoszenia (reklamacja lub dyskusja) i numer reklamacji;
+- dane kupującego i informacje na temat reklamowanego produktu;
+- szczegóły problemu, oczekiwane rozwiązanie i termin przyjęcia/odrzucenia.
+Na karcie zgłoszenia możesz także wykonywać wszystkie działania związane z obsługą reklamacji — takie jak prośba o uzupełnienie informacji, decyzja o odesłaniu reklamowanego towaru czy zaakceptowaniu reklamacji, a także bezpośredni kontakt z kupującym.
+Wskazówka: Po zaakceptowaniu (lub odrzuceniu) zgłoszenia, możesz zmienić swoją decyzję, klikając przyciski Zmień albo Zaproponuj inne rozwiązanie (screen poniżej).
+[IMG:]
+ #### 
+ Zwrot płatności z karty zamówienia 
+ Zwrotu płatności możesz także dokonać bezpośrednio z poziomu karty zamówienia.
+Przejdź do Zamówienia → Zamówienia → Wybrane zamówienie i w sekcji Wysyłka i płatność kliknij przycisk Zwróć wpłatę.
+[IMG:]
+ #### 
+ Akcje automatyczne 
+ W obsłudze reklamacji i zwrotów zamówień Allegro możesz także wykorzystać akcje automatyczne, które reagują na status przesyłki zwrotnej.
+Warunek [Allegro] Status przesyłki zwrotnej umożliwia sprawdzenie, na jakim etapie znajduje się przesyłka ze zwrotem zamówienia Allegro (np. w drodze, odebrana). Na tej podstawie system może automatycznie wykonać kolejne działania — np. ustawić odpowiedni status czy rozpocząć dalsze procesy reklamacyjne.
+Przejdź do Administracja → Administracja → Akcje dla zamówień. Następnie z listy warunków wybierz [Allegro] Status przesyłki zwrotnej i skonfiguruj go według własnych potrzeb.
+[IMG:]
+ #### 
+ Powiązane artykuły 
+ Czym są funkcje eksperymentalne?
+Czym jest i jak działa Moduł Reklamacji RMA w Sellasist?
+ Czy ten wpis był dla Ciebie pomocny? 
+ Co było niejasne lub niepomocne? 
+ Anuluj 
+ Wyślij opinię
+

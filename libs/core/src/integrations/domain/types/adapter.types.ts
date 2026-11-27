@@ -8,7 +8,7 @@
  *
  * @module libs/core/src/integrations/domain/types
  */
-import type { ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
+import type { Connection, ConnectionRateLimit } from '@openlinker/core/identifier-mapping';
 
 /**
  * Well-known core capabilities — the documented set OpenLinker ships with.
@@ -181,6 +181,26 @@ export interface AdapterMetadata {
   defaultRateLimit?: ConnectionRateLimit;
 
   /**
+   * Names the outbound rate-limit bucket a connection draws from, for a remote
+   * whose quota is scoped WIDER than one credential (ADR-038 § Amendment).
+   * Absent, or returning `undefined`, means the default: one bucket per
+   * connection id. Shoper is the first user - its limit is per shop and shared
+   * by every token on it, so two connections to one shop must pace together.
+   *
+   * A pure function of the connection (no I/O, never throws), and the ONE
+   * answer both sides consult: the plugin passes it to
+   * `HttpTransportFactoryPort.forConnection(..., { bucketKey })` at every call
+   * site, and `RateLimitStatusService` reads the same bucket for the operator's
+   * status panel, so what is reported is what is enforced. Under a shared
+   * bucket, `defaultRateLimit` is the remote's ceiling and `config.rateLimit`
+   * can only tighten it (`tightenRateLimit`). A function on a manifest is
+   * dropped by JSON serialisation (`GET /adapters`), which is harmless: the
+   * host never needs it on the wire. Read it through
+   * {@link readRateLimitBucketKey}.
+   */
+  resolveRateLimitBucketKey?: (connection: Pick<Connection, 'id' | 'config'>) => string | undefined;
+
+  /**
    * Whether a connection for this adapter must carry credentials (#2405,
    * ADR-055). Absent means `true` — every adapter that crosses a network
    * boundary needs them, so an adapter declaring nothing is unchanged.
@@ -206,6 +226,32 @@ export interface AdapterMetadata {
   requiresCredentials?: boolean;
 
   /**
+   * Where an operator may start this adapter's ORDER feed when creating a
+   * connection (#4228): `now` (only orders from here on), `from` (from a date,
+   * needs the adapter's `OrderFeedDateBootstrap`) or `all` (the whole history).
+   * Absent means `['now', 'all']`. Declared statically because the wizard and
+   * `ConnectionService.create` must decide BEFORE any adapter instance exists
+   * (an OAuth connection has no credentials yet); the poll still probes the
+   * capability at run time and fails loudly if a declaration lied: a
+   * chosen `now`, `from` or newest-first start the adapter cannot apply ends the
+   * poll with an error naming the remedy (it never falls back to reading the
+   * whole history). Read it
+   * through `resolveOrderSyncStartModes` in `@openlinker/core/sync`. The union is
+   * spelled inline so this context takes no edge on `sync`.
+   */
+  orderSyncStartModes?: readonly ('now' | 'from' | 'all')[];
+
+  /**
+   * Whether this adapter implements `OrderWindowReader` (#4228): importing
+   * history newest-first, and importing a chosen date range on demand. Absent
+   * means `false`; the UI then shows both choices as unavailable. Declared
+   * statically for the same reason as `orderSyncStartModes`, and the import
+   * job still probes the capability at run time and fails loudly if the
+   * declaration lied.
+   */
+  orderWindowImport?: boolean;
+
+  /**
    * Whether an operator may ARCHIVE a connection on this adapter (#3657).
    * Absent means `true`; an adapter that declares `false` can be disabled but
    * never archived.
@@ -220,6 +266,32 @@ export interface AdapterMetadata {
    * plugin by name. Read it through {@link resolveArchivable}.
    */
   archivable?: boolean;
+
+  /**
+   * Whether this adapter's webhooks are signed with a secret minted OUTSIDE
+   * OpenLinker, so `WebhookSecretService.set` may store a value the caller
+   * supplies (#1770, #3981). Absent means `false`: every other adapter's secret
+   * is rotated by OpenLinker, and accepting a pasted value would desync it from
+   * what the platform signs with.
+   *
+   * inFakt declares it (the operator pastes the secret inFakt generated), and
+   * Shopify (the app client secret signs every delivery, and Shopify has no
+   * per-subscription key). Declared here rather than as a platform-name list in
+   * core, for the reason `requiresCredentials` is: the host must not privilege
+   * a plugin by name. Read it through {@link resolveAcceptsCallerSuppliedWebhookSecret}.
+   */
+  acceptsCallerSuppliedWebhookSecret?: boolean;
+
+  /**
+   * Config keys any role may read (DEF-02). `ConnectionResponseDto` hides the
+   * whole config from non-admins, which also hid facts the UI needs to tell the
+   * truth - KSeF's QR code points at a different portal per environment, so an
+   * operator was shown a TEST-portal code for a production invoice. Only keys
+   * an adapter declares here, and only scalar values or a list of strings (an
+   * id list), are exposed as `publicConfig`; never a secret or a URL. Absent
+   * means none.
+   */
+  publicConfigKeys?: string[];
 
   /**
    * Overrides `ConnectionService.create`'s inferred default for
@@ -245,6 +317,21 @@ export interface AdapterMetadata {
    * unset and falls through to the sane, capability-driven default.
    */
   defaultEnabledCapabilities?: string[];
+
+  /**
+   * How long OpenLinker may keep buyer personal data on orders from this
+   * source, in days (#4178). Absent means the platform imposes no limit, which
+   * is every source except those whose terms require deletion (Amazon's Data
+   * Protection Policy: 30 days after delivery).
+   *
+   * Counted from the order's ship-by deadline, or its placement when it has
+   * none, both of which precede delivery, so deleting at that point is never
+   * later than the platform's own limit. After that the buyer's addresses,
+   * email, note and tax id are removed from the order
+   * (`IOrderBuyerDataRetentionService`), and a later re-import of the order
+   * stores none of them again. At least one day; a shorter value is ignored.
+   */
+  buyerDataRetentionDays?: number;
 
   /**
    * Config keys that must be unique across every ACTIVE connection sharing
@@ -320,6 +407,16 @@ export function resolveRequiresCredentials(
 }
 
 /**
+ * Resolve `AdapterMetadata.acceptsCallerSuppliedWebhookSecret` (#3981),
+ * defaulting to `false`. Same pure-rule shape as {@link resolveRequiresCredentials}.
+ */
+export function resolveAcceptsCallerSuppliedWebhookSecret(
+  metadata: Pick<AdapterMetadata, 'acceptsCallerSuppliedWebhookSecret'> | undefined | null
+): boolean {
+  return metadata?.acceptsCallerSuppliedWebhookSecret === true;
+}
+
+/**
  * Resolve `AdapterMetadata.archivable` (#3657), defaulting to `true`. Same
  * pure-rule shape as {@link resolveRequiresCredentials} above.
  */
@@ -329,3 +426,20 @@ export function resolveArchivable(
   return metadata?.archivable ?? true;
 }
 
+/**
+ * Read `AdapterMetadata.resolveRateLimitBucketKey` (ADR-038 § Amendment):
+ * the shared bucket a connection draws from, or `undefined` for the default
+ * per-connection bucket. Probed with `typeof` rather than trusted, so a
+ * manifest that crossed a serialisation boundary (and lost the function)
+ * degrades to the default instead of throwing. Same pure-rule shape as
+ * {@link resolveRequiresCredentials}.
+ */
+export function readRateLimitBucketKey(
+  metadata: Pick<AdapterMetadata, 'resolveRateLimitBucketKey'> | undefined | null,
+  connection: Pick<Connection, 'id' | 'config'>
+): string | undefined {
+  const resolve = metadata?.resolveRateLimitBucketKey;
+  if (typeof resolve !== 'function') return undefined;
+  const key = resolve(connection);
+  return key !== undefined && key.length > 0 ? key : undefined;
+}

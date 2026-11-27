@@ -10,7 +10,7 @@
 import type { ReactElement } from 'react';
 import { BareIconButton } from '../../../shared/ui/bare-icon-button';
 import type { OrderTag } from '../api/orders.types';
-import { ORDER_TAGS_COPY } from '../lib/order-tags.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 export interface OrderTagChipProps {
   tag: Pick<OrderTag, 'name' | 'color'>;
@@ -22,6 +22,7 @@ export interface OrderTagChipProps {
 }
 
 export function OrderTagChip({ tag, small, onRemove, removeDisabled }: OrderTagChipProps): ReactElement {
+  const copy = useMessages('orders').orderTags;
   return (
     <span
       className={`order-tag${small ? ' order-tag--sm' : ''}`}
@@ -33,7 +34,7 @@ export function OrderTagChip({ tag, small, onRemove, removeDisabled }: OrderTagC
       {onRemove ? (
         <BareIconButton
           className="order-tag__remove"
-          label={ORDER_TAGS_COPY.removeTag(tag.name)}
+          label={interpolate(copy.removeTag, { name: tag.name })}
           disabled={removeDisabled}
           onClick={(event) => {
             event.stopPropagation();

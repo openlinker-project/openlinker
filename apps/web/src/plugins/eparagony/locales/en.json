@@ -1,0 +1,361 @@
+{
+  "eparagonyConnectionConfig": {
+    "countryCode": "Use the two-letter country code, for example PL.",
+    "httpsUrl": "Must be a valid https:// URL.",
+    "pollTimeoutNotNumber": "Poll timeout must be a number of milliseconds.",
+    "pollTimeoutNotPositive": "Poll timeout must be greater than zero.",
+    "sellerAddressPartRequired": "Required."
+  },
+  "eparagonyInvoiceCorrectionFlow": {
+    "addLine": "+ Add line",
+    "cancel": "Cancel",
+    "clearanceRef": "Clearance ref. <strong>{reference}</strong>",
+    "col": {
+      "lp": "Lp",
+      "newPrice": "New gross",
+      "newQty": "New qty",
+      "remove": "Remove"
+    },
+    "correcting": "Correcting <strong>{reference}</strong>",
+    "emptyCell": "-",
+    "failed": "Correction failed",
+    "gridLinesRequired": "Change at least one line’s quantity or price before issuing a correction.",
+    "issued": "Correction issued",
+    "issuedBody": "The correcting document was submitted to the provider.",
+    "issuedOn": "Issued <strong>{date}</strong>",
+    "lineDeltaRequired": "Each line must specify a new quantity and/or a new price.",
+    "lineNum": "Line number {n}",
+    "linesRequired": "At least one line with a line number is required.",
+    "loadingLines": "Loading invoice lines…",
+    "newPrice": "New gross, line {n}",
+    "newQty": "New qty, line {n}",
+    "note": "A correcting document adjusts quantity and/or price per line. The provider submits it on your behalf; OpenLinker tracks the status.",
+    "providerTag": "eparagony.pl · slot",
+    "removeLine": "Remove line {n}",
+    "submit": "Issue correction",
+    "submitting": "Issuing…",
+    "title": "Issue correction"
+  },
+  "eparagonyInvoiceDetailSection": {
+    "cannotRetryBody": "The provider's API has no call that triggers or re-triggers submission. The document is with them, and only they can move it on.",
+    "cannotRetryTitle": "Waiting on the provider - OpenLinker cannot push this",
+    "open": "Open",
+    "title": "Provider document",
+    "visualisation": "Invoice visualisation",
+    "visualisationAria": "Open the invoice visualisation (opens in a new tab)",
+    "visualisationNote": "An HTML view published by the provider, not a PDF."
+  },
+  "eparagonySellerSection": {
+    "address": {
+      "apartment": {
+        "label": "Apartment"
+      },
+      "city": {
+        "label": "City",
+        "placeholder": "Warszawa"
+      },
+      "country": {
+        "label": "Country",
+        "placeholder": "PL"
+      },
+      "description": "Optional on an invoice. Leave it empty, or fill in every part except the apartment.",
+      "legend": "Seller address",
+      "number": {
+        "label": "Building",
+        "placeholder": "51"
+      },
+      "postalCode": {
+        "label": "Postal code",
+        "placeholder": "00-838"
+      },
+      "street": {
+        "label": "Street",
+        "placeholder": "Prosta"
+      }
+    },
+    "help": "eparagony.pl prints these on every invoice this connection issues, as the seller.",
+    "label": "Seller on invoices:",
+    "missingTin": "Every invoice from this connection is refused until you add the seller’s tax number.",
+    "name": {
+      "description": "The name as registered, for example the full company name.",
+      "label": "Seller name"
+    },
+    "readiness": {
+      "complete": "Invoices and corrections have everything they need.",
+      "invoicesOnly": "Invoices can be issued. A correction also needs the seller name and the full address."
+    },
+    "summary": {
+      "complete": "NIP {tin}, complete",
+      "invoicesOnly": "NIP {tin}, incomplete for corrections",
+      "missingTin": "No tax number, every invoice is refused",
+      "withProblems": {
+        "one": "{summary} ({n} problem to fix)",
+        "other": "{summary} ({n} problems to fix)"
+      }
+    },
+    "tin": {
+      "description": "Must be the same NIP as on your eparagony.pl account. eparagony.pl refuses every invoice under a different number.",
+      "label": "Tax number (NIP)"
+    }
+  },
+  "eparagonySetupForm": {
+    "account": {
+      "clientId": {
+        "description": "Issued by eparagony.pl when your integration was approved.",
+        "label": "Client ID"
+      },
+      "clientSecret": {
+        "description": "Stored securely on the server and never shown again after saving.",
+        "label": "Client secret"
+      },
+      "environment": {
+        "description": "Sandbox has no fiscal device attached, so nothing prints or registers for real.",
+        "label": "Environment",
+        "production": "Production - https://api.eparagony.pl",
+        "sandbox": "Sandbox - https://sandbox.eparagony.pl"
+      },
+      "integrationId": {
+        "description": "Of the form integration:secret. Leave blank if you were not given one.",
+        "label": "Integration ID (optional)",
+        "placeholder": "openlinker:abc123"
+      },
+      "name": {
+        "description": "A label to identify this eparagony.pl account in OpenLinker.",
+        "label": "Connection name",
+        "placeholder": "My eparagony.pl account"
+      },
+      "posId": {
+        "description": "The register or till identifier eparagony.pl stamps on every document.",
+        "label": "POS ID"
+      },
+      "title": "eparagony.pl account"
+    },
+    "addressSummary": "Complete the seller address, or leave it empty.",
+    "backLink": "Connections",
+    "bothDocumentsNote": "An order gets one document, never both. After connecting, add a rule in Settings → Sales documents that says which orders get a receipt and which get an invoice. Until then, orders wait instead of getting a guessed document.",
+    "connect": "Connect eparagony.pl",
+    "connecting": "Connecting…",
+    "created": {
+      "body": "eparagony.pl connection “{name}” was created.",
+      "bodyWithSeller": "eparagony.pl connection “{name}” was created with the seller details invoices need.",
+      "title": "Connection created"
+    },
+    "documentChoice": {
+      "fiscalization": {
+        "help": "Registers a sale on your own fiscal printer through eparagony.pl.",
+        "label": "Fiscal e-receipts"
+      },
+      "help": "Pick one or both. You can change this later on the connection’s detail page.",
+      "invoicing": {
+        "help": "Issues VAT invoices through eparagony.pl. eparagony.pl can also send them on to KSeF.",
+        "label": "Invoices"
+      },
+      "legend": "What should this connection issue?"
+    },
+    "done": "Done",
+    "nextSteps": {
+      "numbering": "Set up an invoice numbering series. Without one, issuing an invoice stops and asks for it.",
+      "numberingLink": "Set up numbering",
+      "rule": "Add a sales-document rule: which orders get a receipt, which an invoice.",
+      "ruleLink": "Open sales documents",
+      "title": "Before the first invoice"
+    },
+    "receipts": {
+      "checklist": {
+        "askServicer": "Ask your servicer",
+        "device": "<strong>The device set up for e-receipts</strong> by your printer servicer.",
+        "intro": "eparagony.pl registers a sale with your own fiscal printer. Three things need to be set up first, usually by your printer servicer:",
+        "printer": "<strong>An online fiscal printer</strong> - Posnet, Novitus or Elzab - connected to the internet.",
+        "software": "<strong>eparagony.pl's printer-control software</strong> running on the machine next to the printer.",
+        "title": "Before you connect your printer",
+        "yourEquipment": "Your equipment"
+      },
+      "title": "Fiscal e-receipts"
+    },
+    "seller": {
+      "address": {
+        "apartment": {
+          "label": "Apartment"
+        },
+        "city": {
+          "label": "City",
+          "placeholder": "Warszawa"
+        },
+        "country": {
+          "label": "Country",
+          "placeholder": "PL"
+        },
+        "description": "Invoices work without it; a correction needs it. Leave it empty, or fill in every part except the apartment.",
+        "legend": "Seller address (optional)",
+        "number": {
+          "label": "Building",
+          "placeholder": "51"
+        },
+        "postalCode": {
+          "label": "Postal code",
+          "placeholder": "00-838"
+        },
+        "street": {
+          "label": "Street",
+          "placeholder": "Prosta"
+        }
+      },
+      "help": "eparagony.pl prints these on every invoice this connection issues, as the seller.",
+      "hub": {
+        "label": "Send invoices on to KSeF",
+        "off": "Off: invoices are issued outside KSeF, which is a complete result. Turn it on once eparagony.pl may send to KSeF for you.",
+        "on": "Before the first invoice: give eparagony.pl permission to issue invoices in the KSeF taxpayer app, and switch KSeF on in panel.eparagony.pl. Without both, eparagony.pl refuses the invoice."
+      },
+      "name": {
+        "description": "The name as registered. Invoices work without it; a correction needs it.",
+        "label": "Seller name (optional)"
+      },
+      "tin": {
+        "description": "Must be the same NIP as on your eparagony.pl account. eparagony.pl refuses every invoice under a different number.",
+        "label": "Tax number (NIP)",
+        "placeholder": "1234567890"
+      },
+      "title": "Seller on invoices"
+    },
+    "serverFieldError": "{path}: {message}",
+    "test": {
+      "failed": "Connection test failed",
+      "latency": " ({ms}ms)",
+      "passed": "Connection test passed",
+      "test": "Test connection",
+      "testing": "Testing…",
+      "unableToTest": "Unable to test connection"
+    },
+    "unableToCreate": "Unable to create connection"
+  },
+  "eparagonySetupPage": {
+    "description": "OpenLinker hands a sale to eparagony.pl, which issues a fiscal e-receipt on your own printer, an invoice, or both. Connecting does not issue anything by itself.",
+    "eyebrow": "Integrations",
+    "guidedSetup": "Guided setup",
+    "title": "Connect eparagony.pl"
+  },
+  "eparagonySetupRoute": {
+    "crumb": "Connect eparagony.pl"
+  },
+  "eparagonySetupSchema": {
+    "addressPartRequired": "Required.",
+    "clientIdRequired": "Client ID is required",
+    "clientSecretRequired": "Client secret is required",
+    "countryCode": "Use the two-letter code, e.g. PL.",
+    "documentChoiceRequired": "Pick at least one: e-receipts, invoices, or both.",
+    "integrationIdShape": "Must be of the form integration:secret, e.g. openlinker:abc123",
+    "merchantTinRequired": "Tax number (NIP) is required to issue invoices",
+    "nameRequired": "Connection name is required",
+    "posIdRequired": "POS ID is required"
+  },
+  "eparagonyStructuredSection": {
+    "deviceNumber": {
+      "description": "Diagnostic only. It is never sent on a receipt - eparagony.pl routes to the device itself. Filling it in lets “Test connection” also report whether the device has been seen alive.",
+      "label": "Fiscal device number",
+      "placeholder": "ABC123456890"
+    },
+    "diagnostics": {
+      "groupLabel": "Diagnostics and timing:",
+      "summaryCustomised": "Customised",
+      "summaryDefaults": "Defaults"
+    },
+    "fallback": {
+      "groupLabel": "Fallback tax rate:",
+      "label": "Fallback device slot",
+      "notSetOption": "Not set - refuse a line with no rate (recommended)",
+      "slotOption": "Slot {slot}",
+      "summaryNotSet": "Not set - a line with no rate is refused",
+      "summarySlot": "Slot {slot} - used when a line has no rate",
+      "taxRatesNote": "What each slot means on your device is the <code>taxRates</code> table, which has no field here - it is device programming rather than a product’s VAT rate. Edit it under “Show raw config JSON” below. Left unset, eparagony.pl assumes the standard Polish slots.",
+      "unrecognised": "The saved value ({value}) is not a slot this fiscal device exposes, so saving this connection will be refused until you pick one below."
+    },
+    "notRecognised": "{value} (not recognised)",
+    "overrides": {
+      "apiHost": {
+        "label": "API host",
+        "placeholder": "https://sandbox.eparagony.pl"
+      },
+      "authHost": {
+        "label": "Sign-in host",
+        "placeholder": "https://login.sandbox.eparagony.pl"
+      },
+      "description": "For testing only. Leave empty so the environment chosen during setup decides the host. Must be https.",
+      "groupLabel": "Testing overrides:",
+      "summaryDefault": "Using the environment’s own hosts",
+      "summaryOverriding": "Overriding the environment’s hosts"
+    },
+    "paymentForm": {
+      "description": "How the payment is described on the receipt. Only the label is configurable - the amount is always the sale total. Defaults to {default}, the honest description of a prepaid online order.",
+      "glosses": {
+        "bankTransfer": "bank transfer",
+        "card": "card",
+        "cash": "cash",
+        "cheque": "cheque",
+        "credit": "credit",
+        "foreignCurrency": "foreign currency",
+        "mobile": "mobile payment",
+        "other": "other",
+        "voucher": "voucher"
+      },
+      "label": "Payment form on the receipt",
+      "optionLabel": "{vendor} ({gloss})",
+      "unrecognised": "The saved value ({value}) is not one eparagony.pl accepts, so saving this connection will be refused until you pick one below.",
+      "useDefault": "Use the default ({default})"
+    },
+    "paymentName": {
+      "description": "Optional free text describing the payment - a card scheme or payment provider, for example. Descriptive only.",
+      "label": "Payment name",
+      "placeholder": "Visa"
+    },
+    "pollTimeout": {
+      "description": "How long to wait for the fiscal device to finish before the result is recorded as unknown. Defaults to {receiptDefault}. Values outside {min}-{max} are accepted and then brought into that range.",
+      "descriptionWithInvoicing": "How long to wait for the fiscal device or the invoicing provider to finish before the result is recorded as unknown. Defaults to {receiptDefault} for e-receipts, {invoicingDefault} for e-invoices. Values outside {min}-{max} are accepted and then brought into that range.",
+      "label": "Device wait time (ms)"
+    },
+    "print": {
+      "description": "Asks eparagony.pl’s print service to also produce a paper receipt. An online sale has no counter and nobody waiting at one, so the default is no paper. “Not set” and “Do not print” produce the same receipt - picking “Do not print” records that it was a decision.",
+      "label": "Paper receipt",
+      "options": {
+        "doNotPrint": "Do not print",
+        "notSet": "Not set",
+        "print": "Print"
+      },
+      "unrecognised": "The saved value ({value}) is not true or false, so saving this connection will be refused until you pick one below."
+    },
+    "seconds": "{n} s",
+    "withProblems": {
+      "one": "{summary} - {n} problem to fix",
+      "other": "{summary} - {n} problems to fix"
+    }
+  },
+  "plugin": {
+    "setupCard": {
+      "badge": "Fiscalization",
+      "description": "Issue Polish fiscal e-receipts on your own printer, invoices, or both."
+    }
+  },
+  "taxFallback": {
+    "fieldDescription": "Leave this empty. It is only used for an order line that arrives with no tax rate at all, and an empty setting makes OpenLinker refuse such a line instead of guessing.",
+    "hazardNotes": {
+      "intendedUse": {
+        "caveat": "A refused registration is a problem you can fix. An issued receipt is not.",
+        "term": "How it is meant to work",
+        "text": "The rate belongs to the product, in your shop, and travels with the order line. Leaving this empty is the intended setup: a line with no rate is then refused, with an error naming the order, and you fix the rate in the catalogue."
+      },
+      "risk": {
+        "term": "Why setting it is risky",
+        "text": "With a slot set, that line is registered at this rate instead of being refused. A fiscal receipt reaches the buyer and your daily report and cannot be recalled, so a wrong slot puts a wrong tax figure on a document you are answerable for."
+      },
+      "whatThisIs": {
+        "term": "What this is",
+        "text": "A slot on your own fiscal device (A to G). It is used for one thing only: an order line that reaches this connection carrying no tax rate. It is you naming your device’s slot - OpenLinker never invents a rate."
+      },
+      "whenItFires": {
+        "caveat": "On a standard installation it is off, so this fallback can fire.",
+        "term": "When it actually fires",
+        "text": "Only for a line with a blank rate. OpenLinker can refuse those before this connection ever sees them, but that strict check is off unless someone switched it on ({envVar})."
+      }
+    },
+    "infotipLabel": "What the fallback tax rate does, and why it is risky"
+  }
+}

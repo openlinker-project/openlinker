@@ -6,16 +6,16 @@
  *
  * @module apps/api/src/orders/http/dto
  */
-import { IsIn, IsISO8601, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsISO8601, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RefundReason, RefundReasonValues } from '@openlinker/core/orders';
 
 export class RecordRefundRequestDto {
   /** Decimal string, e.g. "49.99". 0 is valid (a goodwill return, no money moved). */
-  @ApiProperty({ example: '49.99', description: 'Decimal string amount, up to 2 decimal places' })
+  @ApiProperty({ example: '49.99', description: 'Decimal string amount, up to 3 decimal places (the currency limit is enforced by the service)' })
   @IsString()
-  @Matches(/^\d+(\.\d{1,2})?$/, {
-    message: 'amount must be a non-negative decimal string with up to 2 decimal places',
+  @Matches(/^\d+(\.\d{1,3})?$/, {
+    message: 'amount must be a non-negative decimal string with up to 3 decimal places (the currency limit is enforced by the service)',
   })
   amount!: string;
 
@@ -48,4 +48,15 @@ export class RecordRefundRequestDto {
   @IsString()
   @MaxLength(255)
   idempotencyKey?: string;
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      "Record a refund that takes the order's cumulative refunds past its total. Without it " +
+      'such a refund is refused with 409 `refund_ceiling_exceeded`. Per request only: it is ' +
+      'logged, never stored, and a retry must repeat it.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  acknowledgeAboveCeiling?: boolean;
 }

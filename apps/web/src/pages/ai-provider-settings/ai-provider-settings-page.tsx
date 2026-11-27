@@ -10,67 +10,72 @@
  * @module apps/web/src/pages/ai-provider-settings
  */
 import type { ReactElement } from 'react';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { useSession } from '../../shared/auth/use-session';
+import { useMessages } from '../../shared/i18n';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../shared/ui/feedback-state';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { AiProviderTable } from '../../features/ai-provider-settings/components/ai-provider-table';
 import { useAiProviderSettingsQuery } from '../../features/ai-provider-settings/hooks/use-ai-provider-settings-query';
 
 export function AiProviderSettingsPage(): ReactElement {
+  const copy = useMessages('ai-provider-settings').aiProviderSettingsPage;
+  const tpl = useMessages('settings').template.aiProvider;
   const { session } = useSession();
   const query = useAiProviderSettingsQuery();
 
   if (session.status === 'authenticated' && session.user?.role !== 'admin') {
     return (
-      <PageLayout
-        eyebrow="AI"
-        title="Provider settings"
-        description="Admin-only access."
-      >
-        <ErrorState
-          title="Admin role required"
-          message="This page manages AI provider keys and routing — it requires an admin session."
-        />
+      <PageLayout eyebrow={copy.eyebrow} title={copy.title} description={copy.adminOnly}>
+        <ErrorState title={copy.adminRequiredTitle} message={copy.adminRequiredMessage} />
       </PageLayout>
     );
   }
 
   return (
-    <PageLayout
-      eyebrow="AI"
-      title="Provider settings"
-      description="Manage per-provider API keys and switch the active provider that handles AI requests."
-    >
+    <SettingsPageFrame
+      wide
+      title={copy.title}
+      short={tpl.short}
+      description={copy.description}
+      sections={[
+        {
+          id: 'providers',
+          label: tpl.short,
+          title: tpl.title,
+          hint: tpl.hint,
+          children: (
+            <>
       {query.isPending ? (
-        <LoadingState
-          title="Loading provider settings"
-          message="Reading current key resolution status…"
-        />
+        <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />
       ) : query.error ? (
         <ErrorState
-          title="Unable to load provider settings"
-          message={query.error instanceof Error ? query.error.message : 'Unknown error'}
+          title={copy.errorTitle}
+          message={describeApiError(query.error, 'ai-provider-settings')}
           action={
             <Button tone="secondary" onClick={() => void query.refetch()}>
-              Retry
+              {copy.retry}
             </Button>
           }
         />
       ) : query.data ? (
         <>
           {!hasAnyKeyConfigured(query.data.providers) ? (
-            <Alert tone="warning" title="No AI provider configured">
-              AI suggestions will fail until a key is saved and a provider is activated. The
-              active provider falls back to <span className="mono-text">OL_AI_PROVIDER</span>{' '}
-              on first boot when no DB row exists.
+            <Alert tone="warning" title={copy.noProviderTitle}>
+              {copy.noProviderBody}
             </Alert>
           ) : null}
           <AiProviderTable view={query.data} />
         </>
       ) : null}
-    </PageLayout>
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }
 

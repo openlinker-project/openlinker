@@ -21,8 +21,15 @@
  * missing hint rather than wrong behaviour.
  *
  * @module apps/web/src/features/mcp-tokens/lib
- * @see {@link MCP_CONNECTION_CHANGE_HINT} for the copy this gates
+ * @see {@link useMcpConnectionChangeHint} for the copy this gates
  */
+import { useMessages } from '../../../shared/i18n';
+
 export const MCP_TOOL_CAPABILITIES = ['ProductMaster', 'InventoryMaster', 'OrderSource'] as const;
 
 export type McpToolCapability = (typeof MCP_TOOL_CAPABILITIES)[number];
+
+/** The connection hint in the active language. */
+export function useMcpConnectionChangeHint(): string {
+  return useMessages('mcp-tokens').toolStaleness.connectionChangeHint;
+}

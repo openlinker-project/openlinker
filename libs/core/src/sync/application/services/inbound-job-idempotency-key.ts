@@ -13,12 +13,21 @@
  * components and let this helper assemble them, so the format can evolve here
  * without silent drift across the FE/BE boundary.
  *
+ * One webhook can fan out into several jobs (a translator returning more than
+ * one canonical event). Every job after the first needs a key of its own or
+ * the `sync_jobs` unique index would fold it onto the first, so the optional
+ * `discriminator` is appended. The PRIMARY job never passes one: its key stays
+ * byte-identical to the three-part form, because the lookup endpoint and the
+ * frontend rebuild exactly that form to find "the job this delivery became".
+ *
  * @module application/services
  */
 export function buildInboundJobIdempotencyKey(
   platformType: string,
   connectionId: string,
-  sourceEventId: string
+  sourceEventId: string,
+  discriminator?: string
 ): string {
-  return `${platformType}:${connectionId}:${sourceEventId}`;
+  const base = `${platformType}:${connectionId}:${sourceEventId}`;
+  return discriminator ? `${base}:${discriminator}` : base;
 }

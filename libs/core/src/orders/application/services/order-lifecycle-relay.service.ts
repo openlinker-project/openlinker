@@ -80,7 +80,10 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
     if (input.authoredByConnectionId) {
       excluded.add(input.authoredByConnectionId);
     }
-    const targets = externalIds.filter((e) => !excluded.has(e.connectionId));
+    const only = input.onlyConnectionIds ? new Set(input.onlyConnectionIds) : null;
+    const targets = externalIds.filter(
+      (e) => !excluded.has(e.connectionId) && (only === null || only.has(e.connectionId))
+    );
 
     if (targets.length === 0) {
       this.logger.debug(
@@ -158,6 +161,15 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
           return { type: 'delivered', externalOrderId, deliveredAt: relayEvent.deliveredAt };
         case 'in-progress':
           return { type: 'in-progress', externalOrderId };
+        case 'paid':
+          return {
+            type: 'paid',
+            externalOrderId,
+            amount: relayEvent.amount,
+            currency: relayEvent.currency,
+            paidAt: relayEvent.paidAt,
+            paidOn: relayEvent.paidOn,
+          };
         default:
           return assertNever(relayEvent, 'OrderLifecycleRelayInput.event');
       }
@@ -179,6 +191,8 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
         connectionId,
         outcome: result.outcome,
         detail: result.detail,
+        ...(result.outcome === 'rejected' && result.transient ? { adapterThrew: true } : {}),
+        ...(result.scope ? { scope: result.scope } : {}),
         // #3526: an adapter's own `default:` decline for an event kind it does
         // not support (e.g. a bare `unsupported` from an in-tree adapter's own
         // switch) is STRUCTURALLY the same fact as having no capability at
@@ -199,7 +213,7 @@ export class OrderLifecycleRelayService implements IOrderLifecycleRelayService {
           `${input.internalOrderId}: ${detail}`,
         error instanceof Error ? error.stack : undefined
       );
-      return { connectionId, outcome: 'rejected', detail };
+      return { connectionId, outcome: 'rejected', detail, adapterThrew: true };
     }
   }
 

@@ -28,6 +28,7 @@
  */
 import type { HoldReason} from '@openlinker/core/order-lifecycle';
 import { isHoldReason } from '@openlinker/core/order-lifecycle';
+import { isBuyerEmailTemplate, type BuyerEmailTemplate } from '@openlinker/core/identifier-mapping';
 
 /**
  * The six v1 actions, in the spec's own A1–A6 order.
@@ -113,6 +114,14 @@ export type AutomationAction =
       readonly recipient: AutomationEmailRecipient;
       readonly subject: string;
       readonly body: string;
+      /**
+       * Marks the step as one of the per-connection buyer emails (#3554). When
+       * set, the send goes through the order connection's `config.buyerEmails`
+       * opt-in and is recorded on the order timeline; it requires the `buyer`
+       * recipient, since the opt-in is about emailing the buyer. Absent keeps
+       * the plain A4 behaviour, byte-identical to before.
+       */
+      readonly buyerEmailTemplate?: BuyerEmailTemplate;
     }
   | { readonly action: 'place-hold'; readonly reason: HoldReason; readonly note: string }
   | {
@@ -159,7 +168,10 @@ export function isAutomationAction(value: unknown): value is AutomationAction {
       return (
         isEmailRecipient(value.recipient) &&
         typeof value.subject === 'string' &&
-        isNonEmptyString(value.body)
+        isNonEmptyString(value.body) &&
+        (value.buyerEmailTemplate === undefined ||
+          (isBuyerEmailTemplate(value.buyerEmailTemplate) &&
+            value.recipient.kind === 'buyer'))
       );
     case 'place-hold':
       return isHoldReason(value.reason) && typeof value.note === 'string';

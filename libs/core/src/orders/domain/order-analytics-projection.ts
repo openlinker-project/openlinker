@@ -11,6 +11,12 @@
  * @module libs/core/src/orders/domain
  */
 import type { Order, PriceTaxTreatment } from './types/order.types';
+import {
+  NOT_RECORDED_LINE_COST,
+  recordedLineCost,
+  type LineCostCandidate,
+  type LineCostSnapshot,
+} from './order-line-cost-snapshot';
 
 /**
  * Order-level analytics scalars denormalized onto `OrderRecord` (#1985).
@@ -73,6 +79,12 @@ export interface OrderLineItemDraft {
   taxSource: string | null;
   /** When that system was last read. Shown, never enforced: there is no freshness rule. */
   taxRateReadAt: Date | null;
+  /**
+   * The variant's net unit cost frozen for this line (#3588, D27). Set from the
+   * ingestion-time candidate map; the repository may replace it with the prior
+   * snapshot on re-ingestion (`carryForwardLineCosts`).
+   */
+  cost: LineCostSnapshot;
 }
 
 /**
@@ -83,7 +95,8 @@ export interface OrderLineItemDraft {
  */
 export function deriveOrderLineItems(
   order: Order,
-  sourceConnectionId: string
+  sourceConnectionId: string,
+  candidates: ReadonlyMap<string, LineCostCandidate> = new Map()
 ): OrderLineItemDraft[] {
   const placedAt = order.placedAt ?? null;
   return (order.items ?? []).map((item, lineNumber) => ({
@@ -100,5 +113,19 @@ export function deriveOrderLineItems(
     taxRate: item.taxRate ?? null,
     taxSource: item.taxSource ?? null,
     taxRateReadAt: item.taxRateReadAt ? new Date(item.taxRateReadAt) : null,
+    // A product-only line (no variant) or a variant without an eligible cost is
+    // `not-recorded`, never zero.
+    cost: lineCost(item.variantId ?? null, candidates),
   }));
+}
+
+function lineCost(
+  variantId: string | null,
+  candidates: ReadonlyMap<string, LineCostCandidate>
+): LineCostSnapshot {
+  if (variantId === null) {
+    return NOT_RECORDED_LINE_COST;
+  }
+  const candidate = candidates.get(variantId);
+  return candidate ? recordedLineCost(candidate) : NOT_RECORDED_LINE_COST;
 }

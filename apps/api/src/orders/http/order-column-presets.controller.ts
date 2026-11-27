@@ -24,7 +24,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   Post,
   Put,
@@ -43,6 +42,7 @@ import { CreateOrderColumnPresetDto } from './dto/create-order-column-preset.dto
 import { UpdateOrderColumnPresetDto } from './dto/update-order-column-preset.dto';
 import { SetWorkspaceDefaultColumnsDto } from './dto/set-workspace-default-columns.dto';
 import { OrderColumnPresetResponseDto } from './dto/order-column-preset-response.dto';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -56,7 +56,7 @@ export class OrderColumnPresetsController {
   @Roles('admin', 'operator')
   @Get()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "The caller's own saved column presets." })
+  @ApiOperation({ deprecated: true, summary: "The caller's own saved column presets." })
   @ApiResponse({ status: 200, type: [OrderColumnPresetResponseDto] })
   async list(@CurrentUser() user: AuthenticatedUser): Promise<OrderColumnPresetResponseDto[]> {
     const presets = await this.service.listForUser(user.id);
@@ -67,6 +67,7 @@ export class OrderColumnPresetsController {
   @Get('workspace-default')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
+    deprecated: true,
     summary:
       'The admin-set workspace default (D32) a user with no saved preset starts from, or null.',
   })
@@ -80,6 +81,7 @@ export class OrderColumnPresetsController {
   @Put('workspace-default')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
+    deprecated: true,
     summary:
       'Sets the workspace-default column set (D32, admin only). Replaces the whole set; never ' +
       'touches any user\'s already-saved personal preset.',
@@ -95,7 +97,7 @@ export class OrderColumnPresetsController {
   @Roles('admin', 'operator')
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Save a new personal column preset.' })
+  @ApiOperation({ deprecated: true, summary: 'Save a new personal column preset.' })
   @ApiResponse({ status: 201, type: OrderColumnPresetResponseDto })
   async create(
     @CurrentUser() user: AuthenticatedUser,
@@ -109,6 +111,7 @@ export class OrderColumnPresetsController {
   @Put(':id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
+    deprecated: true,
     summary: "Rename or replace the column set of one of the caller's own presets.",
   })
   @ApiResponse({ status: 200, type: OrderColumnPresetResponseDto })
@@ -123,7 +126,9 @@ export class OrderColumnPresetsController {
       return this.toDto(preset);
     } catch (error) {
       if (error instanceof OrderColumnPresetNotFoundError) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_COLUMN_PRESET_NOT_FOUND', error.message, {
+          presetId: error.presetId,
+        });
       }
       throw error;
     }
@@ -132,7 +137,7 @@ export class OrderColumnPresetsController {
   @Roles('admin', 'operator')
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Delete one of the caller's own presets." })
+  @ApiOperation({ deprecated: true, summary: "Delete one of the caller's own presets." })
   @ApiResponse({ status: 204, description: 'Deleted.' })
   @ApiResponse({ status: 404, description: 'Not found, or not owned by the caller.' })
   async delete(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<void> {
@@ -140,7 +145,9 @@ export class OrderColumnPresetsController {
       await this.service.delete(user.id, id);
     } catch (error) {
       if (error instanceof OrderColumnPresetNotFoundError) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_COLUMN_PRESET_NOT_FOUND', error.message, {
+          presetId: error.presetId,
+        });
       }
       throw error;
     }

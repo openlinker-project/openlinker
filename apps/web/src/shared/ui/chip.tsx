@@ -8,7 +8,7 @@
  */
 import { forwardRef, type ComponentPropsWithoutRef, type ReactElement } from 'react';
 
-export type ChipTone = 'error' | 'info' | 'neutral' | 'success' | 'warning';
+export type ChipTone = 'error' | 'info' | 'neutral' | 'review' | 'success' | 'warning';
 
 export interface ChipProps extends ComponentPropsWithoutRef<'button'> {
   active?: boolean;

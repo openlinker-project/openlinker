@@ -48,14 +48,16 @@ import {
   Body,
   HttpCode,
   HttpStatus,
-  NotFoundException,
-  BadRequestException,
+  ServiceUnavailableException,
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
+  UnprocessableEntityException,
   Inject,
   ParseUUIDPipe,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiExcludeEndpoint,
@@ -64,6 +66,8 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedErrorBody, codedHttpError } from '../../common/errors/coded-http.exception';
+import { orderCancellationNotFound, orderNotFound } from './orders-errors';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import {
@@ -73,12 +77,15 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   IOrderRecordService,
   OrderRecordNotFoundException,
+  NoBuyerNoteException,
   OrderDestinationNotFoundException,
   OrderDestinationNotRetryableException,
+  OrderDestinationHandledByRoutingException,
   MissingSourceExternalIdException,
   IOrderDestinationRetryService,
   ORDER_HOLD_SERVICE_TOKEN,
   ORDER_PROVISIONING_RESUME_SERVICE_TOKEN,
+  ORDER_ROUTING_RETRY_SERVICE_TOKEN,
   OrderAlreadyOnHoldError,
   OrderHoldContendedError,
   OrderHoldNotFoundError,
@@ -86,11 +93,20 @@ import {
   HoldReleaseNoteRequiredError,
   HoldReleaseNotPermittedError,
   deriveSlaState,
+  MULTIPACK_WITHOUT_BUNDLE_REASON_CODE,
   IOrderHoldService,
   IOrderProvisioningResumeService,
+  IOrderRoutingRetryService,
+  type OrderRoutingRetryRefusal,
   ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   IOrderTestFixtureService,
-  TestFixturesDisabledException} from '@openlinker/core/orders';
+  RefundCeilingExceededException,
+  RefundRecordContendedException,
+  RefundLockUnavailableException,
+  TestFixturesDisabledException,
+  classifyBuyerNoteForList,
+  buildBuyerNotePreview,
+} from '@openlinker/core/orders';
 import type {
   OrderRecord,
   OrderRecordFilters,
@@ -102,12 +118,16 @@ import type {
 import {
   ISalesDocumentViewService,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  PAYMENT_WRITEBACK_SERVICE_TOKEN,
+  ORDER_REFUND_SERVICE_TOKEN,
+  deriveOrderRefundState,
+  type IOrderRefundService,
+  isPaymentWritebackProblem,
+  type IPaymentWritebackService,
 } from '@openlinker/core/orders';
-import {
-  INVOICE_SERVICE_TOKEN,
-  IInvoiceService,
-} from '@openlinker/core/invoicing';
+import { INVOICE_SERVICE_TOKEN, IInvoiceService } from '@openlinker/core/invoicing';
 import { Logger } from '@openlinker/shared/logging';
+import type { KnownApiErrorCode } from '@openlinker/shared/errors';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
 import {
   RESERVATION_SHORTFALL_SERVICE_TOKEN,
@@ -135,11 +155,60 @@ import {
   type IShipmentQueryService,
 } from '@openlinker/core/shipping';
 import {
+  FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
+  type IFulfillmentWorkQueryService,
+  type OrderWorkSummary,
+} from '@openlinker/core/fulfillment';
+import {
   RETURNS_SERVICE_TOKEN,
   type IReturnsService,
   type OpenReturnOrderSummary,
 } from '@openlinker/core/returns';
-import { ORDER_TAG_SERVICE_TOKEN, type IOrderTagService } from '@openlinker/core/orders';
+import {
+  PROMOTION_APPLICATION_LOG_TOKEN,
+  type PromotionApplicationLogPort,
+} from '@openlinker/core/promotions';
+import {
+  ORDER_CHANGE_SERVICE_TOKEN,
+  ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN,
+  ORDER_TAG_SERVICE_TOKEN,
+  type IOrderChangeService,
+  type IOrderSourceAmendmentEffectsService,
+  type OrderChange,
+  type IOrderTagService,
+  type SourceAmendmentReconcileResult,
+} from '@openlinker/core/orders';
+import { SourceChangeResultResponseDto } from './dto/source-change-result-response.dto';
+import {
+  ORDER_CANCELLATION_SERVICE_TOKEN,
+  type IOrderCancellationService,
+} from '../application/interfaces/order-cancellation.service.interface';
+import {
+  ORDER_EDIT_SERVICE_TOKEN,
+  type IOrderEditService,
+} from '../application/interfaces/order-edit.service.interface';
+import {
+  CancelCorrectionFailedError,
+  OrderCancellationInvalidReasonError,
+  OrderCancellationNoteRequiredError,
+  OrderCancellationNotFoundError,
+  OrderCancellationRefusedError,
+} from '../application/errors/order-cancellation.errors';
+import type {
+  CancelOrderResult,
+  ConfirmOrderChangeResult,
+} from '../application/types/order-cancellation.types';
+import { OrderChangeResponseDto } from './dto/order-change-response.dto';
+import { readDiscountCorrectionLines } from '../application/services/order-edits-view';
+import {
+  CancelOrderRequestDto,
+  ConfirmOrderChangeRequestDto,
+} from './dto/cancel-order-request.dto';
+import type { CancelCorrectionProposalLineDto } from './dto/cancel-order-response.dto';
+import {
+  CancelOrderResponseDto,
+  ConfirmOrderChangeResponseDto,
+} from './dto/cancel-order-response.dto';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import {
   SourceFulfillmentResponseDto,
@@ -153,26 +222,46 @@ import { CountOrdersQueryDto } from './dto/count-orders-query.dto';
 import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
+import {
+  PaymentWritebackActionRequestDto,
+  PaymentWritebackHandledResponseDto,
+  PaymentWritebackRetryResponseDto,
+} from './dto/payment-writeback-action.dto';
 import { OrderSlaSummaryResponseDto } from './dto/order-sla-summary-response.dto';
 import { OrderSlaSummaryQueryDto } from './dto/order-sla-summary-query.dto';
 import { OrderLifecyclePhaseSummaryResponseDto } from './dto/order-lifecycle-phase-summary-response.dto';
-import { OrderRecordResponseDto } from './dto/order-record-response.dto';
+import {
+  OrderRecordResponseDto,
+  type OrderBundleLineDto,
+  type OrderMultipackHoldDto,
+} from './dto/order-record-response.dto';
+import {
+  CORE_ENTITY_TYPE,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
+  type IIdentifierMappingService,
+} from '@openlinker/core/identifier-mapping';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+  type IBundleDefinitionService,
+  type IProductsService,
+} from '@openlinker/core/products';
 import type { OrderSyncStatusResponseDto } from './dto/order-sync-status-response.dto';
 import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
+import { RetryOrderRoutingResponseDto } from './dto/retry-order-routing-response.dto';
 import { PlaceOrderHoldRequestDto } from './dto/place-order-hold-request.dto';
 import { MarkPreRolloutEraResponseDto } from './dto/mark-pre-rollout-era-response.dto';
 import { ReleaseOrderHoldRequestDto } from './dto/release-order-hold-request.dto';
-import type {
-  OrderHoldDto,
-  ProvisioningResumeDto} from './dto/order-hold-response.dto';
+import type { OrderHoldDto, ProvisioningResumeDto } from './dto/order-hold-response.dto';
 import {
   PlaceOrderHoldResponseDto,
   ReleaseOrderHoldResponseDto,
 } from './dto/order-hold-response.dto';
 import type { OrderInvoiceProjectionDto } from './dto/order-invoice-projection.dto';
 import type { OrderReservationShortfallDto } from './dto/order-reservation-shortfall.dto';
+import type { OrderHandledInOpenLinkerDto } from './dto/order-handled-in-openlinker.dto';
 import type { OrderOpenReturnDto } from './dto/order-open-return.dto';
 import {
   SalesDocumentViewResponseDto,
@@ -181,6 +270,11 @@ import {
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
 import { ParcelProfileResponseDto } from '../../mappings/http/dto/routing-rule-response.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
+import {
+  FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN,
+  type IFulfillmentParcelClosureNotifier,
+} from '../../fulfillment/application/interfaces/fulfillment-parcel-closure-notifier.service.interface';
+import { toSalesDocumentBlockParamsDto } from './dto/sales-document-block-params.dto';
 
 /**
  * The one DTO-to-filters mapping this list has (#2944).
@@ -217,12 +311,22 @@ export function toOrderRecordFilters(
     slaState: query.slaState,
     fulfillmentState: query.fulfillmentState,
     salesDocumentBlocked: query.salesDocumentBlocked,
+    destinationRoutingBlocked: query.destinationRoutingBlocked,
+    waitingInOpenLinker: query.waitingInOpenLinker,
+    onPackBench: query.onPackBench,
     cancelled: query.cancelled,
     lifecyclePhase: query.phase,
     taxRateConflict: query.taxRateConflict,
     omsAttention: query.attention,
+    withGift: query.withGift,
+    withBundle: query.withBundle,
+    giftShopRejected: query.giftShopRejected,
+    omsAttentionReason: query.attentionReason,
+    paymentNotSent: query.paymentNotSent,
     activeHoldReason: query.hold,
     packed: query.packed,
+    hasBuyerNote: query.hasBuyerNote,
+    hidden: query.hidden,
     search: query.search,
     tagId: query.tag,
     untagged: query.untagged,
@@ -249,13 +353,16 @@ function assertCancelledPhaseAgree(
   if (cancelled === undefined || phase === undefined) return;
   const phaseIsCancelled = phase === 'cancelled';
   if (phaseIsCancelled === cancelled) return;
-  throw new BadRequestException(
+  throw codedHttpError(
+    HttpStatus.BAD_REQUEST,
+    'ORDER_FILTERS_CONTRADICTORY',
     phaseIsCancelled
       ? '?phase=cancelled contradicts ?cancelled=false: the cancelled phase IS the cancelled ' +
-        'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
+          'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
       : `?phase=${phase} contradicts ?cancelled=true: only ?phase=cancelled can match a ` +
-        'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
-        '?cancelled=false.'
+          'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
+          '?cancelled=false.',
+    { phase, cancelled }
   );
 }
 
@@ -276,10 +383,11 @@ function assertCancelledPhaseAgree(
  */
 export async function enrichCrossContextFilters(
   filters: OrderRecordFilters,
-  query: { search?: string; openReturn?: boolean },
+  query: { search?: string; openReturn?: boolean; giftNotAdded?: boolean },
   shipmentQuery: IShipmentQueryService,
   returnsService: IReturnsService,
-  logger: Logger
+  logger: Logger,
+  promotionLog?: PromotionApplicationLogPort
 ): Promise<OrderRecordFilters> {
   const enriched: OrderRecordFilters = { ...filters };
 
@@ -315,8 +423,36 @@ export async function enrichCrossContextFilters(
     }
   }
 
+  if (query.giftNotAdded !== undefined && promotionLog !== undefined) {
+    enriched.giftNotAdded = query.giftNotAdded;
+    try {
+      enriched.giftNotAddedOrderIds =
+        await promotionLog.findOrderIdsNeedingAttention(GIFT_NOT_ADDED_ID_LIMIT);
+    } catch (error) {
+      logger.error(
+        'Failed to resolve gift-not-added order ids for the ?giftNotAdded= filter',
+        (error as Error).stack
+      );
+      enriched.giftNotAddedOrderIds = [];
+    }
+  }
+
   return enriched;
 }
+
+/** Ceiling on the gift-not-added id list handed to the order query (#3935). */
+const GIFT_NOT_ADDED_ID_LIMIT = 5000;
+
+/**
+ * The 409 `error` code for each routing-retry refusal (#3558). Upper-snake, the
+ * shape `ORDER_ALREADY_ON_HOLD` and `NO_BUYER_NOTE` already use on this
+ * controller, so a client reads one error shape across `/orders`.
+ */
+const ROUTING_RETRY_REFUSAL_ERROR_CODES: Record<OrderRoutingRetryRefusal, KnownApiErrorCode> = {
+  'not-held': 'ROUTING_RETRY_NOT_HELD',
+  'not-retryable': 'ROUTING_RETRY_NOT_RETRYABLE',
+  'no-router': 'ROUTING_RETRY_NO_ROUTER',
+};
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -355,6 +491,8 @@ export class OrdersController {
     private readonly holdService: IOrderHoldService,
     @Inject(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN)
     private readonly provisioningResume: IOrderProvisioningResumeService,
+    @Inject(ORDER_ROUTING_RETRY_SERVICE_TOKEN)
+    private readonly routingRetry: IOrderRoutingRetryService,
     @Inject(SALES_DOCUMENT_VIEW_SERVICE_TOKEN)
     private readonly salesDocumentView: ISalesDocumentViewService,
     // #2855 — test-fixture-only writes, never called against real order data.
@@ -366,11 +504,45 @@ export class OrdersController {
     private readonly shipmentQuery: IShipmentQueryService,
     // #2998 — the "open return" badge + filter; `returns` may not import
     // `orders` back, so the composition happens here.
+    @Inject(PROMOTION_APPLICATION_LOG_TOKEN)
+    private readonly promotionLog: PromotionApplicationLogPort,
     @Inject(RETURNS_SERVICE_TOKEN)
     private readonly returnsService: IReturnsService,
+    // #3482 — the packing stage of an order OpenLinker handles itself. `orders`
+    // may not import `fulfillment` work rows directly; the read crosses the
+    // service seam, one batch per page.
+    @Inject(FULFILLMENT_WORK_QUERY_SERVICE_TOKEN)
+    private readonly fulfillmentWork: IFulfillmentWorkQueryService,
+    // #3624 - the bundle lines' component names and "older composition" flag.
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly productsService: IProductsService,
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService,
+    @Inject(BUNDLE_DEFINITION_SERVICE_TOKEN)
+    private readonly bundleDefinitions: IBundleDefinitionService,
     // #3532 — the tag ids rendered as the third line of the identity cell.
     @Inject(ORDER_TAG_SERVICE_TOKEN)
-    private readonly tagService: IOrderTagService
+    private readonly tagService: IOrderTagService,
+    // #3540 - the open-amendment fact behind the derived `amending` phase, and
+    // the operator cancel. Both reach their records through service seams.
+    @Inject(ORDER_CHANGE_SERVICE_TOKEN)
+    private readonly orderChanges: IOrderChangeService,
+    @Inject(ORDER_CANCELLATION_SERVICE_TOKEN)
+    private readonly orderCancellation: IOrderCancellationService,
+    // #3542 - the order beside the channel's own record of it, detail read only.
+    @Inject(ORDER_EDIT_SERVICE_TOKEN)
+    private readonly orderEdit: IOrderEditService,
+    // #3961 - "Check again" / "Keep as is" for a line the source changed after routing.
+    @Inject(ORDER_SOURCE_AMENDMENT_EFFECTS_SERVICE_TOKEN)
+    private readonly sourceAmendmentEffects: IOrderSourceAmendmentEffectsService,
+    @Inject(FULFILLMENT_PARCEL_CLOSURE_NOTIFIER_TOKEN)
+    private readonly parcelClosureNotifier: IFulfillmentParcelClosureNotifier,
+    // #3963 - Retry and Mark as handled for a payment that did not reach a shop.
+    @Inject(PAYMENT_WRITEBACK_SERVICE_TOKEN)
+    private readonly paymentWriteback: IPaymentWritebackService,
+    // #4130 - the refund-derived order state, read from the refund records.
+    @Inject(ORDER_REFUND_SERVICE_TOKEN)
+    private readonly orderRefunds: IOrderRefundService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -401,10 +573,11 @@ export class OrdersController {
 
     const filters = await enrichCrossContextFilters(
       toOrderRecordFilters(query),
-      { search: query.search, openReturn: query.openReturn },
+      { search: query.search, openReturn: query.openReturn, giftNotAdded: query.giftNotAdded },
       this.shipmentQuery,
       this.returnsService,
-      this.logger
+      this.logger,
+      this.promotionLog
     );
 
     // `?withTotal=false` skips the COUNT entirely and the response OMITS
@@ -487,14 +660,36 @@ export class OrdersController {
       items.map((order) => order.internalOrderId)
     );
 
+    // Batch the packing stage for the whole page (#3482) — same shape, same
+    // reason: one read across the page's order ids, never a per-row lookup. A
+    // FAILED read renders nothing and makes no "not routed" claim.
+    const handledByOrderId = await this.loadHandledInOpenLinker(
+      items.map((order) => order.internalOrderId)
+    );
+
     // Batch the tag ids for the whole page (#3532) — same shape, same reason.
     const tagsByOrderId = await this.tagService.getForOrders(
       items.map((order) => order.internalOrderId)
     );
 
+    // Batch the open-amendment fact for the whole page (#3540) - the derived
+    // `amending` phase's one input that is not a column on the row. One query,
+    // never per row; the SQL twin of the `?phase=` filter reads the same fact.
+    const amendingOrderIds = await this.orderChanges.findOrderIdsWithOpenAmendment(
+      items.map((order) => order.internalOrderId)
+    );
+
+    // Batch the refund summaries for the whole page (#4130): one grouped query,
+    // never a per-row read. Derived on read so the poll that rewrites
+    // `paymentStatus` cannot overwrite it.
+    const refundSummaries = await this.loadRefundSummariesForPage(
+      items.map((order) => order.internalOrderId)
+    );
+
     return {
       items: items.map((order) => {
-        const dto = this.toDto(order);
+        const dto = this.toDto(order, amendingOrderIds.has(order.internalOrderId));
+        this.applyRefundState(dto, order, refundSummaries);
         const invoice = invoiceByOrderId.get(order.internalOrderId);
         if (invoice) {
           dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoice) };
@@ -516,6 +711,10 @@ export class OrdersController {
         if (openReturn) {
           dto.openReturn = this.toOpenReturnDto(openReturn);
         }
+        const handled = handledByOrderId.get(order.internalOrderId);
+        if (handled) {
+          dto.handledInOpenLinker = this.toHandledInOpenLinkerDto(handled);
+        }
         dto.tagIds = tagsByOrderId.get(order.internalOrderId) ?? [];
         return dto;
       }),
@@ -536,7 +735,7 @@ export class OrdersController {
       'that cannot stop early - #2843 measured that count at 142 ms of a 149 ms request against ' +
       'a million orders (#2944). Takes no limit/offset: the answer depends on the filters alone, ' +
       'which is what makes it cacheable per filter combination. `sort` and `dir` are accepted ' +
-      'and ignored - a count cannot be ordered, but they travel inside this list\'s filter ' +
+      "and ignored - a count cannot be ordered, but they travel inside this list's filter " +
       'object, so refusing them would 400 every client that reuses one query builder.',
   })
   @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
@@ -552,10 +751,11 @@ export class OrdersController {
     // total for.
     const filters = await enrichCrossContextFilters(
       toOrderRecordFilters(query),
-      { search: query.search, openReturn: query.openReturn },
+      { search: query.search, openReturn: query.openReturn, giftNotAdded: query.giftNotAdded },
       this.shipmentQuery,
       this.returnsService,
-      this.logger
+      this.logger,
+      this.promotionLog
     );
     const total = await this.orderRecordRepository.countMany(filters);
     return { total };
@@ -567,7 +767,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Order health summary counts',
     description:
-      'Returns the count of order records per derived-health bucket (awaiting_mapping | needs_attention | synced | awaiting_dispatch) for the given source/customer/date scope. The four buckets partition the set, so `total` equals their sum — backs the list-page status segments.',
+      'Returns the count of order records per derived-health bucket (awaiting_mapping | needs_attention | synced | awaiting_dispatch) for the given source/customer/date scope. The buckets partition the set, so `total` equals their sum — backs the list-page status segments. An order OpenLinker handles itself (a live pack-bench work, #3482) counts as `synced` once it has shipped, and as `awaiting_dispatch` while it is still on the bench.',
   })
   @ApiResponse({
     status: 200,
@@ -578,17 +778,55 @@ export class OrdersController {
   async statusSummary(
     @Query() query: OrderHealthSummaryQueryDto
   ): Promise<OrderHealthSummaryResponseDto> {
-    const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
+    const { sourceConnectionId, customerId, createdFrom, createdTo, hidden } = query;
+    // #4025 - the open-return count reads the same id list the ?openReturn=
+    // filter resolves. A failure must not fail the whole summary the list page
+    // renders above its rows, and must not report 0 either: the two counts
+    // built on that list are OMITTED, which the client reads as "unknown".
+    let openReturnOrderIds: string[] = [];
+    let openReturnKnown = true;
+    try {
+      openReturnOrderIds = await this.returnsService.listOpenReturnOrderIds();
+    } catch (error) {
+      openReturnKnown = false;
+      this.logger.error(
+        'Failed to resolve open-return order ids for the health summary',
+        (error as Error).stack
+      );
+    }
+    // #3935 - the gift-not-added count reads the promotion application log;
+    // a failed read omits the count (unknown), never reports 0.
+    let giftNotAddedOrderIds: string[] = [];
+    let giftNotAddedKnown = true;
+    try {
+      giftNotAddedOrderIds =
+        await this.promotionLog.findOrderIdsNeedingAttention(GIFT_NOT_ADDED_ID_LIMIT);
+    } catch (error) {
+      giftNotAddedKnown = false;
+      this.logger.error(
+        'Failed to resolve gift-not-added order ids for the health summary',
+        (error as Error).stack
+      );
+    }
     const summary = await this.orderRecordRepository.countByHealth({
+      giftNotAddedOrderIds,
       sourceConnectionId,
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
+      hidden,
+      openReturnOrderIds,
     });
+    const { openReturn, attention, giftNotAdded, ...rest } = summary;
+    const { toHandle, ...attentionKnown } = attention;
     // The wire carries an ISO string; the domain summary carries a Date (#2254).
     return {
-      ...summary,
+      ...rest,
+      ...(openReturnKnown ? { openReturn } : {}),
+      ...(giftNotAddedKnown ? { giftNotAdded } : {}),
+      attention: openReturnKnown ? { ...attentionKnown, toHandle } : attentionKnown,
       salesDocumentBlockedOldestAt: summary.salesDocumentBlockedOldestAt?.toISOString() ?? null,
+      waitingInOpenLinkerOldestAt: summary.waitingInOpenLinkerOldestAt?.toISOString() ?? null,
     };
   }
 
@@ -606,16 +844,15 @@ export class OrdersController {
     type: OrderSlaSummaryResponseDto,
   })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
-  async slaSummary(
-    @Query() query: OrderSlaSummaryQueryDto
-  ): Promise<OrderSlaSummaryResponseDto> {
-    const { sourceConnectionId, customerId, createdFrom, createdTo, cancelled } = query;
+  async slaSummary(@Query() query: OrderSlaSummaryQueryDto): Promise<OrderSlaSummaryResponseDto> {
+    const { sourceConnectionId, customerId, createdFrom, createdTo, cancelled, hidden } = query;
     return this.orderRecordRepository.countBySla({
       sourceConnectionId,
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
       cancelled,
+      hidden,
     });
   }
 
@@ -636,7 +873,7 @@ export class OrdersController {
   async lifecycleSummary(
     @Query() query: OrderHealthSummaryQueryDto
   ): Promise<OrderLifecyclePhaseSummaryResponseDto> {
-    const { sourceConnectionId, customerId, createdFrom, createdTo } = query;
+    const { sourceConnectionId, customerId, createdFrom, createdTo, hidden } = query;
     // Deliberately no `cancelled` scope: cancellation is this partition's TOP
     // arm, so scoping by it would re-scope the axis the partition expresses.
     return this.orderRecordRepository.countByLifecyclePhase({
@@ -644,6 +881,7 @@ export class OrdersController {
       customerId,
       createdFrom: createdFrom ? new Date(createdFrom) : undefined,
       createdTo: createdTo ? new Date(createdTo) : undefined,
+      hidden,
     });
   }
 
@@ -659,9 +897,9 @@ export class OrdersController {
   ): Promise<OrderRecordResponseDto> {
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
-    const dto = this.toDto(order);
+    const dto = this.toDto(order, await this.hasOpenAmendment(internalOrderId));
     // Buyer tax id (#3180). DETAIL READ ONLY — off the shared `toDto`, so the
     // paged list never carries it. Unlike `activeHold` below this costs no extra
     // query (the column is already loaded); it is scoped for DATA MINIMISATION.
@@ -675,15 +913,47 @@ export class OrdersController {
     // through `decodeBuyerTaxIdColumn` so this DTO never has to remember that
     // `''` means "asserted none" rather than absence.
     dto.buyerTaxId = order.buyerTaxIdState;
+    // Buyer note (#3538) - DETAIL READ ONLY, for the same data-minimisation
+    // reason as `buyerTaxId` above: free text that may carry a phone number or a
+    // parcel locker, with no list consumer. `undefined` (key absent) = unknown or
+    // not stored; `null` = the source asserted none; a string = the note.
+    // `hasBuyerNote` and the read marker are the only note facts the list needs.
+    dto.buyerNote = order.buyerNoteState;
+    dto.buyerNoteReadAt = order.buyerNoteReadAt ? order.buyerNoteReadAt.toISOString() : null;
+    dto.buyerNoteReadByUserId = order.buyerNoteReadByUserId;
+    dto.buyerNoteChangedAt = order.buyerNoteChangedAt
+      ? order.buyerNoteChangedAt.toISOString()
+      : null;
+    // B-10: the acknowledgements are a supplementary read from another context;
+    // a failure there must not turn the whole order detail into a 500. `null`
+    // means "could not load", distinct from `[]` (loaded, none acknowledged).
+    try {
+      dto.buyerNoteAcknowledgements = (
+        await this.fulfillmentWork.listBuyerNoteAcknowledgements(order.internalOrderId)
+      ).map((ack) => ({
+        workId: ack.workId,
+        acknowledgedAt: ack.acknowledgedAt.toISOString(),
+        acknowledgedByUserId: ack.acknowledgedByUserId,
+      }));
+    } catch (error) {
+      this.logger.warn(
+        `Could not load buyer note acknowledgements for order ${order.internalOrderId}: ${(error as Error).message}`
+      );
+      dto.buyerNoteAcknowledgements = null;
+    }
+    // #3542: the order beside the channel's own record of it. DETAIL ONLY - it
+    // reads the change history. An unedited order costs no query at all.
+    dto.edits = await this.orderEdit.getEditsView(order);
     // Invoice projection (#1224): the FE invoice panel reads a neutral `invoice`
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
     // this detail read joins the single record for one order.
-    const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(
-      order.internalOrderId
-    );
+    const invoiceRecord = await this.invoiceService.getLatestInvoiceForOrder(order.internalOrderId);
     if (invoiceRecord) {
-      dto.orderSnapshot = { ...dto.orderSnapshot, invoice: this.toInvoiceProjection(invoiceRecord) };
+      dto.orderSnapshot = {
+        ...dto.orderSnapshot,
+        invoice: this.toInvoiceProjection(invoiceRecord),
+      };
     }
     // Delivery-routing-resolution + rider projection (#1791/#1792): a
     // single-order counterpart to the list read's batched resolution below.
@@ -704,6 +974,11 @@ export class OrdersController {
     // `/orders`. Best-effort: a shortfall projection failing must not take the
     // whole order detail down with it, and the episodes are re-readable.
     dto.reservationShortfalls = await this.loadReservationShortfalls(order.internalOrderId);
+    this.applyRefundState(
+      dto,
+      order,
+      await this.loadRefundSummariesForPage([order.internalOrderId])
+    );
     // Hold projection (#2341). DETAIL ONLY — one query per order, which on the
     // paged list would be N. `activeHold` is derived from the same read rather
     // than a second `getOpenHold` call, so the two answers cannot disagree.
@@ -714,6 +989,13 @@ export class OrdersController {
     // hold surface. Reaching that needs direct SQL — both the request DTO and
     // the service validate against the union — so failing loudly is the right
     // trade, but it is a new consequence rather than a pre-existing one.
+    dto.bundleLines = await this.loadBundleLines(order);
+    const multipackHolds = await this.loadMultipackHolds(order);
+    if (multipackHolds.length > 0) {
+      dto.multipackHolds = multipackHolds;
+      // First line, kept for readers of the single-line shape.
+      dto.multipackHold = multipackHolds[0];
+    }
     const holds = await this.holdService.listHolds(order.internalOrderId);
     dto.holdHistory = holds.map((hold) => this.toHoldDto(hold));
     dto.activeHold = dto.holdHistory.find((hold) => hold.releasedAt === null) ?? null;
@@ -735,6 +1017,14 @@ export class OrdersController {
     if (openReturn) {
       dto.openReturn = this.toOpenReturnDto(openReturn);
     }
+    // Packing stage (#3482) — the same projection the list carries, one read for
+    // this one order, so the row and the detail header cannot disagree.
+    const handled = (await this.loadHandledInOpenLinker([order.internalOrderId])).get(
+      order.internalOrderId
+    );
+    if (handled) {
+      dto.handledInOpenLinker = this.toHandledInOpenLinkerDto(handled);
+    }
     dto.tagIds = await this.tagService.listForOrder(order.internalOrderId);
     return dto;
   }
@@ -751,9 +1041,13 @@ export class OrdersController {
       'issues, registers, routes and configures nothing. The same shape is carried on every row of ' +
       'GET /orders, so the detail panel needs this endpoint only when it is opened directly - with ' +
       'one exception: `matchedRule` is resolved HERE only and is always `null` on the list, so a ' +
-      'client must read this endpoint before concluding no rule decided an order\'s kind.',
+      "client must read this endpoint before concluding no rule decided an order's kind.",
   })
-  @ApiResponse({ status: 200, description: 'Sales-document projection', type: SalesDocumentViewResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Sales-document projection',
+    type: SalesDocumentViewResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getOrderSalesDocument(
@@ -761,7 +1055,7 @@ export class OrdersController {
   ): Promise<SalesDocumentViewResponseDto> {
     const view = await this.salesDocumentView.getForOrder(internalOrderId);
     if (view === null) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
     return toSalesDocumentViewDto(view);
   }
@@ -781,14 +1075,18 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Ask the SOURCE marketplace what it says about this order',
     description:
-      "What the marketplace itself reports, as opposed to what OpenLinker recorded (#3365). " +
+      'What the marketplace itself reports, as opposed to what OpenLinker recorded (#3365). ' +
       'OpenLinker relays a dispatch mark and, where it has one, a waybill INTO the marketplace ' +
       'through a relay that reads nothing back (ADR-027), so this is the only way to confirm the ' +
       'write landed. Read-only: it resolves the source adapter and issues one GET, writes nothing, ' +
       'and never changes the order. An unreachable source, a source with no readback, and an order ' +
       'carrying no external id are three DIFFERENT states on the response, never a 5xx.',
   })
-  @ApiResponse({ status: 200, description: "The source's answer", type: SourceFulfillmentResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: "The source's answer",
+    type: SourceFulfillmentResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Order not found' })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async getSourceFulfillment(
@@ -798,10 +1096,45 @@ export class OrdersController {
       return toSourceFulfillmentDto(await this.sourceFulfillment.read(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(`Order not found: ${internalOrderId}`);
+        throw orderNotFound(internalOrderId);
       }
       throw error;
     }
+  }
+
+  @Roles('admin', 'operator')
+  @Post('payment-writeback/retry')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Send a late payment to the shops again',
+    description:
+      'For each order, re-opens every shop whose payment write failed for good or is still ' +
+      'retrying, and queues a fresh write (#3963). Shops that were never meant to get one ' +
+      '(cash on delivery, cancelled, refunded, left to the operator) are left alone.',
+  })
+  @ApiResponse({ status: 202, type: PaymentWritebackRetryResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async retryPaymentWriteback(
+    @Body() body: PaymentWritebackActionRequestDto
+  ): Promise<PaymentWritebackRetryResponseDto> {
+    return { enqueued: await this.paymentWriteback.retry(body.internalOrderIds) };
+  }
+
+  @Roles('admin', 'operator')
+  @Post('payment-writeback/handled')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mark a payment that did not reach a shop as handled',
+    description:
+      'The operator updated the payment in the shop by hand (#3963). Removes the orders from the ' +
+      '"payment not sent to shop" filter; nothing is written to any shop.',
+  })
+  @ApiResponse({ status: 200, type: PaymentWritebackHandledResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async markPaymentWritebackHandled(
+    @Body() body: PaymentWritebackActionRequestDto
+  ): Promise<PaymentWritebackHandledResponseDto> {
+    return { updated: await this.paymentWriteback.markHandled(body.internalOrderIds) };
   }
 
   @Roles('admin', 'operator')
@@ -818,7 +1151,11 @@ export class OrdersController {
     type: RetryOrderDestinationResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Order or destination row not found' })
-  @ApiResponse({ status: 409, description: 'Destination is not in a retryable state' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Destination is not in a retryable state, or the order is handled by OMS routing (ORDER_HANDLED_BY_ROUTING)',
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async retryDestination(
     @Param('internalOrderId') internalOrderId: string,
@@ -836,19 +1173,207 @@ export class OrdersController {
         jobType: result.jobType,
       };
     } catch (error) {
-      if (
-        error instanceof OrderRecordNotFoundException ||
-        error instanceof OrderDestinationNotFoundException
-      ) {
-        throw new NotFoundException(error.message);
+      if (error instanceof OrderRecordNotFoundException) {
+        throw orderNotFound(error.internalOrderId, error.message);
+      }
+      if (error instanceof OrderDestinationNotFoundException) {
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_DESTINATION_NOT_FOUND', error.message, {
+          orderId: error.internalOrderId,
+          connectionId: error.destinationConnectionId,
+        });
       }
       if (error instanceof OrderDestinationNotRetryableException) {
-        throw new ConflictException(error.message);
+        throw codedHttpError(
+          HttpStatus.CONFLICT,
+          'ORDER_DESTINATION_NOT_RETRYABLE',
+          error.message,
+          {
+            orderId: error.internalOrderId,
+            connectionId: error.destinationConnectionId,
+            status: error.currentStatus,
+          }
+        );
+      }
+      if (error instanceof OrderDestinationHandledByRoutingException) {
+        throw codedHttpError(HttpStatus.CONFLICT, 'ORDER_HANDLED_BY_ROUTING', error.message, {
+          orderId: error.internalOrderId,
+          connectionId: error.destinationConnectionId,
+        });
       }
       if (error instanceof MissingSourceExternalIdException) {
-        throw new InternalServerErrorException(error.message);
+        throw new InternalServerErrorException(
+          codedErrorBody(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            'ORDER_SOURCE_ID_MISSING',
+            error.message,
+            {
+              orderId: error.internalOrderId,
+              connectionId: error.sourceConnectionId,
+            }
+          )
+        );
       }
       throw error;
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':internalOrderId/retry-routing')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Retry routing for an order OpenLinker is holding (#3558)',
+    description:
+      'Enqueues a fresh `fulfillment.work.route` for an order held as `routing-refused` or ' +
+      '`routing-failed`. The job re-reads the stored snapshot and routes it through the same ' +
+      'exactly-once commit as the automatic re-route, so it never creates a second live decision; ' +
+      'the outcome lands on the order (the "Waiting: ..." badge clears, or its detail changes). ' +
+      'A missing shipping address and the self-resolving guards are not retryable here: they ' +
+      'resolve on a re-ingestion or on their own.',
+  })
+  @ApiResponse({
+    status: 202,
+    description: 'Retry accepted; route job enqueued',
+    type: RetryOrderRoutingResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Not retryable, with `error` naming why: ROUTING_RETRY_NOT_HELD - the order is not held; ' +
+      'ROUTING_RETRY_NOT_RETRYABLE - it is held for a reason a retry cannot change; ' +
+      'ROUTING_RETRY_NO_ROUTER - no single router is selected, or none is wired for the selected connection',
+  })
+  @ApiResponse({ status: 503, description: 'The job could not be enqueued' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async retryRouting(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<RetryOrderRoutingResponseDto> {
+    const result = await this.routingRetry.retryRouting(internalOrderId);
+    switch (result.status) {
+      case 'enqueued':
+        return { internalOrderId, jobId: result.jobId };
+      case 'order-not-found':
+        throw orderNotFound(internalOrderId);
+      case 'refused':
+        // A machine-readable CODE: the three states have different remedies, and
+        // a status code alone cannot tell an operator which one.
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: ROUTING_RETRY_REFUSAL_ERROR_CODES[result.reason],
+          message: `Routing cannot be retried for order ${internalOrderId}`,
+        });
+      case 'enqueue-failed':
+        throw codedHttpError(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'ROUTING_RETRY_NOT_QUEUED',
+          'Could not queue the routing retry',
+          { orderId: internalOrderId }
+        );
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':internalOrderId/buyer-note/read')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mark an order’s buyer note read',
+    description:
+      'Records that an operator has read the buyer’s checkout note (#3538): stamps the instant (server-side) and the acting user. ' +
+      'Idempotent and fill-once - a repeat call returns the EXISTING marker rather than re-stamping, so the first reader is never overwritten. ' +
+      'It is a display fact: it gates nothing and does not change the note. This is the order-level marker; the per-parcel acknowledgement at the pack bench is separate.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Order with the read marker set',
+    type: OrderRecordResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'NO_BUYER_NOTE - the order carries no buyer note to read',
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async markBuyerNoteRead(
+    @Param('internalOrderId') internalOrderId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<OrderRecordResponseDto> {
+    try {
+      const record = await this.orderRecordService.markBuyerNoteRead(internalOrderId, user.id);
+      const dto = this.toDto(record);
+      // B-9: the endpoint's contract is to return the marker it just set (or the
+      // existing one on a replay); `toDto` is the list projection and omits it.
+      dto.buyerNoteReadAt = record.buyerNoteReadAt ? record.buyerNoteReadAt.toISOString() : null;
+      dto.buyerNoteReadByUserId = record.buyerNoteReadByUserId;
+      return dto;
+    } catch (error) {
+      if (error instanceof OrderRecordNotFoundException) {
+        throw orderNotFound(error.internalOrderId, error.message);
+      }
+      if (error instanceof NoBuyerNoteException) {
+        throw new ConflictException({
+          statusCode: HttpStatus.CONFLICT,
+          error: 'NO_BUYER_NOTE',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':internalOrderId/source-change/recheck')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Compare a changed order with its packing work again',
+    description:
+      'For an order whose source changed a line after it went to packing (#3961). Runs the same ' +
+      'comparison ingestion runs: if nothing in the box blocks it any more (for example the packer ' +
+      'undid a scan), the packing work, the reservation and the stock move to the new quantities and ' +
+      'the hold is released; otherwise the box stays on hold and `cause` says why. Idempotent.',
+  })
+  @ApiResponse({ status: 200, type: SourceChangeResultResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async recheckSourceChange(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<SourceChangeResultResponseDto> {
+    await this.requireOrder(internalOrderId);
+    const result = await this.sourceAmendmentEffects.reconcile({ internalOrderId });
+    // A box the applied change left exactly full was closed and recorded as
+    // shipped by core; tell the order's channel now, not at the next sweep.
+    for (const closed of result.closedParcels) {
+      await this.parcelClosureNotifier.relayRecordedClose(closed.workId);
+    }
+    return toSourceChangeResult(result);
+  }
+
+  @Roles('admin', 'operator')
+  @Post(':internalOrderId/source-change/accept')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Keep the packing work although the source changed the order',
+    description:
+      'For an order whose source changed a line after it went to packing (#3961): ship the box as ' +
+      'packed, or mark a change that arrived after shipping as handled. Records the decision against ' +
+      'the exact change, releases the hold and clears the attention entry. A later, different change ' +
+      'from the source is raised again. The acting user is taken from the session.',
+  })
+  @ApiResponse({ status: 200, type: SourceChangeResultResponseDto })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async acceptSourceChange(
+    @Param('internalOrderId') internalOrderId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<SourceChangeResultResponseDto> {
+    await this.requireOrder(internalOrderId);
+    return toSourceChangeResult(
+      await this.sourceAmendmentEffects.accept({ internalOrderId, actorUserId: user.id })
+    );
+  }
+
+  private async requireOrder(internalOrderId: string): Promise<void> {
+    if ((await this.orderRecordService.getOrderRecord(internalOrderId)) === null) {
+      throw orderNotFound(internalOrderId, `Order ${internalOrderId} not found`);
     }
   }
 
@@ -860,7 +1385,11 @@ export class OrdersController {
     description:
       'Records the plain operator fact that this order is packed, stamping the instant (server-side) and the acting user. ' +
       'It is a fact, not a state: recordStatus, fulfillmentState, slaState and the order-health buckets are untouched, and nothing is gated on it. ' +
-      'Idempotent — a repeat call returns the EXISTING stamp and actor rather than re-stamping, which is why it answers 200 and not 201.',
+      'Idempotent — a repeat call returns the EXISTING stamp and actor rather than re-stamping, which is why it answers 200 and not 201. ' +
+      'Callable by a WMS or any other system, not just the UI: this is the same endpoint a person uses, so a warehouse system that does its own picking and packing can assert the fact here. ' +
+      'Authenticate as a service-account USER — an ordinary user with the `operator` role (or `admin`) — using the usual JWT login; there is no separate machine principal, ' +
+      'so the token inherits that user’s role and `packedByUserId` records that account. ' +
+      'Packing is independent of fulfilment routing: it applies identically to every order, including one the destination shop ships itself (`omp_fulfilled`, the default).',
   })
   @ApiResponse({ status: 200, description: 'Order is packed', type: OrderRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -870,10 +1399,11 @@ export class OrdersController {
     @CurrentUser() user: AuthenticatedUser
   ): Promise<OrderRecordResponseDto> {
     try {
-      return this.toDto(await this.orderRecordService.markPacked(internalOrderId, user.id));
+      const packed = await this.orderRecordService.markPacked(internalOrderId, user.id);
+      return this.toDto(packed, await this.hasOpenAmendment(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw orderNotFound(error.internalOrderId, error.message);
       }
       throw error;
     }
@@ -885,7 +1415,8 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Clear an order’s packed mark',
     description:
-      'Clears both packed fields together. Clearing an order that is not packed is a no-op that returns the record unchanged.',
+      'Clears both packed fields together. Clearing an order that is not packed is a no-op that returns the record unchanged. ' +
+      'Like marking packed, it is callable by a WMS authenticating as a service-account user with the `operator` or `admin` role.',
   })
   @ApiResponse({ status: 200, description: 'Order is not packed', type: OrderRecordResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -894,10 +1425,11 @@ export class OrdersController {
     @Param('internalOrderId') internalOrderId: string
   ): Promise<OrderRecordResponseDto> {
     try {
-      return this.toDto(await this.orderRecordService.clearPacked(internalOrderId));
+      const cleared = await this.orderRecordService.clearPacked(internalOrderId);
+      return this.toDto(cleared, await this.hasOpenAmendment(internalOrderId));
     } catch (error) {
       if (error instanceof OrderRecordNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw orderNotFound(error.internalOrderId, error.message);
       }
       throw error;
     }
@@ -932,6 +1464,41 @@ export class OrdersController {
       );
       return new Map();
     }
+  }
+
+  /**
+   * Best-effort, like the other batched projections: a failed read renders no
+   * refund state and makes no "not refunded" claim.
+   */
+  private async loadRefundSummariesForPage(
+    internalOrderIds: string[]
+  ): Promise<Awaited<ReturnType<IOrderRefundService['getRefundSummariesForOrders']>>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+    try {
+      return await this.orderRefunds.getRefundSummariesForOrders(internalOrderIds);
+    } catch (error) {
+      this.logger.error(
+        `Failed to project refund state for a page of ${String(internalOrderIds.length)} order(s)`,
+        (error as Error).stack
+      );
+      return new Map();
+    }
+  }
+
+  private applyRefundState(
+    dto: OrderRecordResponseDto,
+    order: OrderRecord,
+    summaries: Awaited<ReturnType<IOrderRefundService['getRefundSummariesForOrders']>>
+  ): void {
+    const view = deriveOrderRefundState(order, summaries.get(order.internalOrderId) ?? null);
+    // `none` stays absent: no field means nothing was refunded or the read
+    // failed, never a positive claim either way.
+    if (view.state === 'none') {
+      return;
+    }
+    dto.refundState = view;
   }
 
   private async loadReservationShortfallsForPage(
@@ -972,6 +1539,32 @@ export class OrdersController {
       );
       return [];
     }
+  }
+
+  private async loadHandledInOpenLinker(
+    internalOrderIds: string[]
+  ): Promise<ReadonlyMap<string, OrderWorkSummary>> {
+    if (internalOrderIds.length === 0) {
+      return new Map();
+    }
+    try {
+      return await this.fulfillmentWork.summarizeWorkForOrders(internalOrderIds);
+    } catch (error) {
+      this.logger.error(
+        `Failed to project the packing stage for a page of ${String(internalOrderIds.length)} order(s)`,
+        (error as Error).stack
+      );
+      return new Map();
+    }
+  }
+
+  private toHandledInOpenLinkerDto(summary: OrderWorkSummary): OrderHandledInOpenLinkerDto {
+    return {
+      stage: summary.stage,
+      workCount: summary.workCount,
+      assignment: summary.assignment,
+      assignedToUserId: summary.assignedToUserId,
+    };
   }
 
   private toOpenReturnDto(summary: OpenReturnOrderSummary): OrderOpenReturnDto {
@@ -1022,7 +1615,7 @@ export class OrdersController {
     // NOT worth a lock: the window is tiny and the row is inert audit data.
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
 
     try {
@@ -1088,8 +1681,11 @@ export class OrdersController {
     // refusal: a concurrent release in the window is caught below as 409.
     const holds = await this.holdService.listHolds(internalOrderId);
     if (!holds.some((hold) => hold.id === holdId)) {
-      throw new NotFoundException(
-        `Hold not found on order ${internalOrderId}: ${holdId}`
+      throw codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ORDER_HOLD_NOT_FOUND',
+        `Hold not found on order ${internalOrderId}: ${holdId}`,
+        { orderId: internalOrderId, holdId }
       );
     }
 
@@ -1103,7 +1699,10 @@ export class OrdersController {
       released = transition.hold;
     } catch (error) {
       if (error instanceof OrderHoldNotFoundError) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'ORDER_HOLD_NOT_FOUND', error.message, {
+          orderId: internalOrderId,
+          holdId: error.holdId,
+        });
       }
       if (error instanceof HoldAlreadyReleasedError) {
         throw new ConflictException({
@@ -1115,12 +1714,17 @@ export class OrdersController {
       if (error instanceof HoldReleaseNoteRequiredError) {
         // Fixable by resubmitting with a note — a request problem, not a
         // permission one.
-        throw new BadRequestException(error.message);
+        throw codedHttpError(HttpStatus.BAD_REQUEST, 'HOLD_RELEASE_NOTE_REQUIRED', error.message, {
+          holdId: error.holdId,
+          placedByService: error.placedByService,
+        });
       }
       if (error instanceof HoldReleaseNotPermittedError) {
         // Unreachable from this route (the actor is always a user), but mapped
         // so a future service-actor route cannot fall through to a 500.
-        throw new ForbiddenException(error.message);
+        throw codedHttpError(HttpStatus.FORBIDDEN, 'HOLD_RELEASE_NOT_PERMITTED', error.message, {
+          holdId: error.holdId,
+        });
       }
       throw error;
     }
@@ -1140,6 +1744,137 @@ export class OrdersController {
       hold: this.toHoldDto(released),
       provisioningResume: this.toProvisioningResumeDto(resume),
     };
+  }
+
+  @Roles('admin')
+  @Post(':internalOrderId/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Cancel an order at the operator's request",
+    description:
+      'An ADR-044 proposal: OpenLinker asks the SOURCE sales channel to cancel, and cancels locally only ' +
+      'when the channel accepts (or has no cancel verb to refuse with). Outstanding shipping labels are ' +
+      'voided first; a carrier that cannot void stops the cancel before the channel hears anything. ' +
+      'On success the order is marked cancelled, stock is restored, open fulfilment work is cancelled and, ' +
+      'for an invoiced order, a credit proposal is returned for POST /orders/:id/changes/:changeId/confirm. ' +
+      'If the channel does not answer, the request stays open and the response is 202 `pending`. ' +
+      'Only the closed reason code is sent to a channel; the note is kept on the audit record. ' +
+      'The acting user is taken from the session, never the body.',
+  })
+  @ApiResponse({ status: 200, description: 'Order cancelled', type: CancelOrderResponseDto })
+  @ApiResponse({
+    status: 202,
+    description: 'The sales channel has not answered; the cancel request stays open',
+    type: CancelOrderResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Unknown reason, or a note is missing for `other`' })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'ORDER_ALREADY_CANCELLED | ORDER_ALREADY_SHIPPED | ORDER_HAS_FISCAL_RECEIPT | INVOICE_NOT_SETTLED | ' +
+      'ORDER_CANCEL_IN_FLIGHT | ORDER_WORK_ACCEPTED_NEEDS_ACK | ORDER_CANCEL_CONTENDED | ' +
+      'LABEL_NOT_VOIDABLE | CHANNEL_REFUSED_CANCEL',
+  })
+  async cancelOrder(
+    @Param('internalOrderId') internalOrderId: string,
+    @Body() dto: CancelOrderRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) response: Response
+  ): Promise<CancelOrderResponseDto> {
+    // 404 first, before any state is read or written.
+    const order = await this.orderRecordRepository.findById(internalOrderId);
+    if (!order) {
+      throw orderNotFound(internalOrderId);
+    }
+
+    try {
+      const result = await this.orderCancellation.cancelOrder({
+        internalOrderId,
+        reason: dto.reason,
+        note: dto.note?.trim() ? dto.note.trim() : null,
+        acknowledgeAcceptedWork: dto.acknowledgeAcceptedWork === true,
+        actorUserId: user.id,
+      });
+      if (result.status === 'pending') {
+        response.status(HttpStatus.ACCEPTED);
+      }
+      return this.toCancelOrderDto(result);
+    } catch (error) {
+      throw this.toCancellationHttpException(error);
+    }
+  }
+
+  @Roles('admin')
+  @Post(':internalOrderId/changes/:changeId/confirm')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Confirm a proposed order change',
+    description:
+      'Confirms a change the operator has reviewed. Three kinds are confirmable: the credit proposal a ' +
+      'cancelled, invoiced order leaves behind (`order.cancel_correction`) and the correction of an issued ' +
+      'invoice for a discount (`order.discount_correction`) - confirming issues the correcting invoice ' +
+      '(an action that cannot be withdrawn once sent to a tax authority) under an idempotency key derived ' +
+      'from the change id, and a provider failure leaves the proposal open so it can be retried - and the ' +
+      'refund intent a discount on a paid order opens (`order.discount_refund`): confirming means the seller ' +
+      'refunded the buyer on the channel and records the refund (OpenLinker executes none), refused above ' +
+      "the order's refund ceiling unless the body sets `acknowledgeAboveCeiling`.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Change confirmed',
+    type: ConfirmOrderChangeResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Order not found, or no such change on this order' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'CHANGE_ALREADY_CONFIRMED | CHANGE_EXPIRED | CHANGE_NOT_OPEN | CHANGE_KIND_NOT_CONFIRMABLE | ' +
+      'CORRECTION_IN_PROGRESS | CORRECTION_NEEDS_RECONCILIATION | CORRECTION_SUPERSEDED | ' +
+      'refund_ceiling_exceeded (`code`, with ceiling / alreadyRefunded / requested / currency)',
+  })
+  @ApiResponse({ status: 422, description: 'The invoicing provider rejected the correction' })
+  async confirmChange(
+    @Param('internalOrderId') internalOrderId: string,
+    @Param('changeId', ParseUUIDPipe) changeId: string,
+    @Body() dto: ConfirmOrderChangeRequestDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<ConfirmOrderChangeResponseDto> {
+    try {
+      const result: ConfirmOrderChangeResult = await this.orderCancellation.confirmChange({
+        internalOrderId,
+        changeId,
+        actorUserId: user.id,
+        acknowledgeAboveCeiling: dto?.acknowledgeAboveCeiling === true,
+      });
+      return result;
+    } catch (error) {
+      throw this.toCancellationHttpException(error);
+    }
+  }
+
+  @Roles('admin', 'operator', 'viewer')
+  @Get(':internalOrderId/changes')
+  @ApiOperation({
+    summary: "Read an order's operator changes",
+    description:
+      'Every `order.*` change proposal against the order, newest first: cancel requests and the credit ' +
+      'proposals they leave behind. `return.*` changes are not listed here. Lets a reloaded page, or a ' +
+      'second admin, find a pending cancel and the correction awaiting confirmation.',
+  })
+  @ApiResponse({ status: 200, type: [OrderChangeResponseDto] })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async listOrderChanges(
+    @Param('internalOrderId') internalOrderId: string
+  ): Promise<OrderChangeResponseDto[]> {
+    const order = await this.orderRecordRepository.findById(internalOrderId);
+    if (!order) {
+      throw orderNotFound(internalOrderId);
+    }
+    const items = await this.orderChanges.listOperatorChangesByOrder(internalOrderId);
+    return items.map(({ change, open }) => this.toOrderChangeDto(change, open));
   }
 
   @Roles('admin')
@@ -1165,7 +1900,11 @@ export class OrdersController {
       'called against real order data — it silently excludes the order from Net Sales figures via ' +
       'the pre-rollout tax-rate-era rule.',
   })
-  @ApiResponse({ status: 200, description: 'Stamp applied (or already present)', type: MarkPreRolloutEraResponseDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Stamp applied (or already present)',
+    type: MarkPreRolloutEraResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Insufficient permissions, or TEST_FIXTURES_DISABLED' })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async markPreRolloutEra(
@@ -1190,7 +1929,7 @@ export class OrdersController {
 
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
-      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+      throw orderNotFound(internalOrderId);
     }
 
     try {
@@ -1236,9 +1975,7 @@ export class OrdersController {
     };
   }
 
-  private toProvisioningResumeDto(
-    result: OrderProvisioningResumeResult
-  ): ProvisioningResumeDto {
+  private toProvisioningResumeDto(result: OrderProvisioningResumeResult): ProvisioningResumeDto {
     return {
       status: result.status,
       jobId: result.status === 'enqueued' ? result.jobId : null,
@@ -1248,7 +1985,263 @@ export class OrdersController {
     };
   }
 
-  private toDto(order: OrderRecord): OrderRecordResponseDto {
+  private toCancelOrderDto(result: CancelOrderResult): CancelOrderResponseDto {
+    return {
+      status: result.status,
+      changeId: result.changeId,
+      cancelledAt: result.cancelledAt ? result.cancelledAt.toISOString() : null,
+      participants: result.participants.map((p) => ({ ...p })),
+      otherParticipantsRelayFailed: result.otherParticipantsRelayFailed,
+      voidedShipmentIds: [...result.voidedShipmentIds],
+      cancelledWorkIds: [...result.cancelledWorkIds],
+      stockRestoreEnqueued: result.stockRestoreEnqueued,
+      correctionProposal: result.correctionProposal
+        ? {
+            ...result.correctionProposal,
+            lines: result.correctionProposal.lines.map((line) => ({ ...line })),
+          }
+        : null,
+      correctionUnavailableReason: result.correctionUnavailableReason,
+    };
+  }
+
+  /**
+   * One mapping for every refusal the cancellation service models. The machine
+   * code travels in `error` (the `ORDER_ALREADY_ON_HOLD` shape) because two 409s
+   * here can have different remedies and a status code alone cannot tell the
+   * operator which one they are in.
+   */
+  private toCancellationHttpException(error: unknown): unknown {
+    if (error instanceof RefundCeilingExceededException) {
+      return new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        code: error.code,
+        message: error.message,
+        ceiling: error.ceiling,
+        alreadyRefunded: error.alreadyRefunded,
+        requested: error.requested,
+        currency: error.currency,
+      });
+    }
+    if (error instanceof RefundRecordContendedException) {
+      // Same body the refunds controller sends, which is the code the frontend
+      // already reads; two parallel confirms of one refund must not end in a 500 (E-31).
+      return new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        code: error.code,
+        message: error.message,
+      });
+    }
+    if (error instanceof RefundLockUnavailableException) {
+      // Nothing was recorded and nothing will be recorded later (R-16): retryable.
+      return new ServiceUnavailableException({
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        error: 'Service Unavailable',
+        code: error.code,
+        message: error.message,
+      });
+    }
+    if (error instanceof OrderCancellationRefusedError) {
+      return new ConflictException({
+        statusCode: HttpStatus.CONFLICT,
+        error: error.code,
+        message: error.message,
+      });
+    }
+    if (error instanceof OrderCancellationNotFoundError) {
+      return orderCancellationNotFound(error);
+    }
+    if (error instanceof OrderCancellationNoteRequiredError) {
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'ORDER_CANCEL_NOTE_REQUIRED', error.message);
+    }
+    if (error instanceof OrderCancellationInvalidReasonError) {
+      return codedHttpError(HttpStatus.BAD_REQUEST, 'ORDER_CANCEL_REASON_INVALID', error.message, {
+        reason: error.reason,
+      });
+    }
+    if (error instanceof CancelCorrectionFailedError) {
+      return new UnprocessableEntityException({
+        statusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+        error: 'CORRECTION_FAILED',
+        message: error.message,
+        failureCode: error.failureCode,
+      });
+    }
+    return error;
+  }
+
+  private toOrderChangeDto(change: OrderChange, open: boolean): OrderChangeResponseDto {
+    const raw = change.payload ?? {};
+    const isCancel = change.kind === 'order.cancel_request';
+    const isCorrection = change.kind === 'order.cancel_correction';
+    const isDiscountCorrection = change.kind === 'order.discount_correction';
+    const isDiscountRefund = change.kind === 'order.discount_refund';
+    const rawLines = Array.isArray(raw['lines']) ? (raw['lines'] as unknown[]) : [];
+    return {
+      id: change.id,
+      kind: change.kind,
+      status: change.status,
+      open,
+      requestedAt: change.requestedAt.toISOString(),
+      confirmedAt:
+        change.status === 'confirmed' && change.terminalisedAt
+          ? change.terminalisedAt.toISOString()
+          : null,
+      declinedReason: change.declinedReason,
+      payload: {
+        cancelRequest: isCancel
+          ? {
+              reason: typeof raw['reason'] === 'string' ? raw['reason'] : '',
+              note: typeof raw['note'] === 'string' ? raw['note'] : null,
+            }
+          : null,
+        correction:
+          isCorrection && typeof raw['invoiceRecordId'] === 'string'
+            ? {
+                invoiceRecordId: raw['invoiceRecordId'],
+                documentNumber:
+                  typeof raw['documentNumber'] === 'string' ? raw['documentNumber'] : null,
+                currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
+                lines: rawLines as CancelCorrectionProposalLineDto[],
+              }
+            : null,
+        discountCorrection:
+          isDiscountCorrection && typeof raw['invoiceRecordId'] === 'string'
+            ? {
+                invoiceRecordId: raw['invoiceRecordId'],
+                documentNumber:
+                  typeof raw['documentNumber'] === 'string' ? raw['documentNumber'] : null,
+                currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
+                lines: readDiscountCorrectionLines(raw['lines']) ?? [],
+              }
+            : null,
+        discountRefund:
+          isDiscountRefund && typeof raw['amount'] === 'string'
+            ? {
+                amount: raw['amount'],
+                currency: typeof raw['currency'] === 'string' ? raw['currency'] : '',
+              }
+            : null,
+      },
+    };
+  }
+
+  private async hasOpenAmendment(internalOrderId: string): Promise<boolean> {
+    const ids = await this.orderChanges.findOrderIdsWithOpenAmendment([internalOrderId]);
+    return ids.has(internalOrderId);
+  }
+
+  /**
+   * Every held multipack line and the product its offer maps to (#3624). DETAIL
+   * only; best-effort, because the banner still helps without the product. One
+   * entry per line: an order can hold several, and confirming one leaves the
+   * others held.
+   */
+  private async loadMultipackHolds(order: OrderRecord): Promise<OrderMultipackHoldDto[]> {
+    if (
+      order.recordStatus !== 'awaiting_mapping' ||
+      !order.mappingFailureReason?.includes(`[${MULTIPACK_WITHOUT_BUNDLE_REASON_CODE}]`)
+    ) {
+      return [];
+    }
+    const holds: OrderMultipackHoldDto[] = [];
+    for (const line of order.rawMultipackLines) {
+      let variantId: string | null = null;
+      let productName: string | null = null;
+      let sku: string | null = null;
+      try {
+        if (line.productRef.type === 'offer') {
+          variantId = await this.identifierMapping.getInternalId(
+            CORE_ENTITY_TYPE.Offer,
+            line.productRef.externalId,
+            order.sourceConnectionId
+          );
+        }
+        if (variantId !== null) {
+          const [variant] = await this.productsService.getVariantsByIds([variantId]);
+          sku = variant?.sku ?? null;
+          if (variant !== undefined) {
+            const [product] = await this.productsService.getProductsByIds([variant.productId]);
+            productName = product?.name ?? null;
+          }
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Could not resolve the held multipack product for order ${order.internalOrderId}: ${(error as Error).message}`
+        );
+      }
+      holds.push({
+        lineId: line.itemId,
+        packQuantity: line.packQuantity,
+        lineName: line.name,
+        variantId,
+        productName,
+        sku,
+      });
+    }
+    return holds;
+  }
+
+  /**
+   * The order's bundle lines with component names and whether the bundle has
+   * changed since the order was frozen (#3624). DETAIL only. Best-effort: names
+   * are display, so a failed read drops them and keeps the structure.
+   */
+  private async loadBundleLines(order: OrderRecord): Promise<OrderBundleLineDto[] | undefined> {
+    const lines = order.bundleLines;
+    if (lines.length === 0) {
+      return undefined;
+    }
+    const variantIds = [...new Set(lines.flatMap((l) => l.components.map((c) => c.variantId)))];
+    const names = new Map<string, { name: string | null; sku: string | null }>();
+    const currentVersion = new Map<string, number>();
+    try {
+      const [variants, current] = await Promise.all([
+        this.productsService.getVariantsByIds(variantIds),
+        this.bundleDefinitions.findCurrentByVariantIds(lines.map((l) => l.bundleVariantId)),
+      ]);
+      const products = await this.productsService.getProductsByIds([
+        ...new Set(variants.map((v) => v.productId)),
+      ]);
+      const productById = new Map(products.map((p) => [p.id, p]));
+      for (const variant of variants) {
+        names.set(variant.id, {
+          name: productById.get(variant.productId)?.name ?? null,
+          sku: variant.sku,
+        });
+      }
+      for (const definition of current) {
+        currentVersion.set(definition.variantId, definition.version);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not load bundle component names for order ${order.internalOrderId}: ${(error as Error).message}`
+      );
+    }
+    return lines.map((line) => ({
+      lineId: line.lineId,
+      bundleVariantId: line.bundleVariantId,
+      version: line.version,
+      olderComposition: (currentVersion.get(line.bundleVariantId) ?? line.version) > line.version,
+      components: line.components.map((component) => ({
+        lineId: component.lineId,
+        variantId: component.variantId,
+        productId: component.productId,
+        name: names.get(component.variantId)?.name ?? null,
+        sku: names.get(component.variantId)?.sku ?? null,
+        quantity: component.quantity,
+        perUnit: component.perUnit,
+        ...(component.giftSlot === true && { giftSlot: true }),
+        ...(component.giftDocumentForm !== undefined && {
+          giftDocumentForm: component.giftDocumentForm,
+        }),
+      })),
+    }));
+  }
+
+  private toDto(order: OrderRecord, hasOpenAmendment = false): OrderRecordResponseDto {
     const fulfillmentState = order.fulfillmentState ?? 'not-shipped';
     return {
       internalOrderId: order.internalOrderId,
@@ -1256,6 +2249,8 @@ export class OrdersController {
       sourceConnectionId: order.sourceConnectionId,
       sourceEventId: order.sourceEventId,
       orderSnapshot: order.orderSnapshot,
+      editedInOpenLinker: order.isEditedInOpenLinker,
+      editsNeedAttention: order.editsNeedAttention,
       syncStatus: order.syncStatus.map((s) => this.toSyncStatusDto(s)),
       syncAttempts: order.syncAttempts.map((a) => this.toSyncAttemptDto(a)),
       recordStatus: order.recordStatus,
@@ -1265,12 +2260,27 @@ export class OrdersController {
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,
+      salesDocumentBlockParams: toSalesDocumentBlockParamsDto(order.salesDocumentBlockParams),
+      destinationRoutingBlockReason: order.destinationRoutingBlockReason,
+      destinationRoutingBlockDetail: order.destinationRoutingBlockDetail,
       salesDocumentBlockedAt: order.salesDocumentBlockedAt?.toISOString() ?? null,
       salesDocumentBlockReleasedAt: order.salesDocumentBlockReleasedAt?.toISOString() ?? null,
       // #2356 - on the SHARED toDto, like `packedAt` above: the badge renders on
       // the list AND the detail page, and the entity's own getter has already
       // coerced the jsonb through core's guard, so an unrecognised value is
       // absent here rather than unrenderable downstream.
+      // #3963 - on the shared toDto: the list marker and the detail panel read it.
+      paymentWriteback: Object.entries(order.paymentWriteback).map(
+        ([destinationConnectionId, entry]) => ({
+          destinationConnectionId,
+          state: entry.state,
+          at: entry.at,
+          attempts: entry.attempts,
+          reason: entry.reason ?? null,
+          detail: entry.detail ?? null,
+          problem: isPaymentWritebackProblem(entry),
+        })
+      ),
       omsAttention: order.omsAttention.map((entry) => ({
         producer: entry.producer,
         reason: entry.reason,
@@ -1282,10 +2292,29 @@ export class OrdersController {
       updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
       dispatchByAt: order.dispatchByAt ? order.dispatchByAt.toISOString() : null,
       cancelledAt: order.cancelledAt ? order.cancelledAt.toISOString() : null,
+      hiddenAt: order.hiddenAt ? order.hiddenAt.toISOString() : null,
+      personalDataErasedAt: order.personalDataErasedAt
+        ? order.personalDataErasedAt.toISOString()
+        : null,
       // Operator packed fact (#2287). Projected on the SHARED toDto, so it
       // reaches the list and the detail response from one place.
       packedAt: order.packedAt ? order.packedAt.toISOString() : null,
       packedByUserId: order.packedByUserId,
+      // Buyer-note list facts (#3538) and the D7 country / repeat-buyer scalars.
+      // The FULL note text is detail-only (`getOrder` sets it). Every list row
+      // still carries a truncated preview of that same text, so widening who may
+      // read the list widens who may read the start of the buyer's note: decide
+      // a list audience as if it were the note's audience.
+      hasBuyerNote: order.hasBuyerNote,
+      hasBundle: (order.lineExpansion?.definitions.length ?? 0) > 0,
+      buyerNoteState: classifyBuyerNoteForList(order.hasBuyerNote, order.buyerNoteState),
+      buyerNotePreview: buildBuyerNotePreview(order.buyerNoteState),
+      // The read marker is a timestamp, not free text, so the list may carry it:
+      // a bulk mark-read plan needs it to tell read notes from unread ones (B-3).
+      buyerNoteReadAt: order.buyerNoteReadAt ? order.buyerNoteReadAt.toISOString() : null,
+      shippingCountry: order.shippingCountry,
+      billingCountry: order.billingCountry,
+      buyerOrderCount: order.buyerOrderCount,
       // Source-amendment fact (#2283). On the SHARED toDto for the same reason
       // as `packedAt`: one projection reaches both the list and the detail
       // response, so a follow-up list badge needs no second wiring.
@@ -1313,7 +2342,10 @@ export class OrdersController {
         // per row on the paged list; the SQL twin's `held` arm reads the same
         // column, which is what keeps this badge and `?phase=held` in agreement.
         activeHoldReason: order.activeHoldReason,
-        hasOpenAmendment: false, // Wave 2 — widened `order_changes.kind`
+        // #3540 - an OPEN `order.*` change (an operator cancel awaiting its
+        // channel). Supplied by the caller because it is one batched read per
+        // page, not a column; the SQL twin tests the same fact.
+        hasOpenAmendment,
         recordStatus: order.recordStatus,
         authority: DEFAULT_LIFECYCLE_AUTHORITY, // Wave 4 binds this per order at ingestion
         vendorDeclaredPhase: null, // Wave 4 — posture-B columns
@@ -1348,7 +2380,8 @@ export class OrdersController {
    * action. No regime/provider vocabulary crosses here.
    */
   private toInvoiceProjection(record: InvoiceRecord): OrderInvoiceProjectionDto {
-    const confirmationDocumentAvailable = record.status === 'issued' && record.regulatoryStatus === 'accepted';
+    const confirmationDocumentAvailable =
+      record.status === 'issued' && record.regulatoryStatus === 'accepted';
     return {
       invoiceId: record.id,
       documentType: record.documentType,
@@ -1458,6 +2491,14 @@ export class OrdersController {
       externalOrderId: s.externalOrderId ?? null,
       externalOrderNumber: s.externalOrderNumber ?? null,
       error: s.error ?? null,
+      deliveryUpdate: s.deliveryUpdate
+        ? {
+            outcome: s.deliveryUpdate.outcome,
+            reason: s.deliveryUpdate.reason ?? null,
+            detail: s.deliveryUpdate.detail ?? null,
+            at: s.deliveryUpdate.at.toISOString(),
+          }
+        : null,
     };
   }
 
@@ -1471,4 +2512,18 @@ export class OrdersController {
       externalOrderNumber: a.externalOrderNumber ?? null,
     };
   }
+}
+
+function toSourceChangeResult(
+  result: SourceAmendmentReconcileResult
+): SourceChangeResultResponseDto {
+  return {
+    outcome: result.outcome,
+    cause: result.cause,
+    lines: result.lines.map((line) => ({
+      orderLineId: line.orderLineId,
+      from: line.from,
+      to: line.to,
+    })),
+  };
 }

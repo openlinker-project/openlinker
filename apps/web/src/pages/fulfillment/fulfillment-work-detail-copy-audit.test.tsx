@@ -8,9 +8,9 @@
  * this page composes exclusively. The gap the script leaves is the same one
  * `fulfillment-copy-audit.test.tsx` closes for the assign board: text that
  * reaches the screen without ever being a source literal — a HUMANISING
- * fallback for a status/action/reason this build does not recognise, and a
- * BACKEND-SOURCED message on the un-coded 409 path. This is that audit for the
- * detail page.
+ * fallback for a status/action/reason this build does not recognise, and the
+ * sentence chosen from an error's code on the hold-refusal 409 path. This is
+ * that audit for the detail page.
  *
  * ## The banned terms are READ, not restated
  *
@@ -39,6 +39,7 @@ import {
 import type { FulfillmentTask } from '../../features/fulfillment';
 import type { SessionUser } from '../../shared/auth/session.types';
 import { ApiError } from '../../shared/api/api-error';
+import { getMessages, interpolate } from '../../shared/i18n';
 
 afterEach(cleanup);
 
@@ -324,27 +325,31 @@ describe('fulfilment work detail copy audit', () => {
     expectCleanCopy('(1 cancelled)');
   });
 
-  it("is clean on the un-coded 409 an operator hits from this page’s own action bar", async () => {
-    // No `code` in the body, matching `FulfillmentHoldLimitExceededError` /
-    // `FulfillmentHoldAlreadyReleasedError` (`fulfillment-conflict.ts`).
-    // `describeFulfillmentActionError` passes the server's OWN sentence
-    // through verbatim on this path, so this is the toast-shown analogue of
-    // the assign-board audit's un-coded-409 blind spot.
+  it("is clean on the hold-limit 409 an operator hits from this page’s own action bar", async () => {
+    // The body `FulfillmentHoldLimitExceededError` maps to
+    // (`fulfillment-conflict.ts`): not one of the two discriminated 409s, so
+    // `describeFulfillmentActionError` reads the code's own copy (#3867). That
+    // sentence reaches the toast without being a literal in this page, which
+    // is the toast-shown analogue of the assign-board audit's 409 blind spot.
+    const expected = interpolate(getMessages('errors').codes.FULFILLMENT_HOLD_LIMIT_REACHED, {
+      limit: 10,
+    });
     renderState({
       get: vi.fn().mockResolvedValue(task({ supportedActions: ['hold'] })),
-      applyAction: vi
-        .fn()
-        .mockRejectedValue(
-          new ApiError('This fulfilment task already has the maximum number of active holds.', 409, {})
-        ),
+      applyAction: vi.fn().mockRejectedValue(
+        new ApiError('This fulfilment task already has the maximum number of active holds.', 409, {
+          code: 'FULFILLMENT_HOLD_LIMIT_REACHED',
+          params: { workId: WORK_ID, activeHolds: 10, limit: 10 },
+        })
+      ),
     });
     const holdButton = await screen.findByRole('button', { name: 'Put on hold' });
     holdButton.click();
     const dialog = await screen.findByRole('dialog');
     const submit = within(dialog).getByRole('button', { name: 'Put on hold' });
     submit.click();
-    await findToastDescription(/maximum number of active holds/);
-    expectCleanCopy('maximum number of active holds');
+    await findToastDescription(expected);
+    expectCleanCopy(expected);
   });
 
   it('is clean in the demo read-only render', async () => {

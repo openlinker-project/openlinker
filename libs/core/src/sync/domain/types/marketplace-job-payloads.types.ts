@@ -16,6 +16,41 @@ export interface MarketplaceOrdersPollPayloadV1 {
   eventTypes?: OrderFeedEventType[];
 }
 
+/**
+ * `marketplace.notifications.drain` (#4179): read up to `maxMessages` from the
+ * connection's inbound queue and route each notification.
+ */
+export interface MarketplaceNotificationsDrainPayloadV1 {
+  schemaVersion: 1;
+  maxMessages: number;
+}
+
+/**
+ * One page of an order import over a date window (#4228): the history of a new
+ * connection read newest-first, or a range an operator asked for by hand.
+ *
+ * The run is a CHAIN of these jobs rather than one long job: each page enqueues
+ * the next with the cursor the source returned, so a crash resumes at the last
+ * page, no job runs for minutes, and the lane slot is released between pages.
+ * `runId` identifies the chain and scopes the dedupe key of every page.
+ */
+export interface MarketplaceOrdersImportPayloadV1 {
+  schemaVersion: 1;
+  /** Identifies one import run; every page of it carries the same value. */
+  runId: string;
+  /** First day to include (ISO date or instant). Omitted: from the beginning. */
+  from?: string;
+  /** Last day to include (ISO date or instant). Omitted: up to the newest order. */
+  to?: string;
+  direction: 'oldest-first' | 'newest-first';
+  /** Opaque source position from the previous page; null on the first page. */
+  cursor: string | null;
+  /** Page size. The handler clamps it. */
+  limit?: number;
+  /** 1-based page number, for the dedupe key and the log. */
+  page: number;
+}
+
 export interface MarketplaceOrderSyncPayloadV1 {
   schemaVersion: 1;
   externalOrderId: string;
@@ -95,6 +130,17 @@ export interface MarketplaceOfferQuantityUpdatePayloadV1 {
    * before it existed stays valid and writes unguarded, exactly as before.
    */
   observedAt?: string;
+  /**
+   * The internal variant the quantity belongs to (#4062), recorded with the
+   * push so the stock history can say what was sent for a change. Optional: a
+   * legacy job and the stale-offer pause carry none.
+   */
+  productVariantId?: string;
+  /**
+   * Parent product external id when `offerId` is a variation of a grouped
+   * shop product (#3962) - see `UpdateOfferQuantityCommand.externalParentId`.
+   */
+  externalParentId?: string;
 }
 
 export interface MarketplaceOfferFieldUpdatePayloadV1 {
@@ -383,6 +429,20 @@ export interface MarketplaceOfferStockRestorePayloadV1 {
 }
 
 /**
+ * Payload for `order.paymentWriteback.push` jobs (#3963).
+ *
+ * Enqueued by `PaymentWritebackService.planAfterSync` (and its manual Retry)
+ * for ONE destination that holds the order unpaid while the source reports it
+ * paid. The destination connection is `job.connectionId`; the source is
+ * carried here because the relay excludes it as the event's origin.
+ */
+export interface OrderPaymentWritebackPushPayloadV1 {
+  schemaVersion: 1;
+  internalOrderId: string;
+  sourceConnectionId: string;
+}
+
+/**
  * Payload for `marketplace.offer.pauseStale` jobs (#1689).
  *
  * Enqueued by the `events.master.deletion` stream consumer whenever a
@@ -512,6 +572,37 @@ export interface MarketplaceFulfillmentStatusSyncPayloadV1 {
    * Iteration-window bound (days). Records whose `updatedAt` is older than
    * this many days are skipped. Defaults to `DEFAULT_UPDATED_SINCE_DAYS` (30)
    * inside the service when omitted.
+   */
+  updatedSinceDays?: number;
+}
+
+/**
+ * marketplace.sourceFulfillment.statusSync (ADR-012 amendment)
+ *
+ * Source-side fulfilment read-back. The handler pages the OL Order Records
+ * ingested FROM this source connection, asks the source through the
+ * `OrderFulfillmentReadback` capability whether the order was shipped there,
+ * and records a waybill OL does not already know as a source-observed branch-1
+ * `Shipment` row, relaying it to the order's destinations. Same rolling
+ * scan-offset shape as `MarketplaceFulfillmentStatusSyncPayloadV1`, under its
+ * OWN cursor key so a connection that is both a source and a destination never
+ * shares one offset between the two scans.
+ *
+ * Cursor key default (when omitted) is `sourceFulfillmentStatus.scanOffset`.
+ */
+export interface MarketplaceSourceFulfillmentStatusSyncPayloadV1 {
+  schemaVersion: 1;
+  /** Page size: number of OrderRecords to scan per run. */
+  limit: number;
+  /**
+   * Connection-cursor key under which the rolling numeric scan offset is
+   * persisted. Omitted -> the handler falls back to
+   * `sourceFulfillmentStatus.scanOffset`.
+   */
+  cursorKey?: string;
+  /**
+   * Iteration-window bound (days). Defaults to `DEFAULT_UPDATED_SINCE_DAYS`
+   * (30) inside the service when omitted.
    */
   updatedSinceDays?: number;
 }

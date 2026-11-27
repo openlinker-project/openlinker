@@ -191,10 +191,54 @@ export function collectClientFiles(dirs = CLIENT_DIRS, files = CLIENT_FILES, roo
   return out.concat(files.map((f) => join(root, f)));
 }
 
+/** `BridgeKeys.<Name>(` call sites in a mirror, comments stripped. */
+export function calledBridgeKeys(source) {
+  const out = new Set();
+  for (const m of stripComments(source).matchAll(/\bBridgeKeys\.(\w+)\s*\(/g)) out.add(m[1]);
+  return out;
+}
+
+/** `public static` members declared by the BridgeKeys class mirror. */
+export function declaredBridgeKeys(source) {
+  const out = new Set();
+  for (const m of stripComments(source).matchAll(/public\s+static\s+[\w<>?,\[\]\s]+?\s(\w+)\s*[(<]/g)) {
+    out.add(m[1]);
+  }
+  return out;
+}
+
+/** A mirror calling a BridgeKeys helper its own BridgeKeys mirror lacks is a
+ * partial re-sync: it compiles nowhere here and fails on the Windows host. */
+export function undefinedBridgeKeyCalls(files) {
+  const keysFile = files.find((f) => f.name === 'BridgeKeys.cs.ready');
+  const declared = keysFile ? declaredBridgeKeys(keysFile.source) : new Set();
+  const problems = [];
+  for (const f of files) {
+    for (const name of calledBridgeKeys(f.source)) {
+      if (!declared.has(name)) problems.push({ file: f.name, name });
+    }
+  }
+  return problems;
+}
+
 function run() {
   const mirrors = readdirSync(MIRROR_DIR).filter((f) => f.endsWith('.cs.ready'));
   if (mirrors.length === 0) {
     console.error('check-subiekt-bridge-routes: no .cs.ready mirrors found - has the path moved?');
+    process.exit(1);
+  }
+
+  const mirrorSources = mirrors.map((name) => ({
+    name,
+    source: readFileSync(join(MIRROR_DIR, name), 'utf8'),
+  }));
+  const keyProblems = undefinedBridgeKeyCalls(mirrorSources);
+  if (keyProblems.length > 0) {
+    console.error('check-subiekt-bridge-routes FAILED\n');
+    for (const p of keyProblems) {
+      console.error(`  ${p.file} calls BridgeKeys.${p.name}() which BridgeKeys.cs.ready does not define`);
+    }
+    console.error('\nRe-sync BridgeKeys.cs.ready from the bridge repository together with the caller.');
     process.exit(1);
   }
 
@@ -373,6 +417,24 @@ function selfCheck() {
   assert(
     [...calledSubset].every((r) => declaredExtra.has(r)),
     'a route the bridge declares and nobody calls is not a failure'
+  );
+
+  const keysSrc = 'public static class BridgeKeys { public static string? FormatHeadCursor(DateTime? w, int i) => null; public static string Trim30(string s) => s; }';
+  assert(
+    declaredBridgeKeys(keysSrc).has('FormatHeadCursor') && declaredBridgeKeys(keysSrc).has('Trim30'),
+    'BridgeKeys public static members are read, including nullable return types'
+  );
+  assert(
+    calledBridgeKeys('var c = BridgeKeys.FormatHeadCursor(a, b); // BridgeKeys.Ghost(x)').has('FormatHeadCursor') &&
+      !calledBridgeKeys('// BridgeKeys.Ghost(x)').has('Ghost'),
+    'a BridgeKeys call is read and a commented one is not'
+  );
+  assert(
+    undefinedBridgeKeyCalls([
+      { name: 'BridgeKeys.cs.ready', source: keysSrc },
+      { name: 'OrdersEndpoints.cs.ready', source: 'BridgeKeys.FormatHeadCursor(a,b); BridgeKeys.Missing(x);' },
+    ]).length === 1,
+    'a call to a BridgeKeys helper the mirror does not define is reported'
   );
 
   console.log(`check-subiekt-bridge-routes --self-check passed (${assertions.length} assertions)`);

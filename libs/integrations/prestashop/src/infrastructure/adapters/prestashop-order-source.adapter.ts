@@ -35,15 +35,23 @@ import type {
   IncomingOrderItem,
   IncomingOrderAddress,
   OrderPickupPoint,
+  OrderFeedBootstrap,
+  OrderFeedDateBootstrap,
+  OrderWindowReader,
+  OrderWindowInput,
+  OrderWindowPage,
   PaymentMethod,
 } from '@openlinker/core/orders';
 import {
   PAYMENT_METHOD,
   PAYMENT_STATUS,
   readPaymentMethodMap,
+  readSourceBuyerNote,
+  decodeHtmlNoteText,
   readSourceBuyerTaxId,
   resolveSourcePaymentMethod,
   toCodToCollect,
+  OrderSyncStartUnavailableError,
 } from '@openlinker/core/orders';
 import type { PrestashopConnectionConfig } from '../../domain/types/prestashop-config.types';
 import type {
@@ -69,9 +77,15 @@ import type { PrestashopOrderCurrencyResolver } from '../provisioners/prestashop
 import { PrestashopOrderFeedCapabilityCache } from '../provisioners/prestashop-order-feed-capability.cache';
 import {
   PrestashopApiException,
+  PrestashopAuthenticationException,
   PrestashopResourceNotFoundException,
 } from '@openlinker/integrations-prestashop';
+import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
 import { readAllPrestashopResourcePages } from '../http/prestashop-paged-read';
+import {
+  sourceRowIdOfLineId,
+  type PrestashopGiftCartRule,
+} from '../mappers/prestashop-gift-split';
 import type { PrestashopOrderFeedCursor } from '../../domain/types/prestashop-order-feed-cursor.types';
 import {
   formatOrderFeedCursor,
@@ -81,6 +95,7 @@ import {
   parseOrderFeedCursor,
   shiftWallClockSeconds,
 } from '../../domain/types/prestashop-order-feed-cursor.types';
+import type { PrestashopSort } from '../http/prestashop-query.builder';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -94,7 +109,12 @@ import { Logger } from '@openlinker/shared/logging';
  * interpreted. `null` input means "start from the beginning".
  */
 export class PrestashopOrderSourceAdapter
-  implements OrderSourcePort, PlatformPaymentMethodClassifier
+  implements
+    OrderSourcePort,
+    OrderFeedBootstrap,
+    OrderFeedDateBootstrap,
+    OrderWindowReader,
+    PlatformPaymentMethodClassifier
 {
   private readonly logger = new Logger(PrestashopOrderSourceAdapter.name);
 
@@ -144,12 +164,13 @@ export class PrestashopOrderSourceAdapter
     );
 
     const fromCursor = parseOrderFeedCursor(input.fromCursor);
-    if (input.fromCursor && fromCursor === null) {
-      // Reading from the beginning is the only safe answer to a cursor we cannot
-      // parse. Starting from now would skip every order in between, silently.
-      this.logger.warn(
-        `Unreadable order-feed cursor "${input.fromCursor}" on connection ${this.connection.id}; ` +
-          `restarting the feed from the beginning.`
+    if (fromCursor === null && (input.fromCursor ?? '').trim() !== '') {
+      // Reading from the beginning after a 'new orders only' seed would import the
+      // whole history without a word, and starting from now would skip orders in
+      // between. A stored cursor that cannot be read is a defect to surface, not
+      // one to paper over; an empty or null cursor still means 'from the beginning'.
+      throw new RangeError(
+        `Unreadable PrestaShop order-feed cursor "${input.fromCursor}" (connection: ${this.connection.id})`
       );
     }
 
@@ -216,6 +237,193 @@ export class PrestashopOrderSourceAdapter
     const echoedCursor = fromCursor === null ? null : formatOrderFeedCursor(fromCursor);
 
     return { items: filtered, nextCursor: nextCursor ?? echoedCursor };
+  }
+
+  /**
+   * Cursor of the shop's newest order, so a fresh connection starts from "now"
+   * (#4228). Mirrors the poll's own two read modes: `date_upd` sort, falling
+   * back to `id` on a shop that refuses it. The row's `id` rides in the cursor
+   * so the same value stays valid if the connection later flips read mode.
+   *
+   * @throws when the read fails or the newest row is unreadable - core retries
+   * the poll rather than importing history.
+   */
+  async headCursor(): Promise<string | null> {
+    let rows: PrestashopOrder[];
+    if (this.orderFeedCapabilityCache.isDateUpdSortKnownUnsupported(this.connection.id)) {
+      rows = await this.readNewestOrderRow(['id_DESC']);
+    } else {
+      try {
+        rows = await this.readNewestOrderRow(['date_upd_DESC', 'id_DESC']);
+      } catch (error) {
+        if (!this.isDateUpdSortUnsupportedError(error)) {
+          throw error;
+        }
+        this.orderFeedCapabilityCache.markDateUpdSortUnsupported(this.connection.id);
+        rows = await this.readNewestOrderRow(['id_DESC']);
+      }
+    }
+
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    const orderId = Number.parseInt(String(row.id), 10);
+    const updatedAt = normalizeWallClock(row.date_upd);
+    if (!Number.isFinite(orderId) || updatedAt === null) {
+      throw new Error(
+        `Cannot seed the order cursor: newest PrestaShop order ${String(row.id)} has an unreadable id/date_upd (connection: ${this.connection.id})`
+      );
+    }
+
+    // Exactly at the newest order, with no lookback. The cursor is the pair
+    // (date_upd, id), so an order written in the same second but with a higher id
+    // is still read; a lookback would instead re-import the orders that sit just
+    // before the newest one - the very history "new orders only" must leave behind.
+    return formatOrderFeedCursor({ updatedAt, lastOrderId: orderId });
+  }
+
+  /**
+   * Read the orders PLACED inside a day window, one id-keyset page at a time
+   * (#4228). It never touches the live feed cursor: the walk position is the
+   * last order id read (`id:<n>`), so the page set cannot shift or repeat while
+   * orders arrive, and `date_add` (when the order was placed) bounds the window.
+   *
+   * A date-only bound means the whole day on the shop's wall clock, so `from`
+   * starts at 00:00:00 and `to` ends at 23:59:59. The webservice offers `>` but
+   * no `>=`, hence the one-second shift on the lower bound.
+   *
+   * Items come from {@link toFeedItem}, so their `eventKey` matches what the live
+   * feed emits and a window read dedupes against it downstream. A failed read is
+   * never swallowed into an empty or unfiltered page.
+   */
+  async listOrdersInWindow(input: OrderWindowInput): Promise<OrderWindowPage> {
+    const newestFirst = input.direction === 'newest-first';
+    const lastId = this.parseWindowCursor(input.cursor);
+
+    const filters: {
+      dateAddBetween?: { from?: string; to?: string };
+      idAfter?: number;
+      idBefore?: number;
+      sort: PrestashopSort[];
+    } = { sort: [newestFirst ? 'id_DESC' : 'id_ASC'] };
+
+    // Inclusive on both ends: a bare day is the whole day in the shop's own time.
+    if (input.from !== undefined || input.to !== undefined) {
+      filters.dateAddBetween = {
+        ...(input.from !== undefined ? { from: this.wallClockOfDay(input.from, '00:00:00') } : {}),
+        ...(input.to !== undefined ? { to: this.wallClockOfDay(input.to, '23:59:59') } : {}),
+      };
+    }
+    if (lastId !== null) {
+      if (newestFirst) {
+        filters.idBefore = lastId;
+      } else {
+        filters.idAfter = lastId;
+      }
+    }
+
+    const orderStates = await this.orderStates.load();
+    const rows = await this.httpClient.listResources<PrestashopOrder>(
+      'orders',
+      filters,
+      input.limit,
+      0
+    );
+
+    const items: OrderFeedItem[] = [];
+    let position = lastId;
+    for (const row of rows) {
+      // The cursor moves by raw row id even when the row is unreadable, or a
+      // page of only malformed rows would be re-read for ever.
+      const rawId = Number.parseInt(String(row.id), 10);
+      if (Number.isFinite(rawId)) {
+        position =
+          position === null ? rawId : newestFirst ? Math.min(position, rawId) : Math.max(position, rawId);
+      }
+      const item = this.toFeedItem(row, orderStates);
+      if (item !== null) {
+        items.push(item.feedItem);
+      }
+    }
+
+    const done = rows.length < input.limit;
+    return {
+      items,
+      nextCursor: done || position === null ? null : `id:${position}`,
+      done,
+    };
+  }
+
+  private parseWindowCursor(cursor: string | null): number | null {
+    if (cursor === null) {
+      return null;
+    }
+    const match = /^id:(\d+)$/.exec(cursor);
+    if (match === null) {
+      throw new Error(`Invalid PrestaShop order window cursor "${cursor}" (connection: ${this.connection.id})`);
+    }
+    return Number(match[1]);
+  }
+
+  /** `YYYY-MM-DD <time>` for the date part of an ISO date or instant. */
+  private wallClockOfDay(value: string, time: string): string {
+    const wallClock = normalizeWallClock(`${value.trim().slice(0, 10)} ${time}`);
+    if (wallClock === null) {
+      throw new Error(`Invalid order window date "${value}" (connection: ${this.connection.id})`);
+    }
+    return wallClock;
+  }
+
+  /**
+   * Cursor at 00:00:00 (the shop's wall clock) of `date`, so a connection the
+   * operator created "from {date}" imports only orders updated since then
+   * (#4228). A full ISO instant is reduced to its date: the shop's zone is not
+   * known here, and "from the start of that day" is what an operator picking a
+   * day means.
+   *
+   * A shop that refuses `date_upd` as a filter (#2877) reads by `id` only, where
+   * a date cursor would resume at id 0 and silently import the whole history.
+   * That is exactly what a dated start must never do, so this THROWS there, and
+   * a probing read finds the refusal on a shop that has not hit it yet.
+   *
+   * @throws when the shop cannot filter by `date_upd`, or the read fails.
+   */
+  async cursorForDate(date: string): Promise<string> {
+    const wallClock = normalizeWallClock(`${date.trim().slice(0, 10)} 00:00:00`);
+    if (wallClock === null) {
+      throw new OrderSyncStartUnavailableError(
+        `Cannot start the order feed from "${date}": expected an ISO date (connection: ${this.connection.id})`
+      );
+    }
+    // Typed so the poll job reports a business failure: a shop that refuses the
+    // filter will refuse it on every retry.
+    const unsupported = new OrderSyncStartUnavailableError(
+      `This PrestaShop shop does not allow filtering orders by \`date_upd\`, so the order feed cannot start from a date. Use "from now" or "all orders" instead (connection: ${this.connection.id})`
+    );
+    if (this.orderFeedCapabilityCache.isDateUpdSortKnownUnsupported(this.connection.id)) {
+      throw unsupported;
+    }
+    try {
+      await this.httpClient.listResources<PrestashopOrder>(
+        'orders',
+        { updatedAfter: wallClock, sort: ['date_upd_ASC', 'id_ASC'] },
+        1,
+        0
+      );
+    } catch (error) {
+      if (this.isDateUpdSortUnsupportedError(error)) {
+        this.orderFeedCapabilityCache.markDateUpdSortUnsupported(this.connection.id);
+        throw unsupported;
+      }
+      throw error;
+    }
+    return formatOrderFeedCursor({ updatedAt: wallClock, lastOrderId: 0 });
+  }
+
+  private readNewestOrderRow(sort: PrestashopSort[]): Promise<PrestashopOrder[]> {
+    return this.httpClient.listResources<PrestashopOrder>('orders', { sort }, 1, 0);
   }
 
   /**
@@ -503,12 +711,12 @@ export class PrestashopOrderSourceAdapter
    *
    * Cancellation is checked **first**, with precedence over created/updated.
    * This ordering is load-bearing, not cosmetic: an order that stays cancelled
-   * but gets re-touched at the source (admin note, status-history write — any
+   * but gets re-touched at the source (admin note, status-history write - any
    * `date_upd` bump) must keep emitting `cancelled`. If it ever flipped to
    * `updated`, `OrderIngestionService.syncOrderFromSource` would re-enter the
    * create/update path and resurrect a cancelled order as active (#1161). A
    * still-cancelled order therefore re-emits `cancelled` (an idempotent no-op
-   * at the lifecycle relay) on every re-read — never `updated`.
+   * at the lifecycle relay) on every re-read - never `updated`.
    *
    * Cancellation is read from the shop's own state catalogue (#2607). This used
    * to key on the default-install id 6, so a shop that renumbered or added its
@@ -557,7 +765,22 @@ export class PrestashopOrderSourceAdapter
     }
 
     const orderRows = await this.fetchOrderRows(externalOrderId);
-    const mapped = this.orderMapper.mapOrder(prestashopOrder, orderRows);
+    const giftCartRules = await this.fetchGiftCartRules(prestashopOrder);
+    // Resolved before mapping because the gift split rounds in the order's own
+    // minor unit; the unresolvable-currency refusal it can raise is the same one
+    // the later position of this read raised, so nothing new can fail here.
+    const currency = await this.orderCurrencyResolver.resolveOrderCurrencyIso({
+      connectionId: this.connection.id,
+      client: this.httpClient,
+      idCurrency: prestashopOrder.id_currency,
+      orderRef: String(prestashopOrder.reference ?? '') || externalOrderId,
+    });
+    const mapped = this.orderMapper.mapOrder(
+      prestashopOrder,
+      orderRows,
+      giftCartRules,
+      minorUnitExponentFor(currency)
+    );
 
     // The mapper cannot answer this (#2607): what `current_state` means is a row
     // on the shop's own state table. An id this shop does not have reads
@@ -593,18 +816,8 @@ export class PrestashopOrderSourceAdapter
     const paymentStatus = withCashOnDeliveryPaymentStatus(stateStatus, paymentMethod, status);
     const config = this.connection.config as unknown as PrestashopConnectionConfig;
 
-    // Resolved BEFORE the hydration reads below, and awaited rather than raced
-    // alongside them, because this is the one step that can REFUSE the order
-    // (#2277): a shop whose currency is unresolvable should cost one read, not
-    // a full hydration, and a rejected promise held across those awaits would
-    // be an unhandled rejection on every other failure path. The read is cached
-    // per (connection, id_currency), so the added round-trip amortises away.
-    const currency = await this.orderCurrencyResolver.resolveOrderCurrencyIso({
-      connectionId: this.connection.id,
-      client: this.httpClient,
-      idCurrency: prestashopOrder.id_currency,
-      orderRef: mapped.orderNumber || externalOrderId,
-    });
+    // The currency was resolved above, before the gift split, for the same
+    // reason it must precede the hydration reads: it can refuse the order (#2277).
 
     // Started before the pickup-point / address awaits so the extra customer
     // read overlaps them rather than lengthening the hydration chain (#1928).
@@ -629,7 +842,9 @@ export class PrestashopOrderSourceAdapter
       billingAddress;
 
     const items: IncomingOrderItem[] = mapped.items.map((item, index) => {
-      const row = orderRows[index];
+      // By row id, not position: a split gift line sits beside its source row.
+      const sourceRowId = sourceRowIdOfLineId(item.id);
+      const row = orderRows.find((candidate) => String(candidate.id) === sourceRowId) ?? orderRows[index];
       const externalId =
         row?.product_attribute_id && String(row.product_attribute_id) !== '0'
           ? String(row.product_attribute_id)
@@ -653,6 +868,7 @@ export class PrestashopOrderSourceAdapter
         // the field here would silently un-do the mapper's read - which is
         // exactly how it went missing for as long as it did.
         ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
+        ...(item.gift !== undefined ? { gift: item.gift } : {}),
       };
     });
 
@@ -664,7 +880,7 @@ export class PrestashopOrderSourceAdapter
       typeof prestashopOrder.date_upd === 'string'
         ? prestashopOrder.date_upd
         : mapped.updatedAt.toISOString();
-    // PrestaShop `date_add` is when the customer placed the order — the
+    // PrestaShop `date_add` is when the customer placed the order - the
     // buyer-placed time (#926). Undefined when the source row omits it.
     const placedAtIso =
       typeof prestashopOrder.date_add === 'string' ? prestashopOrder.date_add : undefined;
@@ -674,12 +890,20 @@ export class PrestashopOrderSourceAdapter
         ? toCodToCollect(mapped.totals.total, currency)
         : undefined;
 
+    // Read last, after everything the order cannot do without: it is the one
+    // optional hydration, and an unreadable thread resource must not cost the
+    // order its other fields.
+    const buyerNote = await this.fetchBuyerNote(externalOrderId, placedAtIso);
+
     return {
       externalOrderId,
       orderNumber: mapped.orderNumber,
       status,
       ...(paymentStatus !== undefined && { paymentStatus }),
       paymentMethod,
+      // Checkout message (#3538): `undefined` = the shop's thread resource could
+      // not be read (unknown), `null` = read and the buyer wrote nothing.
+      ...(buyerNote !== undefined && { buyerNote }),
       ...(sourcePaymentMethod !== undefined && { sourcePaymentMethod }),
       // The courier collects the whole order on delivery: nothing is paid in
       // advance on a COD order and PrestaShop states no separate amount, so it
@@ -759,7 +983,7 @@ export class PrestashopOrderSourceAdapter
       return iso;
     } catch (error) {
       this.logger.warn(`Failed to resolve country ${key}: ${(error as Error).message}`);
-      // Do not cache failures — a transient error must not suppress the country
+      // Do not cache failures - a transient error must not suppress the country
       // for the lifetime of the adapter. The next order for the same country retries.
       return '';
     }
@@ -816,7 +1040,7 @@ export class PrestashopOrderSourceAdapter
    * Fetch the buyer's e-mail from the PrestaShop `customers` resource (#1928).
    *
    * The `orders` resource carries only `id_customer`, so the e-mail needs its
-   * own read — the same reason the outbound provisioner queries `customers`
+   * own read - the same reason the outbound provisioner queries `customers`
    * separately. Without it `IncomingOrder.customerEmail` stays undefined for
    * every PrestaShop-sourced order, which both empties the order snapshot's
    * label recipient and makes `OrderIngestionService.resolveCustomerId` skip
@@ -842,6 +1066,175 @@ export class PrestashopOrderSourceAdapter
         `Failed to hydrate customer e-mail for customer ${String(customerId)}: ${(error as Error).message}`
       );
       return undefined;
+    }
+  }
+
+  /**
+   * The buyer's checkout message (#3538): the first buyer-authored message of the
+   * order's `customer_threads`.
+   *
+   * PrestaShop stores the checkout message as a `customer_message` on a
+   * `customer_thread` pointing at the order, and the same thread also carries
+   * staff replies, so only rows with `id_employee = 0` are the buyer's words.
+   * That filter is applied by the shop (and re-checked here); a staff reply must
+   * never reach the packer as if the buyer had said it.
+   *
+   * Three outcomes, never conflated: a resource the webservice key may not read
+   * is `undefined` (unknown, never "no note" - an unread field asserts nothing),
+   * a readable resource with no thread or no buyer message is `null`, and
+   * otherwise the text. Any other failure (5xx, timeout, network) is ALSO
+   * unknown: a note read must never block order ingestion, since a shop whose
+   * thread endpoint is broken would otherwise never deliver the order at all.
+   * An unknown read never wipes a stored note and the next sync re-reads.
+   *
+   * ONLY the earliest buyer-authored message is the checkout note: PrestaShop
+   * stores it as the first customer message of the order's thread, and later
+   * buyer messages ("where is my parcel?") are deliberately ignored - #3538
+   * covers the checkout note, not the order thread.
+   *
+   * Two requests per order at most: threads by `id_order`, then every message of
+   * those threads in one pipe-joined OR read.
+   */
+  private async fetchBuyerNote(
+    orderId: string | number,
+    orderDateAdd?: string
+  ): Promise<string | null | undefined> {
+    try {
+      const threads = await readAllPrestashopResourcePages<PrestashopCustomerThread>(
+        this.httpClient,
+        'customer_threads',
+        { custom: { id_order: orderId } },
+        { connectionId: this.connection.id, detail: `id_order=${String(orderId)}` }
+      );
+      if (!Array.isArray(threads)) {
+        return undefined;
+      }
+      const threadIds = threads.map((thread) => String(thread.id)).filter((id) => id !== '');
+      if (threadIds.length === 0) {
+        return null;
+      }
+      const messages = await readAllPrestashopResourcePages<PrestashopCustomerMessage>(
+        this.httpClient,
+        'customer_messages',
+        { custom: { id_customer_thread: threadIds, id_employee: 0 } },
+        { connectionId: this.connection.id, detail: `id_order=${String(orderId)}` }
+      );
+      if (!Array.isArray(messages)) {
+        return undefined;
+      }
+      const [first] = messages
+        .filter((message) => Number(message.id_employee ?? 0) === 0)
+        .sort(
+          (a, b) =>
+            String(a.date_add ?? '').localeCompare(String(b.date_add ?? '')) ||
+            Number(a.id) - Number(b.id)
+        );
+      if (first === undefined) {
+        return null;
+      }
+      // B-6: a buyer who left nothing at checkout can still contact the shop
+      // later, and that message lands on the same thread. Only a message written
+      // within CHECKOUT_NOTE_WINDOW_MS of the order's own `date_add` is the
+      // checkout note; anything later is a contact message, so the checkout
+      // note is asserted none. When the order's date cannot be read the two
+      // cannot be told apart and the earliest message stays the answer.
+      if (!isWithinCheckoutWindow(first.date_add, orderDateAdd)) {
+        return null;
+      }
+      return readSourceBuyerNote(decodeHtmlNoteText(first.message ?? '')) ?? null;
+    } catch (error) {
+      if (isThreadResourceInaccessible(error)) {
+        this.logger.warn(
+          `PrestaShop customer threads are not readable on connection ${this.connection.id}; ` +
+            `buyer note for order ${String(orderId)} stays unknown: ${(error as Error).message}`
+        );
+        return undefined;
+      }
+      this.logger.warn(
+        `PrestaShop buyer note read failed on connection ${this.connection.id}; ` +
+          `note for order ${String(orderId)} stays unknown so the order still imports: ${(error as Error).message}`
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * The cart rules applied to this order that hand out a free product (#3937).
+   *
+   * Skipped without a request when the order reports no discount: a gift rule
+   * always books one, so an ordinary order pays nothing extra for this. Best
+   * effort by design, unlike the order lines: a key without `order_cart_rules`
+   * / `cart_rules` permission only means the gift stays merged into its line
+   * (today's behaviour), and refusing the whole order for that would turn a
+   * missing optional grant into a blocked sale.
+   */
+  private async fetchGiftCartRules(order: PrestashopOrder): Promise<PrestashopGiftCartRule[]> {
+    const discount = Number(order.total_discounts_tax_incl ?? 0);
+    if (!Number.isFinite(discount) || discount <= 0) {
+      return [];
+    }
+    try {
+      const applied = await readAllPrestashopResourcePages<{
+        id_cart_rule?: string | number;
+        value?: string | number;
+        free_shipping?: string | number | boolean;
+      }>(
+        this.httpClient,
+        'order_cart_rules',
+        { custom: { id_order: order.id } },
+        {
+          connectionId: this.connection.id,
+          detail: `id_order=${String(order.id)}`,
+        }
+      );
+      // Order-time facts (what the buyer was actually credited) come from
+      // `order_cart_rules`; only the gift product id has no order-time home and
+      // is read from the live rule, one rule at a time, so a rule deleted after
+      // its campaign costs only its own split instead of every rule's.
+      const byId = new Map<string, { value?: number; freeShipping: boolean }>();
+      for (const row of applied) {
+        const id = String(row.id_cart_rule ?? '');
+        if (id === '' || id === '0' || byId.has(id)) continue;
+        const value = Number(row.value);
+        byId.set(id, {
+          ...(row.value !== undefined && row.value !== '' && Number.isFinite(value) ? { value } : {}),
+          freeShipping: String(row.free_shipping ?? '0') === '1' || row.free_shipping === true,
+        });
+      }
+      const shippingGross = Number(order.total_shipping_tax_incl);
+      const rules: PrestashopGiftCartRule[] = [];
+      for (const [id, booked] of byId) {
+        try {
+          const rule = await this.httpClient.getResource<{
+            gift_product?: string | number;
+            gift_product_attribute?: string | number;
+          }>('cart_rules', id);
+          const giftProduct = String(rule.gift_product ?? '0');
+          if (giftProduct !== '' && giftProduct !== '0') {
+            rules.push({
+              idCartRule: id,
+              giftProductId: giftProduct,
+              giftProductAttributeId: String(rule.gift_product_attribute ?? '0'),
+              ...(booked.value !== undefined ? { valueTaxIncl: booked.value } : {}),
+              freeShipping: booked.freeShipping,
+              ...(Number.isFinite(shippingGross) ? { shippingGross } : {}),
+            });
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Cart rule ${id} of PrestaShop order ${String(order.id)} could not be read on connection ` +
+              `${this.connection.id}; a gift it handed out stays merged into its product line: ` +
+              `${(error as Error).message}`
+          );
+        }
+      }
+      return rules;
+    } catch (error) {
+      this.logger.warn(
+        `Gift cart rules of PrestaShop order ${String(order.id)} could not be read on connection ` +
+          `${this.connection.id}; any gift stays merged into its product line: ${(error as Error).message}`
+      );
+      return [];
     }
   }
 
@@ -875,4 +1268,63 @@ export class PrestashopOrderSourceAdapter
       }
     );
   }
+}
+
+/**
+ * How long after the order's `date_add` a buyer message still counts as the
+ * checkout note. PrestaShop writes the order and its checkout message in the
+ * same request, so they land seconds apart; ten minutes tolerates clock and
+ * transaction skew while staying far short of a genuine follow-up message.
+ */
+const CHECKOUT_NOTE_WINDOW_MS = 10 * 60 * 1000;
+
+function parseShopTimestamp(value: string | undefined): number | undefined {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return undefined;
+  }
+  // Both stamps come from the same shop in its own timezone; reading both as
+  // UTC keeps their difference exact whatever that timezone is.
+  const parsed = Date.parse(`${value.trim().replace(' ', 'T')}Z`);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function isWithinCheckoutWindow(messageDateAdd: string | undefined, orderDateAdd: string | undefined): boolean {
+  const orderAt = parseShopTimestamp(orderDateAdd);
+  if (orderAt === undefined) {
+    return true;
+  }
+  const messageAt = parseShopTimestamp(messageDateAdd);
+  return messageAt !== undefined && messageAt <= orderAt + CHECKOUT_NOTE_WINDOW_MS;
+}
+
+/** The slice of a `customer_threads` row this adapter reads. */
+interface PrestashopCustomerThread {
+  id: string | number;
+  id_order?: string | number;
+}
+
+/** The slice of a `customer_messages` row this adapter reads. */
+interface PrestashopCustomerMessage {
+  id: string | number;
+  id_customer_thread?: string | number;
+  /** `0` / empty for a message written by the buyer, an employee id otherwise. */
+  id_employee?: string | number | null;
+  message?: string;
+  date_add?: string;
+}
+
+/**
+ * Is this failure "the webservice key may not read the thread resources"?
+ * PrestaShop answers a resource a key has no permission for with 401 (surfaced
+ * as an authentication exception) or 403; a shop without the resource answers
+ * 404. All three mean "cannot say", not "no note".
+ */
+function isThreadResourceInaccessible(error: unknown): boolean {
+  if (error instanceof PrestashopAuthenticationException) {
+    return true;
+  }
+  if (error instanceof PrestashopResourceNotFoundException) {
+    return true;
+  }
+  return error instanceof PrestashopApiException && error.statusCode === 403;
 }

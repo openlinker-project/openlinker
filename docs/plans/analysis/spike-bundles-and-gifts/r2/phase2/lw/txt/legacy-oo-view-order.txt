@@ -1,0 +1,44 @@
+=== legacy-oo-view-order | Legacy Open Orders screen: Viewing Open Orders
+ 
+ Legacy Open Orders screen: Viewing Open Orders 
+ Viewing Open Orders
+ Overview 
+ In this section, we detail how to view an open order in a mode where no changes can be made to the order.
+ Info! You are currently looking at documentation for the previous version of the Open Orders screen. Keep in mind that some functions may differ from the newer, improved version. Check out the updated documentation here for details on the new Open Orders screen. 
+ Quick  guide
+ Select Orders > Open Orders
+ Locate the order.
+ Select  View Order  from the  View  Menu. 
+ Close the order when you have finished  viewing. 
+ Detailed guide
+ Select Orders > Open Orders
+ In the navigation menu on the left side of the screen, click on Orders. 
+ Select Open Orders.
+ Locate the Order
+ An order can be found by using the search functionality or by setting filters.
+ Select View Order from the View Menu
+ Right-click the selected Order, and select the View menu.
+ . .png 
+ Select the View Order  option
+ . .png 
+ View details about the order. There are multiple tabs under View Order which allow a user to see specific details pertaining to the order.
+ Details : This is the default tab displayed when opening View Order, containing general details about the order such as Order Id, Source, Customer details etc.
+ . .png 
+ Items : The Items tab contains details of the item(s) purchased. It will also display, by default,  the availability of Stock, Quantity, Cost Per Unit, Discount (%), Tax, Tax Rate (%)  and the Line cost of the order item when it was ordered. By right-clicking on one of the headers, the user will be able to select the columns to see.  
+ If an item ordered is a composition , all items making up the composition will be displayed.
+ . .png 
+ If any of the items are  batched items , a batch information tab will be displayed. If batches have been already pre-assigned, batch No, Qty and Dates will be displayed however batches that are not assigned to the order yet won't. Batch information for those will be assigned when an order is processed or/and when order based print-outs are produced: picking List, Packing List or Stock item Labels from open Orders. 
+ . .png 
+ Notes :  The order notes tab will display all notes in order. The date they were made and who they were made by. 
+ . .png 
+ Audit Trail :  The audit trail of an order is everything that has happened to that order, from when it was pulled from a channel to when it was processed. It also displays any refunds, exchanges, invoice and labels printing status. This screen also shows what user made these changes. If it was an automatic change 'No User' will be shown. More information can be found here . 
+ . .png 
+ Relations :  The Order Relations tab displays the relationships between other orders. For example, if an order is resent, it will have a new order number but will create a relationship with its parent order. This is useful for keeping track of what has happened to an order after it has been processed.  
+ . .png 
+ Package Split :  If the packaging has been split for order this will display the packaging used, total weight and tracking number for each package. 
+ . .png 
+ Click the    button to be able to see the content of the package.
+ For orders that contain batched items, batch information will be displayed, therefore the user can identify which batch in which parcel has been sent out.
+ Extended Properties : Order Extended Properties will be displayed in the final tab. This is additional information displayed as Property Name, Property Value and Property Type. An example could be a supplier reference applied to the order either manually or via automation. 
+ . .png 
+ 

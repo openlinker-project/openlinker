@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "type-check": "tsc -b --pretty false"
+    "type-check": "tsc -b --pretty false",
+    "check:i18n-inspector-build": "node scripts/check-i18n-inspector-not-in-build.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -45,7 +46,9 @@
     "@tiptap/react": "^3.30.2",
     "cmdk": "^1.1.1",
     "dompurify": "^3.4.11",
+    "motion": "^14.8.0",
     "posthog-js": "^1.398.3",
+    "qrcode-generator": "^1.5.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-hook-form": "^7.71.2",

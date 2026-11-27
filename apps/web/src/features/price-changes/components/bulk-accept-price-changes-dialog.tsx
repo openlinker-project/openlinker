@@ -18,7 +18,8 @@ import { Button } from '../../../shared/ui/button';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { useIsAdmin } from '../../../shared/auth/use-permission';
 import type { PriceChangeItem } from '../api/price-changes.types';
-import { initialsFor } from '../lib/price-change-copy';
+import { initialsFor } from '../lib/initials';
+import { interpolate, usePlural, useMessages } from '../../../shared/i18n';
 
 interface BulkAcceptPriceChangesDialogProps {
   items: PriceChangeItem[];
@@ -41,6 +42,8 @@ export function BulkAcceptPriceChangesDialog({
 }: BulkAcceptPriceChangesDialogProps): ReactElement {
   const [optInPairs, setOptInPairs] = useState<Set<string>>(new Set());
   const isAdmin = useIsAdmin();
+  const copy = useMessages('price-changes').bulkAcceptPriceChangesDialog;
+  const plural = usePlural();
 
   const distinctPairs = useMemo(() => {
     const seen = new Map<string, PriceChangeItem>();
@@ -62,8 +65,8 @@ export function BulkAcceptPriceChangesDialog({
       }}
     >
       <DialogContent className="dialog__content--wide">
-        <DialogTitle>Publish {items.length} price changes</DialogTitle>
-        <DialogDescription>Going out to {destinationCount} connections.</DialogDescription>
+        <DialogTitle>{plural(items.length, copy.title)}</DialogTitle>
+        <DialogDescription>{plural(destinationCount, copy.description)}</DialogDescription>
         <div className="mini-list">
           {items.map((item) => (
             <div className="mini-row" key={item.id}>
@@ -103,24 +106,23 @@ export function BulkAcceptPriceChangesDialog({
                 />
                 <span>
                   <span className="opt-in-check__title">
-                    Also set {item.sourceLabel} → {item.destinationLabel} to Automatic
+                    {interpolate(copy.optInTitle, {
+                      source: item.sourceLabel,
+                      destination: item.destinationLabel,
+                    })}
                   </span>
                 </span>
               </label>
             ))}
           </div>
         ) : null}
-        <p className="rule-note rule-note--muted">
-          We&apos;ll send these one at a time so we don&apos;t overwhelm any channel — you&apos;ll see
-          progress once you confirm. This never touches the price of an order that&apos;s already
-          been placed.
-        </p>
+        <p className="rule-note rule-note--muted">{copy.note}</p>
         <DialogFooter>
           <Button tone="secondary" onClick={() => onOpenChange(false)}>
-            Cancel
+            {copy.cancel}
           </Button>
           <Button disabled={isConfirming} onClick={() => onConfirm(optInPairs)}>
-            {isConfirming ? 'Publishing…' : 'Publish prices'}
+            {isConfirming ? copy.publishing : copy.publish}
           </Button>
         </DialogFooter>
       </DialogContent>

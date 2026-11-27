@@ -25,6 +25,8 @@ export const PermissionValues = [
   // #3424 - the pack bench's own write affordances. Its own value rather than
   // `orders:write` so a packer, who holds nothing else, can still claim work.
   'bench:write',
+  // #4241 - saved list views (admin, operator, viewer). Display-only gate.
+  'saved-views:write',
   // #3736 - read-only Fulfilment board and task detail (admin, operator, viewer).
   'fulfillment:read',
   'bench:read',
@@ -46,6 +48,10 @@ export const PermissionValues = [
   // dialog. Admin and operator only — an export takes buyer data out of the
   // system, so read access to /orders does not imply it.
   'orders:export',
+  // DISPLAY-ONLY (#3520): bundle/multipack write affordances (admin + operator).
+  'bundles:write',
+  // DISPLAY-ONLY (#3940): gift promotions and "Add gift" (admin + operator).
+  'gifts:write',
 ] as const;
 
 export type Permission = (typeof PermissionValues)[number];

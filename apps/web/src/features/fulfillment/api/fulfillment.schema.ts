@@ -24,7 +24,12 @@
 import { z } from 'zod';
 
 import type { ShipmentStatus } from '../../shipments';
-import type { FulfillmentTask, FulfillmentTaskPage, FulfillmentTaskShipment } from './fulfillment.types';
+import type {
+  FulfillmentTask,
+  FulfillmentTaskPage,
+  FulfillmentTaskShipment,
+  RoutingDecisionStatus,
+} from './fulfillment.types';
 
 /** `null` for a nullish input; the value otherwise. */
 const nullableString = z
@@ -179,4 +184,21 @@ export function parseFulfillmentTaskShipments(payload: unknown): FulfillmentTask
 
 export function parseFulfillmentTaskPage(payload: unknown): FulfillmentTaskPage {
   return fulfillmentTaskPageSchema.parse(payload);
+}
+
+/** `GET /orders/:id/routing-decision` (#2731). Vocabularies stay strings (see the types docblock). */
+export const routingDecisionStatusSchema = z.object({
+  decisionId: z.string(),
+  state: z.string(),
+  routerConnectionId: z.string(),
+  createdAt: z.string(),
+  ageMs: z.number(),
+  ttlMs: z.number(),
+  strandedSince: nullableString,
+  abandonReason: nullableString,
+  terminalisedAt: nullableString,
+});
+
+export function parseRoutingDecisionStatus(payload: unknown): RoutingDecisionStatus {
+  return routingDecisionStatusSchema.parse(payload);
 }

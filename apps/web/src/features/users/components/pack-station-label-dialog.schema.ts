@@ -15,18 +15,15 @@ import { z } from 'zod';
 import { PACK_STATION_LABEL_MAX_LENGTH } from '../api/users.types';
 import type { UpdatePackStationLabelInput } from '../api/users.types';
 
-export const packStationLabelDialogSchema = z.object({
-  packStationLabel: z
-    .string()
-    .trim()
-    .max(
-      PACK_STATION_LABEL_MAX_LENGTH,
-      `Must be ${String(PACK_STATION_LABEL_MAX_LENGTH)} characters or fewer`,
-    ),
-});
+/** Built with the `users.packStation.maxLength` message in the active language. */
+export function createPackStationLabelDialogSchema(maxLengthMessage: string) {
+  return z.object({
+    packStationLabel: z.string().trim().max(PACK_STATION_LABEL_MAX_LENGTH, maxLengthMessage),
+  });
+}
 
-export type PackStationLabelFormValues = z.input<typeof packStationLabelDialogSchema>;
-export type PackStationLabelFormSubmission = z.output<typeof packStationLabelDialogSchema>;
+export type PackStationLabelFormValues = z.input<ReturnType<typeof createPackStationLabelDialogSchema>>;
+export type PackStationLabelFormSubmission = z.output<ReturnType<typeof createPackStationLabelDialogSchema>>;
 
 export function toFormValues(currentLabel: string | null): PackStationLabelFormValues {
   return { packStationLabel: currentLabel ?? '' };

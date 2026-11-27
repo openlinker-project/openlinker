@@ -16,6 +16,8 @@ import type { FulfillmentWorkView } from '@openlinker/core/fulfillment';
 
 import type {
   BenchActivityEntryView,
+  BenchBuyerNoteAcknowledgementResultView,
+  BenchSourceChangeTakenOutResultView,
   BenchClaimResultView,
   BenchCompleteResultView,
   BenchUndoCompletionResultView,
@@ -107,6 +109,18 @@ export interface IBenchParcelService {
   getParcel(workId: string): Promise<BenchParcelView>;
 
   /**
+   * "Done, I took it out" for a box held because the shop lowered an item
+   * after packing started (#3961): voids that line's scans beyond what the
+   * order now asks for, then re-checks the order so a matching box is applied
+   * and released. Answers the parcel as it now stands.
+   */
+  confirmSourceChangeTakenOut(input: {
+    readonly workId: string;
+    readonly workLineId: string;
+    readonly actorUserId: string;
+  }): Promise<BenchSourceChangeTakenOutResultView>;
+
+  /**
    * The work behind a parcel, scoped exactly as `getParcel` scopes it.
    *
    * Exists so the documents surface asks "may this session see this parcel"
@@ -148,6 +162,20 @@ export interface IBenchParcelService {
    * `verifyUnit` would refuse a scan at this parcel, plus the ADR-074 lock.
    */
   claimParcel(workId: string, viewerId: string): Promise<BenchClaimResultView>;
+
+  /**
+   * Acknowledge this parcel's buyer note (#3538, D12) - who and when, per
+   * parcel. Fill-once and idempotent: the first packer's acknowledgement is
+   * never overwritten. Subject to the ADR-074 lock like every bench write, and
+   * refused `no-buyer-note` when the order has nothing to acknowledge.
+   *
+   * It records a fact and gates nothing: scanning never waits on it, and it is
+   * not a parcel close (ADR-071).
+   */
+  acknowledgeBuyerNote(
+    workId: string,
+    viewerId: string
+  ): Promise<BenchBuyerNoteAcknowledgementResultView>;
 
   /**
    * Declare this parcel finished and off the bench (pack-bench completion) — the ONE

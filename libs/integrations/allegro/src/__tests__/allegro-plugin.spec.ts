@@ -178,3 +178,13 @@ describe('createAllegroPlugin → createCapabilityAdapter', () => {
     );
   });
 });
+
+describe('allegro order sync start declarations (#4265)', () => {
+  // Declared statically so the UI reads them without constructing an adapter:
+  // the event journal has no date lookup, so there is no date start, but checkout forms give a window.
+  // check-order-source-start-declarations.mjs ties them to the adapter's methods.
+  it('should declare the start modes and window import exactly as the adapter supports them', () => {
+    expect(allegroAdapterManifest.orderSyncStartModes).toEqual(['now', 'all']);
+    expect(allegroAdapterManifest.orderWindowImport).toBe(true);
+  });
+});

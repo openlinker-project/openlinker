@@ -21,7 +21,7 @@ import { BulkConfigStep } from './bulk-config-step';
 import type { BulkWizardConfig } from './bulk-wizard.types';
 import type { Connection } from '../../../connections';
 import type { SessionUser } from '../../../../shared/auth/session.types';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../../shared/config/demo-mode';
 
 const viewerUser: SessionUser = {
   id: 'user_viewer',
@@ -118,6 +118,21 @@ describe('BulkConfigStep', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Proceed/ })).toBeDisabled();
     });
+    expect(screen.getByTestId('bulk-config-blocked-reason')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Proceed/ })).toHaveAttribute(
+      'aria-describedby',
+      'bulk-config-blocked-reason',
+    );
+  }, 15000);
+
+  it('names the missing channel setting beside a disabled Proceed', async () => {
+    renderWithProviders(
+      <BulkConfigStep initial={{}} onProceed={vi.fn()} onCancel={() => undefined} />,
+      { apiClient: makeConnectionClient(), sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+    await screen.findByRole('option', { name: 'Courier 24h' }, { timeout: 5000 });
+    expect(screen.getByRole('button', { name: /Proceed/ })).toBeDisabled();
+    expect(screen.getByTestId('bulk-config-blocked-reason')).toHaveTextContent(/channel settings/i);
   }, 15000);
 
   it('proceeds with use-master pricing/stock by default', async () => {
@@ -370,7 +385,7 @@ describe('BulkConfigStep', () => {
       const user = userEvent.setup();
       await user.hover(toggle.closest('.read-only-lock') as HTMLElement);
       const tooltip = await screen.findByRole('tooltip');
-      expect(tooltip).toHaveTextContent(DEMO_READ_ONLY_ACTION_MESSAGE);
+      expect(tooltip).toHaveTextContent(demoReadOnlyActionMessage());
     }, 15000);
 
     it('keeps the toggle enabled for an operator session even when the deployment is in demo mode', async () => {

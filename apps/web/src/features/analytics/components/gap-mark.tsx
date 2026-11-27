@@ -34,6 +34,9 @@
  */
 import type { ReactElement } from 'react';
 
+/** The footnote glyph itself: a mark, not copy. */
+const DAGGER = '\u2020';
+
 interface GapMarkProps {
   title: string;
   /** Opens the category's detail modal on click/Enter/Space; omit for the plain inert tooltip mark. */
@@ -44,14 +47,14 @@ export function GapMark({ title, onActivate }: GapMarkProps): ReactElement {
   if (onActivate) {
     return (
       <button type="button" className="gap-mark gap-mark--clickable" aria-label={title} title={title} onClick={onActivate}>
-        &#8224;
+        {DAGGER}
       </button>
     );
   }
 
   return (
     <span className="gap-mark" role="img" aria-label={title} title={title}>
-      &#8224;
+      {DAGGER}
     </span>
   );
 }

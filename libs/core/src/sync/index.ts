@@ -18,6 +18,7 @@ export {
   SyncJobQueuePort,
   EnqueueJobRequest,
   EnqueueJobOptions,
+  EnqueueJobOutcome,
 } from './application/ports/sync-job-queue.port';
 export { SyncLockPort, SyncLockToken } from './application/ports/sync-lock.port';
 export { shipmentDispatchLockKey } from './application/services/order-scoped-lock-keys';
@@ -35,6 +36,7 @@ export { SyncJob as SyncJobEntity } from './domain/entities/sync-job.entity';
 export type {
   ConnectionCursor,
   ConnectionCursorFilters,
+  ConnectionCursorPrefixSummary,
   ConnectionCursorPagination,
   PaginatedConnectionCursors,
 } from './domain/types/connection-cursor.types';
@@ -69,6 +71,13 @@ export {
 export type {
   ConnectionBacklogStatus,
   ConnectionBacklogStats,
+  ActiveOrderImport,
+  OrderImportStats,
+  OrderStartStatus,
+  OrderImportFailureCode,
+  OrderImportFailureReason,
+  OrderImportFailureCodeValues,
+  OrderImportStatus,
   ConnectionSyncStatus,
 } from './domain/types/connection-sync-status.types';
 export {
@@ -87,9 +96,20 @@ export {
 } from './domain/domain-services/connection-backlog.domain-service';
 export type { IConnectionSyncStatusService } from './application/services/connection-sync-status.service.interface';
 export type { SyncJobLane } from './domain/types/sync-job-lane.types';
-export { SyncJobLaneValues, resolveJobScope } from './domain/types/sync-job-lane.types';
+export {
+  SyncJobLaneValues,
+  resolveJobScope,
+  isHookScope,
+  hookScopeClass,
+  HOOK_INVENTORY_SCOPE_SUFFIX,
+  HOOK_SYNC_SCOPE_SUFFIX_BY_JOB_TYPE,
+  HOOK_SCOPE_SUFFIX,
+  HOOK_SYNC_JOB_TYPES,
+} from './domain/types/sync-job-lane.types';
 export {
   MarketplaceOrdersPollPayloadV1,
+  MarketplaceNotificationsDrainPayloadV1,
+  MarketplaceOrdersImportPayloadV1,
   MarketplaceOrderSyncPayloadV1,
   MarketplaceOrderFxStampPayloadV1,
   MarketplaceOrderFxStampSweepPayloadV1,
@@ -103,12 +123,14 @@ export {
   MarketplaceOfferQuantityReconcilePayloadV1,
   MarketplaceOfferRefreshSnapshotPayloadV1,
   MarketplaceOfferStockRestorePayloadV1,
+  OrderPaymentWritebackPushPayloadV1,
   MarketplaceOfferPauseStalePayloadV1,
   MarketplaceOfferPauseStaleSweepPayloadV1,
   MarketplaceShipmentStatusSyncPayloadV1,
   MarketplaceShipmentSyncByExternalIdPayloadV1,
   ShippingShipmentNotifyDispatchedPayloadV1,
   MarketplaceFulfillmentStatusSyncPayloadV1,
+  MarketplaceSourceFulfillmentStatusSyncPayloadV1,
   OfferDescriptionTone,
 } from './domain/types/marketplace-job-payloads.types';
 export { OfferDescriptionToneValues } from './domain/types/marketplace-job-payloads.types';
@@ -149,12 +171,20 @@ export type {
   InvoicingIssueBuyerV1,
 } from './domain/types/invoicing-job-payloads.types';
 export type { RegulatoryStatusReconcilePayloadV1 } from './domain/types/invoicing-job-payloads.types';
+export type { InvoicingMarketplaceUploadPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { FulfillmentWorkDispatchPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkAutoDispatchPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRoutePayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkTimeoutSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type {
+  SalesDocumentBatchRunPayloadV1,
+  SalesDocumentBatchTickPayloadV1,
+} from './domain/types/sales-document-batch-job-payloads.types';
 export type { FulfillmentWorkRelaySweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type { FulfillmentWorkStatusPollPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { FulfillmentWorkRerouteSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type { FulfillmentRoutingReapSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
+export type { InventorySaleDecrementReconcileSweepPayloadV1 } from './domain/types/fulfillment-job-payloads.types';
 export type { OfflineResubmitPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { PendingRecoverySweepPayloadV1 } from './domain/types/invoicing-job-payloads.types';
 export type { PaymentStatusRefreshByExternalIdPayloadV1 } from './domain/types/invoicing-job-payloads.types';
@@ -177,6 +207,7 @@ export { ContendedWriteError } from './domain/exceptions/contended-write.error';
 
 // Infrastructure exports (for testing/mocking)
 export { RedisStreamsJobEnqueueService } from './infrastructure/adapters/redis-streams-job-enqueue.service';
+export type { IRetryClassifierRegistry } from './infrastructure/adapters/retry-classifier-registry.service.interface';
 export { RetryClassifierRegistryService } from './infrastructure/adapters/retry-classifier-registry.service';
 export { AuthFailureClassifierRegistryService } from './infrastructure/adapters/auth-failure-classifier-registry.service';
 export { SchedulerTaskRegistryService } from './infrastructure/adapters/scheduler-task-registry.service';
@@ -193,7 +224,65 @@ export {
   masterSweepCursorKey,
   masterSweepCompletedAtCursorKey,
   masterSweepRemainingCountCursorKey,
+  masterSweepLockKey,
 } from './domain/types/master-sweep-cursor.types';
+
+// Order feed seed marker key (#4228)
+export {
+  ORDER_FEED_SEEDED_AT_SUFFIX,
+  orderFeedSeededAtCursorKey,
+} from './domain/types/order-feed-seed-cursor.types';
+
+// Order sync start intent (#4228)
+export type {
+  OrderSyncStart,
+  OrderSyncStartMode,
+  OrderSyncStartOrder,
+  OrderSyncStartedRecord,
+} from './domain/types/order-sync-start.types';
+export {
+  DEFAULT_ORDER_SYNC_START_MODES,
+  ORDER_SYNC_START_CURSOR_KEY,
+  ORDER_SYNC_STARTED_CURSOR_KEY,
+  parseOrderSyncStarted,
+  serializeOrderSyncStarted,
+  ORDER_SYNC_START_MAX_AGE_YEARS,
+  OrderSyncStartModeValues,
+  OrderSyncStartOrderValues,
+  describeInvalidOrderSyncStartDate,
+  parseOrderSyncStart,
+  resolveOrderSyncStartModes,
+  serializeOrderSyncStart,
+} from './domain/types/order-sync-start.types';
+
+// Cursor overview + guarded rewind (#4023)
+export type {
+  CursorFamily,
+  CursorRewindTarget,
+  CursorCatalogueEntry,
+} from './domain/types/cursor-key-catalogue.types';
+export {
+  CursorFamilyValues,
+  CursorRewindTargetValues,
+  OFFER_QUANTITY_WRITE_MARK_PREFIX,
+  resolveCursorCatalogueEntry,
+  catalogueWriterJobTypes,
+} from './domain/types/cursor-key-catalogue.types';
+export type {
+  CursorLastRun,
+  CursorOverview,
+  CursorOverviewConnection,
+  CursorOverviewItem,
+  CursorWriteMarksSummary,
+  CursorRewindInput,
+  CursorRewindResult,
+} from './domain/types/cursor-overview.types';
+export type { CursorRewindRefusal } from './domain/exceptions/cursor-rewind-refused.error';
+export {
+  CursorRewindRefusedError,
+  CursorRewindRefusalValues,
+} from './domain/exceptions/cursor-rewind-refused.error';
+export type { ICursorOverviewService } from './application/services/cursor-overview.service.interface';
 
 // Application Services (interfaces)
 export type { ISyncJobRetryService } from './application/services/sync-job-retry.service.interface';
@@ -207,6 +296,12 @@ export type { ISyncCursorsService } from './application/services/sync-cursors.se
 export { InboundRoutingPolicyService } from './application/services/inbound-routing-policy.service';
 export { buildInboundJobIdempotencyKey } from './application/services/inbound-job-idempotency-key';
 export type { IInboundRoutingPolicyService } from './application/interfaces/inbound-routing-policy.service.interface';
+export { InboundQueueDrainService } from './application/services/inbound-queue-drain.service';
+export type { IInboundQueueDrainService } from './application/interfaces/inbound-queue-drain.service.interface';
+export type {
+  InboundQueueDrainInput,
+  InboundQueueDrainResult,
+} from './application/types/inbound-queue-drain.types';
 export type {
   RoutingOutcome,
   InboundRouteResolution,
@@ -220,3 +315,8 @@ export * from './sync.tokens';
 // sub-path (#594). Plugins must not import them from here.
 // `ConnectionCursorOrmEntity` has no external consumer and is intentionally not
 // promoted to the sub-barrel — add it if/when a test fixture needs it.
+
+export {
+  generateOrdersImportNonce,
+  buildOrdersImportRequest,
+} from './domain/types/orders-import-run.types';

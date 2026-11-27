@@ -4,6 +4,7 @@
  * @module apps/web/src/features/settings
  */
 export { SyncPacingTile } from './components/sync-pacing-tile';
+export { ReleaseCenterRow } from './components/release-center-row';
 export { SyncPacingConfirmDialog } from './components/sync-pacing-confirm-dialog';
 export { SyncPacingRail } from './components/sync-pacing-rail';
 export { useOperationalSettingsQuery } from './hooks/use-operational-settings-query';

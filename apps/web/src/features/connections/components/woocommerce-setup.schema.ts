@@ -10,8 +10,26 @@
  * @module features/connections/components
  */
 import { z } from 'zod';
-import { CORE_CAPABILITY_VALUES, type CoreCapability, type CreateConnectionInput } from '../api/connections.types';
+import {
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+  wizardBuyerDataConfig,
+  type BuyerDataWizardValue,
+} from '../../buyer-data';
+import {
+  CORE_CAPABILITY_VALUES,
+  type CoreCapability,
+  type CreateConnectionInput,
+} from '../api/connections.types';
 import { hasCapabilityConflict } from '../lib/capability-metadata';
+import { schemaMessage } from '../lib/schema-message';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  readsOrders,
+  toOrderSyncStart,
+} from '../lib/order-sync-start';
+
+const msg = schemaMessage('woocommerceSetupSchema');
 
 export const WOOCOMMERCE_ADAPTER_KEY = 'woocommerce.restapi.v3';
 
@@ -35,23 +53,23 @@ export const WOOCOMMERCE_FALLBACK_CAPABILITIES: CoreCapability[] = [
 const isHttps = (value: string): boolean => value.startsWith('https://');
 
 export const woocommerceSetupSchema = z.object({
-  name: z.string().trim().min(1, 'Connection name is required'),
+  name: z.string().trim().min(1, msg('nameRequired')),
   siteUrl: z
     .string()
     .trim()
-    .min(1, 'Site URL is required')
-    .url('Site URL must be a valid URL (e.g. https://shop.example.com)')
-    .refine(isHttps, 'Site URL must use HTTPS'),
+    .min(1, msg('siteUrlRequired'))
+    .url(msg('siteUrlInvalid'))
+    .refine(isHttps, msg('siteUrlHttps')),
   consumerKey: z
     .string()
     .trim()
-    .min(1, 'Consumer key is required')
-    .refine((v) => v.startsWith('ck_'), 'Consumer key must start with ck_'),
+    .min(1, msg('consumerKeyRequired'))
+    .refine((v) => v.startsWith('ck_'), msg('consumerKeyPrefix')),
   consumerSecret: z
     .string()
     .trim()
-    .min(1, 'Consumer secret is required')
-    .refine((v) => v.startsWith('cs_'), 'Consumer secret must start with cs_'),
+    .min(1, msg('consumerSecretRequired'))
+    .refine((v) => v.startsWith('cs_'), msg('consumerSecretPrefix')),
   enabledCapabilities: z
     .array(z.enum(CORE_CAPABILITY_VALUES))
     .default(WOOCOMMERCE_FALLBACK_CAPABILITIES)
@@ -59,8 +77,11 @@ export const woocommerceSetupSchema = z.object({
     // 400, so the payload must never carry both.
     .refine(
       (capabilities) => !hasCapabilityConflict(capabilities),
-      'InventoryMaster and OfferManager cannot both be enabled on the same connection.',
+      msg('capabilityConflict'),
     ),
+  orderSyncStart: orderSyncStartSchema.default(ORDER_SYNC_START_DEFAULT_VALUE),
+  // The answer to the "Buyer data" question (#4289); set through `setValue`.
+  buyerDataRetention: z.custom<BuyerDataWizardValue>().optional(),
 });
 
 export type WoocommerceSetupFormValues = z.input<typeof woocommerceSetupSchema>;
@@ -72,17 +93,22 @@ export const WOOCOMMERCE_SETUP_DEFAULT_VALUES: WoocommerceSetupFormValues = {
   consumerKey: '',
   consumerSecret: '',
   enabledCapabilities: WOOCOMMERCE_FALLBACK_CAPABILITIES,
+  buyerDataRetention: DEFAULT_BUYER_DATA_WIZARD_VALUE,
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
 };
 
 export function toCreateConnectionInput(
-  values: WoocommerceSetupFormSubmission,
+  values: WoocommerceSetupFormSubmission
 ): CreateConnectionInput {
   return {
     name: values.name,
     platformType: 'woocommerce',
     adapterKey: WOOCOMMERCE_ADAPTER_KEY,
     credentials: { consumerKey: values.consumerKey, consumerSecret: values.consumerSecret },
-    config: { siteUrl: values.siteUrl },
+    config: { siteUrl: values.siteUrl, ...wizardBuyerDataConfig(values.buyerDataRetention) },
     enabledCapabilities: values.enabledCapabilities,
+    orderSyncStart: readsOrders(values.enabledCapabilities)
+      ? toOrderSyncStart(values.orderSyncStart)
+      : undefined,
   };
 }

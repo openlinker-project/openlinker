@@ -46,6 +46,11 @@ import { InvoiceStatus, PaymentStatus, RegulatoryStatus } from '../../../domain/
   unique: true,
   where: '"idempotencyKey" IS NOT NULL',
 })
+// One successor per refused attempt (#3960). Partial: a first attempt has none.
+@Index('UQ_invoice_records_previous_attempt', ['previousAttemptId'], {
+  unique: true,
+  where: '"previousAttemptId" IS NOT NULL',
+})
 // Reconciliation scan (#1121): issued + non-terminal regulatory status, ordered
 // `updatedAt ASC, id ASC`, connection-scoped. Partial so terminal/receipt rows
 // (the bulk of the table over time) stay out of the index.
@@ -104,6 +109,15 @@ export class InvoiceRecordOrmEntity {
 
   @Column({ type: 'text', nullable: true })
   clearanceReference!: string | null;
+
+  /**
+   * Opaque operator-facing clearance diagnostic (#1582) - the authority's
+   * rejection description/details, captured by the reconciliation read so the
+   * detail page can explain a `rejected` verdict. Neutral (ADR-026); `null`
+   * until a read surfaces one.
+   */
+  @Column({ type: 'text', nullable: true })
+  clearanceDetail!: string | null;
 
   /**
    * Neutral payment lifecycle (#1354) — refreshed from an authoritative
@@ -220,6 +234,24 @@ export class InvoiceRecordOrmEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   sourceDocument!: StoredDocument | null;
+
+  /**
+   * Base64URL SHA-256 of the `sourceDocument` bytes (#3620), written with it at
+   * issue time. `null` for rows issued before the column existed.
+   */
+  @Column({ type: 'text', nullable: true })
+  sourceDocumentHash!: string | null;
+
+  /** 0-based attempt at this (connection, order) invoice (#3960). */
+  @Column({ type: 'int', default: 0 })
+  attempt!: number;
+
+  /**
+   * The refused attempt this one follows (#3960). Unique when set, so a refused
+   * invoice has at most one successor.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  previousAttemptId!: string | null;
 
   /**
    * Neutral issuance-time line snapshot (#1297) — `{ buyer, currency, lines }`

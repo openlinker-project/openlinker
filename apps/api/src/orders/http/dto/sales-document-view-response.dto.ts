@@ -43,10 +43,12 @@ import {
 import type { InvoiceFailureCode, InvoiceFailureMode } from '@openlinker/core/invoicing';
 import {
   CoreSalesDocumentKindValues,
+  SalesDocumentAfterIssueAttentionValues,
   SalesDocumentGateBlockReasonValues,
   SalesDocumentUnresolvedReasonValues,
 } from '@openlinker/core/sales-documents';
 import type {
+  SalesDocumentAfterIssueAttention,
   SalesDocumentGateBlockReason,
   SalesDocumentIdentity,
   SalesDocumentMatchedRuleView,
@@ -56,6 +58,10 @@ import type {
   SalesDocumentView,
 } from '@openlinker/core/sales-documents';
 import { SalesDocumentConditionDto } from '../../../sales-documents/http/dto/sales-document-condition.dto';
+import {
+  SalesDocumentBlockParamsDto,
+  toSalesDocumentBlockParamsDto,
+} from './sales-document-block-params.dto';
 
 export class SalesDocumentIdentityDto {
   @ApiProperty({ description: "The underlying record's own id, for the per-document routes." })
@@ -300,6 +306,13 @@ export class SalesDocumentViewResponseDto {
   blockDetail!: string | null;
 
   @ApiProperty({
+    type: SalesDocumentBlockParamsDto,
+    nullable: true,
+    description: 'The values behind blockDetail (#3866), for the operator-facing sentence.',
+  })
+  blockParams!: SalesDocumentBlockParamsDto | null;
+
+  @ApiProperty({
     type: [SalesDocumentOtherRecordDto],
     description:
       'Records for this order on OTHER connections. Empty for the overwhelming majority of orders; a ' +
@@ -319,6 +332,17 @@ export class SalesDocumentViewResponseDto {
       'before concluding that no rule decided an order\'s kind.',
   })
   matchedRule!: SalesDocumentMatchedRuleViewDto | null;
+
+  @ApiProperty({
+    enum: SalesDocumentAfterIssueAttentionValues,
+    nullable: true,
+    description:
+      'DEF-26: the sale changed after its document was made (cancelled, or refunded in whole or in ' +
+      'part), so the document may need a correction. Derived on every read from the live order and ' +
+      'its refunds, never stored. `null` when there is no live document or nothing changed. A ' +
+      'suggestion only: whether a correction is due is the operator\'s call.',
+  })
+  afterIssueAttention!: SalesDocumentAfterIssueAttention | null;
 }
 
 /**
@@ -339,8 +363,10 @@ export function toSalesDocumentViewDto(view: SalesDocumentView): SalesDocumentVi
     blockReason: view.blockReason,
     unresolvedReason: view.unresolvedReason,
     blockDetail: view.blockDetail,
+    blockParams: toSalesDocumentBlockParamsDto(view.blockParams),
     otherRecords: view.otherRecords.map(toOtherRecordDto),
     matchedRule: view.matchedRule === null ? null : toMatchedRuleViewDto(view.matchedRule),
+    afterIssueAttention: view.afterIssueAttention,
   };
 }
 

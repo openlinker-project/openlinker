@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { getMessages } from '../../../shared/i18n';
 import { resolveInvoiceHeadline, resolveFiscalHeadline } from './sales-document-headline';
 import type { InvoiceRecord } from '../../invoicing';
 import type { FiscalRegistrationRecord } from '../../fiscalization';
@@ -34,6 +35,8 @@ function fiscalRecord(overrides: Partial<FiscalRegistrationRecord> = {}): Fiscal
     orderId: 'ord_1',
     providerType: 'eparagony',
     idempotencyKey: 'key',
+    attempt: 0,
+    previousAttemptId: null,
     status: 'registered',
     providerReference: null,
     documentReference: 'RC/1',
@@ -43,14 +46,15 @@ function fiscalRecord(overrides: Partial<FiscalRegistrationRecord> = {}): Fiscal
     artefacts: null,
     failureMode: null,
     failureReason: null,
+    providerFailureDetails: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
 }
 
-/** The panel's `t` in test form: every key falls back to its shipped English. */
-const t = (_key: string, fallback: string): string => fallback;
+/** The shipped English headline words. */
+const t = getMessages('orders').salesDocumentHeadline;
 
 describe('resolveInvoiceHeadline', () => {
   it('should read Cleared with a done tone for an accepted clearance', () => {
@@ -64,9 +68,9 @@ describe('resolveInvoiceHeadline', () => {
     expect(model.tone).toBe('done');
   });
 
-  it('should read Rejected by authority with an error tone', () => {
+  it('should read Rejected at clearance with an error tone', () => {
     const model = resolveInvoiceHeadline(invoice({ regulatoryStatus: 'rejected' }), 'KSeF', t);
-    expect(model.state).toBe('Rejected by authority');
+    expect(model.state).toBe('Rejected at clearance');
     expect(model.tone).toBe('error');
   });
 
@@ -104,3 +108,30 @@ describe('resolveFiscalHeadline', () => {
     expect(model.tone).toBe('warning');
   });
 });
+
+describe('resolveInvoiceHeadline - connection missing a setting (#3772)', () => {
+  it('should say Not issued rather than Rejected, since nobody rejected anything', () => {
+    const model = resolveInvoiceHeadline(
+      invoice({
+        status: 'failed',
+        failureMode: 'rejected',
+        failureCode: 'connection-setup-incomplete',
+        providerInvoiceNumber: null,
+      }),
+      'eparagony',
+      t,
+    );
+    expect(model.state).toBe('Not issued');
+    expect(model.tone).toBe('error');
+  });
+
+  it('should keep Rejected for a provider rejection', () => {
+    const model = resolveInvoiceHeadline(
+      invoice({ status: 'failed', failureMode: 'rejected', failureCode: 'provider-rejected' }),
+      'eparagony',
+      t,
+    );
+    expect(model.state).toBe('Rejected');
+  });
+});
+

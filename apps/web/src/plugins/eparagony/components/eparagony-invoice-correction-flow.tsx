@@ -6,7 +6,7 @@
  * KSeF/inFakt/Subiekt slots use (`POST /invoices/:invoiceId/correct`, backed
  * here by `EparagonyInvoicingAdapter` implementing `CorrectionIssuer`,
  * #3193). The operator supplies:
- *   - an optional free-text reason;
+ *   - a free-text reason, recommended but not forced (DEF-32);
  *   - per-line new quantity and/or new unit price gross.
  *
  * **The line table is the shared `CorrectionLineGrid` (#3090) whenever the
@@ -28,7 +28,7 @@
  * @module plugins/eparagony/components
  */
 import { type ReactElement, useRef, useState } from 'react';
-import { useTranslation } from '../../../shared/i18n';
+import { interpolate, renderRich, useFormat } from '../../../shared/i18n';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceCorrectionFlowProps } from '../../../shared/plugins/plugin.types';
@@ -38,7 +38,12 @@ import {
   useInvoiceContentQuery,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
+  CorrectionReasonField,
+  useCorrectionReason,
+  useWarningAcknowledgement,
 } from '../../../features/invoicing';
+import { useEparagonyMessages } from '../messages';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface LineRow {
   originalLineNumber: string;
@@ -82,9 +87,13 @@ export function EparagonyInvoiceCorrectionFlow({
   onCorrectionIssued,
   suggestedLines,
 }: InvoiceCorrectionFlowProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useEparagonyMessages().eparagonyInvoiceCorrectionFlow;
+  const format = useFormat();
+  const strong = { strong: (text: string) => <strong>{text}</strong> };
+  const strongMono = { strong: (text: string) => <strong className="mono-text">{text}</strong> };
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  const acknowledgement = useWarningAcknowledgement(mutation.isPending);
   // Same read `CorrectionLineGrid` uses internally — resolved here too so this
   // component can decide WHICH table to render (react-query dedupes the
   // fetch by query key, so this costs no extra request).
@@ -98,7 +107,7 @@ export function EparagonyInvoiceCorrectionFlow({
     `eparagony-corr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
   );
 
-  const [reason, setReason] = useState('');
+  const reasonState = useCorrectionReason();
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
   const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
@@ -124,10 +133,7 @@ export function EparagonyInvoiceCorrectionFlow({
       // there is nothing to parse, only a "did anything change" check.
       if (gridLines.length === 0) {
         setLinesError(
-          t(
-            'eparagony.correction.gridLinesRequired',
-            'Change at least one line’s quantity or price before issuing a correction.',
-          ),
+          copy.gridLinesRequired,
         );
         return;
       }
@@ -136,56 +142,60 @@ export function EparagonyInvoiceCorrectionFlow({
       const parsed = parseLineRows(lines);
       if (parsed === null) {
         setLinesError(
-          t(
-            'eparagony.correction.lineDeltaRequired',
-            'Each line must specify a new quantity and/or a new price.',
-          ),
+          copy.lineDeltaRequired,
         );
         return;
       }
       if (parsed.length === 0) {
         setLinesError(
-          t(
-            'eparagony.correction.linesRequired',
-            'At least one line with a line number is required.',
-          ),
+          copy.linesRequired,
         );
         return;
       }
       parsedLines = parsed;
     }
     setLinesError(null);
-    mutation.mutate(
-      {
-        invoiceId: invoice.id,
-        input: {
-          reason: reason.trim() !== '' ? reason.trim() : undefined,
-          lines: parsedLines,
-          idempotencyKey: idempotencyKeyRef.current,
+    // DEF-32: a missing reason warns once, then the operator decides.
+    if (!reasonState.confirmBeforeSubmit()) {
+      return;
+    }
+    const send = (acknowledgeWarnings: string[]): void => {
+      mutation.mutate(
+        {
+          invoiceId: invoice.id,
+          input: {
+            ...(acknowledgeWarnings.length > 0 ? { acknowledgeWarnings } : {}),
+            reason: reasonState.submittedReason,
+            lines: parsedLines,
+            idempotencyKey: idempotencyKeyRef.current,
+          },
         },
-      },
-      {
-        onSuccess: (correctionInvoice) => {
-          showToast({
-            tone: 'success',
-            title: t('eparagony.correction.issued', 'Correction issued'),
-            description: t(
-              'eparagony.correction.issuedBody',
-              'The correcting document was submitted to the provider.',
-            ),
-          });
-          onCorrectionIssued(correctionInvoice.id);
-          onClose();
+        {
+          onSuccess: (correctionInvoice) => {
+            showToast({
+              tone: 'success',
+              title: copy.issued,
+              description: copy.issuedBody,
+            });
+            onCorrectionIssued(correctionInvoice.id);
+            onClose();
+          },
+          onError: (error) => {
+            // DEF-23/30/31: a refusal the operator may overrule asks instead of failing.
+            if (acknowledgement.offer(error, send)) {
+              return;
+            }
+            showToast({
+              tone: 'error',
+              title: copy.failed,
+              description: describeApiError(error, 'eparagony'),
+            });
+          },
         },
-        onError: (error) => {
-          showToast({
-            tone: 'error',
-            title: t('eparagony.correction.failed', 'Correction failed'),
-            description: error.message,
-          });
-        },
-      },
-    );
+      );
+    };
+    acknowledgement.reset();
+    send([]);
   }
 
   const isSubmitting = mutation.isPending;
@@ -194,50 +204,40 @@ export function EparagonyInvoiceCorrectionFlow({
     <div className="eparagony-correction">
       {/* Header */}
       <div className="eparagony-correction__head">
-        <h3>{t('eparagony.correction.title', 'Issue correction')}</h3>
+        <h3>{copy.title}</h3>
         <span className="section-card__provider">
-          {t('eparagony.correction.providerTag', 'eparagony.pl · slot')}
+          {copy.providerTag}
         </span>
       </div>
 
       {/* Original invoice reference */}
       <div className="eparagony-correction__orig">
         <span>
-          {t('eparagony.correction.correcting', 'Correcting')}{' '}
-          <strong>{invoice.providerInvoiceNumber ?? invoice.id}</strong>
+          {renderRich(copy.correcting, strong, {
+            reference: invoice.providerInvoiceNumber ?? invoice.id,
+          })}
         </span>
         {invoice.clearanceReference ? (
           <span>
-            {t('eparagony.correction.clearanceRef', 'Clearance ref.')}{' '}
-            <strong className="mono-text">{invoice.clearanceReference.slice(0, 14)}…</strong>
+            {renderRich(copy.clearanceRef, strongMono, {
+              reference: `${invoice.clearanceReference.slice(0, 14)}…`,
+            })}
           </span>
         ) : null}
         {invoice.issuedAt ? (
           <span>
-            {t('eparagony.correction.issuedOn', 'Issued')}{' '}
-            <strong className="mono-text">{invoice.issuedAt.slice(0, 10)}</strong>
+            {renderRich(copy.issuedOn, strongMono, { date: format.date(invoice.issuedAt) })}
           </span>
         ) : null}
       </div>
 
       {/* Reason */}
-      <div className="field eparagony-correction__reason">
-        <label htmlFor="eparagony-reason">
-          {t('eparagony.correction.reasonLabel', 'Reason for correction')}
-        </label>
-        <textarea
-          id="eparagony-reason"
-          className="textarea"
-          placeholder={t(
-            'eparagony.correction.reasonPlaceholder',
-            'e.g. Partial return of the order',
-          )}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          disabled={isSubmitting}
-          rows={3}
-        />
-      </div>
+      <CorrectionReasonField
+        state={reasonState}
+        name="eparagony"
+        disabled={isSubmitting}
+        className="eparagony-correction__reason"
+      />
 
       {/* Line items */}
       {linesError ? (
@@ -247,7 +247,7 @@ export function EparagonyInvoiceCorrectionFlow({
       ) : null}
 
       {contentQuery.isLoading ? (
-        <p className="text-muted">{t('eparagony.correction.loadingLines', 'Loading invoice lines…')}</p>
+        <p className="text-muted">{copy.loadingLines}</p>
       ) : linesAreAuthoritative ? (
         <CorrectionLineGrid
           invoiceId={invoice.id}
@@ -261,14 +261,14 @@ export function EparagonyInvoiceCorrectionFlow({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>{t('eparagony.correction.col.lp', 'Lp')}</th>
+                  <th>{copy.col.lp}</th>
                   <th className="eparagony-correction__col-qty">
-                    {t('eparagony.correction.col.newQty', 'New qty')}
+                    {copy.col.newQty}
                   </th>
                   <th className="eparagony-correction__col-price">
-                    {t('eparagony.correction.col.newPrice', 'New gross')}
+                    {copy.col.newPrice}
                   </th>
-                  <th aria-label={t('eparagony.correction.col.remove', 'Remove')} />
+                  <th aria-label={copy.col.remove} />
                 </tr>
               </thead>
               <tbody>
@@ -279,7 +279,7 @@ export function EparagonyInvoiceCorrectionFlow({
                         invoiceId={invoice.id}
                         value={row.originalLineNumber}
                         onChange={(next) => updateLine(i, 'originalLineNumber', next)}
-                        ariaLabel={`${t('eparagony.correction.lineNum', 'Line number')} ${i + 1}`}
+                        ariaLabel={interpolate(copy.lineNum, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -289,10 +289,10 @@ export function EparagonyInvoiceCorrectionFlow({
                         className="input input--w-qty"
                         value={row.newQuantity}
                         onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
-                        placeholder="—"
+                        placeholder={copy.emptyCell}
                         min={0}
                         step="any"
-                        aria-label={`${t('eparagony.correction.newQty', 'New qty, line')} ${i + 1}`}
+                        aria-label={interpolate(copy.newQty, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -302,10 +302,10 @@ export function EparagonyInvoiceCorrectionFlow({
                         className="input input--w-price"
                         value={row.newUnitPriceGross}
                         onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
-                        placeholder="—"
+                        placeholder={copy.emptyCell}
                         min={0}
                         step="any"
-                        aria-label={`${t('eparagony.correction.newPrice', 'New gross, line')} ${i + 1}`}
+                        aria-label={interpolate(copy.newPrice, { n: i + 1 })}
                         disabled={isSubmitting}
                       />
                     </td>
@@ -314,7 +314,7 @@ export function EparagonyInvoiceCorrectionFlow({
                         tone="secondary"
                         onClick={() => removeLine(i)}
                         disabled={lines.length === 1 || isSubmitting}
-                        aria-label={`${t('eparagony.correction.removeLine', 'Remove line')} ${i + 1}`}
+                        aria-label={interpolate(copy.removeLine, { n: i + 1 })}
                       >
                         ✕
                       </Button>
@@ -326,14 +326,11 @@ export function EparagonyInvoiceCorrectionFlow({
           </div>
 
           <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
-            {t('eparagony.correction.addLine', '+ Add line')}
+            {copy.addLine}
           </Button>
 
           <p className="eparagony-correction__note">
-            {t(
-              'eparagony.correction.note',
-              'A correcting document adjusts quantity and/or price per line. The provider submits it on your behalf; OpenLinker tracks the status.',
-            )}
+            {copy.note}
           </p>
         </>
       )}
@@ -342,14 +339,15 @@ export function EparagonyInvoiceCorrectionFlow({
       <div className="wizard__actions">
         <span className="wizard__spacer" />
         <Button tone="secondary" onClick={onClose} disabled={isSubmitting}>
-          {t('eparagony.correction.cancel', 'Cancel')}
+          {copy.cancel}
         </Button>
         <Button tone="primary" onClick={handleSubmit} disabled={isSubmitting}>
           {isSubmitting
-            ? t('eparagony.correction.submitting', 'Issuing…')
-            : t('eparagony.correction.submit', 'Issue correction')}
+            ? copy.submitting
+            : copy.submit}
         </Button>
       </div>
+      {acknowledgement.dialog}
     </div>
   );
 }

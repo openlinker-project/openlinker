@@ -65,13 +65,30 @@ function makeCommand(overrides: Partial<GenerateLabelCommand> = {}): GenerateLab
   };
 }
 
+const CONNECTION_WITH_SENDER = {
+  config: {
+    senderAddress: {
+      name: 'Sklep',
+      email: 'sklep@sklep.pl',
+      phone: '+48123123123',
+      address: {
+        street: 'ul. Testowa',
+        buildingNumber: '3',
+        city: 'Warszawa',
+        postCode: '02-222',
+        countryCode: 'PL',
+      },
+    },
+  },
+} as unknown as Connection;
+
 describe('AllegroDeliveryShippingAdapter', () => {
   let http: jest.Mocked<IAllegroHttpClient>;
   let adapter: AllegroDeliveryShippingAdapter;
 
   beforeEach(() => {
     http = makeHttp();
-    adapter = new AllegroDeliveryShippingAdapter('conn-allegro', http, {} as Connection, {
+    adapter = new AllegroDeliveryShippingAdapter('conn-allegro', http, CONNECTION_WITH_SENDER, {
       initialDelayMs: 0,
       maxDelayMs: 0,
       backoffFactor: 1,
@@ -147,6 +164,79 @@ describe('AllegroDeliveryShippingAdapter', () => {
         providerCode: 'ALLEGRO_ONE_OUT_OF_AREA',
         message: expect.stringContaining('Sender zip outside the Allegro One service area'),
         providerDetails: expect.objectContaining({ errors: expect.any(Array) }),
+      });
+    });
+
+    describe('when Allegro already knows the command id (COMMAND_EXISTS)', () => {
+      const commandExists = (): AllegroApiException =>
+        new AllegroApiException('exists', 400, '{"errors":[{"code":"COMMAND_EXISTS"}]}', CREATE_PATH, [
+          { code: 'COMMAND_EXISTS', message: 'An order with the submitted ID already exists' },
+        ]);
+      const sentIds = (): string[] =>
+        http.post.mock.calls.map((call) => (call[1] as { commandId: string }).commandId);
+
+      it('resumes a command that already SUCCEEDED instead of buying a second label', async () => {
+        http.post.mockRejectedValueOnce(commandExists());
+        http.get.mockResolvedValue(
+          ok<AllegroShipmentCommandResult>({
+            commandId: 'c1',
+            status: 'SUCCESS',
+            shipmentId: 'allegro-ship-9',
+          }),
+        );
+
+        const result = await adapter.generateLabel(makeCommand());
+
+        expect(result.providerShipmentId).toBe('allegro-ship-9');
+        expect(http.post).toHaveBeenCalledTimes(1);
+      });
+
+      it('retries under a NEW command id when the earlier command FAILED', async () => {
+        http.post.mockRejectedValueOnce(commandExists()).mockResolvedValueOnce(ok({}));
+        http.get
+          .mockResolvedValueOnce(ok<AllegroShipmentCommandResult>({ commandId: 'c1', status: 'ERROR' }))
+          .mockResolvedValueOnce(
+            ok<AllegroShipmentCommandResult>({
+              commandId: 'c2',
+              status: 'SUCCESS',
+              shipmentId: 'allegro-ship-2',
+            }),
+          );
+
+        const result = await adapter.generateLabel(makeCommand());
+
+        expect(result.providerShipmentId).toBe('allegro-ship-2');
+        const ids = sentIds();
+        expect(ids).toHaveLength(2);
+        expect(ids[1]).not.toBe(ids[0]);
+      });
+
+      it('keeps waiting on a command that is still IN_PROGRESS without resubmitting', async () => {
+        http.post.mockRejectedValueOnce(commandExists());
+        http.get
+          .mockResolvedValueOnce(ok<AllegroShipmentCommandResult>({ commandId: 'c1', status: 'IN_PROGRESS' }))
+          .mockResolvedValueOnce(
+            ok<AllegroShipmentCommandResult>({
+              commandId: 'c1',
+              status: 'SUCCESS',
+              shipmentId: 'allegro-ship-3',
+            }),
+          );
+
+        const result = await adapter.generateLabel(makeCommand());
+
+        expect(result.providerShipmentId).toBe('allegro-ship-3');
+        expect(http.post).toHaveBeenCalledTimes(1);
+      });
+
+      it('gives up with a readable rejection when every fresh id is also refused', async () => {
+        http.post.mockRejectedValue(commandExists());
+        http.get.mockResolvedValue(ok<AllegroShipmentCommandResult>({ commandId: 'c', status: 'ERROR' }));
+
+        await expect(adapter.generateLabel(makeCommand())).rejects.toMatchObject({
+          name: 'ShippingProviderRejectionException',
+          providerCode: 'command.retries-exhausted',
+        });
       });
     });
 
@@ -316,6 +406,34 @@ describe('AllegroDeliveryShippingAdapter', () => {
   });
 
   describe('fetchLabel', () => {
+    it('names a generic octet-stream PDF by its signature, so it is not saved as .bin', async () => {
+      const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]); // %PDF-1.4
+      http.postExpectingBinary.mockResolvedValue({
+        data: pdf,
+        contentType: 'application/octet-stream',
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' },
+      });
+
+      const result = await adapter.fetchLabel({ providerShipmentId: 'allegro-ship-1' });
+
+      expect(result.contentType).toBe('application/pdf');
+    });
+
+    it('keeps a non-PDF octet stream (e.g. a ZPL label) as reported', async () => {
+      const zpl = new Uint8Array([0x5e, 0x58, 0x41]); // ^XA
+      http.postExpectingBinary.mockResolvedValue({
+        data: zpl,
+        contentType: 'application/octet-stream',
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' },
+      });
+
+      const result = await adapter.fetchLabel({ providerShipmentId: 'allegro-ship-1' });
+
+      expect(result.contentType).toBe('application/octet-stream');
+    });
+
     it('POSTs the label request with the shipment id + page size and returns the bytes', async () => {
       const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
       http.postExpectingBinary.mockResolvedValue({
@@ -327,10 +445,11 @@ describe('AllegroDeliveryShippingAdapter', () => {
 
       const result = await adapter.fetchLabel({ providerShipmentId: 'allegro-ship-1' });
 
-      expect(http.postExpectingBinary).toHaveBeenCalledWith('/shipment-management/label', {
-        shipmentIds: ['allegro-ship-1'],
-        pageSize: 'A6',
-      });
+      expect(http.postExpectingBinary).toHaveBeenCalledWith(
+        '/shipment-management/label',
+        { shipmentIds: ['allegro-ship-1'], pageSize: 'A6' },
+        { headers: { Accept: 'application/octet-stream' } },
+      );
       expect(result).toEqual({ contentType: 'application/pdf', body: bytes });
     });
 

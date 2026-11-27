@@ -21,6 +21,25 @@
  * precedence right: a shop that really is a ProductMaster has the sweep's own
  * identity for the row, and that answer beats a publish record.
  *
+ * ## The `ShopProductVariant` fallback
+ *
+ * Some shops key an order line by their own VARIANT id rather than the product
+ * id (Shoper: `stock_id`). A `variant` ref from such a shop never matches the
+ * `ShopProduct` record, whose external id is the product id, so the publish
+ * also records the variant-grain id under `ShopProductVariant`. It is a
+ * separate entity type because the two ids are separate id spaces on the shop
+ * and can be the same number.
+ *
+ * That collision is also why the `variant` branch asks `ShopProductVariant`
+ * BEFORE `ShopProduct`. A `variant` ref carries a variant-grain id, so on a shop
+ * that has the variant-grain record it is the record the ref means; asking
+ * `ShopProduct` first would let a Shoper `stock_id` 256 match the publish
+ * record of an unrelated product whose `product_id` happens to be 256 too, and
+ * the line would resolve, confidently, to the wrong variant. Only the Shoper
+ * publisher writes `ShopProductVariant`, so a shop whose variant ref IS its
+ * shop product id (WooCommerce variations) finds nothing there and still
+ * resolves through `ShopProduct` exactly as before.
+ *
  * `ShopProduct` deliberately holds two kinds of internal id in one entityType -
  * a variant's own shop product id maps to a VARIANT, while a grouped parent's
  * maps to a PRODUCT (they never collide because the two id families are
@@ -112,7 +131,7 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           connectionId
         );
         if (internalProductId) {
-          return { internalProductId };
+          return this.withLoneVariant(connectionId, productRef, internalProductId);
         }
         const published = await this.resolveViaShopProduct(connectionId, productRef);
         if (published) {
@@ -131,14 +150,22 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           connectionId
         );
         if (!internalVariantId) {
-          const published = await this.resolveViaShopProduct(connectionId, productRef);
+          // Variant-grain record first: the two shop id spaces can share a
+          // number, and a variant ref means the variant one (see the module
+          // docblock).
+          const published =
+            (await this.resolveViaShopProduct(
+              connectionId,
+              productRef,
+              CORE_ENTITY_TYPE.ShopProductVariant
+            )) ?? (await this.resolveViaShopProduct(connectionId, productRef));
           if (published) {
             return published;
           }
           throw new MissingOrderItemMappingError(
             connectionId,
             productRef,
-            'identifier_mappings:ProductVariant,ShopProduct'
+            'identifier_mappings:ProductVariant,ShopProductVariant,ShopProduct'
           );
         }
         const variant = await this.productsService.getVariant(internalVariantId);
@@ -161,6 +188,18 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           connectionId
         );
         if (!internalId) {
+          // A shop that nulls the variant of a deleted line (Shopify) leaves
+          // only the sku, and sku refs have no identifier mapping there. A sku
+          // that matches a STALE catalogue variant is the master-side deletion
+          // (#1689), not a mapping gap that will heal. Only stale matches are
+          // acted on: a live match is not guessed at, since a sku is not a
+          // unique key across connections.
+          const stale = (await this.productsService.getVariantsBySkus([productRef.externalId])).filter(
+            (v) => v.isStale
+          );
+          if (stale.length === 1) {
+            throw new StaleOrderItemError(connectionId, productRef, stale[0].id);
+          }
           throw new MissingOrderItemMappingError(
             connectionId,
             productRef,
@@ -174,9 +213,35 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
           }
           return { internalProductId: variant.productId, internalVariantId: variant.id };
         }
-        return { internalProductId: internalId };
+        return this.withLoneVariant(connectionId, productRef, internalId);
       }
     }
+  }
+
+  /**
+   * Settle a ref that resolved to a PRODUCT only (a shop line for a simple
+   * product carries no variant id). Same precedence as master inventory sync
+   * (#822): the product's lone variant when it has exactly one, else
+   * product-level. A simple product always has its deterministic synthetic
+   * variant, and everything keyed on the line's variant (bundle expansion,
+   * gift rules, reservations, destination mirroring) needs it. Zero or several
+   * variants stay product-level: a multi-variant product needs an explicit
+   * variant and is never guessed.
+   */
+  private async withLoneVariant(
+    connectionId: string,
+    productRef: IncomingOrderItemRef,
+    internalProductId: string
+  ): Promise<ResolvedOrderItemProduct> {
+    const variants = await this.productsService.getVariantsByProductId(internalProductId);
+    if (variants.length !== 1) {
+      return { internalProductId };
+    }
+    const [variant] = variants;
+    if (variant.isStale) {
+      throw new StaleOrderItemError(connectionId, productRef, variant.id);
+    }
+    return { internalProductId, internalVariantId: variant.id };
   }
 
   /**
@@ -192,10 +257,11 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
    */
   private async resolveViaShopProduct(
     connectionId: string,
-    productRef: IncomingOrderItemRef
+    productRef: IncomingOrderItemRef,
+    entityType: string = CORE_ENTITY_TYPE.ShopProduct
   ): Promise<ResolvedOrderItemProduct | null> {
     const internalId = await this.identifierMapping.getInternalId(
-      CORE_ENTITY_TYPE.ShopProduct,
+      entityType,
       productRef.externalId,
       connectionId
     );
@@ -215,13 +281,13 @@ export class OrderItemRefResolverService implements IOrderItemRefResolverService
 
     const product = await this.productsService.getProduct(internalId);
     if (product) {
-      return { internalProductId: product.id };
+      return this.withLoneVariant(connectionId, productRef, product.id);
     }
 
     throw new MissingOrderItemMappingError(
       connectionId,
       productRef,
-      'identifier_mappings:ShopProduct:target-missing'
+      `identifier_mappings:${entityType}:target-missing`
     );
   }
 }

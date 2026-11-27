@@ -35,6 +35,13 @@ export interface IBulkListingSubmitService {
    * - `UnprocessableEntityException` (→ HTTP 422) when the adapter implements
    *   `OfferManager` but not the `OfferCreator` sub-capability.
    * - `EmptyBulkSubmissionException` (→ HTTP 400) when `productIds` is empty.
+   * - `DuplicateBulkBatchIdempotencyKeyError` (→ HTTP 409) only in the narrow
+   *   case where this call lost the idempotency-key race and the winner then
+   *   released the key before it could be read back. Nothing was persisted.
+   *
+   * With `input.idempotencyKey` set, a key that already names a batch on the
+   * connection returns that batch with `deduplicated: true` and no side
+   * effects - including the loser of a concurrent same-key race.
    *
    * On partial enqueue failure (Redis stream rejects the Nth job), the
    * batch row is marked `'failed'` best-effort and the underlying error

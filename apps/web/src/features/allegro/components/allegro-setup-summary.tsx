@@ -14,35 +14,53 @@
  * @see {@link AllegroSetupForm} for the form this summary is paired with.
  */
 import type { ReactElement } from 'react';
+import {
+  DEFAULT_DELIVERY_WIZARD_VALUE,
+  DeliveryWizardSummary,
+  type DeliveryLineSuggestion,
+} from '../../delivery-on-documents';
 import { WizardSummaryRow } from '../../../shared/ui/wizard-summary-row';
 import type { AllegroSetupFormValues } from './allegro-setup.schema';
+import { useFormat, useMessages } from '../../../shared/i18n';
+import { describeOrderSyncStart, type CatalogueMode } from '../../connections';
 
 interface AllegroSetupSummaryProps {
   values: AllegroSetupFormValues;
   stepIndex: number;
   selectedCatalogName: string | null;
+  /** `none` reads as "no catalog" rather than as a link nobody has picked yet (#4281). */
+  catalogueMode?: CatalogueMode;
+  suggestions?: readonly DeliveryLineSuggestion[];
+  /** False when re-authenticating: that flow never touches delivery settings. */
+  showDelivery?: boolean;
 }
 
 export function AllegroSetupSummary({
+  catalogueMode = 'linked',
   selectedCatalogName,
+  showDelivery = true,
   stepIndex,
+  suggestions = [],
   values,
 }: AllegroSetupSummaryProps): ReactElement {
+  const copy = useMessages('allegro-core').allegroSetupSummary;
+  const orderCopy = useMessages('connections').orderSyncStart;
+  const format = useFormat();
   const environmentLabel =
     values.environment === 'production'
-      ? 'Production'
+      ? copy.production
       : values.environment === 'sandbox'
-        ? 'Sandbox'
+        ? copy.sandbox
         : null;
 
   return (
     <>
       <section className="wizard-summary__section">
-        <h3 className="wizard-summary__section-title">Connection</h3>
+        <h3 className="wizard-summary__section-title">{copy.connection}</h3>
         <dl className="wizard-summary__rows">
-          <WizardSummaryRow label="Name" value={values.name?.trim() ? values.name : null} />
+          <WizardSummaryRow label={copy.name} value={values.name?.trim() ? values.name : null} />
           <WizardSummaryRow
-            label="Client ID"
+            label={copy.clientId}
             value={values.clientId?.trim() ? values.clientId : null}
             mono
           />
@@ -51,18 +69,37 @@ export function AllegroSetupSummary({
 
       {stepIndex >= 1 ? (
         <section className="wizard-summary__section">
-          <h3 className="wizard-summary__section-title">Environment</h3>
+          <h3 className="wizard-summary__section-title">{copy.environment}</h3>
           <dl className="wizard-summary__rows">
-            <WizardSummaryRow label="Target" value={environmentLabel} />
+            <WizardSummaryRow label={copy.target} value={environmentLabel} />
           </dl>
         </section>
       ) : null}
 
       {stepIndex >= 2 ? (
         <section className="wizard-summary__section">
-          <h3 className="wizard-summary__section-title">Product catalog</h3>
+          <h3 className="wizard-summary__section-title">{copy.productCatalogue}</h3>
           <dl className="wizard-summary__rows">
-            <WizardSummaryRow label="Linked to" value={selectedCatalogName ?? '— not linked —'} />
+            <WizardSummaryRow label={copy.linkedTo} value={catalogueMode === 'none' ? copy.noCatalogue : (selectedCatalogName ?? copy.notLinked)} />
+          </dl>
+        </section>
+      ) : null}
+
+      {showDelivery && stepIndex >= 3 ? (
+        <DeliveryWizardSummary
+          value={values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE}
+          suggestions={suggestions}
+        />
+      ) : null}
+
+      {showDelivery && stepIndex >= 4 ? (
+        <section className="wizard-summary__section">
+          <h3 className="wizard-summary__section-title">{orderCopy.review.label}</h3>
+          <dl className="wizard-summary__rows">
+            <WizardSummaryRow
+              label={orderCopy.title}
+              value={describeOrderSyncStart(values.orderSyncStart, orderCopy.review, format.date)}
+            />
           </dl>
         </section>
       ) : null}

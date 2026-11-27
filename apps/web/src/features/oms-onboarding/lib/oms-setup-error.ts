@@ -17,6 +17,7 @@ export class OmsSetupError extends Error {
   readonly failure: unknown;
 
   constructor(step: OmsSetupStep, cause: unknown, connectionName: string | null = null) {
+    // eslint-disable-next-line no-restricted-syntax -- developer message of the wrapping Error; the UI reads the step, not this text
     super(cause instanceof Error ? cause.message : `Packing setup failed at ${step}`);
     this.name = 'OmsSetupError';
     this.step = step;

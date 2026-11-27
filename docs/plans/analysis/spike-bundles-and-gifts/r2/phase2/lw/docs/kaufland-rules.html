@@ -1,0 +1,111 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/kaufland-rules"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Kaufland: Rules &amp; Guidelines</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Kaufland: Rules & Guidelines';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><h1 id="h1_372088768" data-has-heading-anchor="true">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  Kaufland: Rules &amp; Guidelines
+<a href="/articles/documentation/kaufland-rules/a/h1_372088768" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-rules/a/h1_372088768&#39;,this);"></a></h1>
+<p>
+  When&nbsp;Kaufland is integrated with Linnworks, orders will be downloaded from this channel and saved in the <i><a href="/articles/documentation/open-orders" onclick="return n(&#39;!documentation/open-orders&#39;,this);">Open Orders</a></i> screen. However, there are some differences in&nbsp;behavior compared to other channel integrations that should be taken into account.&nbsp;
+</p>
+<h2 id="ProductId" style="" data-has-heading-anchor="true">
+  <a name="Skuss"></a>SKUs on Kaufland listings
+<a href="/articles/documentation/kaufland-rules/a/ProductId" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-rules/a/ProductId&#39;,this);"></a></h2>
+<p>
+  Orders downloaded from Kaufland require an SKU for Linnworks to correctly assign order items. However, Kaufland does not call the product identifier an SKU. Instead, there are 2 identifiers:
+</p>
+<ul>
+  <li>
+    <strong>id_offer:</strong> This is an optional value that can be set to a value of your choice.
+  </li>
+  <li>
+    <strong>id_item:</strong> This is an internal Kaufland ID, normally controlled by&nbsp;Kaufland.
+  </li>
+</ul>
+<p>
+  <span style="font-weight: normal;">Linnworks will initially search for an&nbsp;<b>id_offer</b>,&nbsp;display this in the <a href="/articles/documentation/channels-inventory-mapping" onclick="return n(&#39;!documentation/channels-inventory-mapping&#39;,this);">mapping screen</a> and use it for linking listings to Linnworks inventory items. If an&nbsp;<b>id_offer</b> does not exist, the <b>id_item</b> will be displayed and can be used for mapping.</span>
+</p>
+<p>
+  <span style="font-weight: normal;">If a mapping is created using an&nbsp;<b>id_item</b> and subsequently an <b>id_offer</b> is added to the listing, the mapping will be lost and you will need to remap the listing.</span>
+</p>
+<p style="" id="h5_489937626">
+  The id_offer can be set on the listing in two possible ways.</p>
+<h5 style="" id="h5_1671568646" data-has-heading-anchor="true">
+    Through the Kaufland website when initially creating a new listing:
+    <a href="/articles/documentation/kaufland-rules/a/h5_1671568646" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-rules/a/h5_1671568646&#39;,this);"></a></h5><ol>
+      <li>
+        Login to the Kaufland seller portal.</li>
+      <li>
+        Select <i><span style="font-weight: normal;">Meine Angebot &gt; Angebote manuell verwalten.<br/><img src="/resources/Storage/documentation/Screenshots/Channels/Kaufland/Angebote%20manuell%20verwalten.png" alt="" class="leftAlone"/></span></i></li>
+      <li>Select <i><span style="font-weight: normal;">Neuen Artikel anbieten.<br/><img src="/resources/Storage/documentation/Screenshots/Channels/Kaufland/Neuen%20Artikel%20anbieten.png" alt="" class="leftAlone"/></span></i></li>
+      <li>Search for an item. For example, enter <i>Duracell</i> in the textbox labeled <span style="font-weight: normal;"><i>Titel oder Namen eingeben</i> and click <i>Suchen.<br/><img src="/resources/Storage/documentation/Screenshots/Channels/Kaufland/Titel%20oder%20Namen%20eingeben.png" alt="" class="leftAlone"/></i></span></li>
+      <li>Click on the <i>A</i><i><span style="font-weight: normal;">nbieten</span></i> button for the item you are interested in.<br/><img src="/resources/Storage/documentation/Screenshots/Channels/Kaufland/anbieten.png" alt="" class="leftAlone"/></li>
+      <li>Ensure you ender your SKU in the text box labeled <span style="font-weight: normal;"><i>Ihre SKU.<br/><img src="/resources/Storage/documentation/Screenshots/Channels/Kaufland/Ihre%20SKU.png" alt="" class="leftAlone"/></i></span></li>
+    </ol>
+  <h5 style="" id="h5__468537307" data-has-heading-anchor="true">Through a CSV import to Kaufland to either create new listings or update existing listings:
+    <a href="/articles/documentation/kaufland-rules/a/h5__468537307" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-rules/a/h5__468537307&#39;,this);"></a></h5><ul>
+      <li>
+        Details on working with Kaufland listing files are&nbsp;<a rel="noopener" href="https://www.hitmeister.de/versandpartner/downloads/" target="_blank">here</a>.
+      </li>
+    </ul>
+  <p>
+  Kaufland listings that do not contain an SKU in the <span style="font-weight: normal;"><b>id_offer</b></span> field will be downloaded into Linnworks using the <span style="font-weight: normal;"><b>id_item</b></span> value assigned by Kaufland. If the listing has been manually mapped in the <i>Inventory Mapping</i> screen using the <span style="font-weight: normal;"><b>id_item</b></span>, the order items will be linked as normal.</p>
+<p>
+  <!-- 
+&lt;h3 id=&quot;OrderItems&quot;&gt;
+Order Items without a SKU
+&lt;/h3&gt;
+&lt;p&gt;
+It is possible for Hitmeister to provide an order containing an item that does not have a SKU defined by Hitmeister. As Linnworks requires a SKU, the order will be created so there is a record and no attempt will be made to re-download the order. However please be aware that the Linnworks order will not contain any order items due to Hitmeister not providing the required SKU.
+&lt;/p&gt;
+-->
+</p>
+<h2 id="ItemConditions" style="" data-has-heading-anchor="true">
+  Selling items with multiple conditions
+<a href="/articles/documentation/kaufland-rules/a/ItemConditions" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-rules/a/ItemConditions&#39;,this);"></a></h2>
+<p>
+  On Kaufland, it is possible to sell the same item with multiple item qualities. For example, 3 separate listings for the same model camera as new, A grade, and B grade stock. If an id_offer is not specified, the inventory mapping will show the id_item suffixed with the condition of the item specified on the listing. If an id_offer is specified on the listing, the mapping screen will display that without any item condition information.</p>
+<p>On the following screenshot, the batteries have been listed 3 times. <span style="font-weight: normal;">In the SKU column, the top two listings do not have an id_offer and so are displayed with the id_item and item condition. One has been listed as new and the other as used - very good. The last listing has been given an id_offer of <i>testtest</i> and so could be automatically mapped to a Linnworks SKU of <i>testtest</i>. The other two listings will have to be mapped manually.</span></p>
+<p><img src="/resources/Storage/documentation/Screenshots/Channels/Kaufland/Kaufland%20Channel%20Mapping.png" alt="Kaufland Channel Mapping" class="leftAlone"/></p>
+<h2 id="tax" style="" data-has-heading-anchor="true">Tax inclusive
+<a href="/articles/documentation/kaufland-rules/a/tax" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-rules/a/tax&#39;,this);"></a></h2>
+<p>
+  All Kaufland items are tax inclusive at the point of sale as the channel does not provide tax information with the order. A zero item tax rate will be assumed and Linnworks will back calculate tax based on either <i>Stock Item Tax</i> or <i>Country Tax</i> settings defined in Linnworks.</p>
+<h2 id="MultipleOrderItems" style="" data-has-heading-anchor="true"><a name="multItmes"></a>Orders for multiple items
+<a href="/articles/documentation/kaufland-rules/a/MultipleOrderItems" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-rules/a/MultipleOrderItems&#39;,this);"></a></h2>
+<p>
+  If a buyer purchases multiple items through Kaufland, these are provided to Linnworks as individual orders. Therefore a Kaufland order in Linnworks will always contain a single item with a quantity of one.
+</p>
+<p>
+  Please note you can make use of the Linnworks <i><a class="ss-broken" href="/articles/documentation/open-orders-merge-split" onclick="return n(&#39;!documentation/open-orders-merge-split&#39;,this);">Order Merge</a></i> functionality to combine orders from the same buyer into a single Linnworks order for dispatching purposes.
+</p>
+<p>
+  <span class=" CHNavCaption"><h4 id="h4_15828802" data-has-heading-anchor="true">Next steps:<a href="/articles/documentation/kaufland-rules/a/h4_15828802" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/kaufland-rules/a/h4_15828802&#39;,this);"></a></h4></span><ul class="CHSeeAlso_hasChildren CHSeeAlso"><li class="CHSeeAlso_item CHSeeAlso_itemSibling"><a href="/articles/documentation/kaufland-add-new" onclick="return n(&#39;!documentation/kaufland-add-new&#39;,this);">Add New</a></li><li class="CHSeeAlso_item CHSeeAlso_itemSibling"><a href="/articles/documentation/kaufland-settings" onclick="return n(&#39;!documentation/kaufland-settings&#39;,this);">Configure</a></li></ul>
+  <br/>
+</p><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

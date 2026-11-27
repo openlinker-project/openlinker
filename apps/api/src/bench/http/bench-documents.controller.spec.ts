@@ -103,12 +103,14 @@ describe('BenchDocumentsController — GET work/:workId/documents/label (#3340)'
     };
     parcels = {
       getParcel: jest.fn(),
+      confirmSourceChangeTakenOut: jest.fn(),
       getWorkForDocuments: jest.fn().mockResolvedValue(work()),
       verifyUnit: jest.fn(),
       reopenParcel: jest.fn(),
       undoLastScan: jest.fn(),
       listActivity: jest.fn(),
       claimParcel: jest.fn(),
+      acknowledgeBuyerNote: jest.fn(),
       completeParcel: jest.fn(),
       undoCompletion: jest.fn(),
     };
@@ -119,9 +121,11 @@ describe('BenchDocumentsController — GET work/:workId/documents/label (#3340)'
       verifyUnit: jest.fn(),
       reopenParcel: jest.fn(),
       voidLastVerification: jest.fn(),
+      voidSurplusOnLine: jest.fn(),
       listVerifications: jest.fn(),
       markInvoicePrinted: jest.fn(),
       markLabelPrinted: jest.fn().mockResolvedValue(true),
+      acknowledgeBuyerNote: jest.fn().mockResolvedValue(true),
       complete: jest.fn(),
       undoCompletion: jest.fn(),
     };

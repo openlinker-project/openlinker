@@ -93,6 +93,8 @@ function variantRow(id: string, blockers: BulkRowBlocker[] = [], over: Partial<B
     resolvedCategoryId: 'cat-1',
     resolvedProductCardId: 'card-1',
     resolutionMethod: 'auto_detect',
+    overriddenCard: null,
+    mappingAgrees: false,
     categoryCandidates: [],
     override: {},
     ...over,
@@ -159,6 +161,43 @@ describe('BulkReviewStep', () => {
       .forEach((btn) => expect(btn).toBeDisabled());
   });
 
+  it('shows a checking state and holds Create offers while the bundle composition is unknown', () => {
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1', ['no-match'])])]}
+        {...baseProps()}
+        bundles={{
+          bundles: new Map(),
+          failedVariantIds: new Set(),
+          isLoading: true,
+          retry: vi.fn(),
+        }}
+      />,
+    );
+    expect(screen.getByTestId('bundle-checking-banner')).toBeInTheDocument();
+    expect(screen.getByTestId('bundle-checking-chip')).toBeInTheDocument();
+    expect(screen.queryByText('No catalog match')).not.toBeInTheDocument();
+    screen.getAllByRole('button', { name: /Create offers/ }).forEach((btn) => expect(btn).toBeDisabled());
+  });
+
+  it('offers a retry when the bundle check failed', () => {
+    const retry = vi.fn();
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1')])]}
+        {...baseProps()}
+        bundles={{
+          bundles: new Map(),
+          failedVariantIds: new Set(['v1']),
+          isLoading: false,
+          retry,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(retry).toHaveBeenCalled();
+  });
+
   it('tri-state parent toggle includes/excludes all variants', () => {
     const onSetProductIncluded = vi.fn();
     renderWithProviders(
@@ -179,7 +218,7 @@ describe('BulkReviewStep', () => {
     // Single-variant product renders flat; its blocker chip is a fix button.
     // The accessible name carries the human variant label (distinguishing attr),
     // never the raw ol_variant id (#1741 review).
-    expect(screen.getByRole('button', { name: /Fix: no barcode - Rozmiar: v1/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Fix: No barcode - Rozmiar: v1/ })).toBeInTheDocument();
   });
 
   it('carries the cause sentence on the chip so one chip can explain itself (#2240)', () => {
@@ -188,12 +227,12 @@ describe('BulkReviewStep', () => {
     );
     // One chip per cause in the table - the sentence rides in the title/accessible
     // name rather than in a second, always-present "category not set" chip.
-    const chip = screen.getByRole('button', { name: /Fix: no catalog match - Rozmiar: v1/ });
+    const chip = screen.getByRole('button', { name: /Fix: No catalog match - Rozmiar: v1/ });
     expect(chip).toHaveAttribute(
       'title',
       expect.stringContaining("isn't in the Test Marketplace catalog"),
     );
-    expect(screen.queryByText('category not set')).not.toBeInTheDocument();
+    expect(screen.queryByText('Category not set')).not.toBeInTheDocument();
   });
 
   it('LOCKS the submit while a batch-level precondition is unmet (#2240 review)', () => {
@@ -266,5 +305,195 @@ describe('BulkReviewStep', () => {
     const chip = screen.getByText(/already on Test Marketplace/);
     const dot = chip.parentElement?.querySelector('.bulk-chip__dot');
     expect(dot).toHaveAttribute('aria-hidden', 'true');
+  });
+  it('does not count an already-listed variant as ready, and does not offer to create it (#3935)', () => {
+    renderWithProviders(
+      <BulkReviewStep
+        rows={[makeRow('prod_1', [variantRow('v1')])]}
+        {...baseProps()}
+        alreadyListedVariantIds={new Set(['v1'])}
+      />,
+    );
+
+    expect(screen.getByTestId('bulk-summary-ready')).toHaveTextContent('0');
+    expect(screen.getByTestId('bulk-summary-excluded')).toHaveTextContent('1');
+    expect(screen.queryByText('Ready', { selector: '.bulk-chip' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Create offers/ })).toBeDisabled();
+  });
+
+  describe('catalogue card vs category mapping (#3994)', () => {
+    const card = { allegroCategoryId: 'cat-powerbanki', productCardId: 'card-power' };
+    const setAside = (id: string): BulkVariantRow =>
+      variantRow(id, ['card-category-differs'], {
+        resolvedCategoryId: 'cat-tshirty',
+        resolvedProductCardId: null,
+        resolutionMethod: 'category_mapping',
+        overriddenCard: card,
+      });
+
+    it('should show a Category column header', () => {
+      renderWithProviders(<BulkReviewStep {...baseProps()} rows={[makeRow('p1', [variantRow('v1')])]} />);
+      expect(screen.getByText('Category', { selector: '.bulk-review__head span' })).toBeInTheDocument();
+    });
+
+    it('should show the disagreement on the category, not as a status chip', () => {
+      renderWithProviders(
+        <BulkReviewStep {...baseProps()} rows={[makeRow('p1', [setAside('v1')])]} />,
+      );
+      expect(screen.queryByText('catalog ≠ mapping')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Compare with your mapping/ })).toBeInTheDocument();
+    });
+
+    it('should keep the row ready, since the disagreement is advisory', () => {
+      renderWithProviders(
+        <BulkReviewStep {...baseProps()} rows={[makeRow('p1', [setAside('v1')])]} />,
+      );
+      const create = screen.getAllByRole('button', { name: /Create offers \(1\)/ });
+      expect(create.length).toBeGreaterThan(0);
+      create.forEach((btn) => expect(btn).not.toBeDisabled());
+    });
+
+    it('should open the comparison and adopt the card for a single-variant product', async () => {
+      const onUseCardCategory = vi.fn();
+      renderWithProviders(
+        <BulkReviewStep
+          {...baseProps()}
+          rows={[makeRow('p1', [setAside('v1')])]}
+          onUseCardCategory={onUseCardCategory}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /Compare with your mapping/ }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Use catalog category' }));
+
+      expect(onUseCardCategory).toHaveBeenCalledWith('p1');
+    });
+
+    it('should not offer to adopt a sibling card on a multi-variant product', async () => {
+      const onUseCardCategory = vi.fn();
+      renderWithProviders(
+        <BulkReviewStep
+          {...baseProps()}
+          rows={[makeRow('p1', [setAside('v1'), variantRow('v2')])]}
+          onUseCardCategory={onUseCardCategory}
+        />,
+      );
+
+      // Collapsed, the product row says a variant disagrees; that line expands it.
+      fireEvent.click(screen.getByRole('button', { name: 'Barcode disagrees on 1 variant' }));
+      fireEvent.click(screen.getByRole('button', { name: /Compare with your mapping/ }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+      expect(screen.queryByRole('button', { name: 'Use catalog category' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit product' })).toBeInTheDocument();
+    });
+  });
+});
+
+describe('BulkReviewStep for a bundle (#3520)', () => {
+  const preview = {
+    variantId: 'v1',
+    status: 'ok' as const,
+    suggestedCategoryId: 'cat-1',
+    availableSets: 3,
+    limitingComponentVariantId: 'c2',
+    components: [
+      {
+        variantId: 'c1',
+        productId: 'p-c1',
+        name: 'Kawa 250 g',
+        sku: 'KAW-250',
+        quantity: 1,
+        giftSlot: false,
+        imageUrl: null,
+        mode: 'own-offer' as const,
+        externalOfferId: '778',
+        problems: [],
+      },
+      {
+        variantId: 'c2',
+        productId: 'p-c2',
+        name: 'Kubek 350 ml',
+        sku: 'KUB-350',
+        quantity: 1,
+        giftSlot: false,
+        imageUrl: null,
+        mode: 'catalog-card' as const,
+        problems: [],
+      },
+    ],
+  };
+  const bundles = {
+    bundles: new Map([['v1', preview]]),
+    failedVariantIds: new Set<string>(),
+    isLoading: false,
+    retry: vi.fn(),
+  };
+
+  it('should mark the row as a set instead of counting variants', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    expect(screen.getByText(/Set · 2 products/)).toBeInTheDocument();
+    expect(screen.queryByText(/1 variant/)).not.toBeInTheDocument();
+  });
+
+  it('should list at the sets it can make and name the limiting component', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    expect(screen.getByText(/limited by: Kubek 350 ml/)).toBeInTheDocument();
+  });
+
+  it('should expand to the composition', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    expect(screen.queryByTestId('bundle-composition')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Show set contents of/ }));
+    expect(screen.getByTestId('bundle-composition')).toBeInTheDocument();
+    expect(screen.getByText('your offer 778')).toBeInTheDocument();
+    expect(screen.getByText('from catalogue')).toBeInTheDocument();
+  });
+
+  it('should say how many whole sets fit and what limits them', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    expect(screen.getByText('3 sets')).toBeInTheDocument();
+  });
+
+  it('should name the first components under the set instead of a jargon note', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    expect(screen.getByText(/Set of: Kawa 250 g, Kubek 350 ml/)).toBeInTheDocument();
+  });
+
+  it('should say "no data" rather than a dash when the sets cannot be counted', () => {
+    const unknown = {
+      ...bundles,
+      bundles: new Map([['v1', { ...preview, availableSets: null }]]),
+    };
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={unknown} />,
+    );
+    expect(screen.getByText('no data')).toBeInTheDocument();
+  });
+
+  it('should let the set tag open the composition', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v1')])]} bundles={bundles} />,
+    );
+    fireEvent.click(screen.getByTestId('bundle-row-tag'));
+    expect(screen.getByTestId('bundle-composition')).toBeInTheDocument();
+  });
+
+  it('should not show the set marker for an ordinary product', () => {
+    renderWithProviders(
+      <BulkReviewStep {...baseProps()} rows={[makeRow('prod_1', [variantRow('v9')])]} bundles={bundles} />,
+    );
+    expect(screen.queryByText(/Set · /)).not.toBeInTheDocument();
   });
 });

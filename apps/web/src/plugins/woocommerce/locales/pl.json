@@ -1,0 +1,37 @@
+{
+  "plugin": {
+    "setupCard": {
+      "badge": "REST API",
+      "description": "Połącz sklep WooCommerce przez REST API. Potrzebny będzie adres URL witryny oraz para Consumer Key / Secret."
+    }
+  },
+  "woocommerceCredentialsPanel": {
+    "cancel": "Anuluj",
+    "description": "Bezpiecznie przechowywane na serwerze. Wymień je, aby zastąpić klucze bez restartu API.",
+    "envBacked": "Zmienna środowiskowa (nie można edytować w interfejsie)",
+    "label": "Dane uwierzytelniające API",
+    "newConsumerKeyPlaceholder": "Nowy consumer key (ck_...)",
+    "newConsumerSecretPlaceholder": "Nowy consumer secret (cs_...)",
+    "rotate": "Wymień klucze API",
+    "rotating": "Wymienianie...",
+    "save": "Zapisz nowe klucze",
+    "toast": {
+      "description": "Nowe dane uwierzytelniające API WooCommerce są już w użyciu.",
+      "title": "Dane uwierzytelniające wymienione"
+    }
+  },
+  "woocommerceSetupRoute": {
+    "crumb": "Połącz WooCommerce"
+  },
+  "woocommerceStructuredSection": {
+    "siteUrl": {
+      "description": "Główny adres URL sklepu WooCommerce. Musi używać HTTPS.",
+      "label": "Adres URL witryny",
+      "placeholder": "https://shop.example.com"
+    },
+    "unmanagedStockQuantity": {
+      "description": "Ilość zgłaszana dla produktów z wyłączonym zarządzaniem stanem magazynowym, ale dostępnych. Zostaw puste, aby użyć wartości domyślnej (1000).",
+      "label": "Ilość dla niezarządzanego stanu"
+    }
+  }
+}

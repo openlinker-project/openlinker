@@ -23,6 +23,7 @@
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { getInfaktMessages, infaktMessages } from './messages';
 import { InfaktCredentialsPanel } from './components/infakt-credentials-panel';
 import { InfaktInvoiceCorrectionFlow } from './components/infakt-invoice-correction-flow';
 import { InfaktInvoiceDetailSection } from './components/infakt-invoice-detail-section';
@@ -32,17 +33,24 @@ import { infaktSetupRoute } from './infakt-setup.route';
 
 export const infaktPlugin: OpenLinkerPlugin = definePlugin({
   id: 'infakt',
+  messages: infaktMessages,
   platformType: 'infakt',
   build: {
     routes: [infaktSetupRoute],
   },
   platform: {
     displayName: 'inFakt',
+    // Getters, not values: the card is read at render, so the copy follows
+    // the active language instead of freezing at module load.
     setupCard: {
       title: 'inFakt',
-      description: 'Polish accounting platform with native KSeF integration',
+      get description(): string {
+        return getInfaktMessages().plugin.setupCard.description;
+      },
       to: '/connections/new/infakt',
-      badge: 'API key',
+      get badge(): string {
+        return getInfaktMessages().plugin.setupCard.badge;
+      },
     },
     StructuredConfigSection: InfaktStructuredSection,
     CredentialsPanel: InfaktCredentialsPanel,

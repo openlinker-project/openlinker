@@ -215,7 +215,7 @@ describe('PriceChangeApplyService', () => {
         supportedCapabilities: ['OfferManager', 'ProductPublisher'],
       });
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, availableToPromise: 9 },
+        { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, positionCount: 1, availableToPromise: 9 },
       ]);
       // This case asks which branch the CAPABILITY set selects, so it has to
       // reach the shop publish itself — the terminal no-mapping refusal is a
@@ -281,7 +281,7 @@ describe('PriceChangeApplyService', () => {
         // no updateOfferFields — the stock-only WooCommerce OfferManager shape.
       });
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, availableToPromise: 9 },
+        { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, positionCount: 1, availableToPromise: 9 },
       ]);
       identifierMapping.getExternalIds.mockResolvedValue([
         { externalId: 'ext-shop-1', platformType: 'woocommerce', connectionId: 'dest-1', entityType: 'ShopProduct' },
@@ -532,7 +532,7 @@ describe('PriceChangeApplyService', () => {
 
     it('throws AvailabilityUnknownError (transient) rather than defaulting stock to 0 when ATP is null (#3161 review, BLOCKING)', async () => {
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'ol_variant_1', totalAvailable: 5, locationCount: 1, availableToPromise: null },
+        { productVariantId: 'ol_variant_1', totalAvailable: 5, locationCount: 1, positionCount: 1, availableToPromise: null },
       ]);
 
       await expect(service.applyPriceChange(validInput)).rejects.toBeInstanceOf(
@@ -551,7 +551,7 @@ describe('PriceChangeApplyService', () => {
 
     it('reuses the previous publish snapshot for category/content/parameters/commerce rather than re-deriving them on a price-only change (#3161 review, BLOCKING)', async () => {
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, availableToPromise: 9 },
+        { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, positionCount: 1, availableToPromise: 9 },
       ]);
       listingRecords.findLatestByVariantAndConnection.mockResolvedValue(
         new ListingCreationRecord(
@@ -600,7 +600,7 @@ describe('PriceChangeApplyService', () => {
 
     it('surfaces a business_failure result from executePublish as this service\'s own business_failure', async () => {
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
-        { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, availableToPromise: 9 },
+        { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, positionCount: 1, availableToPromise: 9 },
       ]);
       productPublishExecution.executePublish.mockResolvedValue({
         outcome: 'business_failure',
@@ -627,7 +627,7 @@ describe('PriceChangeApplyService', () => {
           {
             productVariantId: 'ol_variant_1',
             totalAvailable: 12,
-            locationCount: 1,
+            locationCount: 1, positionCount: 1,
             availableToPromise: 9,
             stockUpdatedAt: new Date('2026-01-01T00:00:00.000Z'),
           },

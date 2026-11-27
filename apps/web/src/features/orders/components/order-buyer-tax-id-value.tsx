@@ -17,6 +17,7 @@
  */
 import type { ReactElement } from 'react';
 
+import { useMessages } from '../../../shared/i18n';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
 
@@ -25,30 +26,24 @@ export interface OrderBuyerTaxIdValueProps {
   buyerTaxId: string | null | undefined;
 }
 
-/**
- * Shown on the "not asserted" rendering only, as a real (keyboard-reachable)
- * tooltip rather than a native `title` attribute — the acceptance criterion
- * is that the PII-mode caveat is visible to an operator, not only in logs or
- * on hover-if-you-happen-to. Explains the one case an operator cannot
- * otherwise tell apart from "the source never asked": a deployment running
- * with `OL_STORE_PII=false` persists nothing here, so every order on it reads
- * exactly like an order the source said nothing about. Never asserts which of
- * the two THIS order is — that would be a deployment-wide claim a single row
- * cannot observe (the `customers-list-page` `NAMELESS_LABEL` precedent).
- *
- * The second sentence is the operator-actionable half: the mechanism alone says
- * the field is empty, which reads as cosmetic. What it costs is that the tax id
- * a simplified invoice is issued ON is never there, so that document type is
- * unreachable for the whole deployment — a configuration fact, stated as a
- * conditional ("where …"), so it still asserts nothing about THIS order.
+/*
+ * The "not asserted" rendering carries a real (keyboard-reachable) tooltip
+ * rather than a native `title` attribute - the acceptance criterion is that the
+ * PII-mode caveat is visible to an operator, not only in logs or on
+ * hover-if-you-happen-to. It explains the one case an operator cannot otherwise
+ * tell apart from "the source never asked": a deployment running with
+ * `OL_STORE_PII=false` persists nothing here, so every order on it reads exactly
+ * like an order the source said nothing about. It never asserts which of the two
+ * THIS order is - that would be a deployment-wide claim a single row cannot
+ * observe (the `customers-list-page` `NAMELESS_LABEL` precedent). The second
+ * sentence is the operator-actionable half: the tax id a simplified invoice is
+ * issued ON is never there, so that document type is unreachable for the whole
+ * deployment - stated as a conditional, so it still asserts nothing about THIS
+ * order.
  */
-const UNKNOWN_EXPLANATION =
-  'The source did not assert a tax id for this order. This also reads this way on a deployment ' +
-  'with PII storage disabled (OL_STORE_PII=false), where no tax id is persisted at all — and ' +
-  'there a simplified invoice can never issue, because the tax id it is issued on is never ' +
-  'recorded.';
 
 export function OrderBuyerTaxIdValue({ buyerTaxId }: OrderBuyerTaxIdValueProps): ReactElement {
+  const copy = useMessages('orders').buyerTaxId;
   if (buyerTaxId === undefined) {
     return (
       <Tooltip>
@@ -58,17 +53,19 @@ export function OrderBuyerTaxIdValue({ buyerTaxId }: OrderBuyerTaxIdValueProps):
             className="text-muted"
             tabIndex={0}
           >
-            Not asserted by the source
+            {copy.unknown}
           </span>
         </TooltipTrigger>
-        <TooltipContent>{UNKNOWN_EXPLANATION}</TooltipContent>
+        <TooltipContent>
+          {copy.unknownExplanation} {copy.unknownPiiExplanation}
+        </TooltipContent>
       </Tooltip>
     );
   }
   if (buyerTaxId === null) {
     return (
       <span data-testid="order-buyer-tax-id-none">
-        <StatusBadge tone="neutral">None — asserted</StatusBadge>
+        <StatusBadge tone="neutral">{copy.none}</StatusBadge>
       </span>
     );
   }

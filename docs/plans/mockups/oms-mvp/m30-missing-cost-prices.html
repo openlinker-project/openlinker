@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Missing cost prices</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="../../../../apps/web/src/index.css">
+<link rel="stylesheet" href="ol-kit.css">
+<script src="ol-kit.js" defer></script>
+<style>
+  /* Page-specific only. Everything else is the real app stylesheet. */
+  body { background: var(--bg-canvas); color: var(--text-primary); }
+  .mk-stack { display:grid; gap:var(--space-4); min-width:0; }
+  .mk-num { text-align:right; font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .mk-sub { font-size:.8125rem; color:var(--text-muted); }
+  .mk-sku { font-family:var(--font-mono); font-size:.8125rem; color:var(--text-muted); }
+  .mk-name { display:grid; gap:2px; min-width:0; }
+  .mk-name b { font-weight:500; color:var(--text-primary); }
+
+  /* coverage bar: share of last-30-days net revenue that has a cost */
+  .mk-cov { display:grid; gap:var(--space-2); }
+  .mk-cov__track { position:relative; height:10px; border-radius:999px; background:var(--status-warning-soft); border:1px solid var(--status-warning-border); overflow:hidden; }
+  .mk-cov__fill { position:absolute; inset:0 auto 0 0; background:var(--status-success); border-radius:999px 0 0 999px; }
+  .mk-cov__mark { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--text-primary); opacity:.55; }
+  .mk-cov__legend { display:flex; flex-wrap:wrap; gap:var(--space-2) var(--space-4); font-size:.8125rem; color:var(--text-secondary); }
+  .mk-cov__legend span { display:inline-flex; align-items:center; gap:6px; }
+  .mk-dot { width:10px; height:10px; border-radius:3px; display:inline-block; }
+  .mk-dot--ok { background:var(--status-success); }
+  .mk-dot--gap { background:var(--status-warning-soft); border:1px solid var(--status-warning-border); }
+
+  /* worklist cost cell */
+  .mk-cost-inline { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; justify-content:flex-end; }
+  .mk-cost-inline .field__price-input { width:8.5rem; }
+  .mk-cost-inline select { width:5.5rem; }
+  .mk-saved { display:inline-flex; gap:6px; align-items:center; font-size:.8125rem; color:var(--status-success-fg); }
+  .mk-check-cell { width:2.5rem; }
+  .mk-check-cell input { width:16px; height:16px; accent-color:var(--accent-primary); }
+  .mk-row-saved td { background:var(--status-success-soft); }
+
+  /* insights list */
+  .mk-attn { list-style:none; margin:0; padding:0; display:grid; gap:var(--space-2); }
+  .mk-attn li { display:flex; flex-wrap:wrap; gap:var(--space-3); align-items:center; justify-content:space-between; padding:var(--space-3); border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--bg-surface); }
+  .mk-attn__body { display:grid; gap:2px; min-width:0; flex:1 1 18rem; }
+  .mk-attn__body b { font-weight:600; }
+
+  .mk-dialog-stage { position:relative; min-height:34rem; }
+  .mk-dialog-stage .dialog__overlay { position:absolute; }
+  .mk-dialog-stage .dialog__content { position:absolute; }
+  .mk-preview-list { margin:0; padding:0; list-style:none; display:grid; gap:var(--space-1); font-size:.8125rem; }
+  .mk-preview-list li { display:flex; justify-content:space-between; gap:var(--space-3); }
+
+  .mk-tabs-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-3); }
+  .mk-toolbar-row { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; }
+  .mk-toolbar-row .control { min-width:0; }
+</style>
+</head>
+<body>
+
+<div data-ol-page data-active="Products" data-crumb-group="Operations" data-crumb="Products">
+
+  <!-- ============ STATE 1: products list banner ============ -->
+  <section data-mk-state="products-banner" data-mk-label="Produkty: baner" data-mk-nav="Products" data-mk-crumb="Products" data-testid="cost-banner-products-state">
+    <div class="mk-stack">
+      <section class="page-section"><div class="page-header page-header--split"><div class="page-header__content"><p class="eyebrow">Catalog</p><h2 class="page-title">Products</h2><p class="page-description">Search, stock health, and per-channel listings coverage.</p></div>
+        <div class="page-header__actions"><a href="#" class="button button--secondary" data-testid="products-open-cost-prices">Cost prices</a></div></div></section>
+
+      <div class="alert alert--warning" role="status" data-testid="cost-coverage-banner">
+        <div class="alert__content">
+          <strong class="alert__title">9 variants you sold in the last 30 days have no cost price</strong>
+          <div class="alert__description">They made PLN 7,750.00 of net sales, which is left out of margin. Add costs and orders placed from now on count toward margin. Nothing else changes: orders, listings and invoices work the same with or without a cost.<span class="mk-pin">1</span></div>
+        </div>
+        <div class="alert__actions">
+          <a href="#" class="button button--secondary button--sm" data-testid="cost-coverage-banner-open">Add cost prices</a>
+          <button type="button" class="button button--ghost button--sm" data-testid="cost-coverage-banner-dismiss">Dismiss for this session</button>
+        </div>
+      </div>
+
+      <div class="toolbar"><div class="toolbar__group">
+        <input class="control" type="search" placeholder="Search products, SKU, EAN" aria-label="Search products" id="mk-prod-search">
+        <button type="button" class="chip">In stock</button>
+        <button type="button" class="chip">Not listed</button>
+        <button type="button" class="chip chip--active" aria-pressed="true" data-testid="products-filter-no-cost">No cost price <span class="chip__count">146</span></button><span class="mk-pin">2</span>
+      </div></div>
+
+      <div class="data-table__container" tabindex="0" role="region" aria-label="Products (scrollable)">
+        <table class="data-table">
+          <caption class="sr-only">Products filtered to those with at least one variant without a cost price</caption>
+          <thead><tr><th>Product</th><th>Variants</th><th>Cost price</th><th class="data-table__cell--hide-below-768">Stock</th><th class="data-table__cell--right">Price</th></tr></thead>
+          <tbody id="mk-products-rows"></tbody>
+        </table>
+      </div>
+      <p class="data-table__footnote">Showing products with at least one variant without a cost price. 146 variants across 61 products.</p>
+    </div>
+  </section>
+
+  <!-- ============ STATE 2: cost prices work list ============ -->
+  <section data-mk-state="worklist" data-mk-label="Lista: brak kosztu" data-mk-nav="Products" data-mk-crumb="Cost prices" data-testid="cost-worklist-state" hidden>
+    <div class="mk-stack" data-mk-slot="worklist" data-variant="default"></div>
+  </section>
+
+  <!-- ============ STATE 3: bulk set ============ -->
+  <section data-mk-state="bulk" data-mk-label="Lista: hurtowo" data-mk-nav="Products" data-mk-crumb="Cost prices" data-testid="cost-worklist-bulk-state" hidden>
+    <div class="mk-dialog-stage">
+      <div class="mk-stack" data-mk-slot="worklist" data-variant="selected" aria-hidden="true"></div>
+      <div class="dialog__overlay" aria-hidden="true"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="mk-bulk-title" data-testid="cost-bulk-dialog">
+        <div class="dialog__header">
+          <h2 class="dialog__title" id="mk-bulk-title">Set one cost for 2 variants</h2>
+          <p class="dialog__description">Use this when the variants cost you the same, like two colours of one cup.</p>
+        </div>
+        <div class="dialog__body">
+          <div class="form-field">
+            <label class="form-field__label" for="mk-bulk-cost">Cost price, net per unit</label>
+            <div class="mk-cost-inline" style="justify-content:flex-start">
+              <div class="field__price-input"><input id="mk-bulk-cost" inputmode="decimal" autocomplete="off" value="11.40" data-testid="cost-bulk-input" aria-describedby="mk-bulk-desc mk-bulk-err"><span class="field__currency">net</span></div>
+              <select class="control control--select" id="mk-bulk-currency" aria-label="Cost currency" data-testid="cost-bulk-currency"><option selected>PLN</option><option>EUR</option><option>CZK</option></select>
+            </div>
+            <p class="form-field__description" id="mk-bulk-desc">Excluding VAT. Counts toward margin for orders placed after you save. Earlier orders keep no cost.<span class="mk-pin">5</span></p>
+            <p class="form-field__error" id="mk-bulk-err" role="alert" hidden data-testid="cost-bulk-error">Enter 0 or more, with up to 2 decimals.</p>
+          </div>
+          <div>
+            <p class="form-field__label" style="margin-bottom:var(--space-2)">Applies to</p>
+            <ul class="mk-preview-list" data-testid="cost-bulk-preview">
+              <li><span>Filiżanka espresso 90 ml, czarna <span class="mk-sku">FIL-90-CZA</span></span><span class="mono-text">no cost → PLN 11.40</span></li>
+              <li><span>Filiżanka espresso 90 ml, biała <span class="mk-sku">FIL-90-BIA</span></span><span class="mono-text">no cost → PLN 11.40</span></li>
+            </ul>
+          </div>
+          <p class="mk-sub" style="margin:0">Variants that already have a cost are never selected here, so nothing gets overwritten.</p>
+        </div>
+        <div class="dialog__footer">
+          <button type="button" class="button button--ghost" data-testid="cost-bulk-cancel">Cancel</button>
+          <button type="button" class="button button--primary" data-testid="cost-bulk-save">Save cost for 2 variants</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STATE 4: analytics banner ============ -->
+  <section data-mk-state="analytics" data-mk-label="Analityka: baner" data-mk-nav="Analytics" data-mk-crumb="Analytics" data-testid="cost-banner-analytics-state" hidden>
+    <div class="mk-stack">
+      <section class="page-section"><div class="page-header page-header--split"><div class="page-header__content"><p class="eyebrow">Operations</p><h2 class="page-title">Analytics</h2><p class="page-description">Sales across connected channels, with clear data coverage.</p></div>
+        <div class="page-header__actions"><button type="button" class="button button--secondary">Analytics settings</button></div></div></section>
+
+      <div class="alert alert--warning" role="status" data-testid="cost-coverage-banner">
+        <div class="alert__content">
+          <strong class="alert__title">Margin covers 88.4% of net sales in this range</strong>
+          <div class="alert__description">PLN 9,890.00 is left out: 9 variants have no cost price (PLN 7,750.00) and some orders came in before their cost was entered (PLN 2,140.00). Margin and margin % are calculated only from the covered part.<span class="mk-pin">3</span></div>
+        </div>
+        <div class="alert__actions">
+          <a href="#" class="button button--secondary button--sm" data-testid="cost-coverage-banner-open">Add cost prices</a>
+          <a href="#" class="button button--ghost button--sm" data-testid="cost-coverage-banner-margin">Go to Margin</a>
+        </div>
+      </div>
+
+      <section class="status-strip" aria-label="Revenue">
+        <div class="kpi-card"><div class="kpi-card__label"><span class="kpi-card__label-text">Net revenue</span></div><div class="kpi-card__headline"><div class="kpi-card__value mono-text tabular">PLN 85,630.00</div><div class="kpi-card__metric">29 Aug – 27 Sep</div></div></div>
+        <div class="kpi-card"><div class="kpi-card__label"><span class="kpi-card__label-text">Orders</span></div><div class="kpi-card__headline"><div class="kpi-card__value mono-text tabular">1,042</div><div class="kpi-card__metric">Non-cancelled</div></div></div>
+        <div class="kpi-card kpi-card--warning" data-testid="margin-kpi-margin-pct"><div class="kpi-card__label"><span class="kpi-card__label-text">Margin %</span></div><div class="kpi-card__headline"><div class="kpi-card__value mono-text tabular">41.9%</div><div class="kpi-card__metric">Of the 88.4% with a cost</div></div></div>
+      </section>
+      <p class="mk-sub" style="margin:0">Sales by channel, Top products, Margin and Data coverage follow below unchanged (M26).</p>
+    </div>
+  </section>
+
+  <!-- ============ STATE 5: operations overview ============ -->
+  <section data-mk-state="insights" data-mk-label="Pulpit: do zrobienia" data-mk-nav="Insights" data-mk-crumb="Insights" data-testid="cost-insights-state" hidden>
+    <div class="mk-stack">
+      <section class="page-section"><div class="page-header page-header--split"><div class="page-header__content"><p class="eyebrow">Overview</p><h2 class="page-title">Operations overview</h2></div></div></section>
+
+      <article class="panel panel--dense" data-testid="insights-setup-gaps">
+        <div class="panel__header">
+          <div><p class="eyebrow">Setup</p><h3 class="section-title">Data to fill in</h3></div>
+          <span class="panel__meta">Not errors. Nothing is blocked.<span class="mk-pin">4</span></span>
+        </div>
+        <ul class="mk-attn">
+          <li data-testid="insights-gap-cost-price">
+            <span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Margin</span></span>
+            <div class="mk-attn__body"><b>9 variants you sold in the last 30 days have no cost price</b><span class="mk-sub">PLN 7,750.00 of net sales left out of margin. 3 of them make up 74% of that.</span></div>
+            <a href="#" class="button button--secondary button--sm" data-testid="insights-gap-cost-price-open">Add cost prices</a>
+          </li>
+          <li>
+            <span class="status-badge status-badge--info status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Tax</span></span>
+            <div class="mk-attn__body"><b>12 products have never been checked for a tax rate</b><span class="mk-sub">Existing notice, shown here for comparison.</span></div>
+            <a href="#" class="button button--ghost button--sm">Open products</a>
+          </li>
+        </ul>
+      </article>
+
+      <article class="panel panel--dense">
+        <div class="panel__header"><div><p class="eyebrow">Incidents</p><h3 class="section-title">What's broken right now</h3></div><span class="panel__meta">Nothing failing</span></div>
+        <p class="mk-sub" style="margin:0">Connection health, system health and recent sync jobs follow below unchanged.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============ STATE 6: order detail line ============ -->
+  <section data-mk-state="order-line" data-mk-label="Zamówienie: linia" data-mk-nav="Orders" data-mk-crumb="ALG-25804" data-testid="cost-order-line-state" hidden>
+    <div class="mk-stack">
+      <section class="page-section"><div class="page-header page-header--split"><div class="page-header__content"><p class="eyebrow">Orders</p><h2 class="page-title">ALG-25804</h2><p class="page-description">Allegro · Sklep Górski · placed 27 Sep 2026, 18:41</p></div></div></section>
+      <section class="detail-section">
+        <div class="detail-section__title-row"><h3 class="detail-section__title">Items (3)</h3></div>
+        <div class="data-table__container" tabindex="0" role="region" aria-label="Order items (scrollable)">
+          <table class="data-table" data-testid="order-items-cost-table">
+            <caption class="sr-only">Order items with cost and margin</caption>
+            <thead><tr><th>Item</th><th class="mk-num">Qty</th><th class="mk-num">Net</th><th class="mk-num data-table__cell--hide-below-768">Cost at order time</th><th class="mk-num">Margin</th></tr></thead>
+            <tbody>
+              <tr><td><div class="mk-name"><b>Kubek ceramiczny 350 ml, granatowy</b><span class="mk-sku">KUB-350-GRA</span></div></td><td class="mk-num">2</td><td class="mk-num">81.29</td><td class="mk-num data-table__cell--hide-below-768">45.60</td><td class="mk-num">35.69</td></tr>
+              <tr data-testid="order-line-no-cost"><td><div class="mk-name"><b>Filiżanka espresso 90 ml, czarna</b><span class="mk-sku">FIL-90-CZA</span></div></td><td class="mk-num">4</td><td class="mk-num">177.90</td><td class="mk-num data-table__cell--hide-below-768"><span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>Not recorded</span></span></td><td class="mk-num"><span class="text-muted">Not in margin</span></td></tr>
+              <tr><td><div class="mk-name"><b>Spodek 14 cm, czarny</b><span class="mk-sku">SPOD-14-CZA</span></div></td><td class="mk-num">4</td><td class="mk-num">65.04</td><td class="mk-num data-table__cell--hide-below-768"><span class="status-badge status-badge--neutral status-badge--compact"><span>Not recorded</span></span></td><td class="mk-num"><span class="text-muted">Not in margin</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="data-table__footnote" data-testid="order-line-cost-note">Cost is taken from the product when the order arrives and never changes afterwards. Adding a cost to Filiżanka espresso now will not change this order; it counts from the next one.<span class="mk-pin">6</span> <a href="#" data-testid="order-line-add-cost">Add cost for 2 variants</a></p>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============ STATE 7: all covered ============ -->
+  <section data-mk-state="done" data-mk-label="Lista: komplet" data-mk-nav="Products" data-mk-crumb="Cost prices" data-testid="cost-worklist-done-state" hidden>
+    <div class="mk-stack" data-mk-slot="worklist" data-variant="done"></div>
+  </section>
+
+  <!-- ============ STATE 8: read only ============ -->
+  <section data-mk-state="viewer" data-mk-label="Operator / viewer" data-mk-nav="Products" data-mk-crumb="Cost prices" data-testid="cost-worklist-viewer-state" hidden>
+    <div class="mk-stack" data-mk-slot="worklist" data-variant="viewer"></div>
+  </section>
+
+  <!-- ============ STATE 9: margin switched off ============ -->
+  <section data-mk-state="off" data-mk-label="Marża wyłączona" data-mk-nav="Analytics" data-mk-crumb="Analytics settings" data-testid="cost-tracking-off-state" hidden>
+    <div class="mk-stack">
+      <section class="page-section"><div class="page-header page-header--split"><div class="page-header__content"><p class="eyebrow">Analytics</p><h2 class="page-title">Analytics settings</h2></div></div></section>
+      <article class="panel panel--dense" data-testid="settings-margin-tracking">
+        <div class="panel__header"><div><p class="eyebrow">Profitability</p><h3 class="section-title">Margin</h3></div></div>
+        <div class="form-field">
+          <label class="toolbar__checkbox-label" for="mk-track-margin"><input type="checkbox" id="mk-track-margin" data-testid="settings-margin-tracking-toggle"> Track margin and remind about missing cost prices</label>
+          <p class="form-field__description">Off: the Margin panel, the cost reminders on Products, Analytics and Operations overview, and the "No cost price" chip are hidden. Cost prices you already entered stay saved and keep being copied onto new orders, so turning this back on shows margin straight away.<span class="mk-pin">7</span></p>
+        </div>
+        <div class="alert alert--info" role="status">
+          <div class="alert__content"><strong class="alert__title">Margin is off for everyone on this account</strong><div class="alert__description">Only an admin can change this. Turned off by Anna Wiśniewska on 2 Oct 2026.</div></div>
+        </div>
+        <div><button type="button" class="button button--primary button--sm" data-testid="settings-margin-tracking-save">Save settings</button></div>
+      </article>
+    </div>
+  </section>
+</div>
+
+<aside class="mk-notes" aria-label="Adnotacje">
+  <h3>Adnotacje: brak kosztu zakupu</h3>
+  <p class="muted-text" style="font-size:.8125rem;margin-top:-.5rem">Uzupełnia M26 (G11-03). Dane przykładowe, liczby zgodne z M26: przychód netto PLN 85,630.00, pokrycie 88.4%, poza marżą PLN 9,890.00.</p>
+  <ol>
+    <li><span class="mk-pin">1</span> Zasada nr 1: brak kosztu niczego nie blokuje. Zamówienia, oferty, faktury, wysyłka i bench działają tak samo. Jedyny skutek: linia nie wchodzi do marży i trafia do luki pokrycia. Dlatego baner jest <code>warning</code>, nigdy <code>error</code>. Wzorzec i miejsce: istniejący alert "never checked for a tax rate" na liście produktów (<code>products-list-page.tsx</code>, #2255) - ten sam kształt, ta sama pozycja. Odrzucenie tylko na sesję, bo stałe odrzucenie zabiera jedyną drogę do naprawy (komentarz w #2255). Trwałe wyłączenie to stan 9.</li>
+    <li><span class="mk-pin">2</span> Licznik "sprzedane w 30 dni" to tylko 9 wariantów, a wszystkich bez kosztu jest 146. Baner mówi o 9, bo tylko te wpływają na marżę. Chip "No cost price" na liście produktów filtruje wszystkie 146.</li>
+    <li><span class="mk-pin">3</span> Na Analytics baner jest nad stroną, a chip "not in margin" w panelu Margin zostaje (M26). Baner pojawia się tylko, gdy pokrycie &lt; 98% w wybranym zakresie (stała w kodzie). Rozbija lukę na dwa powody, bo "zamówione przed wpisaniem kosztu" nie da się już naprawić (D27).</li>
+    <li><span class="mk-pin">4</span> W nawigacji <code>/</code> to Analytics, a "Operations overview" to <code>/insights</code>. Koszt nie trafia do "What's broken right now", bo to nie awaria. Nowa sekcja "Data to fill in" zbiera braki danych, które psują raporty, ale nie operacje.</li>
+    <li><span class="mk-pin">5</span> Nowa strona <code>/products/cost-prices</code> (stany 2, 3, 7, 8). Kolejność: po sprzedaży netto z 30 dni, bo 3 pierwsze koszty pokrywają 74% luki. Edycja w wierszu (Enter zapisuje, przechodzi dalej) plus hurt dla kilku wariantów naraz. Hurt nigdy nie nadpisuje istniejącego kosztu (backend: tylko gdzie koszt pusty). Import z CSV i z mastera poza zakresem #3588 - świadomie brak przycisku.</li>
+    <li><span class="mk-pin">6</span> D27 w każdym miejscu: koszt liczy się od następnego zamówienia. KPI "Expected coverage" opisuje przyszłe 30 dni przy tej samej sprzedaży. Na zamówieniu kolumna nazywa się "Cost at order time". Zamówienie złożone przed wpisaniem kosztu nie dostaje go nawet przy pierwszej ingestii (decyzja G11-G).</li>
+    <li><span class="mk-pin">7</span> Wyłącznik "Track margin" (<code>analytics_display_settings.track_margin</code>, domyślnie włączony, zmienia tylko admin). Wyłącza widoki i przypomnienia, nie wyłącza zapisu snapshotu kosztu na liniach - ponowne włączenie nie ma "dziury".</li>
+    <li><span class="mk-pin">8</span> Decyzja G11-B: koszt edytuje tylko admin (<code>products:write</code>). Operator i viewer widzą listę i liczby, nie edytują; zamiast przycisków jedno zdanie z powodem, zgodnie z zasadą write access z <code>docs/frontend-architecture.md</code>.</li>
+    <li><b>Backend</b> (G11-03): <code>GET /products/cost-coverage?days=30</code>; <code>GET /products/variants/cost-worklist?tab=sold|all|has-cost</code> stronicowany; <code>PATCH /products/variants/cost</code> hurtowo, tylko gdzie koszt pusty; flaga <code>trackMargin</code>.</li>
+  </ol>
+</aside>
+
+<script>
+(function(){
+  /* 9 sold variants without cost, last 30 days. Sums to PLN 7,750.00 (M26 coverage row). */
+  var GAP = [
+    ['FIL-90-CZA','Filiżanka espresso 90 ml','czarna',64,'2,846.40',2846.40,'Allegro, Erli'],
+    ['KUB-350-SZA','Kubek ceramiczny 350 ml','szałwiowy',38,'1,544.70',1544.70,'Allegro, Erli, Woo'],
+    ['FIL-90-BIA','Filiżanka espresso 90 ml','biała',31,'1,378.60',1378.60,'Allegro'],
+    ['SPOD-14-CZA','Spodek 14 cm','czarny',40,'650.00',650.00,'Allegro'],
+    ['KUB-450-GRA','Kubek ceramiczny 450 ml','granatowy',12,'548.40',548.40,'Erli'],
+    ['MIS-16-BIA','Miska 16 cm','biała',15,'412.50',412.50,'Allegro, Woo'],
+    ['DZB-08-BLE','Dzbanek 0,8 l','błękitny',4,'210.40',210.40,'Woo'],
+    ['TAL-21-GRA','Talerz deserowy 21 cm','grafitowy',6,'125.40',125.40,'Allegro'],
+    ['ZEST-PREZ','Zestaw prezentowy kubek + spodek','',1,'33.60',33.60,'Allegro']
+  ];
+  var TOTAL = 7750.00;
+  function slug(s){ return s.toLowerCase(); }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+  function coverageBlock(pct, label, mark){
+    return '<div class="mk-cov" data-testid="cost-coverage-meter">' +
+      '<div class="mk-cov__track" role="img" aria-label="' + label + '"><div class="mk-cov__fill" style="width:' + pct + '%"></div>' + (mark ? '<div class="mk-cov__mark" style="left:' + mark + '%"></div>' : '') + '</div>' +
+      '<div class="mk-cov__legend"><span><i class="mk-dot mk-dot--ok"></i>With a cost: ' + pct.toFixed(1) + '% of net sales</span><span><i class="mk-dot mk-dot--gap"></i>Not in margin: ' + (100 - pct).toFixed(1) + '%</span>' + (mark ? '<span>Line: expected after the 3 top costs (' + mark.toFixed(1) + '%)</span>' : '') + '</div></div>';
+  }
+
+  function kpi(label, value, metric, id, tone){
+    return '<div class="kpi-card' + (tone ? ' kpi-card--' + tone : '') + '" data-testid="' + id + '"><div class="kpi-card__label"><span class="kpi-card__label-text">' + label + '</span></div><div class="kpi-card__headline"><div class="kpi-card__value mono-text tabular">' + value + '</div><div class="kpi-card__metric">' + metric + '</div></div></div>';
+  }
+
+  function costCell(r, i, variant){
+    var s = slug(r[0]);
+    if (variant === 'viewer') return '<span class="status-badge status-badge--warning status-badge--compact" data-testid="cost-worklist-cost-' + s + '"><span class="status-badge__dot" aria-hidden="true"></span><span>Not recorded</span></span>';
+    if (variant === 'default' && i === 0) return '<span class="mk-saved" data-testid="cost-worklist-saved-' + s + '">PLN 11.40 net · saved, counts from the next order</span>';
+    if (variant === 'default' && i === 1)
+      return '<div class="mk-cost-inline"><div class="field__price-input"><input id="mk-cost-' + s + '" inputmode="decimal" autocomplete="off" value="19.6" aria-label="Net cost for ' + esc(r[0]) + '" data-testid="cost-worklist-input-' + s + '"><span class="field__currency">net</span></div>' +
+        '<select class="control control--select" aria-label="Currency" data-testid="cost-worklist-currency-' + s + '"><option selected>PLN</option><option>EUR</option></select>' +
+        '<button type="button" class="button button--primary button--sm" data-testid="cost-worklist-save-' + s + '">Save</button></div>';
+    return '<button type="button" class="button button--secondary button--sm" data-testid="cost-worklist-add-' + s + '">Add cost</button>';
+  }
+
+  function rows(variant){
+    var cum = 0;
+    return GAP.map(function(r, i){
+      var s = slug(r[0]); cum += r[5];
+      var checked = variant === 'selected' && (i === 0 || i === 2);
+      var saved = variant === 'default' && i === 0;
+      var check = variant === 'viewer' ? '' : '<td class="mk-check-cell"><input type="checkbox" aria-label="Select ' + r[0] + '"' + (checked ? ' checked' : '') + (saved ? ' disabled' : '') + ' data-testid="cost-worklist-select-' + s + '"></td>';
+      return '<tr' + (saved ? ' class="mk-row-saved"' : '') + ' data-testid="cost-worklist-row-' + s + '">' + check +
+        '<td><div class="mk-name"><b>' + r[1] + (r[2] ? ', ' + r[2] : '') + '</b><span class="mk-sku">' + r[0] + '</span></div></td>' +
+        '<td class="mk-num">' + r[3] + '</td>' +
+        '<td class="mk-num">' + r[4] + '</td>' +
+        '<td class="mk-num data-table__cell--hide-below-768">' + Math.round(cum / TOTAL * 100) + '%</td>' +
+        '<td class="data-table__cell--hide-below-1024 mk-sub">' + r[6] + '</td>' +
+        '<td class="data-table__cell--right">' + costCell(r, i, variant) + '</td></tr>';
+    }).join('');
+  }
+
+  function worklist(variant){
+    var head = '<section class="page-section"><div class="page-header page-header--split"><div class="page-header__content"><p class="eyebrow">Products</p><h2 class="page-title">Cost prices</h2><p class="page-description">What you pay for each variant, excluding VAT. Used only for margin on Analytics.</p></div></div></section>';
+    if (variant === 'done') {
+      return head +
+        '<section class="status-strip" aria-label="Cost coverage">' + kpi('Sold in 30 days, no cost', '0', 'All sold variants have a cost', 'cost-kpi-sold-missing', 'success') + kpi('Never sold, no cost', '137', 'Not urgent: they do not affect margin yet', 'cost-kpi-unsold-missing') + '</section>' +
+        '<article class="panel panel--dense"><div class="empty-state" data-testid="cost-worklist-done-empty"><h2>Every variant you sold has a cost</h2><p>New orders count fully toward margin. 137 variants have not sold in 30 days and have no cost; they show up here as soon as one sells.</p><div><a href="#" class="button button--secondary">Open Margin</a> <a href="#" class="button button--ghost">Show the 137 variants</a></div></div></article>';
+    }
+    var viewer = variant === 'viewer';
+    var selected = variant === 'selected';
+    var intro = '<section class="status-strip" aria-label="Cost coverage">' +
+      kpi('Sold in 30 days, no cost', variant === 'default' ? '8' : '9', variant === 'default' ? '1 added just now' : 'Of 142 variants sold', 'cost-kpi-sold-missing', 'warning') +
+      kpi('Net sales not in margin', 'PLN 7,750.00', 'Last 30 days, these variants', 'cost-kpi-gap-amount') +
+      kpi('Expected coverage', variant === 'default' ? '91.7%' : '88.4%', 'Next 30 days at the same sales', 'cost-kpi-expected') +
+      '</section>' +
+      '<article class="panel panel--dense"><div class="panel__header"><div><p class="eyebrow">Last 30 days</p><h3 class="section-title">Share of net sales with a cost</h3></div><span class="panel__meta">Costs count from the next order on, so past orders stay as they are.<span class="mk-pin">6</span></span></div>' + coverageBlock(88.4, 'With a cost: 88.4 percent of net sales', 95.2) + '</article>';
+
+    var tabs = '<div class="mk-tabs-row"><div class="tabs"><div class="tabs__list" role="tablist" aria-label="Which variants">' +
+      '<button type="button" role="tab" class="tabs__trigger" data-state="active" aria-selected="true" data-testid="cost-worklist-tab-sold">Sold, no cost <span class="tabs__count">' + (variant === 'default' ? '8' : '9') + '</span></button>' +
+      '<button type="button" role="tab" class="tabs__trigger" data-state="inactive" aria-selected="false" data-testid="cost-worklist-tab-all">All without cost <span class="tabs__count">146</span></button>' +
+      '<button type="button" role="tab" class="tabs__trigger" data-state="inactive" aria-selected="false" data-testid="cost-worklist-tab-has-cost">Has cost <span class="tabs__count">266</span></button>' +
+      '</div></div><div class="mk-toolbar-row"><input class="control" type="search" placeholder="Search variant, SKU" aria-label="Search variants" id="mk-wl-search-' + variant + '" data-testid="cost-worklist-search"><select class="control control--select" aria-label="Channel" id="mk-wl-channel-' + variant + '" data-testid="cost-worklist-channel"><option>All channels</option><option>Allegro</option><option>Erli</option><option>WooCommerce</option></select></div></div>';
+
+    var notice = viewer
+      ? '<div class="alert alert--info" role="status" data-testid="cost-worklist-readonly"><div class="alert__content"><strong class="alert__title">You can see cost prices but not change them</strong><div class="alert__description">Only an admin can add or change a cost price. Send them this page: the list is already sorted by what matters most.<span class="mk-pin">8</span></div></div></div>'
+      : '';
+    var bulk = viewer ? '' : '<div class="bulk-action-bar' + (selected ? '' : ' bulk-action-bar--hidden') + '" data-testid="cost-worklist-bulk-bar"><span class="bulk-action-bar__count"><span class="bulk-action-bar__num">2</span> selected</span><div class="bulk-action-bar__actions"><button type="button" class="button button--primary button--sm" data-testid="cost-worklist-bulk-open">Set one cost for selected</button><button type="button" class="button button--ghost button--sm">Clear selection</button></div></div>';
+
+    var table = '<div class="data-table__container" tabindex="0" role="region" aria-label="Variants without a cost price (scrollable)"><table class="data-table" data-testid="cost-worklist-table"><caption class="sr-only">Variants sold in the last 30 days without a cost price, by net sales</caption><thead><tr>' +
+      (viewer ? '' : '<th class="mk-check-cell"><input type="checkbox" aria-label="Select all on this page"></th>') +
+      '<th>Variant</th><th class="mk-num">Units, 30 d</th><th class="mk-num">Net sales, PLN</th><th class="mk-num data-table__cell--hide-below-768">Running share</th><th class="data-table__cell--hide-below-1024">Sold on</th><th class="data-table__cell--right">Cost, net</th></tr></thead><tbody>' + rows(variant) + '</tbody></table></div>' +
+      '<p class="data-table__footnote">Sorted by net sales in the last 30 days. The first 3 variants are 74% of the sales left out of margin.<span class="mk-pin">5</span> Enter saves a row and moves to the next.</p>';
+
+    return head + notice + intro + tabs + bulk + table;
+  }
+
+  document.querySelectorAll('[data-mk-slot="worklist"]').forEach(function(el){ el.innerHTML = worklist(el.getAttribute('data-variant')); });
+
+  var PRODS = [
+    ['Filiżanka espresso 90 ml','FIL-90','3 variants','2 of 3 without cost',112,'PLN 29.99'],
+    ['Kubek ceramiczny 350 ml','KUB-350','4 variants','1 of 4 without cost',93,'PLN 49.99'],
+    ['Spodek 14 cm','SPOD-14','2 variants','1 of 2 without cost',58,'PLN 19.99'],
+    ['Zestaw prezentowy kubek + spodek','ZEST-PREZ','1 variant','No cost',6,'PLN 79.99']
+  ];
+  var pr = document.getElementById('mk-products-rows');
+  if (pr) pr.innerHTML = PRODS.map(function(p){
+    var none = p[3] === 'No cost';
+    return '<tr data-testid="products-row-' + slug(p[1]) + '"><td><div class="mk-name"><b>' + p[0] + '</b><span class="mk-sku">' + p[1] + '</span></div></td><td>' + p[2] + '</td><td><span class="status-badge status-badge--' + (none ? 'warning' : 'neutral') + ' status-badge--compact"><span class="status-badge__dot" aria-hidden="true"></span><span>' + p[3] + '</span></span></td><td class="data-table__cell--hide-below-768 mono-text tabular">' + p[4] + '</td><td class="data-table__cell--right mono-text tabular">' + p[5] + '</td></tr>';
+  }).join('');
+
+  document.addEventListener('input', function(e){
+    var box = e.target.closest('.field__price-input'); if (!box) return;
+    var v = e.target.value.trim().replace(',', '.');
+    var bad = v !== '' && !/^\d+(\.\d{1,2})?$/.test(v);
+    box.classList.toggle('has-error', bad); e.target.setAttribute('aria-invalid', bad ? 'true' : 'false');
+    var ff = e.target.closest('.form-field'); var err = ff && ff.querySelector('.form-field__error'); if (err) err.hidden = !bad;
+  });
+  document.addEventListener('click', function(e){
+    var d = e.target.closest('[data-testid="cost-coverage-banner-dismiss"]');
+    if (d) { d.closest('.alert').hidden = true; return; }
+    if (e.target.closest('a[href="#"]')) e.preventDefault();
+  });
+
+  function syncShell(){
+    var s = document.querySelector('[data-mk-state]:not([hidden])'); if (!s) return;
+    var nav = s.getAttribute('data-mk-nav'), crumb = s.getAttribute('data-mk-crumb');
+    document.querySelectorAll('.shell-nav__link').forEach(function(a){ a.classList.toggle('shell-nav__link--active', a.querySelector('.shell-nav__link-label').textContent === nav); });
+    var c = document.querySelector('.shell-crumbs__current'); if (c) c.textContent = crumb;
+    var chip = document.querySelector('.shell-user-chip__name'); if (chip) chip.textContent = s.getAttribute('data-mk-state') === 'viewer' ? 'operator' : 'admin';
+  }
+  function hook(){ syncShell(); var bar = document.querySelector('.mk-bar__states'); if (bar) bar.addEventListener('click', function(){ setTimeout(syncShell, 0); }); }
+  if (document.readyState === 'complete') hook(); else window.addEventListener('load', hook);
+})();
+</script>
+</body>
+</html>

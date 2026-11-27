@@ -1,11 +1,19 @@
 /**
  * Erli Setup Form
  *
- * Single-step wizard for creating an Erli connection. Collects:
+ * Four-step wizard for creating an Erli connection:
+ *   1. Credentials - collects:
  *   - Connection name
  *   - Shop API key (the only credential — sent as a Bearer token by the BE)
  *   - Environment (Production/Sandbox, #1377) — persisted as the neutral
  *     `config.environment` choice; the BE resolves it to a base URL
+ *   2. Product catalogue (#4281) - Linked / None, a step of its own like the
+ *      Allegro wizard's. None is preselected when the installation has no
+ *      ProductMaster at all, so a marketplace-only install is one click; the
+ *      catalogue itself is picked later on the connection page
+ *   3. Sales documents - how delivery appears on receipts and invoices
+ *      (`config.deliveryOnDocuments`, #3911)
+ *   4. Review & connect
  *
  * Simpler than the WooCommerce form — one credential, no capabilities step
  * (capabilities default silently to the adapter manifest's supported set on
@@ -16,20 +24,43 @@
  *
  * @module features/connections/components
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, type Path } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { useCreateConnectionMutation } from '../hooks/use-create-connection-mutation';
 import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation';
+import { useProductMasterConnections } from '../hooks/use-product-master-connections';
+import { CatalogueModeFieldset } from './catalogue-mode-fieldset';
 import type { ConnectionTestResult } from '../api/connections.types';
 import {
+  ERLI_ADAPTER_KEY,
   ERLI_SETUP_DEFAULT_VALUES,
   erliSetupSchema,
   toCreateConnectionInput,
   type ErliSetupFormSubmission,
   type ErliSetupFormValues,
 } from './erli-setup.schema';
+import { ErliSetupSummary } from './erli-setup-summary';
+import { OrderSyncStartField } from './order-sync-start-field';
+import { useAdaptersQuery } from '../../adapters';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  describeOrderSyncStart,
+} from '../lib/order-sync-start';
+import {
+  DEFAULT_DELIVERY_WIZARD_VALUE,
+  DeliveryWizardStep,
+  useDeliveryLineSuggestionsQuery,
+  wizardRules,
+  wizardSummaryRows,
+} from '../../delivery-on-documents';
+import {
+  BuyerDataWizardReviewRows,
+  BuyerDataWizardStep,
+  DEFAULT_BUYER_DATA_WIZARD_VALUE,
+} from '../../buyer-data';
 import { Alert } from '../../../shared/ui/alert';
 import { BackLink } from '../../../shared/ui/back-link';
 import { Button } from '../../../shared/ui/button';
@@ -37,9 +68,52 @@ import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
+import { SetupStepper } from '../../../shared/ui/setup-stepper';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { WizardLayout } from '../../../shared/ui/wizard-layout';
+import { TargetShopRow } from './wizard-created-screen';
+import { ShippingNextStep } from './shipping-next-step';
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
+import { usePlatform } from '../../../shared/plugins';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { describeConnectionTestFailure } from '../lib/describe-connection-test-failure';
+
+// Endpoint hosts, not prose: the same in every language.
+const SANDBOX_URL = 'https://sandbox.erli.dev';
+const PRODUCTION_URL = 'https://erli.pl';
+
+const STEP_FIELDS: ReadonlyArray<ReadonlyArray<Path<ErliSetupFormValues>>> = [
+  ['name', 'apiKey', 'environment'],
+  [],
+  [],
+  ['orderSyncStart'],
+  [],
+];
+
+function maskSecret(secret: string): string {
+  if (secret.length <= 4) return '•'.repeat(secret.length);
+  return `${'•'.repeat(Math.max(0, secret.length - 4))}${secret.slice(-4)}`;
+}
 
 export function ErliSetupForm(): ReactElement {
+  const copy = useMessages('connections').erliSetupForm;
+  const setupCopy = useMessages('connections').setup;
+  const platform = usePlatform('erli')?.displayName ?? copy.platformFallback;
+  const STEP_LABELS = [
+    copy.steps.credentials,
+    copy.steps.productCatalogue,
+    copy.steps.salesDocuments,
+    copy.steps.orders,
+    copy.steps.review,
+  ];
+  const format = useFormat();
+  const orderStartCopy = useMessages('connections').orderSyncStart;
+  const adaptersQuery = useAdaptersQuery();
+  const orderSyncStartModes =
+    adaptersQuery.data?.find((a) => a.adapterKey === ERLI_ADAPTER_KEY)?.orderSyncStartModes ??
+    ORDER_SYNC_START_DEFAULT_MODES;
+  const orderWindowImport =
+    adaptersQuery.data?.find((a) => a.adapterKey === ERLI_ADAPTER_KEY)?.orderWindowImport ?? false;
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -53,6 +127,26 @@ export function ErliSetupForm(): ReactElement {
     mode: 'onBlur',
   });
 
+  const { connectionsQuery, productMasterConnections } = useProductMasterConnections();
+  // Set once the operator picks a catalogue mode, so the "no ProductMaster yet"
+  // preselection below never overrides an explicit choice.
+  const catalogueModeTouched = useRef(false);
+
+  const suggestionsQuery = useDeliveryLineSuggestionsQuery();
+  const suggestions = suggestionsQuery.data?.suggestions ?? [];
+
+  const [stepIndex, setStepIndex] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<ReadonlySet<number>>(new Set());
+
+  // An installation with no catalogue connection at all is the marketplace-only
+  // case this mode exists for, so it starts on "None" (#4281).
+  useEffect(() => {
+    if (catalogueModeTouched.current) return;
+    if (connectionsQuery.isSuccess && productMasterConnections.length === 0) {
+      form.setValue('catalogueMode', 'none');
+    }
+  }, [connectionsQuery.isSuccess, productMasterConnections.length, form]);
+
   // Abandon-prevention.
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent): void {
@@ -64,19 +158,47 @@ export function ErliSetupForm(): ReactElement {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [form.formState.isDirty, createdConnectionId]);
 
-  const validationMessages = Object.values(form.formState.errors).flatMap((error) =>
-    error?.message ? [String(error.message)] : [],
+  const validationMessages = Object.values(form.formState.errors).flatMap((fieldError) =>
+    fieldError?.message ? [String(fieldError.message)] : [],
   );
+
+  async function goNext(): Promise<void> {
+    const fields = STEP_FIELDS[stepIndex];
+    if (fields.length > 0) {
+      const valid = await form.trigger([...fields]);
+      if (!valid) return;
+    }
+    setCompletedSteps((prev) => new Set(prev).add(stepIndex));
+    setStepIndex((i) => Math.min(i + 1, STEP_LABELS.length - 1));
+  }
+
+  function goBack(): void {
+    setStepIndex((i) => Math.max(i - 1, 0));
+  }
+
+  // A submit before the last step is Enter in a field, or the click that
+  // advanced to the last step landing on the Connect button that replaced Next.
+  // Either way it means "Next", never "Connect" (the review step must be seen).
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (stepIndex < STEP_LABELS.length - 1) {
+      event.preventDefault();
+      void goNext();
+      return;
+    }
+    void onSubmit(event);
+  }
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
+      const created = await createConnection.mutateAsync(
+        toCreateConnectionInput(values, suggestions),
+      );
       form.reset(values, { keepValues: true, keepDirty: false });
       setCreatedConnectionId(created.id);
       showToast({
         tone: 'success',
-        title: 'Connection created',
-        description: `Erli connection "${created.name}" was created.`,
+        title: copy.createdTitle,
+        description: interpolate(copy.createdDescription, { platform, name: created.name }),
       });
     } catch {
       return;
@@ -97,98 +219,199 @@ export function ErliSetupForm(): ReactElement {
     }
   };
 
+  const values = form.watch();
+  const catalogueMode = values.catalogueMode ?? 'linked';
+  const deliveryValue = values.deliveryOnDocuments ?? DEFAULT_DELIVERY_WIZARD_VALUE;
+  const buyerDataValue = values.buyerDataRetention ?? DEFAULT_BUYER_DATA_WIZARD_VALUE;
+  const deliverySummary = wizardSummaryRows(wizardRules(deliveryValue, suggestions))
+    .map((row) => `${row.label}: ${row.value}`)
+    .join('; ');
+
   return (
-    <form className="wizard-card" onSubmit={(event) => void onSubmit(event)} noValidate>
-      <BackLink to="/connections/new" label="Connections" className="wizard-card__back" />
+    <WizardLayout
+      stepper={
+        <SetupStepper steps={STEP_LABELS} currentStep={stepIndex} completedSteps={completedSteps} />
+      }
+      summary={
+        <ErliSetupSummary values={values} stepIndex={stepIndex} suggestions={suggestions} />
+      }
+    >
+      <form className="wizard-card" onSubmit={handleFormSubmit} noValidate>
+        <BackLink to="/connections/new" label={setupCopy.connections} className="wizard-card__back" />
 
-      {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
-        <FormErrorSummary errors={validationMessages} />
-      ) : null}
-      {createConnection.error ? (
-        <Alert tone="error" title="Unable to create connection">
-          {createConnection.error.message}
-        </Alert>
-      ) : null}
+        {form.formState.submitCount > 0 && validationMessages.length > 0 ? (
+          <FormErrorSummary errors={validationMessages} />
+        ) : null}
+        {createConnection.error ? (
+          <Alert tone="error" title={copy.createError}>
+            {describeApiError(createConnection.error, 'connections')}
+          </Alert>
+        ) : null}
 
-      <Alert tone="info" title="Before you start">
-        In your Erli seller panel, generate a <strong>Shop API key</strong>. OpenLinker sends it as a
-        bearer token on every request to the Erli Shop API. The key is stored securely on the server
-        and only shown once.
-      </Alert>
+        {stepIndex === 0 ? (
+          <>
+          <Alert tone="info" title={copy.beforeYouStart.title}>
+            {renderRich(
+              copy.beforeYouStart.body,
+              { strong: (text) => <strong>{text}</strong> },
+              { platform },
+            )}
+          </Alert>
 
-      <FormField
-        label="Connection name"
-        name="name"
-        error={form.formState.errors.name?.message}
-        description="A label to identify this Erli account in OpenLinker."
-      >
-        <Input
-          {...form.register('name')}
-          placeholder="My Erli Store"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.name)}
-        />
-      </FormField>
+          <FormField
+            label={copy.fields.name.label}
+            name="name"
+            error={form.formState.errors.name?.message}
+            description={interpolate(copy.fields.name.description, { platform })}
+          >
+            <Input
+              {...form.register('name')}
+              placeholder={interpolate(copy.fields.name.placeholder, { platform })}
+              autoComplete="off"
+              invalid={Boolean(form.formState.errors.name)}
+            />
+          </FormField>
 
-      <FormField
-        label="API key"
-        name="apiKey"
-        error={form.formState.errors.apiKey?.message}
-        description="Your Erli Shop API key — generated in the Erli seller panel."
-      >
-        <Input
-          {...form.register('apiKey')}
-          type="password"
-          placeholder="••••••••••••••••••••••••••••••••"
-          autoComplete="off"
-          invalid={Boolean(form.formState.errors.apiKey)}
-        />
-      </FormField>
+          <FormField
+            label={copy.fields.apiKey.label}
+            name="apiKey"
+            error={form.formState.errors.apiKey?.message}
+            description={interpolate(copy.fields.apiKey.description, { platform })}
+          >
+            <Input
+              {...form.register('apiKey')}
+              type="password"
+              placeholder="••••••••••••••••••••••••••••••••"
+              autoComplete="off"
+              invalid={Boolean(form.formState.errors.apiKey)}
+            />
+          </FormField>
 
-      <FormField
-        label="Environment"
-        name="environment"
-        error={form.formState.errors.environment?.message}
-        description="Choose Sandbox to test against Erli's sandbox before switching to production."
-      >
-        <Select {...form.register('environment')}>
-          <option value="sandbox">Sandbox - https://sandbox.erli.dev</option>
-          <option value="production">Production - https://erli.pl</option>
-        </Select>
-      </FormField>
+          <FormField
+            label={copy.fields.environment.label}
+            name="environment"
+            error={form.formState.errors.environment?.message}
+            description={interpolate(copy.fields.environment.description, { platform })}
+          >
+            <Select {...form.register('environment')}>
+              <option value="sandbox">{interpolate(copy.fields.environment.option, { name: copy.environments.sandbox, url: SANDBOX_URL })}</option>
+              <option value="production">{interpolate(copy.fields.environment.option, { name: copy.environments.production, url: PRODUCTION_URL })}</option>
+            </Select>
+          </FormField>
+          </>
+        ) : null}
 
-      {createdConnectionId ? (
-        <>
-          {testResult ? (
-            <Alert
-              tone={testResult.success ? 'success' : 'error'}
-              title={testResult.success ? 'Connection test passed' : 'Connection test failed'}
-            >
-              {testResult.message}
-              {typeof testResult.latencyMs === 'number' ? ` (${testResult.latencyMs}ms)` : null}
-            </Alert>
-          ) : null}
-          {testConnection.error ? (
-            <Alert tone="error" title="Unable to test connection">
-              {testConnection.error.message}
-            </Alert>
-          ) : null}
-          <div className="form-actions">
-            <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>
-              {testConnection.isPending ? 'Testing…' : 'Test connection'}
-            </Button>
-            <Button tone="secondary" type="button" onClick={() => void navigate('/connections')}>
-              Done
-            </Button>
+        {stepIndex === 1 ? (
+          <CatalogueModeFieldset
+            value={catalogueMode}
+            disabled={false}
+            onChange={(next) => {
+              catalogueModeTouched.current = true;
+              form.setValue('catalogueMode', next, { shouldDirty: true });
+            }}
+          >
+            <p className="rate-limit-section__help">{copy.fields.catalogue.linkedHint}</p>
+          </CatalogueModeFieldset>
+        ) : null}
+
+        {stepIndex === 2 ? (
+          <DeliveryWizardStep
+            value={deliveryValue}
+            suggestions={suggestions}
+            onChange={(next) => form.setValue('deliveryOnDocuments', next, { shouldDirty: true })}
+          />
+        ) : null}
+
+        {stepIndex === 3 ? (
+          <OrderSyncStartField
+            value={values.orderSyncStart ?? ORDER_SYNC_START_DEFAULT_VALUE}
+            onChange={(next) =>
+              form.setValue('orderSyncStart', next, { shouldDirty: true, shouldValidate: true })
+            }
+            supportedModes={orderSyncStartModes}
+            windowImport={orderWindowImport}
+            error={form.formState.errors.orderSyncStart?.from?.message}
+          />
+        ) : null}
+
+        {stepIndex === 4 ? (
+          <>
+          <BuyerDataWizardStep
+            value={buyerDataValue}
+            onChange={(next) => form.setValue('buyerDataRetention', next, { shouldDirty: true })}
+          />
+          <dl className="wizard-review-list">
+            <dt>{copy.review.name}</dt>
+            <dd>{values.name || '-'}</dd>
+            <dt>{copy.fields.apiKey.label}</dt>
+            <dd className="mono-text">{values.apiKey ? maskSecret(values.apiKey) : '-'}</dd>
+            <dt>{copy.fields.environment.label}</dt>
+            <dd>{values.environment === 'production' ? copy.environments.production : copy.environments.sandbox}</dd>
+            <dt>{copy.review.productCatalogue}</dt>
+            <dd>{catalogueMode === 'none' ? copy.review.noCatalogue : copy.review.linkedLater}</dd>
+            <dt>{copy.review.deliveryOnDocuments}</dt>
+            <dd>{deliverySummary}</dd>
+            <BuyerDataWizardReviewRows value={buyerDataValue} />
+            <dt>{orderStartCopy.review.label}</dt>
+            <dd>{describeOrderSyncStart(values.orderSyncStart, orderStartCopy.review, format.date)}</dd>
+          </dl>
+          </>
+        ) : null}
+
+        {createdConnectionId ? (
+          <>
+            <dl className="definition-list">
+              <TargetShopRow connectionId={createdConnectionId} />
+            </dl>
+            <ShippingNextStep connectionId={createdConnectionId} />
+            {testResult ? (
+              <Alert
+                tone={testResult.success ? 'success' : 'error'}
+                title={testResult.success ? copy.testPassed : copy.testFailed}
+              >
+                {testResult.success ? null : describeConnectionTestFailure(testResult)}
+                {typeof testResult.latencyMs === 'number'
+                  ? ` ${interpolate(copy.latency, { ms: format.number(testResult.latencyMs) })}`
+                  : null}
+              </Alert>
+            ) : null}
+            {testConnection.error ? (
+              <Alert tone="error" title={copy.testError}>
+                {describeApiError(testConnection.error, 'connections')}
+              </Alert>
+            ) : null}
+            <div className="form-actions">
+              <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>
+                {testConnection.isPending ? copy.testing : copy.test}
+              </Button>
+              <Button tone="secondary" type="button" onClick={() => void navigate('/connections')}>
+                {copy.done}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="wizard-actions">
+            <div className="wizard-actions__group">
+              {stepIndex > 0 ? (
+                <Button tone="secondary" type="button" onClick={goBack}>
+                  {setupCopy.back}
+                </Button>
+              ) : null}
+            </div>
+            <div className="wizard-actions__group">
+              {stepIndex < STEP_LABELS.length - 1 ? (
+                <Button key="next" type="button" onClick={() => void goNext()}>
+                  {setupCopy.next}
+                </Button>
+              ) : (
+                <Button key="submit" type="submit" disabled={createConnection.isPending}>
+                  {createConnection.isPending ? copy.connecting : interpolate(copy.connect, { platform })}
+                </Button>
+              )}
+            </div>
           </div>
-        </>
-      ) : (
-        <div className="form-actions">
-          <Button type="submit" disabled={createConnection.isPending}>
-            {createConnection.isPending ? 'Connecting…' : 'Connect Erli'}
-          </Button>
-        </div>
-      )}
-    </form>
+        )}
+      </form>
+    </WizardLayout>
   );
 }

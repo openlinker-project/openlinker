@@ -10,6 +10,7 @@ import {
 import { ProductsListPage } from './products-list-page';
 import type { PaginatedProducts } from '../../features/products/api/products.types';
 import type * as DemoModule from '../../features/demo';
+import { getMessages } from '../../shared/i18n';
 
 const captureDemoEvent = vi.fn();
 vi.mock('../../features/demo', async (importOriginal): Promise<typeof DemoModule> => {
@@ -89,29 +90,7 @@ const sampleProducts: PaginatedProducts = {
 /** Main table-query pagination - distinguishes it from limit:1 KPI probes. */
 const PAGE = { limit: 20, offset: 0 };
 
-/**
- * Forces the narrow (<1024px) filter-collapse breakpoint WITHOUT tripping the
- * DataTable card breakpoint (767.98px), so the table layout stays intact and
- * only the filter rail collapses behind the "Filters" toggle.
- */
-function mockNarrowViewport(): { restore: () => void } {
-  const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
-    (query) =>
-      ({
-        matches: query.includes('1023.98'),
-        media: query,
-        onchange: null,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        addListener: () => {},
-        removeListener: () => {},
-        dispatchEvent: () => false,
-      }) as MediaQueryList,
-  );
-  return { restore: () => spy.mockRestore() };
-}
-
-/** Trips every media query - both the filter-collapse and DataTable's own card breakpoint. */
+/** Trips every media query, DataTable's card breakpoint included. */
 function mockMobileViewport(): { restore: () => void } {
   const spy = vi.spyOn(window, 'matchMedia').mockImplementation(
     (query) =>
@@ -146,6 +125,38 @@ describe('ProductsListPage', () => {
   });
   afterEach(cleanup);
 
+  it('should warn that deleted products are still on sale and link to the listings filter', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      listings: { getSaleHoldAttentionCount: vi.fn().mockResolvedValue({ productsStillOnSale: 3 }) } as never,
+    });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    const banner = await screen.findByTestId('sale-hold-banner');
+    expect(banner).toHaveTextContent('3 products deleted at the source are still on sale');
+    expect(screen.getByRole('link', { name: 'Show these listings' })).toHaveAttribute(
+      'href',
+      '/listings?staleSignal=selling',
+    );
+  });
+
+  it('should say the count could not be read instead of showing nothing', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      listings: { getSaleHoldAttentionCount: vi.fn().mockRejectedValue(new Error('down')) } as never,
+    });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    expect(await screen.findByTestId('sale-hold-banner-failed')).toBeInTheDocument();
+  });
+
+  it('should show no sale-hold banner when nothing deleted is still on sale', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+    });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    await screen.findAllByRole('status');
+    expect(screen.queryByTestId('sale-hold-banner')).not.toBeInTheDocument();
+  });
+
   it('should show loading state initially', () => {
     const mockApi = createMockApiClient({
       products: {
@@ -155,7 +166,30 @@ describe('ProductsListPage', () => {
 
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    // More than one status region: the skeleton and (for a session that cannot
+    // write bundles) the view-only notice (#3624).
+    expect(screen.getAllByRole('status').length).toBeGreaterThan(0);
+  });
+
+  it('should open the peek for a product off the current page when ?peek= names it', async () => {
+    const offPage = { ...sampleProducts.items[0], id: 'ol_product_offpage', name: 'Off Page Product' };
+    const list = vi.fn().mockImplementation((filters?: { productId?: string }) =>
+      Promise.resolve(
+        filters?.productId === 'ol_product_offpage'
+          ? { ...sampleProducts, items: [offPage], total: 1 }
+          : sampleProducts,
+      ),
+    );
+    const mockApi = createMockApiClient({ products: { list } });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi, route: '/products?peek=ol_product_offpage' });
+
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText('Off Page Product')).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ productId: 'ol_product_offpage' }),
+      expect.objectContaining({ limit: 1 }),
+    );
   });
 
   it('should show products table when data loads', async () => {
@@ -173,6 +207,19 @@ describe('ProductsListPage', () => {
     expect(screen.getByText(/29[.,]99/)).toBeInTheDocument();
     expect(screen.getByText(/PLN/)).toBeInTheDocument();
     expect(screen.getByText('Another Product')).toBeInTheDocument();
+  });
+
+  it('should carry the stock list test ids from the stock mockup on the table, rows and name links', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    expect(screen.getByTestId('stock-list-table')).toBeInTheDocument();
+    const row = screen.getByTestId('stock-list-row-SKU-001');
+    expect(within(row).getByTestId('stock-list-open-SKU-001')).toHaveTextContent('Test Product');
   });
 
   it('captures demo_products_viewed once with a result-count bucket on load (#1788)', async () => {
@@ -217,6 +264,40 @@ describe('ProductsListPage', () => {
     expect(within(table).getByText('In stock')).toBeInTheDocument();
     expect(within(table).getByText('Low stock')).toBeInTheDocument();
     expect(within(table).getByText('reserved 2')).toBeInTheDocument();
+  });
+
+  it('renders the stock badge from what can be sold and never shows null as out of stock', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue({
+          ...sampleProducts,
+          items: [
+            { ...sampleProducts.items[0]!, totalAvailable: 40, availableToPromise: 3, atpProvenance: 'computed' },
+            { ...sampleProducts.items[1]!, totalAvailable: 0, availableToPromise: null, atpProvenance: 'unknown' },
+          ],
+        }),
+      },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    const table = screen.getByRole('table');
+    // Master says 40 (would read "In stock"); available to promise is 3.
+    expect(within(table).getByText('Low stock')).toBeInTheDocument();
+    expect(within(table).getByText('master 40')).toBeInTheDocument();
+    expect(within(table).getAllByText('Not known').length).toBeGreaterThan(0);
+    // "Unknown" is still the name a connection chip falls back to for an
+    // unresolved connection; what must never carry it is a stock badge.
+    const unknownLabels = within(table)
+      .queryAllByText('Unknown')
+      .filter(
+        (el) =>
+          !el.classList.contains('connection-chip__label') &&
+          !el.classList.contains('connection-chip__name'),
+      );
+    expect(unknownLabels).toHaveLength(0);
+    expect(within(table).queryByText('Out of stock')).toBeNull();
   });
 
   it('renders coverage pills only for connections the operator has (Allegro-only install)', async () => {
@@ -324,7 +405,7 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     expect(await screen.findByText('Unable to load products')).toBeInTheDocument();
-    expect(screen.getAllByText('Network error').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(getMessages('errors').status.other).length).toBeGreaterThan(0);
   });
 
   it('should render a thumbnail image for products with an image URL', async () => {
@@ -398,20 +479,19 @@ describe('ProductsListPage', () => {
     expect(await screen.findByRole('link', { name: 'Manage connections' })).toBeInTheDocument();
   });
 
-  // ── KPI tiles as filters (#1720) ────────────────────────────────────
+  // ── Stock tabs (#4027) ───────────────────────────────────────────────
 
-  it('KPI tile click writes stock=out to the URL and refetches with the filter', async () => {
+  it('stock tab click writes stock=out to the URL and refetches with the filter', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const list = vi.fn().mockResolvedValue(sampleProducts);
     const mockApi = createMockApiClient({ products: { list } });
 
-    const { container } = renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await screen.findByText('Test Product');
-    // Segment buttons: [0] Products, [1] Out of stock, [2] Low stock.
-    const segments = container.querySelectorAll<HTMLButtonElement>('.products-segment');
-    expect(segments.length).toBeGreaterThanOrEqual(3);
-    await user.click(segments[1]);
+    const tab = screen.getByRole('button', { name: /^Out of stock/ });
+    expect(tab).not.toHaveAttribute('aria-current');
+    await user.click(tab);
 
     // URL state is asserted through its observable effect: the refetch with
     // the stock filter (MemoryRouter keeps window.location untouched).
@@ -422,10 +502,57 @@ describe('ProductsListPage', () => {
         expect.anything(),
       );
     });
-    expect(segments[1]).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^Out of stock/ })).toHaveAttribute('aria-current', 'true');
   });
 
-  it('renders the Listing gaps tile only when an OfferCreator connection exists', async () => {
+  it('renders the stock views and the tax-rate view with probe counts, Oversold included', async () => {
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    const tabs = within(screen.getByRole('group', { name: 'Views' })).getAllByRole('button');
+    expect(tabs.map((t) => t.textContent?.replace(/\d+/g, '').trim())).toEqual([
+      'All products',
+      'Out of stock',
+      'Low stock',
+      'Oversold',
+      'No tax rate',
+    ]);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Oversold/ })).toHaveTextContent('2');
+    });
+  });
+
+  it('counts the KPI and per-connection probes through /products/count, never a limit:1 list read (#4027)', async () => {
+    const list = vi.fn().mockResolvedValue(sampleProducts);
+    const count = vi.fn().mockResolvedValue({ total: 2 });
+    const mockApi = createMockApiClient({
+      products: { list, count },
+      connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
+    });
+
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Oversold/ })).toHaveTextContent('2');
+    });
+    expect(count).toHaveBeenCalledWith(
+      expect.objectContaining({ stock: 'oversold' }),
+      expect.anything(),
+    );
+    expect(count).toHaveBeenCalledWith(
+      expect.objectContaining({ unlistedOn: ['conn_allegro'] }),
+      expect.anything(),
+    );
+    expect(list.mock.calls.some(([, pagination]) => pagination?.limit === 1)).toBe(false);
+  });
+
+  // ── Needs a look (#4027) ────────────────────────────────────────────
+
+  it('leaves listing gaps out of Needs a look when no OfferCreator connection exists', async () => {
     const mockApi = createMockApiClient({
       products: { list: vi.fn().mockResolvedValue(sampleProducts) },
       connections: { list: vi.fn().mockResolvedValue([]) },
@@ -434,10 +561,10 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await screen.findByText('Test Product');
-    expect(screen.queryByText('Listing gaps')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /listing gaps/ })).not.toBeInTheDocument();
   });
 
-  it('Listing gaps tile toggles unlistedOn with all OfferCreator connection ids', async () => {
+  it('"On any marketplace" toggles unlistedOn with all OfferCreator connection ids', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const list = vi.fn().mockResolvedValue(sampleProducts);
     const mockApi = createMockApiClient({
@@ -448,8 +575,8 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await screen.findByText('Test Product');
-    const gapsTile = await screen.findByText('Listing gaps');
-    await user.click(gapsTile);
+    await user.click(await screen.findByRole('button', { name: /listing gaps/ }));
+    await user.click(await screen.findByRole('button', { name: /On any marketplace/ }));
 
     await waitFor(() => {
       expect(list).toHaveBeenCalledWith(
@@ -460,34 +587,34 @@ describe('ProductsListPage', () => {
     });
   });
 
-  // ── Filter chips (#1720) ────────────────────────────────────────────
-
-  it('stock chip toggles the filter on and off', async () => {
+  it('"Never checked" in the tax group filters by taxRateState=not-checked', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const list = vi.fn().mockResolvedValue(sampleProducts);
-    const mockApi = createMockApiClient({ products: { list } });
+    const shopConnection = {
+      id: 'conn_presta',
+      name: 'My shop',
+      status: 'active',
+      platformType: 'prestashop',
+      supportedCapabilities: ['ProductMaster'],
+    } as const;
+    const mockApi = createMockApiClient({
+      products: { list },
+      connections: { list: vi.fn().mockResolvedValue([shopConnection]) },
+    });
 
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await screen.findByText('Test Product');
-    const chip = screen.getByRole('button', { name: 'Oversold' });
-    expect(chip).toHaveAttribute('aria-pressed', 'false');
-    await user.click(chip);
+    await user.click(await screen.findByRole('button', { name: /no tax rate/ }));
+    await user.click(await screen.findByRole('button', { name: /Never checked/ }));
 
-    expect(chip).toHaveAttribute('aria-pressed', 'true');
     await waitFor(() => {
       expect(list).toHaveBeenCalledWith(
-        expect.objectContaining({ stock: 'oversold' }),
+        expect.objectContaining({ taxRateState: 'not-checked' }),
         PAGE,
         expect.anything(),
       );
     });
-
-    await user.click(screen.getByRole('button', { name: 'Oversold' }));
-    expect(screen.getByRole('button', { name: 'Oversold' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
   });
 
   // ── Deleted-at-source badge + filter (#2447) ──────────────────────
@@ -529,7 +656,9 @@ describe('ProductsListPage', () => {
     expect(screen.getByText('Deleted at source')).toBeInTheDocument();
   });
 
-  it('"Hide deleted at source" chip toggles the hideFullyStale filter on and off', async () => {
+  // ── Toolbar, Filters panel and pills (#4027) ────────────────────────
+
+  it('"Hide products deleted at source" in the Filters panel toggles hideFullyStale', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const list = vi.fn().mockResolvedValue(sampleProducts);
     const mockApi = createMockApiClient({ products: { list } });
@@ -537,11 +666,11 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await screen.findByText('Test Product');
-    const chip = screen.getByRole('button', { name: 'Hide deleted at source' });
-    expect(chip).toHaveAttribute('aria-pressed', 'false');
-    await user.click(chip);
+    await user.click(screen.getByTestId('products-filter-toggle'));
+    const check = await screen.findByRole('checkbox', { name: /Hide products deleted at source/ });
+    expect(check).not.toBeChecked();
+    await user.click(check);
 
-    expect(chip).toHaveAttribute('aria-pressed', 'true');
     await waitFor(() => {
       expect(list).toHaveBeenCalledWith(
         expect.objectContaining({ hideFullyStale: true }),
@@ -549,15 +678,10 @@ describe('ProductsListPage', () => {
         expect.anything(),
       );
     });
-
-    await user.click(screen.getByRole('button', { name: 'Hide deleted at source' }));
-    expect(screen.getByRole('button', { name: 'Hide deleted at source' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    expect(screen.getByRole('checkbox', { name: /Hide products deleted at source/ })).toBeChecked();
   });
 
-  it('per-connection Unlisted-on chip writes that single connection id', async () => {
+  it('the Listings dropdown writes a single connection id', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const list = vi.fn().mockResolvedValue(sampleProducts);
     const mockApi = createMockApiClient({
@@ -568,10 +692,9 @@ describe('ProductsListPage', () => {
     renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
     await screen.findByText('Test Product');
-    const chip = await screen.findByRole('button', { name: 'Unlisted on My Allegro' });
-    await user.click(chip);
+    await user.click(await screen.findByRole('button', { name: /^Listings/ }));
+    await user.click(await screen.findByRole('button', { name: /^Unlisted on Allegro/ }));
 
-    expect(chip).toHaveAttribute('aria-pressed', 'true');
     await waitFor(() => {
       expect(list).toHaveBeenCalledWith(
         expect.objectContaining({ unlistedOn: ['conn_allegro'] }),
@@ -581,68 +704,45 @@ describe('ProductsListPage', () => {
     });
   });
 
-  // ── Narrow-viewport filter collapse (#1720 scope addition) ─────────
+  it('shows applied filters as pills and Clear all keeps the stock tab', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const list = vi.fn().mockResolvedValue(sampleProducts);
+    const mockApi = createMockApiClient({ products: { list } });
 
-  it('collapses the filter rail behind a Filters toggle below 1024px', async () => {
-    const viewport = mockNarrowViewport();
-    try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      const mockApi = createMockApiClient({
-        products: { list: vi.fn().mockResolvedValue(sampleProducts) },
-        connections: { list: vi.fn().mockResolvedValue([allegroConnection]) },
-      });
+    renderWithProviders(<ProductsListPage />, {
+      apiClient: mockApi,
+      route: '/products?stock=low&hideStale=1',
+    });
 
-      renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+    await screen.findByText('Test Product');
+    expect(screen.getByText('Deleted at source')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear all' }));
 
-      await screen.findByText('Test Product');
-      // Collapsed by default: chips and source select are hidden, toggle shows.
-      expect(screen.queryByRole('button', { name: 'Oversold' })).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('combobox', { name: 'Filter by source connection' }),
-      ).not.toBeInTheDocument();
-      const toggle = screen.getByRole('button', { name: /^Filters/ });
-      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    // The table query refetches without hideFullyStale and still on the Low stock tab.
+    await waitFor(() => {
+      const tableCalls = list.mock.calls.filter(([, pagination, sort]) => pagination?.limit === PAGE.limit && sort !== undefined);
+      const last = tableCalls[tableCalls.length - 1]?.[0] as Record<string, unknown> | undefined;
+      expect(last).toMatchObject({ stock: 'low' });
+      expect(last?.hideFullyStale).toBeUndefined();
+    });
+    expect(screen.queryByText('Deleted at source')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Low stock/ })).toHaveAttribute('aria-current', 'true');
+  });
 
-      await user.click(toggle);
-      expect(toggle).toHaveAttribute('aria-expanded', 'true');
-      // Panel groups: Stock chips, Listings chips, Source select, Sort control.
-      expect(screen.getByRole('button', { name: 'Oversold' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Unlisted on My Allegro' })).toBeInTheDocument();
-      expect(
-        screen.getByRole('combobox', { name: 'Filter by source connection' }),
-      ).toBeInTheDocument();
+  it('has no Sort menu: the Product header SKU button writes sort=sku asc', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const list = vi.fn().mockResolvedValue(sampleProducts);
+    const mockApi = createMockApiClient({ products: { list } });
 
-      // Sort group drives the same sort/dir server params as the wide headers.
-      const list = mockApi.products.list as ReturnType<typeof vi.fn>;
-      await user.selectOptions(screen.getByRole('combobox', { name: 'Sort by' }), 'price');
-      await waitFor(() => {
-        expect(list).toHaveBeenCalledWith(expect.anything(), PAGE, {
-          field: 'price',
-          dir: 'desc',
-        });
-      });
-      await user.click(screen.getByRole('button', { name: 'Asc' }));
-      await waitFor(() => {
-        expect(list).toHaveBeenCalledWith(expect.anything(), PAGE, {
-          field: 'price',
-          dir: 'asc',
-        });
-      });
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
-      // Chip inside the panel writes the same URL state as the wide rail.
-      await user.click(screen.getByRole('button', { name: 'Oversold' }));
-      await waitFor(() => {
-        expect(list).toHaveBeenCalledWith(
-          expect.objectContaining({ stock: 'oversold' }),
-          PAGE,
-          expect.anything(),
-        );
-      });
-      // Toggle badge reflects the active-filter count.
-      expect(screen.getByRole('button', { name: /^Filters/ })).toHaveTextContent('1');
-    } finally {
-      viewport.restore();
-    }
+    await screen.findByText('Test Product');
+    expect(screen.queryByRole('button', { name: 'Sort products' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /^SKU/ }));
+
+    await waitFor(() => {
+      expect(list).toHaveBeenCalledWith(expect.anything(), PAGE, { field: 'sku', dir: 'asc' });
+    });
   });
 
   // ── Server-side sorting (#1720) ─────────────────────────────────────
@@ -669,34 +769,101 @@ describe('ProductsListPage', () => {
     });
   });
 
-  // ── Mobile card disclosure (#1720) ──────────────────────────────────
+  it('should say to sell on the desktop row and never to promise', async () => {
+    const mockApi = createMockApiClient({
+      products: {
+        list: vi.fn().mockResolvedValue({
+          ...sampleProducts,
+          items: [{ ...sampleProducts.items[0]!, totalAvailable: 40, availableToPromise: 3, atpProvenance: 'computed' }],
+        }),
+      },
+    });
 
-  it('keeps the mobile card detail collapsed until the disclosure is toggled', async () => {
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    const cell = screen.getByTestId('stock-list-cell-SKU-001');
+    expect(cell).toHaveTextContent('3');
+    expect(cell).toHaveTextContent('to sell');
+    expect(cell).not.toHaveTextContent('promise');
+  });
+
+  it('should give a mobile card the same row and cell test ids as the desktop row, and say to sell', async () => {
     const { restore } = mockMobileViewport();
     try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      const getById = vi.fn().mockResolvedValue(null);
-      const inventoryList = vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 });
       const mockApi = createMockApiClient({
-        products: { list: vi.fn().mockResolvedValue(sampleProducts), getById },
-        inventory: { list: inventoryList },
+        products: {
+          list: vi.fn().mockResolvedValue({
+            ...sampleProducts,
+            items: [
+              { ...sampleProducts.items[0]!, totalAvailable: 40, availableToPromise: 3, atpProvenance: 'computed' },
+              { ...sampleProducts.items[1]!, totalAvailable: 0, availableToPromise: null, atpProvenance: 'unknown' },
+            ],
+          }),
+        },
       });
 
       renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
       await screen.findByText('Test Product');
-      const disclosure = screen.getByRole('button', { name: '2 variants' });
-      expect(disclosure).toHaveAttribute('aria-expanded', 'false');
-      // Collapsed: the detail's own queries never fire.
-      expect(getById).not.toHaveBeenCalled();
+      expect(screen.getByTestId('stock-list-cards')).toBeInTheDocument();
+      const card = screen.getByTestId('stock-list-row-SKU-001');
+      expect(within(card).getByTestId('stock-list-cell-SKU-001')).toHaveTextContent('3 to sell · Low stock');
+      const unknownCard = screen.getByTestId('stock-list-row-ol_product_def456');
+      expect(within(unknownCard).getByTestId('stock-list-cell-ol_product_def456')).toHaveTextContent('Not known');
+    } finally {
+      restore();
+    }
+  });
 
-      await user.click(disclosure);
+  // ── Product peek (#4027) ────────────────────────────────────────────
 
-      expect(disclosure).toHaveAttribute('aria-expanded', 'true');
-      await waitFor(() => { expect(getById).toHaveBeenCalledWith('ol_product_abc123'); });
+  it('opens the product peek from the arrow column and loads its detail only then', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const getById = vi.fn().mockResolvedValue(null);
+    const inventoryList = vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 });
+    const mockApi = createMockApiClient({
+      products: { list: vi.fn().mockResolvedValue(sampleProducts), getById },
+      inventory: { list: inventoryList },
+    });
 
-      await user.click(disclosure);
-      expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+    await screen.findByText('Test Product');
+    // Closed: the detail's own queries never fire.
+    expect(getById).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Open details for Test Product' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('1 of 2')).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: 'Open product' })).toHaveAttribute(
+      'href',
+      '/products/ol_product_abc123',
+    );
+    await waitFor(() => { expect(getById).toHaveBeenCalledWith('ol_product_abc123'); });
+
+    // j walks to the next product without closing.
+    await user.keyboard('j');
+    expect(await within(dialog).findByText('2 of 2')).toBeInTheDocument();
+  });
+
+  it('opens the product peek from a mobile card', async () => {
+    const { restore } = mockMobileViewport();
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const mockApi = createMockApiClient({
+        products: { list: vi.fn().mockResolvedValue(sampleProducts), getById: vi.fn().mockResolvedValue(null) },
+        inventory: { list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }) },
+      });
+
+      renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Test Product');
+      await user.click(screen.getByText('Test Product'));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText('1 of 2')).toBeInTheDocument();
     } finally {
       restore();
     }
@@ -1067,7 +1234,9 @@ describe('ProductsListPage', () => {
       const chip = cell.querySelector('.connection-chip');
       expect(chip).not.toBeNull();
       expect(chip).toHaveAttribute('data-channel', 'prestashop');
-      expect(chip!.querySelector('.connection-chip__platform')).toHaveTextContent('PrestaShop');
+      // #4232: the name leads the face; the integration slides out.
+      expect(chip!.querySelector('.connection-chip__face')).toHaveTextContent('PrestaShop Terra Store');
+      expect(chip!.querySelector('.connection-chip__reveal')).toHaveTextContent('PrestaShop');
       expect(within(cell).getAllByRole('link')).toHaveLength(1);
 
       // Name over a shortened, copyable id — the fact the old cell dropped.
@@ -1175,7 +1344,7 @@ describe('ProductsListPage', () => {
       expect(getById).not.toHaveBeenCalled();
       // The pill still resolves: its platformType is on the product's own
       // external-id row, not on the connection the page could not find.
-      expect(cell.querySelector('.connection-chip__platform')).toHaveTextContent('PrestaShop');
+      expect(cell.querySelector('.connection-chip__reveal')).toHaveTextContent('PrestaShop');
     });
 
     it('renders erli and woocommerce source pills through the plugin registry, not the lowercase slug', async () => {
@@ -1341,7 +1510,7 @@ describe('ProductsListPage', () => {
       renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
 
       expect(await screen.findByText('Test Product')).toBeInTheDocument();
-      expect(screen.getAllByText('1+').length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/^1\+ results?$/).length).toBeGreaterThan(0);
     });
 
     it('keeps the placeholder when the count FAILS, and never renders it as 0', async () => {
@@ -1357,14 +1526,14 @@ describe('ProductsListPage', () => {
       expect(await screen.findByText('Test Product')).toBeInTheDocument();
       // A failed read must not become a positive claim that nothing matched.
       expect(await screen.findByTitle(/could not be loaded/i)).toBeInTheDocument();
-      expect(screen.getAllByText('1+').length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/^1\+ results?$/).length).toBeGreaterThan(0);
     });
   });
 
   describe('the two-stage total on a deep link (#2957 review round 4)', () => {
     it('claims no floor from a URL offset before a single row has loaded', async () => {
-      // `?offset=100` with the rows still in flight. The chip renders ABOVE the
-      // loading branch, so an ungated floor reads `All 100+` - a positive claim
+      // `?offset=100` with the rows still in flight. The results count renders
+      // ABOVE the loading branch, so an ungated floor reads `100+` - a positive claim
       // about the operator's catalogue computed entirely from the URL. The four
       // call-site gates are the fix; `formatPaginatedTotal(null, null)` is only
       // the helper beneath them, and reverting all four leaves every other
@@ -1378,8 +1547,280 @@ describe('ProductsListPage', () => {
 
       renderWithProviders(<ProductsListPage />, { apiClient: mockApi, route: '/products?offset=100' });
 
-      expect(await screen.findByText(/All\s+—/)).toBeInTheDocument();
-      expect(screen.queryByText(/All\s+100\+/)).not.toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /^All products/ })).toBeInTheDocument();
+      expect(screen.queryByText(/100\+/)).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Saved views (#4241) ──────────────────────────────────────────────
+
+  describe('saved views', () => {
+    it('opens on the All products view', async () => {
+      const mockApi = createMockApiClient({
+        products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      });
+
+      renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Test Product');
+      expect(screen.getByRole('button', { name: /^All products/ })).toHaveAttribute(
+        'aria-current',
+        'true',
+      );
+    });
+
+    it('reads the sort a link written in the old two-param spelling, and keeps it', async () => {
+      const list = vi.fn().mockResolvedValue(sampleProducts);
+      const mockApi = createMockApiClient({ products: { list } });
+
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: mockApi,
+        route: '/products?sort=name&dir=desc',
+      });
+
+      await screen.findByText('Test Product');
+      await waitFor(() => {
+        const sorted = list.mock.calls.filter((call) => call[2] !== undefined);
+        expect(sorted.at(-1)?.[2]).toEqual({ field: 'name', dir: 'desc' });
+      });
+    });
+
+    it('reads the sort in the engine spelling', async () => {
+      const list = vi.fn().mockResolvedValue(sampleProducts);
+      const mockApi = createMockApiClient({ products: { list } });
+
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: mockApi,
+        route: '/products?sort=price:asc',
+      });
+
+      await screen.findByText('Test Product');
+      expect(list).toHaveBeenCalledWith(expect.anything(), PAGE, { field: 'price', dir: 'asc' });
+    });
+
+    it('hides a column that the view drops', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const mockApi = createMockApiClient({
+        products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      });
+
+      renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Test Product');
+      expect(screen.getByRole('columnheader', { name: 'Listings' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /Columns & sort/ }));
+      await user.click(await screen.findByRole('checkbox', { name: /Listings/ }));
+      await user.click(screen.getAllByRole('button', { name: 'Done' })[0]);
+
+      await waitFor(() => {
+        expect(screen.queryByRole('columnheader', { name: 'Listings' })).not.toBeInTheDocument();
+      });
+    });
+
+    it('clears the selection when another view is opened', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const mockApi = createMockApiClient({
+        products: { list: vi.fn().mockResolvedValue(sampleProducts) },
+      });
+
+      renderWithProviders(<ProductsListPage />, { apiClient: mockApi });
+
+      await screen.findByText('Test Product');
+      await user.click(screen.getByRole('checkbox', { name: 'Select Test Product' }));
+      expect(screen.getByRole('checkbox', { name: 'Unselect Test Product' })).toBeChecked();
+
+      await user.click(screen.getByRole('button', { name: /^Low stock/ }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('checkbox', { name: 'Select Test Product' })).not.toBeChecked();
+      });
+    });
+  });
+
+  describe('bundles (#3624)', () => {
+    const base = {
+      description: null,
+      images: null,
+      currency: 'PLN',
+      createdAt: '2026-01-15T10:00:00.000Z',
+      updatedAt: '2026-01-15T10:00:00.000Z',
+      totalAvailable: 0,
+      totalReserved: 0,
+      variantCount: 1,
+      listingsCoverage: [],
+    };
+    const bundlePage: PaginatedProducts = {
+      items: [
+        {
+          ...base,
+          id: 'p-set',
+          name: 'Zestaw poranny',
+          sku: 'ZES-PORANNY',
+          price: 64.99,
+          availableToPromise: 1,
+          atpProvenance: 'computed',
+          bundle: {
+            variantId: 'v-set',
+            componentCount: 2,
+            limitedBy: { variantId: 'v-spoon', name: 'Lyzeczka do kawy', sku: 'LYZ-KAW' },
+            unknownComponent: null,
+          },
+        },
+        {
+          ...base,
+          id: 'p-brew',
+          name: 'Zestaw do parzenia',
+          sku: 'ZES-PARZENIE',
+          price: 139,
+          availableToPromise: null,
+          atpProvenance: 'unknown',
+          bundle: {
+            variantId: 'v-brew',
+            componentCount: 2,
+            limitedBy: null,
+            unknownComponent: { variantId: 'v-press', name: 'Zaparzacz', sku: 'ZAP-FP-800' },
+          },
+        },
+        {
+          ...base,
+          id: 'p-coffee',
+          name: 'Kawa ziarnista',
+          sku: 'KAW-250-ETI',
+          price: 34.99,
+          availableToPromise: 128,
+          atpProvenance: 'computed',
+          bundle: null,
+          usedInBundlesCount: 2,
+        },
+      ],
+      total: 3,
+      limit: 20,
+      offset: 0,
+    };
+
+    function mountBundles(route = '/products'): ReturnType<typeof createMockApiClient> {
+      const mockApi = createMockApiClient({
+        products: {
+          list: vi.fn().mockResolvedValue(bundlePage),
+          listRows: vi.fn().mockResolvedValue({ items: bundlePage.items, limit: 20, offset: 0 }),
+          count: vi.fn().mockResolvedValue({ total: 3 }),
+        },
+      });
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: mockApi,
+        route,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+      return mockApi;
+    }
+
+    it('should say how many bundles a component product is part of', async () => {
+      mountBundles();
+      expect(await screen.findByTestId('product-used-in-bundles-KAW-250-ETI')).toBeInTheDocument();
+      expect(screen.queryByTestId('product-used-in-bundles-ZES-PORANNY')).not.toBeInTheDocument();
+    });
+
+    it('should mark a bundle, show its availability and name the component that limits it', async () => {
+      mountBundles();
+      expect(await screen.findByTestId('bundle-list-available-ZES-PORANNY')).toHaveTextContent('1 set');
+      expect(screen.getByTestId('bundle-list-limiting-ZES-PORANNY')).toHaveTextContent(
+        'limited by: Lyzeczka do kawy',
+      );
+      // The repeated "calculated from components" tag moved out of the name cell.
+      expect(screen.queryByTestId('bundle-list-derived-ZES-PORANNY')).toBeNull();
+      // The make-a-bundle action lives on the product page, not on the row.
+      expect(screen.queryByTestId('bundle-list-make-bundle-KAW-250-ETI')).toBeNull();
+      expect(screen.queryByTestId('bundle-list-show-composition-ZES-PORANNY')).toBeNull();
+    });
+
+    it('should give an unknown bundle one state and one sentence of reason, never a zero', async () => {
+      mountBundles();
+      expect(await screen.findByTestId('bundle-list-reason-badge-ZES-PARZENIE')).toHaveTextContent(
+        'Availability unknown',
+      );
+      expect(screen.getByTestId('bundle-list-reason-ZES-PARZENIE')).toHaveTextContent(
+        'the stock of Zaparzacz is not known',
+      );
+      expect(screen.queryByTestId('bundle-list-available-ZES-PARZENIE')).toBeNull();
+    });
+
+    it('should ask for bundles only when the Bundles filter is chosen', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const mockApi = mountBundles();
+      await user.click(await screen.findByRole('button', { name: 'Product type' }));
+      await user.click(await screen.findByRole('button', { name: 'Bundles' }));
+      await waitFor(() => {
+        expect(mockApi.products.listRows).toHaveBeenCalledWith(
+          expect.objectContaining({ bundles: 'only' }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+    });
+
+    it('should ask for everything except bundles when Without bundles is chosen', async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      const mockApi = mountBundles();
+      await user.click(await screen.findByRole('button', { name: 'Product type' }));
+      await user.click(await screen.findByRole('button', { name: 'Without bundles' }));
+      await waitFor(() => {
+        expect(mockApi.products.listRows).toHaveBeenCalledWith(
+          expect.objectContaining({ bundles: 'exclude' }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+    });
+
+    it('should explain bundles and offer a first one when the bundle view is empty', async () => {
+      const mockApi = createMockApiClient({
+        products: {
+          list: vi.fn().mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 }),
+          listRows: vi.fn().mockResolvedValue({ items: [], limit: 20, offset: 0 }),
+          count: vi.fn().mockResolvedValue({ total: 0 }),
+        },
+      });
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: mockApi,
+        route: '/products?bundles=only',
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+      expect(await screen.findByText('You have no bundles yet')).toBeInTheDocument();
+      expect(screen.getByTestId('bundle-list-empty-create')).toHaveAttribute('href', '/products/bundles/new');
+    });
+
+    it('should read the legacy bundles=true link as the Bundles view', async () => {
+      const mockApi = mountBundles('/products?bundles=true');
+      await waitFor(() => {
+        expect(mockApi.products.listRows).toHaveBeenCalledWith(
+          expect.objectContaining({ bundles: 'only' }),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+    });
+
+    it('should show a viewer the same list with New bundle disabled and the reason on screen', async () => {
+      const mockApi = createMockApiClient({
+        products: {
+          list: vi.fn().mockResolvedValue(bundlePage),
+          listRows: vi.fn().mockResolvedValue({ items: bundlePage.items, limit: 20, offset: 0 }),
+          count: vi.fn().mockResolvedValue({ total: 3 }),
+        },
+      });
+      renderWithProviders(<ProductsListPage />, {
+        apiClient: mockApi,
+        sessionAdapter: createAuthenticatedSessionAdapter({
+          id: 'u',
+          username: 'viewer',
+          email: null,
+          role: 'viewer',
+          permissions: ['products:read'],
+          analyticsConsent: true,
+        }),
+      });
+      expect(await screen.findByTestId('bundle-list-readonly-notice')).toHaveTextContent('admin or operator role');
+      expect(screen.getByTestId('bundle-list-new-bundle')).toHaveAttribute('aria-disabled', 'true');
     });
   });
 });

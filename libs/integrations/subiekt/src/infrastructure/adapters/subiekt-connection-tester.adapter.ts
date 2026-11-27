@@ -59,6 +59,7 @@ export class SubiektConnectionTesterAdapter implements ConnectionTesterPort {
       if (typeof config.bridgeBaseUrl !== 'string' || config.bridgeBaseUrl.length === 0) {
         return {
           success: false,
+          outcome: 'misconfigured',
           message: 'Connection config is missing bridgeBaseUrl',
           latencyMs: Date.now() - startedAt,
         };

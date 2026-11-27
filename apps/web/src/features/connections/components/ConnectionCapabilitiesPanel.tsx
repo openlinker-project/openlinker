@@ -11,21 +11,35 @@
  *
  * @module apps/web/src/features/connections/components
  */
+import { interpolate, renderRich, useFormat, useMessages } from '../../../shared/i18n';
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
-import type { Connection, CoreCapability } from '../api/connections.types';
+import type { Connection, CoreCapability, OrderSyncStart } from '../api/connections.types';
 import { CORE_CAPABILITY_VALUES } from '../api/connections.types';
 import { useUpdateConnectionMutation } from '../hooks/use-update-connection-mutation';
+import { useAdaptersQuery } from '../../adapters';
+import {
+  ORDER_SYNC_START_DEFAULT_MODES,
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  orderSyncStartSchema,
+  toOrderSyncStart,
+  type OrderSyncStartValue,
+} from '../lib/order-sync-start';
+import { OrderSyncStartField } from './order-sync-start-field';
 import {
   CAPABILITY_HELP,
   capabilityConflictMessage,
   getCapabilityConflict,
+  hasMasterPublisherConflict,
 } from '../lib/capability-metadata';
-import { MCP_CONNECTION_CHANGE_HINT, MCP_TOOL_CAPABILITIES } from '../../mcp-tokens';
+import { MCP_TOOL_CAPABILITIES, useMcpConnectionChangeHint } from '../../mcp-tokens';
 import { AccessGate } from '../../../shared/ui/access-gate';
 import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+import { CapabilityName } from './capability-name';
 
 interface ConnectionCapabilitiesPanelProps {
   connection: Connection;
@@ -79,21 +93,34 @@ export function capabilityRowTestId(capability: string): string {
  * plainly false on a connection that only registers receipts, and half true
  * on one that does both.
  */
-function salesDocumentNoun(
+function salesDocumentKind(
   supportsInvoicing: boolean,
-  supportsFiscalization: boolean,
-): string {
-  if (supportsInvoicing && supportsFiscalization) return 'sales documents';
-  return supportsInvoicing ? 'invoices' : 'fiscal receipts';
+  supportsFiscalization: boolean
+): 'both' | 'invoices' | 'receipts' {
+  if (supportsInvoicing && supportsFiscalization) return 'both';
+  return supportsInvoicing ? 'invoices' : 'receipts';
 }
 
 export function ConnectionCapabilitiesPanel({
   connection,
   readOnly = false,
 }: ConnectionCapabilitiesPanelProps): ReactElement {
+  const copy = useMessages('connections').connectionCapabilitiesPanel;
+  const format = useFormat();
+  const mcpConnectionChangeHint = useMcpConnectionChangeHint();
   const updateMutation = useUpdateConnectionMutation();
   const { showToast } = useToast();
   const [pending, setPending] = useState<CoreCapability | null>(null);
+  const adapters = useAdaptersQuery();
+  const [startPrompt, setStartPrompt] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);
+  const [startValue, setStartValue] = useState<OrderSyncStartValue>(ORDER_SYNC_START_DEFAULT_VALUE);
+  const adapter =
+    adapters.data?.find((a) => a.adapterKey === connection.adapterKey) ??
+    adapters.data?.find((a) => a.platformType === connection.platformType && a.isDefault);
+  const supportedStartModes = adapter?.orderSyncStartModes ?? ORDER_SYNC_START_DEFAULT_MODES;
+  const startParsed = orderSyncStartSchema.safeParse(startValue);
+  const startError = startParsed.success ? undefined : startParsed.error.issues[0]?.message;
 
   // Today the panel only renders the well-known core capabilities (the
   // CoreCapabilityValues set, mirrored here as CORE_CAPABILITY_VALUES).
@@ -122,9 +149,7 @@ export function ConnectionCapabilitiesPanel({
   // hand-maintained mirror of the backend's McpToolCapabilityValues fails to COMPILE
   // if it ever drifts to a non-core capability. The reverse iteration would need a
   // `readonly string[]` cast and would silently accept the same drift.
-  const backsMcpTools = MCP_TOOL_CAPABILITIES.some((capability) =>
-    supported.includes(capability),
-  );
+  const backsMcpTools = MCP_TOOL_CAPABILITIES.some((capability) => supported.includes(capability));
 
   // Keyed on SUPPORTED, not ENABLED, for the same reason the MCP hint above
   // is: the note explains what enabling a role does and does NOT do, so it has
@@ -133,10 +158,33 @@ export function ConnectionCapabilitiesPanel({
   const supportsInvoicing = supported.includes('Invoicing');
   const supportsFiscalization = supported.includes('Fiscalization');
   const supportsSalesDocument = SALES_DOCUMENT_CAPABILITIES.some((capability) =>
-    supported.includes(capability),
+    supported.includes(capability)
   );
 
-  async function handleToggle(capability: CoreCapability, checked: boolean): Promise<void> {
+  async function handleToggle(
+    capability: CoreCapability,
+    checked: boolean,
+    orderSyncStart?: OrderSyncStart
+  ): Promise<void> {
+    // Switching order reading on is where the operator says how far back to read, so the
+    // choice comes before the write instead of silently defaulting to "only new orders".
+    if (
+      capability === 'OrderSource' &&
+      checked &&
+      !enabled.has('OrderSource') &&
+      supportedStartModes.length > 0 &&
+      orderSyncStart === undefined &&
+      !startPrompt
+    ) {
+      setStartPrompt(true);
+      return;
+    }
+    // Switching order reading off stops new orders arriving without any further sign, so it
+    // is confirmed first (the confirm step runs the toggle again with the flag set).
+    if (capability === 'OrderSource' && !checked && enabled.has('OrderSource') && !confirmOff) {
+      setConfirmOff(true);
+      return;
+    }
     const next = new Set(enabled);
     if (checked) {
       next.add(capability);
@@ -147,12 +195,18 @@ export function ConnectionCapabilitiesPanel({
     try {
       await updateMutation.mutateAsync({
         connectionId: connection.id,
-        input: { enabledCapabilities: Array.from(next) },
+        input: {
+          enabledCapabilities: Array.from(next),
+          ...(orderSyncStart ? { orderSyncStart } : {}),
+        },
       });
+      setStartPrompt(false);
+      setConfirmOff(false);
+      setStartValue(ORDER_SYNC_START_DEFAULT_VALUE);
       showToast({
         tone: 'success',
-        title: 'Capabilities updated',
-        description: `${capability} ${checked ? 'enabled' : 'disabled'}.`,
+        title: copy.updatedTitle,
+        description: interpolate(checked ? copy.enabledToast : copy.disabledToast, { capability }),
       });
     } catch {
       // mutation.error renders via Alert below
@@ -165,8 +219,8 @@ export function ConnectionCapabilitiesPanel({
     <div className="panel panel--dense">
       <div className="panel__header">
         <div>
-          <p className="eyebrow">Capabilities</p>
-          <h3 className="section-title">Enabled roles</h3>
+          <p className="eyebrow">{copy.eyebrow}</p>
+          <h3 className="section-title">{copy.title}</h3>
         </div>
         <span className="panel__meta" data-testid="capability-count">
           {/* Counter reflects the well-known core caps only — both sides
@@ -174,13 +228,16 @@ export function ConnectionCapabilitiesPanel({
            * ever stores plugin-registered capabilities, those are
            * excluded from both numerator and denominator until this
            * panel grows a separate plugin-cap surface. */}
-          {enabled.size} of {supported.length} enabled
+          {interpolate(copy.count, {
+            enabled: format.number(enabled.size),
+            total: format.number(supported.length),
+          })}
         </span>
       </div>
 
       {updateMutation.error ? (
-        <Alert tone="error" title="Unable to update capabilities">
-          {updateMutation.error.message}
+        <Alert tone="error" title={copy.errorTitle}>
+          {describeApiError(updateMutation.error, 'connections')}
         </Alert>
       ) : null}
 
@@ -191,12 +248,12 @@ export function ConnectionCapabilitiesPanel({
        * it cannot operate — hence a content gate, not a `ReadOnlyLock`. */}
       {backsMcpTools ? (
         <AccessGate require="connections:write">
-          <Alert tone="info">{MCP_CONNECTION_CHANGE_HINT}</Alert>
+          <Alert tone="info">{mcpConnectionChangeHint}</Alert>
         </AccessGate>
       ) : null}
 
       {supported.length > 0 ? (
-        <div className="capability-list__pills" aria-label="Supported capabilities">
+        <div className="capability-list__pills" aria-label={copy.supported}>
           {supported.map((capability) => (
             <StatusBadge
               key={`pill-${capability}`}
@@ -211,7 +268,7 @@ export function ConnectionCapabilitiesPanel({
       ) : null}
 
       {supported.length === 0 ? (
-        <p className="muted-text">This connection has no capabilities available to toggle here.</p>
+        <p className="muted-text">{copy.none}</p>
       ) : (
         <ul className="capability-list">
           {supported.map((capability) => {
@@ -238,7 +295,7 @@ export function ConnectionCapabilitiesPanel({
                     }
                     onChange={(e) => void handleToggle(capability, e.target.checked)}
                   />
-                  <span className="capability-list__name mono-text">{capability}</span>
+                  <CapabilityName capability={capability} />
                 </label>
                 <p className="capability-list__help muted-text">
                   {isBlocked && conflict
@@ -251,27 +308,101 @@ export function ConnectionCapabilitiesPanel({
         </ul>
       )}
 
+      {startPrompt ? (
+        <div className="capability-list__order-start" data-testid="capability-order-start">
+          <OrderSyncStartField
+            value={startValue}
+            onChange={setStartValue}
+            supportedModes={supportedStartModes}
+            windowImport={adapter?.orderWindowImport ?? false}
+            error={
+              startValue.mode === 'from' && (startValue.from ?? '') !== '' ? startError : undefined
+            }
+          />
+          <div className="capability-list__order-start-actions">
+            <Button
+              tone="secondary"
+              onClick={() => {
+                setStartPrompt(false);
+                setStartValue(ORDER_SYNC_START_DEFAULT_VALUE);
+              }}
+              disabled={updateMutation.isPending}
+            >
+              {copy.orderStart.cancel}
+            </Button>
+            <Button
+              tone="primary"
+              onClick={() =>
+                void handleToggle(
+                  'OrderSource',
+                  true,
+                  toOrderSyncStart(startValue) ?? { mode: 'now' }
+                )
+              }
+              disabled={!startParsed.success || updateMutation.isPending}
+            >
+              {copy.orderStart.confirm}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmOff ? (
+        <div className="capability-list__order-start" data-testid="capability-order-off-confirm">
+          <Alert tone="warning" title={copy.orderOff.title}>
+            {copy.orderOff.body}
+          </Alert>
+          <div className="capability-list__order-start-actions">
+            <Button
+              tone="secondary"
+              onClick={() => setConfirmOff(false)}
+              disabled={updateMutation.isPending}
+            >
+              {copy.orderOff.cancel}
+            </Button>
+            <Button
+              tone="primary"
+              onClick={() => void handleToggle('OrderSource', false)}
+              disabled={updateMutation.isPending}
+            >
+              {copy.orderOff.confirm}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {/* #3192 - the consequence an operator otherwise discovers by waiting:
        * a role makes the connection ELIGIBLE, it routes nothing to it. Not
        * gated on a permission, unlike the MCP hint above: that one instructs
        * the reader to go and reconnect an agent, whereas this states how the
        * system decides, which is as true for a viewer as for an admin. */}
       {supportsSalesDocument ? (
+        <Alert tone="info" data-testid="capability-routing-note" title={copy.routingNote.title}>
+          {renderRich(
+            copy.routingNote.body[salesDocumentKind(supportsInvoicing, supportsFiscalization)],
+            {
+              em: (text) => <em>{text}</em>,
+              link: (text) => <Link to="/settings/sales-documents">{text}</Link>,
+            }
+          )}
+        </Alert>
+      ) : null}
+
+      {/* A connection saved before the master/publisher exclusion (#3985) can
+       * still hold both. Saves are not refused for it, so say so once. */}
+      {hasMasterPublisherConflict(Array.from(enabled)) ? (
         <Alert
-          tone="info"
-          data-testid="capability-routing-note"
-          title="Enabling a role does not route anything to it"
+          tone="warning"
+          data-testid="capability-legacy-conflict"
+          title={copy.legacyMasterPublisher.title}
         >
-          This connection becomes <em>eligible</em> to issue{' '}
-          {salesDocumentNoun(supportsInvoicing, supportsFiscalization)}. Which orders
-          actually get one is decided under{' '}
-          <Link to="/settings/sales-documents">Sales documents routing</Link>, per country.
+          {copy.legacyMasterPublisher.body}
         </Alert>
       ) : null}
 
       {enabled.size === 0 && supported.length > 0 ? (
-        <Alert tone="warning" title="No capabilities enabled">
-          This connection is inactive for every capability. No sync jobs will use it.
+        <Alert tone="warning" title={copy.noneEnabled.title}>
+          {copy.noneEnabled.body}
         </Alert>
       ) : null}
     </div>

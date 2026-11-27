@@ -10,6 +10,7 @@
  * @module apps/web/src/features/content/components
  */
 import { useCallback, useMemo, useState, type ReactElement } from 'react';
+import { interpolate, useMessages, usePlural } from '../../../shared/i18n';
 import { MASTER_DESCRIPTION_FORMAT } from '../../../shared/ui';
 import { ChannelContentPanel } from './channel-content-panel';
 import { useSearchParams } from 'react-router-dom';
@@ -19,7 +20,6 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../shared/ui/tabs';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { useMediaQuery } from '../../../shared/ui/use-media-query';
-import { ApiError } from '../../../shared/api/api-error';
 import { Button } from '../../../shared/ui/button';
 import { extractPlatformErrors } from '../lib/extract-platform-errors';
 import { usePlatforms } from '../../../shared/plugins';
@@ -38,6 +38,7 @@ import type {
 } from '../api/content.types';
 import { ContentPanel } from './content-panel';
 import { SuggestionDialog } from './suggestion-dialog';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 
 interface ContentEditorProps {
   productId: string;
@@ -57,14 +58,9 @@ function fromTabValue(value: string, channels: ContentChannelState[]): ActiveTar
   return found ? { kind: 'channel', connectionId: found.connectionId } : { kind: 'master' };
 }
 
-function formatMutationError(err: unknown): string | null {
-  if (err === null || err === undefined) return null;
-  if (err instanceof ApiError) return err.message;
-  if (err instanceof Error) return err.message;
-  return 'Unknown error';
-}
-
 export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
+  const copy = useMessages('content').contentEditor;
+  const plural = usePlural();
   const query = useContentQuery(productId);
   const saveMutation = useSaveContentDraftMutation();
   const discardMutation = useDiscardContentDraftMutation();
@@ -78,7 +74,7 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
   const write = useWriteAccess('content:write', demoMode);
   const writeLockedReason = write.canWrite
     ? null
-    : 'You have read-only access to content. Saving, discarding, and publishing require operator or admin permissions.';
+    : copy.readOnlyAccess;
 
   // #478: depend on the destructured stable `mutateAsync` methods, not the
   // wrapping mutation objects — `useMutation` returns a fresh wrapper each
@@ -120,12 +116,12 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
             value,
           },
         });
-        showToast({ tone: 'success', description: 'Draft saved' });
+        showToast({ tone: 'success', description: copy.toasts.draftSaved });
       } catch {
         /* surfaced via saveMutation.error */
       }
     },
-    [productId, saveDraft, showToast],
+    [copy.toasts.draftSaved, productId, saveDraft, showToast],
   );
 
   const handleDiscard = useCallback(
@@ -138,12 +134,12 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
             fieldKey: 'description',
           },
         });
-        showToast({ tone: 'success', description: 'Draft discarded' });
+        showToast({ tone: 'success', description: copy.toasts.draftDiscarded });
       } catch {
         /* surfaced via discardMutation.error */
       }
     },
-    [discardDraft, productId, showToast],
+    [copy.toasts.draftDiscarded, discardDraft, productId, showToast],
   );
 
   const handlePublishConfirm = useCallback(async (): Promise<void> => {
@@ -158,36 +154,39 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
           fieldKey: 'description',
         },
       });
-      showToast({ tone: 'success', description: 'Published' });
+      showToast({ tone: 'success', description: copy.toasts.published });
     } catch {
       /* surfaced via publishMutation.error */
     }
-  }, [pendingPublish, productId, publishDraft, showToast]);
+  }, [copy.toasts.published, pendingPublish, productId, publishDraft, showToast]);
+
+  const connectionStatusLabel = (status: string): string => {
+    const labels: Record<string, string> = copy.channel.connectionStatus;
+    return Object.prototype.hasOwnProperty.call(labels, status) ? labels[status] : status;
+  };
 
   if (query.isLoading) {
-    return <LoadingState title="Loading content" message="Fetching descriptions…" />;
+    return <LoadingState title={copy.loading.title} message={copy.loading.message} />;
   }
 
   if (query.error) {
     return (
       <ErrorState
-        title="Unable to load content"
-        message={query.error.message}
-        action={<Button onClick={() => { void query.refetch(); }}>Retry</Button>}
+        title={copy.loadError.title}
+        message={describeApiError(query.error, 'content')}
+        action={<Button onClick={() => { void query.refetch(); }}>{copy.loadError.retry}</Button>}
       />
     );
   }
 
   if (!query.data) {
-    return <ErrorState title="Unable to load content" message="Unexpected empty response" />;
+    return <ErrorState title={copy.loadError.title} message={copy.loadError.emptyResponse} />;
   }
 
   const master: ContentMasterState = query.data.master;
   const busy = saveMutation.isPending || discardMutation.isPending || publishMutation.isPending;
-  const mutationError =
-    formatMutationError(saveMutation.error) ||
-    formatMutationError(discardMutation.error) ||
-    formatMutationError(publishMutation.error);
+  const failedMutation = saveMutation.error ?? discardMutation.error ?? publishMutation.error;
+  const mutationError = failedMutation ? describeApiError(failedMutation, 'content') : null;
   // #486 / #613: when the publish failure is a structured platform error
   // (today: Allegro's `CHANNEL_PUBLISH_FAILED` 422), surface the per-field
   // errors instead of the bare "API error (422):" string. The dispatcher
@@ -199,17 +198,17 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
   return (
     <div className="content-editor">
       <Tabs value={toTabValue(active)} onValueChange={setActive}>
-        <TabsList aria-label="Content targets">
+        <TabsList aria-label={copy.tabs.ariaLabel}>
           <TabsTrigger value="master">
-            Master
+            {copy.tabs.master}
             {master.hasConflict && (
               <StatusBadge tone="warning" compact className="content-editor__conflict-pill">
-                !
+                {copy.tabs.conflictMarker}
               </StatusBadge>
             )}
             {master.draftValue !== null && !master.hasConflict && (
               <StatusBadge tone="review" compact className="content-editor__conflict-pill">
-                draft
+                {copy.tabs.draft}
               </StatusBadge>
             )}
           </TabsTrigger>
@@ -218,12 +217,12 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
               {channel.connectionName}
               {channel.hasConflict && (
                 <StatusBadge tone="warning" compact className="content-editor__conflict-pill">
-                  !
+                  {copy.tabs.conflictMarker}
                 </StatusBadge>
               )}
               {channel.draftValue !== null && !channel.hasConflict && (
                 <StatusBadge tone="review" compact className="content-editor__conflict-pill">
-                  draft
+                  {copy.tabs.draft}
                 </StatusBadge>
               )}
             </TabsTrigger>
@@ -232,8 +231,8 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
 
         <TabsContent value="master">
           <ContentPanel
-            title="Master description"
-            subtitle="Canonical description. Publishing updates the product master and clears the draft."
+            title={copy.master.title}
+            subtitle={copy.master.subtitle}
             format={MASTER_DESCRIPTION_FORMAT}
             baseValue={master.baseValue}
             draftValue={master.draftValue}
@@ -281,27 +280,26 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
           const promptChannel = channel.platformType;
           const disabledReason =
             channel.connectionStatus !== 'active'
-              ? `Connection is ${channel.connectionStatus}. Re-activate to enable editing.`
+              ? interpolate(copy.channel.inactiveReason, {
+                  status: connectionStatusLabel(channel.connectionStatus),
+                })
               : writeLockedReason;
           return (
             <TabsContent key={channel.connectionId} value={channel.connectionId}>
               <ChannelContentPanel
                 connectionId={channel.connectionId}
                 title={channel.connectionName}
-                subtitle={
-                  <>
-                    {channel.platformType} · {channel.linkedOfferCount.toLocaleString()} linked
-                    offer{channel.linkedOfferCount === 1 ? '' : 's'}
-                  </>
-                }
+                subtitle={plural(channel.linkedOfferCount, copy.channel.linkedOffers, {
+                  platform: channel.platformType,
+                })}
                 statusSlot={
                   channel.connectionStatus === 'active' ? (
                     <StatusBadge tone="success" withDot>
-                      active
+                      {copy.channel.connectionStatus.active}
                     </StatusBadge>
                   ) : (
                     <StatusBadge tone="warning" withDot>
-                      {channel.connectionStatus}
+                      {connectionStatusLabel(channel.connectionStatus)}
                     </StatusBadge>
                   )
                 }
@@ -343,8 +341,8 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
       {channels.length === 0 && (
         <EmptyState
           liveRegion="off"
-          title="No eligible channels"
-          message="Channels appear here when an active connection with the OfferFieldUpdater capability has at least one linked offer for this product."
+          title={copy.noChannels.title}
+          message={copy.noChannels.message}
         />
       )}
 
@@ -353,13 +351,13 @@ export function ContentEditor({ productId }: ContentEditorProps): ReactElement {
         onOpenChange={(open) => {
           if (!open) setPendingPublish(null);
         }}
-        title="Publish description?"
+        title={copy.publishDialog.title}
         description={
           pendingPublish?.kind === 'master'
-            ? 'This will send the draft to the product master and clear the draft. External systems may reconcile.'
-            : 'This will push the draft to every linked offer on the selected channel and clear the draft.'
+            ? copy.publishDialog.masterDescription
+            : copy.publishDialog.channelDescription
         }
-        confirmLabel="Publish"
+        confirmLabel={copy.publishDialog.confirm}
         isConfirming={publishMutation.isPending}
         onConfirm={() => {
           void handlePublishConfirm();

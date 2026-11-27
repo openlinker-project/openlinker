@@ -43,6 +43,18 @@ export interface RouteOrderInput {
    * says (REVIEW C10).
    */
   readonly isCancelled: () => Promise<boolean>;
+
+  /**
+   * Whether the order still waits for the buyer's payment (#4033), read inside
+   * the lock for the same reason as `isCancelled`.
+   *
+   * Asked only when there is nothing to resume or already routed: a live
+   * decision may already be committed on the router's side and must be
+   * resumed, and an order that already has work keeps it. A `true` answer
+   * routes nothing and writes nothing, so the payment that arrives later is
+   * routed by the next ingestion of the order.
+   */
+  readonly isAwaitingPayment: () => Promise<boolean>;
 }
 
 /**
@@ -66,11 +78,16 @@ export type RoutingCommitOutcome =
    * Nothing was attempted and nothing was written.
    *
    * `already-routed` and `already-live-elsewhere` are the #2047 write-path
-   * guard refusing **regardless of router identity**.
+   * guard refusing **regardless of router identity**. `awaiting-payment`
+   * (#4033) means the order is not paid yet, so it is not routed until it is.
    */
   | {
       readonly status: 'skipped';
-      readonly reason: 'order-cancelled' | 'already-routed' | 'already-live-elsewhere';
+      readonly reason:
+        | 'order-cancelled'
+        | 'already-routed'
+        | 'already-live-elsewhere'
+        | 'awaiting-payment';
     }
   /**
    * A peer holds the lock. Answered from persisted state only — the router was
@@ -82,6 +99,13 @@ export type RoutingCommitOutcome =
       readonly status: 'refused';
       readonly decisionId: string;
       readonly reason: RoutingDecisionAbandonReason;
+      /**
+       * The router's own per-line reasons, distinct and sorted, when the plan
+       * was refused as `plan-carries-unfulfillable`; empty otherwise (#3476).
+       * Without them the operator learns only THAT a line cannot ship, not
+       * whether to restock or to fix the holder's connection.
+       */
+      readonly unfulfillableReasons: readonly string[];
     }
   /**
    * The router may or may not have committed on its side.

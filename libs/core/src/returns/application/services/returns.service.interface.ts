@@ -28,6 +28,7 @@ import type { ReturnSegmentCounts } from '../../domain/types/return-segment.type
 import type { ReturnTimelineForOrder } from '../../domain/types/return-timeline-entry.types';
 import type {
   ResolvableOrderLine,
+  ReturnOrderLineSuggestion,
   ReturnOrderLineUnresolvedReason,
 } from '../../domain/domain-services/return-order-line-resolution.domain-service';
 
@@ -73,6 +74,14 @@ export interface RecordReturnLineInput {
   note: string | null;
 }
 
+/** The order's lines as the caller knows them (E-14). */
+export interface RecordReturnOrderLines {
+  /** Channel lines an OpenLinker edit lowered to quantity 0. */
+  removedByEdit: ReadonlyArray<{ sku: string | null; name: string | null }>;
+  /** Lines still live after edits; a shared identity keeps a return acceptable. */
+  live: ReadonlyArray<{ sku: string | null; name: string | null }>;
+}
+
 /**
  * What an operator supplies to open a return in OpenLinker (#2372).
  *
@@ -90,6 +99,12 @@ export interface RecordReturnInput {
   internalOrderId: string;
   sourceConnectionId: string;
   lines: RecordReturnLineInput[];
+  /**
+   * The order's lines, supplied by the caller (E-14): `returns` takes no orders
+   * service, so the interface layer that already holds the order composes this.
+   * Absent means "not checked", never "nothing removed".
+   */
+  orderLines?: RecordReturnOrderLines;
   /** The operator. Nullable so a future non-interactive writer is expressible. */
   actorUserId: string | null;
 }
@@ -466,4 +481,30 @@ export interface IReturnsService {
     returnId: string,
     orderLines: readonly ResolvableOrderLine[]
   ): Promise<ReturnOrderLineResolutionSummary>;
+
+  /**
+   * Candidates and a suggestion for a return line whose order line is still
+   * unresolved (#3933). A read: nothing is written, and the operator confirms
+   * through {@link confirmOrderLineForReturnLine}. Order data enters as an
+   * argument because `returns` takes no orders-module edge.
+   */
+  suggestOrderLineForReturnLine(
+    returnLineId: string,
+    orderLines: readonly ResolvableOrderLine[]
+  ): Promise<ReturnOrderLineSuggestion & { alreadyResolvedOrderLineId: string | null }>;
+
+  /**
+   * The operator's confirmation of one order line for a return line. Goes through
+   * the SAME fill-in-when-NULL claim as automatic resolution, so a confirmation
+   * can never overwrite an answer. `orderLineId` must be one of `orderLines`.
+   *
+   * @returns `claimed: false` when the line was already resolved (by a peer or an
+   *   earlier run); the stored answer is unchanged.
+   * @throws {ReturnLineNotFoundError}
+   */
+  confirmOrderLineForReturnLine(
+    returnLineId: string,
+    orderLineId: string,
+    orderLines: readonly ResolvableOrderLine[]
+  ): Promise<{ claimed: boolean; known: boolean }>;
 }

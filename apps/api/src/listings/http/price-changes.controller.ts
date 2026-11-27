@@ -33,14 +33,10 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
-  ConflictException,
-  ForbiddenException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
@@ -56,6 +52,7 @@ import {
   type PriceChangeResolutionResult,
 } from '@openlinker/core/listings';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import {
@@ -271,7 +268,7 @@ export class PriceChangesController {
     message: string
   ): void {
     if (user.role !== requiredRole) {
-      throw new ForbiddenException(message);
+      throw codedHttpError(HttpStatus.FORBIDDEN, 'INSUFFICIENT_PERMISSIONS', message, { requiredRole });
     }
   }
 
@@ -286,15 +283,31 @@ export class PriceChangesController {
       return await fn();
     } catch (error) {
       if (error instanceof PriceChangeEpisodeNotFoundException) {
-        throw new NotFoundException(error.message);
+        throw codedHttpError(HttpStatus.NOT_FOUND, 'PRICE_CHANGE_NOT_FOUND', error.message, {
+          episodeId: error.episodeId,
+        });
       }
-      if (
-        error instanceof PriceChangeEpisodeAlreadyResolvedException ||
-        error instanceof PriceChangeEpisodeStaleException ||
-        error instanceof PriceChangeEpisodeSupersededError ||
-        error instanceof PriceChangeEpisodeInFlightException
-      ) {
-        throw new ConflictException(error.message);
+      if (error instanceof PriceChangeEpisodeAlreadyResolvedException) {
+        throw codedHttpError(HttpStatus.CONFLICT, 'PRICE_CHANGE_ALREADY_RESOLVED', error.message, {
+          episodeId: error.episodeId,
+        });
+      }
+      if (error instanceof PriceChangeEpisodeStaleException) {
+        throw codedHttpError(HttpStatus.CONFLICT, 'PRICE_CHANGE_STALE', error.message, {
+          episodeId: error.episodeId,
+          expectedVersion: error.expectedVersion,
+          currentVersion: error.currentVersion,
+        });
+      }
+      if (error instanceof PriceChangeEpisodeSupersededError) {
+        throw codedHttpError(HttpStatus.CONFLICT, 'PRICE_CHANGE_SUPERSEDED', error.message, {
+          episodeId: error.episodeId,
+        });
+      }
+      if (error instanceof PriceChangeEpisodeInFlightException) {
+        throw codedHttpError(HttpStatus.CONFLICT, 'PRICE_CHANGE_IN_FLIGHT', error.message, {
+          episodeId: error.episodeId,
+        });
       }
       if (error instanceof PriceChangeOverrideOutOfRangeException) {
         // The bound travels as FIELDS, not only inside the sentence (#3236
@@ -303,21 +316,34 @@ export class PriceChangesController {
         // `ReturnNotAttributedError.trigger` are both emitted as fields for
         // that reason — so the dialog can render "at most 3990 PLN" inline
         // instead of surfacing a paragraph in a toast.
-        throw new UnprocessableEntityException({
-          message: error.message,
-          error: 'Unprocessable Entity',
-          statusCode: 422,
-          outcome: error.outcome,
-          attempted: error.attempted,
-          computedAmount: error.computedAmount,
-          limit: error.limit,
-        });
+        throw codedHttpError(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          'PRICE_CHANGE_OVERRIDE_OUT_OF_RANGE',
+          error.message,
+          {
+            episodeId: error.episodeId,
+            outcome: error.outcome,
+            attempted: error.attempted,
+            computedAmount: error.computedAmount,
+            limit: error.limit,
+          },
+          {
+            error: 'Unprocessable Entity',
+            outcome: error.outcome,
+            attempted: error.attempted,
+            computedAmount: error.computedAmount,
+            limit: error.limit,
+          }
+        );
       }
       if (error instanceof PriceChangeEpisodeBlockedException) {
         // 422, not 400: the request is well-formed and the episode is
         // actionable — the VALUE is refused (#3222). 400 on this route is
         // already the DTO-shape failure.
-        throw new UnprocessableEntityException(error.message);
+        throw codedHttpError(HttpStatus.UNPROCESSABLE_ENTITY, 'PRICE_CHANGE_BLOCKED', error.message, {
+          episodeId: error.episodeId,
+          blockReason: error.blockReason,
+        });
       }
       throw error;
     }

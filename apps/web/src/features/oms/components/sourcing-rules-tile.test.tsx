@@ -8,8 +8,10 @@ import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
-import { SOURCING_RULES_TILE_COPY } from '../lib/sourcing-rule.copy';
+import { getMessages } from '../../../shared/i18n';
 import { SourcingRulesTile } from './sourcing-rules-tile';
+
+const SOURCING_RULES_TILE_COPY = getMessages('oms-core').sourcingRulesTile;
 
 describe('SourcingRulesTile (#3060)', () => {
   it('links to the route the page is registered at', () => {

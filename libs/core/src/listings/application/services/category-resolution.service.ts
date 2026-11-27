@@ -9,6 +9,12 @@
  * 3. Mapping — configured per-source-category → destination mapping
  * 4. Manual — returns null for the operator to choose
  *
+ * Steps 2 and 3 are not a plain fallback (#3994): when a barcode match and the
+ * operator's mapping both answer and disagree, the mapping wins. The mapping is
+ * an explicit operator statement; a barcode match is an inference from data
+ * that may be wrong or reused. A card is used only when no mapping exists or
+ * when it sits in the mapped category.
+ *
  * Returns a neutral `{ destinationCategoryId, provenance, method }`; `provenance`
  * (owns/borrows/open) is derived from the destination adapter's capabilities,
  * never its `platformType`.
@@ -119,11 +125,27 @@ export class CategoryResolutionService implements ICategoryResolutionService {
       return { destinationCategoryId: provisioned, provenance: 'open', method: 'provision' };
     }
 
+    // The operator's mapping is read up front, not only as a fallback (#3994):
+    // a barcode match is an inference from data that may be wrong or reused,
+    // the mapping is an explicit statement, so when both answer and disagree the
+    // mapping wins. It is therefore read EAGERLY whenever source categories are
+    // supplied, even when the barcode step would answer on its own - the
+    // precedence check needs both answers. It is skipped only when there are no
+    // source categories. Do not turn this back into a fallback after the barcode
+    // step: that silently restores barcode precedence.
+    const mapped =
+      sourceCategoryIds && sourceCategoryIds.length > 0
+        ? await this.tryCategoryMapping(connectionId, sourceCategoryIds, {
+            borrowedTaxonomy,
+            sourceConnectionId,
+          })
+        : null;
+
     // Step 2: Auto-detect via barcode
     if (barcode) {
       const autoDetected = await this.tryAutoDetect(connectionId, barcode);
       provenance = autoDetected.provenance;
-      if (autoDetected.categoryId) {
+      if (autoDetected.categoryId && (mapped === null || mapped === autoDetected.categoryId)) {
         this.logger.debug(
           `Category resolved via auto_detect (connection=${connectionId}, barcode=${barcode}, categoryId=${autoDetected.categoryId})`
         );
@@ -133,20 +155,23 @@ export class CategoryResolutionService implements ICategoryResolutionService {
           method: 'auto_detect',
         };
       }
+      if (autoDetected.categoryId && mapped !== null) {
+        // `debug`, like the batch/stream path: a disagreement is an expected,
+        // operator-visible state, not a fault, and a `warn` per variant would be
+        // noise on a large batch.
+        this.logger.debug(
+          `Barcode matched category ${autoDetected.categoryId} but the category mapping names ` +
+            `${mapped}; using the mapping (connection=${connectionId}, barcode=${barcode})`
+        );
+      }
     }
 
-    // Step 3: Category mapping fallback
-    if (sourceCategoryIds && sourceCategoryIds.length > 0) {
-      const mapped = await this.tryCategoryMapping(connectionId, sourceCategoryIds, {
-        borrowedTaxonomy,
-        sourceConnectionId,
-      });
-      if (mapped) {
-        this.logger.debug(
-          `Category resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`
-        );
-        return { destinationCategoryId: mapped, provenance, method: 'category_mapping' };
-      }
+    // Step 3: Category mapping
+    if (mapped) {
+      this.logger.debug(
+        `Category resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`
+      );
+      return { destinationCategoryId: mapped, provenance, method: 'category_mapping' };
     }
 
     // Step 4: Manual pick
@@ -201,8 +226,8 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     this.logger.debug(
       `Batch-resolving ${items.length} variant EAN(s) (connection=${connectionId})`
     );
-    // EAN catalogue match stays the PRIMARY path - the adapter only needs
-    // `{ variantId, ean }`; `sourceCategoryIds` is a core-owned fallback input.
+    // The adapter only needs `{ variantId, ean }`; `sourceCategoryIds` stays a
+    // core-owned input that `applyMappingPrecedence` checks every answer against.
     const eanResults = await matcher.resolveCategoriesForBatchByEan({
       items: items.map((item) => ({ variantId: item.variantId, ean: item.ean })),
     });
@@ -211,7 +236,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
     for (const item of items) {
       resolved.set(
         item.variantId,
-        await this.applyMappingFallback(
+        await this.applyMappingPrecedence(
           connectionId,
           item,
           eanResults.get(item.variantId) ?? { kind: 'no-match' },
@@ -332,7 +357,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
             continue;
           }
           seen.add(streamed.variantId);
-          const result = await this.applyMappingFallback(
+          const result = await this.applyMappingPrecedence(
             connectionId,
             item,
             streamed.result,
@@ -349,7 +374,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
             if (seen.has(item.variantId)) {
               continue;
             }
-            const result = await this.applyMappingFallback(
+            const result = await this.applyMappingPrecedence(
               connectionId,
               item,
               { kind: 'no-match' },
@@ -377,7 +402,7 @@ export class CategoryResolutionService implements ICategoryResolutionService {
           if (signal?.aborted) {
             break;
           }
-          const result = await this.applyMappingFallback(
+          const result = await this.applyMappingPrecedence(
             connectionId,
             item,
             eanResults.get(item.variantId) ?? { kind: 'no-match' },
@@ -616,58 +641,84 @@ export class CategoryResolutionService implements ICategoryResolutionService {
   }
 
   /**
-   * #1522 — mapping fallback, shared by the batch and streaming paths so the
-   * two can never disagree about a single item. When the EAN yields no
-   * catalogue match (or the variant has no EAN) and the item supplies source
-   * categories, consult the operator's configured per-source-category mapping —
-   * the same mapping `OfferBuilderService` honours at offer-build time — so the
-   * wizard preview agrees with the build. A hit resolves to a `matched` result
-   * with no catalogue card (the offer self-links by barcode at build time).
+   * The operator's category mapping, applied to one batch/stream outcome. Shared
+   * by both paths so the two can never disagree about a single item, and kept in
+   * line with `resolveCategory`, which the offer build runs, so the wizard
+   * preview and the build agree.
+   *
+   * - `no-match` / `no-ean` (#1522): a mapping hit resolves to a `matched`
+   *   result with no catalogue card; the offer self-links by barcode at build.
+   * - `matched` by the catalogue (#3994): the mapping is consulted too. A card in
+   *   the mapped category is kept and marked `mappingAgrees`. A card in any other
+   *   category is NOT used - the mapping is an explicit operator statement, the
+   *   barcode match an inference - and is reported as `overriddenCard` so the
+   *   operator can see it and pick it deliberately. Any differing leaf counts:
+   *   a card can only be linked in its own category, so there is no partial
+   *   agreement to keep.
+   * - `multi-match` is returned untouched; the operator already has to choose.
    */
-
-  private async applyMappingFallback(
+  private async applyMappingPrecedence(
     connectionId: string,
     item: BatchCategoryResolveItem,
     eanResult: EanMatchResult,
     borrowedTaxonomy: TaxonomyOwner | null
   ): Promise<EanMatchResult> {
-    if (
-      (eanResult.kind === 'no-match' || eanResult.kind === 'no-ean') &&
-      item.sourceCategoryIds &&
-      item.sourceCategoryIds.length > 0
-    ) {
-      // `borrowedTaxonomy` has to be threaded, not omitted: since #2210 a
-      // borrowing destination can reach this line (it borrows an owner's
-      // catalogue), and without the owner provenance `resolveDestinationCategory`
-      // would consult only rows keyed to the destination connection - never the
-      // #1045 rows the operator actually authored under the owner. The preview
-      // would then report `no-match` and gate a row that
-      // `OfferBuilderService.resolveCategory` resolves fine at build time, which
-      // is the one thing this shared fallback exists to prevent.
-      //
-      // `sourceConnectionId` stays unset because neither the batch input nor the
-      // stream transport carries one. The borrowed lookup therefore matches an
-      // owner row for ANY source store, where the build narrows to the master it
-      // is publishing from. That is deliberately the permissive direction: the
-      // preview may agree with the build where the build is stricter, and the
-      // operator sees an unresolved category at submit rather than a red row for
-      // a category that resolves.
-      const mapped = await this.tryCategoryMapping(connectionId, item.sourceCategoryIds, {
-        borrowedTaxonomy: borrowedTaxonomy ?? undefined,
-      });
-      if (mapped) {
-        this.logger.debug(
-          `Variant ${item.variantId} resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`
-        );
-        return {
-          kind: 'matched',
-          allegroCategoryId: mapped,
-          productCardId: '',
-          method: 'category_mapping',
-        };
-      }
+    const consultsMapping =
+      eanResult.kind === 'no-match' ||
+      eanResult.kind === 'no-ean' ||
+      (eanResult.kind === 'matched' && eanResult.method !== 'category_mapping');
+    if (!consultsMapping || !item.sourceCategoryIds || item.sourceCategoryIds.length === 0) {
+      return eanResult;
     }
-    return eanResult;
+    // `borrowedTaxonomy` has to be threaded, not omitted: since #2210 a
+    // borrowing destination can reach this line (it borrows an owner's
+    // catalogue), and without the owner provenance `resolveDestinationCategory`
+    // would consult only rows keyed to the destination connection - never the
+    // #1045 rows the operator actually authored under the owner. It is also what
+    // keeps the card and the mapping in the same owner scope, so comparing their
+    // ids is meaningful.
+    //
+    // `sourceConnectionId` stays unset because neither the batch input nor the
+    // stream transport carries one. The borrowed lookup therefore matches an
+    // owner row for ANY source store, where the build narrows to the master it
+    // is publishing from. That is deliberately the permissive direction: the
+    // preview may agree with the build where the build is stricter, and the
+    // operator sees an unresolved category at submit rather than a red row for
+    // a category that resolves.
+    const mapped = await this.tryCategoryMapping(connectionId, item.sourceCategoryIds, {
+      borrowedTaxonomy: borrowedTaxonomy ?? undefined,
+    });
+    if (!mapped) {
+      return eanResult;
+    }
+    if (eanResult.kind === 'matched') {
+      if (eanResult.allegroCategoryId === mapped) {
+        return { ...eanResult, mappingAgrees: true };
+      }
+      this.logger.debug(
+        `Variant ${item.variantId}: catalogue card in category ${eanResult.allegroCategoryId} ` +
+          `disagrees with the category mapping ${mapped}; using the mapping (connection=${connectionId})`
+      );
+      return {
+        kind: 'matched',
+        allegroCategoryId: mapped,
+        productCardId: '',
+        method: 'category_mapping',
+        overriddenCard: {
+          allegroCategoryId: eanResult.allegroCategoryId,
+          productCardId: eanResult.productCardId,
+        },
+      };
+    }
+    this.logger.debug(
+      `Variant ${item.variantId} resolved via category_mapping (connection=${connectionId}, categoryId=${mapped})`
+    );
+    return {
+      kind: 'matched',
+      allegroCategoryId: mapped,
+      productCardId: '',
+      method: 'category_mapping',
+    };
   }
 
   /**

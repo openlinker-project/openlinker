@@ -6,11 +6,9 @@ import {
   renderWithProviders,
   sampleConnection,
 } from '../../../test/test-utils';
-import {
-  ConnectionCapabilitiesPanel,
-  capabilityToggleTestId,
-} from './ConnectionCapabilitiesPanel';
+import { ConnectionCapabilitiesPanel, capabilityToggleTestId } from './ConnectionCapabilitiesPanel';
 import type { Connection } from '../api/connections.types';
+import { getMessages } from '../../../shared/i18n';
 
 describe('ConnectionCapabilitiesPanel', () => {
   afterEach(cleanup);
@@ -28,6 +26,43 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.getByText(/1 of 2 enabled/)).toBeInTheDocument();
   });
 
+  it('disables ProductPublisher while ProductMaster is on and explains why (#3985)', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'ProductPublisher'],
+      enabledCapabilities: ['ProductMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByRole('checkbox', { name: /ProductPublisher/ })).toBeDisabled();
+    expect(screen.getByText(/published products would be read back/)).toBeInTheDocument();
+    expect(screen.queryByTestId('capability-legacy-conflict')).not.toBeInTheDocument();
+  });
+
+  it('warns once on a connection that already holds both, and keeps both toggleable (#3985)', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'ProductPublisher'],
+      enabledCapabilities: ['ProductMaster', 'ProductPublisher'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.getByTestId('capability-legacy-conflict')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /ProductPublisher/ })).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: /ProductMaster/ })).toBeEnabled();
+  });
+
+  it('does not show the master/publisher warning for a legacy InventoryMaster + OfferManager pair', () => {
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['InventoryMaster', 'OfferManager'],
+      enabledCapabilities: ['InventoryMaster', 'OfferManager'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
+
+    expect(screen.queryByTestId('capability-legacy-conflict')).not.toBeInTheDocument();
+  });
+
   it('calls update mutation with new set when a capability is toggled', async () => {
     const update = vi.fn().mockResolvedValue({ ...sampleConnection });
     const apiClient = createMockApiClient({ connections: { update } });
@@ -42,15 +77,82 @@ describe('ConnectionCapabilitiesPanel', () => {
     });
 
     fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+    // Enabling order reading asks where to start first.
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable order reading' }));
 
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(
         connection.id,
         expect.objectContaining({
           enabledCapabilities: expect.arrayContaining(['ProductMaster', 'OrderSource']),
-        }),
-      ),
+          orderSyncStart: { mode: 'now' },
+        })
+      )
     );
+  });
+
+  it('sends the chosen start when order reading is switched on', async () => {
+    const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+    const apiClient = createMockApiClient({
+      connections: { update },
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          {
+            adapterKey: sampleConnection.adapterKey,
+            platformType: sampleConnection.platformType,
+            isDefault: true,
+            orderSyncStartModes: ['now', 'all'],
+          },
+        ]),
+      },
+    });
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'OrderSource'],
+      enabledCapabilities: ['ProductMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />, { apiClient });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Every order the shop has/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable order reading' }));
+
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith(
+        connection.id,
+        expect.objectContaining({ orderSyncStart: { mode: 'all' } })
+      )
+    );
+  });
+
+  it('enables order reading at once when the adapter offers no start choice', async () => {
+    const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+    const apiClient = createMockApiClient({
+      connections: { update },
+      adapters: {
+        list: vi.fn().mockResolvedValue([
+          {
+            adapterKey: sampleConnection.adapterKey,
+            platformType: sampleConnection.platformType,
+            isDefault: true,
+            orderSyncStartModes: [],
+          },
+        ]),
+      },
+    });
+    const connection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'OrderSource'],
+      enabledCapabilities: ['ProductMaster'],
+    };
+    renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />, { apiClient });
+
+    await waitFor(() => expect(apiClient.adapters.list).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    expect(update.mock.calls[0][1]).not.toHaveProperty('orderSyncStart');
   });
 
   it('renders supported capabilities as pills above the toggles', () => {
@@ -92,9 +194,10 @@ describe('ConnectionCapabilitiesPanel', () => {
     });
 
     fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Enable order reading' }));
 
     expect(await screen.findByText(/Unable to update capabilities/)).toBeInTheDocument();
-    expect(screen.getByText('API update failed')).toBeInTheDocument();
+    expect(screen.getByText(getMessages('errors').status.other)).toBeInTheDocument();
   });
 
   it('shows a notice when there are no supported capabilities', () => {
@@ -130,9 +233,7 @@ describe('ConnectionCapabilitiesPanel', () => {
     renderWithProviders(<ConnectionCapabilitiesPanel connection={connection} />);
 
     expect(screen.getByRole('checkbox', { name: /OfferManager/ })).toBeDisabled();
-    expect(
-      screen.getByText(/Unavailable while InventoryMaster is selected/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Unavailable while InventoryMaster is selected/)).toBeInTheDocument();
     // The non-conflicting checkboxes stay operable.
     expect(screen.getByRole('checkbox', { name: /ProductMaster/ })).toBeEnabled();
   });
@@ -209,7 +310,7 @@ describe('ConnectionCapabilitiesPanel', () => {
         <ConnectionCapabilitiesPanel
           connection={{ ...dualRoleConnection, enabledCapabilities: ['Fiscalization'] }}
         />,
-        { apiClient },
+        { apiClient }
       );
 
       fireEvent.click(screen.getByTestId('capability-toggle-invoicing'));
@@ -219,8 +320,8 @@ describe('ConnectionCapabilitiesPanel', () => {
           dualRoleConnection.id,
           expect.objectContaining({
             enabledCapabilities: expect.arrayContaining(['Fiscalization', 'Invoicing']),
-          }),
-        ),
+          })
+        )
       );
     });
 
@@ -232,7 +333,7 @@ describe('ConnectionCapabilitiesPanel', () => {
       expect(note).toHaveTextContent('per country');
       expect(within(note).getByRole('link', { name: 'Sales documents routing' })).toHaveAttribute(
         'href',
-        '/settings/sales-documents',
+        '/settings/sales-documents'
       );
     });
 
@@ -242,7 +343,7 @@ describe('ConnectionCapabilitiesPanel', () => {
       renderWithProviders(
         <ConnectionCapabilitiesPanel
           connection={{ ...dualRoleConnection, enabledCapabilities: [] }}
-        />,
+        />
       );
 
       expect(screen.getByTestId('capability-routing-note')).toBeInTheDocument();
@@ -259,7 +360,7 @@ describe('ConnectionCapabilitiesPanel', () => {
             supportedCapabilities: ['Fiscalization'],
             enabledCapabilities: ['Fiscalization'],
           }}
-        />,
+        />
       );
 
       const note = screen.getByTestId('capability-routing-note');
@@ -275,11 +376,11 @@ describe('ConnectionCapabilitiesPanel', () => {
             supportedCapabilities: ['Invoicing'],
             enabledCapabilities: ['Invoicing'],
           }}
-        />,
+        />
       );
 
       expect(screen.getByTestId('capability-routing-note')).toHaveTextContent(
-        'eligible to issue invoices',
+        'eligible to issue invoices'
       );
     });
 
@@ -291,7 +392,7 @@ describe('ConnectionCapabilitiesPanel', () => {
             supportedCapabilities: ['ProductMaster', 'OrderSource'],
             enabledCapabilities: ['ProductMaster'],
           }}
-        />,
+        />
       );
 
       expect(screen.queryByTestId('capability-routing-note')).toBeNull();
@@ -396,6 +497,60 @@ describe('ConnectionCapabilitiesPanel', () => {
         expect(await screen.findByText(/1 of 2 enabled/)).toBeInTheDocument();
         expect(screen.queryByText(/MCP tools follow these capabilities/)).not.toBeInTheDocument();
       });
+    });
+  });
+
+  describe('switching order reading off', () => {
+    const live: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['ProductMaster', 'OrderSource'],
+      enabledCapabilities: ['ProductMaster', 'OrderSource'],
+    };
+
+    it('should ask first and send nothing when the operator cancels', async () => {
+      const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={live} />, {
+        apiClient: createMockApiClient({ connections: { update } }),
+      });
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+      expect(await screen.findByText('Stop reading orders?')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(screen.queryByText('Stop reading orders?')).not.toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: /OrderSource/ })).toBeChecked();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('should send the update only after the operator confirms', async () => {
+      const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={live} />, {
+        apiClient: createMockApiClient({ connections: { update } }),
+      });
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /OrderSource/ }));
+      await screen.findByText('Stop reading orders?');
+      expect(update).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));
+
+      await waitFor(() =>
+        expect(update).toHaveBeenCalledWith(
+          live.id,
+          expect.objectContaining({ enabledCapabilities: ['ProductMaster'] })
+        )
+      );
+    });
+
+    it('should not ask when another capability is switched off', async () => {
+      const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={live} />, {
+        apiClient: createMockApiClient({ connections: { update } }),
+      });
+
+      fireEvent.click(screen.getByRole('checkbox', { name: /ProductMaster/ }));
+
+      await waitFor(() => expect(update).toHaveBeenCalled());
+      expect(screen.queryByText('Stop reading orders?')).not.toBeInTheDocument();
     });
   });
 });

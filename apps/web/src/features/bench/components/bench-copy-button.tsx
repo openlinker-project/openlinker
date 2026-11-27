@@ -28,7 +28,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 
-import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { interpolate, useMessages } from '../../../shared/i18n';
 
 export interface BenchCopyButtonProps {
   /** The value copied. Never rendered — the caller already shows it. */
@@ -38,6 +38,7 @@ export interface BenchCopyButtonProps {
 }
 
 export function BenchCopyButton({ value, what }: BenchCopyButtonProps): ReactElement {
+  const copyText = useMessages('bench').parcel.copy;
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -66,7 +67,7 @@ export function BenchCopyButton({ value, what }: BenchCopyButtonProps): ReactEle
       type="button"
       className="bench-copy-button"
       aria-label={
-        copied ? benchParcelCopy.copy.copied(what) : benchParcelCopy.copy.action(what)
+        interpolate(copied ? copyText.copied : copyText.action, { what })
       }
       onClick={copy}
     >

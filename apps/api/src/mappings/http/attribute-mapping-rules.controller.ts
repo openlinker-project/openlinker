@@ -11,20 +11,21 @@
  */
 
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   HttpCode,
+  type HttpException,
   HttpStatus,
+
   Inject,
-  NotFoundException,
   Param,
   Put,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { codedHttpError } from '../../common/errors/coded-http.exception';
 import {
   AttributeMappingRuleNotFoundException,
   IMappingConfigService,
@@ -80,7 +81,7 @@ export class AttributeMappingRulesController {
       });
       return AttributeRuleResponseDto.fromDomain(rule);
     } catch (error) {
-      throw this.mapNotFound(error);
+      throw this.mapNotFound(error, dto.id);
     }
   }
 
@@ -99,28 +100,45 @@ export class AttributeMappingRulesController {
     try {
       await this.mappingConfigService.deleteAttributeMappingRule(ruleId, connectionId);
     } catch (error) {
-      throw this.mapNotFound(error);
+      throw this.mapNotFound(error, ruleId);
     }
   }
 
   /** Map the domain not-found exception to a 404 at the HTTP boundary. */
-  private mapNotFound(error: unknown): unknown {
+  private mapNotFound(error: unknown, ruleId: string | undefined): unknown {
     if (error instanceof AttributeMappingRuleNotFoundException) {
-      return new NotFoundException(error.message);
+      return codedHttpError(
+        HttpStatus.NOT_FOUND,
+        'ATTRIBUTE_MAPPING_RULE_NOT_FOUND',
+        error.message,
+        ruleId !== undefined ? { ruleId } : undefined
+      );
     }
     return error;
+  }
+
+  private ruleFieldRequired(path: string, message: string): HttpException {
+    return codedHttpError(HttpStatus.BAD_REQUEST, 'VALIDATION_FAILED', message, undefined, {
+      fields: [{ path, code: 'isNotEmpty' }],
+    });
   }
 
   private toConfig(dto: AttributeRuleInputDto): AttributeMappingRuleConfig {
     switch (dto.kind) {
       case 'fixed':
         if (dto.fixedValue === undefined || dto.fixedValue === '') {
-          throw new BadRequestException('fixedValue must be a non-empty string for a "fixed" rule');
+          throw this.ruleFieldRequired(
+            'fixedValue',
+            'fixedValue must be a non-empty string for a "fixed" rule'
+          );
         }
         return { kind: 'fixed', value: dto.fixedValue };
       case 'copy-remap':
         if (!dto.sourceAttributeKey) {
-          throw new BadRequestException('sourceAttributeKey is required for a "copy-remap" rule');
+          throw this.ruleFieldRequired(
+            'sourceAttributeKey',
+            'sourceAttributeKey is required for a "copy-remap" rule'
+          );
         }
         return {
           kind: 'copy-remap',
@@ -132,7 +150,10 @@ export class AttributeMappingRulesController {
         };
       case 'place-value':
         if (!dto.placeValueSource) {
-          throw new BadRequestException('placeValueSource is required for a "place-value" rule');
+          throw this.ruleFieldRequired(
+            'placeValueSource',
+            'placeValueSource is required for a "place-value" rule'
+          );
         }
         return { kind: 'place-value', source: dto.placeValueSource };
     }

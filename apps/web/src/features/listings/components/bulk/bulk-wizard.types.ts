@@ -12,7 +12,7 @@
  */
 import type { Product, ProductVariant } from '../../../products';
 import type { BulkPerProductOverride } from '../../api/bulk-listings.types';
-import type { EanMatchCandidate } from '../../api/listings.types';
+import type { EanMatchCandidate, EanMatchCardRef } from '../../api/listings.types';
 
 export const BulkWizardStepValues = [
   'config',
@@ -45,10 +45,20 @@ export const BulkRowBlockerValues = [
   // Unreachable today; it exists so a discriminant added backend-first fails
   // closed instead of producing a ready row with no category.
   'unknown-category-result',
+  // The operator chose a category other than the one the variant's barcode
+  // matched a catalogue card in (#4035). The card link would be refused by the
+  // marketplace, so the row is blocked until the category agrees again or the
+  // barcode is cleared.
+  'card-category-mismatch',
   // Active pricing policy needs a master price and the variant has none.
   'no-master-price',
-  // Active stock policy needs a master stock value and it's 0 or null.
+  // Active stock policy needs a master stock value and the master reports 0.
   'no-master-stock',
+  // OpenLinker holds no stock for the variant at all (#3851) - no inventory
+  // position yet (the master stock sync has not reached it) or availability
+  // could not be resolved. Distinct from `no-master-stock`, which is a KNOWN 0:
+  // listing at an unknown stock published a 0-stock draft nobody asked for.
+  'stock-unknown',
   // Master price currency differs from the batch currency (use-master/markup only).
   'currency-mismatch',
   // Variant already has a live OfferMapping on the target connection (#1741,
@@ -124,7 +134,15 @@ export interface BulkVariantRow {
   resolvedCategoryId: string | null;
   /** Catalogue card id from this variant's unique EAN match (#808). */
   resolvedProductCardId: string | null;
-  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | 'first_component' | null;
+  /**
+   * A catalogue card matched this variant's EAN in a different category than
+   * the operator's mapping, so the mapping was used and the card set aside
+   * (#3994). Null when there was no such disagreement.
+   */
+  overriddenCard: EanMatchCardRef | null;
+  /** The matched card sits in the mapped category (#3994); false = not compared or no card. */
+  mappingAgrees: boolean;
   /** Multi-match candidates for this variant's EAN. */
   categoryCandidates: readonly EanMatchCandidate[];
   /** Per-variant override written by the editor; sent as `perVariantOverrides[variantId]`. */
@@ -156,7 +174,7 @@ export interface BulkWizardRow {
    */
   resolvedProductCardId: string | null;
   /** How the category was resolved (telemetry / UI hint). */
-  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | null;
+  resolutionMethod: 'auto_detect' | 'category_mapping' | 'manual' | 'first_component' | null;
   /** Master variant price captured at resolve (`variant.price`). Null if unset. */
   masterPrice: number | null;
   /** Master stock summed across locations (availability endpoint). Null if absent. */

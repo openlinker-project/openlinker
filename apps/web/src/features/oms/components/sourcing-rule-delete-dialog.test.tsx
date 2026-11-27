@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
+import { getMessages } from '../../../shared/i18n';
 import type { SourcingRule } from '../api/sourcing-rules.types';
 import { SourcingRuleDeleteDialog } from './sourcing-rule-delete-dialog';
 
@@ -172,22 +173,22 @@ describe('SourcingRuleDeleteDialog (#3059)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     // `describeSourcingRuleError`'s canned 404 sentence, NOT the server's
-    // message - the verbatim path is the 400/409 one, asserted below.
+    // message - the coded 400/409 path is asserted below.
     expect(await screen.findByText('This sourcing rule no longer exists.')).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
-  it('surfaces a 400 retire refusal VERBATIM and stays open', async () => {
+  it("surfaces a 400 retire refusal in its code's own words and stays open", async () => {
     // The client-side guard is not a trust boundary: a rule whose start date
     // moved into the future in another tab still reaches the API, and its 400
-    // names the actual problem. A generic sentence would throw that away.
+    // code names the actual problem. A generic sentence would throw that away.
     const update = vi
       .fn()
       .mockRejectedValue(
         new ApiError(
           'effectiveTo must be after effectiveFrom - a rule whose window closes before it opens is never evaluated.',
           400,
-          {}
+          { code: 'SOURCING_RULE_WINDOW_INVALID' }
         )
       );
     const onOpenChange = vi.fn();
@@ -196,7 +197,7 @@ describe('SourcingRuleDeleteDialog (#3059)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Retire instead' }));
 
     expect(
-      await screen.findByText(/a rule whose window closes before it opens/)
+      await screen.findByText(getMessages('errors').codes.SOURCING_RULE_WINDOW_INVALID)
     ).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });

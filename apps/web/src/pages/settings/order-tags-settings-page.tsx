@@ -15,7 +15,9 @@
  */
 import { useId, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { describeApiError } from '../../shared/api/describe-api-error';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { SettingsPageFrame } from '../../shared/ui/settings-page-frame';
 import { Button } from '../../shared/ui/button';
 import { Input } from '../../shared/ui/input';
 import { Alert } from '../../shared/ui/alert';
@@ -40,12 +42,12 @@ import {
 } from '../../features/orders/hooks/use-order-tag-mutations';
 import { pickNextColor } from '../../features/orders/lib/order-tag-color';
 import {
-  ORDER_TAG_COLOR_LABELS,
+  ORDER_TAG_LIMIT,
   ORDER_TAG_NAME_MAX_LENGTH,
-  ORDER_TAGS_COPY,
-} from '../../features/orders/lib/order-tags.copy';
-
-const COPY = ORDER_TAGS_COPY.manager;
+  orderTagColorLabel,
+  useOrderTagsCopy,
+} from '../../features/orders';
+import { interpolate, renderRich, useMessages, usePlural } from '../../shared/i18n';
 
 function ColourSwatches({
   name,
@@ -58,9 +60,10 @@ function ColourSwatches({
   onChange: (color: OrderTagColorValue) => void;
   legendHidden?: boolean;
 }): ReactElement {
+  const copy = useOrderTagsCopy();
   return (
     <fieldset className="tag-swatches">
-      <legend className={legendHidden ? 'sr-only' : undefined}>{COPY.colourLegend}</legend>
+      <legend className={legendHidden ? 'sr-only' : undefined}>{copy.manager.colourLegend}</legend>
       {OrderTagColorValues.map((color) => (
         <label key={color} className="tag-swatch" data-tag-color={color}>
           <input
@@ -71,7 +74,7 @@ function ColourSwatches({
             onChange={() => { onChange(color); }}
           />
           <span className="order-tag__dot" aria-hidden="true" />
-          {ORDER_TAG_COLOR_LABELS[color]}
+          {orderTagColorLabel(color, copy)}
         </label>
       ))}
     </fieldset>
@@ -85,6 +88,7 @@ function NewTagCard({
   existing: readonly OrderTag[];
   onClose: () => void;
 }): ReactElement {
+  const manager = useOrderTagsCopy().manager;
   const [name, setName] = useState('');
   const [color, setColor] = useState<OrderTagColorValue>(() => pickNextColor(existing));
   const swatchName = useId();
@@ -101,8 +105,8 @@ function NewTagCard({
         onSuccess: (tag) => {
           showToast({
             tone: 'success',
-            title: COPY.createdToastTitle,
-            description: COPY.createdToastDescription(tag.name),
+            title: manager.createdToastTitle,
+            description: interpolate(manager.createdToastDescription, { name: tag.name }),
           });
           onClose();
         },
@@ -111,19 +115,21 @@ function NewTagCard({
   }
 
   return (
-    <form className="panel tag-new" onSubmit={handleSubmit} aria-label={COPY.newTag}>
+    <form className="panel tag-new" onSubmit={handleSubmit} aria-label={manager.newTag}>
       <div className="panel__header">
-        <h3>{COPY.newTag}</h3>
-        <span className="panel__meta">{COPY.newTagMeta}</span>
+        <h3>{manager.newTag}</h3>
+        <span className="panel__meta">{manager.newTagMeta}</span>
       </div>
       <div className="tag-new__row">
         <FormField
           name="tag-name"
-          label={COPY.nameLabel}
+          label={manager.nameLabel}
           description={
             <>
-              {COPY.nameHint}{' '}
-              <span className="tag-new__counter">{COPY.nameCounter(name.length)}</span>
+              {interpolate(manager.nameHint, { max: ORDER_TAG_NAME_MAX_LENGTH })}{' '}
+              <span className="tag-new__counter">
+                {interpolate(manager.nameCounter, { length: name.length, max: ORDER_TAG_NAME_MAX_LENGTH })}
+              </span>
             </>
           }
         >
@@ -137,19 +143,19 @@ function NewTagCard({
         <ColourSwatches name={`tag-colour-${swatchName}`} value={color} onChange={setColor} />
       </div>
       {create.isError ? (
-        <Alert tone="error" title={COPY.createErrorTitle}>
-          {create.error.message}
+        <Alert tone="error" title={manager.createErrorTitle}>
+          {describeApiError(create.error, 'orders')}
         </Alert>
       ) : null}
       <div className="tag-new__foot">
-        <span className="tag-new__preview-label">{COPY.preview}</span>
-        <OrderTagChip tag={{ name: name.trim() || COPY.previewPlaceholder, color }} />
+        <span className="tag-new__preview-label">{manager.preview}</span>
+        <OrderTagChip tag={{ name: name.trim() || manager.previewPlaceholder, color }} />
         <span className="toolbar__group tag-new__actions">
           <Button tone="ghost" onClick={onClose}>
-            {COPY.cancel}
+            {manager.cancel}
           </Button>
           <Button type="submit" disabled={!name.trim() || create.isPending}>
-            {COPY.create}
+            {manager.create}
           </Button>
         </span>
       </div>
@@ -164,6 +170,8 @@ function TagRow({
   tag: OrderTag;
   onRequestDelete: (tag: OrderTag) => void;
 }): ReactElement {
+  const copy = useOrderTagsCopy();
+  const manager = copy.manager;
   const [editing, setEditing] = useState(false);
   const [nameDraft, setNameDraft] = useState(tag.name);
   const [colorDraft, setColorDraft] = useState<OrderTagColorValue>(tag.color);
@@ -177,7 +185,7 @@ function TagRow({
       {
         onSuccess: () => { setEditing(false); },
         onError: (error) => {
-          showToast({ tone: 'error', title: COPY.saveErrorTitle, description: error.message });
+          showToast({ tone: 'error', title: manager.saveErrorTitle, description: describeApiError(error, 'orders') });
         },
       },
     );
@@ -188,7 +196,7 @@ function TagRow({
       <td>
         {editing ? (
           <Input
-            aria-label={COPY.nameLabel}
+            aria-label={manager.nameLabel}
             value={nameDraft}
             maxLength={ORDER_TAG_NAME_MAX_LENGTH}
             onChange={(e) => { setNameDraft(e.target.value); }}
@@ -206,7 +214,7 @@ function TagRow({
             legendHidden
           />
         ) : (
-          ORDER_TAG_COLOR_LABELS[tag.color]
+          orderTagColorLabel(tag.color, copy)
         )}
       </td>
       <td className="data-table__cell--right">
@@ -222,7 +230,7 @@ function TagRow({
           {editing ? (
             <>
               <Button className="button--xs" onClick={save} disabled={update.isPending}>
-                {COPY.save}
+                {manager.save}
               </Button>
               <Button
                 tone="ghost"
@@ -233,13 +241,13 @@ function TagRow({
                   setColorDraft(tag.color);
                 }}
               >
-                {COPY.cancel}
+                {manager.cancel}
               </Button>
             </>
           ) : (
             <>
               <Button tone="ghost" className="button--xs" onClick={() => { setEditing(true); }}>
-                {COPY.edit}
+                {manager.edit}
               </Button>
               <Button
                 tone="ghost"
@@ -248,7 +256,7 @@ function TagRow({
                 data-count={tag.orderCount}
                 onClick={() => { onRequestDelete(tag); }}
               >
-                {COPY.delete}
+                {manager.delete}
               </Button>
             </>
           )}
@@ -259,6 +267,9 @@ function TagRow({
 }
 
 export function OrderTagsSettingsPage(): ReactElement {
+  const manager = useOrderTagsCopy().manager;
+  const tpl = useMessages('settings').template.orderTags;
+  const plural = usePlural();
   const { isReady } = useSession();
   const isAdmin = useIsAdmin();
   const tagsQuery = useOrderTagsQuery();
@@ -270,8 +281,8 @@ export function OrderTagsSettingsPage(): ReactElement {
 
   if (isReady && !isAdmin) {
     return (
-      <PageLayout backTo={{ to: '/settings', label: 'Settings' }} eyebrow={COPY.eyebrow} title={COPY.title}>
-        <Alert tone="info">{COPY.adminOnly}</Alert>
+      <PageLayout backTo={{ to: '/settings', label: manager.backToSettings }} eyebrow={manager.eyebrow} title={manager.title}>
+        <Alert tone="info">{manager.adminOnly}</Alert>
       </PageLayout>
     );
   }
@@ -289,18 +300,19 @@ export function OrderTagsSettingsPage(): ReactElement {
       onSuccess: () => { setPendingDelete(null); },
       onError: (error) => {
         setPendingDelete(null);
-        showToast({ tone: 'error', title: COPY.deleteErrorTitle, description: error.message });
+        showToast({ tone: 'error', title: manager.deleteErrorTitle, description: describeApiError(error, 'orders') });
       },
     });
   }
 
   return (
-    <PageLayout
-      backTo={{ to: '/settings', label: 'Settings' }}
-      eyebrow={COPY.eyebrow}
-      title={COPY.title}
-      description={COPY.description}
-      actions={
+    <SettingsPageFrame
+      backTo={{ to: '/settings', label: manager.backToSettings }}
+      eyebrow={manager.eyebrow}
+      title={manager.title}
+      description={manager.description}
+      short={tpl.short}
+      headerExtra={
         <div className="toolbar__group">
           <Button
             ref={newTagButtonRef}
@@ -311,31 +323,38 @@ export function OrderTagsSettingsPage(): ReactElement {
               document.querySelector<HTMLInputElement>('.tag-new input')?.focus();
             }}
           >
-            {COPY.newTag}
+            {manager.newTag}
           </Button>
         </div>
       }
-    >
+      sections={[
+        {
+          id: 'tags',
+          label: tpl.short,
+          title: tpl.title,
+          hint: tpl.hint,
+          children: (
+            <>
       {creating ? <NewTagCard existing={tags} onClose={closeNewTag} /> : null}
 
       {tagsQuery.isLoading ? (
-        <LoadingState liveRegion="off" title={COPY.loading} message={COPY.loadingMessage} />
+        <LoadingState liveRegion="off" title={manager.loading} message={manager.loadingMessage} />
       ) : tagsQuery.isError ? (
-        <Alert tone="error">{tagsQuery.error.message}</Alert>
+        <Alert tone="error">{describeApiError(tagsQuery.error, 'orders')}</Alert>
       ) : tags.length === 0 ? (
-        <EmptyState liveRegion="off" title={COPY.emptyTitle} message={COPY.emptyMessage} />
+        <EmptyState liveRegion="off" title={manager.emptyTitle} message={manager.emptyMessage} />
       ) : (
         <div className="data-table__container">
           <table className="data-table">
-            <caption className="sr-only">{COPY.tableCaption}</caption>
+            <caption className="sr-only">{manager.tableCaption}</caption>
             <thead>
               <tr>
-                <th>{COPY.columnTag}</th>
-                <th className="data-table__cell--hide-below-768">{COPY.columnColour}</th>
-                <th className="data-table__cell--right">{COPY.columnOrders}</th>
-                <th className="data-table__cell--hide-below-768">{COPY.columnCreated}</th>
+                <th>{manager.columnTag}</th>
+                <th className="data-table__cell--hide-below-768">{manager.columnColour}</th>
+                <th className="data-table__cell--right">{manager.columnOrders}</th>
+                <th className="data-table__cell--hide-below-768">{manager.columnCreated}</th>
                 <th className="data-table__cell--right">
-                  <span className="sr-only">{COPY.columnActions}</span>
+                  <span className="sr-only">{manager.columnActions}</span>
                 </th>
               </tr>
             </thead>
@@ -347,25 +366,26 @@ export function OrderTagsSettingsPage(): ReactElement {
           </table>
         </div>
       )}
-      <p className="muted-text tag-manager__usage">{COPY.usage(tags.length)}</p>
+      <p className="muted-text tag-manager__usage">{interpolate(manager.usage, { n: tags.length, limit: ORDER_TAG_LIMIT })}</p>
 
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
-        title={COPY.deleteTitle(pendingDelete?.name ?? '')}
-        description={
-          <>
-            {COPY.deleteDescriptionLead} <strong>{pendingDelete?.orderCount ?? 0}</strong>{' '}
-            {COPY.deleteDescriptionTail(pendingDelete?.orderCount ?? 0)}
-          </>
-        }
-        cancelLabel={COPY.keepTag}
-        confirmLabel={COPY.deleteTag}
+        title={interpolate(manager.deleteTitle, { name: pendingDelete?.name ?? '' })}
+        description={renderRich(plural(pendingDelete?.orderCount ?? 0, manager.deleteDescription), {
+          strong: (text) => <strong>{text}</strong>,
+        })}
+        cancelLabel={manager.keepTag}
+        confirmLabel={manager.deleteTag}
         tone="danger"
         initialFocus="cancel"
         isConfirming={del.isPending}
         onConfirm={confirmDelete}
       />
-    </PageLayout>
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }

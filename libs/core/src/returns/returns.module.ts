@@ -77,11 +77,14 @@ import { ReturnAuthorizeService } from './application/services/return-authorize.
 import { ReturnCorrectionProposalService } from './application/services/return-correction-proposal.service';
 import { ReturnDeclineService } from './application/services/return-decline.service';
 import { ReturnCustodyService } from './application/services/return-custody.service';
+import { ReturnGiftDecisionService } from './application/services/return-gift-decision.service';
 import { ReturnRefundService } from './application/services/return-refund.service';
 import { ReturnsService } from './application/services/returns.service';
 import { ReturnOrmEntity } from './infrastructure/persistence/entities/return.orm-entity';
 import { ReturnLineOrmEntity } from './infrastructure/persistence/entities/return-line.orm-entity';
 import { ReturnLineEventOrmEntity } from './infrastructure/persistence/entities/return-line-event.orm-entity';
+import { ReturnGiftDecisionOrmEntity } from './infrastructure/persistence/entities/return-gift-decision.orm-entity';
+import { ReturnGiftDecisionRepository } from './infrastructure/persistence/repositories/return-gift-decision.repository';
 import { ReturnRepository } from './infrastructure/persistence/repositories/return.repository';
 import {
   RETURN_AUTHORIZE_SERVICE_TOKEN,
@@ -94,11 +97,20 @@ import {
   RETURN_REPOSITORY_TOKEN,
   RETURN_STATUS_SYNC_SERVICE_TOKEN,
   RETURNS_SERVICE_TOKEN,
+  RETURN_GIFT_DECISION_REPOSITORY_TOKEN,
+  RETURN_GIFT_DECISION_SERVICE_TOKEN,
 } from './returns.tokens';
+
+import { AutomationModule } from '@openlinker/core/automation';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ReturnOrmEntity, ReturnLineOrmEntity, ReturnLineEventOrmEntity]),
+    TypeOrmModule.forFeature([
+      ReturnOrmEntity,
+      ReturnLineOrmEntity,
+      ReturnLineEventOrmEntity,
+      ReturnGiftDecisionOrmEntity,
+    ]),
     // #2328 order attribution: `IIdentifierMappingService.getInternalId`.
     // Acyclic — IdentifierMappingModule does not import ReturnsModule.
     IdentifierMappingModule,
@@ -128,6 +140,9 @@ import {
     // SalesDocumentsModule, none of which reaches this one. Read-only: nothing
     // on this path issues a document.
     InvoicingModule,
+    // #3554: `AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN`, so a receipt fires T6
+    // `return.received`. Acyclic - `AutomationModule` imports no sibling module.
+    AutomationModule,
     // #3486 restock per owning master: with more than one InventoryMaster
     // connection, the owner of a line's stock is read from position provenance
     // through `IInventoryQueryService.resolveStockOwner`. The SIXTH outbound
@@ -136,6 +151,14 @@ import {
     InventoryModule,
   ],
   providers: [
+    // #3943 gift decisions: one table, one service, no module edge.
+    ReturnGiftDecisionRepository,
+    {
+      provide: RETURN_GIFT_DECISION_REPOSITORY_TOKEN,
+      useExisting: ReturnGiftDecisionRepository,
+    },
+    ReturnGiftDecisionService,
+    { provide: RETURN_GIFT_DECISION_SERVICE_TOKEN, useExisting: ReturnGiftDecisionService },
     ReturnRepository,
     { provide: RETURN_REPOSITORY_TOKEN, useExisting: ReturnRepository },
     ReturnsService,
@@ -179,6 +202,7 @@ import {
     },
   ],
   exports: [
+    RETURN_GIFT_DECISION_SERVICE_TOKEN,
     RETURN_REPOSITORY_TOKEN,
     RETURNS_SERVICE_TOKEN,
     RETURN_INGESTION_SERVICE_TOKEN,

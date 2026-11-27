@@ -213,6 +213,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/eparagony/src/$1',
     ),
+    '^@openlinker/integrations-amazon$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/amazon/src/index.ts',
+    ),
+    '^@openlinker/integrations-amazon/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/amazon/src/$1',
+    ),
     '^@openlinker/integrations-shoper$': path.resolve(
       __dirname,
       '../../../libs/integrations/shoper/src/index.ts',
@@ -220,6 +228,14 @@ module.exports = {
     '^@openlinker/integrations-shoper/(.*)$': path.resolve(
       __dirname,
       '../../../libs/integrations/shoper/src/$1',
+    ),
+    '^@openlinker/integrations-shopify$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/shopify/src/index.ts',
+    ),
+    '^@openlinker/integrations-shopify/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/shopify/src/$1',
     ),
   },
 };

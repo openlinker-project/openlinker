@@ -4,7 +4,7 @@
  * Segmented proportion bar for the Fulfillment tab: shows how many delivery
  * methods route to each fulfillment processor, including the default bucket
  * (methods with no rule). A pure derived view — the panel recomputes buckets
- * from its unsaved selections, so the bar moves before "Save routing".
+ * from its unsaved selections, so the bar moves before "Save assignment".
  *
  * Accessibility: the bar itself is decorative (`aria-hidden`); the legend
  * carries every label + count as text.
@@ -14,6 +14,7 @@
 
 import type { ReactElement } from 'react';
 import { tokens } from '../../../shared/theme/tokens';
+import { useMessages } from '../../../shared/i18n';
 
 export interface RoutingSplitBucket {
   /** Stable bucket key (processor selection key or the default sentinel). */
@@ -46,6 +47,7 @@ interface RoutingSplitBarProps {
 }
 
 export function RoutingSplitBar({ buckets }: RoutingSplitBarProps): ReactElement | null {
+  const copy = useMessages('mappings').routingSplitBar;
   const total = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
   if (total === 0) {
     return null;
@@ -74,9 +76,11 @@ export function RoutingSplitBar({ buckets }: RoutingSplitBarProps): ReactElement
             />
           ))}
       </div>
-      <div className="routing-split__legend" aria-label="Delivery methods per fulfillment processor">
+      <div className="routing-split__legend" aria-label={copy.legendLabel}>
         {coloured.map(({ bucket, color }) => (
-          <span key={bucket.key} className="routing-split__key">
+          // An empty bucket keeps its legend slot (stable colour) but steps back,
+          // so the eye lands on where methods actually go.
+          <span key={bucket.key} className={`routing-split__key${bucket.count === 0 ? ' routing-split__key--empty' : ''}`}>
             <span className="routing-split__swatch" style={{ background: color }} aria-hidden="true" />
             {bucket.label} <span className="routing-split__count">{bucket.count}</span>
           </span>

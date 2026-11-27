@@ -14,11 +14,33 @@
  * @module apps/web/src/features/listings/components
  */
 import type { ReactElement } from 'react';
+import {
+  interpolate,
+  useFormat,
+  useMessages,
+  usePlural,
+  type Messages,
+  type ResolvedCopy,
+} from '../../../shared/i18n';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useToast } from '../../../shared/ui/toast-provider';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
+import { useDemoMode } from '../../system';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import { useShopPublishStatusQuery } from '../hooks/use-shop-publish-status-query';
 import { useBulkShopPublishBatchQuery } from '../hooks/use-bulk-shop-publish-batch-query';
-import type { ShopPublishStatus, ShopPublishStatusResponse } from '../api/listings.types';
+import { useBulkShopPublishRetryFailedMutation } from '../hooks/use-bulk-shop-publish-retry-failed-mutation';
+import type {
+  BulkShopPublishBatchStatus,
+  ShopPublishStatus,
+  ShopPublishStatusResponse,
+} from '../api/listings.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+
+type TrackerCopy = ResolvedCopy<Messages['listings']>['shopPublishTracker'];
 
 interface ShopPublishTrackerProps {
   connectionId: string;
@@ -39,17 +61,24 @@ function statusTone(status: ShopPublishStatus): StatusBadgeTone {
   }
 }
 
-function statusLabel(status: ShopPublishStatus): string {
+function statusLabel(status: ShopPublishStatus, copy: TrackerCopy): string {
   switch (status) {
     case 'published':
-      return 'Published';
+      return copy.status.published;
     case 'draft':
-      return 'Draft';
+      return copy.status.draft;
     case 'failed':
-      return 'Failed';
+      return copy.status.failed;
     default:
-      return 'Publishing';
+      return copy.status.publishing;
   }
+}
+
+/** Batch status label; a value this build does not know is shown as it is. */
+function batchStatusLabel(status: string, copy: TrackerCopy): string {
+  return Object.prototype.hasOwnProperty.call(copy.batchStatus, status)
+    ? copy.batchStatus[status as BulkShopPublishBatchStatus]
+    : status;
 }
 
 function SingleTracker({
@@ -59,12 +88,13 @@ function SingleTracker({
   connectionId: string;
   recordId: string;
 }): ReactElement {
+  const copy = useMessages('listings').shopPublishTracker;
   const query = useShopPublishStatusQuery(connectionId, recordId);
 
   if (query.isLoading) {
     return (
       <section className="shop-publish-tracker" aria-live="polite">
-        <p className="muted-text">Loading status…</p>
+        <p className="muted-text">{copy.single.loading}</p>
       </section>
     );
   }
@@ -73,7 +103,9 @@ function SingleTracker({
     return (
       <section className="shop-publish-tracker" aria-live="polite">
         <p className="muted-text">
-          {query.error ? `Unable to load status: ${query.error.message}` : 'No status available.'}
+          {query.error
+            ? `${copy.single.loadError} ${describeApiError(query.error, 'listings')}`
+            : copy.single.none}
         </p>
       </section>
     );
@@ -92,27 +124,30 @@ function SingleTracker({
     >
       <div className="shop-publish-tracker__header">
         <span className="shop-publish-tracker__title">
-          {record.status === 'failed' ? 'Publish failed' : isTerminal ? 'Published' : 'Publishing…'}
+          {record.status === 'failed'
+            ? copy.single.failedTitle
+            : isTerminal
+              ? copy.single.publishedTitle
+              : copy.single.publishingTitle}
         </span>
         <StatusBadge tone={statusTone(record.status)} withDot pulse={record.status === 'pending'}>
-          {statusLabel(record.status)}
+          {statusLabel(record.status, copy)}
         </StatusBadge>
       </div>
 
       {record.status === 'failed' ? (
         <Alert
           tone="error"
-          title={
-            record.errors && record.errors.length > 0 ? (
-              <span className="mono-text">{record.errors[0].code}</span>
-            ) : (
-              'Publish failed'
-            )
-          }
+          title={copy.single.failedTitle}
         >
-          {record.errors && record.errors.length > 0
-            ? record.errors[0].message
-            : 'Publishing failed. No product was created on the shop.'}
+          {record.errors && record.errors.length > 0 ? (
+            <>
+              {readableError(record.errors[0])}{' '}
+              <span className="mono-text muted-text">({record.errors[0].code})</span>
+            </>
+          ) : (
+            copy.single.failedBody
+          )}
         </Alert>
       ) : (
         <ol className="shop-publish-stepper">
@@ -120,7 +155,7 @@ function SingleTracker({
             className={`shop-publish-stepper__step${queued ? ' shop-publish-stepper__step--done' : ''}`}
           >
             <span className="shop-publish-stepper__dot" aria-hidden="true" />
-            <span className="shop-publish-stepper__label">Queued</span>
+            <span className="shop-publish-stepper__label">{copy.steps.queued}</span>
           </li>
           <li
             className={`shop-publish-stepper__step${
@@ -132,14 +167,14 @@ function SingleTracker({
             }`}
           >
             <span className="shop-publish-stepper__dot" aria-hidden="true" />
-            <span className="shop-publish-stepper__label">Publishing to WooCommerce</span>
+            <span className="shop-publish-stepper__label">{copy.steps.publishing}</span>
           </li>
           <li
             className={`shop-publish-stepper__step${live ? ' shop-publish-stepper__step--done' : ''}`}
           >
             <span className="shop-publish-stepper__dot" aria-hidden="true" />
             <span className="shop-publish-stepper__label">
-              {record.status === 'draft' ? 'Created as draft' : 'Live on storefront'}
+              {record.status === 'draft' ? copy.steps.draft : copy.steps.live}
             </span>
           </li>
         </ol>
@@ -148,7 +183,7 @@ function SingleTracker({
       {isTerminal && record.externalProductId ? (
         <dl className="shop-publish-kv">
           <div className="shop-publish-kv__row">
-            <dt>Product</dt>
+            <dt>{copy.single.product}</dt>
             <dd className="mono-text">{record.externalProductId}</dd>
           </div>
         </dl>
@@ -157,17 +192,29 @@ function SingleTracker({
   );
 }
 
+/** The platform's own sentence when it sent one; the bare code is a last resort. */
+function readableError(entry: { code: string; message: string }): string {
+  return entry.message.trim().length > 0 ? entry.message : entry.code;
+}
+
 function recordTone(status: ShopPublishStatusResponse['status']): StatusBadgeTone {
   return statusTone(status);
 }
 
 function BulkTracker({ batchId }: { batchId: string }): ReactElement {
+  const copy = useMessages('listings').shopPublishTracker;
+  const plural = usePlural();
+  const format = useFormat();
   const query = useBulkShopPublishBatchQuery(batchId);
+  const retryMutation = useBulkShopPublishRetryFailedMutation();
+  const { showToast } = useToast();
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('listings:write', demoMode);
 
   if (query.isLoading) {
     return (
       <section className="shop-publish-tracker" aria-live="polite">
-        <p className="muted-text">Loading batch…</p>
+        <p className="muted-text">{copy.bulk.loading}</p>
       </section>
     );
   }
@@ -176,7 +223,9 @@ function BulkTracker({ batchId }: { batchId: string }): ReactElement {
     return (
       <section className="shop-publish-tracker" aria-live="polite">
         <p className="muted-text">
-          {query.error ? `Unable to load batch: ${query.error.message}` : 'No batch available.'}
+          {query.error
+            ? `${copy.bulk.loadError} ${describeApiError(query.error, 'listings')}`
+            : copy.bulk.none}
         </p>
       </section>
     );
@@ -197,15 +246,29 @@ function BulkTracker({ batchId }: { batchId: string }): ReactElement {
         : batch.status === 'partially-failed'
           ? 'warning'
           : 'info';
-  const batchLabel =
-    batch.status === 'partially-failed'
-      ? 'Partially failed'
-      : batch.status.charAt(0).toUpperCase() + batch.status.slice(1);
+  const batchLabel = batchStatusLabel(batch.status, copy);
+
+  async function handleRetryFailed(): Promise<void> {
+    try {
+      const result = await retryMutation.mutateAsync(batchId);
+      showToast({
+        tone: 'success',
+        title: copy.bulk.retryDispatchedTitle,
+        description: plural(result.retriedCount, copy.bulk.retryDispatchedDescription),
+      });
+    } catch (error) {
+      showToast({
+        tone: 'error',
+        title: copy.bulk.retryFailedTitle,
+        description: describeApiError(error, 'listings'),
+      });
+    }
+  }
 
   return (
     <section className="shop-publish-tracker" aria-live="polite">
       <div className="shop-publish-tracker__header">
-        <span className="shop-publish-tracker__title">Bulk publish</span>
+        <span className="shop-publish-tracker__title">{copy.bulk.title}</span>
         <StatusBadge tone={batchTone} withDot pulse={batch.status === 'running'}>
           {batchLabel}
         </StatusBadge>
@@ -214,21 +277,24 @@ function BulkTracker({ batchId }: { batchId: string }): ReactElement {
       <div className="shop-publish-batch">
         <div className="shop-publish-batch__top">
           <div className="shop-publish-batch__count tabular">
-            {done} / {batch.totalCount}
+            {interpolate(copy.bulk.progress, {
+              done: format.number(done),
+              total: format.number(batch.totalCount),
+            })}
           </div>
           <div className="shop-publish-batch__legend">
             <span>
               <span className="shop-publish-dot shop-publish-dot--ok" aria-hidden="true" />
-              {batch.succeededCount} published
+              {plural(batch.succeededCount, copy.bulk.published)}
             </span>
             <span>
               <span className="shop-publish-dot shop-publish-dot--fail" aria-hidden="true" />
-              {batch.failedCount} failed
+              {plural(batch.failedCount, copy.bulk.failed)}
             </span>
             {running > 0 ? (
               <span>
                 <span className="shop-publish-dot shop-publish-dot--run" aria-hidden="true" />
-                {running} running
+                {plural(running, copy.bulk.running)}
               </span>
             ) : null}
           </div>
@@ -243,6 +309,17 @@ function BulkTracker({ batchId }: { batchId: string }): ReactElement {
           <div className="shop-publish-progress__ok" style={{ width: `${okPct}%` }} />
           <div className="shop-publish-progress__fail" style={{ width: `${failPct}%` }} />
         </div>
+        {batch.failedCount > 0 && batch.status !== 'running' && write.visible ? (
+          <ReadOnlyLock active={write.demoReadOnly} message={demoReadOnlyActionMessage()}>
+            <Button
+              tone="secondary"
+              disabled={retryMutation.isPending || write.demoReadOnly}
+              onClick={() => void handleRetryFailed()}
+            >
+              {retryMutation.isPending ? copy.bulk.retrying : copy.bulk.retryFailed}
+            </Button>
+          </ReadOnlyLock>
+        ) : null}
         <div className="shop-publish-batch__rows">
           {batch.records.map((record) => (
             <div key={record.id} className="shop-publish-batch__row">
@@ -251,7 +328,13 @@ function BulkTracker({ batchId }: { batchId: string }): ReactElement {
                 {record.externalProductId ? (
                   <span className="muted-text"> → {record.externalProductId}</span>
                 ) : record.status === 'failed' && record.errors && record.errors.length > 0 ? (
-                  <span className="muted-text"> {record.errors[0].code}</span>
+                  <span className="muted-text"> {readableError(record.errors[0])}</span>
+                ) : null}
+                {record.status === 'failed' && record.errors && record.errors.length > 0 ? (
+                  <span className="muted-text shop-publish-batch__error-code">
+                    {' '}
+                    ({record.errors[0].code})
+                  </span>
                 ) : null}
               </span>
               <StatusBadge
@@ -260,7 +343,7 @@ function BulkTracker({ batchId }: { batchId: string }): ReactElement {
                 withDot
                 pulse={record.status === 'pending'}
               >
-                {statusLabel(record.status)}
+                {statusLabel(record.status, copy)}
               </StatusBadge>
             </div>
           ))}

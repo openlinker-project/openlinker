@@ -56,7 +56,7 @@ import {
 } from '@openlinker/core/invoicing';
 import type { IssuedDocumentLineAmounts } from '@openlinker/core/invoicing';
 import { MissingTaxRateException, findMissingTaxRate } from '@openlinker/core/invoicing';
-import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import { isTaxRateEnforced, type ZeroValueLineSupport } from '@openlinker/core/sales-documents';
 import type { IInfaktHttpClient } from '../http/infakt-http-client.interface';
 import { InfaktApiError } from '../../domain/exceptions/infakt-api.error';
 import type {
@@ -486,7 +486,8 @@ export class InfaktInvoicingAdapter
     RegulatoryDocumentReader,
     BankAccountsReader,
     BankAccountDefaultSetter,
-    InvoiceEmailSender
+    InvoiceEmailSender,
+    ZeroValueLineSupport
 {
   /**
    * Payment method sent on every issued invoice/correction (#1303) — a
@@ -529,6 +530,14 @@ export class InfaktInvoicingAdapter
   }
 
   /**
+   * The provider accepts a line priced 0,00, so a gift can be shown as one.
+   * Read by the document mappers through `readZeroValueLineSupport` (#3930).
+   */
+  acceptsZeroValueLine(): boolean {
+    return true;
+  }
+
+  /**
    * List the seller's payable bank accounts known to inFakt (#1303 follow-up).
    *
    * Reads only the FIRST page of `bank_accounts.json` (inFakt's default page
@@ -562,6 +571,26 @@ export class InfaktInvoicingAdapter
 
   getSupportedDocumentTypes(): DocumentType[] {
     return [...SUPPORTED_DOCUMENT_TYPES];
+  }
+
+  /**
+   * The inFakt payment method for one document (#3294): the order's own method
+   * when the source positively identified one, else the connection default.
+   * A transfer needs a bank account on the connection - without one inFakt
+   * rejects the invoice (#1303) - so a transfer order on an account-less
+   * connection keeps the default rather than failing a document the operator
+   * never asked to be stricter.
+   */
+  private resolvePaymentMethod(
+    method: IssueInvoiceCommand['paymentMethod'],
+  ): NonNullable<InfaktConnectionConfig['defaultPaymentMethod']> {
+    if (method === 'cash_on_delivery') {
+      return 'cash';
+    }
+    if (method === 'bank_transfer' && this.bankAccount !== undefined) {
+      return 'transfer';
+    }
+    return this.paymentMethod;
   }
 
   async upsertCustomer(cmd: UpsertCustomerCommand): Promise<UpsertCustomerResult> {
@@ -661,7 +690,7 @@ export class InfaktInvoicingAdapter
         // KSeF-cleared) as PLN. See `toInfaktCurrency` / `InfaktInvoice.currency`.
         currency,
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
-        payment_method: this.paymentMethod,
+        payment_method: this.resolvePaymentMethod(cmd.paymentMethod),
         // Infakt's invoices.json wants the NUMERIC client id, not the client
         // uuid — verified live (2026-07-01): `client_uuid` is silently
         // ignored and the request 422s with "client_id required".
@@ -1069,6 +1098,10 @@ export class InfaktInvoicingAdapter
         // different currency than the document it corrects.
         currency,
         // Per-connection setting (#1303) — see `this.paymentMethod` doc.
+        // Deliberately NOT the order's method (#3294): a correction carries no
+        // order context, so it keeps the connection default even when the
+        // original was issued as cash on delivery. Known gap, tracked with the
+        // returns correction flow rather than guessed here.
         payment_method: this.paymentMethod,
         // Required by Infakt on every invoice, corrective included — verified
         // live (2026-07-01): omitting it 422s with "client_id required". The

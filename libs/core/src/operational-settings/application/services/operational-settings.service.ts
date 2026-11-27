@@ -49,8 +49,17 @@ import {
   INVENTORY_SWEEP_CADENCE_ENV_VAR,
   OPERATIONAL_SETTING_BOUNDS,
   OPERATIONAL_SETTING_KEYS,
-  checkOperationalSettingBound,
+  BUYER_DATA_PERIOD_MAX_DAYS,
+  BUYER_DATA_PERIOD_MIN_DAYS,
+  BUYER_DATA_RETENTION_DEFAULTS,
+  findOperationalSettingBoundBreach,
+  isBuyerDataEraseMode,
+  isBuyerDataPeriodOrderValid,
+  isValidBuyerDataPeriod,
+  RELEASE_CENTER_ENABLED_ENV_VAR,
   resolveOperationalSetting,
+  type BuyerDataEraseMode,
+  resolveReleaseCenterEnabled,
   type OperationalSettingKey,
   type OperationalSettingsInput,
   type OperationalSettingsView,
@@ -105,6 +114,13 @@ function isParseableCron(expression: string): boolean {
   }
 }
 
+/** A row-or-default knob (#4289): no env rung, so the value is the same in every process. */
+function rowOrDefault<T>(stored: T | null, fallback: T): ResolvedOperationalSetting<T> {
+  return stored !== null
+    ? { value: stored, source: 'setting', workerMayDiffer: false }
+    : { value: fallback, source: 'default', workerMayDiffer: false };
+}
+
 @Injectable()
 export class OperationalSettingsService implements IOperationalSettingsService {
   constructor(
@@ -130,7 +146,29 @@ export class OperationalSettingsService implements IOperationalSettingsService {
       deletionAuditBudget: numeric('deletionAuditBudget'),
       syncJobRetentionDays: numeric('syncJobRetentionDays'),
       syncJobDeadRetentionDays: numeric('syncJobDeadRetentionDays'),
+      inventoryMovementRetentionDays: numeric('inventoryMovementRetentionDays'),
+      stockStaleSyncThresholdHours: numeric('stockStaleSyncThresholdHours'),
       deletionAuditCadence: this.resolveCadence(stored?.deletionAuditCadence ?? null),
+      buyerDataRetentionEnabled: rowOrDefault(
+        stored?.buyerDataRetentionEnabled ?? null,
+        BUYER_DATA_RETENTION_DEFAULTS.enabled
+      ),
+      buyerDataHideAfterDays: rowOrDefault(
+        stored?.buyerDataHideAfterDays ?? null,
+        BUYER_DATA_RETENTION_DEFAULTS.hideAfterDays
+      ),
+      buyerDataEraseAfterDays: rowOrDefault(
+        stored?.buyerDataEraseAfterDays ?? null,
+        BUYER_DATA_RETENTION_DEFAULTS.eraseAfterDays
+      ),
+      buyerDataEraseMode: rowOrDefault<BuyerDataEraseMode>(
+        stored?.buyerDataEraseMode ?? null,
+        BUYER_DATA_RETENTION_DEFAULTS.mode
+      ),
+      releaseCenterEnabled: resolveReleaseCenterEnabled(
+        stored?.releaseCenterEnabled ?? null,
+        this.configService.get<string>(RELEASE_CENTER_ENABLED_ENV_VAR)
+      ),
       // Read-only, and never `source: 'setting'` - there is no column for
       // either. Reported so a consumer computing a full-pass length uses the
       // cadence actually in force (#2660 review): both are settable through the
@@ -163,17 +201,33 @@ export class OperationalSettingsService implements IOperationalSettingsService {
         continue;
       }
       if (typeof value !== 'number') {
-        throw new InvalidOperationalSettingError(key, `${key} must be a number or null`);
+        throw new InvalidOperationalSettingError(
+          key,
+          `${key} must be a number or null`,
+          'not-a-number'
+        );
       }
-      const problem = checkOperationalSettingBound(key, value, acknowledged);
-      if (problem !== null) {
-        throw new InvalidOperationalSettingError(key, problem);
+      const breach = findOperationalSettingBoundBreach(key, value, acknowledged);
+      if (breach !== null) {
+        throw new InvalidOperationalSettingError(key, breach.message, breach.rule, breach.limit);
+      }
+    }
+
+    if (input.releaseCenterEnabled !== undefined && input.releaseCenterEnabled !== null) {
+      if (typeof input.releaseCenterEnabled !== 'boolean') {
+        throw new InvalidOperationalSettingError(
+          'releaseCenterEnabled',
+          'releaseCenterEnabled must be a boolean or null',
+          'not-a-number'
+        );
       }
     }
 
     if (input.deletionAuditCadence !== undefined && input.deletionAuditCadence !== null) {
       this.assertUsableCadence(input.deletionAuditCadence);
     }
+
+    await this.assertBuyerDataRetention(input);
 
     // The acknowledgement is permission for THIS request, not a stored
     // preference. It is dropped before persistence so it cannot silently
@@ -199,12 +253,90 @@ export class OperationalSettingsService implements IOperationalSettingsService {
         ...(input.syncJobDeadRetentionDays !== undefined && {
           syncJobDeadRetentionDays: input.syncJobDeadRetentionDays,
         }),
+        ...(input.inventoryMovementRetentionDays !== undefined && {
+          inventoryMovementRetentionDays: input.inventoryMovementRetentionDays,
+        }),
+        ...(input.stockStaleSyncThresholdHours !== undefined && {
+          stockStaleSyncThresholdHours: input.stockStaleSyncThresholdHours,
+        }),
         ...(input.deletionAuditCadence !== undefined && {
           deletionAuditCadence: input.deletionAuditCadence,
+        }),
+        ...(input.buyerDataRetentionEnabled !== undefined && {
+          buyerDataRetentionEnabled: input.buyerDataRetentionEnabled,
+        }),
+        ...(input.buyerDataHideAfterDays !== undefined && {
+          buyerDataHideAfterDays: input.buyerDataHideAfterDays,
+        }),
+        ...(input.buyerDataEraseAfterDays !== undefined && {
+          buyerDataEraseAfterDays: input.buyerDataEraseAfterDays,
+        }),
+        ...(input.buyerDataEraseMode !== undefined && {
+          buyerDataEraseMode: input.buyerDataEraseMode,
+        }),
+        ...(input.releaseCenterEnabled !== undefined && {
+          releaseCenterEnabled: input.releaseCenterEnabled,
         }),
       },
       updatedBy
     );
+  }
+
+  /**
+   * Buyer data retention checks (#4289). The erase-versus-hide ordering is
+   * judged against the EFFECTIVE pair - the request's value where it names one,
+   * the stored one otherwise - so a request that only moves one period cannot
+   * leave the pair inverted.
+   */
+  private async assertBuyerDataRetention(input: OperationalSettingsInput): Promise<void> {
+    for (const key of ['buyerDataHideAfterDays', 'buyerDataEraseAfterDays'] as const) {
+      const value = input[key];
+      if (value !== undefined && value !== null && !isValidBuyerDataPeriod(value)) {
+        throw new InvalidOperationalSettingError(
+          key,
+          `${key} must be 0 (never) or a whole number of days between ${String(BUYER_DATA_PERIOD_MIN_DAYS)} and ${String(BUYER_DATA_PERIOD_MAX_DAYS)}`,
+          'buyer-data-period'
+        );
+      }
+    }
+    if (
+      input.buyerDataEraseMode !== undefined &&
+      input.buyerDataEraseMode !== null &&
+      !isBuyerDataEraseMode(input.buyerDataEraseMode)
+    ) {
+      throw new InvalidOperationalSettingError(
+        'buyerDataEraseMode',
+        'buyerDataEraseMode must be personal-data or whole-order',
+        'buyer-data-mode'
+      );
+    }
+    if (input.buyerDataHideAfterDays === undefined && input.buyerDataEraseAfterDays === undefined) {
+      return;
+    }
+    const stored = await this.repository.findSettings();
+    const pick = (
+      requested: number | null | undefined,
+      persisted: number | null | undefined,
+      fallback: number
+    ): number => (requested !== undefined ? requested ?? fallback : persisted ?? fallback);
+    const hide = pick(
+      input.buyerDataHideAfterDays,
+      stored?.buyerDataHideAfterDays,
+      BUYER_DATA_RETENTION_DEFAULTS.hideAfterDays
+    );
+    const erase = pick(
+      input.buyerDataEraseAfterDays,
+      stored?.buyerDataEraseAfterDays,
+      BUYER_DATA_RETENTION_DEFAULTS.eraseAfterDays
+    );
+    if (!isBuyerDataPeriodOrderValid(hide, erase)) {
+      throw new InvalidOperationalSettingError(
+        'buyerDataEraseAfterDays',
+        'buyerDataEraseAfterDays must not be shorter than buyerDataHideAfterDays',
+        'buyer-data-order',
+        hide
+      );
+    }
   }
 
   /**
@@ -239,10 +371,7 @@ export class OperationalSettingsService implements IOperationalSettingsService {
    * scheduler would fall back too, so reporting the malformed string would name
    * a cadence nothing runs on.
    */
-  private resolveEnvCadence(
-    envVar: string,
-    fallback: string
-  ): ResolvedOperationalSetting<string> {
+  private resolveEnvCadence(envVar: string, fallback: string): ResolvedOperationalSetting<string> {
     const fromEnv = this.configService.get<string>(envVar);
     if (fromEnv !== undefined && fromEnv.trim().length > 0 && isParseableCron(fromEnv.trim())) {
       return { value: fromEnv.trim(), source: 'env', workerMayDiffer: true };
@@ -258,7 +387,8 @@ export class OperationalSettingsService implements IOperationalSettingsService {
       // and every alias has a five-field spelling.
       throw new InvalidOperationalSettingError(
         'deletionAuditCadence',
-        'deletionAuditCadence must be a 5- or 6-field cron expression'
+        'deletionAuditCadence must be a 5- or 6-field cron expression',
+        'cadence-format'
       );
     }
 
@@ -268,7 +398,8 @@ export class OperationalSettingsService implements IOperationalSettingsService {
     } catch {
       throw new InvalidOperationalSettingError(
         'deletionAuditCadence',
-        'deletionAuditCadence is not a valid cron expression'
+        'deletionAuditCadence is not a valid cron expression',
+        'cadence-invalid'
       );
     }
 
@@ -295,7 +426,8 @@ export class OperationalSettingsService implements IOperationalSettingsService {
     if (exceedsMaxGap) {
       throw new InvalidOperationalSettingError(
         'deletionAuditCadence',
-        'deletionAuditCadence must fire at least once every 7 days — the deletion audit is the deletion authority and cannot be disabled through this surface'
+        'deletionAuditCadence must fire at least once every 7 days — the deletion audit is the deletion authority and cannot be disabled through this surface',
+        'cadence-too-rare'
       );
     }
   }

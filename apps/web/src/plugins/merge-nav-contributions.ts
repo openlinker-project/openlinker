@@ -14,6 +14,7 @@
  * @module plugins
  */
 import type { LiveNavGroup, LiveNavItem, NavGroup } from '../app/nav-registry.types';
+import { messagesIn } from '../shared/i18n';
 import type { NavContribution } from '../shared/plugins';
 
 function toLiveNavItem(contribution: NavContribution): LiveNavItem {
@@ -22,6 +23,20 @@ function toLiveNavItem(contribution: NavContribution): LiveNavItem {
     label: contribution.label,
     end: contribution.end,
   };
+}
+
+const englishSections = messagesIn('app', 'en').sections;
+
+/**
+ * Whether a contribution's `groupLabel` names this group. A base group's label
+ * follows the active language, so the label alone stops matching once an
+ * operator picks Polish: the group's section key (`'operations'`) and its
+ * English label (`'Operations'`, what existing plugins pass) both match too.
+ */
+function matchesGroup(group: LiveNavGroup, groupLabel: string): boolean {
+  if (group.label === groupLabel) return true;
+  if (group.id === undefined) return false;
+  return group.id === groupLabel || englishSections[group.id] === groupLabel;
 }
 
 export interface MergeNavContributionsOptions {
@@ -54,7 +69,7 @@ export function mergePluginNavContributions(
     const item = toLiveNavItem(contribution);
     const target = result.find(
       (group): group is LiveNavGroup =>
-        group.kind === 'live' && group.label === contribution.groupLabel,
+        group.kind === 'live' && matchesGroup(group, contribution.groupLabel),
     );
 
     if (target) {

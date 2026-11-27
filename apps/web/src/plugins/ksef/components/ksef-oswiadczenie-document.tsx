@@ -18,9 +18,9 @@ import { useCallback, useEffect, useMemo, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { interpolate } from '../../../shared/i18n';
+import { useKsefMessages } from '../messages';
 import {
-  OSWIADCZENIE_CONTINUITY,
-  OSWIADCZENIE_TITLE,
   buildOswiadczenieText,
   formatOswiadczenieBody,
   formatPlaceAndDate,
@@ -39,6 +39,8 @@ export function KsefOswiadczenieDocument({
   content,
   onClose,
 }: KsefOswiadczenieDocumentProps): ReactElement {
+  // Polish in every interface language: the toolbar belongs to the Polish document tool.
+  const copy = useKsefMessages().oswiadczenie;
   const { showToast } = useToast();
   const issuedAt = useMemo(() => content.issuedAt ?? new Date(), [content.issuedAt]);
   const addressLines = formatSellerAddressLines(content.seller);
@@ -60,29 +62,34 @@ export function KsefOswiadczenieDocument({
 
   const handleCopy = useCallback(() => {
     void navigator.clipboard?.writeText(buildOswiadczenieText(content)).then(
-      () => showToast({ tone: 'success', title: 'Skopiowano', description: 'Treść oświadczenia skopiowana do schowka.' }),
-      () => showToast({ tone: 'error', description: 'Nie udało się skopiować treści.' }),
+      () =>
+        showToast({
+          tone: 'success',
+          title: copy.toolbar.copied.title,
+          description: copy.toolbar.copied.description,
+        }),
+      () => showToast({ tone: 'error', description: copy.toolbar.copyFailed }),
     );
-  }, [content, showToast]);
+  }, [content, showToast, copy]);
 
   return createPortal(
-    <div className="oswiadczenie-portal" role="dialog" aria-modal="true" aria-label={OSWIADCZENIE_TITLE}>
+    <div className="oswiadczenie-portal" role="dialog" aria-modal="true" aria-label={copy.title}>
       <div className="oswiadczenie-toolbar">
         <div className="oswiadczenie-toolbar__group">
           <Button tone="primary" onClick={handlePrint}>
-            Drukuj / Zapisz jako PDF
+            {copy.toolbar.print}
           </Button>
           <Button tone="secondary" onClick={handleCopy}>
-            Kopiuj tekst
+            {copy.toolbar.copy}
           </Button>
         </div>
         <Button tone="ghost" onClick={onClose}>
-          Zamknij
+          {copy.toolbar.close}
         </Button>
       </div>
 
       <div className="oswiadczenie-scroll">
-        <article className="oswiadczenie-sheet" aria-label="Oświadczenie">
+        <article className="oswiadczenie-sheet" aria-label={copy.sheetLabel}>
           <header className="oswiadczenie-sheet__seller">
             {sellerKnown ? (
               <>
@@ -95,48 +102,47 @@ export function KsefOswiadczenieDocument({
                   </p>
                 ))}
                 {nip.length > 0 ? (
-                  <p className="oswiadczenie-sheet__seller-line">NIP: {nip}</p>
+                  <p className="oswiadczenie-sheet__seller-line">{interpolate(copy.nip, { nip })}</p>
                 ) : null}
               </>
             ) : (
               <p className="oswiadczenie-sheet__seller-missing">
-                Uzupełnij profil sprzedawcy (nazwa, adres, NIP) w ustawieniach połączenia, aby dane
-                sprzedawcy pojawiły się w nagłówku.
+                {copy.sellerMissing}
               </p>
             )}
           </header>
 
           <p className="oswiadczenie-sheet__place-date">{formatPlaceAndDate(content.seller, issuedAt)}</p>
 
-          <h1 className="oswiadczenie-sheet__title">{OSWIADCZENIE_TITLE}</h1>
+          <h1 className="oswiadczenie-sheet__title">{copy.title}</h1>
 
           <p className="oswiadczenie-sheet__body">{formatOswiadczenieBody(content)}</p>
 
           <p className="oswiadczenie-sheet__reason">
-            <span className="oswiadczenie-sheet__reason-label">Przyczyna pominięcia:</span>{' '}
+            <span className="oswiadczenie-sheet__reason-label">{copy.reasonLabel}</span>{' '}
             {content.reason}
           </p>
 
-          <p className="oswiadczenie-sheet__continuity">{OSWIADCZENIE_CONTINUITY}</p>
+          <p className="oswiadczenie-sheet__continuity">{copy.continuity}</p>
 
           <dl className="oswiadczenie-sheet__series">
             <div>
-              <dt>Seria</dt>
+              <dt>{copy.sheet.series}</dt>
               <dd>{content.seriesName}</dd>
             </div>
             <div>
-              <dt>Wzorzec</dt>
+              <dt>{copy.sheet.pattern}</dt>
               <dd className="oswiadczenie-sheet__mono">{content.seriesPattern}</dd>
             </div>
             <div>
-              <dt>Pominięty numer</dt>
+              <dt>{copy.sheet.skippedNumber}</dt>
               <dd className="oswiadczenie-sheet__mono">{content.skippedNumber}</dd>
             </div>
           </dl>
 
           <div className="oswiadczenie-sheet__signature">
             <span className="oswiadczenie-sheet__signature-line" aria-hidden="true" />
-            <span className="oswiadczenie-sheet__signature-caption">(podpis osoby upoważnionej)</span>
+            <span className="oswiadczenie-sheet__signature-caption">{copy.signature}</span>
           </div>
         </article>
       </div>

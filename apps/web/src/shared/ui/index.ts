@@ -37,6 +37,8 @@ export type { BareIconButtonProps, BareIconButtonSize } from './bare-icon-button
 export { Input } from './input';
 export { Textarea } from './textarea';
 export { Select } from './select';
+export { Switch } from './switch';
+export type { SwitchProps } from './switch';
 export { Combobox } from './combobox';
 export type { ComboboxOption, ComboboxValue } from './combobox';
 export { SegmentedControl } from './segmented-control';
@@ -47,19 +49,27 @@ export { Chip } from './chip';
 export type { ChipProps, ChipTone } from './chip';
 export { FilterToggleButton } from './filter-toggle-button';
 export type { FilterToggleButtonProps } from './filter-toggle-button';
-export { FilterPanel, FilterPanelFooter, FilterGroup, FilterField, FilterRange } from './filter-panel';
+export {
+  FilterPanel,
+  FilterPanelFooter,
+  FilterGroup,
+  FilterField,
+  FilterRange,
+} from './filter-panel';
 export type { FilterPanelProps, FilterGroupProps, FilterFieldProps } from './filter-panel';
 export { FilterCheck, FilterChecks } from './filter-check';
 export type { FilterCheckProps, FilterCheckTone } from './filter-check';
 export { ActiveFilterChips } from './active-filter-chips';
 export type { ActiveFilterChip, ActiveFilterChipsProps } from './active-filter-chips';
 export { FilterSheet, FilterSection } from './filter-sheet';
+export { SidePanel } from './side-panel';
+export type { SidePanelProps } from './side-panel';
 export type { FilterSheetProps, FilterSectionProps } from './filter-sheet';
 export { QuickFilters, QuickFiltersLabel, QuickFiltersSeparator } from './quick-filters';
 export type { QuickFiltersProps } from './quick-filters';
 
 // ── Form composition ───────────────────────────────────────────────
-export { FormField } from './form-field';
+export { FormField, useFormFieldControl, type FormFieldControlProps } from './form-field';
 export { FieldError } from './field-error';
 export { FormErrorSummary } from './form-error-summary';
 
@@ -96,7 +106,12 @@ export { DetailSection } from './detail-section';
 export type { DetailSectionProps, DetailSectionTone } from './detail-section';
 
 // ── Sales documents (#2535) ────────────────────────────────────────
-export { DocumentKindGlyph, DOCUMENT_KIND_LABEL, NO_DOCUMENT_LABEL } from './document-kind-glyph';
+export {
+  DocumentKindGlyph,
+  DOCUMENT_KIND_LABEL,
+  NO_DOCUMENT_LABEL,
+  useDocumentKindLabels,
+} from './document-kind-glyph';
 export type { DocumentKind, DocumentKindGlyphProps } from './document-kind-glyph';
 export { DocumentHeadline } from './document-headline';
 export type { DocumentHeadlineProps, DocumentHeadlineTone } from './document-headline';
@@ -113,6 +128,8 @@ export { ProductThumbnail } from './product-thumbnail';
 export { CopyableId } from './copyable-id';
 export { DensityToggle, useDensity } from './density-toggle';
 export type { Density } from './density-toggle';
+export { FontSizeToggle, useFontSize } from './font-size-toggle';
+export type { FontSize } from './font-size-toggle';
 
 // ── Bulk-selection (#739, #1109) ────────────────────────────────────
 export { BulkActionBar } from './bulk-action-bar';
@@ -137,3 +154,55 @@ export { deriveRichTextProfile, byteLength, exceedsDescriptionCap } from './rich
 export type { RichTextProfile } from './rich-text-profiles';
 export type { DescriptionFormat, DescriptionRewrite, RichTextMark } from './rich-text.types';
 export { MASTER_DESCRIPTION_FORMAT } from './rich-text.types';
+
+// ── QR verification code (#1579) ────────────────────────────
+export { QrCode } from './qr-code';
+export type { QrCodeErrorCorrectionLevel } from './qr-code';
+export { LanguageFlag } from './language-flag';
+export { MotionProvider } from './motion-provider';
+
+// ── Switch primitives (#4029) ───────────────────────────────
+export { PeekButton } from './peek-button';
+export type { PeekButtonProps } from './peek-button';
+export { MotionPopover, useAnchoredPopover, anchoredPosition } from './motion-popover';
+export type {
+  MotionPopoverProps,
+  AnchoredPopover,
+  PopoverPlacement,
+  PopoverAlign,
+} from './motion-popover';
+export { PopoverOnHover } from './popover-on-hover';
+export type { PopoverOnHoverProps, PopoverOnHoverTriggerProps } from './popover-on-hover';
+export { IconWithOnHoverPopoverTooltip } from './icon-with-popover-tooltip';
+export type {
+  IconWithOnHoverPopoverTooltipProps,
+  IconTooltipTone,
+} from './icon-with-popover-tooltip';
+export { WarningPopoverTooltip } from './warning-popover-tooltip';
+export type { WarningPopoverTooltipProps } from './warning-popover-tooltip';
+export { PopoverCard } from './popover-card';
+export type { PopoverCardProps, PopoverCardTone } from './popover-card';
+export { WarningIcon, InfoIcon } from './icons';
+export type { IconProps } from './icons';
+export { OptionList } from './option-list';
+export type { OptionListItem, OptionListProps } from './option-list';
+export { DescribedSelect } from './described-select';
+export type { DescribedSelectOption, DescribedSelectProps } from './described-select';
+export { SegmentedSwitch } from './segmented-switch';
+export type {
+  SegmentedSwitchLabels,
+  SegmentedSwitchOption,
+  SegmentedSwitchProps,
+} from './segmented-switch';
+export { SNAPPY_SPRING, THUMB_SPRING, ENTRANCE_GROUP, ENTRANCE_ITEM } from './motion-presets';
+
+export { SettingsPageTemplate } from './settings-page-template';
+export type { SettingsPageSection, SettingsPageTemplateProps } from './settings-page-template';
+export { SettingsIndexList, SettingsIndexRow } from './settings-index-row';
+export { SettingsFactsBar } from './settings-facts-bar';
+export type { SettingsFact } from './settings-facts-bar';
+export { SettingsGlyph } from './settings-glyph';
+export type { SettingsGlyphName } from './settings-glyph';
+export type { SettingsIndexRowProps, SettingsRowAction } from './settings-index-row';
+export { SettingsPageFrame } from './settings-page-frame';
+export type { SettingsPageFrameProps } from './settings-page-frame';

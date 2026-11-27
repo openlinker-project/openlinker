@@ -13,19 +13,29 @@
  */
 import { z } from 'zod';
 
+import { interpolate } from '../../../shared/i18n';
 import { HoldReasonValues } from '../lib/order-hold.types';
+import type { HoldValidationCopy } from './order-form.types';
 
 export const HOLD_NOTE_MAX_LENGTH = 2000;
 
-export const placeOrderHoldSchema = z.object({
-  // The select renders no empty option, but a cleared/at-rest form value must
-  // still say what is missing rather than zod's default "Invalid option".
-  reason: z.enum(HoldReasonValues, { message: 'Choose why this order is being held' }),
-  note: z
-    .string()
-    .max(HOLD_NOTE_MAX_LENGTH, `Keep the note under ${HOLD_NOTE_MAX_LENGTH} characters`)
-    .optional(),
-});
+/** The note-length message, shared by the place and release schemas. */
+export function holdNoteTooLongMessage(copy: HoldValidationCopy): string {
+  return interpolate(copy.noteTooLong, { max: HOLD_NOTE_MAX_LENGTH });
+}
 
-export type PlaceOrderHoldFormValues = z.input<typeof placeOrderHoldSchema>;
-export type PlaceOrderHoldSubmission = z.output<typeof placeOrderHoldSchema>;
+/**
+ * A factory rather than a module-level schema: the messages are read when the
+ * form builds its resolver, so they follow the active language.
+ */
+export function createPlaceOrderHoldSchema(copy: HoldValidationCopy) {
+  return z.object({
+    // The select renders no empty option, but a cleared/at-rest form value must
+    // still say what is missing rather than zod's default "Invalid option".
+    reason: z.enum(HoldReasonValues, { message: copy.reasonRequired }),
+    note: z.string().max(HOLD_NOTE_MAX_LENGTH, holdNoteTooLongMessage(copy)).optional(),
+  });
+}
+
+export type PlaceOrderHoldFormValues = z.input<ReturnType<typeof createPlaceOrderHoldSchema>>;
+export type PlaceOrderHoldSubmission = z.output<ReturnType<typeof createPlaceOrderHoldSchema>>;

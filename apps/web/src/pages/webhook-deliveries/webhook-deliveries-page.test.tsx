@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
@@ -36,6 +36,7 @@ const sampleDelivery: WebhookDeliverySummary = {
   dedupResult: 'new',
   rejectionReason: null,
   dlqReason: null,
+  dlqCode: null,
   publishedMessageId: null,
   downstreamJobId: null,
   downstreamJobType: null,
@@ -153,6 +154,44 @@ describe('WebhookDeliveriesPage', () => {
     await waitFor(() => {
       const lastCall = listMock.mock.calls.at(-1);
       expect(lastCall?.[0]).toMatchObject({ connectionId: connection.id });
+    });
+  });
+  describe('saved views (#4241)', () => {
+    function setup(): ReturnType<typeof vi.fn> {
+      const list = vi.fn().mockResolvedValue({ items: [sampleDelivery], total: 1 });
+      renderWithProviders(<WebhookDeliveriesPage />, {
+        apiClient: createMockApiClient({
+          webhookDeliveries: { list },
+          connections: { list: vi.fn().mockResolvedValue([]) },
+        }),
+      });
+      return list;
+    }
+
+    it('should open on the All deliveries view', async () => {
+      setup();
+      const strip = await screen.findByRole('group', { name: 'Views' });
+      expect(within(strip).getByRole('button', { name: 'All deliveries' })).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('should filter by status when a built-in view is picked', async () => {
+      const list = setup();
+      await screen.findByText('prestashop');
+      await userEvent.click(screen.getByRole('button', { name: 'Failed' }));
+      await waitFor(() => {
+        expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'failed' }), expect.anything());
+      });
+    });
+
+    it('should drop a column from the table when the Columns panel hides it', async () => {
+      setup();
+      const table = await screen.findByRole('table');
+      expect(within(table).getByRole('columnheader', { name: 'Reason' })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: /Columns & sort/ }));
+      await userEvent.click(await screen.findByRole('checkbox', { name: /Reason/ }));
+      await waitFor(() => {
+        expect(within(table).queryByRole('columnheader', { name: 'Reason' })).toBeNull();
+      });
     });
   });
 });

@@ -10,8 +10,8 @@
  * blank row, a failing lookup - keeps the label OpenLinker has always sent, and
  * never costs the order.
  *
- * The label is all that changes: the OL module still delegates to
- * `ps_checkpayment`.
+ * A module-shaped mapped value also drives the order's payment MODULE (#3988),
+ * sent as `paymentModule`; free text stays a label only.
  *
  * @module libs/integrations/prestashop/src/infrastructure/adapters/__tests__
  */
@@ -91,13 +91,19 @@ describe('PrestashopOrderProcessorManagerAdapter - payment mapping (#3474)', () 
     return (call?.[0] as { paymentMethod: string }).paymentMethod;
   }
 
+  function sentPaymentModule(): string | undefined {
+    const call = harness.mockOpenLinkerModuleClient.importOrder.mock.calls.at(-1);
+    return (call?.[0] as { paymentModule?: string }).paymentModule;
+  }
+
   it('sends the configured mapping as the PrestaShop payment_method', async () => {
     const resolvePaymentMapping = jest.fn().mockResolvedValue('ps_cashondelivery');
     const { adapter } = adapterWith({ resolvePaymentMapping });
 
     await adapter.createOrder(orderFrom());
 
-    expect(sentPaymentMethod()).toBe('ps_cashondelivery');
+    expect(sentPaymentMethod()).toBe('Cash on delivery');
+    expect(sentPaymentModule()).toBe('ps_cashondelivery');
     // Source-scoped, like the carrier mapping: the SOURCE connection and the
     // source's own payment type, never the destination connection.
     expect(resolvePaymentMapping).toHaveBeenCalledWith(SOURCE_CONNECTION_ID, 'CASH_ON_DELIVERY');
@@ -110,7 +116,38 @@ describe('PrestashopOrderProcessorManagerAdapter - payment mapping (#3474)', () 
 
     await adapter.createOrder(orderFrom());
 
-    expect(sentPaymentMethod()).toBe('ps_wirepayment');
+    expect(sentPaymentMethod()).toBe('Bank wire transfer');
+    expect(sentPaymentModule()).toBe('ps_wirepayment');
+  });
+
+  it('keeps a free-text mapped label as a label only, with no module (#3988)', async () => {
+    const { adapter } = adapterWith({
+      resolvePaymentMapping: jest.fn().mockResolvedValue('Bank transfer'),
+    });
+
+    await adapter.createOrder(orderFrom());
+
+    expect(sentPaymentMethod()).toBe('Bank transfer');
+    expect(sentPaymentModule()).toBeUndefined();
+  });
+
+  it('uses the raw module name as label for a module outside the curated list (#3988)', async () => {
+    const { adapter } = adapterWith({
+      resolvePaymentMapping: jest.fn().mockResolvedValue('custom_gateway'),
+    });
+
+    await adapter.createOrder(orderFrom());
+
+    expect(sentPaymentMethod()).toBe('custom_gateway');
+    expect(sentPaymentModule()).toBe('custom_gateway');
+  });
+
+  it('sends no module when no mapping applies (#3988)', async () => {
+    const { adapter } = adapterWith({ resolvePaymentMapping: jest.fn().mockResolvedValue(null) });
+
+    await adapter.createOrder(orderFrom());
+
+    expect(sentPaymentModule()).toBeUndefined();
   });
 
   it('keeps the default label when no mapping is configured for the payment type', async () => {
@@ -159,6 +196,52 @@ describe('PrestashopOrderProcessorManagerAdapter - payment mapping (#3474)', () 
     await adapter.createOrder(orderFrom());
 
     expect(sentPaymentMethod()).toBe(DEFAULT_PAYMENT_METHOD_LABEL);
+  });
+
+  describe('neutral payment method (#3294)', () => {
+    it.each([
+      ['cash_on_delivery', 'Cash on delivery'],
+      ['bank_transfer', 'Bank transfer'],
+      ['online', 'Online payment'],
+    ] as const)('labels a %s order "%s" when no mapping applies', async (paymentMethod, label) => {
+      const { adapter } = adapterWith(undefined);
+
+      await adapter.createOrder(orderFrom({ paymentMethod, sourcePaymentMethod: undefined }));
+
+      expect(sentPaymentMethod()).toBe(label);
+    });
+
+    it('keeps the default label for an unknown or unreported method', async () => {
+      const { adapter } = adapterWith(undefined);
+
+      await adapter.createOrder(orderFrom({ paymentMethod: 'unknown', sourcePaymentMethod: undefined }));
+      expect(sentPaymentMethod()).toBe(DEFAULT_PAYMENT_METHOD_LABEL);
+
+      await adapter.createOrder(orderFrom({ paymentMethod: undefined, sourcePaymentMethod: undefined }));
+      expect(sentPaymentMethod()).toBe(DEFAULT_PAYMENT_METHOD_LABEL);
+    });
+
+    it('lets an operator mapping win over the neutral label', async () => {
+      const { adapter } = adapterWith({
+        resolvePaymentMapping: jest.fn().mockResolvedValue('ps_wirepayment'),
+      });
+
+      await adapter.createOrder(orderFrom({ paymentMethod: 'cash_on_delivery' }));
+
+      expect(sentPaymentMethod()).toBe('Bank wire transfer');
+    });
+
+    it('falls back to the neutral label when the mapping has no row or fails', async () => {
+      const none = adapterWith({ resolvePaymentMapping: jest.fn().mockResolvedValue(null) });
+      await none.adapter.createOrder(orderFrom({ paymentMethod: 'bank_transfer' }));
+      expect(sentPaymentMethod()).toBe('Bank transfer');
+
+      const failing = adapterWith({
+        resolvePaymentMapping: jest.fn().mockRejectedValue(new Error('db unavailable')),
+      });
+      await failing.adapter.createOrder(orderFrom({ paymentMethod: 'bank_transfer' }));
+      expect(sentPaymentMethod()).toBe('Bank transfer');
+    });
   });
 
   it('still creates the order, with a warning, when the mapping lookup fails', async () => {

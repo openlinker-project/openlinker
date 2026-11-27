@@ -7,8 +7,9 @@
  *
  * @module apps/web/src/features/sync-jobs/components
  */
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { describeApiError } from '../../../shared/api/describe-api-error';
 import { useEnqueueSyncJobMutation } from '../hooks/use-enqueue-sync-job-mutation';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -24,139 +25,149 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
-import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
+import { demoReadOnlyActionMessage } from '../../../shared/config/demo-mode';
+import { interpolate, renderRich, useMessages, type Messages } from '../../../shared/i18n';
+import {
+  OrderPositionField,
+  ORDER_POSITION_CUSTOM,
+  ORDER_POSITION_DEFAULT,
+} from './order-position-field';
+import { useAdaptersQuery } from '../../adapters';
+import { OrderRangeFields } from './order-range-fields';
+import { prefersMotion } from '../../../shared/ui/prefers-motion';
+import {
+  ORDER_RANGE_DEFAULT_VALUE,
+  toOrderImportPayload,
+  validateOrderRange,
+  type OrderRangeValue,
+} from '../lib/order-range';
 import type { PayloadField, TriggerableJob, TriggerSyncDialogProps } from './trigger-sync-dialog.types';
 
-const ALL_TRIGGERABLE_JOBS: TriggerableJob[] = [
-  {
-    jobType: 'master.product.syncAll',
-    label: 'Sync all products',
-    description: 'Enumerate and sync every product from the source catalog.',
-    payloadFields: [],
-    requiredCapability: 'ProductMaster',
-  },
-  {
-    jobType: 'master.product.syncByExternalId',
-    label: 'Sync product by ID',
-    description: 'Sync a single product using its external platform ID.',
-    payloadFields: [
-      { name: 'externalId', label: 'External ID', required: true },
-      { name: 'objectType', label: 'Object type', required: false, placeholder: 'product' },
-    ],
-    requiredCapability: 'ProductMaster',
-  },
-  {
-    jobType: 'master.inventory.syncAll',
-    label: 'Sync all inventory',
-    description: 'Enumerate and sync inventory levels for every product.',
-    payloadFields: [],
-    requiredCapability: 'InventoryMaster',
-  },
-  {
-    jobType: 'master.inventory.syncByExternalId',
-    label: 'Sync inventory by ID',
-    description: 'Sync inventory for a single item using its external ID.',
-    payloadFields: [
-      { name: 'externalId', label: 'External ID', required: true },
-      { name: 'objectType', label: 'Object type', required: false, placeholder: 'product' },
-    ],
-    requiredCapability: 'InventoryMaster',
-  },
-  {
-    jobType: 'master.variants.autoMatch',
-    label: 'Auto-match variants',
-    description: 'Match product variants to marketplace offers by barcode.',
-    payloadFields: [],
-    requiredCapability: 'ProductMaster',
-  },
-  {
-    jobType: 'marketplace.offers.sync',
-    label: 'Sync marketplace offers',
-    description: 'Pull offer listings from the marketplace.',
-    payloadFields: [
-      {
-        name: 'limit',
-        label: 'Page limit',
-        required: false,
-        type: 'number',
-        defaultValue: '100',
-        placeholder: '100',
-      },
-    ],
-    // OfferEventReader, not coarse OfferManager (#1498): only adapters with an
-    // offer-event journal (Allegro) can sync offers this way. Erli (reconciliation
-    // -first, #1096 skip) and WooCommerce (quantity-only write-back) would no-op.
-    requiredCapability: 'OfferEventReader',
-  },
-  {
-    jobType: 'marketplace.orders.poll',
-    label: 'Poll marketplace orders',
-    description: 'Fetch new orders from the marketplace event stream.',
-    payloadFields: [
-      {
-        name: 'cursorKey',
-        label: 'Cursor key',
-        required: false,
-        defaultValueFactory: ({ platformType }) => `${platformType}.orders.lastEventId`,
-      },
-      {
-        name: 'limit',
-        label: 'Page limit',
-        required: false,
-        type: 'number',
-        defaultValue: '100',
-        placeholder: '100',
-      },
-    ],
-    // OrderSource, not OfferManager (#1498): this is an order-ingestion job —
-    // every order source (Allegro, Erli, WooCommerce, PrestaShop) runs it via
-    // its scheduler, so the manual trigger should match that set.
-    requiredCapability: 'OrderSource',
-  },
-  {
-    jobType: 'inventory.propagateToMarketplaces',
-    label: 'Propagate inventory to marketplaces',
-    description: 'Push current inventory levels to all connected marketplaces.',
-    payloadFields: [
-      {
-        name: 'productId',
-        label: 'Product ID',
-        required: true,
-        placeholder: 'ol_product_…',
-      },
-    ],
-    // Gated to InventoryMaster (the capability whose inventory it propagates) so it
-    // no longer leaks onto invoicing/shipping-only connections (KSeF, InPost). See #1474.
-    requiredCapability: 'InventoryMaster',
-  },
-  {
-    jobType: 'invoicing.regulatoryStatus.reconcile',
-    label: 'Reconcile regulatory status',
-    description: 'Poll the tax authority for clearance status of submitted invoices.',
-    payloadFields: [
-      {
-        name: 'limit',
-        label: 'Max invoices',
-        required: false,
-        type: 'number',
-        defaultValue: '100',
-        placeholder: '100',
-      },
-    ],
-    requiredCapability: 'Invoicing',
-  },
-];
+type TriggerSyncDialogCopy = Messages['sync-jobs']['triggerSyncDialog'];
+
+function buildTriggerableJobs(copy: TriggerSyncDialogCopy): TriggerableJob[] {
+  const { fields, jobs } = copy;
+  return [
+    {
+      jobType: 'master.product.syncAll',
+      label: jobs.syncAllProducts.label,
+      description: jobs.syncAllProducts.description,
+      payloadFields: [],
+      requiredCapability: 'ProductMaster',
+    },
+    {
+      jobType: 'master.product.syncByExternalId',
+      label: jobs.syncProductById.label,
+      description: jobs.syncProductById.description,
+      payloadFields: [
+        { name: 'externalId', label: fields.externalId, required: true },
+        { name: 'objectType', label: fields.objectType, required: false, placeholder: 'product' },
+      ],
+      requiredCapability: 'ProductMaster',
+    },
+    {
+      jobType: 'master.inventory.syncAll',
+      label: jobs.syncAllInventory.label,
+      description: jobs.syncAllInventory.description,
+      payloadFields: [],
+      requiredCapability: 'InventoryMaster',
+    },
+    {
+      jobType: 'master.inventory.syncByExternalId',
+      label: jobs.syncInventoryById.label,
+      description: jobs.syncInventoryById.description,
+      payloadFields: [
+        { name: 'externalId', label: fields.externalId, required: true },
+        { name: 'objectType', label: fields.objectType, required: false, placeholder: 'product' },
+      ],
+      requiredCapability: 'InventoryMaster',
+    },
+    {
+      jobType: 'master.variants.autoMatch',
+      label: jobs.autoMatchVariants.label,
+      description: jobs.autoMatchVariants.description,
+      payloadFields: [],
+      requiredCapability: 'ProductMaster',
+    },
+    {
+      jobType: 'marketplace.offers.sync',
+      label: jobs.syncOffers.label,
+      description: jobs.syncOffers.description,
+      payloadFields: [
+        {
+          name: 'limit',
+          label: fields.pageLimit,
+          required: false,
+          type: 'number',
+          defaultValue: '100',
+          placeholder: '100',
+        },
+      ],
+      // OfferEventReader, not coarse OfferManager (#1498): only adapters with an
+      // offer-event journal (Allegro) can sync offers this way. Erli (reconciliation
+      // -first, #1096 skip) and WooCommerce (quantity-only write-back) would no-op.
+      requiredCapability: 'OfferEventReader',
+    },
+    {
+      jobType: 'marketplace.orders.poll',
+      label: jobs.pollOrders.label,
+      description: jobs.pollOrders.description,
+      payloadFields: [
+        {
+          name: 'limit',
+          label: copy.orderPosition.limitLabel,
+          required: false,
+          type: 'number',
+          defaultValue: '100',
+          placeholder: '100',
+          description: copy.orderPosition.limitHelp,
+        },
+      ],
+      // OrderSource, not OfferManager (#1498): this is an order-ingestion job —
+      // every order source (Allegro, Erli, WooCommerce, PrestaShop) runs it via
+      // its scheduler, so the manual trigger should match that set.
+      requiredCapability: 'OrderSource',
+    },
+    {
+      jobType: 'inventory.propagateToMarketplaces',
+      label: jobs.propagateInventory.label,
+      description: jobs.propagateInventory.description,
+      payloadFields: [
+        {
+          name: 'productId',
+          label: fields.productId,
+          required: true,
+          placeholder: 'ol_product_…',
+        },
+      ],
+      // Gated to InventoryMaster (the capability whose inventory it propagates) so it
+      // no longer leaks onto invoicing/shipping-only connections (KSeF, InPost). See #1474.
+      requiredCapability: 'InventoryMaster',
+    },
+    {
+      jobType: 'invoicing.regulatoryStatus.reconcile',
+      label: jobs.reconcileRegulatoryStatus.label,
+      description: jobs.reconcileRegulatoryStatus.description,
+      payloadFields: [
+        {
+          name: 'limit',
+          label: fields.maxInvoices,
+          required: false,
+          type: 'number',
+          defaultValue: '100',
+          placeholder: '100',
+        },
+      ],
+      requiredCapability: 'Invoicing',
+    },
+  ];
+}
 
 /** Build initial payload values from field defaults. */
-function buildDefaultValues(
-  fields: PayloadField[],
-  context: { platformType: string },
-): Record<string, string> {
+function buildDefaultValues(fields: PayloadField[]): Record<string, string> {
   const defaults: Record<string, string> = {};
   for (const field of fields) {
-    if (field.defaultValueFactory !== undefined) {
-      defaults[field.name] = field.defaultValueFactory(context);
-    } else if (field.defaultValue !== undefined) {
+    if (field.defaultValue !== undefined) {
       defaults[field.name] = field.defaultValue;
     }
   }
@@ -168,20 +179,39 @@ export function TriggerSyncDialog({
   open,
   onOpenChange,
   submitDisabled = false,
+  initialJobType,
+  initialOrderScope = 'new',
+  guidedEntrance = false,
 }: TriggerSyncDialogProps): ReactElement {
+  const copy = useMessages('sync-jobs').triggerSyncDialog;
+  const adapters = useAdaptersQuery();
+  const canImportRange =
+    (
+      adapters.data?.find((a) => a.adapterKey === connection.adapterKey) ??
+      adapters.data?.find((a) => a.platformType === connection.platformType && a.isDefault)
+    )?.orderWindowImport === true;
   const triggerableJobs = useMemo(
     () =>
-      ALL_TRIGGERABLE_JOBS.filter(
+      buildTriggerableJobs(copy).filter(
         (job) =>
           !job.requiredCapability ||
           connection.supportedCapabilities.includes(job.requiredCapability),
       ),
-    [connection.supportedCapabilities],
+    [connection.supportedCapabilities, copy],
   );
 
   const [selectedJobType, setSelectedJobType] = useState(triggerableJobs[0]?.jobType ?? '');
   const [payloadValues, setPayloadValues] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [positionChoice, setPositionChoice] = useState(ORDER_POSITION_DEFAULT);
+  const [customPositionKey, setCustomPositionKey] = useState('');
+  const [orderRange, setOrderRange] = useState<OrderRangeValue>(ORDER_RANGE_DEFAULT_VALUE);
+  // One "Sync orders" action with two scopes: the new orders since the last check, or
+  // a range of days. They are two different jobs underneath, which an operator never sees.
+  const [orderScope, setOrderScope] = useState<'new' | 'range'>('new');
+  // A period chosen for the operator (from the Sync tab) pulses once so the choice is noticed.
+  const [scopeHighlight, setScopeHighlight] = useState(false);
+  const scopeTouched = useRef(false);
   // Stable idempotency-key suffix for this dialog open cycle. Reused across
   // retries after a failed submit so the backend dedup (Redis SET NX + DB
   // unique index on idempotency_key) collapses rapid double-clicks into a
@@ -190,39 +220,102 @@ export function TriggerSyncDialog({
   const [intentKey, setIntentKey] = useState<string | null>(null);
 
   const enqueueSyncJob = useEnqueueSyncJobMutation();
+  const navigate = useNavigate();
   const { showToast } = useToast();
 
   const selectedJob = triggerableJobs.find((j) => j.jobType === selectedJobType);
+  const isOrderSync = selectedJob?.jobType === 'marketplace.orders.poll';
+  const isRangeImport = isOrderSync && canImportRange && orderScope === 'range';
+  const submittedJobType = isRangeImport ? 'marketplace.orders.import' : selectedJob?.jobType;
   const hasTriggers = triggerableJobs.length > 0;
+  // Opened from "Get orders from a period…": the dialog is that one action, so it is named
+  // and confirmed as such. Any other way in keeps the generic "Trigger sync" wording.
+  const isPeriodEntry = isRangeImport && initialOrderScope === 'range';
+  // A range without a first day cannot be submitted, so the button waits for it.
+  const missingFirstDay = isRangeImport && orderRange.from === '';
+  // Shown as the operator types, not only after pressing the button: a last day before the
+  // first day or a future date is visible the moment it is entered. An empty first day is
+  // handled by `missingFirstDay`, so it is not repeated as an error here.
+  const liveRangeProblems = isRangeImport ? validateOrderRange(orderRange) : {};
+  const liveFromError =
+    orderRange.from !== '' && liveRangeProblems.from
+      ? copy.orderRange.errors[liveRangeProblems.from]
+      : undefined;
+  const liveToError =
+    orderRange.to !== '' && liveRangeProblems.to
+      ? copy.orderRange.errors[liveRangeProblems.to]
+      : undefined;
+  const hasLiveRangeError = liveFromError !== undefined || liveToError !== undefined;
 
   useEffect(() => {
     if (open) {
-      const firstJob = triggerableJobs[0];
+      const firstJob =
+        triggerableJobs.find((job) => job.jobType === initialJobType) ?? triggerableJobs[0];
       setSelectedJobType(firstJob?.jobType ?? '');
       setPayloadValues(
-        firstJob ? buildDefaultValues(firstJob.payloadFields, connection) : {},
+        firstJob ? buildDefaultValues(firstJob.payloadFields) : {},
       );
       setFieldErrors({});
+      setPositionChoice(ORDER_POSITION_DEFAULT);
+      setCustomPositionKey('');
+      setOrderRange(ORDER_RANGE_DEFAULT_VALUE);
+      setOrderScope('new');
+      setScopeHighlight(false);
+      scopeTouched.current = false;
       setIntentKey(crypto.randomUUID());
       enqueueSyncJob.reset();
     }
   }, [open]); // enqueueSyncJob.reset and triggerableJobs are intentionally excluded — stable on open only
 
+  // The adapter list may land after the dialog opens, so the preselection waits for it.
+  useEffect(() => {
+    if (!open || !canImportRange || initialOrderScope !== 'range' || scopeTouched.current) return;
+    setOrderScope('range');
+    setScopeHighlight(true);
+  }, [open, canImportRange, initialOrderScope]);
+
+  // The highlight is a one-off cue: its CSS fades by itself, and the flag is dropped after so the
+  // field is plain afterwards. Without motion the static outline stays a little shorter.
+  useEffect(() => {
+    if (!scopeHighlight) return undefined;
+    const timer = window.setTimeout(() => setScopeHighlight(false), prefersMotion() ? 2200 : 1500);
+    return () => window.clearTimeout(timer);
+  }, [scopeHighlight]);
+
   const handleJobTypeChange = (jobType: string): void => {
     const job = triggerableJobs.find((j) => j.jobType === jobType);
     setSelectedJobType(jobType);
-    setPayloadValues(job ? buildDefaultValues(job.payloadFields, connection) : {});
+    setPayloadValues(job ? buildDefaultValues(job.payloadFields) : {});
     setFieldErrors({});
+    setPositionChoice(ORDER_POSITION_DEFAULT);
+    setCustomPositionKey('');
+    setOrderRange(ORDER_RANGE_DEFAULT_VALUE);
+    setOrderScope('new');
+    scopeTouched.current = true;
+    setScopeHighlight(false);
     enqueueSyncJob.reset();
   };
 
   const validate = (): boolean => {
     if (!selectedJob) return false;
     const errors: Record<string, string> = {};
-    for (const field of selectedJob.payloadFields) {
+    for (const field of isRangeImport ? [] : selectedJob.payloadFields) {
       if (field.required && !payloadValues[field.name]?.trim()) {
-        errors[field.name] = `${field.label} is required`;
+        errors[field.name] = interpolate(copy.fieldRequired, { field: field.label });
       }
+    }
+    if (
+      isOrderSync &&
+      !isRangeImport &&
+      positionChoice === ORDER_POSITION_CUSTOM &&
+      !customPositionKey.trim()
+    ) {
+      errors.cursorKey = copy.orderPosition.customRequired;
+    }
+    if (isRangeImport) {
+      const problems = validateOrderRange(orderRange);
+      if (problems.from) errors.from = copy.orderRange.errors[problems.from];
+      if (problems.to) errors.to = copy.orderRange.errors[problems.to];
     }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -231,27 +324,41 @@ export function TriggerSyncDialog({
   const handleSubmit = async (): Promise<void> => {
     if (!selectedJob || !validate() || intentKey === null) return;
 
-    const payload: Record<string, unknown> = { schemaVersion: 1 };
-    for (const field of selectedJob.payloadFields) {
+    const payload: Record<string, unknown> =
+      isRangeImport ? toOrderImportPayload(orderRange, intentKey) : { schemaVersion: 1 };
+    for (const field of isRangeImport ? [] : selectedJob.payloadFields) {
       const raw = payloadValues[field.name]?.trim();
       if (raw) {
         payload[field.name] = field.type === 'number' ? Number(raw) : raw;
       }
     }
 
+    if (isOrderSync && !isRangeImport) {
+      const key = positionChoice === ORDER_POSITION_CUSTOM ? customPositionKey.trim() : positionChoice;
+      if (key) payload.cursorKey = key;
+    }
+
     try {
       const result = await enqueueSyncJob.mutateAsync({
         connectionId: connection.id,
-        jobType: selectedJob.jobType,
+        jobType: submittedJobType ?? selectedJob.jobType,
         payload,
-        idempotencyKey: `manual:${connection.id}:${selectedJob.jobType}:${intentKey}`,
+        idempotencyKey: `manual:${connection.id}:${submittedJobType ?? selectedJob.jobType}:${intentKey}`,
       });
 
       onOpenChange(false);
       showToast({
         tone: 'success',
-        title: 'Sync job enqueued',
-        description: `"${selectedJob.label}" started for "${connection.name}". Job ID: ${result.jobId}`,
+        title: copy.toast.title,
+        description: interpolate(copy.toast.description, {
+          job: selectedJob.label,
+          connection: connection.name,
+          jobId: result.jobId,
+        }),
+        action: {
+          label: copy.toast.viewJob,
+          onClick: () => void navigate(`/jobs-logs/${result.jobId}`),
+        },
       });
     } catch {
       // Error displayed via enqueueSyncJob.error alert below.
@@ -260,30 +367,39 @@ export function TriggerSyncDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="trigger-sync-dialog">
-        <DialogTitle>Trigger sync</DialogTitle>
+      <DialogContent
+        className={guidedEntrance ? 'trigger-sync-dialog trigger-sync-dialog--guided' : 'trigger-sync-dialog'}
+      >
+        <DialogTitle>{isPeriodEntry ? copy.periodTitle : copy.title}</DialogTitle>
         <DialogDescription>
-          Manually enqueue a sync job for <strong>{connection.name}</strong>.{' '}
+          {renderRich(
+            copy.description,
+            { strong: (chunks) => <strong>{chunks}</strong> },
+            { connection: connection.name },
+          )}{' '}
           <Link to="/jobs-logs" onClick={() => onOpenChange(false)} className="link">
-            View all jobs
+            {copy.viewAllJobs}
           </Link>
         </DialogDescription>
 
         <div className="trigger-sync-dialog__body">
+          {isPeriodEntry && guidedEntrance ? (
+            <p className="trigger-sync-dialog__intro">{copy.periodIntro}</p>
+          ) : null}
           {enqueueSyncJob.error ? (
-            <Alert tone="error" title="Failed to enqueue job">
-              {enqueueSyncJob.error.message}
+            <Alert tone="error" title={copy.enqueueFailed}>
+              {describeApiError(enqueueSyncJob.error, 'sync-jobs')}
             </Alert>
           ) : null}
 
           {!hasTriggers ? (
             <p className="trigger-sync-dialog__description muted-text" role="status">
-              No sync triggers available for this connection.
+              {copy.noTriggers}
             </p>
           ) : null}
 
           {hasTriggers ? (
-            <FormField label="Job type" name="jobType">
+            <FormField label={copy.jobType} name="jobType">
               <Select
                 value={selectedJobType}
                 onChange={(e) => handleJobTypeChange(e.target.value)}
@@ -302,12 +418,58 @@ export function TriggerSyncDialog({
             <p className="trigger-sync-dialog__description muted-text">{selectedJob.description}</p>
           ) : null}
 
-          {selectedJob?.payloadFields.map((field) => (
+          {isOrderSync && canImportRange ? (
+            <div className={scopeHighlight ? 'trigger-sync-dialog__scope--preselected' : undefined}>
+            <FormField
+              label={copy.orderScope.label}
+              name="orderScope"
+              description={isRangeImport ? copy.orderScope.rangeHint : copy.orderScope.newHint}
+            >
+              <Select
+                value={orderScope}
+                onChange={(e) => {
+                  scopeTouched.current = true;
+                  setScopeHighlight(false);
+                  setOrderScope(e.target.value === 'range' ? 'range' : 'new');
+                }}
+                disabled={enqueueSyncJob.isPending}
+              >
+                <option value="new">{copy.orderScope.new}</option>
+                <option value="range">{copy.orderScope.range}</option>
+              </Select>
+            </FormField>
+            </div>
+          ) : null}
+
+          {isOrderSync && !isRangeImport ? (
+            <OrderPositionField
+              connectionId={connection.id}
+              choice={positionChoice}
+              onChoiceChange={setPositionChoice}
+              customKey={customPositionKey}
+              onCustomKeyChange={setCustomPositionKey}
+              customError={fieldErrors.cursorKey}
+              disabled={enqueueSyncJob.isPending}
+            />
+          ) : null}
+
+          {isRangeImport ? (
+            <OrderRangeFields
+              value={orderRange}
+              onChange={setOrderRange}
+              errors={{ from: fieldErrors.from ?? liveFromError, to: fieldErrors.to ?? liveToError }}
+              disabled={enqueueSyncJob.isPending}
+              autoFocusFrom={isPeriodEntry}
+            />
+          ) : null}
+
+          {(isRangeImport ? [] : (selectedJob?.payloadFields ?? [])).map((field) => (
             <FormField
               key={field.name}
-              label={field.required ? `${field.label} *` : field.label}
+              label={field.required ? interpolate(copy.requiredField, { field: field.label }) : field.label}
               name={field.name}
               error={fieldErrors[field.name]}
+              description={field.description}
             >
               <Input
                 value={payloadValues[field.name] ?? ''}
@@ -323,18 +485,32 @@ export function TriggerSyncDialog({
         </div>
 
         <DialogFooter>
+          {missingFirstDay ? (
+            <p className="trigger-sync-dialog__hint" role="status">
+              {copy.orderRange.firstDayNeeded}
+            </p>
+          ) : null}
           <Button tone="secondary" onClick={() => onOpenChange(false)} disabled={enqueueSyncJob.isPending}>
-            Cancel
+            {copy.cancel}
           </Button>
-          <ReadOnlyLock active={submitDisabled} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+          <ReadOnlyLock active={submitDisabled} message={demoReadOnlyActionMessage()}>
             <Button
               tone="primary"
               onClick={() => void handleSubmit()}
               disabled={
-                enqueueSyncJob.isPending || intentKey === null || !hasTriggers || submitDisabled
+                enqueueSyncJob.isPending ||
+                intentKey === null ||
+                !hasTriggers ||
+                submitDisabled ||
+                missingFirstDay ||
+                hasLiveRangeError
               }
             >
-              {enqueueSyncJob.isPending ? 'Enqueuing…' : 'Trigger'}
+              {enqueueSyncJob.isPending
+                ? copy.enqueuing
+                : isPeriodEntry
+                  ? copy.periodConfirm
+                  : copy.trigger}
             </Button>
           </ReadOnlyLock>
         </DialogFooter>

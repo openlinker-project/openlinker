@@ -29,7 +29,8 @@ import {
 } from '@openlinker/core/products';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
 import { SyncJobQueuePort, SYNC_JOB_QUEUE_TOKEN } from '@openlinker/core/sync';
-import { INVENTORY_SERVICE_TOKEN } from '../../inventory.tokens';
+import { INVENTORY_SERVICE_TOKEN, LOCATION_SERVICE_TOKEN } from '../../inventory.tokens';
+import { ILocationService } from './location.service.interface';
 import { IInventoryService } from './inventory.service.interface';
 import type {
   InventoryMasterPort,
@@ -39,10 +40,12 @@ import { InventoryItem as InventoryItemDomainEntity } from '../../domain/entitie
 import type { PruneStaleVariantsResult } from '../../domain/types/inventory.types';
 import { readStockLocationOverride } from '../../domain/types/stock-location-override.types';
 import { isBulkInventoryReader } from '../../domain/ports/capabilities/bulk-inventory-reader.capability';
+import { isInventoryEventTargetResolver } from '../../domain/ports/capabilities/inventory-event-target-resolver.capability';
 import type {
   IMasterInventorySyncService,
   MasterInventoryBatchSyncFailure,
   MasterInventoryBatchSyncResult,
+  MasterInventorySyncOptions,
   MasterInventorySyncResult,
 } from './master-inventory-sync.service.interface';
 import { Logger } from '@openlinker/shared/logging';
@@ -89,20 +92,50 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // runs for it and nothing would propagate. The enqueue below closes that
     // transition gap.
     @Inject(SYNC_JOB_QUEUE_TOKEN)
-    private readonly jobQueue: SyncJobQueuePort
+    private readonly jobQueue: SyncJobQueuePort,
+    // A master that names its own locations (`Inventory.masterLocation`) has
+    // them resolved - and provisioned on first sight - to OL locations here.
+    @Inject(LOCATION_SERVICE_TOKEN)
+    private readonly locationService: ILocationService
   ) {}
 
   async syncFromMasterByExternalId(
     connectionId: string,
-    externalId: string
+    externalId: string,
+    options: MasterInventorySyncOptions = {}
   ): Promise<MasterInventorySyncResult> {
     const inventoryAdapter =
       await this.integrationsService.getCapabilityAdapter<InventoryMasterPort>(
         connectionId,
         'InventoryMaster'
       );
+    let productExternalId = externalId;
+    if (isInventoryEventTargetResolver(inventoryAdapter)) {
+      const resolved = await inventoryAdapter.resolveEventProductExternalId(externalId);
+      if (resolved === null) {
+        this.logger.log(
+          `master_inventory_event_not_applicable connection=${connectionId} externalId=${externalId}`
+        );
+        return {
+          internalProductId: '',
+          itemsWritten: 0,
+          availableQuantity: 0,
+          reservedQuantity: 0,
+          masterDeleted: false,
+          pruneSkipped: false,
+          skipped: 'event-not-applicable',
+        };
+      }
+      productExternalId = resolved;
+    }
     const overrideLocationId = await this.resolveStockLocationOverride(connectionId);
-    return this.syncOneFromMaster(connectionId, externalId, inventoryAdapter, overrideLocationId);
+    return this.syncOneFromMaster(
+      connectionId,
+      productExternalId,
+      inventoryAdapter,
+      overrideLocationId,
+      options.syncRunId ?? null
+    );
   }
 
   /**
@@ -138,7 +171,8 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
    */
   async syncFromMasterByExternalIds(
     connectionId: string,
-    externalIds: readonly string[]
+    externalIds: readonly string[],
+    options: MasterInventorySyncOptions = {}
   ): Promise<MasterInventoryBatchSyncResult> {
     const inventoryAdapter =
       await this.integrationsService.getCapabilityAdapter<InventoryMasterPort>(
@@ -167,7 +201,13 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       // caller re-enqueues what failed as an ordinary per-product job.
       try {
         results.push(
-          await this.syncOneFromMaster(connectionId, externalId, inventoryAdapter, overrideLocationId)
+          await this.syncOneFromMaster(
+            connectionId,
+            externalId,
+            inventoryAdapter,
+            overrideLocationId,
+            options.syncRunId ?? null
+          )
         );
       } catch (error) {
         failures.push({
@@ -208,7 +248,8 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     connectionId: string,
     externalId: string,
     inventoryAdapter: InventoryMasterPort,
-    overrideLocationId: string | null
+    overrideLocationId: string | null,
+    syncRunId: string | null
   ): Promise<MasterInventorySyncResult> {
     const internalProductId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.Product,
@@ -243,6 +284,8 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // location - so it double-counts stock and is repaired below.
     const locatedVariantKeys: (string | null)[] = [];
     const pooledVariantKeys = new Set<string>();
+    // Complete location sets, per variant (multi-location pruning, below).
+    const completeLocationSets = new Map<string, { variantKey: string | null; locationIds: string[] }>();
     for (const inventory of inventories) {
       const inventoryItem = await this.toDomainInventoryItem(
         inventory,
@@ -250,7 +293,17 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         connectionId,
         overrideLocationId
       );
-      await this.inventoryService.setInventory(inventoryItem, connectionId);
+      // Without a run id the call is exactly the pre-#4062 one, so the row is
+      // recorded as before (reason and source kind default to master_sync).
+      if (syncRunId === null) {
+        await this.inventoryService.setInventory(inventoryItem, connectionId);
+      } else {
+        await this.inventoryService.setInventory(inventoryItem, connectionId, {
+          reason: 'master_sync',
+          sourceKind: 'master_sync',
+          syncRunId,
+        });
+      }
       currentVariantIds.push(inventoryItem.productVariantId);
       // Effective location — an override folded in by `toDomainInventoryItem`
       // makes this position "located" for the #2322 pooled-row repair below
@@ -258,6 +311,15 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       // repair's perspective the two are indistinguishable (#3206).
       if (inventoryItem.locationId !== null) {
         locatedVariantKeys.push(inventoryItem.productVariantId);
+        if (inventory.locationSetComplete === true) {
+          const key = inventoryItem.productVariantId ?? PRODUCT_LEVEL_VARIANT_KEY;
+          const set = completeLocationSets.get(key) ?? {
+            variantKey: inventoryItem.productVariantId,
+            locationIds: [],
+          };
+          set.locationIds.push(inventoryItem.locationId);
+          completeLocationSets.set(key, set);
+        }
       } else {
         pooledVariantKeys.add(inventoryItem.productVariantId ?? PRODUCT_LEVEL_VARIANT_KEY);
       }
@@ -471,6 +533,27 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         internalProductId,
         locatedStaleResult.variantIds,
         locatedStaleResult.markedProductLevel === true
+      );
+    }
+
+    // Multi-location pruning: a variant reported with a declared-complete
+    // location set loses (soft-stale, no event) its own rows at any location the
+    // pull no longer names - the per-variant prune above keeps every location
+    // row of a variant still reported. Same provenance invariant as the repairs:
+    // the unattributed claim holds only without a rival master.
+    const unreportedStaleResult =
+      completeLocationSets.size === 0
+        ? { markedCount: 0, variantIds: [] }
+        : await this.inventoryService.staleUnreportedLocationsForSource(
+            internalProductId,
+            [...completeLocationSets.values()],
+            { sourceConnectionId: connectionId, includeUnattributedProvenance: !pruneSkipped }
+          );
+    if (unreportedStaleResult.markedCount > 0) {
+      await this.enqueueAggregatePropagation(
+        internalProductId,
+        unreportedStaleResult.variantIds,
+        unreportedStaleResult.markedProductLevel === true
       );
     }
 
@@ -699,7 +782,14 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // `readStockLocationOverride`'s docblock. Computed once, and both sites
     // below (the lookup and the constructed row) must use this SAME value or
     // the upsert would look up one location and write another.
-    const effectiveLocationId = inventory.locationId ?? overrideLocationId ?? null;
+    // A master-named location (`masterLocation`) ranks between the two: it is
+    // the master's own answer, resolved to an OL row, and the operator's
+    // override only fills the gap when the master says nothing.
+    const effectiveLocationId =
+      inventory.locationId ??
+      (await this.resolveMasterLocationId(inventory, connectionId)) ??
+      overrideLocationId ??
+      null;
 
     // Provenance-scoped (#2320) and load-bearing: `existing?.id` below is
     // reused as the row identity, so an unscoped lookup would hand this
@@ -731,6 +821,23 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       false,
       connectionId
     );
+  }
+
+  private async resolveMasterLocationId(
+    inventory: InventoryPortInterface,
+    connectionId: string
+  ): Promise<string | null> {
+    if (inventory.masterLocation === undefined) {
+      return null;
+    }
+    const { connection } = await this.integrationsService.getAdapter(connectionId);
+    const location = await this.locationService.resolveMasterLocation({
+      connectionId,
+      platformType: connection.platformType,
+      externalRef: inventory.masterLocation.ref,
+      name: inventory.masterLocation.name,
+    });
+    return location.id;
   }
 
   /**

@@ -323,6 +323,35 @@ describe('FulfillmentWorkController', () => {
       expect(error).toBeInstanceOf(expected);
     });
 
+    it('should send a stable code and params when the hold limit is reached (#3865)', async () => {
+      worklist.applyAction.mockRejectedValue(
+        new FulfillmentHoldLimitExceededError('work-1', 10, 10)
+      );
+
+      const error = (await controller
+        .applyAction('work-1', 'hold', body(), user)
+        .catch((e: unknown) => e)) as ConflictException;
+
+      expect(error.getResponse()).toMatchObject({
+        statusCode: 409,
+        code: 'FULFILLMENT_HOLD_LIMIT_REACHED',
+        params: { workId: 'work-1', activeHolds: 10, limit: 10 },
+      });
+    });
+
+    it('should send a stable code when the work is not found (#3865)', async () => {
+      worklist.applyAction.mockRejectedValue(new FulfillmentWorkNotFoundError('work-1'));
+
+      const error = (await controller
+        .applyAction('work-1', 'hold', body(), user)
+        .catch((e: unknown) => e)) as NotFoundException;
+
+      expect(error.getResponse()).toMatchObject({
+        code: 'FULFILLMENT_WORK_NOT_FOUND',
+        params: { workId: 'work-1' },
+      });
+    });
+
     it('should not deny that an invocable action is invocable when a field is missing', async () => {
       // The defect this pins was operator-facing COPY, so the assertion is about
       // the message. Reusing UnsupportedFulfillmentWorkActionError produced

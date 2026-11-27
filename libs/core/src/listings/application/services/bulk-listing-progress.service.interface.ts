@@ -39,4 +39,25 @@ export interface IBulkListingProgressService {
     offerCreationRecordId: string,
     outcome: BulkChildOutcome,
   ): Promise<BulkListingBatch | null>;
+
+  /**
+   * Correct a child the batch counted as `succeeded` whose record later
+   * terminalised as `failed` (E2E-21: the marketplace accepted the create,
+   * then rejected the offer asynchronously). Moves the advancement from
+   * succeeded to failed, adjusts the counters by -1 succeeded / +1 failed,
+   * and re-derives the terminal status with the same rule
+   * `advanceBatchStatus` uses.
+   *
+   * Replay-safe: the move is one conditional UPDATE on the advancement row,
+   * so a second call (a replayed poll) adjusts nothing. A child not yet
+   * counted at all is counted as `failed` instead, through the same
+   * at-most-once gate as `advanceBatchStatus`.
+   *
+   * Returns the post-update batch when it is finished (and its status was
+   * re-derived on this call), `null` otherwise.
+   */
+  reclassifyChildAsFailed(
+    batchId: string,
+    offerCreationRecordId: string
+  ): Promise<BulkListingBatch | null>;
 }

@@ -48,6 +48,13 @@ import type { HoldReason } from '@openlinker/core/order-lifecycle';
  */
 export const FULFILLMENT_HOLD_ACTIVE_LIMIT = 10;
 
+/**
+ * The service actor recorded on a hold placed because the order source changed
+ * a line after routing (#3961). Releasing by this actor is what lets the
+ * reconcile clear its own hold without touching an operator's.
+ */
+export const SOURCE_CHANGE_HOLD_ACTOR = 'source-amendment';
+
 /** One hold placed against one work object. Released, never deleted. */
 export interface FulfillmentHold {
   readonly id: string;

@@ -67,4 +67,13 @@ export interface IKsefHttpClient {
     body?: Record<string, unknown> | string,
     options?: KsefHttpRequestOptions,
   ): Promise<KsefBinaryResponse>;
+
+  /**
+   * Reserve the rate-limit budget for one whole online-session round (open +
+   * submit + close) before the session opens (DEF-04), so no wait happens once
+   * KSeF holds a session. Throws `KsefRateLimitDeferredException` when the
+   * budget will not free up within the pacing allowance. Optional: a client
+   * with no limiter (fakes, the auth bootstrap) simply has nothing to reserve.
+   */
+  reserveSessionRound?(): Promise<void>;
 }

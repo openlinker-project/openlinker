@@ -10,7 +10,7 @@
  * @module apps/web/src/pages/listings
  */
 import { useCallback, useMemo, type ReactElement } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -21,6 +21,15 @@ import {
   StatusBadge,
 } from '../../shared/ui';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
+import {
+  interpolate,
+  renderRich,
+  type Messages,
+  type ResolvedCopy,
+  useFormat,
+  useMessages,
+  usePlural,
+} from '../../shared/i18n';
 import { useToast } from '../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
@@ -32,21 +41,42 @@ import {
   selectFailedRecords,
 } from '../../features/listings/lib/batch-recovery';
 import { useBulkBatchQuery } from '../../features/listings/hooks/use-bulk-batch-query';
+import { useBundleOfferPreview } from '../../features/listings/hooks/use-bundle-offer-preview';
+import type { BundleOfferPreviewItem } from '../../features/listings/api/listings.types';
 import { useBulkRetryFailedMutation } from '../../features/listings/hooks/use-bulk-retry-failed-mutation';
 import { useConnectionsQuery } from '../../features/connections';
+import { splitAccountLevelFailures } from '../../features/listings/lib/account-level-failures';
+import { usePlatform } from '../../shared/plugins';
 import {
   TERMINAL_BULK_BATCH_STATUSES,
   type BulkBatchRecordSummary,
   type BulkBatchStatus,
 } from '../../features/listings/api/bulk-listings.types';
+import { describeApiError } from '../../shared/api/describe-api-error';
 
-/** Tooltip copy for a demo viewer, matching the wizard's own locked submit. */
-const DEMO_LOCK_MESSAGE = 'Read-only demo - recovery actions are disabled.';
+const NO_BUNDLE_ITEMS: BundleOfferPreviewItem[] = [];
+
+type BulkBatchProgressCopy = ResolvedCopy<Messages['listings']>['bulkBatchProgressPage'];
 
 export function BulkBatchProgressPage(): ReactElement {
   const { batchId } = useParams<{ batchId: string }>();
+  const copy = useMessages('listings').bulkBatchProgressPage;
+  const format = useFormat();
+  const plural = usePlural();
   const query = useBulkBatchQuery(batchId);
   const retryMutation = useBulkRetryFailedMutation();
+  const location = useLocation();
+  const skippedAlreadyListed = readSkippedCount(location.state);
+  // Which records are sets or multipacks, and what they were made of. Asked only
+  // for the batch's own variants; a bundle with no answer simply reads as a row.
+  const bundleItems = useMemo<BundleOfferPreviewItem[]>(
+    () =>
+      query.data
+        ? query.data.records.map((record) => ({ variantId: record.internalVariantId }))
+        : NO_BUNDLE_ITEMS,
+    [query.data],
+  );
+  const bundlePreview = useBundleOfferPreview(query.data?.connectionId, bundleItems);
   const connectionsQuery = useConnectionsQuery();
   const { showToast } = useToast();
   const demoMode = useDemoMode();
@@ -54,11 +84,23 @@ export function BulkBatchProgressPage(): ReactElement {
   // gate the wizard's own submit uses (#1615 visible-but-disabled in demo).
   const write = useWriteAccess('listings:write', demoMode);
 
-  const failedRecords = useMemo(
-    () => selectFailedRecords(query.data?.records ?? []),
-    [query.data],
+  const failedRecords = useMemo(() => selectFailedRecords(query.data?.records ?? []), [query.data]);
+  const batchCopy = useMessages('listings').bulkBatch;
+  const batchConnection = connectionsQuery.data?.find((c) => c.id === query.data?.connectionId);
+  const batchPlatform = usePlatform(batchConnection?.platformType);
+  const accountRefusal = batchPlatform?.offerValidation?.accountLevelRefusal;
+  // The quote comes from the marketplace, not from the operator's connection label.
+  const platformName =
+    batchPlatform?.shortLabel ?? batchPlatform?.displayName ?? batchConnection?.platformType ?? '';
+  // Account-level refusals (#4004) are reported once, above the table; only the
+  // offer-level failures are something the wizard can fix.
+  const split = useMemo(
+    () => splitAccountLevelFailures(failedRecords, accountRefusal?.errorCodes ?? []),
+    [failedRecords, accountRefusal]
   );
-  const fixTarget = useMemo(() => resolveBatchFixTarget(failedRecords), [failedRecords]);
+  const accountLevelRecordIds = useMemo(() => new Set(split.account.map((r) => r.id)), [split]);
+  const fixTarget = useMemo(() => resolveBatchFixTarget(split.offer), [split]);
+  const offerFailedCount = split.offer.length;
 
   const batchId_ = query.data?.id;
   const batchConnectionId = query.data?.connectionId;
@@ -76,16 +118,12 @@ export function BulkBatchProgressPage(): ReactElement {
         batchId: batchId_,
       });
     },
-    [batchId_, batchConnectionId],
+    [batchId_, batchConnectionId]
   );
 
   const inProgress = useMemo(() => {
     if (!query.data) return 0;
-    return (
-      query.data.totalCount -
-      query.data.succeededCount -
-      query.data.failedCount
-    );
+    return query.data.totalCount - query.data.succeededCount - query.data.failedCount;
   }, [query.data]);
 
   const handleRetryAll = useCallback(async () => {
@@ -94,43 +132,39 @@ export function BulkBatchProgressPage(): ReactElement {
       const result = await retryMutation.mutateAsync(batchId);
       showToast({
         tone: 'success',
-        title: 'Retry dispatched',
-        description: `${result.retriedCount.toLocaleString()} records re-enqueued.`,
+        title: copy.toasts.retryDispatchedTitle,
+        description: plural(result.retriedCount, copy.toasts.retryDispatchedDescription),
       });
     } catch (error) {
       showToast({
         tone: 'error',
-        title: 'Retry failed',
-        description: (error as Error).message,
+        title: copy.toasts.retryFailedTitle,
+        description: describeApiError(error, 'listings'),
       });
     }
-  }, [batchId, retryMutation, showToast]);
+  }, [batchId, copy.toasts, plural, retryMutation, showToast]);
 
   if (!batchId) {
-    return (
-      <ErrorState
-        title="Missing batch ID"
-        message="The route is missing a batch identifier."
-      />
-    );
+    return <ErrorState title={copy.missingIdTitle} message={copy.missingIdMessage} />;
   }
 
   if (query.isLoading) {
-    return (
-      <LoadingState
-        title="Loading batch"
-        message="Fetching bulk batch status…"
-      />
-    );
+    return <LoadingState title={copy.loadingTitle} message={copy.loadingMessage} />;
   }
 
   if (query.error) {
     return (
       <ErrorState
-        title="Could not load batch"
-        message={query.error.message}
+        title={copy.errorTitle}
+        message={describeApiError(query.error, 'listings')}
         action={
-          <Button onClick={() => { void query.refetch(); }}>Retry</Button>
+          <Button
+            onClick={() => {
+              void query.refetch();
+            }}
+          >
+            {copy.retry}
+          </Button>
         }
       />
     );
@@ -139,8 +173,8 @@ export function BulkBatchProgressPage(): ReactElement {
   if (!query.data) {
     return (
       <ErrorState
-        title="Batch not found"
-        message={`No batch with id "${batchId}" was found.`}
+        title={copy.notFoundTitle}
+        message={interpolate(copy.notFoundMessage, { batchId })}
       />
     );
   }
@@ -148,81 +182,93 @@ export function BulkBatchProgressPage(): ReactElement {
   const batch = query.data;
   const isTerminal = TERMINAL_BULK_BATCH_STATUSES.includes(batch.status);
   const connectionName =
-    connectionsQuery.data?.find((c) => c.id === batch.connectionId)?.name ??
-    batch.connectionId;
+    connectionsQuery.data?.find((c) => c.id === batch.connectionId)?.name ?? batch.connectionId;
 
-  const succeededPct =
-    batch.totalCount > 0
-      ? Math.round((batch.succeededCount / batch.totalCount) * 100)
-      : 0;
-  const failedPct =
-    batch.totalCount > 0
-      ? Math.round((batch.failedCount / batch.totalCount) * 100)
-      : 0;
+  const succeededShare = batch.totalCount > 0 ? batch.succeededCount / batch.totalCount : 0;
+  const failedShare = batch.totalCount > 0 ? batch.failedCount / batch.totalCount : 0;
+  const percentOptions = { maximumFractionDigits: 0 };
 
-  const elapsed = computeElapsed(batch.createdAt, batch.updatedAt);
+  const elapsed = format.duration(elapsedMs(batch.createdAt, batch.updatedAt)) ?? '—';
+  const accountNotice =
+    accountRefusal && split.account.length > 0
+      ? accountRefusal.describe({
+          affected: split.account.length,
+          total: batch.totalCount,
+          connectionConfig: batchConnection?.config ?? {},
+        })
+      : null;
+  const showAccountRow = accountNotice !== null;
+  const showRecovery = isTerminal && batch.failedCount > 0 && write.visible;
 
   return (
     <PageLayout
-      eyebrow="Operations · Listings"
-      title={
-        <>
-          Bulk batch{' '}
-          <span
-            className="mono-text"
-            style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 500 }}
-          >
-            {batch.id.slice(0, 8)}
-          </span>
-        </>
-      }
-      description={
-        <>
-          Status <BatchStatusLabel status={batch.status} /> · {connectionName}{' '}
-          · {batch.totalCount.toLocaleString()} {batch.totalCount === 1 ? 'variant' : 'variants'}
-        </>
-      }
+      eyebrow={copy.eyebrow}
+      title={renderRich(
+        copy.title,
+        {
+          id: (text) => (
+            <span
+              className="mono-text"
+              style={{ fontSize: 18, color: 'var(--text-muted)', fontWeight: 500 }}
+            >
+              {text}
+            </span>
+          ),
+        },
+        { batchId: batch.id.slice(0, 8) }
+      )}
+      description={renderRich(
+        plural(batch.totalCount, copy.statusLine),
+        { status: () => <BatchStatusLabel status={batch.status} copy={copy} /> },
+        { connection: connectionName }
+      )}
       actions={
         <Link to="/listings" className="button">
-          Open in /listings →
+          {copy.openListings} <span aria-hidden="true">→</span>
         </Link>
       }
     >
       <div className="bulk-batch__kpi-strip">
         <MetricCard
-          label="Total"
-          value={batch.totalCount.toLocaleString()}
-          description={`Submitted ${formatRelative(batch.createdAt)}`}
+          label={copy.metrics.total}
+          value={format.number(batch.totalCount)}
+          description={interpolate(copy.metrics.submitted, {
+            when: isValidIso(batch.createdAt) ? format.relativeTime(batch.createdAt) : '—',
+          })}
         />
         <MetricCard
-          label={`Succeeded · ${succeededPct.toString()}%`}
-          value={batch.succeededCount.toLocaleString()}
-          description="Offers live on marketplace"
+          label={interpolate(copy.metrics.succeeded, {
+            percent: format.percent(succeededShare, percentOptions),
+          })}
+          value={format.number(batch.succeededCount)}
+          description={copy.metrics.succeededDescription}
           tone="success"
         />
         <MetricCard
-          label={`Failed · ${failedPct.toString()}%`}
-          value={batch.failedCount.toLocaleString()}
+          label={interpolate(copy.metrics.failed, {
+            percent: format.percent(failedShare, percentOptions),
+          })}
+          value={format.number(batch.failedCount)}
           description={
             batch.failedCount === 0
-              ? 'No failures'
+              ? copy.metrics.noFailures
               : write.visible
-                ? 'Recovery available below'
-                : 'Recovery needs write access'
+                ? copy.metrics.recoveryAvailable
+                : copy.metrics.recoveryNeedsWrite
           }
           tone={batch.failedCount > 0 ? 'error' : 'neutral'}
         />
         <MetricCard
-          label="In progress"
-          value={inProgress.toLocaleString()}
-          description={isTerminal ? 'Batch closed' : 'Polling every 5 s'}
+          label={copy.metrics.inProgress}
+          value={format.number(inProgress)}
+          description={isTerminal ? copy.metrics.batchClosed : copy.metrics.polling}
           tone={inProgress > 0 ? 'info' : 'neutral'}
         />
       </div>
 
       {!isTerminal ? (
         <Alert tone="info">
-          <strong>Batch in progress.</strong> Polling for updates every 5 seconds.
+          {renderRich(copy.inProgressAlert, { strong: (text) => <strong>{text}</strong> })}
         </Alert>
       ) : null}
 
@@ -233,77 +279,171 @@ export function BulkBatchProgressPage(): ReactElement {
           equivalent: a payload the platform rejected cannot be healed by
           re-sending it, so the data fix leads and retry stays one click away
           for the transient case. */}
-      {isTerminal && batch.failedCount > 0 && write.visible ? (
-        <Alert tone="warning">
-          <div className="bulk-batch__recovery">
-            <div className="bulk-batch__recovery-copy">
-              <strong>
-                {batch.succeededCount === 0
-                  ? `${batch.failedCount.toLocaleString()} ${batch.failedCount === 1 ? 'variant' : 'variants'} failed. Nothing went live.`
-                  : `${batch.failedCount.toLocaleString()} of ${batch.totalCount.toLocaleString()} variants failed. ${batch.succeededCount.toLocaleString()} ${batch.succeededCount === 1 ? 'offer is' : 'offers are'} live.`}
-              </strong>{' '}
-              Reopen the wizard with the failed variants already selected, or re-run the
-              batch exactly as saved.
-              {fixTarget.blocker !== null ? (
-                <div className="bulk-batch__recovery-reason">
-                  {describeBatchFixBlocker(fixTarget.blocker)}
+      {/* What went wrong, by cause (#2234, #4004). One panel instead of stacked
+          tinted alerts: each row is one cause with its own count and its own
+          action, so an account-level refusal (nothing in the offers can fix
+          it) never sits behind the same "Fix and resubmit" as an offer-data
+          one. Colour marks only each row's tone. */}
+      {showAccountRow || showRecovery ? (
+        <section className="batch-triage" aria-labelledby="batch-triage-title">
+          <h2 className="batch-triage__title" id="batch-triage-title">
+            {!isTerminal
+              ? plural(batch.failedCount, batchCopy.triage.failedSoFar)
+              : batch.succeededCount === 0
+                ? plural(batch.failedCount, copy.recovery.allFailed)
+                : `${plural(batch.totalCount, copy.recovery.someFailed, {
+                    failed: format.number(batch.failedCount),
+                  })} ${plural(batch.succeededCount, copy.recovery.someLive)}`}
+          </h2>
+          <ul className="batch-triage__list">
+            {showAccountRow && accountNotice ? (
+              <li
+                className="batch-triage__row batch-triage__row--error"
+                data-testid="bulk-batch-account-refusal"
+              >
+                <span className="batch-triage__mark" aria-hidden="true" />
+                <div className="batch-triage__body">
+                  <p className="batch-triage__cause">{accountNotice.title}</p>
+                  <p className="batch-triage__detail">{accountNotice.detail}</p>
+                  {split.firstAccountError ? (
+                    <figure className="batch-triage__quote">
+                      <blockquote>{split.firstAccountError.message}</blockquote>
+                      <figcaption>
+                        {interpolate(batchCopy.accountRefused.providerSaid, { name: platformName })}{' '}
+                        <code>{split.firstAccountError.code}</code>
+                      </figcaption>
+                    </figure>
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
-            <div className="bulk-batch__recovery-actions">
-              <ReadOnlyLock active={write.demoReadOnly} message={DEMO_LOCK_MESSAGE}>
-                <Button
-                  tone="secondary"
-                  onClick={() => { void handleRetryAll(); }}
-                  disabled={!write.canWrite || retryMutation.isPending}
-                >
-                  {retryMutation.isPending
-                    ? 'Retrying…'
-                    : `Retry unchanged (${batch.failedCount.toLocaleString()})`}
-                </Button>
-              </ReadOnlyLock>
-              {fixTarget.blocker === null && write.canWrite ? (
-                <Link
-                  className="button button--primary"
-                  to={buildBatchFixUrl({
-                    productIds: fixTarget.productIds,
-                    variantIds: fixTarget.variantIds,
-                    connectionId: batch.connectionId,
-                    batchId: batch.id,
-                  })}
-                >
-                  Fix and resubmit ({failedRecords.length.toLocaleString()}) →
-                </Link>
-              ) : (
-                <ReadOnlyLock
-                  active={write.demoReadOnly}
-                  message={DEMO_LOCK_MESSAGE}
-                >
-                  <Button tone="primary" disabled>
-                    Fix and resubmit ({failedRecords.length.toLocaleString()}) →
-                  </Button>
-                </ReadOnlyLock>
-              )}
-            </div>
-          </div>
-        </Alert>
+                {accountNotice.action ? (
+                  <div className="batch-triage__action">
+                    <a
+                      className="button button--secondary button--sm"
+                      href={accountNotice.action.href}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {accountNotice.action.label}
+                      <span aria-hidden="true"> ↗</span>
+                      <span className="sr-only"> {batchCopy.triage.opensInNewTab}</span>
+                    </a>
+                  </div>
+                ) : null}
+              </li>
+            ) : null}
+            {showRecovery && offerFailedCount > 0 ? (
+              <li className="batch-triage__row batch-triage__row--warning">
+                <span className="batch-triage__mark" aria-hidden="true" />
+                <div className="batch-triage__body">
+                  <p className="batch-triage__cause">
+                    {plural(offerFailedCount, batchCopy.triage.offerCause)}
+                  </p>
+                  <p className="batch-triage__detail">
+                    {fixTarget.blocker !== null
+                      ? describeBatchFixBlocker(fixTarget.blocker)
+                      : batchCopy.triage.offerDetail}
+                  </p>
+                </div>
+                <div className="batch-triage__action">
+                  {fixTarget.blocker === null && write.canWrite ? (
+                    <Link
+                      className="button button--primary button--sm"
+                      to={buildBatchFixUrl({
+                        productIds: fixTarget.productIds,
+                        variantIds: fixTarget.variantIds,
+                        connectionId: batch.connectionId,
+                        batchId: batch.id,
+                      })}
+                    >
+                      {interpolate(copy.recovery.fixAndResubmit, {
+                        count: format.number(offerFailedCount),
+                      })}
+                    </Link>
+                  ) : (
+                    <ReadOnlyLock active={write.demoReadOnly} message={copy.demoLock}>
+                      <Button tone="primary" className="button--sm" disabled>
+                        {interpolate(copy.recovery.fixAndResubmit, {
+                          count: format.number(offerFailedCount),
+                        })}
+                      </Button>
+                    </ReadOnlyLock>
+                  )}
+                </div>
+              </li>
+            ) : null}
+            {showRecovery ? (
+              <li className="batch-triage__row batch-triage__row--neutral">
+                <span className="batch-triage__mark" aria-hidden="true" />
+                <div className="batch-triage__body">
+                  <p className="batch-triage__cause">{batchCopy.triage.retryCause}</p>
+                  <p className="batch-triage__detail">
+                    {offerFailedCount === 0
+                      ? batchCopy.recovery.accountOnly
+                      : batchCopy.triage.retryDetail}
+                  </p>
+                </div>
+                <div className="batch-triage__action">
+                  <ReadOnlyLock active={write.demoReadOnly} message={copy.demoLock}>
+                    <Button
+                      tone="secondary"
+                      className="button--sm"
+                      onClick={() => {
+                        void handleRetryAll();
+                      }}
+                      disabled={!write.canWrite || retryMutation.isPending}
+                    >
+                      {retryMutation.isPending
+                        ? copy.recovery.retrying
+                        : interpolate(copy.recovery.retryUnchanged, {
+                            count: format.number(batch.failedCount),
+                          })}
+                    </Button>
+                  </ReadOnlyLock>
+                </div>
+              </li>
+            ) : null}
+          </ul>
+        </section>
       ) : null}
 
       <BulkBatchProgressTable
         records={batch.records}
         buildFixUrl={write.canWrite ? buildRowFixUrl : undefined}
+        bundles={bundlePreview.bundles}
+        accountLevelRecordIds={accountLevelRecordIds}
+        accountLevelRowLabel={batchCopy.accountRefused.rowPointer}
       />
 
       {isTerminal ? (
         <div className="bulk-batch__summary">
           <div className="bulk-batch__summary-main">
             <strong>
-              Batch {batch.status === 'completed' ? 'completed' : 'ended'} in {elapsed}
+              {interpolate(
+                batch.status === 'completed' ? copy.summary.completedIn : copy.summary.endedIn,
+                { elapsed }
+              )}
             </strong>{' '}
-            · {batch.succeededCount.toLocaleString()} created · {batch.failedCount.toLocaleString()} failed
+            <span aria-hidden="true">·</span>{' '}
+            {plural(batch.succeededCount, copy.summary.created)}{' '}
+            <span aria-hidden="true">·</span>{' '}
+            {plural(batch.failedCount, copy.summary.failed)}
+            {skippedAlreadyListed > 0 ? (
+              <>
+                {' '}
+                <span aria-hidden="true">·</span>{' '}
+                {plural(skippedAlreadyListed, copy.summary.skipped)}
+              </>
+            ) : null}
           </div>
           <div className="bulk-batch__summary-links">
-            <Link to="/listings">Open in /listings →</Link>
+            {bundlePreview.bundles.size > 0 ? (
+              <Link to="/products?bundles=only">
+                {copy.summary.openBundles} <span aria-hidden="true">→</span>
+              </Link>
+            ) : null}
+            <Link to="/listings">
+              {copy.openListings} <span aria-hidden="true">→</span>
+            </Link>
           </div>
         </div>
       ) : null}
@@ -313,43 +453,61 @@ export function BulkBatchProgressPage(): ReactElement {
 
 function BatchStatusLabel({
   status,
+  copy,
 }: {
   status: BulkBatchStatus;
+  copy: BulkBatchProgressCopy;
 }): ReactElement {
+  const labels = copy.statuses;
   switch (status) {
     case 'pending':
-      return <StatusBadge tone="neutral" withDot>pending</StatusBadge>;
+      return (
+        <StatusBadge tone="neutral" withDot>
+          {labels.pending}
+        </StatusBadge>
+      );
     case 'running':
-      return <StatusBadge tone="info" withDot pulse>running</StatusBadge>;
+      return (
+        <StatusBadge tone="info" withDot pulse>
+          {labels.running}
+        </StatusBadge>
+      );
     case 'completed':
-      return <StatusBadge tone="success" withDot>completed</StatusBadge>;
+      return (
+        <StatusBadge tone="success" withDot>
+          {labels.completed}
+        </StatusBadge>
+      );
     case 'partially-failed':
-      return <StatusBadge tone="warning" withDot>partially failed</StatusBadge>;
+      return (
+        <StatusBadge tone="warning" withDot>
+          {labels.partiallyFailed}
+        </StatusBadge>
+      );
     case 'failed':
-      return <StatusBadge tone="error" withDot>failed</StatusBadge>;
+      return (
+        <StatusBadge tone="error" withDot>
+          {labels.failed}
+        </StatusBadge>
+      );
   }
 }
 
-function computeElapsed(startIso: string, endIso: string): string {
+/** Wall time between two stamps, or null when either is unreadable or out of order. */
+function elapsedMs(startIso: string, endIso: string): number | null {
   const start = new Date(startIso).getTime();
   const end = new Date(endIso).getTime();
-  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return '—';
-  const seconds = Math.round((end - start) / 1000);
-  if (seconds < 60) return `${seconds.toString()}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remSeconds = seconds % 60;
-  return remSeconds > 0
-    ? `${minutes.toString()}m ${remSeconds.toString()}s`
-    : `${minutes.toString()}m`;
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
+  return end - start;
 }
 
-function formatRelative(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return `${seconds.toString()}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes.toString()} min ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours.toString()} h ago`;
+/** The submit step hands the skip count over in navigation state; anything else reads as none. */
+function readSkippedCount(state: unknown): number {
+  if (typeof state !== 'object' || state === null) return 0;
+  const value = (state as { skippedAlreadyListedCount?: unknown }).skippedAlreadyListedCount;
+  return typeof value === 'number' && value > 0 ? value : 0;
+}
+
+function isValidIso(iso: string): boolean {
+  return !Number.isNaN(new Date(iso).getTime());
 }

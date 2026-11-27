@@ -51,13 +51,15 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactElement,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
+import { interpolate, useFormat, useMessages, usePlural } from '../../../shared/i18n';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
@@ -68,6 +70,7 @@ import {
   DialogTitle,
 } from '../../../shared/ui/dialog';
 import { Input } from '../../../shared/ui/input';
+import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { useDebouncedValue } from '../../../shared/hooks/use-debounced-value';
 import { useConnectionsQuery } from '../../connections';
 import { useProductsQuery } from '../../products';
@@ -85,6 +88,9 @@ import {
   type PickerStep,
   type SelectionEntry,
 } from './offer-product-picker.types';
+import { describeApiError } from '../../../shared/api/describe-api-error';
+
+type BundleFilter = 'all' | 'only' | 'exclude';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -95,7 +101,7 @@ interface OfferProductPickerModalProps {
   /**
    * Whole-product ids to preselect on open (#1838 unification: the Products
    * page's bulk-select CTA feeds its checkbox selection in here instead of
-   * opening a separate destination-only picker). Optional — omit for a
+   * opening a separate destination-only picker). Optional - omit for a
    * fresh, empty selection.
    */
   initialProductIds?: readonly string[];
@@ -110,8 +116,12 @@ export function OfferProductPickerModal({
   initialProductMeta,
 }: OfferProductPickerModalProps): ReactElement | null {
   const navigate = useNavigate();
+  const copy = useMessages('listings').offerProductPickerModal;
+  const plural = usePlural();
+  const format = useFormat();
 
   const [searchInput, setSearchInput] = useState('');
+  const [bundleFilter, setBundleFilter] = useState<BundleFilter>('all');
   const [offset, setOffset] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selection, setSelection] = useState<Map<string, SelectionEntry>>(new Map());
@@ -185,7 +195,10 @@ export function OfferProductPickerModal({
   );
 
   const productsQuery = useProductsQuery(
-    { search: debouncedSearch || undefined },
+    {
+      search: debouncedSearch || undefined,
+      bundles: bundleFilter === 'all' ? undefined : bundleFilter,
+    },
     { limit: PAGE_SIZE, offset },
   );
   const productItems = productsQuery.data?.items;
@@ -369,16 +382,45 @@ export function OfferProductPickerModal({
     else searchInputRef.current?.focus();
   }, [step, isOpen]);
 
+  // Return focus to the control that opened the dialog. This component renders
+  // nothing while closed, so Radix unmounts with the trigger-less Root and has
+  // nowhere to send focus: it fell to <body> and a keyboard user restarted at
+  // the top of the page. Captured in a layout effect, which runs before the
+  // dialog's own passive focus effects move focus inside.
+  const openerRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (isOpen) {
+      const active = document.activeElement;
+      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      return undefined;
+    }
+    const opener = openerRef.current;
+    openerRef.current = null;
+    if (!opener) return undefined;
+    // After Radix's own unmount-time focus move, which would otherwise win.
+    const timer = window.setTimeout(() => {
+      if (opener.isConnected) opener.focus();
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const pageEnd = Math.min(offset + PAGE_SIZE, total);
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
   const canContinue = selection.size > 0 && resolvedConnectionId !== null;
-  const itemNoun = resolvedKind === 'shop' ? 'product listing' : 'offer';
-  const selectionSummary = `${itemCount} ${itemCount === 1 ? itemNoun : `${itemNoun}s`} selected across ${
-    selection.size
-  } ${selection.size === 1 ? 'product' : 'products'}`;
+  const itemsLabel = plural(
+    itemCount,
+    resolvedKind === 'shop' ? copy.itemCount.shop : copy.itemCount.marketplace,
+  );
+  const productsLabel = plural(selection.size, copy.productCount);
+  const selectionSummary = interpolate(copy.selectionSummary, {
+    items: itemsLabel,
+    products: productsLabel,
+  });
 
   return (
     <>
@@ -403,7 +445,7 @@ export function OfferProductPickerModal({
           <button
             type="button"
             className="offer-product-picker__x"
-            aria-label="Close"
+            aria-label={copy.closeAria}
             onClick={requestClose}
           >
             ×
@@ -411,20 +453,19 @@ export function OfferProductPickerModal({
 
           <span className="sr-only" aria-live="polite">
             {step === 'review'
-              ? 'Step 2 of 2: review your selection'
-              : 'Step 1 of 2: choose products'}
+              ? copy.stepAnnouncement.review
+              : copy.stepAnnouncement.products}
           </span>
 
           <header className="offer-product-picker__head">
-            <DialogTitle className="offer-product-picker__title">Publish products</DialogTitle>
+            <DialogTitle className="offer-product-picker__title">{copy.title}</DialogTitle>
             <DialogDescription className="offer-product-picker__sub">
-              Pick whole products or individual variants, mix across products, then choose a
-              marketplace or shop to publish to - it all becomes one batch.
+              {copy.description}
             </DialogDescription>
           </header>
 
           <div className="offer-product-picker__body">
-            <section className="offer-product-picker__list-region" aria-label="Product picker">
+            <section className="offer-product-picker__list-region" aria-label={copy.listAria}>
               <div className="offer-product-picker__search">
                 <Input
                   ref={searchInputRef}
@@ -435,38 +476,60 @@ export function OfferProductPickerModal({
                     // lands on page 1 rather than a now-empty page.
                     setOffset(0);
                   }}
-                  placeholder="Search by name, SKU or EAN"
-                  aria-label="Search products"
+                  placeholder={copy.search.placeholder}
+                  aria-label={copy.search.ariaLabel}
                 />
                 <p className="offer-product-picker__hint">
-                  Tick a product to add every variant, or expand it to choose specific ones.
+                  {copy.search.hint}
                 </p>
+                <SegmentedControl<BundleFilter>
+                  className="offer-product-picker__bundle-filter"
+                  aria-label={copy.bundleFilter.ariaLabel}
+                  value={bundleFilter}
+                  options={[
+                    { value: 'all', label: copy.bundleFilter.all },
+                    { value: 'only', label: copy.bundleFilter.only },
+                    { value: 'exclude', label: copy.bundleFilter.exclude },
+                  ]}
+                  onChange={(next) => {
+                    setBundleFilter(next);
+                    setOffset(0);
+                  }}
+                />
               </div>
 
               <div className="offer-product-picker__list">
                 {productsQuery.isLoading ? (
-                  <p className="muted-text">Loading products…</p>
+                  <p className="muted-text">{copy.loadingProducts}</p>
                 ) : productsQuery.error ? (
                   <Alert
                     tone="error"
-                    title="Unable to load products"
+                    title={copy.loadError}
                     action={
                       <Button
                         tone="secondary"
                         type="button"
                         onClick={() => void productsQuery.refetch()}
                       >
-                        Retry
+                        {copy.retry}
                       </Button>
                     }
                   >
-                    {productsQuery.error.message}
+                    {describeApiError(productsQuery.error, 'listings')}
                   </Alert>
                 ) : products.length === 0 ? (
                   <p className="muted-text">
                     {debouncedSearch.trim()
-                      ? `No products match "${debouncedSearch.trim()}".`
-                      : 'No products yet.'}
+                      ? interpolate(copy.empty.noMatch, { query: debouncedSearch.trim() })
+                      : bundleFilter === 'only'
+                        ? copy.empty.noBundles
+                        : copy.empty.noProducts}
+                    {bundleFilter === 'only' && !debouncedSearch.trim() ? (
+                      <>
+                        {' '}
+                        <Link to="/products/bundles/new">{copy.empty.createBundle}</Link>
+                      </>
+                    ) : null}
                   </p>
                 ) : (
                   <ul className="offer-product-picker__prows">
@@ -491,8 +554,7 @@ export function OfferProductPickerModal({
 
                 {capReached ? (
                   <p className="muted-text offer-product-picker__cap-hint" aria-live="polite">
-                    Maximum {OFFER_PICKER_PRODUCT_CAP} products per batch reached - clear a product
-                    to add another.
+                    {interpolate(copy.capReached, { max: OFFER_PICKER_PRODUCT_CAP })}
                   </p>
                 ) : null}
               </div>
@@ -500,31 +562,35 @@ export function OfferProductPickerModal({
               {total > 0 ? (
                 <div className="offer-product-picker__pager">
                   <span className="offer-product-picker__pager-count tabular">
-                    {offset + 1}–{pageEnd} of {total}
+                    {interpolate(copy.pager.range, {
+                      start: format.number(offset + 1),
+                      end: format.number(pageEnd),
+                      total: format.number(total),
+                    })}
                   </span>
                   <div className="offer-product-picker__pager-nav">
                     <Button
                       tone="secondary"
                       type="button"
                       className="button--sm"
-                      aria-label="Previous page of products"
+                      aria-label={copy.pager.previousAria}
                       disabled={offset === 0}
                       onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
                     >
-                      Previous
+                      {copy.pager.previous}
                     </Button>
                     <span className="offer-product-picker__pager-page tabular">
-                      {currentPage} / {pageCount}
+                      {interpolate(copy.pager.page, { current: currentPage, count: pageCount })}
                     </span>
                     <Button
                       tone="secondary"
                       type="button"
                       className="button--sm"
-                      aria-label="Next page of products"
+                      aria-label={copy.pager.nextAria}
                       disabled={offset + PAGE_SIZE >= total}
                       onClick={() => setOffset((o) => o + PAGE_SIZE)}
                     >
-                      Next
+                      {copy.pager.next}
                     </Button>
                   </div>
                 </div>
@@ -533,11 +599,10 @@ export function OfferProductPickerModal({
               {/* Step-1 action bar - visible only on the <=1023px two-step layout. */}
               <div className="offer-product-picker__mstep-next">
                 <span className="offer-product-picker__mstep-count">
-                  <b>{itemCount}</b> {itemCount === 1 ? itemNoun : `${itemNoun}s`} · {selection.size}{' '}
-                  {selection.size === 1 ? 'product' : 'products'}
+                  {interpolate(copy.mobileCount, { items: itemsLabel, products: productsLabel })}
                 </span>
                 <Button type="button" onClick={() => setStep('review')}>
-                  Review →
+                  {copy.review} <span aria-hidden="true">→</span>
                 </Button>
               </div>
             </section>
@@ -573,10 +638,10 @@ export function OfferProductPickerModal({
         onOpenChange={setDiscardOpen}
         className="dialog__content--elevated"
         overlayClassName="dialog__overlay--elevated"
-        title="Discard changes?"
-        description="You have unsaved product selections. Closing now will discard them."
-        cancelLabel="Keep editing"
-        confirmLabel="Discard changes"
+        title={copy.discard.title}
+        description={copy.discard.description}
+        cancelLabel={copy.discard.cancel}
+        confirmLabel={copy.discard.confirm}
         tone="danger"
         onConfirm={() => {
           setDiscardOpen(false);

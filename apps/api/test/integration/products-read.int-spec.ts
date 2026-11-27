@@ -9,6 +9,10 @@
  *     with a variant carrying a price → `GET /products/:id` → assert the
  *     variant's `price` survives the chain end-to-end. Also covers the
  *     null-price case (returns `null` on the wire).
+ *   - `gpsr` persistence: the three-state write (value / explicit null /
+ *     undefined leaves the stored value untouched) against real Postgres.
+ *   - the `productId` list filter reaching both the rows and the `countMany`
+ *     total, combined with search and pagination.
  *
  * Uses real Postgres via Testcontainers.
  *
@@ -246,6 +250,105 @@ describe('Products Read API Integration — currency persistence', () => {
 
       const reloaded = await repo.findById(id);
       expect(reloaded?.categories).toBeUndefined();
+    });
+  });
+
+  // GPSR - an undefined `gpsr` must leave the stored declaration untouched, so
+  // a sync whose GPSR reference read failed cannot erase it. That property
+  // depends on TypeORM skipping undefined columns on update, which only a real
+  // database can prove.
+  describe('gpsr persistence', () => {
+    const gpsr = {
+      producer: {
+        name: 'Acme Sp. z o.o.',
+        address: { street: 'Prosta 1', postalCode: '00-001', city: 'Warszawa', countryCode: 'PL' },
+      },
+      safetyInformation: { text: 'Keep away from children.', certificateNames: ['CE'] },
+    };
+    const baseProduct = (id: string): Product => ({
+      id,
+      name: 'GPSR Roundtrip',
+      sku: null,
+      price: null,
+      currency: null,
+      description: null,
+      images: null,
+    });
+    const getRepo = (): ProductRepositoryPort =>
+      harness.getApp().get<ProductRepositoryPort>(PRODUCT_REPOSITORY_TOKEN);
+
+    it('should round-trip a stated gpsr through the jsonb column', async () => {
+      const repo = getRepo();
+      const id = `ol_product_gpsr_${Date.now()}`;
+      await repo.upsert({ ...baseProduct(id), gpsr });
+
+      const reloaded = await repo.findById(id);
+      expect(reloaded?.gpsr).toEqual(gpsr);
+    });
+
+    it('should keep the stored gpsr when a later upsert does not report it', async () => {
+      const repo = getRepo();
+      const id = `ol_product_gpsr_keep_${Date.now()}`;
+      await repo.upsert({ ...baseProduct(id), gpsr });
+      await repo.upsert({ ...baseProduct(id), name: 'Renamed' });
+
+      const reloaded = await repo.findById(id);
+      expect(reloaded?.name).toBe('Renamed');
+      expect(reloaded?.gpsr).toEqual(gpsr);
+    });
+
+    it('should clear the stored gpsr when the master reports none', async () => {
+      const repo = getRepo();
+      const id = `ol_product_gpsr_clear_${Date.now()}`;
+      await repo.upsert({ ...baseProduct(id), gpsr });
+      await repo.upsert({ ...baseProduct(id), gpsr: null });
+
+      const reloaded = await repo.findById(id);
+      expect(reloaded?.gpsr).toBeNull();
+    });
+  });
+
+  // The productId arm must reach BOTH halves of the paginated-total split
+  // (#2944): a refactor of buildFilteredQuery that dropped it from one path
+  // would let countMany describe a different set than the rows.
+  describe('productId list filter', () => {
+    const getRepo = (): ProductRepositoryPort =>
+      harness.getApp().get<ProductRepositoryPort>(PRODUCT_REPOSITORY_TOKEN);
+
+    it('should scope rows and countMany to the one product when combined with search and pagination', async () => {
+      const dataSource = harness.getDataSource();
+      const target = await seedProduct(dataSource, { name: 'Peek Target Mug', sku: 'SKU-PEEK-1' });
+      await seedProduct(dataSource, { name: 'Peek Sibling Mug', sku: 'SKU-PEEK-2' });
+      await seedProduct(dataSource, { name: 'Unrelated Lamp', sku: 'SKU-OTHER' });
+      const repo = getRepo();
+
+      const matching = { productId: target.id, search: 'Peek' };
+      const page = { limit: 1, offset: 0 };
+
+      const [listed, rows, total] = await Promise.all([
+        repo.findMany(matching, page),
+        repo.findManyRows(matching, page),
+        repo.countMany(matching),
+      ]);
+
+      expect(rows.map((p) => p.id)).toEqual([target.id]);
+      expect(listed.items.map((p) => p.id)).toEqual([target.id]);
+      expect(total).toBe(1);
+      expect(listed.total).toBe(total);
+
+      // A search the target does not match must empty both halves together.
+      const excluded = { productId: target.id, search: 'Lamp' };
+      const [excludedRows, excludedTotal] = await Promise.all([
+        repo.findManyRows(excluded, page),
+        repo.countMany(excluded),
+      ]);
+      expect(excludedRows).toEqual([]);
+      expect(excludedTotal).toBe(0);
+
+      // A page past the single match keeps the total honest.
+      const pastEnd = await repo.findManyRows(matching, { limit: 1, offset: 1 });
+      expect(pastEnd).toEqual([]);
+      expect(await repo.countMany(matching)).toBe(1);
     });
   });
 });

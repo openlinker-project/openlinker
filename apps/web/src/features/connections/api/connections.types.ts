@@ -144,6 +144,16 @@ export interface Connection {
    * field working without a mass edit.
    */
   defaultRateLimit?: ConnectionRateLimit | null;
+  /**
+   * Config values the adapter declared safe for every role (DEF-02), e.g. the
+   * KSeF environment, readable where `config` is hidden from non-admins.
+   */
+  publicConfig?: Record<string, string | number | boolean | string[]>;
+  /**
+   * Advisory notices on a create/update response (#1594, DEF-21), e.g. a
+   * second connection on the same seller tax number sharing a rate limit.
+   */
+  warnings?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -152,6 +162,18 @@ export interface ConnectionFilters {
   platformType?: PlatformType;
   status?: ConnectionStatus;
 }
+
+export const ORDER_SYNC_START_MODE_VALUES = ['now', 'from', 'all'] as const;
+export type OrderSyncStartMode = (typeof ORDER_SYNC_START_MODE_VALUES)[number];
+
+/** Mirrors the backend create-request contract (#4228). `from` is a `YYYY-MM-DD` date. */
+export const ORDER_IMPORT_ORDER_VALUES = ['oldest-first', 'newest-first'] as const;
+export type OrderImportOrder = (typeof ORDER_IMPORT_ORDER_VALUES)[number];
+
+export type OrderSyncStart =
+  | { mode: 'now' }
+  | { mode: 'from'; from: string; order?: OrderImportOrder }
+  | { mode: 'all'; order?: OrderImportOrder };
 
 export interface CreateConnectionInput {
   name: string;
@@ -169,6 +191,11 @@ export interface CreateConnectionInput {
    * runtime-aware DTO validator follow-up lands (#576).
    */
   enabledCapabilities?: CoreCapability[];
+  /**
+   * Where order sync starts (#4228). Absent means "only new orders", which is
+   * what the backend does with no value.
+   */
+  orderSyncStart?: OrderSyncStart;
 }
 
 export interface UpdateConnectionInput {
@@ -177,6 +204,25 @@ export interface UpdateConnectionInput {
   config?: Record<string, unknown>;
   adapterKey?: string;
   enabledCapabilities?: CoreCapability[];
+  /** Stored when order reading is being switched on for the connection (#4228). */
+  orderSyncStart?: OrderSyncStart;
+}
+
+/** Answer of the start restart (#4228): `applied: false` means the feed already had a position. */
+export interface RestartOrderSyncResult {
+  applied: boolean;
+  reason?: 'already-following-feed';
+}
+
+/** A period import of past orders (#4228). Days are `YYYY-MM-DD`. */
+export interface OrderImportRequest {
+  from?: string;
+  to?: string;
+  direction: OrderImportOrder;
+}
+
+export interface OrderImportStarted {
+  runId: string;
 }
 
 export interface RecentJobSummary {
@@ -189,11 +235,32 @@ export interface RecentJobSummary {
   lastError: string | null;
 }
 
+/**
+ * Mirror of core's `ConnectionTestOutcomeValues` (#3866; apps/web cannot import
+ * core, #591), held identical by `scripts/check-stored-reason-code-mirror.mjs`.
+ */
+export const ConnectionTestOutcomeValues = [
+  'ok',
+  'unauthorized',
+  'unreachable',
+  'timeout',
+  'not-found',
+  'misconfigured',
+  'unexpected-status',
+  'unsupported',
+  'failed',
+] as const;
+
+export type ConnectionTestOutcome = (typeof ConnectionTestOutcomeValues)[number];
+
 export interface ConnectionTestResult {
   success: boolean;
   status?: number;
+  /** The tester's own English detail; shown only under the not-translated label. */
   message: string;
   latencyMs: number;
+  /** What the test found (#3866). Optional for an API that predates it. */
+  outcome?: ConnectionTestOutcome;
 }
 
 /**
@@ -320,6 +387,12 @@ export interface RateLimitStatus {
   lastAcquiredAt?: string | null;
   /** Absent when no adapter reported one — never render a fabricated value. */
   resolveConcurrency?: ResolveConcurrencyCeiling;
+  /**
+   * The server's answer to "is this limit shared with other connections to
+   * the same remote?" (ADR-038 § Amendment). Read, never inferred from
+   * `platformType`; absent reads as not shared.
+   */
+  sharedBucket?: boolean;
 }
 
 /**
@@ -389,6 +462,46 @@ export const CONNECTION_BACKLOG_STATUS_VALUES = [
 
 export type ConnectionBacklogStatus = (typeof CONNECTION_BACKLOG_STATUS_VALUES)[number];
 
+export interface OrderStartStatus {
+  mode: 'now' | 'from' | 'all';
+  from: string | null;
+  order: 'oldest-first' | 'newest-first';
+  /** When the choice took effect; null while it waits for the next check. */
+  appliedAt: string | null;
+  pending: boolean;
+}
+
+export interface ActiveOrderImport {
+  runId: string;
+  direction: 'oldest-first' | 'newest-first';
+  from: string | null;
+  to: string | null;
+  /** Pages read so far; the total is unknown. */
+  pagesDone: number;
+  startedAt: string;
+}
+
+export interface OrderImportFailureReason {
+  code: 'missing-mapping' | 'other';
+  count: number;
+  lastFailedAt: string;
+  /** Source id of the most recent order that failed for this reason. */
+  sampleOrderId: string | null;
+  /** The stored English message of that failure; shown only as the original text. */
+  sampleMessage: string;
+}
+
+export interface OrderImportStatus {
+  importedLast24h: number;
+  /** Last successful poll of the shop for orders (last 7 days), or null. */
+  lastPolledAt: string | null;
+  failedLast7d: number;
+  failures: OrderImportFailureReason[];
+  waiting: number;
+  lastImportedAt: string | null;
+  activeImport: ActiveOrderImport | null;
+}
+
 export interface ConnectionSyncStatus {
   connectionId: string;
   generatedAt: string;
@@ -416,6 +529,12 @@ export interface ConnectionSyncStatus {
   attemptDurationSampleSize: number;
   /** Null is normal for a webhook-fed connection, which keeps no cursor. */
   lastCursorAdvanceAt: string | null;
+  /** When order sync was started from now; null means no start was recorded. */
+  orderSyncStartedAt: string | null;
+  /** How the order import is doing; null means the figures could not be read. */
+  orderImport: OrderImportStatus | null;
+  /** The start choice for order import; null when none was recorded. */
+  orderStart: OrderStartStatus | null;
   observationWindowMs: number;
   alertHorizonMs: number;
   historyWindowMs: number;

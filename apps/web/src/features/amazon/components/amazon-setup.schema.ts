@@ -1,0 +1,161 @@
+/**
+ * Amazon Setup Form Schema (#4186)
+ *
+ * Fields of the guided Amazon connection form and their mapping to the create
+ * payload. Each rule is no stricter than the backend's `parseAmazonConfig` /
+ * `parseAmazonCredentials`, which validate the same values on save.
+ *
+ * The role is chosen up front. A sales channel takes orders and offers; a
+ * catalogue master (#4182/#4183) reads products and stock from the seller's
+ * listings, optionally with orders, and never offers: a stock master is not a
+ * stock write-back target. The manifest enables nothing by default, so the
+ * payload names the capabilities.
+ *
+ * Validation messages are KEYS of `amazon.setup.errors`, so the schema is
+ * static and the form translates what it shows.
+ *
+ * @module features/amazon/components
+ */
+import { z } from 'zod';
+import {
+  ORDER_SYNC_START_DEFAULT_VALUE,
+  addOrderSyncStartIssues,
+  orderSyncStartShape,
+  toOrderSyncStart,
+  type CoreCapability,
+  type CreateConnectionInput,
+} from '../../connections';
+import {
+  AmazonEnvironmentValues,
+  AmazonRegionValues,
+  findMarketplace,
+  isSingleMarketplaceRegion,
+} from '../lib/amazon-marketplaces';
+
+export const AMAZON_ADAPTER_KEY = 'amazon.spapi.v1';
+
+export const AmazonSetupErrorKeyValues = [
+  'required',
+  'marketplaceRequired',
+  'marketplaceOtherRegion',
+  'marketplaceSingle',
+  'sellerIdInvalid',
+  'sellerIdRequired',
+  'capabilityRequired',
+  'queueUrlInvalid',
+  'awsKeysPaired',
+] as const;
+export type AmazonSetupErrorKey = (typeof AmazonSetupErrorKeyValues)[number];
+
+/** Merchant token, as `readSellerId` on the API accepts it. */
+export const SELLER_ID = /^[A-Z0-9]{8,20}$/;
+export const AmazonSetupRoleValues = ['sales-channel', 'master'] as const;
+export type AmazonSetupRole = (typeof AmazonSetupRoleValues)[number];
+
+export const SQS_QUEUE_URL = /^https:\/\/sqs\.[a-z0-9-]+\.amazonaws\.com\/\d{12}\/[A-Za-z0-9_-]{1,80}(\.fifo)?$/;
+
+export const amazonSetupSchema = z
+  .object({
+    name: z.string().trim().min(1, 'required'),
+    region: z.enum(AmazonRegionValues),
+    environment: z.enum(AmazonEnvironmentValues),
+    marketplaceIds: z.array(z.string()),
+    role: z.enum(AmazonSetupRoleValues),
+    orders: z.boolean(),
+    offers: z.boolean(),
+    sellerId: z.string().trim().toUpperCase(),
+    clientId: z.string().trim().min(1, 'required'),
+    clientSecret: z.string().trim().min(1, 'required'),
+    refreshToken: z.string().trim().min(1, 'required'),
+    notificationQueueUrl: z.string().trim(),
+    awsAccessKeyId: z.string().trim(),
+    awsSecretAccessKey: z.string().trim(),
+    orderSyncStart: orderSyncStartShape.default(ORDER_SYNC_START_DEFAULT_VALUE),
+  })
+  .superRefine((values, ctx) => {
+    const fail = (path: string, message: AmazonSetupErrorKey): void => {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+    };
+    if (values.marketplaceIds.length === 0) {
+      fail('marketplaceIds', 'marketplaceRequired');
+    } else if (values.marketplaceIds.some((id) => findMarketplace(id)?.region !== values.region)) {
+      fail('marketplaceIds', 'marketplaceOtherRegion');
+    } else if (isSingleMarketplaceRegion(values.region) && values.marketplaceIds.length > 1) {
+      fail('marketplaceIds', 'marketplaceSingle');
+    }
+    const master = values.role === 'master';
+    if (!master && !values.orders && !values.offers) {
+      fail('orders', 'capabilityRequired');
+    }
+    // The catalogue master reads the seller's listings, which need the token too.
+    const needsSellerId = master || values.offers;
+    if (values.sellerId !== '' && !SELLER_ID.test(values.sellerId)) {
+      fail('sellerId', 'sellerIdInvalid');
+    } else if (needsSellerId && values.sellerId === '') {
+      fail('sellerId', 'sellerIdRequired');
+    }
+    if (values.notificationQueueUrl !== '' && !SQS_QUEUE_URL.test(values.notificationQueueUrl)) {
+      fail('notificationQueueUrl', 'queueUrlInvalid');
+    }
+    if ((values.awsAccessKeyId === '') !== (values.awsSecretAccessKey === '')) {
+      fail('awsAccessKeyId', 'awsKeysPaired');
+    }
+    // Only a question the form asks can be answered wrongly: a stale date typed
+    // before orders were switched off must not block the submit.
+    if (values.orders) {
+      addOrderSyncStartIssues(values.orderSyncStart, ctx);
+    }
+  });
+
+export type AmazonSetupFormValues = z.input<typeof amazonSetupSchema>;
+export type AmazonSetupFormSubmission = z.output<typeof amazonSetupSchema>;
+
+export const AMAZON_SETUP_DEFAULT_VALUES: AmazonSetupFormValues = {
+  name: '',
+  region: 'eu',
+  environment: 'production',
+  marketplaceIds: [],
+  role: 'sales-channel',
+  orders: true,
+  offers: true,
+  sellerId: '',
+  clientId: '',
+  clientSecret: '',
+  refreshToken: '',
+  notificationQueueUrl: '',
+  awsAccessKeyId: '',
+  awsSecretAccessKey: '',
+  orderSyncStart: ORDER_SYNC_START_DEFAULT_VALUE,
+};
+
+export function toCreateConnectionInput(values: AmazonSetupFormSubmission): CreateConnectionInput {
+  const enabledCapabilities: CoreCapability[] =
+    values.role === 'master'
+      ? ['ProductMaster', 'InventoryMaster', ...(values.orders ? (['OrderSource'] as const) : [])]
+      : [
+          ...(values.orders ? (['OrderSource'] as const) : []),
+          ...(values.offers ? (['OfferManager'] as const) : []),
+        ];
+  return {
+    name: values.name,
+    platformType: 'amazon',
+    adapterKey: AMAZON_ADAPTER_KEY,
+    config: {
+      region: values.region,
+      environment: values.environment,
+      marketplaceIds: values.marketplaceIds,
+      ...(values.sellerId ? { sellerId: values.sellerId } : {}),
+      ...(values.notificationQueueUrl ? { notificationQueueUrl: values.notificationQueueUrl } : {}),
+    },
+    credentials: {
+      clientId: values.clientId,
+      clientSecret: values.clientSecret,
+      refreshToken: values.refreshToken,
+      ...(values.awsAccessKeyId
+        ? { awsAccessKeyId: values.awsAccessKeyId, awsSecretAccessKey: values.awsSecretAccessKey }
+        : {}),
+    },
+    enabledCapabilities,
+    orderSyncStart: values.orders ? toOrderSyncStart(values.orderSyncStart) : undefined,
+  };
+}

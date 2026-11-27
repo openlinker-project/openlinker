@@ -1,0 +1,26 @@
+{
+  "adaptersCatalogPage": {
+    "caption": "Dostępne adaptery",
+    "columns": {
+      "adapter": "Adapter",
+      "capabilities": "Możliwości",
+      "platform": "Platforma",
+      "version": "Wersja"
+    },
+    "description": "Dostępne adaptery integracji i obsługiwane przez nie możliwości.",
+    "empty": {
+      "message": "W systemie nie zarejestrowano żadnych adapterów integracji.",
+      "title": "Brak dostępnych adapterów"
+    },
+    "error": {
+      "title": "Nie udało się wczytać adapterów"
+    },
+    "eyebrow": "Platforma",
+    "loading": {
+      "message": "Pobieranie rejestru adapterów…",
+      "title": "Wczytywanie adapterów"
+    },
+    "noVersion": "-",
+    "title": "Katalog adapterów"
+  }
+}

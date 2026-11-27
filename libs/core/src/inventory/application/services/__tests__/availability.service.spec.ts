@@ -7,6 +7,10 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import {
+  BUNDLE_DEFINITION_SERVICE_TOKEN,
+  PRODUCTS_SERVICE_TOKEN,
+} from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import { AvailabilityService } from '../availability.service';
 import {
@@ -16,6 +20,7 @@ import {
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import type {
   ReservationLedgerReaderPort,
+  LocatedReservedSum,
   SumReservedInput,
 } from '../../../domain/ports/reservation-ledger-reader.port';
 import { EmptyReservationLedgerReader } from '../../../testing/empty-reservation-ledger.reader';
@@ -55,10 +60,19 @@ class FakeReservationLedger implements ReservationLedgerReaderPort {
     }
     return Promise.resolve(sums);
   }
+
+  // Not part of the variant-keyed ATP path under test (#3475's router read).
+  sumReservedByLocation(): Promise<readonly LocatedReservedSum[]> {
+    return Promise.resolve([]);
+  }
 }
 
 class ThrowingReservationLedger implements ReservationLedgerReaderPort {
   sumReservedByVariantIds(): Promise<ReadonlyMap<string, number>> {
+    return Promise.reject(new Error('ledger unavailable'));
+  }
+
+  sumReservedByLocation(): Promise<readonly LocatedReservedSum[]> {
     return Promise.reject(new Error('ledger unavailable'));
   }
 }
@@ -66,6 +80,8 @@ class ThrowingReservationLedger implements ReservationLedgerReaderPort {
 describe('AvailabilityService', () => {
   let repository: jest.Mocked<Pick<InventoryRepositoryPort, 'findAvailabilityByVariantIds'>>;
   let connectionPort: jest.Mocked<Pick<ConnectionPort, 'get'>>;
+  let bundleDefinitions: { findCurrentByVariantIds: jest.Mock };
+  let productsService: { getVariantsByIds: jest.Mock };
 
   const build = async (ledger: ReservationLedgerReaderPort): Promise<AvailabilityService> => {
     const module: TestingModule = await Test.createTestingModule({
@@ -74,6 +90,8 @@ describe('AvailabilityService', () => {
         { provide: INVENTORY_REPOSITORY_TOKEN, useValue: repository },
         { provide: CONNECTION_PORT_TOKEN, useValue: connectionPort },
         { provide: RESERVATION_LEDGER_READER_TOKEN, useValue: ledger },
+        { provide: BUNDLE_DEFINITION_SERVICE_TOKEN, useValue: bundleDefinitions },
+        { provide: PRODUCTS_SERVICE_TOKEN, useValue: productsService },
       ],
     }).compile();
     return module.get(AvailabilityService);
@@ -93,7 +111,104 @@ describe('AvailabilityService', () => {
   beforeEach(() => {
     repository = { findAvailabilityByVariantIds: jest.fn().mockResolvedValue([]) };
     connectionPort = { get: jest.fn() };
+    bundleDefinitions = { findCurrentByVariantIds: jest.fn().mockResolvedValue([]) };
+    productsService = { getVariantsByIds: jest.fn().mockResolvedValue([]) };
     withConfig({});
+  });
+
+  describe('bundle availability (#3931)', () => {
+    const row = (id: string, total: number, at: Date = OBSERVED_AT): VariantStockRow => ({
+      productVariantId: id,
+      totalAvailable: total,
+      locationCount: 0,
+      positionCount: 1,
+      stockUpdatedAt: at,
+    });
+    const defineBundle = (): void => {
+      bundleDefinitions.findCurrentByVariantIds.mockResolvedValue([
+        {
+          variantId: 'set',
+          version: 1,
+          components: [
+            { variantId: 'a', productId: 'pa', quantity: 3 },
+            { variantId: 'b', productId: 'pb', quantity: 1 },
+          ],
+        },
+      ]);
+    };
+    const ask = async (
+      ledger: ReservationLedgerReaderPort,
+      scope: AvailabilityScope = { kind: 'global' }
+    ) => {
+      const service = await build(ledger);
+      const [result] = await service.getPromisableQuantities({ variantIds: ['set'], scope, now: NOW });
+      return result;
+    };
+
+    it('should answer min(floor(component ATP / quantity)) net of component holds', async () => {
+      defineBundle();
+      withRows([row('a', 10), row('b', 5)]);
+      const result = await ask(
+        new FakeReservationLedger([{ variantId: 'b', quantity: 3, atpEffect: 'published' }])
+      );
+      // a: floor(10/3)=3, b: floor((5-3)/1)=2
+      expect(result.quantity).toBe(2);
+      expect(result.provenance).toBe('computed');
+    });
+
+    it('should apply the channel buffer once to the bundle number, not per component', async () => {
+      defineBundle();
+      withConfig({ stockSafetyBuffer: 1 });
+      withRows([row('a', 10), row('b', 5)]);
+      const result = await ask(new EmptyReservationLedgerReader(), CHANNEL_SCOPE);
+      // min = min(3, 5) = 3, then one buffer: 2. Buffering components first would give min(floor(9/3), 4)=3 -> 2 too,
+      // so also pin a case where the two orders differ below.
+      expect(result.quantity).toBe(2);
+      withRows([row('a', 9), row('b', 100)]);
+      const second = await ask(new EmptyReservationLedgerReader(), CHANNEL_SCOPE);
+      // min = 3, buffer once = 2; per-component buffering would give floor(8/3)=2 -> 1.
+      expect(second.quantity).toBe(2);
+    });
+
+    it('should be a known zero when a component is stale, so the offers pause', async () => {
+      defineBundle();
+      withRows([row('a', 10), row('b', 5)]);
+      productsService.getVariantsByIds.mockResolvedValue([{ id: 'b', isStale: true }]);
+      const result = await ask(new EmptyReservationLedgerReader());
+      expect(result.quantity).toBe(0);
+      expect(result.provenance).toBe('computed');
+    });
+
+    it('should be a known zero when a component has no live positions', async () => {
+      defineBundle();
+      withRows([row('a', 10)]);
+      const result = await ask(new EmptyReservationLedgerReader());
+      expect(result.quantity).toBe(0);
+      expect(result.provenance).toBe('computed');
+    });
+
+    it('should report unknown, never zero, when a component hold cannot be read', async () => {
+      defineBundle();
+      withRows([row('a', 10), row('b', 5)]);
+      const result = await ask(new ThrowingReservationLedger());
+      expect(result.quantity).toBeNull();
+      expect(result.provenance).toBe('unknown');
+    });
+
+    it('should report unknown when the definitions cannot be read', async () => {
+      bundleDefinitions.findCurrentByVariantIds.mockRejectedValue(new Error('db down'));
+      const result = await ask(new EmptyReservationLedgerReader());
+      expect(result.quantity).toBeNull();
+      expect(result.provenance).toBe('unknown');
+    });
+
+    it('should carry the newest component observation', async () => {
+      defineBundle();
+      const later = new Date('2026-08-20T10:02:00.000Z');
+      withRows([row('a', 10), row('b', 5, later)]);
+      const result = await ask(new EmptyReservationLedgerReader());
+      expect(result.observedAt).toEqual(later);
+    });
   });
 
   describe('parity with the shipped publish arithmetic', () => {
@@ -121,7 +236,7 @@ describe('AvailabilityService', () => {
     it('should request the published stamp explicitly when computing ATP', async () => {
       const ledger = new FakeReservationLedger([]);
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(ledger);
@@ -141,7 +256,7 @@ describe('AvailabilityService', () => {
         { variantId: 'v1', quantity: 100, atpEffect: 'diagnostic' },
       ]);
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(ledger);
@@ -162,7 +277,7 @@ describe('AvailabilityService', () => {
         { variantId: 'v1', quantity: 50, atpEffect: 'published' },
       ]);
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(ledger);
@@ -179,7 +294,7 @@ describe('AvailabilityService', () => {
     it('should be byte-identical to the un-reserved quantity while the ledger is empty', async () => {
       withConfig({ stockSafetyBuffer: 3 });
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 2, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 2, positionCount: 2, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -216,8 +331,8 @@ describe('AvailabilityService', () => {
 
     it('should report unknown BATCH-WIDE when the ledger read throws', async () => {
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
-        { productVariantId: 'v2', totalAvailable: 5, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v2', totalAvailable: 5, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new ThrowingReservationLedger());
@@ -237,7 +352,7 @@ describe('AvailabilityService', () => {
 
     it('should never produce authority provenance in this wave', async () => {
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -254,7 +369,7 @@ describe('AvailabilityService', () => {
   describe('observation time', () => {
     it('should report stalenessMs against the injected clock', async () => {
       withRows([
-        { productVariantId: 'v1', totalAvailable: 1, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 1, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -273,7 +388,7 @@ describe('AvailabilityService', () => {
     it('should apply the connection buffer for a channel scope', async () => {
       withConfig({ stockSafetyBuffer: 4 });
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -295,7 +410,7 @@ describe('AvailabilityService', () => {
     it('should report unknown batch-wide (not throw) when the channel control read fails', async () => {
       connectionPort.get.mockRejectedValue(new Error('connection store unavailable'));
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -324,7 +439,7 @@ describe('AvailabilityService', () => {
 
     it('should apply no buffer for a global scope and never read a connection', async () => {
       withRows([
-        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v1', totalAvailable: 10, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -370,7 +485,7 @@ describe('AvailabilityService', () => {
 
     it('should zero-fill and preserve input order', async () => {
       withRows([
-        { productVariantId: 'v2', totalAvailable: 5, locationCount: 1, stockUpdatedAt: OBSERVED_AT },
+        { productVariantId: 'v2', totalAvailable: 5, locationCount: 1, positionCount: 1, stockUpdatedAt: OBSERVED_AT },
       ]);
 
       const service = await build(new EmptyReservationLedgerReader());
@@ -578,6 +693,29 @@ describe('AvailabilityService', () => {
       const service = await build(new EmptyReservationLedgerReader());
 
       expect(await service.getAppliedReserve({ kind: 'global' })).toBe(0);
+    });
+  });
+  describe('getAppliedControls (#3621)', () => {
+    it('should report both the buffer and the zero threshold for a channel scope', async () => {
+      withConfig({ stockSafetyBuffer: 4, stockZeroThreshold: 3 });
+
+      const service = await build(new EmptyReservationLedgerReader());
+
+      expect(await service.getAppliedControls(CHANNEL_SCOPE)).toEqual({
+        buffer: 4,
+        zeroThreshold: 3,
+      });
+    });
+
+    it('should report neither Control for the global scope', async () => {
+      withConfig({ stockSafetyBuffer: 4, stockZeroThreshold: 3 });
+
+      const service = await build(new EmptyReservationLedgerReader());
+
+      expect(await service.getAppliedControls({ kind: 'global' })).toEqual({
+        buffer: 0,
+        zeroThreshold: 0,
+      });
     });
   });
 });

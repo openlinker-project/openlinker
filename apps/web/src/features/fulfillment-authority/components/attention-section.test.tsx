@@ -15,7 +15,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionSection } from './attention-section';
-import { ATTENTION_SECTION_COPY, ATTENTION_UNKNOWN_COPY, attentionTitle } from '../lib/attention-reason.copy';
+import { ATTENTION_SECTION_COPY, ATTENTION_UNKNOWN_COPY, attentionTitle } from '../lib/attention-reason-text';
 import type { AuthorityAttention, AuthorityAttentionItem } from '../api/who-decides.types';
 
 function renderSection(attention: AuthorityAttention): void {

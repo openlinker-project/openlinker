@@ -42,6 +42,9 @@ Which OpenLinker capability ports will this adapter implement? Tick all that app
 - [ ] `ProductMaster` — source of truth for product catalog (read/write)
 - [ ] `InventoryMaster` — source of truth for stock levels
 - [ ] `OrderSource` — cursor-based order-event ingestion
+  - [ ] `OrderFeedBootstrap.headCursor` - **required** for every order source: the default start is "from now"
+  - [ ] `OrderFeedDateBootstrap.cursorForDate` - optional: a "from a date" start (declare `'from'` in `orderSyncStartModes`)
+  - [ ] `OrderWindowReader.listOrdersInWindow` - optional: import history newest-first and a date range (declare `orderWindowImport: true`)
 - [ ] `OrderProcessorManager` — order lifecycle on the destination shop
 - [ ] `OfferManager` — marketplace offer/listing management (split into sub-capabilities — see [`docs/architecture-overview.md`](../../docs/architecture-overview.md))
 - [ ] Other / new capability:

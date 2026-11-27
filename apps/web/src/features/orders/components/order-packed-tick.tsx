@@ -20,7 +20,7 @@
  */
 import type { ReactNode } from 'react';
 import { TimeDisplay } from '../../../shared/ui/time-display';
-import { formatDateTime } from '../../../shared/format/format-date';
+import { interpolate, useFormat, useMessages } from '../../../shared/i18n';
 
 export interface OrderPackedTickProps {
   /** `undefined` (older payload) and `null` (never packed) mean the same here. */
@@ -40,6 +40,8 @@ export function OrderPackedTick({
   layout,
   emptyFallback,
 }: OrderPackedTickProps): ReactNode {
+  const copy = useMessages('orders').packedTick;
+  const { dateTime } = useFormat();
   if (!packedAt) return emptyFallback;
 
   // `aria-label` alongside `title` (the #2100 pairing): `title` alone is
@@ -47,17 +49,13 @@ export function OrderPackedTick({
   // and absent on touch — so the absolute instant is stated both ways. The
   // relative time beside it is decorative duplication for a screen reader,
   // hence `aria-hidden`.
-  const absolute = formatDateTime(packedAt);
+  const absoluteLabel = interpolate(copy.title, { time: dateTime(packedAt) });
   const content = (
-    <span
-      className="orders-packed-tick"
-      title={`Packed ${absolute}`}
-      aria-label={`Packed ${absolute}`}
-    >
+    <span className="orders-packed-tick" title={absoluteLabel} aria-label={absoluteLabel}>
       <span className="orders-packed-tick__mark" aria-hidden="true">
         ✓
       </span>{' '}
-      <span className="orders-packed-tick__label">Packed</span>{' '}
+      <span className="orders-packed-tick__label">{copy.label}</span>{' '}
       <TimeDisplay
         className="text-muted orders-cell-sub"
         iso={packedAt}

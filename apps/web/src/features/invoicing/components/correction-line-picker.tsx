@@ -32,7 +32,7 @@
  */
 import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
 import { Select } from '../../../shared/ui/select';
-import { useNumberFormat, useTranslation } from '../../../shared/i18n';
+import { interpolate, useMessages, useNumberFormat } from '../../../shared/i18n';
 import type { IssuedDocumentLine } from '../api/invoicing.types';
 import { useInvoiceContentQuery } from '../hooks/use-invoice-content-query';
 
@@ -90,7 +90,7 @@ export function CorrectionLinePicker({
   disabled,
   ariaLabel,
 }: CorrectionLinePickerProps): ReactElement {
-  const { t } = useTranslation();
+  const copy = useMessages('invoicing').invoicing.correction;
   const numberFormat = useNumberFormat({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
   // Per-instance id: every flow supports "Add line", so N pickers mount with
   // the SAME invoiceId. Keying the warning off invoiceId would emit N identical
@@ -139,25 +139,16 @@ export function CorrectionLinePicker({
   // silently swallows anything typed during the fetch.
   if (!pickableLines) {
     const message = contentUnavailable
-      ? t(
-          'invoicing.correction.linesUnavailable',
-          'Line list unavailable for this invoice — check the line number against the issued document before submitting.',
-        )
+      ? copy.linesUnavailable
       : fetchFailed
-        ? t(
-            'invoicing.correction.linesFetchFailed',
-            'Could not load this invoice’s lines. Enter the line number manually, or reopen this form to try again.',
-          )
+        ? copy.linesFetchFailed
         : // Content exists but a correction will NOT index it (an invoice issued
           // before the line-snapshot column): the server rebuilds the original
           // document from the order instead, so a position picked here would
           // address a different array. Showing a picker would be worse than
           // showing none.
           !query.isLoading && lines
-          ? t(
-              'invoicing.correction.linesNotAuthoritative',
-              'This invoice’s lines cannot be matched to the stored copy a correction uses — enter the line number from the issued document.',
-            )
+          ? copy.linesNotAuthoritative
           : null;
 
     return (
@@ -187,10 +178,7 @@ export function CorrectionLinePicker({
     <span className="correction-line-picker">
       {clearedValue !== null ? (
         <span className="correction-line-picker__warning" role="status">
-          {t(
-            'invoicing.correction.lineClearedOutOfRange',
-            'Line {n} does not exist on this invoice — pick a row below.',
-          ).replace('{n}', clearedValue)}
+          {interpolate(copy.lineClearedOutOfRange, { n: clearedValue })}
         </span>
       ) : null}
       <Select
@@ -203,7 +191,7 @@ export function CorrectionLinePicker({
         aria-label={ariaLabel}
         disabled={disabled}
       >
-        <option value="">{t('invoicing.correction.selectLine', 'Select a line…')}</option>
+        <option value="">{copy.selectLine}</option>
         {pickableLines.map((line, i) => (
           // Position is the identity here: two lines of the same product are
           // legitimately distinct rows, so index is the correct React key AND

@@ -10,7 +10,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   describeProvisioningResume,
-  HOLD_REASON_COPY,
+  holdReasonCopy,
+  holdReasonHint,
   HoldReasonValues,
   holdReasonLabel,
   isHoldReason,
@@ -20,17 +21,17 @@ describe('hold reason vocabulary (#2342)', () => {
   it('should carry renderable, distinct copy for every reason', () => {
     // #2588 review S-4. The loop below iterates the vocabulary it is checking,
     // so on its own it cannot fail: an EMPTY `HoldReasonValues` would pass it
-    // silently, and the `satisfies Record<HoldReason, …>` on `HOLD_REASON_COPY`
+    // silently, and the `satisfies Record<HoldReason, …>` in `holdReasonCopy`
     // already makes a MISSING key a compile error. These two assertions are the
     // part that can actually fail — the vocabulary is non-empty, and no two
     // reasons render the same pill, which nothing else in the repo checks and
     // which would make two different holds indistinguishable to an operator.
     expect(HoldReasonValues.length).toBeGreaterThan(0);
-    const labels = HoldReasonValues.map((reason) => HOLD_REASON_COPY[reason].label);
+    const labels = HoldReasonValues.map((reason) => holdReasonCopy(reason).label);
     expect(new Set(labels).size).toBe(labels.length);
 
     for (const reason of HoldReasonValues) {
-      const copy = HOLD_REASON_COPY[reason];
+      const copy = holdReasonCopy(reason);
       expect(copy.label.length).toBeGreaterThan(0);
       // The style guide budgets ~17 characters for a status pill.
       expect(copy.label.length).toBeLessThanOrEqual(17);
@@ -94,5 +95,23 @@ describe('describeProvisioningResume (#2342)', () => {
     const copy = describeProvisioningResume(undefined);
     expect(copy.tone).toBe('success');
     expect(copy.message).toBe('Hold released.');
+  });
+});
+
+describe('holdReasonHint', () => {
+  it('should return the reason hint for a known reason', () => {
+    expect(holdReasonHint('stock-shortfall')).toBe(holdReasonCopy('stock-shortfall').hint);
+  });
+
+  it('should return the generic hint for a reason this build does not recognise', () => {
+    expect(holdReasonHint('reason-from-a-newer-build')).toMatch(/does not recognise/);
+  });
+});
+
+describe('describeProvisioningResume skipped reasons', () => {
+  it('should fall back to the generic sentence for a skip reason it does not know', () => {
+    const copy = describeProvisioningResume({ status: 'skipped', jobId: null, reason: 'new-reason' });
+    expect(copy.tone).toBe('success');
+    expect(copy.message).toBe('Hold released. There was nothing to restart.');
   });
 });

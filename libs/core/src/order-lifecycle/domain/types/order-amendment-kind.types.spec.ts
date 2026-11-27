@@ -9,12 +9,13 @@ import {
 } from './order-amendment-kind.types';
 
 describe('OrderAmendmentKind (#2305)', () => {
-  it('should carry exactly the four design §6.2 kinds', () => {
+  it('should carry the four design §6.2 kinds plus discount-change (#3543)', () => {
     expect(OrderAmendmentKindValues).toEqual([
       'address-change',
       'line-quantity-change',
       'cancel-request',
       'delivery-method-change',
+      'discount-change',
     ]);
   });
 

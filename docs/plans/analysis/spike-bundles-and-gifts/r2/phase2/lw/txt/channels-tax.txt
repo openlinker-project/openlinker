@@ -1,0 +1,16 @@
+=== channels-tax | Channel features: Channel Tax
+ 
+ Channel features: Channel Tax 
+ Channel Tax Settings
+ There are two ways how Linnworks can work with the tax settings:
+ Ignore channel tax settings and use Linnworks tax settings.
+ Ignore Linnworks tax settings and take all tax information from the order XML.
+ Go to Settings > Channel Integration > Edit Channel settings  to select your preferred method.
+ NB!  The exact name of the setting may vary from channel to channel.
+ For Amazon , the  Use Channel Tax  setting is  linked to the Vat/Tax Calculation Services . Further details are available in the Amazon channel settings documentation . 
+ If Use channel tax setting is enabled ,  Linnworks will not perform any calculations, all the price, tax, discount, and total values will be taken from the channel order details.
+ If the  Use channel tax setting is disabled ,  Linnworks will ignore any tax settings from the channel. Once the order is downloaded, the tax rate of the Linnworks item will be checked. If the stock item does not have a specific tax rate applied the system will use the default tax rate for the order country that is set up in Settings > General Settings > Manage Countries. In this case, Linnworks will take the unit price of the ordered item from the order XML and add the country tax on top of the unit price.
+ See also: 
+ Order Calculations 
+ Manage Countries 
+ 

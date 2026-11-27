@@ -21,6 +21,14 @@ import { BulkBatchStatus } from '../../../domain/types/bulk-listing-batch.types'
 @Entity('bulk_offer_creation_batches')
 @Index('IDX_bulk_offer_creation_batches_connectionId', ['connectionId'])
 @Index('IDX_bulk_offer_creation_batches_status', ['status'])
+// Declared here as well as in the migration, under the same name, because the
+// integration harness builds its schema with `synchronize`: without it the
+// test database would admit the duplicate batch this index exists to refuse.
+@Index(
+  'UQ_bulk_offer_creation_batches_connection_idempotency_key',
+  ['connectionId', 'idempotencyKey'],
+  { unique: true, where: '"idempotencyKey" IS NOT NULL' }
+)
 export class BulkListingBatchOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -45,6 +53,9 @@ export class BulkListingBatchOrmEntity {
 
   @Column({ type: 'jsonb' })
   sharedConfig!: Record<string, unknown>;
+
+  @Column({ type: 'text', nullable: true })
+  idempotencyKey!: string | null;
 
   @CreateDateColumn()
   createdAt!: Date;

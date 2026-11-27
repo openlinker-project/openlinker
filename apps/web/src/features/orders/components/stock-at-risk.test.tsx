@@ -15,7 +15,9 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { StockAtRiskBadge } from './stock-at-risk-badge';
 import { StockAtRiskCallout } from './stock-at-risk-callout';
-import { stockAtRiskTitle } from '../lib/stock-at-risk-copy';
+import { formatPlural, getMessages } from '../../../shared/i18n';
+import { stockAtRiskTitle } from '../lib/stock-at-risk';
+import type { StockAtRiskText } from '../lib/stock-at-risk.types';
 import type { OrderReservationShortfall } from '../api/orders.types';
 
 function shortfall(over: Partial<OrderReservationShortfall> = {}): OrderReservationShortfall {
@@ -111,7 +113,7 @@ describe('StockAtRiskCallout', () => {
 
     expect(
       screen.getByText(
-        /The stock master dropped below what this order was promised\. Nothing was silently reduced — this order is the one at risk\./
+        /The stock master dropped below what this order was promised\. Nothing was silently reduced - this order is the one at risk\./
       )
     ).toBeInTheDocument();
   });
@@ -123,8 +125,8 @@ describe('StockAtRiskCallout', () => {
       />
     );
 
-    expect(screen.getByText('SKU-1 — short 2 of 3 across all orders')).toBeInTheDocument();
-    expect(screen.getByText('SKU-2 — short 1 of 3 across all orders')).toBeInTheDocument();
+    expect(screen.getByText('SKU-1 - short 2 of 3 across all orders')).toBeInTheDocument();
+    expect(screen.getByText('SKU-2 - short 1 of 3 across all orders')).toBeInTheDocument();
   });
 
   it('should render nothing for an empty list, and no reassurance', () => {
@@ -141,7 +143,12 @@ describe('StockAtRiskCallout', () => {
 
   it('should share one title with the badge (AC1 byte-identity)', () => {
     const list = [shortfall()];
-    const expected = stockAtRiskTitle(list);
+    const text: StockAtRiskText = {
+      copy: getMessages('orders').stockAtRisk,
+      plural: (count, forms, params) => formatPlural(count, forms, 'en', params),
+      number: (value) => String(value),
+    };
+    const expected = stockAtRiskTitle(list, text);
 
     const badge = render(<StockAtRiskBadge shortfalls={list} />);
     expect(badge.container.textContent).toContain(expected as string);

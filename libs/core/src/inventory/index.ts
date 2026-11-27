@@ -30,6 +30,8 @@ export { LocationRepositoryPort } from './domain/ports/location-repository.port'
 export {
   ReservationLedgerReaderPort,
   SumReservedInput,
+  SumReservedByLocationInput,
+  LocatedReservedSum,
   ReservationAtpEffect,
   ReservationAtpEffectValues,
 } from './domain/ports/reservation-ledger-reader.port';
@@ -39,6 +41,8 @@ export {
 // co-located guard. Guard-only - never advertised in a manifest.
 export type { BulkInventoryReader } from './domain/ports/capabilities/bulk-inventory-reader.capability';
 export { isBulkInventoryReader } from './domain/ports/capabilities/bulk-inventory-reader.capability';
+export type { InventoryEventTargetResolver } from './domain/ports/capabilities/inventory-event-target-resolver.capability';
+export { isInventoryEventTargetResolver } from './domain/ports/capabilities/inventory-event-target-resolver.capability';
 
 // Domain Entities
 export { InventoryItem as InventoryItemEntity } from './domain/entities/inventory-item.entity';
@@ -46,6 +50,7 @@ export { InventoryLocation } from './domain/entities/inventory-location.entity';
 export { Reservation } from './domain/entities/reservation.entity';
 export { ReservationShortfallEpisode } from './domain/entities/reservation-shortfall-episode.entity';
 export { InventorySaleDecrement } from './domain/entities/inventory-sale-decrement.entity';
+export { InventoryMovement } from './domain/entities/inventory-movement.entity';
 
 // Domain exceptions
 export { InventoryReturningUnsupportedError } from './domain/exceptions/inventory-returning-unsupported.error';
@@ -83,6 +88,7 @@ export {
   MasterInventorySyncResult,
   MasterInventoryBatchSyncFailure,
   MasterInventoryBatchSyncResult,
+  MasterInventorySyncOptions,
 } from './application/services/master-inventory-sync.service.interface';
 export { MasterInventorySyncService } from './application/services/master-inventory-sync.service';
 export { IInventoryQueryService } from './application/services/inventory-query.service.interface';
@@ -106,6 +112,12 @@ export {
 } from './application/services/availability.service.interface';
 export { AvailabilityService } from './application/services/availability.service';
 export { IReservationService } from './application/services/reservation.service.interface';
+export type {
+  IMasterAbsorbedReservationService,
+  ConsumeAbsorbedHoldsInput,
+  ConsumeAbsorbedHoldsResult,
+} from './application/services/master-absorbed-reservation.service.interface';
+export { MasterAbsorbedReservationService } from './application/services/master-absorbed-reservation.service';
 export {
   IReservationExpiryService,
   ExpireReservationsInput,
@@ -138,10 +150,45 @@ export {
 export { InventorySaleDecrementService } from './application/services/inventory-sale-decrement.service';
 export {
   IInventorySaleReversalService,
+  ReverseLineQuantityInput,
+  ReverseLineToTargetInput,
+  ReverseLineQuantityResult,
   ReverseSaleForOrderResult,
   SaleReversalLineOutcome,
 } from './application/services/inventory-sale-reversal.service.interface';
 export { InventorySaleReversalService } from './application/services/inventory-sale-reversal.service';
+export { IInventoryMovementService } from './application/services/inventory-movement.service.interface';
+export { InventoryMovementService } from './application/services/inventory-movement.service';
+export { IInventoryCorrectionService } from './application/services/inventory-correction.service.interface';
+export { InventoryCorrectionService } from './application/services/inventory-correction.service';
+export {
+  CorrectionConfirmationRequiredError,
+  CorrectionContendedError,
+  InventoryCorrectionRefusedError,
+  InventoryCorrectionTargetRefusedError,
+  InventoryCorrectionVariantNotFoundError,
+} from './domain/exceptions/inventory-correction.errors';
+export {
+  InventoryCorrectionTargetRefusalReasonValues,
+  InventoryCorrectionPreconditionReasonValues,
+  InventoryCorrectionRefusalReasonValues,
+  InventoryCorrectionModeValues,
+  INVENTORY_CORRECTION_CONFIRM_ABSOLUTE_UNITS,
+  INVENTORY_CORRECTION_CONFIRM_RELATIVE_SHARE,
+  requiresLargeChangeConfirmation,
+} from './domain/types/inventory-correction.types';
+export type {
+  CorrectStockInput,
+  InventoryCorrectionAdjustmentOutcome,
+  InventoryCorrectionMaster,
+  InventoryCorrectionMode,
+  InventoryCorrectionPreconditionReason,
+  InventoryCorrectionRefusalReason,
+  InventoryCorrectionResult,
+  InventoryCorrectionStatus,
+  InventoryCorrectionTarget,
+  InventoryCorrectionTargetRefusalReason,
+} from './domain/types/inventory-correction.types';
 
 // Application Types
 export {
@@ -150,6 +197,9 @@ export {
   ReserveForOrderResult,
   CloseForOrderInput,
   CloseForOrderResult,
+  NarrowForOrderInput,
+  NarrowForOrderResult,
+  NarrowOrderLineInput,
   SkippedReservationLine,
   SkippedReservationReason,
   SkippedReservationReasonValues,
@@ -178,6 +228,7 @@ export {
   ProductStockAggregate,
   PruneStaleVariantsResult,
   ProvenanceScope,
+  ReportedLocationSet,
   DuplicatePositionRow,
   DuplicatePositionGroup,
   DuplicatePositionReport,
@@ -205,7 +256,17 @@ export {
   buildSaleReversalIdempotencyKey,
   deriveSaleDecrementAttention,
   resolveSaleDecrementOwner,
+  saleDecrementPositionLockKey,
+  SALE_DECREMENT_POSITION_LOCK_TTL_MS,
 } from './domain/types/inventory-sale-decrement.types';
+export {
+  StockViewPosition,
+  StockViewHold,
+  STOCK_VIEW_HOLDS_PER_VARIANT,
+  VariantStockView,
+  GetStockViewInput,
+  MAX_STOCK_VIEW_VARIANT_IDS,
+} from './domain/types/stock-view.types';
 export {
   AvailabilityScope,
   AvailabilityProvenance,
@@ -266,6 +327,42 @@ export {
 } from './domain/types/location.types';
 export { BOOTSTRAP_LOCATION_SPECS } from './domain/types/location-bootstrap.types';
 export type { LocationBootstrapResult } from './domain/types/location-bootstrap.types';
+
+export {
+  InventoryMovementReasonValues,
+  InventoryMovementReason,
+  InventoryMovementStatusValues,
+  InventoryMovementStatus,
+  InventoryMovementSourceKindValues,
+  InventoryMovementSourceKind,
+  InventoryMovementOperatorReasonValues,
+  InventoryMovementOperatorReason,
+  InventoryHistoryKindValues,
+  InventoryHistoryKind,
+  InventoryHistoryKindFilterValues,
+  InventoryHistoryKindFilter,
+  InventoryMovementAttribution,
+  InventoryMovementAttachment,
+  InventoryMovementContext,
+  InventoryMovementFilters,
+  InventoryMovementPagination,
+  InventoryHistoryRow,
+  PaginatedInventoryHistory,
+  AppendInventoryMovementInput,
+  InsertPendingInventoryMovementInput,
+  SettleInventoryMovementInput,
+  isInventoryMovementAttachment,
+  INVENTORY_MOVEMENT_RETENTION_DAYS_DEFAULT,
+} from './domain/types/inventory-movement.types';
+
+// What OpenLinker sent each channel (#4062)
+export {
+  ChannelQuantityPushOutcomeValues,
+  ChannelQuantityPushOutcome,
+  ChannelQuantityPush,
+  AppendChannelQuantityPushInput,
+  LastChannelQuantityPush,
+} from './domain/types/channel-quantity-push.types';
 
 // Offer quantity write-order guard (#2617)
 export {

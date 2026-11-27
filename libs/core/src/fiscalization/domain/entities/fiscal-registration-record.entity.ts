@@ -12,6 +12,7 @@
  *
  * @module libs/core/src/fiscalization/domain/entities
  */
+import type { FiscalProviderFailureDetails } from '../types/fiscal-provider-failure-details.types';
 import type {
   FiscalArtefact,
   FiscalRegistrationFailureMode,
@@ -60,6 +61,22 @@ export class FiscalRegistrationRecord {
     public readonly leaseExpiresAt: Date | null,
     public readonly createdAt: Date,
     public readonly updatedAt: Date,
+    /**
+     * PII-free identifiers of the provider's refusal (#3843): its own code, the
+     * device's code, its id for the attempt and an adapter-composed hint. `null`
+     * when the adapter declared none, which includes every record written
+     * before this field existed - nothing is backfilled from `errorMessage`.
+     * Trailing and defaulted so the many positional constructions stay valid.
+     */
+    public readonly providerFailureDetails: FiscalProviderFailureDetails | null = null,
+    /**
+     * Which attempt at this (connection, order) document this record is, 0-based
+     * (#3960). A provider refusal makes a record final; asking again starts the
+     * next attempt as a new record under its own key.
+     */
+    public readonly attempt: number = 0,
+    /** The refused attempt this one follows, or `null` for a first attempt (#3960). */
+    public readonly previousAttemptId: string | null = null,
   ) {}
 
   /** Pure derivation: the provider reports the sale registered. */

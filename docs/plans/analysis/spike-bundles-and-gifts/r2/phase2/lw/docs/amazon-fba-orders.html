@@ -1,0 +1,117 @@
+<!DOCTYPE html><html lang="en-US" dir="ltr"><head><style type="text/css">.ArticleViewer_searchKeywords{background-color: yellow !important;}</style>
+<script type="text/javascript">//<!--
+var articlesServiceUrl='/article/';
+//--></script>
+<link rel="canonical" href="/articles/documentation/amazon-fba-orders"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"/>
+<script src="https://cdn.jsdelivr.net/gh/fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script><title>Working with FBA orders</title><script type="text/javascript">//<!--
+var imgPopupTexts={openInNewWindowText: 'Open in new window', closeText: 'Close'};var articleTitleText='Working with FBA orders';
+//--></script><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/Docs%20CSS.css"/><link rel="stylesheet" type="text/css" href="/resources/Styles/documentation/docs.linnworks-EMS.css"/><link rel="stylesheet" type="text/css" href="/style-bundles/article-published.css?v=1.0.9789.31895"/><script src="/resources/Scripts/documentation/Script.js" type="text/javascript"></script><script src="/script-bundles/article-published.js?v=1.0.9789.31895" type="text/javascript"></script><meta charset="utf-8"><meta http-equiv="Content-Type" content="text/html;charset=utf-8"></head><body><span id="__clhTop"></span><div class="doc-container">
+  <h1 id="h1__368696310" data-has-heading-anchor="true">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"></link>
+    FBA Orders
+  <a href="/articles/documentation/amazon-fba-orders/a/h1__368696310" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h1__368696310&#39;,this);"></a></h1>
+  <p style="text-align: justify;">
+    In this guide, you will find answers to the most common questions about how Linnworks manages FBA orders.
+  </p>
+  <h2 style="text-align: justify;" dir="ltr" id="h4__71959484" data-has-heading-anchor="true">
+    What happens when an FBA listing is sold?
+  <a href="/articles/documentation/amazon-fba-orders/a/h4__71959484" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h4__71959484&#39;,this);"></a></h2>
+  <p style="text-align: justify;" dir="ltr">
+    When an FBA listing is sold, Amazon will automatically be aware of the order. Linnworks will then contact Amazon to request details of all the currently unshipped FBA orders.
+  </p>
+  <p style="text-align: justify;" dir="ltr">
+    These orders are downloaded into Linnworks and saved to the FBA location&nbsp;created when FBA was enabled for that integration.
+  </p>
+  <h2 style="text-align: justify;" dir="ltr" id="h4_126987891" data-has-heading-anchor="true">
+    FBA orders sync process with Linnworks cloud?
+  <a href="/articles/documentation/amazon-fba-orders/a/h4_126987891" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h4_126987891&#39;,this);"></a></h2>
+  <p style="text-align: justify;">
+    FBA orders sync automatically every 15 - 20 minutes. The sync of smaller batches of orders but at a quicker rate makes the sync efficient and reduces delays. Syncs have improved monitoring; each sync log is reported in <a href="/articles/documentation/automation-logs" onclick="return n(&#39;!documentation/automation-logs&#39;,this);">Automation Logs</a>. There are also additional safety checks to catch any skipped orders Linnworks was initially unable to download.
+  </p>
+  <h2 dir="ltr" id="h4_74485287" style="" data-has-heading-anchor="true">
+    What happens when FBA processes an order?
+  <a href="/articles/documentation/amazon-fba-orders/a/h4_74485287" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h4_74485287&#39;,this);"></a></h2>
+  <p dir="ltr">
+    Linnworks automatically requests the status of any FBA orders that it has recorded. If Amazon changes the order's status, this change will be reflected in Linnworks. This includes both <u>processed</u> and <u>canceled</u> orders.</p>
+  <p style="text-align: justify;" dir="ltr">
+    Linnworks will also record the shipping courier used by Amazon as an <a href="/articles/documentation/open-orders-create-edit/a/NewOrder_notes" onclick="return n(&#39;!documentation/open-orders-create-edit/a/NewOrder_notes&#39;,this);">order note</a>. If that courier allocates a tracking number, this will also be saved on the order.</p>
+  <p style="text-align: justify;" dir="ltr" class="alert-warning"><b><span class="fa fa-pen-square icon-background-yellow"></span>&nbsp;Note:</b>&nbsp;Any open orders saved in an FBA location for <b>over a year</b>&nbsp;will automatically be processed and moved to the <i><a href="/articles/documentation/processed-orders" onclick="return n(&#39;!documentation/processed-orders&#39;,this);">Processed Orders</a></i> screen.&nbsp;</p>
+  <h2 style="text-align: justify;" id="h4__1156989980" data-has-heading-anchor="true">
+    Submitting a non-FBA order to Amazon FBA to fulfill it (MCF)<a href="/articles/documentation/amazon-fba-orders/a/h4__1156989980" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h4__1156989980&#39;,this);"></a></h2>
+  <p>Amazon Multi-Channel Fulfillment (MCF) provides low-cost, reliable fulfillment for your e-commerce sales channels (eBay, Walmart, etc.) as fast as 1-day. Learn more about Amazon MCF&nbsp;<a href="https://sell.amazon.com/fulfillment-by-amazon/fba-multi-channel#:~:text=Amazon%20Multi%2DChannel%20Fulfillment%20provides,with%20Prime%2Dlike%20delivery%20speeds." target="_blank">in this guide from Amazon</a>.</p><p>Full information on how to use MCF via Linnworks is available in <a href="/articles/documentation/amazon-multi-channel-fulfillment" onclick="return n(&#39;!documentation/amazon-multi-channel-fulfillment&#39;,this);">this guide</a>.</p><h3 style="text-align: justify;" id="h4__518521758" data-has-heading-anchor="true">Download Refunds &amp; Download Returns
+  <a href="/articles/documentation/amazon-fba-orders/a/h4__518521758" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h4__518521758&#39;,this);"></a></h3>
+  <p>
+    Enabling these settings allows you to see in Linnworks which FBA orders were returned, the reason for the return, how much was refunded, and for what item. This information can then be used for proper sales and financial reporting.
+  </p>
+  <p><img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/FBA-DownloadRefunds%26DownloadReturns.png" alt="Amazon FBA - Download Refunds &amp; Download Returns" class="size-50" style=""/></p>
+  <ul>
+    <li>
+      <span style="font-weight: normal;"><b>Download Refunds</b></span><b>: </b>This setting allows you to download processed FBA refunds into Linnworks for visibility:
+      <ul>
+        <li>
+          If an FBA order has a refund, Linnworks will download it and display it on the refunds screen.
+        </li>
+      </ul>
+    </li>
+    
+    <li style="width: 729px; padding-bottom: 10px;">
+      <span><b>Download Returns</b></span><b>:</b>&nbsp;This setting allows you to sync processed FBA returns into Linnworks for visibility:
+      <ul>
+        <li style="width: 593.097px;">
+          You can see the type of return and the reason.
+        </li>
+        <li style="width: 593.097px;">
+          Status in Linnworks will be&nbsp;<b>open</b>&nbsp;while the return is being processed. The status will change to the&nbsp;<b>processed</b>&nbsp;one once the return is complete.
+        </li>
+        <li style="width: 593.097px;">
+          Linnworks automatically reflects the return sub-statuses by mirroring them from Amazon.&nbsp;
+        </li>
+      </ul>
+    </li>
+  </ul>
+  <p>
+    An example of how an FBA return is displayed in Linnworks in the <i>Returns &amp; Refunds</i> screen is below.
+  </p>
+  <img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/FBArReturnExample.png" alt="FBA Return Example" class="leftAlone" style=""/>
+  <h4 style="text-align: justify;" id="h4_634680406"><br/></h4>
+  
+  <h3 style="text-align: justify;" id="h4_1443813319" data-has-heading-anchor="true">Ignore "Non-Amazon" Sales Channel Orders (FBA Removal Orders)<a href="/articles/documentation/amazon-fba-orders/a/h4_1443813319" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h4_1443813319&#39;,this);"></a></h3>
+  <p>This setting is related to <a href="https://sellercentral.amazon.co.uk/help/hub/reference/G200280650" target="_blank">FBA Removal Orders</a>, which involve returning or disposing of your inventory stored in Amazon’s fulfillment centers.&nbsp;</p>
+  <p><img src="/resources/Storage/documentation/Screenshots/Channels/Amazon/FBA-Ignore%20Non-Amazon%20Sales%20Channel%20Orders.png" alt="Amazon FBA - Ignore Non-Amazon Sales Channel Orders" class="size-50" style=""/></p>
+  <p>When there is a request initiated by Amazon or yourself as the seller to remove stock from Amazon’s fulfillment center and return it to your warehouse, Amazon generates an FBA order in your Amazon account. </p>
+  <p>Due to the functionality of Amazon's API, Linnworks treats these removal orders the same as sales orders when a sale is made on one of your Amazon FBA listings. Consequently, these removal orders are downloaded into your Linnworks account as regular FBA orders.&nbsp;</p>
+  <p>To avoid downloading such orders into your Linnworks account, ensure to <b>enable</b> the <i>Ignore "Non-Amazon" Sales Channel Orders</i> setting. This setting is <b>disabled by default</b>.</p>
+  <h3 id="h4_323903304" style="text-align: justify; width: 870px;" data-has-heading-anchor="true">Why is Linnworks missing some FBA orders?<a href="/articles/documentation/amazon-fba-orders/a/h4_323903304" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h4_323903304&#39;,this);"></a></h3>
+  <p>Linnworks uses reports from Amazon to retrieve FBA orders and download them, and as such, there should never be any missing orders. The only orders that will not be downloaded (therefore missing from Linnworks) are those received on the channel before FBA was enabled within Linnworks. When FBA is enabled for the Amazon channel, Linnworks will retrieve the shipment report, download the previous 28 days' orders, and save them. Any FBA orders older than this will not be downloaded.</p>
+  <h2 style="text-align: justify;" id="h2__1953448368" data-has-heading-anchor="true">How FBA orders are affected by deleting Amazon integration<a href="/articles/documentation/amazon-fba-orders/a/h2__1953448368" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h2__1953448368&#39;,this);"></a></h2>
+  <p>If you decide to delete your Amazon channel integration, which previously had FBA functionality enabled, here is what will happen:&nbsp;</p><ul><li>FBA orders in that particular FBA location will be deleted.</li><li>MCF  orders will be moved to the default location&nbsp;in a locked and parked status, with a note explaining why it was moved.&nbsp;</li><li>After the orders are deleted/moved, the FBA location will also be deleted.</li></ul><h4 style="text-align: justify;" id="h4_1529873738" data-has-heading-anchor="true">
+    See also:
+  <a href="/articles/documentation/amazon-fba-orders/a/h4_1529873738" class="CHHeadingLink" title="Link to this heading" aria-hidden="true" onclick="return n(&#39;!documentation/amazon-fba-orders/a/h4_1529873738&#39;,this);"></a></h4>
+  <ul>
+    <li><a href="/articles/documentation/amazon-fba-listings" onclick="return n(&#39;!documentation/amazon-fba-listings&#39;,this);">FBA listings</a></li>
+    <li><a href="/articles/documentation/amazon-fba-inventory" onclick="return n(&#39;!documentation/amazon-fba-inventory&#39;,this);">FBA inventory</a></li>
+    <li><a href="/articles/documentation/mcf-blank-box" onclick="return n(&#39;!documentation/mcf-blank-box&#39;,this);">Blank Box</a></li>
+  </ul>
+</div><script src="/resources/Scripts/lightense.min.js"></script>
+<script>
+  // Init Lightense
+  window.addEventListener('load', function () {
+    Lightense('img.lightense:not(.no-lightense)');
+  }, false);
+</script>
+<script>
+var toggler = document.getElementsByClassName("caret");
+var i;
+
+for (i = 0; i < toggler.length; i++) {
+  toggler[i].addEventListener("click", function() {
+    this.parentElement.querySelector(".nested").classList.toggle("active");
+    this.classList.toggle("caret-down");
+  });
+}
+</script></body></html>

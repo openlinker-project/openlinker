@@ -9,7 +9,10 @@
  * @module libs/core/src/identifier-mapping/domain/exceptions
  */
 export class ConnectionDisabledException extends Error {
-  constructor(connectionId: string, status: 'disabled' | 'archived' = 'disabled') {
+  constructor(
+    public readonly connectionId: string,
+    public readonly status: 'disabled' | 'archived' = 'disabled'
+  ) {
     super(`Connection is ${status}: ${connectionId}`);
     this.name = 'ConnectionDisabledException';
     Error.captureStackTrace(this, this.constructor);
